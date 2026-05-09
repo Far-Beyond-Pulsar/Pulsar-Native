@@ -3,8 +3,10 @@ use agent_chat_core::{
     AvailabilityState, ChatMessage as ProviderChatMessage, ChatRequest, ChatRole,
     ProcessEnvironment,
 };
+use engine_state;
 use smol::Timer;
 use std::{
+    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -315,12 +317,26 @@ impl AgentChatPanel {
             Self::compact_provider_messages(provider_messages, Self::CONTEXT_CHAR_BUDGET);
 
         let token = token.unwrap_or_default();
+        let tool_schemas = self.tool_registry.available_tools_schema();
         let request = ChatRequest {
             model,
             messages: provider_messages,
-            // Stream first-party model output directly into UI.
-            enable_tool_calls: false,
-            tools: Vec::new(),
+            // Enable tool calls for agentic loop
+            enable_tool_calls: !tool_schemas.is_empty(),
+            tools: tool_schemas
+                .iter()
+                .map(|schema| {
+                    agent_chat_core::ToolDefinition {
+                        name: schema
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string(),
+                        description: schema.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        parameters_json_schema: schema.clone(),
+                    }
+                })
+                .collect(),
             temperature: Some(0.2),
             top_p: Some(1.0),
             max_tokens: Some(1024),
@@ -343,6 +359,7 @@ impl AgentChatPanel {
         let tx_for_chunks = tx.clone();
         let tx_for_finish = tx.clone();
         let provider_for_task = provider.clone();
+        let tool_registry_for_task = self.tool_registry.clone();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
         let completion_for_worker = completion_sent.clone();
@@ -352,36 +369,138 @@ impl AgentChatPanel {
                 "[agent_chat][request={}] background worker started",
                 worker_request_id
             );
-            let mut pending_chunk = String::new();
-            let mut last_emit = Instant::now();
-            let mut on_chunk = |chunk: String| {
-                pending_chunk.push_str(&chunk);
-
-                let should_emit = pending_chunk.len() >= 256
-                    || pending_chunk.contains('\n')
-                    || last_emit.elapsed() >= Duration::from_millis(24);
-
-                if should_emit {
-                    let chunk = std::mem::take(&mut pending_chunk);
-                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk));
-                    last_emit = Instant::now();
+            
+            // Agentic loop: keep requesting until no more tool calls
+            let mut current_messages = request.messages.clone();
+            let mut iteration = 0;
+            const MAX_ITERATIONS: usize = 10;
+            
+            loop {
+                if iteration >= MAX_ITERATIONS {
+                    println!(
+                        "[agent_chat][request={}] max iterations reached",
+                        worker_request_id
+                    );
+                    break;
                 }
-            };
+                iteration += 1;
+                
+                let mut current_request = ChatRequest {
+                    model: request.model.clone(),
+                    messages: current_messages.clone(),
+                    enable_tool_calls: request.enable_tool_calls,
+                    tools: request.tools.clone(),
+                    temperature: request.temperature,
+                    top_p: request.top_p,
+                    max_tokens: request.max_tokens,
+                };
+                
+                let mut pending_chunk = String::new();
+                let mut last_emit = Instant::now();
+                let mut on_chunk = |chunk: String| {
+                    pending_chunk.push_str(&chunk);
 
-            let result = provider_for_task
-                .chat_completion_streaming(&token, &request, &mut on_chunk)
-                .map_err(|err| err.to_string());
+                    let should_emit = pending_chunk.len() >= 256
+                        || pending_chunk.contains('\n')
+                        || last_emit.elapsed() >= Duration::from_millis(24);
 
-            if !pending_chunk.is_empty() {
-                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(pending_chunk));
-            }
+                    if should_emit {
+                        let chunk = std::mem::take(&mut pending_chunk);
+                        let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk));
+                        last_emit = Instant::now();
+                    }
+                };
 
-            if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                println!(
-                    "[agent_chat][request={}] background worker emitted terminal event",
-                    worker_request_id
-                );
-                let _ = tx_for_finish.try_send(StreamEvent::Finished(result));
+                let result = provider_for_task
+                    .chat_completion_streaming(&token, &current_request, &mut on_chunk)
+                    .map_err(|err| err.to_string());
+
+                if !pending_chunk.is_empty() {
+                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(pending_chunk));
+                }
+
+                match result {
+                    Ok(response) => {
+                        // Check if response has tool calls
+                        if !response.tool_calls.is_empty() {
+                            println!(
+                                "[agent_chat][request={}] iteration {} got {} tool calls",
+                                worker_request_id,
+                                iteration,
+                                response.tool_calls.len()
+                            );
+                            
+                            // Add assistant message with tool calls
+                            if let Some(text) = &response.assistant_message {
+                                current_messages.push(ProviderChatMessage {
+                                    role: ChatRole::Assistant,
+                                    content: text.clone(),
+                                });
+                            }
+                            
+                            // Create tool context for execution
+                            let workspace_root = match engine_state::get_project_path() {
+                                Some(path) => PathBuf::from(path),
+                                None => PathBuf::from("."),
+                            };
+                            let tool_context = agent_chat_tools::ToolContext {
+                                workspace_root,
+                                plugin_bridge: None,
+                                current_file: None,
+                            };
+                            
+                            // Execute each tool call
+                            for tool_call in &response.tool_calls {
+                                println!(
+                                    "[agent_chat][request={}] executing tool: {}",
+                                    worker_request_id, tool_call.name
+                                );
+                                
+                                let result = tool_registry_for_task.execute(
+                                    &tool_call.name,
+                                    tool_call.arguments_json.clone(),
+                                    &tool_context,
+                                );
+                                
+                                let tool_result = match result {
+                                    Ok(value) => value.to_string(),
+                                    Err(err) => format!("Tool error: {}", err),
+                                };
+                                
+                                // Add tool result message
+                                current_messages.push(ProviderChatMessage {
+                                    role: ChatRole::Tool,
+                                    content: format!(
+                                        "Tool: {}\nResult: {}",
+                                        tool_call.name, tool_result
+                                    ),
+                                });
+                            }
+                            // Loop again with updated message history
+                            continue;
+                        } else {
+                            // No tool calls, finish with response
+                            if !completion_for_worker.swap(true, Ordering::SeqCst) {
+                                println!(
+                                    "[agent_chat][request={}] iteration {} finished (no tool calls)",
+                                    worker_request_id, iteration
+                                );
+                                let _ = tx_for_finish.try_send(StreamEvent::Finished(Ok(response)));
+                            }
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        if !completion_for_worker.swap(true, Ordering::SeqCst) {
+                            println!(
+                                "[agent_chat][request={}] iteration {} error: {}",
+                                worker_request_id, iteration, err
+                            );
+                            let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(err)));
+                        }
+                        break;
+                    }
+                }
             }
         });
 
