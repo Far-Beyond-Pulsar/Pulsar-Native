@@ -146,6 +146,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
 
         v_flex()
             .w(self.max_width)
+            .h(self.max_height)
             .max_h(self.max_height)
             .p_1()
             .gap_1()
@@ -159,7 +160,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                     .child(TextInput::new(&self.search_input).w_full().xsmall()),
             )
             .child(
-                div().flex_1().w_full().overflow_hidden().child(
+                div().flex_1().min_h_0().w_full().overflow_hidden().child(
                     div().size_full().scrollable(ScrollbarAxis::Vertical).child(
                         v_flex()
                             .w_full()
