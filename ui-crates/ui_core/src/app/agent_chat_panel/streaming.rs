@@ -557,6 +557,13 @@ impl AgentChatPanel {
                             continue;
                         } else {
                             // No tool calls, finish with response
+                            println!(
+                                "[agent_chat][request={}] iteration {} finishing: msg_len={}, finish_reason={:?}",
+                                worker_request_id,
+                                iteration,
+                                response.assistant_message.as_ref().map(|m| m.len()).unwrap_or(0),
+                                response.finish_reason
+                            );
                             if !completion_for_worker.swap(true, Ordering::SeqCst) {
                                 println!(
                                     "[agent_chat][request={}] iteration {} finished (no tool calls)",
