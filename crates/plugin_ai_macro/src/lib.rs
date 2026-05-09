@@ -7,7 +7,10 @@
 /// - Create dispatch code in execute_ai_tool()
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Type};
+use syn::{
+    parse::Parser, parse_macro_input, punctuated::Punctuated, token::Comma, Expr, FnArg, ItemFn,
+    Meta, Pat, Type,
+};
 
 /// Attribute macro for defining an AI tool
 ///
@@ -48,7 +51,7 @@ use syn::{parse_macro_input, DeriveInput, FnArg, ItemFn, Lit, Meta, Pat, ReturnT
 /// 3. A markdown documentation constant (from file if `docs` provided, auto-generated otherwise)
 #[proc_macro_attribute]
 pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let attrs = parse_macro_input!(attr as syn::AttributeArgs);
+    let attrs = parse_macro_input!(attr with Punctuated::<Meta, Comma>::parse_terminated);
     let input = parse_macro_input!(item as ItemFn);
 
     let fn_name = &input.sig.ident;
@@ -90,6 +93,10 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Generate the wrapper function that handles tool execution
     let wrapper_fn_name = format_ident!("{}_ai_tool_wrapper", fn_name);
     let params_from_json = generate_params_from_json(&params);
+    let params_for_call = params
+        .iter()
+        .map(|(name, _)| format_ident!("{}", name))
+        .collect::<Vec<_>>();
 
     let wrapper = quote! {
         #[doc(hidden)]
@@ -99,7 +106,7 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
             #params_from_json
 
             // Call the actual tool function
-            let result = #fn_name(#(#params),*)?;
+            let result = #fn_name(#(#params_for_call),*)?;
             Ok(result)
         }
     };
@@ -129,6 +136,17 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     };
 
+    let inventory_submit = quote! {
+        plugin_ai_tools::inventory::submit! {
+            plugin_ai_tools::GeneratedToolEntry {
+                namespace: module_path!(),
+                definition: #definition_name,
+                documentation: #doc_const_name,
+                handler: #wrapper_fn_name,
+            }
+        }
+    };
+
     // Keep original function
     let original_fn = quote! {
         #fn_visibility #fn_asyncness fn #fn_name(#fn_inputs) #fn_output {
@@ -140,35 +158,8 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
         #definition
         #wrapper
         #doc_const
+        #inventory_submit
         #original_fn
-    };
-
-    TokenStream::from(expanded)
-}
-
-/// Derive macro for plugins that auto-implements EditorPlugin with ai_tools support
-///
-/// # Usage
-///
-/// ```rust,ignore
-/// #[derive(AiToolProvider)]
-/// pub struct MyPlugin {
-///     // fields...
-/// }
-/// ```
-#[proc_macro_derive(AiToolProvider, attributes(ai_tool))]
-pub fn derive_ai_tool_provider(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
-
-    // This is a placeholder - actual implementation would:
-    // 1. Find all #[ai_tool] marked functions in the module
-    // 2. Generate ai_tools() implementation
-    // 3. Generate execute_ai_tool() match statement
-    // 4. Generate capabilities_for_file() based on file types
-
-    let expanded = quote! {
-        // Placeholder - would be implemented in companion module
     };
 
     TokenStream::from(expanded)
@@ -201,14 +192,14 @@ fn extract_doc_comment(attrs: &[syn::Attribute]) -> String {
 /// Extract parameter information
 fn extract_parameters(
     inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>,
-) -> Vec<(String, String)> {
+) -> Vec<(String, Type)> {
     inputs
         .iter()
         .filter_map(|arg| {
             if let FnArg::Typed(pat_type) = arg {
                 if let Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                     let param_name = pat_ident.ident.to_string();
-                    let param_type = quote!(#pat_type.ty).to_string();
+                    let param_type = (*pat_type.ty).clone();
                     return Some((param_name, param_type));
                 }
             }
@@ -226,27 +217,33 @@ fn extract_param_docs(attrs: &[syn::Attribute]) -> std::collections::HashMap<Str
 
 /// Parse tool macro attributes (category, timeout_ms, etc.)
 fn parse_tool_attrs(
-    attrs: &syn::punctuated::Punctuated<syn::NestedMeta, syn::token::Comma>,
+    attrs: &Punctuated<Meta, Comma>,
 ) -> (Option<String>, u32, Option<String>) {
     let mut category: Option<String> = None;
     let mut timeout_ms: u32 = 5000;
     let mut docs_path: Option<String> = None;
 
-    for nested_meta in attrs {
-        if let syn::NestedMeta::Meta(syn::Meta::NameValue(nv)) = nested_meta {
+    for meta in attrs {
+        if let Meta::NameValue(nv) = meta {
             if nv.path.is_ident("category") {
-                if let syn::Lit::Str(s) = &nv.lit {
-                    category = Some(s.value());
+                if let Expr::Lit(expr_lit) = &nv.value {
+                    if let syn::Lit::Str(s) = &expr_lit.lit {
+                        category = Some(s.value());
+                    }
                 }
             } else if nv.path.is_ident("timeout_ms") {
-                if let syn::Lit::Int(i) = &nv.lit {
-                    if let Ok(n) = i.base10_parse::<u32>() {
-                        timeout_ms = n;
+                if let Expr::Lit(expr_lit) = &nv.value {
+                    if let syn::Lit::Int(i) = &expr_lit.lit {
+                        if let Ok(n) = i.base10_parse::<u32>() {
+                            timeout_ms = n;
+                        }
                     }
                 }
             } else if nv.path.is_ident("docs") {
-                if let syn::Lit::Str(s) = &nv.lit {
-                    docs_path = Some(s.value());
+                if let Expr::Lit(expr_lit) = &nv.value {
+                    if let syn::Lit::Str(s) = &expr_lit.lit {
+                        docs_path = Some(s.value());
+                    }
                 }
             }
         }
@@ -257,13 +254,14 @@ fn parse_tool_attrs(
 
 /// Generate JSON schema for parameters
 fn generate_parameter_schema(
-    params: &[(String, String)],
+    params: &[(String, Type)],
     _param_docs: &std::collections::HashMap<String, String>,
 ) -> String {
     let properties = params
         .iter()
         .map(|(name, ty)| {
-            let json_type = match ty.as_str() {
+            let ty_str = quote!(#ty).to_string().replace(' ', "");
+            let json_type = match ty_str.as_str() {
                 "String" => "\"string\"",
                 "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "\"integer\"",
                 "f32" | "f64" => "\"number\"",
@@ -288,13 +286,13 @@ fn generate_parameter_schema(
 }
 
 /// Generate code to extract parameters from JSON
-fn generate_params_from_json(params: &[(String, String)]) -> proc_macro2::TokenStream {
+fn generate_params_from_json(params: &[(String, Type)]) -> proc_macro2::TokenStream {
     let extractions = params.iter().map(|(name, ty)| {
         let name_ident = format_ident!("{}", name);
-        let ty_ident = format_ident!("{}", ty);
+        let ty_tokens = quote!(#ty);
 
         quote! {
-            let #name_ident: #ty_ident = serde_json::from_value(
+            let #name_ident: #ty_tokens = serde_json::from_value(
                 tool_args.get(stringify!(#name_ident))
                     .ok_or_else(|| plugin_editor_api::PluginError::Other {
                         message: format!("Missing parameter: {}", stringify!(#name_ident)),
@@ -315,7 +313,7 @@ fn generate_params_from_json(params: &[(String, String)]) -> proc_macro2::TokenS
 fn generate_markdown_doc(
     tool_name: &str,
     description: &str,
-    params: &[(String, String)],
+    params: &[(String, Type)],
     _param_docs: &std::collections::HashMap<String, String>,
     category: Option<&str>,
 ) -> String {
@@ -328,7 +326,7 @@ fn generate_markdown_doc(
     } else {
         let items = params
             .iter()
-            .map(|(name, ty)| format!("- `{}` ({})", name, ty))
+            .map(|(name, ty)| format!("- `{}` ({})", name, quote!(#ty)))
             .collect::<Vec<_>>()
             .join("\n");
         format!("### Parameters\n\n{}", items)

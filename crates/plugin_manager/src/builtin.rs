@@ -8,7 +8,7 @@
 
 use crate::{EditorRegistry, FileTypeRegistry};
 use plugin_editor_api::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 // Import needed for PanelView trait and GPUI types
@@ -37,6 +37,29 @@ pub trait BuiltinEditorProvider: Send + Sync {
     fn editors(&self) -> Vec<EditorMetadata>;
     fn can_handle(&self, editor_id: &EditorId) -> bool;
 
+    /// AI tools exposed by this built-in provider.
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        Vec::new()
+    }
+
+    /// File-specific capabilities for selecting tools.
+    fn capabilities_for_file(&self, _file_path: &Path) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Execute an AI tool exposed by this built-in provider.
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        let _ = (file_path, tool_name, tool_args);
+        Err(PluginError::Other {
+            message: "Tool execution not supported by this built-in provider".to_string(),
+        })
+    }
+
     /// Create editor directly - each provider implements this with their specific editor type.
     fn create_editor(
         &self,
@@ -63,6 +86,18 @@ impl BuiltinEditorRegistry {
     /// Register a built-in editor provider.
     pub fn register_provider(&mut self, provider: Arc<dyn BuiltinEditorProvider>) {
         self.providers.push(provider);
+    }
+
+    /// Get all registered built-in providers.
+    pub fn providers(&self) -> &[Arc<dyn BuiltinEditorProvider>] {
+        &self.providers
+    }
+
+    /// Get a built-in provider by provider id.
+    pub fn provider_by_id(&self, provider_id: &str) -> Option<&Arc<dyn BuiltinEditorProvider>> {
+        self.providers
+            .iter()
+            .find(|provider| provider.provider_id() == provider_id)
     }
 
     /// Register all built-in editors with the file type and editor registries.

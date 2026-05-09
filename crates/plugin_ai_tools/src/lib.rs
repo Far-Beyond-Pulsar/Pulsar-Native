@@ -5,7 +5,8 @@ use plugin_editor_api::{AiToolDefinition, PluginError};
 /// collect, register, and execute AI tools defined with #[ai_tool] macro.
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::Path;
+
+pub use inventory;
 
 /// A registered AI tool with its metadata and handler
 pub struct RegisteredTool {
@@ -13,6 +14,15 @@ pub struct RegisteredTool {
     pub handler: Box<dyn Fn(Value) -> Result<Value, PluginError> + Send + Sync>,
     pub documentation: String,
 }
+
+pub struct GeneratedToolEntry {
+    pub namespace: &'static str,
+    pub definition: &'static str,
+    pub documentation: &'static str,
+    pub handler: fn(Value) -> Result<Value, PluginError>,
+}
+
+inventory::collect!(GeneratedToolEntry);
 
 /// Tool registry for plugins
 ///
@@ -83,152 +93,69 @@ impl Default for ToolRegistry {
     }
 }
 
-/// Macro to register a tool from an #[ai_tool] function
-///
-/// # Usage
-///
-/// ```rust,ignore
-/// #[ai_tool(category = "formatting")]
-/// /// Format the file
-/// pub fn format_file(width: u32) -> Result<Value, PluginError> {
-///     // ...
-/// }
-///
-/// let mut tools = ToolRegistry::new();
-/// tools.register_tool!(format_file);
-/// ```
-#[macro_export]
-macro_rules! register_ai_tool {
-    ($registry:expr, $tool_fn:path) => {{
-        let tool_name = stringify!($tool_fn);
-        // In actual implementation, this would use the generated wrapper
-        // For now, it's a placeholder that would be replaced by macro expansion
-    }};
+pub fn parse_generated_tool_definition(definition: &str) -> Result<AiToolDefinition, PluginError> {
+    let value: Value = serde_json::from_str(definition).map_err(|err| PluginError::Other {
+        message: format!("Invalid generated tool definition: {err}"),
+    })?;
+
+    let name = value
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| PluginError::Other {
+            message: "Tool definition missing name".to_string(),
+        })?
+        .to_string();
+    let description = value
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let parameters_json_schema = value
+        .get("parameters")
+        .cloned()
+        .unwrap_or_else(|| json!({"type": "object", "properties": {}}));
+
+    let mut def = AiToolDefinition::new(name, description, parameters_json_schema);
+    if let Some(category) = value.get("category").and_then(|v| v.as_str()) {
+        def = def.with_category(category.to_string());
+    }
+
+    Ok(def)
 }
 
-/// Helper to collect all tools for a plugin
-///
-/// Plugins implement this trait to provide their tools
-pub trait AiToolProvider {
-    /// Create a registry with all this plugin's tools
-    fn create_tool_registry() -> ToolRegistry;
-
-    /// Get capabilities for a specific file
-    fn capabilities_for_file(&self, _file_path: &Path) -> Vec<String> {
-        Vec::new()
-    }
+pub fn register_generated_tool<F>(
+    registry: &mut ToolRegistry,
+    definition: &str,
+    documentation: impl Into<String>,
+    handler: F,
+) -> Result<(), PluginError>
+where
+    F: Fn(Value) -> Result<Value, PluginError> + Send + Sync + 'static,
+{
+    let parsed = parse_generated_tool_definition(definition)?;
+    let name = parsed.name.clone();
+    registry.register(name, parsed, documentation, handler);
+    Ok(())
 }
 
-/// Example trait implementation helper
-pub struct SimpleToolProvider;
+pub fn registry_from_inventory(namespace_prefix: &str) -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
 
-impl SimpleToolProvider {
-    /// Create a registry and register a single tool
-    pub fn register_single_tool(
-        name: impl Into<String>,
-        description: impl Into<String>,
-        parameters: serde_json::Value,
-        handler: impl Fn(Value) -> Result<Value, PluginError> + Send + Sync + 'static,
-    ) -> ToolRegistry {
-        let mut registry = ToolRegistry::new();
-
-        let definition = AiToolDefinition {
-            name: name.into(),
-            description: description.into(),
-            parameters_json_schema: parameters,
-            category: None,
-        };
-
-        let doc = format!("Tool documentation for {}", definition.name);
-        registry.register(definition.name.clone(), definition, doc, handler);
-
-        registry
-    }
-}
-
-/// Builder for creating AiToolDefinition more easily
-pub struct AiToolBuilder {
-    name: String,
-    description: String,
-    parameters: serde_json::Value,
-    category: Option<String>,
-}
-
-impl AiToolBuilder {
-    pub fn new(name: impl Into<String>, description: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            description: description.into(),
-            parameters: json!({
-                "type": "object",
-                "properties": {},
-                "required": []
-            }),
-            category: None,
-        }
-    }
-
-    pub fn parameter(
-        mut self,
-        param_name: &str,
-        param_type: &str,
-        description: Option<&str>,
-    ) -> Self {
-        if let Some(props) = self.parameters.get_mut("properties") {
-            if let Some(obj) = props.as_object_mut() {
-                let mut param_def = json!({
-                    "type": param_type,
-                });
-                if let Some(desc) = description {
-                    param_def["description"] = json!(desc);
-                }
-                obj.insert(param_name.to_string(), param_def);
-            }
+    for entry in inventory::iter::<GeneratedToolEntry> {
+        if !entry.namespace.starts_with(namespace_prefix) {
+            continue;
         }
 
-        if let Some(required) = self.parameters.get_mut("required") {
-            if let Some(arr) = required.as_array_mut() {
-                arr.push(json!(param_name));
-            }
-        }
-
-        self
+        register_generated_tool(
+            &mut registry,
+            entry.definition,
+            entry.documentation,
+            entry.handler,
+        )
+        .expect("invalid generated AI tool metadata from inventory");
     }
 
-    pub fn optional_parameter(
-        mut self,
-        param_name: &str,
-        param_type: &str,
-        description: Option<&str>,
-    ) -> Self {
-        if let Some(props) = self.parameters.get_mut("properties") {
-            if let Some(obj) = props.as_object_mut() {
-                let mut param_def = json!({
-                    "type": param_type,
-                });
-                if let Some(desc) = description {
-                    param_def["description"] = json!(desc);
-                }
-                obj.insert(param_name.to_string(), param_def);
-            }
-        }
-
-        self
-    }
-
-    pub fn category(mut self, category: impl Into<String>) -> Self {
-        self.category = Some(category.into());
-        self
-    }
-
-    pub fn build(self) -> AiToolDefinition {
-        AiToolDefinition {
-            name: self.name,
-            description: self.description,
-            parameters_json_schema: self.parameters,
-            category: self.category,
-        }
-    }
+    registry
 }
 
 #[cfg(test)]
@@ -236,22 +163,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tool_builder() {
-        let definition = AiToolBuilder::new("test_tool", "A test tool")
-            .parameter("input", "string", Some("The input string"))
-            .optional_parameter("width", "integer", None)
-            .category("testing")
-            .build();
-
-        assert_eq!(definition.name, "test_tool");
-        assert_eq!(definition.category, Some("testing".to_string()));
-    }
-
-    #[test]
     fn test_tool_registry() {
         let mut registry = ToolRegistry::new();
-
-        let definition = AiToolBuilder::new("format", "Format a file").build();
+        let definition = AiToolDefinition::new(
+            "format",
+            "Format a file",
+            json!({"type": "object", "properties": {}}),
+        );
 
         registry.register("format", definition, "Format documentation", |_args| {
             Ok(json!({"status": "formatted"}))

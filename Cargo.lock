@@ -8466,6 +8466,7 @@ dependencies = [
 name = "plugin_ai_tools"
 version = "0.1.0"
 dependencies = [
+ "inventory",
  "plugin_editor_api",
  "serde_json",
 ]
@@ -13361,6 +13362,8 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "gpui-ce",
+ "plugin_ai_macro",
+ "plugin_ai_tools",
  "plugin_editor_api",
  "rust-i18n",
  "schemars",

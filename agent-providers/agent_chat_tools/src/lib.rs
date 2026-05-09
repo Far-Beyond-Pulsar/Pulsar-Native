@@ -2,7 +2,6 @@ use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
-    fs,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
@@ -33,10 +32,10 @@ impl ToolRegistry {
 
     pub fn with_default_tools() -> Self {
         let mut this = Self::new();
-        this.register(Arc::new(ReadFileTool));
-        this.register(Arc::new(ListDirTool));
-        this.register(Arc::new(SearchWorkspaceTool));
+        this.register(Arc::new(QueryAvailableFileTypesTool));
+        this.register(Arc::new(QueryFileEditorsTool));
         this.register(Arc::new(QueryPluginToolsTool));
+        this.register(Arc::new(QueryToolsForPluginTool));
         this.register(Arc::new(ExecutePluginToolTool));
         this
     }
@@ -55,38 +54,22 @@ impl ToolRegistry {
     pub fn available_tools_schema(&self) -> Vec<Value> {
         vec![
             json!({
-                "name": "read_file",
-                "description": "Read a UTF-8 text file from workspace.",
+                "name": "query_available_file_types",
+                "description": "List all file types currently registered by plugins/editors.",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "path": { "type": "string" },
-                        "max_chars": { "type": "integer", "minimum": 1 }
-                    },
-                    "required": ["path"]
+                    "properties": {}
                 }
             }),
             json!({
-                "name": "list_dir",
-                "description": "List entries in a directory from workspace.",
+                "name": "query_file_editors",
+                "description": "Query which editors/plugins can handle a specific file.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "path": { "type": "string" }
+                        "file_path": { "type": "string" }
                     },
-                    "required": ["path"]
-                }
-            }),
-            json!({
-                "name": "search_workspace",
-                "description": "Search for text in workspace files.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": { "type": "string" },
-                        "max_results": { "type": "integer", "minimum": 1 }
-                    },
-                    "required": ["query"]
+                    "required": ["file_path"]
                 }
             }),
             json!({
@@ -100,11 +83,24 @@ impl ToolRegistry {
                 }
             }),
             json!({
+                "name": "query_tools_for_plugin",
+                "description": "Query AI tools provided by a specific plugin, optionally scoped to a file.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "plugin_id": { "type": "string", "description": "Plugin id to inspect" },
+                        "file_path": { "type": "string", "description": "Optional file path to filter tools by capability for that file" }
+                    },
+                    "required": ["plugin_id"]
+                }
+            }),
+            json!({
                 "name": "execute_plugin_tool",
                 "description": "Execute an AI tool provided by a plugin.",
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "plugin_id": { "type": "string", "description": "Plugin id returned by query_plugin_tools. Recommended when tool names overlap." },
                         "tool_name": { "type": "string", "description": "Name of the tool to execute" },
                         "file_path": { "type": "string", "description": "File to operate on. If not provided, uses current_file from context." },
                         "tool_args": { "type": "object", "description": "Arguments to pass to the tool", "additionalProperties": true }
@@ -116,109 +112,88 @@ impl ToolRegistry {
     }
 }
 
-struct ReadFileTool;
-impl ChatTool for ReadFileTool {
+struct QueryAvailableFileTypesTool;
+impl ChatTool for QueryAvailableFileTypesTool {
     fn name(&self) -> &'static str {
-        "read_file"
+        "query_available_file_types"
+    }
+
+    fn execute(&self, _args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
+        let manager_lock = plugin_manager::global()
+            .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+        let manager = manager_lock
+            .read()
+            .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+
+        let file_types = manager
+            .file_type_registry()
+            .get_all_file_types()
+            .into_iter()
+            .map(|ft| {
+                json!({
+                    "id": ft.id.to_string(),
+                    "extension": ft.extension,
+                    "display_name": ft.display_name,
+                    "structure": format!("{:?}", ft.structure),
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(json!({
+            "count": file_types.len(),
+            "file_types": file_types,
+        }))
+    }
+}
+
+struct QueryFileEditorsTool;
+impl ChatTool for QueryFileEditorsTool {
+    fn name(&self) -> &'static str {
+        "query_file_editors"
     }
 
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let path = args
-            .get("path")
+        let file_path = args
+            .get("file_path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("read_file.path is required"))?;
-        let max_chars = args
-            .get("max_chars")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(20_000) as usize;
+            .ok_or_else(|| anyhow!("query_file_editors.file_path is required"))?;
+        let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
 
-        let full = resolve_workspace_path(&ctx.workspace_root, path)?;
-        let content = fs::read_to_string(&full)
-            .with_context(|| format!("Failed reading file {}", full.display()))?;
-        let truncated = if content.chars().count() > max_chars {
-            content.chars().take(max_chars).collect::<String>()
-        } else {
-            content
+        let manager_lock = plugin_manager::global()
+            .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+        let manager = manager_lock
+            .read()
+            .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+
+        let Some(file_type_id) = manager.file_type_registry().get_file_type_for_path(&full) else {
+            return Ok(json!({
+                "file_path": full.display().to_string(),
+                "file_type": null,
+                "editors": [],
+            }));
         };
 
-        Ok(json!({
-            "path": full.display().to_string(),
-            "truncated": truncated,
-        }))
-    }
-}
-
-struct ListDirTool;
-impl ChatTool for ListDirTool {
-    fn name(&self) -> &'static str {
-        "list_dir"
-    }
-
-    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let path = args
-            .get("path")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("list_dir.path is required"))?;
-        let full = resolve_workspace_path(&ctx.workspace_root, path)?;
-
-        let mut entries = Vec::new();
-        for entry in
-            fs::read_dir(&full).with_context(|| format!("Failed reading dir {}", full.display()))?
-        {
-            let entry = entry?;
-            let p = entry.path();
-            entries.push(json!({
-                "name": entry.file_name().to_string_lossy().to_string(),
-                "is_dir": p.is_dir(),
-            }));
-        }
+        let editors = manager
+            .editor_registry()
+            .get_editors_for_file_type(&file_type_id)
+            .into_iter()
+            .map(|editor_id| {
+                let plugin_id = manager
+                    .editor_registry()
+                    .get_plugin_for_editor(&editor_id)
+                    .map(|pid| pid.to_string());
+                json!({
+                    "editor_id": editor_id.to_string(),
+                    "plugin_id": plugin_id,
+                })
+            })
+            .collect::<Vec<_>>();
 
         Ok(json!({
-            "path": full.display().to_string(),
-            "entries": entries,
+            "file_path": full.display().to_string(),
+            "file_type": file_type_id.to_string(),
+            "editors": editors,
         }))
-    }
-}
-
-struct SearchWorkspaceTool;
-impl ChatTool for SearchWorkspaceTool {
-    fn name(&self) -> &'static str {
-        "search_workspace"
-    }
-
-    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("search_workspace.query is required"))?
-            .to_lowercase();
-        let max_results = args
-            .get("max_results")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(50) as usize;
-
-        let mut results = Vec::new();
-        visit_files(&ctx.workspace_root, &mut |path| {
-            if results.len() >= max_results {
-                return;
-            }
-            if let Ok(content) = fs::read_to_string(path) {
-                for (line_no, line) in content.lines().enumerate() {
-                    if line.to_lowercase().contains(&query) {
-                        results.push(json!({
-                            "path": path.display().to_string(),
-                            "line": line_no + 1,
-                            "text": line,
-                        }));
-                        if results.len() >= max_results {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-
-        Ok(json!({ "query": query, "results": results }))
     }
 }
 
@@ -229,11 +204,6 @@ impl ChatTool for QueryPluginToolsTool {
     }
 
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let bridge = ctx
-            .plugin_bridge
-            .as_ref()
-            .ok_or_else(|| anyhow!("Plugin bridge not available"))?;
-
         let file_path = args
             .get("file_path")
             .and_then(|v| v.as_str())
@@ -245,14 +215,17 @@ impl ChatTool for QueryPluginToolsTool {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(no file)".to_string());
 
-        let bridge_lock = bridge
+        let manager_lock = plugin_manager::global()
+            .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+        let manager = manager_lock
             .read()
-            .map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+            .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
         let tools = if let Some(file_path) = &file_path {
-            bridge_lock.tools_for_file(file_path)
+            let full = resolve_workspace_path(&ctx.workspace_root, &file_path.display().to_string())?;
+            manager.build_tool_bridge_for_file(&full).all_tools()
         } else {
-            bridge_lock.all_tools()
+            manager.build_tool_bridge().all_tools()
         };
 
         let tool_schemas: Vec<Value> = tools
@@ -268,8 +241,88 @@ impl ChatTool for QueryPluginToolsTool {
             })
             .collect();
 
+        let mut tools_by_plugin: HashMap<String, Vec<Value>> = HashMap::new();
+        for tool in &tool_schemas {
+            if let Some(plugin_id) = tool.get("plugin_id").and_then(|v| v.as_str()) {
+                tools_by_plugin
+                    .entry(plugin_id.to_string())
+                    .or_default()
+                    .push(tool.clone());
+            }
+        }
+
+        let plugins = tools_by_plugin
+            .into_iter()
+            .map(|(plugin_id, tools)| {
+                json!({
+                    "plugin_id": plugin_id,
+                    "tool_count": tools.len(),
+                    "tools": tools,
+                })
+            })
+            .collect::<Vec<_>>();
+
         Ok(json!({
             "file_path": file_path_str,
+            "tools_available": tool_schemas.len(),
+            "tools": tool_schemas,
+            "plugins": plugins,
+        }))
+    }
+}
+
+struct QueryToolsForPluginTool;
+impl ChatTool for QueryToolsForPluginTool {
+    fn name(&self) -> &'static str {
+        "query_tools_for_plugin"
+    }
+
+    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let plugin_id = args
+            .get("plugin_id")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("query_tools_for_plugin.plugin_id is required"))?;
+
+        let manager_lock = plugin_manager::global()
+            .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+        let manager = manager_lock
+            .read()
+            .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+
+        let tools = if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
+            let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
+            manager
+                .build_tool_bridge_for_file(&full)
+                .all_tools()
+                .into_iter()
+            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
+                .map(|tool| tool.definition)
+                .collect::<Vec<_>>()
+        } else {
+            manager
+            .build_tool_bridge()
+            .all_tools()
+            .into_iter()
+            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
+            .map(|tool| tool.definition)
+            .collect::<Vec<_>>()
+        };
+
+        let tool_schemas = tools
+            .iter()
+            .map(|tool| {
+                json!({
+                    "name": tool.name,
+                    "description": tool.description,
+                    "category": tool.category,
+                    "parameters": tool.parameters_json_schema,
+                    "plugin_id": plugin_id,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        Ok(json!({
+            "plugin_id": plugin_id,
             "tools_available": tool_schemas.len(),
             "tools": tool_schemas,
         }))
@@ -283,12 +336,13 @@ impl ChatTool for ExecutePluginToolTool {
     }
 
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let explicit_plugin_id = args.get("plugin_id").and_then(|v| v.as_str());
         let tool_name = args
             .get("tool_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("execute_plugin_tool.tool_name is required"))?;
 
-        let _tool_args = args.get("tool_args").cloned().unwrap_or_else(|| json!({}));
+        let tool_args = args.get("tool_args").cloned().unwrap_or_else(|| json!({}));
 
         let file_path = args
             .get("file_path")
@@ -296,29 +350,38 @@ impl ChatTool for ExecutePluginToolTool {
             .map(|p| PathBuf::from(p))
             .or_else(|| ctx.current_file.clone())
             .ok_or_else(|| anyhow!("No file path provided or available in context"))?;
+        let full_file_path = resolve_workspace_path(&ctx.workspace_root, &file_path.display().to_string())?;
 
-        let bridge = ctx
-            .plugin_bridge
-            .as_ref()
-            .ok_or_else(|| anyhow!("Plugin bridge not available"))?;
-
-        let bridge_lock = bridge
+        let manager_lock = plugin_manager::global()
+            .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+        let manager = manager_lock
             .read()
-            .map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+            .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
-        let _tool = bridge_lock
-            .tool(tool_name)
-            .ok_or_else(|| anyhow!("Tool not found: {}", tool_name))?;
+        let bridge = manager.build_tool_bridge();
+        let plugin_id = if let Some(plugin_id) = explicit_plugin_id {
+            bridge
+                .all_tools()
+                .into_iter()
+                .find(|tool| tool.plugin_id.to_string() == plugin_id)
+                .map(|tool| tool.plugin_id)
+                .ok_or_else(|| anyhow!("Plugin id not found: {}", plugin_id))?
+        } else {
+            bridge
+                .plugin_for_tool(tool_name)
+                .ok_or_else(|| anyhow!("Tool not found or plugin not resolvable: {}", tool_name))?
+        };
 
-        // Note: We would need mutable access to the plugin instance to execute the tool.
-        // This requires integration with the plugin manager. For now, return a placeholder.
-        // The actual execution would go through PluginManager::execute_plugin_tool()
+        let result = manager
+            .execute_plugin_ai_tool(&plugin_id, &full_file_path, tool_name, tool_args)
+            .map_err(|err| anyhow!(err.to_string()))?;
 
         Ok(json!({
-            "status": "error",
-            "message": "Plugin tool execution requires PluginManager integration. Please execute through the UI.",
+            "status": "ok",
+            "plugin_id": plugin_id.to_string(),
             "tool_name": tool_name,
-            "file_path": file_path.display().to_string(),
+            "file_path": full_file_path.display().to_string(),
+            "result": result,
         }))
     }
 }
@@ -338,28 +401,4 @@ fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathB
         return Err(anyhow!("Path escapes workspace root"));
     }
     Ok(canonical)
-}
-
-fn visit_files(dir: &Path, f: &mut impl FnMut(&Path)) {
-    let Ok(read_dir) = fs::read_dir(dir) else {
-        return;
-    };
-
-    for entry in read_dir.flatten() {
-        let path = entry.path();
-        if path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(|name| name == ".git" || name == "target")
-            .unwrap_or(false)
-        {
-            continue;
-        }
-
-        if path.is_dir() {
-            visit_files(&path, f);
-        } else {
-            f(&path);
-        }
-    }
 }

@@ -481,7 +481,80 @@ impl PluginManager {
         for (plugin_id, loaded_plugin) in &self.plugins {
             bridge.discover_plugin_tools(plugin_id.clone(), loaded_plugin.plugin);
         }
+
+        for provider in self.builtin_registry.providers() {
+            bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.as_ref());
+        }
+
         bridge
+    }
+
+    /// Build a snapshot bridge containing AI tools applicable to a specific file.
+    pub fn build_tool_bridge_for_file(&self, file_path: &Path) -> PluginToolBridge {
+        let mut bridge = PluginToolBridge::new();
+        for (plugin_id, loaded_plugin) in &self.plugins {
+            bridge.discover_plugin_tools_for_file(plugin_id.clone(), loaded_plugin.plugin, file_path);
+        }
+
+        for provider in self.builtin_registry.providers() {
+            bridge.discover_builtin_tools_for_file(
+                PluginId::new(provider.provider_id()),
+                provider.as_ref(),
+                file_path,
+            );
+        }
+
+        bridge
+    }
+
+    /// Get AI tools exposed by a specific plugin or built-in provider.
+    pub fn get_plugin_ai_tools(
+        &self,
+        plugin_id: &PluginId,
+    ) -> Result<Vec<AiToolDefinition>, PluginManagerError> {
+        if let Some(loaded_plugin) = self.plugins.get(plugin_id) {
+            return Ok(loaded_plugin.plugin.ai_tools());
+        }
+
+        if let Some(provider) = self.builtin_registry.provider_by_id(plugin_id.as_str()) {
+            return Ok(provider.ai_tools());
+        }
+
+        Err(PluginManagerError::PluginNotFound {
+            plugin_id: plugin_id.clone(),
+        })
+    }
+
+    /// Execute an AI tool against a specific plugin or built-in provider.
+    pub fn execute_plugin_ai_tool(
+        &self,
+        plugin_id: &PluginId,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginManagerError> {
+        if let Some(loaded_plugin) = self.plugins.get(plugin_id) {
+            return loaded_plugin
+                .plugin
+                .execute_ai_tool(file_path, tool_name, tool_args)
+                .map_err(|error| PluginManagerError::PluginError {
+                    plugin_id: plugin_id.clone(),
+                    error,
+                });
+        }
+
+        if let Some(provider) = self.builtin_registry.provider_by_id(plugin_id.as_str()) {
+            return provider
+                .execute_ai_tool(file_path, tool_name, tool_args)
+                .map_err(|error| PluginManagerError::PluginError {
+                    plugin_id: plugin_id.clone(),
+                    error,
+                });
+        }
+
+        Err(PluginManagerError::PluginNotFound {
+            plugin_id: plugin_id.clone(),
+        })
     }
 
     /// Get a reference to the file type registry.

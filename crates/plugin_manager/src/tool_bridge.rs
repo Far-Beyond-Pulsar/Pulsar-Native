@@ -5,6 +5,7 @@
 /// - Query which tools are available
 /// - Get documentation for tools
 /// - Execute tools with parameters
+use crate::builtin::BuiltinEditorProvider;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::Path;
@@ -57,6 +58,60 @@ impl PluginToolBridge {
             self.tools.insert(tool_name.clone(), available_tool);
             self.tool_to_plugin
                 .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
+        }
+    }
+
+    /// Discover tools from a built-in provider.
+    pub fn discover_builtin_tools(
+        &mut self,
+        plugin_id: PluginId,
+        provider: &dyn BuiltinEditorProvider,
+    ) {
+        let tool_defs = provider.ai_tools();
+
+        for tool_def in tool_defs {
+            let tool_name = tool_def.name.clone();
+
+            let available_tool = AvailableTool {
+                definition: tool_def,
+                plugin_id: plugin_id.clone(),
+                file_types: Vec::new(),
+            };
+
+            self.tools.insert(tool_name.clone(), available_tool);
+            self.tool_to_plugin
+                .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
+        }
+    }
+
+    /// Discover tools from a built-in provider for a specific file.
+    pub fn discover_builtin_tools_for_file(
+        &mut self,
+        plugin_id: PluginId,
+        provider: &dyn BuiltinEditorProvider,
+        file_path: &Path,
+    ) {
+        let capabilities = provider.capabilities_for_file(file_path);
+        if capabilities.is_empty() {
+            return;
+        }
+
+        let tool_defs = provider.ai_tools();
+        for tool_def in tool_defs {
+            if capabilities.contains(&tool_def.name) {
+                let tool_name = tool_def.name.clone();
+
+                self.tools
+                    .entry(tool_name.clone())
+                    .or_insert_with(|| AvailableTool {
+                        definition: tool_def,
+                        plugin_id: plugin_id.clone(),
+                        file_types: vec![],
+                    });
+
+                self.tool_to_plugin
+                    .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
+            }
         }
     }
 

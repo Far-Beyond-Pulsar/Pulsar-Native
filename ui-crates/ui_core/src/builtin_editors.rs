@@ -7,7 +7,7 @@ use gpui::AppContext;
 use gpui::{App, Window};
 use plugin_editor_api::*;
 use plugin_manager::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
-use std::path::PathBuf;
+use std::{fs, path::{Path, PathBuf}};
 use std::sync::Arc;
 use ui::dock::PanelView;
 
@@ -74,6 +74,105 @@ impl BuiltinEditorProvider for LevelEditorBuiltinProvider {
 
     fn can_handle(&self, editor_id: &EditorId) -> bool {
         editor_id.as_str() == "level-editor"
+    }
+
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        vec![
+            AiToolDefinition::new(
+                "level_editor_validate_level_file",
+                "Validate that a .level/.level.json file has required Level Editor structure.",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            )
+            .with_category("validation"),
+            AiToolDefinition::new(
+                "level_editor_count_objects",
+                "Return a count of objects in a level file.",
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                }),
+            )
+            .with_category("analysis"),
+        ]
+    }
+
+    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
+        let is_level_file = file_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(|name| name.ends_with(".level") || name.ends_with(".level.json"))
+            .unwrap_or(false);
+
+        if is_level_file {
+            vec![
+                "level_editor_validate_level_file".to_string(),
+                "level_editor_count_objects".to_string(),
+            ]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        _tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        let content = fs::read_to_string(file_path).map_err(|err| PluginError::FileLoadError {
+            path: file_path.to_path_buf(),
+            message: err.to_string(),
+        })?;
+
+        let parsed: serde_json::Value = serde_json::from_str(&content).map_err(|err| {
+            PluginError::InvalidFormat {
+                expected: "Pulsar level JSON".to_string(),
+                message: err.to_string(),
+            }
+        })?;
+
+        match tool_name {
+            "level_editor_validate_level_file" => {
+                let mut issues = Vec::new();
+                if !parsed.is_object() {
+                    issues.push("Root must be a JSON object".to_string());
+                }
+                if parsed.get("version").is_none() {
+                    issues.push("Missing required field: version".to_string());
+                }
+                if !parsed
+                    .get("objects")
+                    .map(|objects| objects.is_array())
+                    .unwrap_or(false)
+                {
+                    issues.push("Missing or invalid required field: objects (array)".to_string());
+                }
+
+                Ok(serde_json::json!({
+                    "ok": issues.is_empty(),
+                    "issue_count": issues.len(),
+                    "issues": issues,
+                }))
+            }
+            "level_editor_count_objects" => {
+                let object_count = parsed
+                    .get("objects")
+                    .and_then(|objects| objects.as_array())
+                    .map(|objects| objects.len())
+                    .unwrap_or(0);
+
+                Ok(serde_json::json!({
+                    "ok": true,
+                    "object_count": object_count,
+                }))
+            }
+            _ => Err(PluginError::Other {
+                message: format!("Unknown Level Editor AI tool: {tool_name}"),
+            }),
+        }
     }
 
     fn create_editor(
@@ -177,6 +276,60 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
+// File Manager Tools — built-in provider (AI tools only)
+// ---------------------------------------------------------------------------
+
+/// Exposes file-manager AI tools via the built-in provider path.
+pub struct FileManagerBuiltinProvider;
+
+impl BuiltinEditorProvider for FileManagerBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.file-manager"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        Vec::new()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        Vec::new()
+    }
+
+    fn can_handle(&self, _editor_id: &EditorId) -> bool {
+        false
+    }
+
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        ui_file_manager::ai_tools::ai_tools()
+    }
+
+    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
+        ui_file_manager::ai_tools::capabilities_for_file(file_path)
+    }
+
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        ui_file_manager::ai_tools::execute_ai_tool(file_path, tool_name, tool_args)
+    }
+
+    fn create_editor(
+        &self,
+        _file_path: PathBuf,
+        _editor_context: &EditorContext,
+        _window: &mut Window,
+        _cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        Err(PluginError::EditorNotFound {
+            editor_id: EditorId::new("file-manager-tools"),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -192,6 +345,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
+
+    // File manager AI tools provider (no editor surface)
+    registry.register_provider(Arc::new(FileManagerBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

@@ -59,27 +59,30 @@ impl AgentChatPanel {
 
 You have access to multiple categories of tools:
 
-### File & Workspace Tools
-- **read_file**: Read file contents from the workspace
-- **list_dir**: List directory contents
-- **search_workspace**: Search for text patterns across the workspace
-
 ### Plugin Tools
 Plugins can expose custom tools for specific file types. When working with files:
 
-1. **query_plugin_tools**: Call this first to discover what tools are available for a file.
+1. **query_available_file_types**: See all registered file types in the project.
+
+2. **query_file_editors**: Ask which plugins/editors can handle a specific file path.
+
+3. **query_plugin_tools**: Discover what tools are available for a file.
    Example: `query_plugin_tools` with file_path set to your current file will show available tools.
 
-2. **execute_plugin_tool**: Use this to execute a tool provided by a plugin.
+4. **query_tools_for_plugin**: Given a plugin_id, list tools owned by that plugin (optionally scoped to a file).
+
+5. **execute_plugin_tool**: Execute a tool provided by a plugin.
+    - Prefer including plugin_id from `query_plugin_tools`
    - Provide the tool_name (from query_plugin_tools results)
    - Provide tool_args as a JSON object matching the tool's parameters
    - Specify the file_path (or use current_file from context)
 
 ### Best Practices
 
-- When working with a specific file, start by calling `query_plugin_tools` to see what specialized tools are available
+- Start by identifying file type and editor ownership (`query_available_file_types`, `query_file_editors`)
+- Then call `query_plugin_tools` for the exact file before attempting edits
 - File-specific tools can provide powerful editing, refactoring, validation, and analysis capabilities
-- Use plugin tools when available for file types - they understand the domain better than generic tools
+- Use plugin tools for all structured edits and file operations
 - Always call `query_plugin_tools` with the actual file path to get the most relevant tools
 
 ## Getting Started
