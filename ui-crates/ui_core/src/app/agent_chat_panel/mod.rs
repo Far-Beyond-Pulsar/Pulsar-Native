@@ -10,7 +10,7 @@ pub mod types;
 pub use types::*;
 
 use crate::custom_providers::{self, CustomProvider};
-use agent_chat_core::ProviderRegistry;
+use agent_chat_core::{ChatMessage, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProvider;
 use agent_provider_demo_random::DemoRandomProvider;
@@ -250,7 +250,7 @@ impl AgentChatPanel {
             streaming_message_ix: None,
             pending_rollback_confirm_ix: None,
             messages: vec![ChatMessage {
-                role: "system",
+                role: ChatRole::System,
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
                 tool_call_id: None,
             }],
@@ -537,10 +537,10 @@ impl Render for AgentChatPanel {
                                             return div().h(px(52.0)).into_any_element();
                                         };
 
-                                        let is_user = message.role == "user";
+                                        let is_user = message.role == ChatRole::User;
                                         let is_streaming_assistant =
                                             !is_user && this.streaming_message_ix == Some(ix);
-                                        let is_actionable_message = message.role != "system";
+                                        let is_actionable_message = message.role != ChatRole::System;
                                         let hover_group = format!("agent-chat-msg-hover-{ix}");
                                         let is_confirming_rollback =
                                             this.pending_rollback_confirm_ix == Some(ix);

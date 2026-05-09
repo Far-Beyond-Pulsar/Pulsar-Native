@@ -1,6 +1,7 @@
 use super::*;
 use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, AvailabilityState, ProcessEnvironment, PromptTokenRequest,
+    AuthHost, AuthMethod, AuthResult, AvailabilityState, ChatRole, ProcessEnvironment,
+    PromptTokenRequest,
 };
 use smol::Timer;
 use std::{
@@ -88,7 +89,7 @@ impl AgentChatPanel {
                     input.set_value("", window, cx);
                 });
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: format!("{} authenticated successfully.", provider_id),
                     tool_call_id: None,
                 });
@@ -100,7 +101,7 @@ impl AgentChatPanel {
             Ok(AuthResult::Cancelled) => {}
             Err(err) => {
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: format!("Authentication failed: {err}"),
                     tool_call_id: None,
                 });
@@ -126,7 +127,7 @@ impl AgentChatPanel {
             match flow_result {
                 Ok(info) => {
                     self.messages.push(ChatMessage {
-                        role: "system",
+                        role: ChatRole::System,
                         content: format!(
                             "Open {} in your browser and enter code: **{}**",
                             info.verification_uri, info.user_code
@@ -166,7 +167,7 @@ impl AgentChatPanel {
                                             panel.pending_device_code = None;
                                             panel.pending_auth_provider = None;
                                             panel.messages.push(ChatMessage {
-                                                role: "system",
+                                                role: ChatRole::System,
                                                 content: format!(
                                                     "{} authenticated successfully.",
                                                     provider_id
@@ -191,7 +192,7 @@ impl AgentChatPanel {
                                         this.update(cx, |panel, cx| {
                                             panel.pending_device_code = None;
                                             panel.messages.push(ChatMessage {
-                                                role: "system",
+                                                role: ChatRole::System,
                                                 content: "Device code authentication failed or timed out.".to_string(),
                                                 tool_call_id: None,
                                             });
@@ -210,7 +211,7 @@ impl AgentChatPanel {
                 }
                 Err(err) => {
                     self.messages.push(ChatMessage {
-                        role: "system",
+                        role: ChatRole::System,
                         content: format!("Failed to start device flow: {err}"),
                         tool_call_id: None,
                     });

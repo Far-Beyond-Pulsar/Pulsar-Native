@@ -43,12 +43,7 @@ pub struct ProviderDefinition {
     pub models: Arc<Vec<ModelDefinition>>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ChatMessage {
-    pub role: &'static str,
-    pub content: String,
-    pub tool_call_id: Option<String>,
-}
+
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PersistedChatMessage {

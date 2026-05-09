@@ -1,6 +1,6 @@
 use super::*;
 use agent_chat_core::{
-    AvailabilityState, ChatMessage as ProviderChatMessage, ChatRequest, ChatRole,
+    AvailabilityState, ChatMessage, ChatRequest, ChatRole,
     ProcessEnvironment,
 };
 use engine_state;
@@ -19,21 +19,12 @@ impl AgentChatPanel {
     const CONTEXT_CHAR_BUDGET: usize = 24_000;
     const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
 
-    fn provider_role_from_chat_role(role: &str) -> ChatRole {
-        match role {
-            "system" => ChatRole::System,
-            "user" => ChatRole::User,
-            "assistant" => ChatRole::Assistant,
-            _ => ChatRole::Assistant,
-        }
-    }
-
-    fn build_provider_history_messages(&self) -> Vec<ProviderChatMessage> {
+    fn build_provider_history_messages(&self) -> Vec<ChatMessage> {
         self.messages
             .iter()
             .filter(|m| !m.content.trim().is_empty())
-            .map(|m| ProviderChatMessage {
-                role: Self::provider_role_from_chat_role(m.role),
+            .map(|m| ChatMessage {
+                role: m.role,
                 content: m.content.clone(),
                 tool_call_id: m.tool_call_id.clone(),
             })
@@ -41,9 +32,9 @@ impl AgentChatPanel {
     }
 
     fn compact_provider_messages(
-        messages: Vec<ProviderChatMessage>,
+        messages: Vec<ChatMessage>,
         max_chars: usize,
-    ) -> (Vec<ProviderChatMessage>, bool) {
+    ) -> (Vec<ChatMessage>, bool) {
         let total_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
         if total_chars <= max_chars {
             return (messages, false);
@@ -113,7 +104,7 @@ impl AgentChatPanel {
         }
 
         let mut compacted = system_messages;
-        compacted.push(ProviderChatMessage {
+        compacted.push(ChatMessage {
             role: ChatRole::System,
             content: format!(
                 "Conversation summary (auto-compacted to fit context window):\n{}",
@@ -163,7 +154,7 @@ impl AgentChatPanel {
 
         let message_ix = self.messages.len();
         self.messages.push(ChatMessage {
-            role: "assistant",
+            role: ChatRole::Assistant,
             content: String::new(),
             tool_call_id: None,
         });
@@ -230,7 +221,7 @@ impl AgentChatPanel {
             .unwrap_or(0);
 
         self.messages.push(ChatMessage {
-            role: "user",
+            role: ChatRole::User,
             content: prompt.clone(),
             tool_call_id: None,
         });
@@ -249,7 +240,7 @@ impl AgentChatPanel {
 
         if self.wip_providers.contains_key(provider_id) {
             self.messages.push(ChatMessage {
-                role: "assistant",
+                role: ChatRole::Assistant,
                 content: "Selected provider is still WIP and not yet executable.".to_string(),
                 tool_call_id: None,
             });
@@ -273,7 +264,7 @@ impl AgentChatPanel {
                 .map(|m| m.label)
                 .unwrap_or("Unknown Model");
             self.messages.push(ChatMessage {
-                role: "assistant",
+                role: ChatRole::Assistant,
                 content: format!("Queued with {provider} / {model}."),
                 tool_call_id: None,
             });
@@ -297,7 +288,7 @@ impl AgentChatPanel {
         if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
             self.pending_auth_provider = Some(provider_id);
             self.messages.push(ChatMessage {
-                role: "assistant",
+                role: ChatRole::Assistant,
                 content: "Authentication required. Paste token in the auth row above.".to_string(),
                 tool_call_id: None,
             });
@@ -313,7 +304,7 @@ impl AgentChatPanel {
 
         let message_ix = self.messages.len();
         self.messages.push(ChatMessage {
-            role: "assistant",
+            role: ChatRole::Assistant,
             content: String::new(),
             tool_call_id: None,
         });
@@ -452,7 +443,7 @@ impl AgentChatPanel {
                             
                             // Add assistant message with tool calls (if any text)
                             if let Some(text) = &response.assistant_message {
-                                current_messages.push(ProviderChatMessage {
+                                current_messages.push(ChatMessage {
                                     role: ChatRole::Assistant,
                                     content: text.clone(),
                                     tool_call_id: None,
@@ -513,7 +504,7 @@ impl AgentChatPanel {
                             
                             // Add all tool results to message history for LLM to read
                             for (tool_call_id, tool_name, tool_result) in all_results {
-                                current_messages.push(ProviderChatMessage {
+                                current_messages.push(ChatMessage {
                                     role: ChatRole::Tool,
                                     content: format!(
                                         "Tool: {}\nResult: {}",

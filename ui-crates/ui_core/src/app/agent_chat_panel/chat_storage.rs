@@ -1,4 +1,5 @@
 use super::*;
+use agent_chat_core::ChatRole;
 use engine_state;
 use std::{
     fs,
@@ -39,18 +40,19 @@ impl AgentChatPanel {
             .unwrap_or(0)
     }
 
-    pub(super) fn normalize_role(role: &str) -> &'static str {
+    pub(super) fn normalize_role(role: &str) -> ChatRole {
         match role {
-            "user" => "user",
-            "assistant" => "assistant",
-            "system" => "system",
-            _ => "assistant",
+            "user" => ChatRole::User,
+            "assistant" => ChatRole::Assistant,
+            "system" => ChatRole::System,
+            "tool" => ChatRole::Tool,
+            _ => ChatRole::Assistant,
         }
     }
 
     pub(super) fn default_system_message() -> ChatMessage {
         ChatMessage {
-            role: "system",
+            role: ChatRole::System,
             content: r#"You are an AI assistant helping with software development in Pulsar.
 
 ## Available Tools
@@ -88,7 +90,7 @@ Choose a provider/model and ask anything about your project. Mention specific fi
     }
 
     pub(super) fn inferred_chat_title(messages: &[ChatMessage]) -> String {
-        if let Some(user_message) = messages.iter().find(|m| m.role == "user") {
+        if let Some(user_message) = messages.iter().find(|m| m.role == ChatRole::User) {
             user_message
                 .content
                 .chars()
@@ -153,7 +155,12 @@ Choose a provider/model and ask anything about your project. Mention specific fi
                 .messages
                 .iter()
                 .map(|m| PersistedChatMessage {
-                    role: m.role.to_string(),
+                    role: match m.role {
+                        ChatRole::User => "user",
+                        ChatRole::Assistant => "assistant",
+                        ChatRole::System => "system",
+                        ChatRole::Tool => "tool",
+                    }.to_string(),
                     content: m.content.clone(),
                 })
                 .collect(),

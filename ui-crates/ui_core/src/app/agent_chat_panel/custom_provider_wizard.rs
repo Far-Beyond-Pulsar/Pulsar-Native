@@ -84,7 +84,7 @@ impl AgentChatPanel {
                     || self.custom_providers_list.iter().any(|p| p.id == value)
                 {
                     self.messages.push(ChatMessage {
-                        role: "system",
+                        role: ChatRole::System,
                         content: format!(
                             "Provider ID '{}' already exists. Choose another ID.",
                             value
@@ -117,7 +117,7 @@ impl AgentChatPanel {
                     "n" | "no" | "false" | "0" => false,
                     _ => {
                         self.messages.push(ChatMessage {
-                            role: "system",
+                            role: ChatRole::System,
                             content: "Enter yes/no for tools support.".to_string(),
                             tool_call_id: None,
                         });
@@ -173,7 +173,7 @@ impl AgentChatPanel {
                 self.set_provider(new_ix, cx);
 
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: "Custom provider saved to JSON and added to the provider list."
                         .to_string(),
                     tool_call_id: None,
@@ -185,7 +185,7 @@ impl AgentChatPanel {
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: format!("Failed to save custom provider: {err}"),
                     tool_call_id: None,
                 });
@@ -233,7 +233,7 @@ impl AgentChatPanel {
                 }
 
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: format!("Custom provider '{}' deleted.", provider_id),
                     tool_call_id: None,
                 });
@@ -244,7 +244,7 @@ impl AgentChatPanel {
             }
             Err(err) => {
                 self.messages.push(ChatMessage {
-                    role: "system",
+                    role: ChatRole::System,
                     content: format!("Failed to delete custom provider '{}': {err}", provider_id),
                     tool_call_id: None,
                 });
