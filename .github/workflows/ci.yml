@@ -33,17 +33,7 @@ jobs:
       - name: Machete
         if: ${{ matrix.run_on == 'macos-latest' }}
         uses: bnjbvr/cargo-machete@v0.9.1
-      - name: Setup | Cache Cargo
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: test-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Typo check
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |

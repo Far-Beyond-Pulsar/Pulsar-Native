@@ -11,16 +11,16 @@ env:
     crates/engine
     crates/multiuser_host
     crates/multiuser_server
-  
+
   # Crates to build examples for (newline-separated list)
   CRATES_WITH_EXAMPLES: |
     crates/examples
-  
+
   # Enable/disable crate building (set to 'false' to skip crate builds)
-  BUILD_CRATES: 'true'
-  
+  BUILD_CRATES: "true"
+
   # Generate example binaries for each platform (set to 'true' to enable)
-  BUILD_EXAMPLES: 'false'
+  BUILD_EXAMPLES: "false"
 
 on:
   push:
@@ -124,20 +124,6 @@ jobs:
           override: true
           components: clippy
 
-      - name: Setup Cargo cache
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: clippy-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            clippy-cargo-
-
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -175,20 +161,6 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
-
-      - name: Setup Cargo cache
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: test-cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            test-cargo-${{ matrix.os }}-
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -356,7 +328,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: pip install requests
@@ -435,7 +407,15 @@ jobs:
           prerelease: false
 
   build-release:
-    needs: [check-version, create-release, fmt-check, clippy, unit-tests, check-lockfile]
+    needs:
+      [
+        check-version,
+        create-release,
+        fmt-check,
+        clippy,
+        unit-tests,
+        check-lockfile,
+      ]
     if: needs.check-version.outputs.should_release == 'true'
     permissions:
       contents: write
@@ -479,20 +459,6 @@ jobs:
           target: ${{ matrix.target }}
           override: true
 
-      - name: Setup Cargo cache
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: release-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            release-cargo-${{ matrix.target }}-
-
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: |
@@ -527,7 +493,7 @@ jobs:
               echo "Added crate: $crate_name from $crate_path"
             fi
           done <<< "${{ env.CRATES_TO_BUILD }}"
-          
+
           echo "Building with args: $ARGS"
           cargo build $ARGS
         env:
@@ -596,7 +562,7 @@ jobs:
               echo "Added crate for examples: $crate_name from $crate_path"
             fi
           done <<< "${{ env.CRATES_WITH_EXAMPLES }}"
-          
+
           echo "Building examples with args: $ARGS"
           cargo build $ARGS
         env:
@@ -608,11 +574,11 @@ jobs:
         run: |
           BIN_DIR="target/${{ matrix.target }}/release"
           ARCHIVE_NAME="examples${{ matrix.asset_name }}.tar.gz"
-          
+
           if [ -d "$BIN_DIR" ]; then
             echo "Found release directory: $BIN_DIR"
             echo "Looking for example binaries..."
-            
+
             # Find example binaries (handle both with and without .exe extension)
             BINARIES=()
             for pattern in "render_v2_basic" "render_v2_sky"; do
@@ -622,19 +588,19 @@ jobs:
                 BINARIES+=("$pattern")
               fi
             done
-            
+
             if [ ${#BINARIES[@]} -eq 0 ]; then
               echo "⚠️ No example binaries found!"
               echo "Available files in $BIN_DIR:"
               ls -lh "$BIN_DIR" | grep -E "render_v2"
               exit 1
             fi
-            
+
             echo "Found binaries: ${BINARIES[@]}"
             cd "$BIN_DIR"
             tar -czf "../../../$ARCHIVE_NAME" "${BINARIES[@]}"
             cd - > /dev/null
-            
+
             if [ -f "$ARCHIVE_NAME" ] && [ -s "$ARCHIVE_NAME" ]; then
               echo "✅ Created archive: $ARCHIVE_NAME"
               ls -lh "$ARCHIVE_NAME"
@@ -657,7 +623,15 @@ jobs:
           if-no-files-found: warn
 
   cross-builds:
-    needs: [check-version, create-release, fmt-check, clippy, unit-tests, check-lockfile]
+    needs:
+      [
+        check-version,
+        create-release,
+        fmt-check,
+        clippy,
+        unit-tests,
+        check-lockfile,
+      ]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -686,20 +660,6 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
           override: true
-
-      - name: Setup Cargo cache
-        uses: actions/cache@v4
-        continue-on-error: true
-        with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: cross-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            cross-cargo-${{ matrix.target }}-
 
       - name: Install cross
         run: |
@@ -808,11 +768,11 @@ jobs:
         run: |
           BIN_DIR="target/${{ matrix.target }}/release"
           ARCHIVE_NAME="examples${{ matrix.asset_suffix }}.tar.gz"
-          
+
           if [ -d "$BIN_DIR" ]; then
             echo "Found release directory: $BIN_DIR"
             echo "Looking for example binaries..."
-            
+
             # Find example binaries (handle both with and without .exe extension)
             BINARIES=()
             for pattern in "render_v2_basic" "render_v2_sky"; do
@@ -822,19 +782,19 @@ jobs:
                 BINARIES+=("$pattern")
               fi
             done
-            
+
             if [ ${#BINARIES[@]} -eq 0 ]; then
               echo "⚠️ No example binaries found!"
               echo "Available files in $BIN_DIR:"
               ls -lh "$BIN_DIR" | grep -E "render_v2"
               exit 1
             fi
-            
+
             echo "Found binaries: ${BINARIES[@]}"
             cd "$BIN_DIR"
             tar -czf "../../../$ARCHIVE_NAME" "${BINARIES[@]}"
             cd - > /dev/null
-            
+
             if [ -f "$ARCHIVE_NAME" ] && [ -s "$ARCHIVE_NAME" ]; then
               echo "✅ Created archive: $ARCHIVE_NAME"
               ls -lh "$ARCHIVE_NAME"
@@ -875,7 +835,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
         with:
-          cosign-release: 'v2.4.1'
+          cosign-release: "v2.4.1"
 
       - name: List artifacts to upload
         run: |
@@ -1025,4 +985,3 @@ jobs:
             --repo "$REPO" \
             --notes-file release-notes-final.md \
             --draft=false
-
