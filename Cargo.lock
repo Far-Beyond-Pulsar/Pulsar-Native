@@ -9065,7 +9065,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.1.158"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
