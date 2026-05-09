@@ -10,7 +10,7 @@ pub mod types;
 pub use types::*;
 
 use crate::custom_providers::{self, CustomProvider};
-use agent_chat_core::{ChatMessage, ProviderRegistry};
+use agent_chat_core::{ChatMessage, ChatRole, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProvider;
 use agent_provider_demo_random::DemoRandomProvider;
