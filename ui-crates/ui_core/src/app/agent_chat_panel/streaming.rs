@@ -396,6 +396,24 @@ impl AgentChatPanel {
                 }
                 iteration += 1;
                 
+                println!(
+                    "[agent_chat][request={}] iteration {} starting with {} messages",
+                    worker_request_id,
+                    iteration,
+                    current_messages.len()
+                );
+                
+                for (idx, msg) in current_messages.iter().enumerate() {
+                    println!(
+                        "[agent_chat][request={}] msg[{}]: role={:?}, content_len={}, tool_call_id={:?}",
+                        worker_request_id,
+                        idx,
+                        msg.role,
+                        msg.content.len(),
+                        msg.tool_call_id.as_deref()
+                    );
+                }
+                
                 let mut current_request = ChatRequest {
                     model: request.model.clone(),
                     messages: current_messages.clone(),
@@ -432,6 +450,15 @@ impl AgentChatPanel {
 
                 match result {
                     Ok(response) => {
+                        println!(
+                            "[agent_chat][request={}] iteration {} provider response: assistant_msg={}, tool_calls={}, finish_reason={:?}",
+                            worker_request_id,
+                            iteration,
+                            response.assistant_message.as_ref().map(|m| m.len()).unwrap_or(0),
+                            response.tool_calls.len(),
+                            response.finish_reason
+                        );
+                        
                         // Check if response has tool calls
                         if !response.tool_calls.is_empty() {
                             println!(
@@ -503,16 +530,29 @@ impl AgentChatPanel {
                             }
                             
                             // Add all tool results to message history for LLM to read
+                            println!(
+                                "[agent_chat][request={}] adding {} tool results to history",
+                                worker_request_id,
+                                all_results.len()
+                            );
                             for (tool_call_id, tool_name, tool_result) in all_results {
+                                println!(
+                                    "[agent_chat][request={}] adding tool result: id={}, name={}",
+                                    worker_request_id, tool_call_id, tool_name
+                                );
                                 current_messages.push(ChatMessage {
                                     role: ChatRole::Tool,
-                                    content: format!(
-                                        "Tool: {}\nResult: {}",
-                                        tool_name, tool_result
-                                    ),
+                                    content: tool_result,
                                     tool_call_id: Some(tool_call_id),
                                 });
                             }
+                            
+                            println!(
+                                "[agent_chat][request={}] total messages before provider call: {}",
+                                worker_request_id,
+                                current_messages.len()
+                            );
+                            
                             // Loop again with updated message history
                             continue;
                         } else {
