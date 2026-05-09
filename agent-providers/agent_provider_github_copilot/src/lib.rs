@@ -77,13 +77,7 @@ impl GithubCopilotProvider {
                         let id = call.get("id")?.as_str()?.to_string();
                         let function = call.get("function")?;
                         let name = function.get("name")?.as_str()?.to_string();
-                        let args_raw = function
-                            .get("arguments")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("{}");
-
-                        let arguments_json =
-                            serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
+                        let arguments_json = Self::parse_tool_arguments_value(function.get("arguments"));
 
                         Some(ToolCall {
                             id,
@@ -114,6 +108,85 @@ impl GithubCopilotProvider {
             .and_then(|message| message.as_str())
             .map(|message| message.trim().to_string())
             .filter(|message| !message.is_empty())
+    }
+
+    fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
+        match value {
+            Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
+                .unwrap_or_else(|_| Value::String(raw.clone())),
+            Some(value) => value.clone(),
+            None => json!({}),
+        }
+    }
+
+    fn parse_stream_tool_calls(raw_events: &[Value]) -> Vec<ToolCall> {
+        #[derive(Default)]
+        struct PartialToolCall {
+            id: Option<String>,
+            name: Option<String>,
+            arguments: String,
+        }
+
+        let mut partials: Vec<PartialToolCall> = Vec::new();
+        for event in raw_events {
+            if let Some(choice) = event
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .and_then(|choices| choices.first())
+            {
+                if let Some(delta) = choice.get("delta") {
+                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                        for tool_call in tool_calls_array {
+                            let index = tool_call
+                                .get("index")
+                                .and_then(|value| value.as_u64())
+                                .unwrap_or(partials.len() as u64) as usize;
+
+                            while partials.len() <= index {
+                                partials.push(PartialToolCall::default());
+                            }
+
+                            let partial = &mut partials[index];
+                            if let Some(id) = tool_call.get("id").and_then(|v| v.as_str()) {
+                                partial.id = Some(id.to_string());
+                            }
+
+                            if let Some(function) = tool_call.get("function") {
+                                if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
+                                    partial.name = Some(name.to_string());
+                                }
+
+                                if let Some(arguments_fragment) =
+                                    function.get("arguments").and_then(|v| v.as_str())
+                                {
+                                    partial.arguments.push_str(arguments_fragment);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        partials
+            .into_iter()
+            .filter_map(|partial| {
+                let id = partial.id?;
+                let name = partial.name?;
+                let arguments_json = if partial.arguments.trim().is_empty() {
+                    json!({})
+                } else {
+                    serde_json::from_str::<Value>(&partial.arguments)
+                        .unwrap_or_else(|_| Value::String(partial.arguments.clone()))
+                };
+
+                Some(ToolCall {
+                    id,
+                    name,
+                    arguments_json,
+                })
+            })
+            .collect()
     }
 
     fn format_http_error(response: reqwest::blocking::Response, api_name: &str) -> anyhow::Error {
@@ -542,39 +615,7 @@ impl ChatProvider for GithubCopilotProvider {
             end_reason
         );
 
-        // Parse tool calls from raw events
-        let mut tool_calls = Vec::new();
-        for event in &raw_events {
-            if let Some(choice) = event
-                .get("choices")
-                .and_then(|choices| choices.as_array())
-                .and_then(|choices| choices.first())
-            {
-                if let Some(delta) = choice.get("delta") {
-                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                        for tool_call in tool_calls_array {
-                            if let Some(id) = tool_call.get("id").and_then(|v| v.as_str()) {
-                                if let Some(function) = tool_call.get("function") {
-                                    if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
-                                        let args_raw = function
-                                            .get("arguments")
-                                            .and_then(|v| v.as_str())
-                                            .unwrap_or("{}");
-                                        let arguments_json =
-                                            serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
-                                        tool_calls.push(ToolCall {
-                                            id: id.to_string(),
-                                            name: name.to_string(),
-                                            arguments_json,
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        let tool_calls = Self::parse_stream_tool_calls(&raw_events);
 
         Ok(ChatResponse {
             assistant_message: if assistant_message.is_empty() {
