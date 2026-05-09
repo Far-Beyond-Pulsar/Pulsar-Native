@@ -390,7 +390,7 @@ impl ManualToolPanel {
             let result = plugin_manager::global()
                 .and_then(|lock| lock.read().ok().map(|m| {
                     m.execute_plugin_ai_tool(
-                        &plugin_manager::PluginId::new(&plugin_id),
+                        &plugin_editor_api::PluginId::new(&plugin_id),
                         &file_path,
                         &tool_name,
                         Value::Object(args),
