@@ -599,11 +599,16 @@ impl AgentChatPanel {
                                     Err(err) => format!("Tool error: {}", err),
                                 };
 
-                                // Show tool result to user
+                                // Show tool result to user (enough to be meaningful)
+                                let preview = if tool_result.len() > 800 {
+                                    format!("{}… (truncated, full result forwarded to AI)", &tool_result[..800])
+                                } else {
+                                    tool_result.clone()
+                                };
                                 let result_display = format!(
                                     "**{}**: {}\n\n",
                                     tool_call.name,
-                                    tool_result.chars().take(200).collect::<String>()
+                                    preview
                                 );
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
 

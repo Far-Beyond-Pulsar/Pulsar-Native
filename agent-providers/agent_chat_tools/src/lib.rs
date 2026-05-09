@@ -311,16 +311,26 @@ impl ChatTool for QueryPluginToolsTool {
     }
 
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let file_path = args
+        let file_path_raw = args
             .get("file_path")
             .and_then(|v| v.as_str())
-            .map(|p| PathBuf::from(p))
-            .or_else(|| ctx.current_file.clone());
+            .map(|p| p.to_string())
+            .or_else(|| ctx.current_file.as_ref().map(|p| p.display().to_string()));
 
-        let file_path_str = file_path
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "(no file)".to_string());
+        let Some(file_path_raw) = file_path_raw else {
+            return Ok(json!({
+                "ok": false,
+                "error": "file_path is required. Provide the path of the file you want to query tools for.",
+                "tools_available": 0,
+                "tools": [],
+                "plugins": [],
+            }));
+        };
+
+        // Use soft resolution so tool discovery works even if the file hasn't been
+        // saved to disk yet (e.g. a new unsaved level file open in the editor).
+        let full = resolve_workspace_path_soft(&ctx.workspace_root, &file_path_raw)?;
+        let file_path_str = full.display().to_string();
 
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -328,12 +338,7 @@ impl ChatTool for QueryPluginToolsTool {
             .read()
             .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
-        let tools = if let Some(file_path) = &file_path {
-            let full = resolve_workspace_path(&ctx.workspace_root, &file_path.display().to_string())?;
-            manager.build_tool_bridge_for_file(&full).all_tools()
-        } else {
-            manager.build_tool_bridge().all_tools()
-        };
+        let tools = manager.build_tool_bridge_for_file(&full).all_tools();
 
         let tool_schemas: Vec<Value> = tools
             .iter()
@@ -370,8 +375,18 @@ impl ChatTool for QueryPluginToolsTool {
             .collect::<Vec<_>>();
 
         Ok(json!({
+            "ok": true,
             "file_path": file_path_str,
             "tools_available": tool_schemas.len(),
+            "note": if tool_schemas.is_empty() {
+                format!(
+                    "No tools are registered for '{}'. The file type may not be supported, or the required editor is not loaded. \
+                     Check that the file is open in an editor first.",
+                    file_path_str
+                )
+            } else {
+                format!("Found {} tool(s) for this file.", tool_schemas.len())
+            },
             "tools": tool_schemas,
             "plugins": plugins,
         }))
@@ -508,4 +523,43 @@ fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathB
         return Err(anyhow!("Path escapes workspace root"));
     }
     Ok(canonical)
+}
+
+/// Resolve a workspace-relative path without requiring the file to exist on disk.
+/// Used for tool discovery where we only need the file extension.
+fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
+    let p = PathBuf::from(rel_or_abs);
+    let joined = if p.is_absolute() { p } else { root.join(&p) };
+
+    // Normalize without requiring existence: collapse . and .. manually
+    let mut components = Vec::new();
+    for part in joined.components() {
+        use std::path::Component;
+        match part {
+            Component::ParentDir => { components.pop(); }
+            Component::CurDir => {}
+            other => components.push(other),
+        }
+    }
+    let normalized: PathBuf = components.iter().collect();
+
+    // Verify it stays within the workspace root (use the root itself as prefix check)
+    // We compare the string prefix since canonicalize can't be used on non-existent paths.
+    let root_normalized: PathBuf = {
+        let mut c = Vec::new();
+        for part in root.components() {
+            use std::path::Component;
+            match part {
+                Component::ParentDir => { c.pop(); }
+                Component::CurDir => {}
+                other => c.push(other),
+            }
+        }
+        c.iter().collect()
+    };
+
+    if !normalized.starts_with(&root_normalized) {
+        return Err(anyhow!("Path escapes workspace root"));
+    }
+    Ok(normalized)
 }

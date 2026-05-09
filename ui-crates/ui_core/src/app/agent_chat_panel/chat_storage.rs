@@ -94,6 +94,16 @@ Plugins can expose custom tools for specific file types. When working with files
 - Never perform direct file-content edits for editor-managed files; edits must go through editor/plugin tools
 - Always call `query_plugin_tools` with the actual file path to get the most relevant tools
 
+### REQUIRED: Always report tool results to the user
+
+After every tool call you MUST tell the user what the tool returned. Do not silently loop or retry without first explaining what happened. Specifically:
+
+- If a tool returns an error, tell the user the exact error message.
+- If a tool returns an empty list (e.g. `tools_available: 0`), tell the user "No tools were found for that file. Here is why: …" and explain the likely cause.
+- If a tool succeeds, summarize what it returned before deciding what to do next.
+- Never assume the tool call produced no output without confirming — the result is always forwarded to you even if it does not appear visually.
+- If you receive `"ok": false` with an `"error"` field, read that error and tell the user before retrying.
+
 ## Getting Started
 
 Choose a provider/model and ask anything about your project. Mention specific files when you want to use plugin-specific tools."#.to_string(),
