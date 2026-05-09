@@ -35,7 +35,7 @@ impl AgentChatPanel {
             .map(|m| ProviderChatMessage {
                 role: Self::provider_role_from_chat_role(m.role),
                 content: m.content.clone(),
-                tool_call_id: None,
+                tool_call_id: m.tool_call_id.clone(),
             })
             .collect()
     }
@@ -165,6 +165,7 @@ impl AgentChatPanel {
         self.messages.push(ChatMessage {
             role: "assistant",
             content: String::new(),
+            tool_call_id: None,
         });
         self.scroll_messages_to_bottom();
         cx.notify();
@@ -231,6 +232,7 @@ impl AgentChatPanel {
         self.messages.push(ChatMessage {
             role: "user",
             content: prompt.clone(),
+            tool_call_id: None,
         });
         self.scroll_messages_to_bottom();
 
@@ -249,6 +251,7 @@ impl AgentChatPanel {
             self.messages.push(ChatMessage {
                 role: "assistant",
                 content: "Selected provider is still WIP and not yet executable.".to_string(),
+                tool_call_id: None,
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -272,6 +275,7 @@ impl AgentChatPanel {
             self.messages.push(ChatMessage {
                 role: "assistant",
                 content: format!("Queued with {provider} / {model}."),
+                tool_call_id: None,
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -295,6 +299,7 @@ impl AgentChatPanel {
             self.messages.push(ChatMessage {
                 role: "assistant",
                 content: "Authentication required. Paste token in the auth row above.".to_string(),
+                tool_call_id: None,
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -310,6 +315,7 @@ impl AgentChatPanel {
         self.messages.push(ChatMessage {
             role: "assistant",
             content: String::new(),
+            tool_call_id: None,
         });
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);

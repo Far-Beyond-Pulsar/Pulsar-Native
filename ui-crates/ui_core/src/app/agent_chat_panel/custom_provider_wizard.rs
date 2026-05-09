@@ -89,6 +89,7 @@ impl AgentChatPanel {
                             "Provider ID '{}' already exists. Choose another ID.",
                             value
                         ),
+                        tool_call_id: None,
                     });
                     self.save_current_chat();
                     self.scroll_messages_to_bottom();
@@ -118,6 +119,7 @@ impl AgentChatPanel {
                         self.messages.push(ChatMessage {
                             role: "system",
                             content: "Enter yes/no for tools support.".to_string(),
+                            tool_call_id: None,
                         });
                         self.save_current_chat();
                         self.scroll_messages_to_bottom();
@@ -174,6 +176,7 @@ impl AgentChatPanel {
                     role: "system",
                     content: "Custom provider saved to JSON and added to the provider list."
                         .to_string(),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -184,6 +187,7 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("Failed to save custom provider: {err}"),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();
@@ -231,6 +235,7 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("Custom provider '{}' deleted.", provider_id),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -241,6 +246,7 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("Failed to delete custom provider '{}': {err}", provider_id),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();

@@ -83,6 +83,7 @@ Plugins can expose custom tools for specific file types. When working with files
 ## Getting Started
 
 Choose a provider/model and ask anything about your project. Mention specific files when you want to use plugin-specific tools."#.to_string(),
+            tool_call_id: None,
         }
     }
 
@@ -190,6 +191,7 @@ Choose a provider/model and ask anything about your project. Mention specific fi
             .map(|m| ChatMessage {
                 role: Self::normalize_role(&m.role),
                 content: m.content,
+                tool_call_id: None,
             })
             .collect();
 

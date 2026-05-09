@@ -252,6 +252,7 @@ impl AgentChatPanel {
             messages: vec![ChatMessage {
                 role: "system",
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
+                tool_call_id: None,
             }],
             _subscriptions: subscriptions,
         };

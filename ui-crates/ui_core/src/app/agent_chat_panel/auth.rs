@@ -90,6 +90,7 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("{} authenticated successfully.", provider_id),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -101,6 +102,7 @@ impl AgentChatPanel {
                 self.messages.push(ChatMessage {
                     role: "system",
                     content: format!("Authentication failed: {err}"),
+                    tool_call_id: None,
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -129,6 +131,7 @@ impl AgentChatPanel {
                             "Open {} in your browser and enter code: **{}**",
                             info.verification_uri, info.user_code
                         ),
+                        tool_call_id: None,
                     });
                     self.pending_device_code = Some(info.device_code.clone());
                     self.scroll_messages_to_bottom();
@@ -168,6 +171,7 @@ impl AgentChatPanel {
                                                     "{} authenticated successfully.",
                                                     provider_id
                                                 ),
+                                                tool_call_id: None,
                                             });
                                             panel.save_current_chat();
                                             panel.refresh_chat_history_list(cx);
@@ -189,6 +193,7 @@ impl AgentChatPanel {
                                             panel.messages.push(ChatMessage {
                                                 role: "system",
                                                 content: "Device code authentication failed or timed out.".to_string(),
+                                                tool_call_id: None,
                                             });
                                             panel.scroll_messages_to_bottom();
                                             cx.notify();
@@ -207,6 +212,7 @@ impl AgentChatPanel {
                     self.messages.push(ChatMessage {
                         role: "system",
                         content: format!("Failed to start device flow: {err}"),
+                        tool_call_id: None,
                     });
                     self.scroll_messages_to_bottom();
                     cx.notify();
