@@ -333,7 +333,11 @@ impl AgentChatPanel {
                             .unwrap_or("unknown")
                             .to_string(),
                         description: schema.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        parameters_json_schema: schema.clone(),
+                        // Extract only the parameters field from the schema
+                        parameters_json_schema: schema
+                            .get("parameters")
+                            .cloned()
+                            .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}})),
                     }
                 })
                 .collect(),
