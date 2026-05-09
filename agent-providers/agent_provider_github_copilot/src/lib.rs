@@ -77,7 +77,8 @@ impl GithubCopilotProvider {
                         let id = call.get("id")?.as_str()?.to_string();
                         let function = call.get("function")?;
                         let name = function.get("name")?.as_str()?.to_string();
-                        let arguments_json = Self::parse_tool_arguments_value(function.get("arguments"));
+                        let arguments_json =
+                            Self::parse_tool_arguments_value(function.get("arguments"));
 
                         Some(ToolCall {
                             id,
@@ -112,8 +113,9 @@ impl GithubCopilotProvider {
 
     fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
         match value {
-            Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
-                .unwrap_or_else(|_| Value::String(raw.clone())),
+            Some(Value::String(raw)) => {
+                serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.clone()))
+            }
             Some(value) => value.clone(),
             None => json!({}),
         }
@@ -135,12 +137,15 @@ impl GithubCopilotProvider {
                 .and_then(|choices| choices.first())
             {
                 if let Some(delta) = choice.get("delta") {
-                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                    if let Some(tool_calls_array) =
+                        delta.get("tool_calls").and_then(|v| v.as_array())
+                    {
                         for tool_call in tool_calls_array {
                             let index = tool_call
                                 .get("index")
                                 .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64) as usize;
+                                .unwrap_or(partials.len() as u64)
+                                as usize;
 
                             while partials.len() <= index {
                                 partials.push(PartialToolCall::default());
@@ -218,9 +223,7 @@ impl GithubCopilotProvider {
             body
         };
 
-        anyhow!(
-            "GitHub Models {api_name} returned {status}: {body_for_message}"
-        )
+        anyhow!("GitHub Models {api_name} returned {status}: {body_for_message}")
     }
 }
 
@@ -314,8 +317,10 @@ impl ChatProvider for GithubCopilotProvider {
                 }
                 // Add tool_calls if present (for assistant messages that called tools)
                 if !message.tool_calls.is_empty() {
-                    msg["tool_calls"] = json!(
-                        message.tool_calls.iter().map(|call| {
+                    msg["tool_calls"] = json!(message
+                        .tool_calls
+                        .iter()
+                        .map(|call| {
                             json!({
                                 "id": call.id,
                                 "type": "function",
@@ -324,8 +329,8 @@ impl ChatProvider for GithubCopilotProvider {
                                     "arguments": call.arguments_json.to_string(),
                                 }
                             })
-                        }).collect::<Vec<_>>()
-                    );
+                        })
+                        .collect::<Vec<_>>());
                 }
                 msg
             })
@@ -438,8 +443,10 @@ impl ChatProvider for GithubCopilotProvider {
                 }
                 // Add tool_calls if present (for assistant messages that called tools)
                 if !message.tool_calls.is_empty() {
-                    msg["tool_calls"] = json!(
-                        message.tool_calls.iter().map(|call| {
+                    msg["tool_calls"] = json!(message
+                        .tool_calls
+                        .iter()
+                        .map(|call| {
                             json!({
                                 "id": call.id,
                                 "type": "function",
@@ -448,8 +455,8 @@ impl ChatProvider for GithubCopilotProvider {
                                     "arguments": call.arguments_json.to_string(),
                                 }
                             })
-                        }).collect::<Vec<_>>()
-                    );
+                        })
+                        .collect::<Vec<_>>());
                 }
                 msg
             })

@@ -1,10 +1,9 @@
+use plugin_editor_api::{AiToolDefinition, PluginError};
 /// Plugin AI Tools Runtime Support
 ///
 /// This module provides runtime helpers for plugins to automatically
 /// collect, register, and execute AI tools defined with #[ai_tool] macro.
-
 use serde_json::{json, Value};
-use plugin_editor_api::{AiToolDefinition, PluginError};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -16,7 +15,7 @@ pub struct RegisteredTool {
 }
 
 /// Tool registry for plugins
-/// 
+///
 /// Collects all #[ai_tool] marked functions in a plugin
 pub struct ToolRegistry {
     tools: HashMap<String, RegisteredTool>,
@@ -36,8 +35,7 @@ impl ToolRegistry {
         definition: AiToolDefinition,
         documentation: impl Into<String>,
         handler: F,
-    )
-    where
+    ) where
         F: Fn(Value) -> Result<Value, PluginError> + Send + Sync + 'static,
     {
         let name_str = name.into();
@@ -86,16 +84,16 @@ impl Default for ToolRegistry {
 }
 
 /// Macro to register a tool from an #[ai_tool] function
-/// 
+///
 /// # Usage
-/// 
+///
 /// ```rust,ignore
 /// #[ai_tool(category = "formatting")]
 /// /// Format the file
 /// pub fn format_file(width: u32) -> Result<Value, PluginError> {
 ///     // ...
 /// }
-/// 
+///
 /// let mut tools = ToolRegistry::new();
 /// tools.register_tool!(format_file);
 /// ```
@@ -109,7 +107,7 @@ macro_rules! register_ai_tool {
 }
 
 /// Helper to collect all tools for a plugin
-/// 
+///
 /// Plugins implement this trait to provide their tools
 pub trait AiToolProvider {
     /// Create a registry with all this plugin's tools
@@ -255,12 +253,9 @@ mod tests {
 
         let definition = AiToolBuilder::new("format", "Format a file").build();
 
-        registry.register(
-            "format",
-            definition,
-            "Format documentation",
-            |_args| Ok(json!({"status": "formatted"})),
-        );
+        registry.register("format", definition, "Format documentation", |_args| {
+            Ok(json!({"status": "formatted"}))
+        });
 
         let result = registry.execute("format", json!({}));
         assert!(result.is_ok());

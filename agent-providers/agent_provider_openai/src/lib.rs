@@ -89,8 +89,9 @@ impl OpenAiProvider {
 
     fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
         match value {
-            Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
-                .unwrap_or_else(|_| Value::String(raw.clone())),
+            Some(Value::String(raw)) => {
+                serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.clone()))
+            }
             Some(value) => value.clone(),
             None => json!({}),
         }
@@ -110,7 +111,8 @@ impl OpenAiProvider {
                         let id = call.get("id")?.as_str()?.to_string();
                         let function = call.get("function")?;
                         let name = function.get("name")?.as_str()?.to_string();
-                        let arguments_json = Self::parse_tool_arguments_value(function.get("arguments"));
+                        let arguments_json =
+                            Self::parse_tool_arguments_value(function.get("arguments"));
 
                         Some(ToolCall {
                             id,
@@ -147,7 +149,8 @@ impl OpenAiProvider {
                             let index = tool_call
                                 .get("index")
                                 .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64) as usize;
+                                .unwrap_or(partials.len() as u64)
+                                as usize;
 
                             while partials.len() <= index {
                                 partials.push(PartialToolCall::default());
@@ -166,9 +169,8 @@ impl OpenAiProvider {
                                     partial.name = Some(name.to_string());
                                 }
 
-                                if let Some(arguments_fragment) = function
-                                    .get("arguments")
-                                    .and_then(|value| value.as_str())
+                                if let Some(arguments_fragment) =
+                                    function.get("arguments").and_then(|value| value.as_str())
                                 {
                                     partial.arguments.push_str(arguments_fragment);
                                 }
@@ -231,8 +233,10 @@ impl OpenAiProvider {
                     msg["tool_call_id"] = json!(tool_call_id);
                 }
                 if !message.tool_calls.is_empty() {
-                    msg["tool_calls"] = json!(
-                        message.tool_calls.iter().map(|call| {
+                    msg["tool_calls"] = json!(message
+                        .tool_calls
+                        .iter()
+                        .map(|call| {
                             json!({
                                 "id": call.id,
                                 "type": "function",
@@ -241,8 +245,8 @@ impl OpenAiProvider {
                                     "arguments": call.arguments_json.to_string(),
                                 }
                             })
-                        }).collect::<Vec<_>>()
-                    );
+                        })
+                        .collect::<Vec<_>>());
                 }
                 msg
             })
@@ -343,8 +347,8 @@ impl OpenAiProvider {
                 break;
             }
 
-            let event: Value =
-                serde_json::from_str(data).context("invalid JSON event in OpenAI-compatible stream")?;
+            let event: Value = serde_json::from_str(data)
+                .context("invalid JSON event in OpenAI-compatible stream")?;
 
             if let Some(choice) = event
                 .get("choices")
@@ -366,7 +370,9 @@ impl OpenAiProvider {
                             streamed_text_chunks.push(chunk.clone());
                             on_chunk(chunk);
                         }
-                    } else if let Some(parts) = delta.get("content").and_then(|value| value.as_array()) {
+                    } else if let Some(parts) =
+                        delta.get("content").and_then(|value| value.as_array())
+                    {
                         for part in parts {
                             if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
                                 if !text.is_empty() {
@@ -525,10 +531,8 @@ impl OpenAiProvider {
             .filter(|content| !content.is_empty());
 
         let mut next_call_index = 1usize;
-        let tool_calls = Self::parse_ollama_tool_calls(
-            raw_response.get("message"),
-            &mut next_call_index,
-        );
+        let tool_calls =
+            Self::parse_ollama_tool_calls(raw_response.get("message"), &mut next_call_index);
 
         let streamed_text_chunks = assistant_message
             .as_ref()
@@ -597,8 +601,7 @@ impl OpenAiProvider {
                     }
                 }
 
-                let mut calls =
-                    Self::parse_ollama_tool_calls(Some(message), &mut next_call_index);
+                let mut calls = Self::parse_ollama_tool_calls(Some(message), &mut next_call_index);
                 tool_calls.append(&mut calls);
             }
 
@@ -911,7 +914,9 @@ impl ChatProvider for OpenAiCompatibleProvider {
                 payload["stream"] = json!(true);
                 payload
             }
-            CompatibleProtocol::Ollama => OpenAiProvider::build_ollama_request_payload(request, true),
+            CompatibleProtocol::Ollama => {
+                OpenAiProvider::build_ollama_request_payload(request, true)
+            }
         };
 
         let mut req = self
@@ -935,9 +940,7 @@ impl ChatProvider for OpenAiCompatibleProvider {
             CompatibleProtocol::OpenAiCompatible => {
                 "failed to call OpenAI-compatible streaming chat API".to_string()
             }
-            CompatibleProtocol::Ollama => {
-                "failed to call Ollama streaming chat API".to_string()
-            }
+            CompatibleProtocol::Ollama => "failed to call Ollama streaming chat API".to_string(),
         })?;
 
         if !response.status().is_success() {

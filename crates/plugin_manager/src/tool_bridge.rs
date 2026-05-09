@@ -5,7 +5,6 @@
 /// - Query which tools are available
 /// - Get documentation for tools
 /// - Execute tools with parameters
-
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::Path;
@@ -56,10 +55,8 @@ impl PluginToolBridge {
             };
 
             self.tools.insert(tool_name.clone(), available_tool);
-            self.tool_to_plugin.insert(
-                tool_name.clone(),
-                (plugin_id.clone(), tool_name),
-            );
+            self.tool_to_plugin
+                .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
         }
     }
 
@@ -80,13 +77,13 @@ impl PluginToolBridge {
                 if capabilities.contains(&tool_def.name) {
                     let tool_name = tool_def.name.clone();
 
-                    self.tools.entry(tool_name.clone()).or_insert_with(|| {
-                        AvailableTool {
+                    self.tools
+                        .entry(tool_name.clone())
+                        .or_insert_with(|| AvailableTool {
                             definition: tool_def,
                             plugin_id: plugin_id.clone(),
                             file_types: vec![],
-                        }
-                    });
+                        });
 
                     self.tool_to_plugin
                         .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
@@ -201,9 +198,7 @@ mod tests {
             file_types: vec![],
         };
 
-        bridge
-            .tools
-            .insert("test_tool".to_string(), tool.clone());
+        bridge.tools.insert("test_tool".to_string(), tool.clone());
 
         assert_eq!(bridge.tool_names().len(), 1);
         assert!(bridge.tool("test_tool").is_some());

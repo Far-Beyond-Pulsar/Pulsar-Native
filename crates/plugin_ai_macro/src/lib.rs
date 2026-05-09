@@ -5,12 +5,9 @@
 /// - Extract parameter schemas from types
 /// - Generate markdown documentation
 /// - Create dispatch code in execute_ai_tool()
-
 use proc_macro::TokenStream;
-use quote::{quote, format_ident};
-use syn::{
-    parse_macro_input, DeriveInput, FnArg, ItemFn, Pat, ReturnType, Type, Lit, Meta,
-};
+use quote::{format_ident, quote};
+use syn::{parse_macro_input, DeriveInput, FnArg, ItemFn, Lit, Meta, Pat, ReturnType, Type};
 
 /// Attribute macro for defining an AI tool
 ///
@@ -78,7 +75,7 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Generate the AiToolDefinition const
     let definition_name = format_ident!("TOOL_DEF_{}", tool_name.to_uppercase());
-    
+
     let definition = quote! {
         #[doc(hidden)]
         pub const #definition_name: &str = stringify!({
@@ -93,14 +90,14 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Generate the wrapper function that handles tool execution
     let wrapper_fn_name = format_ident!("{}_ai_tool_wrapper", fn_name);
     let params_from_json = generate_params_from_json(&params);
-    
+
     let wrapper = quote! {
         #[doc(hidden)]
         pub fn #wrapper_fn_name(
             tool_args: serde_json::Value,
         ) -> Result<serde_json::Value, plugin_editor_api::PluginError> {
             #params_from_json
-            
+
             // Call the actual tool function
             let result = #fn_name(#(#params),*)?;
             Ok(result)
@@ -109,7 +106,7 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Generate the markdown documentation constant
     let doc_const_name = format_ident!("TOOL_DOC_{}", tool_name.to_uppercase());
-    
+
     let doc_const = if let Some(path) = docs_path {
         // Use include_str! to embed external markdown file
         let path_lit = syn::LitStr::new(&path, proc_macro2::Span::call_site());
@@ -119,7 +116,13 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     } else {
         // Auto-generate markdown documentation
-        let doc_md = generate_markdown_doc(&tool_name_snake, &doc_comment, &params, &param_docs, category.as_deref());
+        let doc_md = generate_markdown_doc(
+            &tool_name_snake,
+            &doc_comment,
+            &params,
+            &param_docs,
+            category.as_deref(),
+        );
         quote! {
             #[doc(hidden)]
             pub const #doc_const_name: &str = #doc_md;
@@ -196,9 +199,9 @@ fn extract_doc_comment(attrs: &[syn::Attribute]) -> String {
 }
 
 /// Extract parameter information
-fn extract_parameters(inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>) 
-    -> Vec<(String, String)> 
-{
+fn extract_parameters(
+    inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>,
+) -> Vec<(String, String)> {
     inputs
         .iter()
         .filter_map(|arg| {
@@ -223,7 +226,7 @@ fn extract_param_docs(attrs: &[syn::Attribute]) -> std::collections::HashMap<Str
 
 /// Parse tool macro attributes (category, timeout_ms, etc.)
 fn parse_tool_attrs(
-    attrs: &syn::punctuated::Punctuated<syn::NestedMeta, syn::token::Comma>
+    attrs: &syn::punctuated::Punctuated<syn::NestedMeta, syn::token::Comma>,
 ) -> (Option<String>, u32, Option<String>) {
     let mut category: Option<String> = None;
     let mut timeout_ms: u32 = 5000;
@@ -257,19 +260,26 @@ fn generate_parameter_schema(
     params: &[(String, String)],
     _param_docs: &std::collections::HashMap<String, String>,
 ) -> String {
-    let properties = params.iter().map(|(name, ty)| {
-        let json_type = match ty.as_str() {
-            "String" => "\"string\"",
-            "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "\"integer\"",
-            "f32" | "f64" => "\"number\"",
-            "bool" => "\"boolean\"",
-            _ => "\"object\"",
-        };
-        format!(r#""{}": {{"type": {}}}"#, name, json_type)
-    }).collect::<Vec<_>>().join(",");
+    let properties = params
+        .iter()
+        .map(|(name, ty)| {
+            let json_type = match ty.as_str() {
+                "String" => "\"string\"",
+                "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "\"integer\"",
+                "f32" | "f64" => "\"number\"",
+                "bool" => "\"boolean\"",
+                _ => "\"object\"",
+            };
+            format!(r#""{}": {{"type": {}}}"#, name, json_type)
+        })
+        .collect::<Vec<_>>()
+        .join(",");
 
-    let required = params.iter().map(|(n, _)| format!(r#""{}""#, n))
-        .collect::<Vec<_>>().join(",");
+    let required = params
+        .iter()
+        .map(|(n, _)| format!(r#""{}""#, n))
+        .collect::<Vec<_>>()
+        .join(",");
 
     format!(
         r#"{{"type": "object", "properties": {{{}}}, "required": [{}]}}"#,
@@ -282,7 +292,7 @@ fn generate_params_from_json(params: &[(String, String)]) -> proc_macro2::TokenS
     let extractions = params.iter().map(|(name, ty)| {
         let name_ident = format_ident!("{}", name);
         let ty_ident = format_ident!("{}", ty);
-        
+
         quote! {
             let #name_ident: #ty_ident = serde_json::from_value(
                 tool_args.get(stringify!(#name_ident))
@@ -309,14 +319,18 @@ fn generate_markdown_doc(
     _param_docs: &std::collections::HashMap<String, String>,
     category: Option<&str>,
 ) -> String {
-    let category_str = category.map(|c| format!("**Category**: {}\n\n", c)).unwrap_or_default();
-    
+    let category_str = category
+        .map(|c| format!("**Category**: {}\n\n", c))
+        .unwrap_or_default();
+
     let params_md = if params.is_empty() {
         "No parameters.".to_string()
     } else {
-        let items = params.iter().map(|(name, ty)| {
-            format!("- `{}` ({})", name, ty)
-        }).collect::<Vec<_>>().join("\n");
+        let items = params
+            .iter()
+            .map(|(name, ty)| format!("- `{}` ({})", name, ty))
+            .collect::<Vec<_>>()
+            .join("\n");
         format!("### Parameters\n\n{}", items)
     };
 

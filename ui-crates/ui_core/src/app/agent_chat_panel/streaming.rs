@@ -1,8 +1,5 @@
 use super::*;
-use agent_chat_core::{
-    AvailabilityState, ChatMessage, ChatRequest, ChatRole,
-    ProcessEnvironment,
-};
+use agent_chat_core::{AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment};
 use engine_state;
 use smol::Timer;
 use std::{
@@ -325,21 +322,27 @@ impl AgentChatPanel {
 
         let token = token.unwrap_or_default();
         let tool_schemas = self.tool_registry.available_tools_schema();
-        
+
         // Validate and convert tool schemas
         let tools: Vec<agent_chat_core::ToolDefinition> = tool_schemas
             .iter()
             .filter_map(|schema| {
                 let name = schema.get("name")?.as_str()?.to_string();
-                let description = schema.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let description = schema
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 let params = schema.get("parameters")?.clone();
-                
+
                 // Validate that parameters is an object with a "type" field
                 if params.get("type").and_then(|v| v.as_str()) != Some("object") {
-                    eprintln!("[agent_chat] WARNING: Tool {} has invalid parameters schema, skipping", name);
+                    eprintln!(
+                        "[agent_chat] WARNING: Tool {} has invalid parameters schema, skipping",
+                        name
+                    );
                     return None;
                 }
-                
+
                 Some(agent_chat_core::ToolDefinition {
                     name,
                     description,
@@ -347,9 +350,12 @@ impl AgentChatPanel {
                 })
             })
             .collect();
-        
-        eprintln!("[agent_chat] Validated {} tools for sending to provider", tools.len());
-        
+
+        eprintln!(
+            "[agent_chat] Validated {} tools for sending to provider",
+            tools.len()
+        );
+
         let request = ChatRequest {
             model,
             messages: provider_messages,
@@ -389,12 +395,12 @@ impl AgentChatPanel {
                 "[agent_chat][request={}] background worker started",
                 worker_request_id
             );
-            
+
             // Agentic loop: keep requesting until no more tool calls
             let mut current_messages = request.messages.clone();
             let mut iteration = 0;
             const MAX_ITERATIONS: usize = 10;
-            
+
             loop {
                 if iteration >= MAX_ITERATIONS {
                     println!(
@@ -404,14 +410,14 @@ impl AgentChatPanel {
                     break;
                 }
                 iteration += 1;
-                
+
                 println!(
                     "[agent_chat][request={}] iteration {} starting with {} messages",
                     worker_request_id,
                     iteration,
                     current_messages.len()
                 );
-                
+
                 for (idx, msg) in current_messages.iter().enumerate() {
                     println!(
                         "[agent_chat][request={}] msg[{}]: role={:?}, content_len={}, tool_call_id={:?}",
@@ -422,7 +428,7 @@ impl AgentChatPanel {
                         msg.tool_call_id.as_deref()
                     );
                 }
-                
+
                 let mut current_request = ChatRequest {
                     model: request.model.clone(),
                     messages: current_messages.clone(),
@@ -432,7 +438,7 @@ impl AgentChatPanel {
                     top_p: request.top_p,
                     max_tokens: request.max_tokens,
                 };
-                
+
                 // DEBUG: Log exact request details
                 println!(
                     "[agent_chat][request={}] sending to provider: enable_tool_calls={}, tools_count={}",
@@ -440,7 +446,7 @@ impl AgentChatPanel {
                     current_request.enable_tool_calls,
                     current_request.tools.len()
                 );
-                
+
                 for (idx, msg) in current_request.messages.iter().enumerate() {
                     if msg.role == ChatRole::Tool {
                         println!(
@@ -452,7 +458,7 @@ impl AgentChatPanel {
                         );
                     }
                 }
-                
+
                 let mut pending_chunk = String::new();
                 let mut last_emit = Instant::now();
                 let mut on_chunk = |chunk: String| {
@@ -487,7 +493,7 @@ impl AgentChatPanel {
                             response.tool_calls.len(),
                             response.finish_reason
                         );
-                        
+
                         // Check if response has tool calls
                         if !response.tool_calls.is_empty() {
                             println!(
@@ -496,28 +502,30 @@ impl AgentChatPanel {
                                 iteration,
                                 response.tool_calls.len()
                             );
-                            
+
                             // Always add assistant message (even if empty) so tool results can follow
-                            let assistant_text = response.assistant_message.clone().unwrap_or_default();
+                            let assistant_text =
+                                response.assistant_message.clone().unwrap_or_default();
                             current_messages.push(ChatMessage {
                                 role: ChatRole::Assistant,
                                 content: assistant_text.clone(),
                                 tool_call_id: None,
                                 tool_calls: response.tool_calls.clone(),
                             });
-                            
+
                             // Show assistant text to user (if any)
                             if !assistant_text.is_empty() {
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(assistant_text));
                             }
-                            
+
                             // Show exact tool calls (name + id + args) before execution for debugging.
                             let tool_calls_text = response
                                 .tool_calls
                                 .iter()
                                 .map(|call| {
-                                    let args_pretty = serde_json::to_string_pretty(&call.arguments_json)
-                                        .unwrap_or_else(|_| call.arguments_json.to_string());
+                                    let args_pretty =
+                                        serde_json::to_string_pretty(&call.arguments_json)
+                                            .unwrap_or_else(|_| call.arguments_json.to_string());
                                     format!(
                                         "*Calling {}*\n`id`: {}\n`args`:\n```json\n{}\n```",
                                         call.name, call.id, args_pretty
@@ -525,8 +533,11 @@ impl AgentChatPanel {
                                 })
                                 .collect::<Vec<_>>()
                                 .join("\n\n");
-                            let _ = tx_for_chunks.try_send(StreamEvent::Chunk(format!("\n\n{}\n\n", tool_calls_text)));
-                            
+                            let _ = tx_for_chunks.try_send(StreamEvent::Chunk(format!(
+                                "\n\n{}\n\n",
+                                tool_calls_text
+                            )));
+
                             // Create tool context for execution
                             let workspace_root = match engine_state::get_project_path() {
                                 Some(path) => PathBuf::from(path),
@@ -537,7 +548,7 @@ impl AgentChatPanel {
                                 plugin_bridge: plugin_bridge_for_task.clone(),
                                 current_file: None,
                             };
-                            
+
                             // Execute each tool call and show results
                             let mut all_results = Vec::new();
                             for tool_call in &response.tool_calls {
@@ -545,18 +556,18 @@ impl AgentChatPanel {
                                     "[agent_chat][request={}] executing tool: {}",
                                     worker_request_id, tool_call.name
                                 );
-                                
+
                                 let result = tool_registry_for_task.execute(
                                     &tool_call.name,
                                     tool_call.arguments_json.clone(),
                                     &tool_context,
                                 );
-                                
+
                                 let tool_result = match result {
                                     Ok(value) => value.to_string(),
                                     Err(err) => format!("Tool error: {}", err),
                                 };
-                                
+
                                 // Show tool result to user
                                 let result_display = format!(
                                     "**{}**: {}\n\n",
@@ -564,11 +575,15 @@ impl AgentChatPanel {
                                     tool_result.chars().take(200).collect::<String>()
                                 );
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
-                                
+
                                 // Store tool result with call ID for proper threading
-                                all_results.push((tool_call.id.clone(), tool_call.name.clone(), tool_result));
+                                all_results.push((
+                                    tool_call.id.clone(),
+                                    tool_call.name.clone(),
+                                    tool_result,
+                                ));
                             }
-                            
+
                             // Add all tool results to message history for LLM to read
                             println!(
                                 "[agent_chat][request={}] adding {} tool results to history",
@@ -587,13 +602,13 @@ impl AgentChatPanel {
                                     tool_calls: vec![],
                                 });
                             }
-                            
+
                             println!(
                                 "[agent_chat][request={}] total messages before provider call: {}",
                                 worker_request_id,
                                 current_messages.len()
                             );
-                            
+
                             // Loop again with updated message history
                             continue;
                         } else {

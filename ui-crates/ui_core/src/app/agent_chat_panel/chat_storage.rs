@@ -161,7 +161,8 @@ Choose a provider/model and ask anything about your project. Mention specific fi
                         ChatRole::Assistant => "assistant",
                         ChatRole::System => "system",
                         ChatRole::Tool => "tool",
-                    }.to_string(),
+                    }
+                    .to_string(),
                     content: m.content.clone(),
                 })
                 .collect(),

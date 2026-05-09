@@ -725,7 +725,7 @@ impl FsContext {
             allow_create: true,
             allow_modify: true,
             allow_delete: true,
-            allowed_extensions: vec![],  // empty = all extensions allowed
+            allowed_extensions: vec![], // empty = all extensions allowed
         }
     }
 

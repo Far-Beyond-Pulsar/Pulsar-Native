@@ -75,7 +75,9 @@ impl AgentChatPanel {
             return;
         };
 
-        let token = self.auth_token_for_provider(provider_id).unwrap_or_default();
+        let token = self
+            .auth_token_for_provider(provider_id)
+            .unwrap_or_default();
         match provider_impl.list_models_api(&token) {
             Ok(models) => {
                 if models.is_empty() {

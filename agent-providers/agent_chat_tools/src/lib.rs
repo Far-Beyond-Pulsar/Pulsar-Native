@@ -245,7 +245,9 @@ impl ChatTool for QueryPluginToolsTool {
             .map(|p| p.display().to_string())
             .unwrap_or_else(|| "(no file)".to_string());
 
-        let bridge_lock = bridge.read().map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+        let bridge_lock = bridge
+            .read()
+            .map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
 
         let tools = if let Some(file_path) = &file_path {
             bridge_lock.tools_for_file(file_path)
@@ -286,10 +288,7 @@ impl ChatTool for ExecutePluginToolTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("execute_plugin_tool.tool_name is required"))?;
 
-        let _tool_args = args
-            .get("tool_args")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let _tool_args = args.get("tool_args").cloned().unwrap_or_else(|| json!({}));
 
         let file_path = args
             .get("file_path")
@@ -303,7 +302,9 @@ impl ChatTool for ExecutePluginToolTool {
             .as_ref()
             .ok_or_else(|| anyhow!("Plugin bridge not available"))?;
 
-        let bridge_lock = bridge.read().map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
+        let bridge_lock = bridge
+            .read()
+            .map_err(|_| anyhow!("Failed to lock plugin bridge"))?;
 
         let _tool = bridge_lock
             .tool(tool_name)

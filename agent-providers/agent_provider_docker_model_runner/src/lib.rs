@@ -1,7 +1,7 @@
 use agent_chat_core::{
     AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, ProviderAvailability, ProviderEnvironment,
-    ProviderKind, ProviderMetadata, ToolCall,
+    ChatRole, ModelDescriptor, ProviderAvailability, ProviderEnvironment, ProviderKind,
+    ProviderMetadata, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -54,8 +54,9 @@ impl DockerModelRunnerProvider {
 
     fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
         match value {
-            Some(Value::String(raw)) => serde_json::from_str::<Value>(raw)
-                .unwrap_or_else(|_| Value::String(raw.clone())),
+            Some(Value::String(raw)) => {
+                serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.clone()))
+            }
             Some(value) => value.clone(),
             None => json!({}),
         }
@@ -85,7 +86,8 @@ impl DockerModelRunnerProvider {
                         let id = call.get("id")?.as_str()?.to_string();
                         let function = call.get("function")?;
                         let name = function.get("name")?.as_str()?.to_string();
-                        let arguments_json = Self::parse_tool_arguments_value(function.get("arguments"));
+                        let arguments_json =
+                            Self::parse_tool_arguments_value(function.get("arguments"));
 
                         Some(ToolCall {
                             id,
@@ -122,7 +124,8 @@ impl DockerModelRunnerProvider {
                             let index = tool_call
                                 .get("index")
                                 .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64) as usize;
+                                .unwrap_or(partials.len() as u64)
+                                as usize;
 
                             while partials.len() <= index {
                                 partials.push(PartialToolCall::default());
@@ -141,9 +144,8 @@ impl DockerModelRunnerProvider {
                                     partial.name = Some(name.to_string());
                                 }
 
-                                if let Some(arguments_fragment) = function
-                                    .get("arguments")
-                                    .and_then(|value| value.as_str())
+                                if let Some(arguments_fragment) =
+                                    function.get("arguments").and_then(|value| value.as_str())
                                 {
                                     partial.arguments.push_str(arguments_fragment);
                                 }
@@ -188,22 +190,20 @@ impl DockerModelRunnerProvider {
                     msg["tool_call_id"] = json!(tool_call_id);
                 }
                 if !message.tool_calls.is_empty() {
-                    msg["tool_calls"] = json!(
-                        message
-                            .tool_calls
-                            .iter()
-                            .map(|call| {
-                                json!({
-                                    "id": call.id,
-                                    "type": "function",
-                                    "function": {
-                                        "name": call.name,
-                                        "arguments": call.arguments_json.to_string(),
-                                    }
-                                })
+                    msg["tool_calls"] = json!(message
+                        .tool_calls
+                        .iter()
+                        .map(|call| {
+                            json!({
+                                "id": call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.name,
+                                    "arguments": call.arguments_json.to_string(),
+                                }
                             })
-                            .collect::<Vec<_>>()
-                    );
+                        })
+                        .collect::<Vec<_>>());
                 }
                 msg
             })
@@ -328,7 +328,9 @@ impl DockerModelRunnerProvider {
                             streamed_text_chunks.push(chunk.clone());
                             on_chunk(chunk);
                         }
-                    } else if let Some(parts) = delta.get("content").and_then(|value| value.as_array()) {
+                    } else if let Some(parts) =
+                        delta.get("content").and_then(|value| value.as_array())
+                    {
                         for part in parts {
                             if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
                                 if !text.is_empty() {

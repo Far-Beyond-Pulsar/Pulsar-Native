@@ -111,16 +111,23 @@ impl AgentChatPanel {
         provider_registry.register(Arc::new(GeminiProvider::new()));
         provider_registry.register(Arc::new(DockerModelRunnerProvider::new()));
         for provider in &provider_catalog {
-            if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some() {
+            if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some()
+            {
                 continue;
             }
 
-            let use_ollama_protocol = provider.id == "ollama"
-                || custom_provider_ids.borrow().contains(provider.id);
+            let use_ollama_protocol =
+                provider.id == "ollama" || custom_provider_ids.borrow().contains(provider.id);
             let models = provider
                 .models
                 .iter()
-                .map(|model| (model.id.to_string(), model.label.to_string(), model.supports_tools))
+                .map(|model| {
+                    (
+                        model.id.to_string(),
+                        model.label.to_string(),
+                        model.supports_tools,
+                    )
+                })
                 .collect::<Vec<_>>();
             let runtime_provider = if use_ollama_protocol {
                 OpenAiCompatibleProvider::from_dynamic_ollama(

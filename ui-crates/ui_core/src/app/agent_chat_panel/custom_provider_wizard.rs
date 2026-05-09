@@ -168,22 +168,17 @@ impl AgentChatPanel {
                     let models = saved_provider
                         .models
                         .iter()
-                        .map(|model| {
-                            (
-                                model.id.clone(),
-                                model.label.clone(),
-                                model.supports_tools,
-                            )
-                        })
+                        .map(|model| (model.id.clone(), model.label.clone(), model.supports_tools))
                         .collect::<Vec<_>>();
-                    self.provider_registry
-                        .register(Arc::new(OpenAiCompatibleProvider::from_dynamic_ollama(
+                    self.provider_registry.register(Arc::new(
+                        OpenAiCompatibleProvider::from_dynamic_ollama(
                             saved_provider.id.clone(),
                             saved_provider.label.clone(),
                             saved_provider.endpoint.clone(),
                             agent_chat_core::ProviderKind::Local,
                             models,
-                        )));
+                        ),
+                    ));
                 }
                 self.provider_catalog.push(provider_definition);
                 self.provider_list.update(cx, |list, cx| {
