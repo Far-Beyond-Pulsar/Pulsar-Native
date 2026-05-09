@@ -317,13 +317,38 @@ impl AgentChatPanel {
             Self::compact_provider_messages(provider_messages, Self::CONTEXT_CHAR_BUDGET);
 
         let token = token.unwrap_or_default();
-        let _tool_schemas = self.tool_registry.available_tools_schema();
+        let tool_schemas = self.tool_registry.available_tools_schema();
+        
+        // Validate and convert tool schemas
+        let tools: Vec<agent_chat_core::ToolDefinition> = tool_schemas
+            .iter()
+            .filter_map(|schema| {
+                let name = schema.get("name")?.as_str()?.to_string();
+                let description = schema.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let params = schema.get("parameters")?.clone();
+                
+                // Validate that parameters is an object with a "type" field
+                if params.get("type").and_then(|v| v.as_str()) != Some("object") {
+                    eprintln!("[agent_chat] WARNING: Tool {} has invalid parameters schema, skipping", name);
+                    return None;
+                }
+                
+                Some(agent_chat_core::ToolDefinition {
+                    name,
+                    description,
+                    parameters_json_schema: params,
+                })
+            })
+            .collect();
+        
+        eprintln!("[agent_chat] Validated {} tools for sending to provider", tools.len());
+        
         let request = ChatRequest {
             model,
             messages: provider_messages,
-            // NOTE: Tool calling temporarily disabled pending provider compatibility issues
-            enable_tool_calls: false,
-            tools: Vec::new(),
+            // Enable tool calls for agentic loop
+            enable_tool_calls: !tools.is_empty(),
+            tools,
             temperature: Some(0.2),
             top_p: Some(1.0),
             max_tokens: Some(1024),

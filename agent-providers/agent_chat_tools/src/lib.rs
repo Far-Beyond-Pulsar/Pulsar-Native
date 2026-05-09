@@ -95,7 +95,7 @@ impl ToolRegistry {
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "file_path": { "type": ["string", "null"], "description": "Optional file path. If not provided, uses current_file from context." }
+                        "file_path": { "type": "string", "description": "Optional file path. If not provided, uses current_file from context." }
                     }
                 }
             }),
@@ -106,8 +106,8 @@ impl ToolRegistry {
                     "type": "object",
                     "properties": {
                         "tool_name": { "type": "string", "description": "Name of the tool to execute" },
-                        "file_path": { "type": ["string", "null"], "description": "File to operate on. If not provided, uses current_file from context." },
-                        "tool_args": { "type": "object", "description": "Arguments to pass to the tool" }
+                        "file_path": { "type": "string", "description": "File to operate on. If not provided, uses current_file from context." },
+                        "tool_args": { "type": "object", "description": "Arguments to pass to the tool", "additionalProperties": true }
                     },
                     "required": ["tool_name", "tool_args"]
                 }
