@@ -437,7 +437,18 @@ impl Render for AgentChatPanel {
                         h_flex()
                             .w_full()
                             .items_center()
-                            .child(model_popover),
+                            .gap_2()
+                            .child(model_popover)
+                            .child(
+                                Button::new("agent-chat-refresh-models")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("Refresh Models")
+                                    .tooltip("Fetch latest models from provider")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.refresh_models_for_active_provider(cx);
+                                    })),
+                            ),
                     )
                     .when(auth_provider.is_some(), |el| {
                         el.child(
