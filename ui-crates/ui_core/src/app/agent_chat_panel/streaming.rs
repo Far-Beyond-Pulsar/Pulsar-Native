@@ -498,18 +498,19 @@ impl AgentChatPanel {
                                 );
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
                                 
-                                // Add tool result to message history for LLM
-                                all_results.push((tool_call.name.clone(), tool_result));
+                                // Store tool result with call ID for proper threading
+                                all_results.push((tool_call.id.clone(), tool_call.name.clone(), tool_result));
                             }
                             
                             // Add all tool results to message history for LLM to read
-                            for (tool_name, tool_result) in all_results {
+                            for (tool_call_id, tool_name, tool_result) in all_results {
                                 current_messages.push(ProviderChatMessage {
                                     role: ChatRole::Tool,
                                     content: format!(
                                         "Tool: {}\nResult: {}",
                                         tool_name, tool_result
                                     ),
+                                    tool_call_id: Some(tool_call_id),
                                 });
                             }
                             // Loop again with updated message history
