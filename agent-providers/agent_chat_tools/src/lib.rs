@@ -478,10 +478,6 @@ impl ChatTool for ExecutePluginToolTool {
         // but even if it's relative we don't want to fail just because we can't canonicalize it.
         let full_file_path = resolve_workspace_path_soft(&ctx.workspace_root, &file_path.display().to_string())?;
 
-        // For ai_sessions lookup the path must match exactly what was registered (canonical).
-        // Try to canonicalize here; fall back to the soft-resolved path so we don't fail outright.
-        let canonical_file_path = full_file_path.canonicalize().unwrap_or_else(|_| full_file_path.clone());
-
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
         let manager = manager_lock
@@ -503,7 +499,7 @@ impl ChatTool for ExecutePluginToolTool {
         };
 
         let result = manager
-            .execute_plugin_ai_tool(&plugin_id, &canonical_file_path, tool_name, tool_args)
+            .execute_plugin_ai_tool(&plugin_id, &full_file_path, tool_name, tool_args)
             .map_err(|err| anyhow!(err.to_string()))?;
 
         Ok(json!({
@@ -533,13 +529,30 @@ fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathB
     Ok(canonical)
 }
 
-/// Resolve a workspace-relative path without requiring the file to exist on disk.
-/// Used for tool discovery where we only need the file extension.
+/// Resolve a workspace-relative path, canonicalizing it if the file exists on disk
+/// or falling back to manual component normalization if it doesn't.
+///
+/// This is used for both tool discovery (extension check only) and tool execution
+/// (session lookup), so it must return the canonical path when the file is on disk
+/// — otherwise `ai_sessions::get_open_scene_state` won't find the registered entry.
 fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
     let p = PathBuf::from(rel_or_abs);
     let joined = if p.is_absolute() { p } else { root.join(&p) };
 
-    // Normalize without requiring existence: collapse . and .. manually
+    // Happy path: if the file is on disk, canonicalize gives us the exact path
+    // that was stored in ai_sessions (which also canonicalizes on registration).
+    if let Ok(canonical) = joined.canonicalize() {
+        // Security check: must still be inside the workspace root.
+        // Use the canonical root if available, otherwise skip the check for dot-roots.
+        if let Ok(root_canonical) = root.canonicalize() {
+            if !canonical.starts_with(&root_canonical) {
+                return Err(anyhow!("Path escapes workspace root"));
+            }
+        }
+        return Ok(canonical);
+    }
+
+    // File doesn't exist yet on disk — normalize manually without requiring existence.
     let mut components = Vec::new();
     for part in joined.components() {
         use std::path::Component;
@@ -551,8 +564,6 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
     }
     let normalized: PathBuf = components.iter().collect();
 
-    // Verify it stays within the workspace root (use the root itself as prefix check)
-    // We compare the string prefix since canonicalize can't be used on non-existent paths.
     let root_normalized: PathBuf = {
         let mut c = Vec::new();
         for part in root.components() {
@@ -566,7 +577,8 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
         c.iter().collect()
     };
 
-    if !normalized.starts_with(&root_normalized) {
+    // Only enforce root prefix when we have a meaningful absolute root.
+    if root_normalized.is_absolute() && !normalized.starts_with(&root_normalized) {
         return Err(anyhow!("Path escapes workspace root"));
     }
     Ok(normalized)
