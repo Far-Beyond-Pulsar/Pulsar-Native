@@ -488,15 +488,17 @@ impl AgentChatPanel {
                                 response.tool_calls.len()
                             );
                             
-                            // Add assistant message with tool calls (if any text)
-                            if let Some(text) = &response.assistant_message {
-                                current_messages.push(ChatMessage {
-                                    role: ChatRole::Assistant,
-                                    content: text.clone(),
-                                    tool_call_id: None,
-                                });
-                                // Show assistant text to user
-                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(text.clone()));
+                            // Always add assistant message (even if empty) so tool results can follow
+                            let assistant_text = response.assistant_message.clone().unwrap_or_default();
+                            current_messages.push(ChatMessage {
+                                role: ChatRole::Assistant,
+                                content: assistant_text.clone(),
+                                tool_call_id: None,
+                            });
+                            
+                            // Show assistant text to user (if any)
+                            if !assistant_text.is_empty() {
+                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(assistant_text));
                             }
                             
                             // Show tool calls as messages to user (italicized in UI)
