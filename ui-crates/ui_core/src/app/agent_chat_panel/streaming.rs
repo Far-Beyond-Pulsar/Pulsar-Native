@@ -424,6 +424,26 @@ impl AgentChatPanel {
                     max_tokens: request.max_tokens,
                 };
                 
+                // DEBUG: Log exact request details
+                println!(
+                    "[agent_chat][request={}] sending to provider: enable_tool_calls={}, tools_count={}",
+                    worker_request_id,
+                    current_request.enable_tool_calls,
+                    current_request.tools.len()
+                );
+                
+                for (idx, msg) in current_request.messages.iter().enumerate() {
+                    if msg.role == ChatRole::Tool {
+                        println!(
+                            "[agent_chat][request={}] TOOL MESSAGE[{}]: tool_call_id={:?}, content_len={}",
+                            worker_request_id,
+                            idx,
+                            msg.tool_call_id.as_deref(),
+                            msg.content.len()
+                        );
+                    }
+                }
+                
                 let mut pending_chunk = String::new();
                 let mut last_emit = Instant::now();
                 let mut on_chunk = |chunk: String| {

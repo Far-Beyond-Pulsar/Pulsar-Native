@@ -194,10 +194,14 @@ impl ChatProvider for GithubCopilotProvider {
             .messages
             .iter()
             .map(|message: &ChatMessage| {
-                json!({
+                let mut msg = json!({
                     "role": Self::map_role(message.role),
                     "content": message.content,
-                })
+                });
+                if let Some(tool_call_id) = &message.tool_call_id {
+                    msg["tool_call_id"] = json!(tool_call_id);
+                }
+                msg
             })
             .collect();
 
@@ -301,10 +305,14 @@ impl ChatProvider for GithubCopilotProvider {
             .messages
             .iter()
             .map(|message: &ChatMessage| {
-                json!({
+                let mut msg = json!({
                     "role": Self::map_role(message.role),
                     "content": message.content,
-                })
+                });
+                if let Some(tool_call_id) = &message.tool_call_id {
+                    msg["tool_call_id"] = json!(tool_call_id);
+                }
+                msg
             })
             .collect();
 
@@ -473,6 +481,40 @@ impl ChatProvider for GithubCopilotProvider {
             end_reason
         );
 
+        // Parse tool calls from raw events
+        let mut tool_calls = Vec::new();
+        for event in &raw_events {
+            if let Some(choice) = event
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .and_then(|choices| choices.first())
+            {
+                if let Some(delta) = choice.get("delta") {
+                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                        for tool_call in tool_calls_array {
+                            if let Some(id) = tool_call.get("id").and_then(|v| v.as_str()) {
+                                if let Some(function) = tool_call.get("function") {
+                                    if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
+                                        let args_raw = function
+                                            .get("arguments")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or("{}");
+                                        let arguments_json =
+                                            serde_json::from_str::<Value>(args_raw).unwrap_or_else(|_| json!({}));
+                                        tool_calls.push(ToolCall {
+                                            id: id.to_string(),
+                                            name: name.to_string(),
+                                            arguments_json,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(ChatResponse {
             assistant_message: if assistant_message.is_empty() {
                 None
@@ -480,7 +522,7 @@ impl ChatProvider for GithubCopilotProvider {
                 Some(assistant_message)
             },
             streamed_text_chunks,
-            tool_calls: Vec::new(),
+            tool_calls,
             finish_reason,
             raw_response: Value::Array(raw_events),
         })
