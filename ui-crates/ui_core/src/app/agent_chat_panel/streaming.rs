@@ -27,6 +27,7 @@ impl AgentChatPanel {
                 role: m.role,
                 content: m.content.clone(),
                 tool_call_id: m.tool_call_id.clone(),
+                tool_calls: m.tool_calls.clone(),
             })
             .collect()
     }
