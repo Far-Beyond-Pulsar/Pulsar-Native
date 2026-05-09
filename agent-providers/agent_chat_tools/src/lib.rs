@@ -6,13 +6,15 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct ToolContext {
     pub workspace_root: PathBuf,
     /// Optional plugin tool bridge for accessing plugin tools
     pub plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
     /// Current file being edited (if any)
     pub current_file: Option<PathBuf>,
+    /// Optional callback to open a file through the app's default editor flow.
+    pub open_file_request: Option<Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>>,
 }
 
 pub trait ChatTool: Send + Sync {
@@ -32,6 +34,7 @@ impl ToolRegistry {
 
     pub fn with_default_tools() -> Self {
         let mut this = Self::new();
+        this.register(Arc::new(OpenFileInDefaultEditorTool));
         this.register(Arc::new(QueryAvailableFileTypesTool));
         this.register(Arc::new(QueryFileEditorsTool));
         this.register(Arc::new(QueryPluginToolsTool));
@@ -53,6 +56,17 @@ impl ToolRegistry {
 
     pub fn available_tools_schema(&self) -> Vec<Value> {
         vec![
+            json!({
+                "name": "open_file_in_default_editor",
+                "description": "Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file_path": { "type": "string" }
+                    },
+                    "required": ["file_path"]
+                }
+            }),
             json!({
                 "name": "query_available_file_types",
                 "description": "List all file types currently registered by plugins/editors.",
@@ -109,6 +123,33 @@ impl ToolRegistry {
                 }
             }),
         ]
+    }
+}
+
+struct OpenFileInDefaultEditorTool;
+impl ChatTool for OpenFileInDefaultEditorTool {
+    fn name(&self) -> &'static str {
+        "open_file_in_default_editor"
+    }
+
+    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let file_path = args
+            .get("file_path")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("open_file_in_default_editor.file_path is required"))?;
+        let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
+
+        let callback = ctx
+            .open_file_request
+            .as_ref()
+            .ok_or_else(|| anyhow!("Open-file callback unavailable in this context"))?;
+        callback(full.clone()).map_err(|err| anyhow!(err))?;
+
+        Ok(json!({
+            "ok": true,
+            "file_path": full.display().to_string(),
+            "opened": true,
+        }))
     }
 }
 

@@ -66,12 +66,14 @@ Plugins can expose custom tools for specific file types. When working with files
 
 2. **query_file_editors**: Ask which plugins/editors can handle a specific file path.
 
-3. **query_plugin_tools**: Discover what tools are available for a file.
+3. **open_file_in_default_editor**: Open the target file in its default editor tab first.
+
+4. **query_plugin_tools**: Discover what tools are available for a file.
    Example: `query_plugin_tools` with file_path set to your current file will show available tools.
 
-4. **query_tools_for_plugin**: Given a plugin_id, list tools owned by that plugin (optionally scoped to a file).
+5. **query_tools_for_plugin**: Given a plugin_id, list tools owned by that plugin (optionally scoped to a file).
 
-5. **execute_plugin_tool**: Execute a tool provided by a plugin.
+6. **execute_plugin_tool**: Execute a tool provided by a plugin.
     - Prefer including plugin_id from `query_plugin_tools`
    - Provide the tool_name (from query_plugin_tools results)
    - Provide tool_args as a JSON object matching the tool's parameters
@@ -80,9 +82,11 @@ Plugins can expose custom tools for specific file types. When working with files
 ### Best Practices
 
 - Start by identifying file type and editor ownership (`query_available_file_types`, `query_file_editors`)
+- Always call `open_file_in_default_editor` before any plugin edit operations
 - Then call `query_plugin_tools` for the exact file before attempting edits
 - File-specific tools can provide powerful editing, refactoring, validation, and analysis capabilities
 - Use plugin tools for all structured edits and file operations
+- Never perform direct file-content edits for editor-managed files; edits must go through editor/plugin tools
 - Always call `query_plugin_tools` with the actual file path to get the most relevant tools
 
 ## Getting Started

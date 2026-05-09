@@ -22,6 +22,7 @@ use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, 
 use crate::level_editor::scene_database::{
     LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
+use crate::ai_sessions;
 use engine_backend::scene::SceneDb;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -95,6 +96,9 @@ impl LevelEditorPanel {
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
+                    if let Some(path) = w.current_scene.clone() {
+                        ai_sessions::register_open_scene(&path, &self.shared_state);
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("Default level exists but could not be loaded: {e}");
@@ -108,6 +112,9 @@ impl LevelEditorPanel {
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
+                    if let Some(path) = w.current_scene.clone() {
+                        ai_sessions::register_open_scene(&path, &self.shared_state);
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("Could not write default level to {:?}: {e}", default_path);
@@ -135,6 +142,9 @@ impl LevelEditorPanel {
             let mut state = panel.shared_state.write();
             state.current_scene = Some(path);
             state.has_unsaved_changes = false;
+            if let Some(open_path) = state.current_scene.clone() {
+                ai_sessions::register_open_scene(&open_path, &panel.shared_state);
+            }
         }
         Ok(panel)
     }
@@ -872,8 +882,15 @@ impl LevelEditorPanel {
                     this.update(cx, |_, cx| {
                         match result {
                             Ok(_) => {
+                                let previous = state_arc.write().current_scene.clone();
+                                if let Some(prev) = previous {
+                                    ai_sessions::unregister_open_scene(&prev);
+                                }
                                 state_arc.write().current_scene = Some(path);
                                 state_arc.write().has_unsaved_changes = false;
+                                if let Some(open_path) = state_arc.read().current_scene.clone() {
+                                    ai_sessions::register_open_scene(&open_path, &state_arc);
+                                }
                             }
                             Err(e) => tracing::error!("Save failed: {}", e),
                         }
@@ -910,10 +927,16 @@ impl LevelEditorPanel {
                         match result {
                             Ok(_) => {
                                 let mut state = state_arc.write();
+                                if let Some(prev) = state.current_scene.clone() {
+                                    ai_sessions::unregister_open_scene(&prev);
+                                }
                                 state.current_scene = Some(path);
                                 state.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
                                 state.select_object(None);
+                                if let Some(open_path) = state.current_scene.clone() {
+                                    ai_sessions::register_open_scene(&open_path, &state_arc);
+                                }
                             }
                             Err(e) => tracing::error!("Open scene failed: {}", e),
                         }
@@ -940,6 +963,9 @@ impl LevelEditorPanel {
         self.notify_sub_panels(cx);
         {
             let mut state = self.shared_state.write();
+            if let Some(prev) = state.current_scene.clone() {
+                ai_sessions::unregister_open_scene(&prev);
+            }
             state.current_scene = None;
             state.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.
@@ -959,6 +985,14 @@ impl LevelEditorPanel {
             // For now just log - implementing camera movement would require Bevy camera manipulation
         }
         cx.notify();
+    }
+}
+
+impl Drop for LevelEditorPanel {
+    fn drop(&mut self) {
+        if let Some(path) = self.shared_state.read().current_scene.clone() {
+            ai_sessions::unregister_open_scene(&path);
+        }
     }
 }
 

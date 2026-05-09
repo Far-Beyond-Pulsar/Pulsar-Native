@@ -377,6 +377,7 @@ impl AgentChatPanel {
 
         enum StreamEvent {
             Chunk(String),
+            OpenFile(PathBuf),
             Finished(Result<agent_chat_core::ChatResponse, String>),
         }
 
@@ -547,6 +548,19 @@ impl AgentChatPanel {
                                 workspace_root,
                                 plugin_bridge: plugin_bridge_for_task.clone(),
                                 current_file: None,
+                                open_file_request: Some(Arc::new({
+                                    let tx_for_open = tx_for_chunks.clone();
+                                    move |path: PathBuf| {
+                                        tx_for_open
+                                            .try_send(StreamEvent::OpenFile(path))
+                                            .map_err(|err| {
+                                                format!(
+                                                    "Failed to dispatch open-file request to UI thread: {}",
+                                                    err
+                                                )
+                                            })
+                                    }
+                                })),
                             };
 
                             // Execute each tool call and show results
@@ -734,6 +748,9 @@ impl AgentChatPanel {
                                 panel.refresh_chat_history_list(cx);
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
+                            }
+                            StreamEvent::OpenFile(path) => {
+                                cx.dispatch_action(&crate::actions::OpenFile { path });
                             }
                         }
                     })

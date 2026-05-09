@@ -14,9 +14,11 @@ extern crate pulsar_rendering;
 use gpui::AppContext;
 
 mod level_editor;
+pub mod ai_sessions;
+pub mod ai_tools;
 
 // Re-export main types
-pub use level_editor::{LevelEditorPanel, SceneDatabase};
+pub use level_editor::{LevelEditorPanel, LevelEditorState, SceneDatabase, SceneObjectData};
 
 /// Get current locale
 pub fn locale() -> String {
