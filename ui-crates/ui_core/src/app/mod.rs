@@ -3,6 +3,7 @@
 mod agent_chat_panel;
 mod constructors;
 pub mod event_handlers;
+mod manual_tool_panel;
 mod open_editors;
 mod panel_window;
 mod render;

@@ -13,7 +13,10 @@ use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
-use super::{agent_chat_panel::AgentChatPanel, event_handlers, PulsarApp};
+use super::{
+    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel,
+    PulsarApp,
+};
 
 impl PulsarApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -125,8 +128,12 @@ impl PulsarApp {
 
         // Build left dock tabs before mutating DockArea to avoid re-entrant DockArea reads.
         let agent_chat_panel = cx.new(|cx| AgentChatPanel::new(window, cx));
+        let manual_tool_panel = cx.new(|cx| ManualToolPanel::new(window, cx));
         let left_dock = DockItem::tabs(
-            vec![Arc::new(agent_chat_panel) as Arc<dyn ui::dock::PanelView>],
+            vec![
+                Arc::new(agent_chat_panel) as Arc<dyn ui::dock::PanelView>,
+                Arc::new(manual_tool_panel) as Arc<dyn ui::dock::PanelView>,
+            ],
             Some(0),
             &weak_dock,
             window,

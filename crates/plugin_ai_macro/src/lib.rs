@@ -79,15 +79,22 @@ pub fn ai_tool(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Generate the AiToolDefinition const
     let definition_name = format_ident!("TOOL_DEF_{}", tool_name.to_uppercase());
 
+    // Build valid JSON string at macro expansion time so we avoid stringify!
+    // producing Rust syntax (e.g. `Some("category")`, `5000u32`) which is not JSON.
+    let schema_value: serde_json::Value = serde_json::from_str(&schema)
+        .unwrap_or_else(|_| serde_json::json!({"type": "object", "properties": {}}));
+    let definition_json = serde_json::json!({
+        "name": tool_name_snake,
+        "description": doc_comment,
+        "parameters": schema_value,
+        "category": category.as_deref().unwrap_or(""),
+        "timeout_ms": timeout_ms
+    })
+    .to_string();
+
     let definition = quote! {
         #[doc(hidden)]
-        pub const #definition_name: &str = stringify!({
-            "name": #tool_name_snake,
-            "description": #doc_comment,
-            "parameters": #schema,
-            "category": #category,
-            "timeout_ms": #timeout_ms
-        });
+        pub const #definition_name: &str = #definition_json;
     };
 
     // Generate the wrapper function that handles tool execution
@@ -259,7 +266,13 @@ fn generate_parameter_schema(
         .iter()
         .map(|(name, ty)| {
             let ty_str = quote!(#ty).to_string().replace(' ', "");
-            let json_type = match ty_str.as_str() {
+            // Unwrap Option<T> to determine the inner JSON type
+            let inner = if ty_str.starts_with("Option<") && ty_str.ends_with('>') {
+                &ty_str[7..ty_str.len() - 1]
+            } else {
+                ty_str.as_str()
+            };
+            let json_type = match inner {
                 "String" => "\"string\"",
                 "i32" | "i64" | "u32" | "u64" | "isize" | "usize" => "\"integer\"",
                 "f32" | "f64" => "\"number\"",
@@ -271,8 +284,13 @@ fn generate_parameter_schema(
         .collect::<Vec<_>>()
         .join(",");
 
+    // Only non-Option params are required
     let required = params
         .iter()
+        .filter(|(_, ty)| {
+            let ty_str = quote!(#ty).to_string().replace(' ', "");
+            !ty_str.starts_with("Option<")
+        })
         .map(|(n, _)| format!(r#""{}""#, n))
         .collect::<Vec<_>>()
         .join(",");
