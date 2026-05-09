@@ -201,6 +201,21 @@ impl ChatProvider for GithubCopilotProvider {
                 if let Some(tool_call_id) = &message.tool_call_id {
                     msg["tool_call_id"] = json!(tool_call_id);
                 }
+                // Add tool_calls if present (for assistant messages that called tools)
+                if !message.tool_calls.is_empty() {
+                    msg["tool_calls"] = json!(
+                        message.tool_calls.iter().map(|call| {
+                            json!({
+                                "id": call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.name,
+                                    "arguments": call.arguments_json.to_string(),
+                                }
+                            })
+                        }).collect::<Vec<_>>()
+                    );
+                }
                 msg
             })
             .collect();
@@ -311,6 +326,21 @@ impl ChatProvider for GithubCopilotProvider {
                 });
                 if let Some(tool_call_id) = &message.tool_call_id {
                     msg["tool_call_id"] = json!(tool_call_id);
+                }
+                // Add tool_calls if present (for assistant messages that called tools)
+                if !message.tool_calls.is_empty() {
+                    msg["tool_calls"] = json!(
+                        message.tool_calls.iter().map(|call| {
+                            json!({
+                                "id": call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.name,
+                                    "arguments": call.arguments_json.to_string(),
+                                }
+                            })
+                        }).collect::<Vec<_>>()
+                    );
                 }
                 msg
             })

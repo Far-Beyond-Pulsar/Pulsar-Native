@@ -111,6 +111,7 @@ impl AgentChatPanel {
                 summary_lines.join("\n")
             ),
             tool_call_id: None,
+            tool_calls: vec![],
         });
         compacted.extend(kept_dialog_reversed);
 
@@ -494,6 +495,7 @@ impl AgentChatPanel {
                                 role: ChatRole::Assistant,
                                 content: assistant_text.clone(),
                                 tool_call_id: None,
+                                tool_calls: response.tool_calls.clone(),
                             });
                             
                             // Show assistant text to user (if any)
@@ -566,6 +568,7 @@ impl AgentChatPanel {
                                     role: ChatRole::Tool,
                                     content: tool_result,
                                     tool_call_id: Some(tool_call_id),
+                                    tool_calls: vec![],
                                 });
                             }
                             

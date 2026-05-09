@@ -129,6 +129,8 @@ pub struct ChatMessage {
     pub content: String,
     /// Tool call ID for tool role messages (used for provider threading)
     pub tool_call_id: Option<String>,
+    /// Tool calls for assistant messages (when model decides to call tools)
+    pub tool_calls: Vec<ToolCall>,
 }
 
 #[derive(Clone, Debug)]
