@@ -11,11 +11,13 @@ mod scene_database;
 /// - Viewport: 3D rendering with camera controls
 /// - Asset Browser: Browse and preview project assets
 /// - Toolbar: Transform tools and quick actions
-/// - Scene Database: In-memory scene management with undo/redo
+/// - Scene Database: Unified write path — updates both SceneDb and Helio
+pub mod commands;
 mod ui;
 mod workspace_panels;
 mod world_settings_data;
 
+pub use commands::{execute_command, CommandResult, SceneCommand};
 pub use scene_database::SceneDatabase;
 pub use scene_database::SceneObjectData;
 pub use ui::LevelEditorPanel;

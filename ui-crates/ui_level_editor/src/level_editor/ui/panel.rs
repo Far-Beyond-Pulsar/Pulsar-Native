@@ -227,7 +227,12 @@ impl LevelEditorPanel {
 
         // Build the level editor state with the default scene populated into the shared SceneDb.
         // The renderer and all panels now read/write the same Arc<SceneDb>.
-        let state = LevelEditorState::new_with_scene_db(scene_db);
+        let mut state = LevelEditorState::new_with_scene_db(scene_db);
+
+        // Attach the GPU renderer to SceneDatabase so every add/remove/update
+        // immediately writes to BOTH SceneDb AND Helio (unified write path).
+        state.scene_database.set_renderer(gpu_engine.clone());
+
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
 
         // Poll for AI-driven scene mutations at 50 ms intervals.  AI tools

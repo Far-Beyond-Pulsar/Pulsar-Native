@@ -607,6 +607,82 @@ impl HelioRenderer {
 
     // ── Editor Integration ───────────────────────────────────────────────────
 
+    // ── Unified per-object scene mutations ────────────────────────────────────
+    // These are called directly by SceneDatabase so every write path (user
+    // actions, AI tools, content-drawer drops) hits Helio immediately instead
+    // of waiting for the next sync_scene() pass.
+    //
+    // If Helio isn't initialized yet (first frame) the operation returns false
+    // and sync_scene() will pick it up on the first ready frame.
+
+    /// Insert or update a single SceneDb object into the Helio scene.
+    /// Returns true if Helio was actually mutated (false = not initialized yet).
+    pub fn scene_add_or_update(&mut self, snap: &SceneObjectSnapshot) -> bool {
+        let ObjectType::Mesh(mt) = snap.object_type else { return false; };
+        if !snap.visible { return false; }
+
+        let inner = match &mut self.inner {
+            Some(i) => i,
+            None => return false,
+        };
+
+        let key = MeshKey::from(mt);
+
+        if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
+            let _ = inner.renderer.scene_mut().update_object_transform(obj_id, build_transform(snap));
+            return true;
+        }
+
+        let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
+        let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
+            let upload = mesh_for_key(key);
+            let mid = inner.renderer.scene_mut().insert_actor(SceneActor::mesh(upload.clone())).as_mesh().expect("mesh insert");
+            let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
+            let matid = inner.renderer.scene_mut().insert_material(mat);
+            (mid, matid)
+        });
+
+        if is_new_mesh_type {
+            let upload = mesh_for_key(key);
+            inner.scene_picker.register_mesh(mesh_id, &upload);
+        }
+
+        let transform = build_transform(snap);
+        let radius = Vec3::from_array(snap.scale).length() * 0.5;
+        let pos = transform.w_axis.truncate();
+
+        if let Some(obj_id) = inner.renderer.scene_mut().insert_actor(SceneActor::object(ObjectDescriptor {
+            mesh: mesh_id,
+            material: mat_id,
+            transform,
+            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+            flags: 0,
+            groups: GroupMask::NONE,
+            movability: Some(Movability::Movable),
+        })).as_object() {
+            inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
+            return true;
+        }
+        false
+    }
+
+    /// Remove a single SceneDb object from the Helio scene by its SceneDb ID.
+    /// Returns true if the object was found and removed.
+    pub fn scene_remove(&mut self, scene_db_id: &str) -> bool {
+        let inner = match &mut self.inner {
+            Some(i) => i,
+            None => return false,
+        };
+        if let Some((obj_id, _)) = inner.object_map.remove(scene_db_id) {
+            let _ = inner.renderer.scene_mut().remove_object(obj_id);
+            inner.scene_picker.rebuild_instances(inner.renderer.scene());
+            true
+        } else {
+            false
+        }
+    }
+
     /// Set the gizmo mode (Translate, Rotate, Scale).
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
         if let Some(inner) = &mut self.inner {

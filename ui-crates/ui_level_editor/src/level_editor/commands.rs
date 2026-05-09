@@ -1,15 +1,15 @@
 /// Scene command system — single execution path for all scene mutations.
 ///
-/// Both user-initiated GPUI actions and AI tool calls route through
-/// `execute_command()`.  This guarantees:
-///   • One place to add undo/redo later.
-///   • Consistent has_unsaved_changes / scene_revision tracking.
-///   • AI tools never hold the state write-lock during complex logic;
-///     they build a `SceneCommand` first, then apply it atomically.
+/// `SceneCommand` is a self-contained description of one editor operation.
+/// `execute_command()` applies it through `SceneDatabase`, which in turn
+/// writes to **both** `SceneDb` (the canonical store) and the Helio renderer
+/// (immediate viewport update) in one call.
+///
+/// Both user GPUI action handlers and AI tool implementations call
+/// `execute_command()`, giving a single auditable code path that is ready for
+/// undo / redo to be layered on top.
 
-use serde_json::Value;
-
-use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::LevelEditorState;
 
 // ── Command types ─────────────────────────────────────────────────────────────
@@ -18,31 +18,30 @@ use crate::level_editor::LevelEditorState;
 /// can be constructed on a background thread and executed on the UI thread.
 #[derive(Debug, Clone)]
 pub enum SceneCommand {
-    /// Add a new object.  `id` in `data` is ignored — the DB assigns one.
+    /// Add a new object.  The `id` field in `data` is ignored — SceneDb assigns it.
     AddObject {
         data: SceneObjectData,
         parent_id: Option<String>,
     },
     /// Remove an object and all descendants.
     RemoveObject { id: String },
-    /// Overwrite all fields of an existing object (by id).
+    /// Overwrite all mutable fields of an existing object (looked up by `data.id`).
     UpdateObject { data: SceneObjectData },
-    /// Move an object to a different parent (or root).
+    /// Move an object to a different parent (or root when `None`).
     ReparentObject {
         id: String,
         new_parent_id: Option<String>,
     },
-    /// Clone an existing object `count` times, optionally spacing copies.
-    /// `position_offset` is applied cumulatively: copy i → src_pos + offset * i.
+    /// Clone an object `count` times.
+    /// `position_offset` is applied cumulatively: copy i is at src_pos + offset × i.
     DuplicateObject {
         source_id: String,
         count: usize,
         position_offset: Option<[f32; 3]>,
     },
-    /// Change the editor selection (None clears it).
+    /// Change the editor selection (`None` clears it).
     SelectObject { id: Option<String> },
-    /// Set absolute world-space transform fields on an object.
-    /// Fields left as `None` are unchanged.
+    /// Set absolute world-space transform fields; `None` fields are unchanged.
     SetTransform {
         id: String,
         position: Option<[f32; 3]>,
@@ -51,16 +50,16 @@ pub enum SceneCommand {
     },
 }
 
-// ── Result ────────────────────────────────────────────────────────────────────
+// ── Outcome ───────────────────────────────────────────────────────────────────
 
 /// Outcome of executing a `SceneCommand`.
 #[derive(Debug)]
 pub struct CommandResult {
-    /// Whether any state changed (false → no-op, no scene_revision bump).
+    /// Whether any state was actually modified.
     pub changed: bool,
-    /// ID(s) of objects created or affected.
+    /// IDs of objects that were created or meaningfully affected.
     pub affected_ids: Vec<String>,
-    /// Human-readable reason for a no-op, for AI tool response payloads.
+    /// Human-readable reason when `changed` is false.
     pub no_op_reason: &'static str,
 }
 
@@ -75,18 +74,21 @@ impl CommandResult {
 
 // ── Executor ──────────────────────────────────────────────────────────────────
 
-/// Apply `cmd` to `state`.  Bumps `scene_revision` and sets
-/// `has_unsaved_changes` when the scene is actually modified.
+/// Apply `cmd` to `state`.
 ///
-/// Callers on the GPUI thread should follow up with `cx.notify()`.
-/// Callers on background threads (AI tools) rely on the revision-polling
-/// task in `LevelEditorPanel` to propagate the notification.
+/// Mutations go through `state.scene_database`, which writes to **both**
+/// `SceneDb` and the Helio renderer atomically.  `scene_revision` is bumped
+/// on every mutation, causing the polling task in `LevelEditorPanel` to notify
+/// the GPUI hierarchy and properties panels.
+///
+/// GPUI-thread callers (panel action handlers) should additionally call
+/// `cx.notify()` after this returns.
 pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResult {
     match cmd {
         SceneCommand::AddObject { data, parent_id } => {
-            let new_id = state.scene_database.add_object(data, parent_id);
+            let id = state.scene_database.add_object(data, parent_id);
             bump(state, true);
-            CommandResult::ok(vec![new_id])
+            CommandResult::ok(vec![id])
         }
 
         SceneCommand::RemoveObject { ref id } => {
@@ -103,10 +105,10 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
         }
 
         SceneCommand::UpdateObject { data } => {
-            let updated = state.scene_database.update_object(data.clone());
-            if updated {
+            let id = data.id.clone();
+            if state.scene_database.update_object(data) {
                 bump(state, true);
-                CommandResult::ok(vec![data.id])
+                CommandResult::ok(vec![id])
             } else {
                 CommandResult::noop("Object not found")
             }
@@ -123,21 +125,17 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
         }
 
         SceneCommand::DuplicateObject { ref source_id, count, position_offset } => {
-            let src_pos = state
-                .scene_database
-                .get_object(source_id)
-                .map(|o| o.transform.position);
-
+            let src_pos = state.scene_database.get_object(source_id).map(|o| o.transform.position);
             let mut created = Vec::new();
             for i in 0..count {
                 if let Some(new_id) = state.scene_database.duplicate_object(source_id) {
-                    if let (Some(offset), Some(src)) = (position_offset, src_pos) {
+                    if let (Some(off), Some(src)) = (position_offset, src_pos) {
                         let n = (i + 1) as f32;
                         if let Some(mut copy) = state.scene_database.get_object(&new_id) {
                             copy.transform.position = [
-                                src[0] + offset[0] * n,
-                                src[1] + offset[1] * n,
-                                src[2] + offset[2] * n,
+                                src[0] + off[0] * n,
+                                src[1] + off[1] * n,
+                                src[2] + off[2] * n,
                             ];
                             state.scene_database.update_object(copy);
                         }
@@ -147,7 +145,6 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
                     break;
                 }
             }
-
             if created.is_empty() {
                 CommandResult::noop("Source object not found")
             } else {
@@ -171,13 +168,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             if let Some(r) = rotation { if obj.transform.rotation != r { obj.transform.rotation = r; changed = true; } }
             if let Some(s) = scale    { if obj.transform.scale != s    { obj.transform.scale = s;    changed = true; } }
 
-            if changed && state.scene_database.update_object(obj.clone()) {
+            if !changed {
+                return CommandResult::noop("No transform fields changed");
+            }
+            if state.scene_database.update_object(obj.clone()) {
                 bump(state, true);
                 CommandResult::ok(vec![id.clone()])
-            } else if !changed {
-                CommandResult::noop("No transform fields changed")
             } else {
-                CommandResult::noop("Transform update failed in scene database")
+                CommandResult::noop("Transform update failed")
             }
         }
     }
