@@ -669,10 +669,14 @@ pub fn on_tab_panel_event(
             // app.state.trait_editors.retain(|e| e.entity_id() != *entity_id);
             // app.state.alias_editors.retain(|e| e.entity_id() != *entity_id);
 
+            // Keep engine-level open-editor snapshot in sync.
+            app.refresh_open_editor_snapshot(cx);
             // Update Discord presence when tab is closed
             app.update_discord_presence(cx);
         }
         PanelEvent::TabChanged { active_index: _ } => {
+            // Keep engine-level open-editor snapshot in sync.
+            app.refresh_open_editor_snapshot(cx);
             // Update Discord presence when active tab changes
             app.update_discord_presence(cx);
         }

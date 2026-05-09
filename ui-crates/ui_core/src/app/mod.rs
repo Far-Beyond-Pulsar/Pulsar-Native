@@ -3,6 +3,7 @@
 mod agent_chat_panel;
 mod constructors;
 pub mod event_handlers;
+mod open_editors;
 mod panel_window;
 mod render;
 mod state;
@@ -86,6 +87,27 @@ impl PulsarApp {
 
     fn on_open_file(&mut self, action: &OpenFile, window: &mut Window, cx: &mut Context<Self>) {
         self.open_path(action.path.clone(), window, cx);
+    }
+
+    fn on_activate_open_editor(
+        &mut self,
+        action: &ActivateOpenEditor,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let activated = self.state.center_tabs.update(cx, |tabs, cx| {
+            if action.index >= tabs.all_panels().len() {
+                return false;
+            }
+            tabs.set_active_tab(action.index, window, cx);
+            true
+        });
+
+        if !activated {
+            tracing::warn!("ActivateOpenEditor index out of range: {}", action.index);
+        }
+
+        self.refresh_open_editor_snapshot(cx);
     }
 
     fn on_open_settings(

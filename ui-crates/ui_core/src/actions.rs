@@ -51,3 +51,10 @@ pub struct ToggleCommandPalette;
 pub struct OpenFile {
     pub path: PathBuf,
 }
+
+/// Action to activate an already-open editor tab by index
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = pulsar_app)]
+pub struct ActivateOpenEditor {
+    pub index: usize,
+}

@@ -477,6 +477,11 @@ impl PulsarApp {
         // own focus chain — which is a sibling of PulsarApp, not a descendant.
         app.state.focus_handle.focus(window);
 
+        // Populate the open-editor snapshot so the AI can see tabs that were created
+        // during construction (e.g. the default level editor) without waiting for a
+        // tab-change or file-open event.
+        app.refresh_open_editor_snapshot(cx);
+
         app
     }
 

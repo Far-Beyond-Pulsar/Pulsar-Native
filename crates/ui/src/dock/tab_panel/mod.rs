@@ -214,6 +214,20 @@ impl TabPanel {
         }
     }
 
+    /// Returns all open panels in this tab strip, including inactive ones.
+    pub fn all_panels(&self) -> Vec<Arc<dyn PanelView>> {
+        self.panels.clone()
+    }
+
+    /// Returns the currently active tab index if there is at least one open panel.
+    pub fn active_tab_index(&self) -> Option<usize> {
+        if self.panels.is_empty() {
+            None
+        } else {
+            Some(self.active_ix)
+        }
+    }
+
     /// Public method to set the active tab by index.
     pub fn set_active_tab(&mut self, ix: usize, window: &mut Window, cx: &mut Context<Self>) {
         if ix == self.active_ix {

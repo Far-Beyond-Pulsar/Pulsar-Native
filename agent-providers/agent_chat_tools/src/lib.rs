@@ -15,6 +15,10 @@ pub struct ToolContext {
     pub current_file: Option<PathBuf>,
     /// Optional callback to open a file through the app's default editor flow.
     pub open_file_request: Option<Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>>,
+    /// Optional callback to query active/inactive open editors tracked by the engine.
+    pub query_open_editors: Option<Arc<dyn Fn() -> Result<Value, String> + Send + Sync>>,
+    /// Optional callback to activate one of the already-open editor tabs by index.
+    pub activate_open_editor_request: Option<Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>>,
 }
 
 pub trait ChatTool: Send + Sync {
@@ -35,6 +39,8 @@ impl ToolRegistry {
     pub fn with_default_tools() -> Self {
         let mut this = Self::new();
         this.register(Arc::new(OpenFileInDefaultEditorTool));
+        this.register(Arc::new(QueryOpenEditorsTool));
+        this.register(Arc::new(ActivateOpenEditorTool));
         this.register(Arc::new(QueryAvailableFileTypesTool));
         this.register(Arc::new(QueryFileEditorsTool));
         this.register(Arc::new(QueryPluginToolsTool));
@@ -65,6 +71,25 @@ impl ToolRegistry {
                         "file_path": { "type": "string" }
                     },
                     "required": ["file_path"]
+                }
+            }),
+            json!({
+                "name": "query_open_editors",
+                "description": "List already open editors and indicate which one is active versus inactive.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }),
+            json!({
+                "name": "activate_open_editor",
+                "description": "Activate one of the already-open editors by its index from query_open_editors.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "index": { "type": "integer", "minimum": 0 }
+                    },
+                    "required": ["index"]
                 }
             }),
             json!({
@@ -149,6 +174,47 @@ impl ChatTool for OpenFileInDefaultEditorTool {
             "ok": true,
             "file_path": full.display().to_string(),
             "opened": true,
+        }))
+    }
+}
+
+struct QueryOpenEditorsTool;
+impl ChatTool for QueryOpenEditorsTool {
+    fn name(&self) -> &'static str {
+        "query_open_editors"
+    }
+
+    fn execute(&self, _args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let callback = ctx
+            .query_open_editors
+            .as_ref()
+            .ok_or_else(|| anyhow!("Open-editors callback unavailable in this context"))?;
+        callback().map_err(|err| anyhow!(err))
+    }
+}
+
+struct ActivateOpenEditorTool;
+impl ChatTool for ActivateOpenEditorTool {
+    fn name(&self) -> &'static str {
+        "activate_open_editor"
+    }
+
+    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
+        let index = args
+            .get("index")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| anyhow!("activate_open_editor.index is required"))? as usize;
+
+        let callback = ctx
+            .activate_open_editor_request
+            .as_ref()
+            .ok_or_else(|| anyhow!("Activate-open-editor callback unavailable in this context"))?;
+        callback(index).map_err(|err| anyhow!(err))?;
+
+        Ok(json!({
+            "ok": true,
+            "index": index,
+            "activated": true,
         }))
     }
 }

@@ -3,13 +3,40 @@
 //! This module uses the plugin system exclusively - NO match statements.
 //! All editors (built-in and plugin-based) are handled through the trait system.
 
-use gpui::{Context, Window};
+use gpui::{App, Context, Window};
 use std::path::PathBuf;
 use ui_file_manager::FileSelected;
 
-use super::PulsarApp;
+use super::{open_editors::OpenEditorInfo, PulsarApp};
 
 impl PulsarApp {
+    pub(crate) fn refresh_open_editor_snapshot(&self, cx: &App) {
+        let active_index = self.state.center_tabs.read(cx).active_tab_index();
+        let snapshot = self
+            .state
+            .center_tabs
+            .read(cx)
+            .all_panels()
+            .into_iter()
+            .enumerate()
+            .map(|(index, panel)| {
+                let panel_name = panel.panel_name(cx).to_string();
+                let tab_name = panel
+                    .tab_name(cx)
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|| panel_name.clone());
+                OpenEditorInfo {
+                    index,
+                    panel_name,
+                    tab_name,
+                    is_active: active_index == Some(index),
+                }
+            })
+            .collect::<Vec<_>>();
+
+        super::open_editors::set_snapshot(snapshot);
+    }
+
     /// Open a path in the appropriate editor using the plugin system.
     ///
     /// This is the ONLY method needed for file opening - the plugin system handles everything.
@@ -28,6 +55,7 @@ impl PulsarApp {
                         self.state.center_tabs.update(cx, |tabs, cx| {
                             tabs.add_panel(panel, window, cx);
                         });
+                        self.refresh_open_editor_snapshot(cx);
                     }
                     Err(e) => {
                         tracing::error!("Failed to open file {:?}: {}", path, e);

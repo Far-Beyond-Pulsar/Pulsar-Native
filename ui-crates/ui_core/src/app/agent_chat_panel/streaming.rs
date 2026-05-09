@@ -378,6 +378,7 @@ impl AgentChatPanel {
         enum StreamEvent {
             Chunk(String),
             OpenFile(PathBuf),
+            ActivateOpenEditor(usize),
             Finished(Result<agent_chat_core::ChatResponse, String>),
         }
 
@@ -556,6 +557,22 @@ impl AgentChatPanel {
                                             .map_err(|err| {
                                                 format!(
                                                     "Failed to dispatch open-file request to UI thread: {}",
+                                                    err
+                                                )
+                                            })
+                                    }
+                                })),
+                                query_open_editors: Some(Arc::new(|| {
+                                    Ok(crate::app::open_editors::snapshot_json())
+                                })),
+                                activate_open_editor_request: Some(Arc::new({
+                                    let tx_for_activate = tx_for_chunks.clone();
+                                    move |index: usize| {
+                                        tx_for_activate
+                                            .try_send(StreamEvent::ActivateOpenEditor(index))
+                                            .map_err(|err| {
+                                                format!(
+                                                    "Failed to dispatch activate-open-editor request to UI thread: {}",
                                                     err
                                                 )
                                             })
@@ -751,6 +768,9 @@ impl AgentChatPanel {
                             }
                             StreamEvent::OpenFile(path) => {
                                 cx.dispatch_action(&crate::actions::OpenFile { path });
+                            }
+                            StreamEvent::ActivateOpenEditor(index) => {
+                                cx.dispatch_action(&crate::actions::ActivateOpenEditor { index });
                             }
                         }
                     })
