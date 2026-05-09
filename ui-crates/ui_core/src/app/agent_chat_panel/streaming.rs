@@ -510,12 +510,20 @@ impl AgentChatPanel {
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(assistant_text));
                             }
                             
-                            // Show tool calls as messages to user (italicized in UI)
-                            let tool_calls_text = response.tool_calls
+                            // Show exact tool calls (name + id + args) before execution for debugging.
+                            let tool_calls_text = response
+                                .tool_calls
                                 .iter()
-                                .map(|call| format!("*Calling {}*", call.name))
+                                .map(|call| {
+                                    let args_pretty = serde_json::to_string_pretty(&call.arguments_json)
+                                        .unwrap_or_else(|_| call.arguments_json.to_string());
+                                    format!(
+                                        "*Calling {}*\n`id`: {}\n`args`:\n```json\n{}\n```",
+                                        call.name, call.id, args_pretty
+                                    )
+                                })
                                 .collect::<Vec<_>>()
-                                .join("\n");
+                                .join("\n\n");
                             let _ = tx_for_chunks.try_send(StreamEvent::Chunk(format!("\n\n{}\n\n", tool_calls_text)));
                             
                             // Create tool context for execution
