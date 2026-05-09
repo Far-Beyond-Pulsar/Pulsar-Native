@@ -1,6 +1,6 @@
 use agent_chat_core::{
     AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, PromptTokenRequest, ProviderAvailability, ProviderEnvironment,
+    ChatRole, ModelDescriptor, ProviderAvailability, ProviderEnvironment,
     ProviderKind, ProviderMetadata, ToolCall,
 };
 use anyhow::{anyhow, Context};
@@ -31,17 +31,24 @@ impl DockerModelRunnerProvider {
         }]
     }
 
-    fn resolve_model(token: &str, request_model: &str, env: &dyn ProviderEnvironment) -> String {
-        let configured = token.trim();
-        if !configured.is_empty() {
-            return configured.to_string();
-        }
+    fn looks_like_model_id(value: &str) -> bool {
+        let value = value.trim();
+        !value.is_empty()
+            && !value.contains("http://")
+            && !value.contains("https://")
+            && !value.contains("/engines/v1")
+            && !value.contains("/models")
+            && !value.contains(' ')
+    }
+
+    fn resolve_model(request_model: &str, env: &dyn ProviderEnvironment) -> String {
         if let Some(env_model) = env.get_env(DMR_MODEL_ENV) {
             let env_model = env_model.trim().to_string();
-            if !env_model.is_empty() {
+            if Self::looks_like_model_id(&env_model) {
                 return env_model;
             }
         }
+
         request_model.to_string()
     }
 
@@ -350,17 +357,12 @@ impl ChatProvider for DockerModelRunnerProvider {
     }
 
     fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        if env.get_env(DMR_MODEL_ENV).is_some() {
-            ProviderAvailability::ready()
-        } else {
-            ProviderAvailability::requires_auth(
-                "Docker AI requires model selection. Click Use Token and enter your model ID.",
-            )
-        }
+        let _ = env;
+        ProviderAvailability::ready()
     }
 
     fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![AuthMethod::PromptToken]
+        Vec::new()
     }
 
     fn authenticate(
@@ -368,31 +370,9 @@ impl ChatProvider for DockerModelRunnerProvider {
         method: AuthMethod,
         host: &mut dyn AuthHost,
     ) -> anyhow::Result<AuthResult> {
-        match method {
-            AuthMethod::PromptToken => {
-                let token = host.prompt_for_token(PromptTokenRequest {
-                    title: "Docker AI Setup".to_string(),
-                    prompt: "Enter Docker model ID (for example: ai/gemma4:4B). Get it with: curl http://localhost:12434/engines/v1/models".to_string(),
-                    placeholder: Some("ai/gemma4:4B".to_string()),
-                    env_var_hint: Some(DMR_MODEL_ENV.to_string()),
-                })?;
-
-                Ok(match token {
-                    Some(token) => {
-                        let model = token.trim();
-                        if model.is_empty() {
-                            AuthResult::Cancelled
-                        } else {
-                            AuthResult::Authenticated {
-                                token: model.to_string(),
-                            }
-                        }
-                    }
-                    None => AuthResult::Cancelled,
-                })
-            }
-            AuthMethod::BrowserDeviceCode => Ok(AuthResult::Cancelled),
-        }
+        let _ = method;
+        let _ = host;
+        Ok(AuthResult::Cancelled)
     }
 
     fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
@@ -444,7 +424,8 @@ impl ChatProvider for DockerModelRunnerProvider {
 
     fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
         let env = agent_chat_core::ProcessEnvironment;
-        let model = Self::resolve_model(token, &request.model, &env);
+        let _ = token;
+        let model = Self::resolve_model(&request.model, &env);
         let payload = Self::build_request_payload(&model, request);
 
         let response = self
@@ -478,7 +459,8 @@ impl ChatProvider for DockerModelRunnerProvider {
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
         let env = agent_chat_core::ProcessEnvironment;
-        let model = Self::resolve_model(token, &request.model, &env);
+        let _ = token;
+        let model = Self::resolve_model(&request.model, &env);
         let mut payload = Self::build_request_payload(&model, request);
         payload["stream"] = json!(true);
 
