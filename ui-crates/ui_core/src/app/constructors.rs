@@ -14,8 +14,7 @@ use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
 use super::{
-    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel,
-    PulsarApp,
+    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
 };
 
 impl PulsarApp {

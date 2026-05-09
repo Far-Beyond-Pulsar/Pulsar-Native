@@ -1,10 +1,10 @@
 use agent_chat_tools::{ToolContext, ToolRegistry};
+use gpui::prelude::FluentBuilder as _;
 use gpui::{
     div, px, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
-use gpui::prelude::FluentBuilder as _;
 use serde_json::{json, Number, Value};
 use std::{
     collections::{HashMap, HashSet},
@@ -181,7 +181,10 @@ impl ManualToolPanel {
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
-            let parameters = schema.get("parameters").cloned().unwrap_or_else(|| json!({}));
+            let parameters = schema
+                .get("parameters")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             catalog.push(ToolOption {
                 display_name: name.clone(),
                 tool_name: name,
@@ -228,11 +231,7 @@ impl ManualToolPanel {
         self.selected_tool_key = Some(key.clone());
         self.selected_plugin_id = opt.plugin_id.clone();
         self.selected_tool_description = opt.description.clone();
-        self.dynamic_fields = self
-            .fields_by_key
-            .get(&key)
-            .cloned()
-            .unwrap_or_default();
+        self.dynamic_fields = self.fields_by_key.get(&key).cloned().unwrap_or_default();
         cx.notify();
     }
 
@@ -295,8 +294,7 @@ impl ManualToolPanel {
                 } else {
                     format!("{} — {}", name, description)
                 };
-                let input =
-                    cx.new(|cx| InputState::new(window, cx).placeholder(&placeholder));
+                let input = cx.new(|cx| InputState::new(window, cx).placeholder(&placeholder));
                 DynamicField {
                     required: required.contains(&name),
                     name,
@@ -355,7 +353,9 @@ impl ManualToolPanel {
                 continue;
             }
             match Self::parse_field_value(field.kind, &raw) {
-                Ok(v) => { args.insert(field.name.clone(), v); }
+                Ok(v) => {
+                    args.insert(field.name.clone(), v);
+                }
                 Err(err) => {
                     self.result_text = format!("Invalid value for '{}': {}", field.name, err);
                     cx.notify();
@@ -366,11 +366,7 @@ impl ManualToolPanel {
 
         // ── Plugin tool path ──────────────────────────────────────────────
         if let Some(plugin_id) = self.selected_plugin_id.clone() {
-            let tool_name = key
-                .splitn(4, "::")
-                .nth(2)
-                .unwrap_or("")
-                .to_string();
+            let tool_name = key.splitn(4, "::").nth(2).unwrap_or("").to_string();
 
             let file_path_raw = self.file_path_input.read(cx).text().to_string();
             let file_path_raw = file_path_raw.trim().to_string();
@@ -384,18 +380,23 @@ impl ManualToolPanel {
                     .map(PathBuf::from)
                     .unwrap_or_else(|| PathBuf::from("."));
                 let p = PathBuf::from(&file_path_raw);
-                if p.is_absolute() { p } else { root.join(p) }
+                if p.is_absolute() {
+                    p
+                } else {
+                    root.join(p)
+                }
             };
 
-            let result = plugin_manager::global()
-                .and_then(|lock| lock.read().ok().map(|m| {
+            let result = plugin_manager::global().and_then(|lock| {
+                lock.read().ok().map(|m| {
                     m.execute_plugin_ai_tool(
                         &plugin_editor_api::PluginId::new(&plugin_id),
                         &file_path,
                         &tool_name,
                         Value::Object(args),
                     )
-                }));
+                })
+            });
 
             self.result_text = match result {
                 Some(Ok(v)) => serde_json::to_string_pretty(&v).unwrap_or_else(|_| v.to_string()),
@@ -411,23 +412,35 @@ impl ManualToolPanel {
         let file_path_raw = self.file_path_input.read(cx).text().to_string();
         let first_file_path = {
             let raw = file_path_raw.trim().to_string();
-            if raw.is_empty() { None } else { Some(raw) }
+            if raw.is_empty() {
+                None
+            } else {
+                Some(raw)
+            }
         };
 
         // Action-backed shortcut tools
         if tool_name == "open_file_in_default_editor" {
             if let Some(ref path) = first_file_path {
                 let path_buf = PathBuf::from(path);
-                cx.dispatch_action(&crate::actions::OpenFile { path: path_buf.clone() });
+                cx.dispatch_action(&crate::actions::OpenFile {
+                    path: path_buf.clone(),
+                });
                 self.result_text = json!({"ok": true, "dispatched": "OpenFile", "path": path_buf.display().to_string()}).to_string();
                 cx.notify();
                 return;
             }
         }
         if tool_name == "activate_open_editor" {
-            if let Some(index) = args.get("index").and_then(|v| v.as_u64()).map(|v| v as usize) {
+            if let Some(index) = args
+                .get("index")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize)
+            {
                 cx.dispatch_action(&crate::actions::ActivateOpenEditor { index });
-                self.result_text = json!({"ok": true, "dispatched": "ActivateOpenEditor", "index": index}).to_string();
+                self.result_text =
+                    json!({"ok": true, "dispatched": "ActivateOpenEditor", "index": index})
+                        .to_string();
                 cx.notify();
                 return;
             }
@@ -524,13 +537,11 @@ impl Render for ManualToolPanel {
         let file_path_row = v_flex()
             .w_full()
             .gap_1()
-            .child(
-                div().text_xs().child(if is_plugin_tool {
-                    "File path (context for this tool) *"
-                } else {
-                    "File path (optional context)"
-                }),
-            )
+            .child(div().text_xs().child(if is_plugin_tool {
+                "File path (context for this tool) *"
+            } else {
+                "File path (optional context)"
+            }))
             .child(TextInput::new(&self.file_path_input).w_full());
 
         let mut dynamic_section = v_flex().w_full().gap_2();
