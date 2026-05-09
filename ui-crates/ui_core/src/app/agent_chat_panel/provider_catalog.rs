@@ -505,6 +505,17 @@ impl AgentChatPanel {
                 ]),
             },
             ProviderDefinition {
+                id: "docker_model_runner",
+                label: "Docker AI",
+                kind: ProviderKind::Local,
+                endpoint: "http://localhost:12434/engines/v1",
+                models: Arc::new(vec![ModelDefinition {
+                    id: "ai/gemma4:4B",
+                    label: "Gemma 4 4B (Docker)",
+                    supports_tools: true,
+                }]),
+            },
+            ProviderDefinition {
                 id: "lmstudio",
                 label: "LM Studio",
                 kind: ProviderKind::Local,

@@ -14,6 +14,7 @@ use agent_chat_core::{ChatMessage, ChatRole, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProvider;
 use agent_provider_demo_random::DemoRandomProvider;
+use agent_provider_docker_model_runner::DockerModelRunnerProvider;
 use agent_provider_gemini::GeminiProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use agent_provider_groq::GroqProvider;
@@ -107,6 +108,7 @@ impl AgentChatPanel {
         provider_registry.register(Arc::new(TogetherProvider::new()));
         provider_registry.register(Arc::new(MistralProvider::new()));
         provider_registry.register(Arc::new(GeminiProvider::new()));
+        provider_registry.register(Arc::new(DockerModelRunnerProvider::new()));
         for provider in &provider_catalog {
             if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some() {
                 continue;
