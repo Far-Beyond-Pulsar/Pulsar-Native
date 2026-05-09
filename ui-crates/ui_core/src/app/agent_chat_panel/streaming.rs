@@ -601,15 +601,15 @@ impl AgentChatPanel {
 
                                 // Show tool result to user (enough to be meaningful)
                                 let preview = if tool_result.len() > 800 {
-                                    format!("{}… (truncated, full result forwarded to AI)", &tool_result[..800])
+                                    format!(
+                                        "{}… (truncated, full result forwarded to AI)",
+                                        &tool_result[..800]
+                                    )
                                 } else {
                                     tool_result.clone()
                                 };
-                                let result_display = format!(
-                                    "**{}**: {}\n\n",
-                                    tool_call.name,
-                                    preview
-                                );
+                                let result_display =
+                                    format!("**{}**: {}\n\n", tool_call.name, preview);
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
 
                                 // Store tool result with call ID for proper threading

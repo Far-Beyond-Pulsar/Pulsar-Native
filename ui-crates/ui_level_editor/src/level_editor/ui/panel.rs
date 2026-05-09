@@ -19,10 +19,10 @@ use ui_common::StatusBar;
 
 use super::actions::*;
 use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
+use crate::ai_sessions;
 use crate::level_editor::scene_database::{
     LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
-use crate::ai_sessions;
 use engine_backend::scene::SceneDb;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -462,66 +462,33 @@ impl LevelEditorPanel {
             .render(cx)
     }
 
-    // Helper method to sync GPUI gizmo state to Helio's pending command queue.
-    // Use a blocking lock so key-driven tool swaps are never dropped mid-frame.
-    fn sync_gizmo_to_helio(&mut self) {
-        if let Ok(engine) = self.gpu_engine.lock() {
-            if let Some(ref helio_renderer) = engine.helio_renderer {
-                let state = self.shared_state.read();
-
-                // Map TransformTool to GizmoType for SceneDB
-                use engine_backend::scene::GizmoType as SceneGizmoType;
-                let gizmo_type = match state.current_tool {
-                    TransformTool::Select => SceneGizmoType::None,
-                    TransformTool::Move => SceneGizmoType::Translate,
-                    TransformTool::Rotate => SceneGizmoType::Rotate,
-                    TransformTool::Scale => SceneGizmoType::Scale,
-                };
-                helio_renderer.scene_db.set_gizmo_type(gizmo_type);
-
-                // Write the new gizmo mode into the pending slot.
-                // The render thread drains this at the start of the next frame — no lock contention.
-                use engine_backend::GizmoMode;
-                let helio_mode = match state.current_tool {
-                    TransformTool::Select => GizmoMode::Translate,
-                    TransformTool::Move => GizmoMode::Translate,
-                    TransformTool::Rotate => GizmoMode::Rotate,
-                    TransformTool::Scale => GizmoMode::Scale,
-                };
-                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
-                    *pending = Some(helio_mode);
-                }
-
-                tracing::info!("[GIZMO SYNC] Queued gizmo mode: {:?}", helio_mode);
-            }
+    fn tool_to_gizmo(
+        tool: TransformTool,
+    ) -> (engine_backend::scene::GizmoType, engine_backend::GizmoMode) {
+        use engine_backend::scene::GizmoType as SceneGizmoType;
+        use engine_backend::GizmoMode;
+        match tool {
+            TransformTool::Select => (SceneGizmoType::None, GizmoMode::Translate),
+            TransformTool::Move => (SceneGizmoType::Translate, GizmoMode::Translate),
+            TransformTool::Rotate => (SceneGizmoType::Rotate, GizmoMode::Rotate),
+            TransformTool::Scale => (SceneGizmoType::Scale, GizmoMode::Scale),
         }
     }
 
-    // Queue a specific gizmo mode directly for the requested tool.
-    // This avoids depending on any intermediate UI state reads.
-    fn queue_gizmo_mode_for_tool(&mut self, tool: TransformTool) {
-        if let Ok(engine) = self.gpu_engine.lock() {
-            if let Some(ref helio_renderer) = engine.helio_renderer {
-                use engine_backend::scene::GizmoType as SceneGizmoType;
-                let gizmo_type = match tool {
-                    TransformTool::Select => SceneGizmoType::None,
-                    TransformTool::Move => SceneGizmoType::Translate,
-                    TransformTool::Rotate => SceneGizmoType::Rotate,
-                    TransformTool::Scale => SceneGizmoType::Scale,
-                };
-                helio_renderer.scene_db.set_gizmo_type(gizmo_type);
+    fn sync_gizmo_to_helio(&mut self) {
+        let tool = self.shared_state.read().current_tool;
+        let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            engine.set_scene_gizmo_type(scene_type);
+            engine.queue_gizmo_mode(helio_mode);
+        }
+    }
 
-                use engine_backend::GizmoMode;
-                let helio_mode = match tool {
-                    TransformTool::Select => GizmoMode::Translate,
-                    TransformTool::Move => GizmoMode::Translate,
-                    TransformTool::Rotate => GizmoMode::Rotate,
-                    TransformTool::Scale => GizmoMode::Scale,
-                };
-                if let Ok(mut pending) = helio_renderer.pending_gizmo_mode.lock() {
-                    *pending = Some(helio_mode);
-                }
-            }
+    fn queue_gizmo_mode_for_tool(&mut self, tool: TransformTool) {
+        let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            engine.set_scene_gizmo_type(scene_type);
+            engine.queue_gizmo_mode(helio_mode);
         }
     }
 
@@ -592,24 +559,28 @@ impl LevelEditorPanel {
     }
 
     fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
-        let objects_count = self.shared_state.read().scene_objects().len();
-        let new_object = SceneObjectData {
-            id: format!("object_{}", objects_count + 1),
-            name: "New Object".to_string(),
-            object_type: ObjectType::Empty,
-            transform: Transform::default(),
-            visible: true,
-            locked: false,
-            parent: None,
-            children: vec![],
-            components: vec![],
-            scene_path: String::new(),
-        };
-        self.shared_state
-            .read()
-            .scene_database
-            .add_object(new_object, None);
-        self.shared_state.write().has_unsaved_changes = true;
+        use crate::level_editor::commands::{execute_command, SceneCommand};
+        let mut state = self.shared_state.write();
+        execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: "New Object".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    components: vec![],
+                    scene_path: String::new(),
+                },
+                parent_id: None,
+            },
+        );
+        drop(state);
+        self.notify_sub_panels(cx);
         cx.notify();
     }
 
@@ -619,60 +590,63 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        use crate::level_editor::commands::{execute_command, SceneCommand};
         let object_type = match action.object_type.as_str() {
             "Mesh" => ObjectType::Mesh(MeshType::Cube),
             "Light" => ObjectType::Light(LightType::Directional),
             "Camera" => ObjectType::Camera,
             _ => ObjectType::Empty,
         };
-
-        let objects_count = self.shared_state.read().scene_objects().len();
-        let new_object = SceneObjectData {
-            id: format!(
-                "{}_{}",
-                action.object_type.to_lowercase(),
-                objects_count + 1
-            ),
-            name: format!("New {}", action.object_type),
-            object_type,
-            transform: Transform::default(),
-            visible: true,
-            locked: false,
-            parent: None,
-            children: vec![],
-            components: vec![],
-            scene_path: String::new(),
-        };
-        self.shared_state
-            .read()
-            .scene_database
-            .add_object(new_object, None);
-        self.shared_state.write().has_unsaved_changes = true;
+        let mut state = self.shared_state.write();
+        execute_command(
+            &mut state,
+            SceneCommand::AddObject {
+                data: SceneObjectData {
+                    id: String::new(),
+                    name: format!("New {}", action.object_type),
+                    object_type,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    components: vec![],
+                    scene_path: String::new(),
+                },
+                parent_id: None,
+            },
+        );
+        drop(state);
         self.notify_sub_panels(cx);
         cx.notify();
     }
 
     fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
-        let selected_id = self.shared_state.read().selected_object();
-        if let Some(id) = selected_id {
-            self.shared_state.read().scene_database.remove_object(&id);
-            self.shared_state.write().has_unsaved_changes = true;
-
-            // Deselect after deletion
-            self.shared_state.write().select_object(None);
-            self.sync_gizmo_to_helio(); // Clear gizmo after deletion
+        use crate::level_editor::commands::{execute_command, SceneCommand};
+        let selected = self.shared_state.read().selected_object();
+        if let Some(id) = selected {
+            let mut state = self.shared_state.write();
+            execute_command(&mut state, SceneCommand::RemoveObject { id });
+            drop(state);
+            self.sync_gizmo_to_helio();
         }
         self.notify_sub_panels(cx);
         cx.notify();
     }
 
     fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(id) = self.shared_state.read().selected_object() {
-            self.shared_state
-                .read()
-                .scene_database
-                .duplicate_object(&id);
-            self.shared_state.write().has_unsaved_changes = true;
+        use crate::level_editor::commands::{execute_command, SceneCommand};
+        let selected = self.shared_state.read().selected_object();
+        if let Some(id) = selected {
+            let mut state = self.shared_state.write();
+            execute_command(
+                &mut state,
+                SceneCommand::DuplicateObject {
+                    source_id: id,
+                    count: 1,
+                    position_offset: None,
+                },
+            );
         }
         self.notify_sub_panels(cx);
         cx.notify();
@@ -1089,39 +1063,14 @@ impl Render for LevelEditorPanel {
             cx.notify();
         }
 
-        // Sync gizmo tool state and hierarchy selection to Helio.
-        // NOTE: Viewport clicks use atomic selection (select_object_atomic) which updates
-        // both SceneDb and Helio immediately, so no sync needed for those.
-        // Hierarchy clicks only update SceneDb, so we sync SceneDb → Helio here (one-way).
+        // Sync selection and gizmo state to Helio each frame via GpuRenderer API.
         if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
-            if let Some(ref mut helio_renderer) = engine_guard.helio_renderer {
-                let state = self.shared_state.read();
-
-                // Simple one-way sync: SceneDb → Helio (for hierarchy clicks and UI updates)
-                let scene_db_selected = helio_renderer.scene_db.get_selected_id();
-                let helio_selected = helio_renderer.get_selected_scene_db_id();
-
-                if scene_db_selected != helio_selected {
-                    if let Some(ref db_id) = scene_db_selected {
-                        helio_renderer.select_by_scene_db_id(db_id);
-                    } else {
-                        helio_renderer.deselect();
-                    }
-                }
-
-                // Sync gizmo tool state
-                use engine_backend::scene::GizmoType as SceneGizmoType;
-                let gizmo_type = match state.current_tool {
-                    TransformTool::Select => SceneGizmoType::None,
-                    TransformTool::Move => SceneGizmoType::Translate,
-                    TransformTool::Rotate => SceneGizmoType::Rotate,
-                    TransformTool::Scale => SceneGizmoType::Scale,
-                };
-
-                if gizmo_type != helio_renderer.scene_db.get_gizmo_state().gizmo_type {
-                    helio_renderer.scene_db.set_gizmo_type(gizmo_type);
-                }
+            let tool = self.shared_state.read().current_tool;
+            let (scene_type, _) = Self::tool_to_gizmo(tool);
+            if scene_type != engine_guard.get_scene_gizmo_type() {
+                engine_guard.set_scene_gizmo_type(scene_type);
             }
+            engine_guard.sync_selection_to_helio();
         }
 
         v_flex()
@@ -1197,14 +1146,8 @@ impl Render for LevelEditorPanel {
                         // Update UI state unconditionally — always clear GPUI selection.
                         this.shared_state.write().select_object(None);
                         // Signal the render thread to call editor_state.deselect() next frame.
-                        // This is written directly to the Arc<AtomicBool> — no engine lock needed.
                         if let Ok(engine) = this.gpu_engine.lock() {
-                            if let Some(ref helio_renderer) = engine.helio_renderer {
-                                use std::sync::atomic::Ordering;
-                                helio_renderer
-                                    .pending_deselect
-                                    .store(true, Ordering::Release);
-                            }
+                            engine.queue_deselect();
                         }
                         cx.notify();
                     }

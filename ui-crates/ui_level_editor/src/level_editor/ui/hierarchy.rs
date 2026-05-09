@@ -208,26 +208,29 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
                     .on_click(move |_, _, _| {
+                        use crate::level_editor::commands::{execute_command, SceneCommand};
                         use crate::level_editor::scene_database::{
                             ObjectType, SceneObjectData, Transform,
                         };
-                        let objects_count = state_clone.read().scene_objects().len();
-                        let new_folder = SceneObjectData {
-                            id: format!("folder_{}", objects_count + 1),
-                            name: "New Folder".to_string(),
-                            object_type: ObjectType::Folder,
-                            transform: Transform::default(),
-                            visible: true,
-                            locked: false,
-                            parent: None,
-                            children: vec![],
-                            components: vec![],
-                            scene_path: String::new(),
-                        };
-                        state_clone
-                            .read()
-                            .scene_database
-                            .add_object(new_folder, None);
+                        let mut state = state_clone.write();
+                        execute_command(
+                            &mut state,
+                            SceneCommand::AddObject {
+                                data: SceneObjectData {
+                                    id: String::new(),
+                                    name: "New Folder".to_string(),
+                                    object_type: ObjectType::Folder,
+                                    transform: Transform::default(),
+                                    visible: true,
+                                    locked: false,
+                                    parent: None,
+                                    children: vec![],
+                                    components: vec![],
+                                    scene_path: String::new(),
+                                },
+                                parent_id: None,
+                            },
+                        );
                     })
                     .into_any_element()
             },
@@ -239,8 +242,10 @@ impl HierarchyPanel {
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
                     .on_click(move |_, _, _| {
+                        use crate::level_editor::commands::{execute_command, SceneCommand};
                         if let Some(id) = state_clone.read().selected_object() {
-                            state_clone.read().scene_database.remove_object(&id);
+                            let mut state = state_clone.write();
+                            execute_command(&mut state, SceneCommand::RemoveObject { id });
                         }
                     })
                     .into_any_element()
@@ -260,10 +265,15 @@ impl HierarchyPanel {
             root_drop_zone: Some((
                 "Root".to_string(),
                 Arc::new(move |payload: HierarchyDragPayload| {
-                    state_arc_for_root_drop
-                        .read()
-                        .scene_database
-                        .reparent_object(&payload.object_id, None);
+                    use crate::level_editor::commands::{execute_command, SceneCommand};
+                    let mut state = state_arc_for_root_drop.write();
+                    execute_command(
+                        &mut state,
+                        SceneCommand::ReparentObject {
+                            id: payload.object_id,
+                            new_parent_id: None,
+                        },
+                    );
                 }),
             )),
 
@@ -290,27 +300,36 @@ impl HierarchyPanel {
             }),
             on_drop: Arc::new(
                 move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers| {
-                    if payload.object_id != *target_id {
-                        let mut state = state_arc_for_drop.write();
-
-                        if modifiers.shift {
-                            // Shift+drag: remove parent (un-nest to root)
-                            state
-                                .scene_database
-                                .reparent_object(&payload.object_id, None);
-                        } else if modifiers.alt {
-                            // Alt+drag: reorder at same level
-                            state
-                                .scene_database
-                                .reorder_object_siblings(&payload.object_id, target_id);
-                        } else {
-                            // Regular drag: reparent under drop target
-                            let success = state
-                                .scene_database
-                                .reparent_object(&payload.object_id, Some(target_id.clone()));
-                            if success {
-                                state.expanded_objects.insert(target_id.clone());
-                            }
+                    use crate::level_editor::commands::{execute_command, SceneCommand};
+                    if payload.object_id == *target_id {
+                        return;
+                    }
+                    let mut state = state_arc_for_drop.write();
+                    if modifiers.shift {
+                        execute_command(
+                            &mut state,
+                            SceneCommand::ReparentObject {
+                                id: payload.object_id,
+                                new_parent_id: None,
+                            },
+                        );
+                    } else if modifiers.alt {
+                        // Reorder doesn't fit a SceneCommand variant yet — call directly and
+                        // bump revision so the polling task propagates the change.
+                        state
+                            .scene_database
+                            .reorder_object_siblings(&payload.object_id, target_id);
+                        state.scene_revision = state.scene_revision.saturating_add(1);
+                    } else {
+                        let result = execute_command(
+                            &mut state,
+                            SceneCommand::ReparentObject {
+                                id: payload.object_id,
+                                new_parent_id: Some(target_id.clone()),
+                            },
+                        );
+                        if result.changed {
+                            state.expanded_objects.insert(target_id.clone());
                         }
                     }
                 },

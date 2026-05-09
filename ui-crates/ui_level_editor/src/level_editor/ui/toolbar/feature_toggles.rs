@@ -90,12 +90,10 @@ impl FeatureToggles {
 
                 // Send command to renderer thread
                 if let Ok(engine) = gpu_engine.try_lock() {
-                    if let Some(ref helio_renderer) = engine.helio_renderer {
-                        let _ = helio_renderer
-                            .command_sender
-                            .send(RendererCommand::ToggleFeature(feature_name.to_string()));
-                        tracing::info!("[UI] Sent toggle command for feature: {}", feature_name);
-                    }
+                    engine.send_renderer_command(RendererCommand::ToggleFeature(
+                        feature_name.to_string(),
+                    ));
+                    tracing::info!("[UI] Sent toggle command for feature: {}", feature_name);
                 }
             })
     }

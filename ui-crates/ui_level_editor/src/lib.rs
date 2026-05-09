@@ -13,9 +13,9 @@ extern crate pulsar_rendering;
 
 use gpui::AppContext;
 
-mod level_editor;
 pub mod ai_sessions;
 pub mod ai_tools;
+mod level_editor;
 
 // Re-export main types
 pub use level_editor::{LevelEditorPanel, LevelEditorState, SceneDatabase, SceneObjectData};

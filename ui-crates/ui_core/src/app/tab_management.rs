@@ -25,9 +25,7 @@ impl PulsarApp {
                     .tab_name(cx)
                     .map(|name| name.to_string())
                     .unwrap_or_else(|| panel_name.clone());
-                let file_path = panel
-                    .panel_file_path(cx)
-                    .map(|p| p.display().to_string());
+                let file_path = panel.panel_file_path(cx).map(|p| p.display().to_string());
                 OpenEditorInfo {
                     index,
                     panel_name,

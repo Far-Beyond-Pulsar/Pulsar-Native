@@ -154,11 +154,8 @@ impl ObjectTypeFieldsSection {
             Self::property_value_to_json(&value),
         );
 
-        let _ = self.scene_db.metadata_db.components().update_component(
-            &self.object_id,
-            idx,
-            Value::Object(map),
-        );
+        self.scene_db
+            .update_component(&self.object_id, idx, Value::Object(map));
     }
 
     fn nudge_numeric(&self, class_name: &str, prop_name: &str, current: f32, step: f32, sign: f32) {

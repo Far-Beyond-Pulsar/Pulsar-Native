@@ -52,8 +52,11 @@ impl GpuRendererBuilder {
 }
 
 /// GPU renderer — drives Helio through a GPUI `WgpuSurfaceHandle`.
+///
+/// This is the **only** public interface to the renderer subsystem.
+/// Callers must not access `helio_renderer` directly; use the methods below.
 pub struct GpuRenderer {
-    pub helio_renderer: Option<HelioRenderer>,
+    helio_renderer: Option<HelioRenderer>,
     pending_scene_inserts: Vec<helio_asset_compat::ConvertedScene>,
     frame_count: u64,
     start_time: Instant,
@@ -126,6 +129,110 @@ impl GpuRenderer {
 
     pub fn get_frame_count(&self) -> u64 {
         self.frame_count
+    }
+
+    // ── Gizmo and selection API ───────────────────────────────────────────────
+
+    /// Camera input handle for the viewport input thread.
+    pub fn camera_input(
+        &self,
+    ) -> Option<std::sync::Arc<std::sync::Mutex<crate::subsystems::render::CameraInput>>> {
+        self.helio_renderer.as_ref().map(|r| r.camera_input.clone())
+    }
+
+    /// Queue a new Helio gizmo mode for the next render frame.
+    pub fn queue_gizmo_mode(&self, mode: crate::GizmoMode) {
+        if let Some(r) = &self.helio_renderer {
+            r.queue_gizmo_mode(mode);
+        }
+    }
+
+    /// Request deselection at the start of the next render frame.
+    pub fn queue_deselect(&self) {
+        if let Some(r) = &self.helio_renderer {
+            r.queue_deselect();
+        }
+    }
+
+    /// Get the current SceneDb-level gizmo type.
+    pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
+        self.helio_renderer
+            .as_ref()
+            .map(|r| r.get_scene_gizmo_type())
+            .unwrap_or(crate::scene::GizmoType::None)
+    }
+
+    /// Set the SceneDb-level gizmo type.
+    pub fn set_scene_gizmo_type(&mut self, t: crate::scene::GizmoType) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.set_scene_gizmo_type(t);
+        }
+    }
+
+    /// Get the ID of the currently selected object in SceneDb.
+    pub fn get_scene_db_selected_id(&self) -> Option<String> {
+        self.helio_renderer
+            .as_ref()
+            .and_then(|r| r.get_scene_db_selected_id())
+    }
+
+    /// Get the ID of the object currently selected inside the Helio editor state
+    /// (set by viewport click/gizmo; may lag one frame behind SceneDb selection).
+    pub fn get_helio_selected_scene_db_id(&self) -> Option<String> {
+        self.helio_renderer
+            .as_ref()
+            .and_then(|r| r.get_selected_scene_db_id())
+    }
+
+    /// Sync the SceneDb selection into Helio's editor state so the gizmo appears.
+    pub fn sync_selection_to_helio(&mut self) {
+        if let Some(r) = &mut self.helio_renderer {
+            let scene_selected = r.get_scene_db_selected_id();
+            let helio_selected = r.get_selected_scene_db_id();
+            if scene_selected != helio_selected {
+                match &scene_selected {
+                    Some(id) => {
+                        r.select_by_scene_db_id(id);
+                    }
+                    None => {
+                        r.deselect();
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Mouse / viewport input ────────────────────────────────────────────────
+
+    /// Forward a normalized mouse-move event to the Helio editor state (gizmo drag).
+    pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.handle_mouse_move(norm_x, norm_y);
+        }
+    }
+
+    /// Forward a normalized left-click to the Helio scene picker.
+    pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.handle_left_click(norm_x, norm_y);
+        }
+    }
+
+    /// Signal the end of a left-button drag (finalises gizmo transform).
+    pub fn handle_left_release(&mut self) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.handle_left_release();
+        }
+    }
+
+    /// Send a fire-and-forget command to the renderer thread (e.g. ToggleFeature).
+    pub fn send_renderer_command(
+        &self,
+        cmd: crate::subsystems::render::helio_renderer::RendererCommand,
+    ) {
+        if let Some(r) = &self.helio_renderer {
+            let _ = r.command_sender.send(cmd);
+        }
     }
 
     // ── Unified scene-mutation API ────────────────────────────────────────────

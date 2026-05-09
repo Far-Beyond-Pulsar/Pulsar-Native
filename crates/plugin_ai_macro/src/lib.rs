@@ -216,9 +216,7 @@ fn extract_param_docs(attrs: &[syn::Attribute]) -> std::collections::HashMap<Str
 }
 
 /// Parse tool macro attributes (category, timeout_ms, etc.)
-fn parse_tool_attrs(
-    attrs: &Punctuated<Meta, Comma>,
-) -> (Option<String>, u32, Option<String>) {
+fn parse_tool_attrs(attrs: &Punctuated<Meta, Comma>) -> (Option<String>, u32, Option<String>) {
     let mut category: Option<String> = None;
     let mut timeout_ms: u32 = 5000;
     let mut docs_path: Option<String> = None;

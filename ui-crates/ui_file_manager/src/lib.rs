@@ -5,8 +5,8 @@
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 
-pub mod drawer;
 pub mod ai_tools;
+pub mod drawer;
 mod file_manager_drawer;
 pub mod window;
 

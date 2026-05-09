@@ -18,7 +18,8 @@ pub struct ToolContext {
     /// Optional callback to query active/inactive open editors tracked by the engine.
     pub query_open_editors: Option<Arc<dyn Fn() -> Result<Value, String> + Send + Sync>>,
     /// Optional callback to activate one of the already-open editor tabs by index.
-    pub activate_open_editor_request: Option<Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>>,
+    pub activate_open_editor_request:
+        Option<Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>>,
 }
 
 pub trait ChatTool: Send + Sync {
@@ -204,7 +205,8 @@ impl ChatTool for ActivateOpenEditorTool {
         let index = args
             .get("index")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| anyhow!("activate_open_editor.index is required"))? as usize;
+            .ok_or_else(|| anyhow!("activate_open_editor.index is required"))?
+            as usize;
 
         let callback = ctx
             .activate_open_editor_request
@@ -418,17 +420,17 @@ impl ChatTool for QueryToolsForPluginTool {
                 .build_tool_bridge_for_file(&full)
                 .all_tools()
                 .into_iter()
-            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
+                .filter(|tool| tool.plugin_id.to_string() == plugin_id)
                 .map(|tool| tool.definition)
                 .collect::<Vec<_>>()
         } else {
             manager
-            .build_tool_bridge()
-            .all_tools()
-            .into_iter()
-            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
-            .map(|tool| tool.definition)
-            .collect::<Vec<_>>()
+                .build_tool_bridge()
+                .all_tools()
+                .into_iter()
+                .filter(|tool| tool.plugin_id.to_string() == plugin_id)
+                .map(|tool| tool.definition)
+                .collect::<Vec<_>>()
         };
 
         let tool_schemas = tools
@@ -476,7 +478,8 @@ impl ChatTool for ExecutePluginToolTool {
 
         // Use soft resolution: the file path from query_open_editors is absolute and canonical,
         // but even if it's relative we don't want to fail just because we can't canonicalize it.
-        let full_file_path = resolve_workspace_path_soft(&ctx.workspace_root, &file_path.display().to_string())?;
+        let full_file_path =
+            resolve_workspace_path_soft(&ctx.workspace_root, &file_path.display().to_string())?;
 
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -557,7 +560,9 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
     for part in joined.components() {
         use std::path::Component;
         match part {
-            Component::ParentDir => { components.pop(); }
+            Component::ParentDir => {
+                components.pop();
+            }
             Component::CurDir => {}
             other => components.push(other),
         }
@@ -569,7 +574,9 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
         for part in root.components() {
             use std::path::Component;
             match part {
-                Component::ParentDir => { c.pop(); }
+                Component::ParentDir => {
+                    c.pop();
+                }
                 Component::CurDir => {}
                 other => c.push(other),
             }

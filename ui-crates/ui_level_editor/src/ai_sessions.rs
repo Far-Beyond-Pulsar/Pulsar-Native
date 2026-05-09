@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock, RwLock, Weak};
 
-static OPEN_SCENES: LazyLock<RwLock<HashMap<PathBuf, Weak<parking_lot::RwLock<LevelEditorState>>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+static OPEN_SCENES: LazyLock<
+    RwLock<HashMap<PathBuf, Weak<parking_lot::RwLock<LevelEditorState>>>>,
+> = LazyLock::new(|| RwLock::new(HashMap::new()));
 
 fn normalize_path(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())

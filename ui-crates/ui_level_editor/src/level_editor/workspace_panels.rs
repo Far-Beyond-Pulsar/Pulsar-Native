@@ -276,10 +276,11 @@ impl PropertiesPanelWrapper {
     }
 
     fn update_transform_property(&self, property_path: &str, value: f32) {
-        let state = self.state.read();
-        if let Some(object_id) = state.selected_object() {
-            if let Some(mut obj) = state.scene_database.get_object(&object_id) {
-                // Update the specific transform field
+        use crate::level_editor::commands::{execute_command, SceneCommand};
+        let selected = self.state.read().selected_object();
+        if let Some(object_id) = selected {
+            let obj_opt = self.state.read().scene_database.get_object(&object_id);
+            if let Some(mut obj) = obj_opt {
                 match property_path {
                     "position.x" => obj.transform.position[0] = value,
                     "position.y" => obj.transform.position[1] = value,
@@ -292,10 +293,8 @@ impl PropertiesPanelWrapper {
                     "scale.z" => obj.transform.scale[2] = value,
                     _ => return,
                 }
-
-                state.scene_database.update_object(obj);
-                drop(state);
-                self.state.write().has_unsaved_changes = true;
+                let mut state = self.state.write();
+                execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
             }
         }
     }

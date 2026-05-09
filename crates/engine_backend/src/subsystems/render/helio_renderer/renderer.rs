@@ -607,6 +607,35 @@ impl HelioRenderer {
 
     // ── Editor Integration ───────────────────────────────────────────────────
 
+    /// Queue a new gizmo mode to be applied at the start of the next render frame.
+    pub fn queue_gizmo_mode(&self, mode: crate::GizmoMode) {
+        if let Ok(mut guard) = self.pending_gizmo_mode.lock() {
+            *guard = Some(mode);
+        }
+    }
+
+    /// Request that the editor state deselects the current object next frame.
+    pub fn queue_deselect(&self) {
+        self.pending_deselect
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Get the active gizmo state from SceneDb (gizmo_type, highlighted_axis, etc.).
+    pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
+        self.scene_db.get_gizmo_state().gizmo_type
+    }
+
+    /// Set the active gizmo type on SceneDb.
+    pub fn set_scene_gizmo_type(&self, t: crate::scene::GizmoType) {
+        self.scene_db.set_gizmo_type(t);
+    }
+
+    /// Return the SceneDb-level selected object ID (set by `select_object_atomic`
+    /// on viewport click or by the hierarchy panel).
+    pub fn get_scene_db_selected_id(&self) -> Option<String> {
+        self.scene_db.get_selected_id()
+    }
+
     // ── Unified per-object scene mutations ────────────────────────────────────
     // These are called directly by SceneDatabase so every write path (user
     // actions, AI tools, content-drawer drops) hits Helio immediately instead
@@ -618,8 +647,12 @@ impl HelioRenderer {
     /// Insert or update a single SceneDb object into the Helio scene.
     /// Returns true if Helio was actually mutated (false = not initialized yet).
     pub fn scene_add_or_update(&mut self, snap: &SceneObjectSnapshot) -> bool {
-        let ObjectType::Mesh(mt) = snap.object_type else { return false; };
-        if !snap.visible { return false; }
+        let ObjectType::Mesh(mt) = snap.object_type else {
+            return false;
+        };
+        if !snap.visible {
+            return false;
+        }
 
         let inner = match &mut self.inner {
             Some(i) => i,
@@ -629,14 +662,22 @@ impl HelioRenderer {
         let key = MeshKey::from(mt);
 
         if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
-            let _ = inner.renderer.scene_mut().update_object_transform(obj_id, build_transform(snap));
+            let _ = inner
+                .renderer
+                .scene_mut()
+                .update_object_transform(obj_id, build_transform(snap));
             return true;
         }
 
         let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
         let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
             let upload = mesh_for_key(key);
-            let mid = inner.renderer.scene_mut().insert_actor(SceneActor::mesh(upload.clone())).as_mesh().expect("mesh insert");
+            let mid = inner
+                .renderer
+                .scene_mut()
+                .insert_actor(SceneActor::mesh(upload.clone()))
+                .as_mesh()
+                .expect("mesh insert");
             let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
             let matid = inner.renderer.scene_mut().insert_material(mat);
             (mid, matid)
@@ -651,15 +692,20 @@ impl HelioRenderer {
         let radius = Vec3::from_array(snap.scale).length() * 0.5;
         let pos = transform.w_axis.truncate();
 
-        if let Some(obj_id) = inner.renderer.scene_mut().insert_actor(SceneActor::object(ObjectDescriptor {
-            mesh: mesh_id,
-            material: mat_id,
-            transform,
-            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-            flags: 0,
-            groups: GroupMask::NONE,
-            movability: Some(Movability::Movable),
-        })).as_object() {
+        if let Some(obj_id) = inner
+            .renderer
+            .scene_mut()
+            .insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh: mesh_id,
+                material: mat_id,
+                transform,
+                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                flags: 0,
+                groups: GroupMask::NONE,
+                movability: Some(Movability::Movable),
+            }))
+            .as_object()
+        {
             inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
             return true;

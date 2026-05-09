@@ -14,7 +14,10 @@ fn is_level_file(file_path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn open_state_for(file_path: &Path) -> Result<std::sync::Arc<parking_lot::RwLock<crate::level_editor::LevelEditorState>>, PluginError> {
+fn open_state_for(
+    file_path: &Path,
+) -> Result<std::sync::Arc<parking_lot::RwLock<crate::level_editor::LevelEditorState>>, PluginError>
+{
     ai_sessions::get_open_scene_state(file_path).ok_or_else(|| PluginError::Other {
         message: format!(
             "Level is not open in editor: {}. Call open_file_in_default_editor first.",
@@ -35,7 +38,11 @@ fn object_matches_filter(object: &crate::SceneObjectData, filter: Option<&Value>
     }
 
     if let Some(name_contains) = filter.get("name_contains").and_then(|v| v.as_str()) {
-        if !object.name.to_lowercase().contains(&name_contains.to_lowercase()) {
+        if !object
+            .name
+            .to_lowercase()
+            .contains(&name_contains.to_lowercase())
+        {
             return false;
         }
     }
@@ -127,7 +134,6 @@ fn object_type_key(object_type: &ObjectType) -> &'static str {
         ObjectType::AudioSource => "audio_source",
     }
 }
-
 
 pub fn ai_tools() -> Vec<AiToolDefinition> {
     vec![
@@ -631,14 +637,19 @@ pub fn execute_ai_tool(
                 Some(Value::Null) | None => None,
                 _ => {
                     return Err(PluginError::Other {
-                        message:
-                            "level_editor_select_object.id must be a string or null".to_string(),
+                        message: "level_editor_select_object.id must be a string or null"
+                            .to_string(),
                     })
                 }
             };
 
             let mut state = state_arc.write();
-            execute_command(&mut state, SceneCommand::SelectObject { id: selection.clone() });
+            execute_command(
+                &mut state,
+                SceneCommand::SelectObject {
+                    id: selection.clone(),
+                },
+            );
 
             Ok(json!({
                 "ok": true,
@@ -675,24 +686,43 @@ pub fn execute_ai_tool(
                 .map(|s| s.to_string());
 
             let mut state = state_arc.write();
-            let scene_path = state.current_scene.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+            let scene_path = state
+                .current_scene
+                .as_ref()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
             let mut object = crate::SceneObjectData {
                 id: String::new(),
                 name,
                 object_type,
                 transform: Default::default(),
-                visible: tool_args.get("visible").and_then(|v| v.as_bool()).unwrap_or(true),
-                locked: tool_args.get("locked").and_then(|v| v.as_bool()).unwrap_or(false),
+                visible: tool_args
+                    .get("visible")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
+                locked: tool_args
+                    .get("locked")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
                 parent: parent_id.clone(),
                 children: vec![],
                 components: vec![],
                 scene_path,
             };
-            object.transform.position = vec3_from_value(tool_args.get("position")).unwrap_or([0.0, 0.0, 0.0]);
-            object.transform.rotation = vec3_from_value(tool_args.get("rotation")).unwrap_or([0.0, 0.0, 0.0]);
-            object.transform.scale    = vec3_from_value(tool_args.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
+            object.transform.position =
+                vec3_from_value(tool_args.get("position")).unwrap_or([0.0, 0.0, 0.0]);
+            object.transform.rotation =
+                vec3_from_value(tool_args.get("rotation")).unwrap_or([0.0, 0.0, 0.0]);
+            object.transform.scale =
+                vec3_from_value(tool_args.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
 
-            let result = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id });
+            let result = execute_command(
+                &mut state,
+                SceneCommand::AddObject {
+                    data: object,
+                    parent_id,
+                },
+            );
             let new_id = result.affected_ids.into_iter().next().unwrap_or_default();
 
             Ok(json!({
@@ -784,7 +814,13 @@ pub fn execute_ai_tool(
                 object.transform.scale =
                     vec3_from_value(item_obj.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
 
-                let res = execute_command(&mut state, SceneCommand::AddObject { data: object, parent_id });
+                let res = execute_command(
+                    &mut state,
+                    SceneCommand::AddObject {
+                        data: object,
+                        parent_id,
+                    },
+                );
                 if let Some(id) = res.affected_ids.into_iter().next() {
                     created_ids.push(id);
                 }
@@ -852,23 +888,25 @@ pub fn execute_ai_tool(
                 .to_string();
 
             let new_parent_value = tool_args.get("new_parent_id");
-            let new_parent_id = match new_parent_value {
-                Some(Value::String(id)) => Some(id.clone()),
-                Some(Value::Null) | None => None,
-                _ => {
-                    return Err(PluginError::Other {
+            let new_parent_id =
+                match new_parent_value {
+                    Some(Value::String(id)) => Some(id.clone()),
+                    Some(Value::Null) | None => None,
+                    _ => return Err(PluginError::Other {
                         message:
                             "level_editor_reparent_object.new_parent_id must be a string or null"
                                 .to_string(),
-                    })
-                }
-            };
+                    }),
+                };
 
             let mut state = state_arc.write();
-            let result = execute_command(&mut state, SceneCommand::ReparentObject {
-                id: object_id.clone(),
-                new_parent_id: new_parent_id.clone(),
-            });
+            let result = execute_command(
+                &mut state,
+                SceneCommand::ReparentObject {
+                    id: object_id.clone(),
+                    new_parent_id: new_parent_id.clone(),
+                },
+            );
             let moved = result.changed;
 
             Ok(json!({
@@ -901,11 +939,14 @@ pub fn execute_ai_tool(
             let position_offset = vec3_from_value(tool_args.get("position_offset"));
 
             let mut state = state_arc.write();
-            let result = execute_command(&mut state, SceneCommand::DuplicateObject {
-                source_id: source_id.clone(),
-                count,
-                position_offset,
-            });
+            let result = execute_command(
+                &mut state,
+                SceneCommand::DuplicateObject {
+                    source_id: source_id.clone(),
+                    count,
+                    position_offset,
+                },
+            );
 
             Ok(json!({
                 "ok": true,
@@ -931,7 +972,12 @@ pub fn execute_ai_tool(
                 .to_string();
 
             let mut state = state_arc.write();
-            let result = execute_command(&mut state, SceneCommand::RemoveObject { id: object_id.clone() });
+            let result = execute_command(
+                &mut state,
+                SceneCommand::RemoveObject {
+                    id: object_id.clone(),
+                },
+            );
 
             Ok(json!({
                 "ok": true,
@@ -954,12 +1000,15 @@ pub fn execute_ai_tool(
                 .to_string();
 
             let mut state = state_arc.write();
-            let result = execute_command(&mut state, SceneCommand::SetTransform {
-                id: object_id.clone(),
-                position: vec3_from_value(tool_args.get("position")),
-                rotation: vec3_from_value(tool_args.get("rotation")),
-                scale: vec3_from_value(tool_args.get("scale")),
-            });
+            let result = execute_command(
+                &mut state,
+                SceneCommand::SetTransform {
+                    id: object_id.clone(),
+                    position: vec3_from_value(tool_args.get("position")),
+                    rotation: vec3_from_value(tool_args.get("rotation")),
+                    scale: vec3_from_value(tool_args.get("scale")),
+                },
+            );
 
             Ok(json!({
                 "ok": true,
@@ -994,12 +1043,24 @@ pub fn execute_ai_tool(
                 }));
             };
 
-            if let Some(name) = tool_args.get("name").and_then(|v| v.as_str()) { object.name = name.to_string(); }
-            if let Some(v) = tool_args.get("visible").and_then(|v| v.as_bool())  { object.visible = v; }
-            if let Some(v) = tool_args.get("locked").and_then(|v| v.as_bool())   { object.locked = v; }
-            if let Some(p) = vec3_from_value(tool_args.get("position"))           { object.transform.position = p; }
-            if let Some(r) = vec3_from_value(tool_args.get("rotation"))           { object.transform.rotation = r; }
-            if let Some(s) = vec3_from_value(tool_args.get("scale"))              { object.transform.scale = s; }
+            if let Some(name) = tool_args.get("name").and_then(|v| v.as_str()) {
+                object.name = name.to_string();
+            }
+            if let Some(v) = tool_args.get("visible").and_then(|v| v.as_bool()) {
+                object.visible = v;
+            }
+            if let Some(v) = tool_args.get("locked").and_then(|v| v.as_bool()) {
+                object.locked = v;
+            }
+            if let Some(p) = vec3_from_value(tool_args.get("position")) {
+                object.transform.position = p;
+            }
+            if let Some(r) = vec3_from_value(tool_args.get("rotation")) {
+                object.transform.rotation = r;
+            }
+            if let Some(s) = vec3_from_value(tool_args.get("scale")) {
+                object.transform.scale = s;
+            }
 
             let result = execute_command(&mut state, SceneCommand::UpdateObject { data: object });
 
@@ -1109,7 +1170,8 @@ pub fn execute_ai_tool(
 
                 if changed {
                     let id = object.id.clone();
-                    let res = execute_command(&mut state, SceneCommand::UpdateObject { data: object });
+                    let res =
+                        execute_command(&mut state, SceneCommand::UpdateObject { data: object });
                     if res.changed {
                         updated_ids.push(id);
                     }
@@ -1150,7 +1212,12 @@ pub fn execute_ai_tool(
 
             let mut deleted_ids = Vec::new();
             for object_id in delete_ids {
-                let res = execute_command(&mut state, SceneCommand::RemoveObject { id: object_id.clone() });
+                let res = execute_command(
+                    &mut state,
+                    SceneCommand::RemoveObject {
+                        id: object_id.clone(),
+                    },
+                );
                 if res.changed {
                     deleted_ids.push(object_id);
                 }

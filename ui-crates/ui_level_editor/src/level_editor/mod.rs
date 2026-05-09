@@ -1,4 +1,3 @@
-mod scene_database;
 /// Modular Level Editor
 ///
 /// A professional, studio-quality level editor with multi-panel layout
@@ -13,6 +12,7 @@ mod scene_database;
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
 pub mod commands;
+mod scene_database;
 mod ui;
 mod workspace_panels;
 mod world_settings_data;

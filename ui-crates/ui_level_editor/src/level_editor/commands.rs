@@ -8,7 +8,6 @@
 /// Both user GPUI action handlers and AI tool implementations call
 /// `execute_command()`, giving a single auditable code path that is ready for
 /// undo / redo to be layered on top.
-
 use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::LevelEditorState;
 
@@ -65,10 +64,18 @@ pub struct CommandResult {
 
 impl CommandResult {
     pub fn noop(reason: &'static str) -> Self {
-        Self { changed: false, affected_ids: vec![], no_op_reason: reason }
+        Self {
+            changed: false,
+            affected_ids: vec![],
+            no_op_reason: reason,
+        }
     }
     pub fn ok(ids: Vec<String>) -> Self {
-        Self { changed: true, affected_ids: ids, no_op_reason: "" }
+        Self {
+            changed: true,
+            affected_ids: ids,
+            no_op_reason: "",
+        }
     }
 }
 
@@ -114,8 +121,13 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
         }
 
-        SceneCommand::ReparentObject { ref id, ref new_parent_id } => {
-            let moved = state.scene_database.reparent_object(id, new_parent_id.clone());
+        SceneCommand::ReparentObject {
+            ref id,
+            ref new_parent_id,
+        } => {
+            let moved = state
+                .scene_database
+                .reparent_object(id, new_parent_id.clone());
             if moved {
                 bump(state, true);
                 CommandResult::ok(vec![id.clone()])
@@ -124,8 +136,15 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             }
         }
 
-        SceneCommand::DuplicateObject { ref source_id, count, position_offset } => {
-            let src_pos = state.scene_database.get_object(source_id).map(|o| o.transform.position);
+        SceneCommand::DuplicateObject {
+            ref source_id,
+            count,
+            position_offset,
+        } => {
+            let src_pos = state
+                .scene_database
+                .get_object(source_id)
+                .map(|o| o.transform.position);
             let mut created = Vec::new();
             for i in 0..count {
                 if let Some(new_id) = state.scene_database.duplicate_object(source_id) {
@@ -159,14 +178,34 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             CommandResult::ok(id.into_iter().collect())
         }
 
-        SceneCommand::SetTransform { ref id, position, rotation, scale } => {
+        SceneCommand::SetTransform {
+            ref id,
+            position,
+            rotation,
+            scale,
+        } => {
             let Some(mut obj) = state.scene_database.get_object(id) else {
                 return CommandResult::noop("Object not found");
             };
             let mut changed = false;
-            if let Some(p) = position { if obj.transform.position != p { obj.transform.position = p; changed = true; } }
-            if let Some(r) = rotation { if obj.transform.rotation != r { obj.transform.rotation = r; changed = true; } }
-            if let Some(s) = scale    { if obj.transform.scale != s    { obj.transform.scale = s;    changed = true; } }
+            if let Some(p) = position {
+                if obj.transform.position != p {
+                    obj.transform.position = p;
+                    changed = true;
+                }
+            }
+            if let Some(r) = rotation {
+                if obj.transform.rotation != r {
+                    obj.transform.rotation = r;
+                    changed = true;
+                }
+            }
+            if let Some(s) = scale {
+                if obj.transform.scale != s {
+                    obj.transform.scale = s;
+                    changed = true;
+                }
+            }
 
             if !changed {
                 return CommandResult::noop("No transform fields changed");

@@ -120,9 +120,9 @@ impl SceneObjectData {
 #[derive(Clone)]
 pub struct SceneDatabase {
     /// Primary store: lock-free atomic transforms + hierarchy.
-    pub scene_db: Arc<SceneDb>,
+    scene_db: Arc<SceneDb>,
     /// Reflection-based component store (new system).
-    pub metadata_db: Arc<SceneMetadataDb>,
+    metadata_db: Arc<SceneMetadataDb>,
     /// Write-through target: immediately mirrors mutations to Helio.
     /// Set once after both `SceneDatabase` and `GpuRenderer` are constructed.
     renderer: Option<Arc<Mutex<GpuRenderer>>>,
@@ -528,6 +528,22 @@ impl SceneDatabase {
             self.helio_add_or_update(&snap);
         }
         true
+    }
+
+    /// Update a single component's JSON data by index.
+    ///
+    /// This is the correct entry point for component edits; callers must not
+    /// access `metadata_db` directly.
+    pub fn update_component(
+        &self,
+        object_id: &ObjectId,
+        component_index: usize,
+        data: serde_json::Value,
+    ) {
+        let _ = self
+            .metadata_db
+            .components()
+            .update_component(object_id, component_index, data);
     }
 
     /// Clear the entire scene.

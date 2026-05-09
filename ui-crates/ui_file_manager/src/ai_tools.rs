@@ -20,7 +20,11 @@ fn resolve_workspace_path(path: &str, must_exist: bool) -> Result<PathBuf, Plugi
     let root = workspace_root()?;
     let joined = {
         let p = PathBuf::from(path);
-        if p.is_absolute() { p } else { root.join(p) }
+        if p.is_absolute() {
+            p
+        } else {
+            root.join(p)
+        }
     };
 
     let root_canonical = root.canonicalize().map_err(|err| PluginError::Other {
@@ -340,7 +344,10 @@ pub fn fm_duplicate_item(path: String) -> Result<Value, PluginError> {
 }
 
 #[ai_tool(category = "file-manager")]
-pub fn fm_copy_items(source_paths: Vec<String>, target_folder: String) -> Result<Value, PluginError> {
+pub fn fm_copy_items(
+    source_paths: Vec<String>,
+    target_folder: String,
+) -> Result<Value, PluginError> {
     let sources = source_paths
         .iter()
         .map(|path| resolve_workspace_path(path, true))
@@ -357,16 +364,20 @@ pub fn fm_copy_items(source_paths: Vec<String>, target_folder: String) -> Result
 }
 
 #[ai_tool(category = "file-manager")]
-pub fn fm_move_items(source_paths: Vec<String>, target_folder: String) -> Result<Value, PluginError> {
+pub fn fm_move_items(
+    source_paths: Vec<String>,
+    target_folder: String,
+) -> Result<Value, PluginError> {
     let sources = source_paths
         .iter()
         .map(|path| resolve_workspace_path(path, true))
         .collect::<Result<Vec<_>, _>>()?;
     let target = resolve_workspace_path(&target_folder, true)?;
     let ops = FileOperations::new(Some(workspace_root()?));
-    ops.move_items(&sources, &target).map_err(|err| PluginError::Other {
-        message: format!("Move failed: {err}"),
-    })?;
+    ops.move_items(&sources, &target)
+        .map_err(|err| PluginError::Other {
+            message: format!("Move failed: {err}"),
+        })?;
     Ok(json!({
         "ok": true,
         "source_count": sources.len(),

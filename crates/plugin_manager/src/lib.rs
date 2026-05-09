@@ -493,7 +493,11 @@ impl PluginManager {
     pub fn build_tool_bridge_for_file(&self, file_path: &Path) -> PluginToolBridge {
         let mut bridge = PluginToolBridge::new();
         for (plugin_id, loaded_plugin) in &self.plugins {
-            bridge.discover_plugin_tools_for_file(plugin_id.clone(), loaded_plugin.plugin, file_path);
+            bridge.discover_plugin_tools_for_file(
+                plugin_id.clone(),
+                loaded_plugin.plugin,
+                file_path,
+            );
         }
 
         for provider in self.builtin_registry.providers() {

@@ -202,8 +202,8 @@ impl ViewportPanel {
 
                     // Clear GPU input
                     if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                            if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                        if let Some(cam) = engine.camera_input() {
+                            if let Ok(mut input) = cam.try_lock() {
                                 input.forward = 0.0;
                                 input.right = 0.0;
                                 input.up = 0.0;
@@ -279,10 +279,8 @@ impl ViewportPanel {
                                 if dx != 0 || dy != 0 {
                                     // Send deltas DIRECTLY to renderer - zero latency path!
                                     if let Ok(engine) = gpu_engine_clone.try_lock() {
-                                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                                            if let Ok(mut input) =
-                                                helio_renderer.camera_input.try_lock()
-                                            {
+                                        if let Some(cam) = engine.camera_input() {
+                                            if let Ok(mut input) = cam.try_lock() {
                                                 if is_rotating {
                                                     input.mouse_delta_x = dx as f32;
                                                     input.mouse_delta_y = dy as f32;
@@ -314,8 +312,8 @@ impl ViewportPanel {
 
                         if dx != 0.0 || dy != 0.0 {
                             if let Ok(engine) = gpu_engine_clone.try_lock() {
-                                if let Some(ref helio_renderer) = engine.helio_renderer {
-                                    if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+                                if let Some(cam) = engine.camera_input() {
+                                    if let Ok(mut input) = cam.try_lock() {
                                         if is_rotating {
                                             input.mouse_delta_x = dx;
                                             input.mouse_delta_y = dy;
@@ -427,8 +425,8 @@ impl ViewportPanel {
         _state: &LevelEditorState,
     ) {
         if let Ok(engine) = gpu_engine.try_lock() {
-            if let Some(ref helio_renderer) = engine.helio_renderer {
-                if let Ok(mut input) = helio_renderer.camera_input.try_lock() {
+            if let Some(cam) = engine.camera_input() {
+                if let Ok(mut input) = cam.try_lock() {
                     // Update WASD keys and settings (these don't need instant response)
                     input.forward = self.input_state.get_forward() as f32;
                     input.right = self.input_state.get_right() as f32;
@@ -548,8 +546,8 @@ impl ViewportPanel {
 
                     // Update Helio camera viewport to match GPUI viewport bounds
                     if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(ref helio_renderer) = engine.helio_renderer {
-                            if let Ok(mut camera_input) = helio_renderer.camera_input.try_lock() {
+                        if let Some(cam) = engine.camera_input() {
+                            if let Ok(mut camera_input) = cam.try_lock() {
                                 camera_input.viewport_x = min_x;
                                 camera_input.viewport_y = min_y;
                                 camera_input.viewport_width = max_x - min_x;
@@ -663,10 +661,8 @@ impl ViewportPanel {
                     drop(last_pos);
 
                     if let Ok(mut engine) = gpu_engine_move.try_lock() {
-                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
-                            if !is_rotating && !is_panning {
-                                helio_renderer.handle_mouse_move(norm_x, norm_y);
-                            }
+                        if !is_rotating && !is_panning {
+                            engine.handle_mouse_move(norm_x, norm_y);
                         }
                     }
                 }
@@ -811,16 +807,14 @@ impl ViewportPanel {
                     };
 
                     if let Ok(mut engine) = gpu_engine_click.try_lock() {
-                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
-                            tracing::info!(
-                                "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
-                                event.position.x,
-                                event.position.y,
-                                norm_x,
-                                norm_y
-                            );
-                            helio_renderer.handle_left_click(norm_x, norm_y);
-                        }
+                        tracing::info!(
+                            "[VIEWPORT] Left click: screen=({:.1},{:.1}) norm=({:.4},{:.4})",
+                            event.position.x,
+                            event.position.y,
+                            norm_x,
+                            norm_y
+                        );
+                        engine.handle_left_click(norm_x, norm_y);
                     }
                 }
             })
@@ -840,10 +834,7 @@ impl ViewportPanel {
                     drop(state);
 
                     if let Ok(mut engine) = gpu_engine_up.try_lock() {
-                        if let Some(ref mut helio_renderer) = engine.helio_renderer {
-                            // End any active gizmo drag in Helio.
-                            helio_renderer.handle_left_release();
-                        }
+                        engine.handle_left_release();
                     }
                 }
             })
