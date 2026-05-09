@@ -317,30 +317,13 @@ impl AgentChatPanel {
             Self::compact_provider_messages(provider_messages, Self::CONTEXT_CHAR_BUDGET);
 
         let token = token.unwrap_or_default();
-        let tool_schemas = self.tool_registry.available_tools_schema();
+        let _tool_schemas = self.tool_registry.available_tools_schema();
         let request = ChatRequest {
             model,
             messages: provider_messages,
-            // Enable tool calls for agentic loop
-            enable_tool_calls: !tool_schemas.is_empty(),
-            tools: tool_schemas
-                .iter()
-                .map(|schema| {
-                    agent_chat_core::ToolDefinition {
-                        name: schema
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("unknown")
-                            .to_string(),
-                        description: schema.get("description").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        // Extract only the parameters field from the schema
-                        parameters_json_schema: schema
-                            .get("parameters")
-                            .cloned()
-                            .unwrap_or_else(|| serde_json::json!({"type": "object", "properties": {}})),
-                    }
-                })
-                .collect(),
+            // NOTE: Tool calling temporarily disabled pending provider compatibility issues
+            enable_tool_calls: false,
+            tools: Vec::new(),
             temperature: Some(0.2),
             top_p: Some(1.0),
             max_tokens: Some(1024),
