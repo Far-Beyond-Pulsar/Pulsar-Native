@@ -158,6 +158,7 @@ impl AgentChatPanel {
             role: ChatRole::Assistant,
             content: String::new(),
             tool_call_id: None,
+            tool_calls: vec![],
         });
         self.scroll_messages_to_bottom();
         cx.notify();
