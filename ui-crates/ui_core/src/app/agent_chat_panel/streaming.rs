@@ -449,6 +449,7 @@ impl AgentChatPanel {
                                 current_messages.push(ProviderChatMessage {
                                     role: ChatRole::Assistant,
                                     content: text.clone(),
+                                    tool_call_id: None,
                                 });
                                 // Show assistant text to user
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(text.clone()));
