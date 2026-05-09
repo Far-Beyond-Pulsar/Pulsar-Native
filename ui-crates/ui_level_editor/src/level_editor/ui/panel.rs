@@ -56,6 +56,9 @@ pub struct LevelEditorPanel {
     // Last scene revision observed by this panel. Used to detect AI-driven changes
     // that happen outside normal GPUI action handlers.
     last_observed_scene_revision: u64,
+
+    // Keeps the polling task alive for the lifetime of the panel.
+    _scene_revision_poller: gpui::Task<()>,
 }
 
 impl LevelEditorPanel {
@@ -225,6 +228,33 @@ impl LevelEditorPanel {
         // Build the level editor state with the default scene populated into the shared SceneDb.
         // The renderer and all panels now read/write the same Arc<SceneDb>.
         let state = LevelEditorState::new_with_scene_db(scene_db);
+        let shared_state = Arc::new(parking_lot::RwLock::new(state));
+
+        // Poll for AI-driven scene mutations at 50 ms intervals.  AI tools
+        // run on background threads and can't call cx.notify() directly, so
+        // we bridge the gap here: whenever scene_revision advances we trigger
+        // a GPUI re-render that propagates to the hierarchy and properties panels.
+        let poll_state = Arc::clone(&shared_state);
+        let poller = cx.spawn(async move |this, cx| {
+            let mut last_seen: u64 = 0;
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(50))
+                    .await;
+                let current = poll_state.read().scene_revision;
+                if current != last_seen {
+                    last_seen = current;
+                    cx.update(|cx| {
+                        this.update(cx, |panel, cx| {
+                            panel.notify_sub_panels(cx);
+                            cx.notify();
+                        })
+                        .ok();
+                    })
+                    .ok();
+                }
+            }
+        });
 
         Self {
             focus_handle: cx.focus_handle(),
@@ -234,11 +264,12 @@ impl LevelEditorPanel {
             gpu_engine: gpu_engine.clone(),
             render_enabled,
             game_thread: game_thread.clone(),
-            shared_state: Arc::new(parking_lot::RwLock::new(state)),
+            shared_state,
             workspace: None,
             hierarchy_panel_entity: None,
             properties_panel_entity: None,
             last_observed_scene_revision: 0,
+            _scene_revision_poller: poller,
         }
     }
 

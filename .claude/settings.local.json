@@ -38,7 +38,16 @@
       "Bash(cd:*)",
       "Bash(git show:*)",
       "Bash(Select-String -Pattern \"^error\")",
-      "WebSearch"
+      "WebSearch",
+      "Bash(grep -rn \"fn remove\\\\|fn delete\\\\|pub fn.*object\" ~/.cargo/registry/src/*/helio-* 2>/dev/null | grep -v \"test\\\\|//\\\\|#\\\\[\" | head -30 *)",
+      "Read(//Users/tristanpoland/.cargo/registry/src/**)",
+      "Bash(find ~/.cargo/git/checkouts -path \"*/Helio*\" -name \"*.rs\" 2>/dev/null | head -5)",
+      "Read(//Users/tristanpoland/.cargo/git/checkouts/**)",
+      "Bash(find ~/.cargo/git/checkouts -maxdepth 4 -name \"lib.rs\" 2>/dev/null | xargs grep -l \"remove_actor\\\\|ObjectId\\\\|update_object_transform\" 2>/dev/null | head -5)",
+      "Bash(find ~/.cargo -name \"*.rs\" -path \"*helio*\" 2>/dev/null | grep -v \".cargo/registry\" | head -10)",
+      "Read(//Users/tristanpoland/.cargo/**)",
+      "Bash(find ~/.cargo/git -maxdepth 6 -name \"*.rs\" 2>/dev/null | xargs grep -l \"update_object_transform\\\\|remove_actor\\\\|ObjectId\" 2>/dev/null | head -5)",
+      "Read(//Users/tristanpoland/.cargo/git/**)"
     ]
   }
 }

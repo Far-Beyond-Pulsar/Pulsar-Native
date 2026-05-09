@@ -34,7 +34,7 @@ fn object_matches_filter(object: &crate::SceneObjectData, filter: Option<&Value>
     }
 
     if let Some(name_contains) = filter.get("name_contains").and_then(|v| v.as_str()) {
-        if !object.name.contains(name_contains) {
+        if !object.name.to_lowercase().contains(&name_contains.to_lowercase()) {
             return false;
         }
     }
@@ -42,6 +42,34 @@ fn object_matches_filter(object: &crate::SceneObjectData, filter: Option<&Value>
     if let Some(visible) = filter.get("visible").and_then(|v| v.as_bool()) {
         if object.visible != visible {
             return false;
+        }
+    }
+
+    if let Some(object_type) = filter.get("object_type").and_then(|v| v.as_str()) {
+        if object_type_key(&object.object_type) != object_type {
+            return false;
+        }
+    }
+
+    if let Some(locked) = filter.get("locked").and_then(|v| v.as_bool()) {
+        if object.locked != locked {
+            return false;
+        }
+    }
+
+    if let Some(parent_id) = filter.get("parent_id") {
+        match parent_id {
+            Value::Null => {
+                if object.parent.is_some() {
+                    return false;
+                }
+            }
+            Value::String(pid) => {
+                if object.parent.as_deref() != Some(pid.as_str()) {
+                    return false;
+                }
+            }
+            _ => {}
         }
     }
 
@@ -110,7 +138,7 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
     vec![
         AiToolDefinition::new(
             "level_editor_query_scene",
-            "Query high-level scene state and object-type counts for the currently open level editor scene.",
+            "Query high-level scene state: object counts by type, selected object, and unsaved-changes status. Call this first to understand the scene before making edits.",
             json!({
                 "type": "object",
                 "properties": {}
@@ -119,20 +147,31 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("analysis"),
         AiToolDefinition::new(
             "level_editor_query_objects",
-            "Query objects from the currently open level editor scene (in-memory).",
+            "List objects in the scene with optional filtering. Supports pagination via offset/limit. Use filters to narrow results by id, name, type, visibility, locked state, or parent.",
             json!({
                 "type": "object",
                 "properties": {
                     "filter": {
                         "type": "object",
+                        "description": "All filter fields are AND-combined. Omit to return all objects.",
                         "properties": {
-                            "id": { "type": "string" },
-                            "name_contains": { "type": "string" },
-                            "visible": { "type": "boolean" }
-                        }
+                            "id": { "type": "string", "description": "Exact object id match." },
+                            "name_contains": { "type": "string", "description": "Case-insensitive substring match on name." },
+                            "object_type": {
+                                "type": "string",
+                                "description": "One of: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
+                            },
+                            "visible": { "type": "boolean" },
+                            "locked": { "type": "boolean" },
+                            "parent_id": {
+                                "type": ["string", "null"],
+                                "description": "null = root objects only; a string id = direct children of that parent."
+                            }
+                        },
+                        "additionalProperties": false
                     },
-                    "offset": { "type": "integer", "minimum": 0 },
-                    "limit": { "type": "integer", "minimum": 1 }
+                    "offset": { "type": "integer", "minimum": 0, "description": "Pagination offset (default 0)." },
+                    "limit": { "type": "integer", "minimum": 1, "description": "Max results to return (default 200)." }
                 }
             }),
         )
@@ -174,35 +213,38 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_add_object",
-            "Add a new object to the currently open level editor scene.",
+            "Add a single new object to the scene. Returns the assigned object id. Position/rotation are world-space; scale defaults to [1,1,1]. After adding, call level_editor_get_object with the returned id to confirm placement.",
             json!({
                 "type": "object",
                 "properties": {
-                    "name": { "type": "string" },
+                    "name": { "type": "string", "description": "Display name for the object." },
                     "kind": {
                         "type": "string",
                         "description": "One of: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
                     },
-                    "parent_id": { "type": ["string", "null"] },
-                    "visible": { "type": "boolean" },
-                    "locked": { "type": "boolean" },
+                    "parent_id": { "type": ["string", "null"], "description": "Parent object id, or null/omit for root." },
+                    "visible": { "type": "boolean", "description": "Defaults to true." },
+                    "locked": { "type": "boolean", "description": "Defaults to false." },
                     "position": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "World-space [x, y, z]. Defaults to [0,0,0]."
                     },
                     "rotation": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "Euler angles in degrees [pitch, yaw, roll]. Defaults to [0,0,0]."
                     },
                     "scale": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "Non-uniform scale [x, y, z]. Defaults to [1,1,1]."
                     }
                 },
                 "required": ["name", "kind"]
@@ -211,17 +253,21 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_batch_add_objects",
-            "Add multiple objects to the currently open level editor scene in one call.",
+            "Add multiple objects in one call. Prefer this over repeated level_editor_add_object calls when creating many objects at once (e.g. populating a level). Returns created ids and any per-item errors.",
             json!({
                 "type": "object",
                 "properties": {
                     "objects": {
                         "type": "array",
+                        "description": "Array of objects to create. Each follows the same schema as level_editor_add_object.",
                         "items": {
                             "type": "object",
                             "properties": {
                                 "name": { "type": "string" },
-                                "kind": { "type": "string" },
+                                "kind": {
+                                    "type": "string",
+                                    "description": "One of: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
+                                },
                                 "parent_id": { "type": ["string", "null"] },
                                 "visible": { "type": "boolean" },
                                 "locked": { "type": "boolean" },
@@ -279,12 +325,19 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_duplicate_object",
-            "Duplicate an object. Optionally create multiple duplicates.",
+            "Duplicate an object one or more times. Each copy inherits the source transform. Use position_offset to space copies apart (offset is applied cumulatively: copy i is placed at source_position + offset * i).",
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string" },
-                    "count": { "type": "integer", "minimum": 1, "maximum": 100 }
+                    "id": { "type": "string", "description": "Source object id to duplicate." },
+                    "count": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Number of copies to create (default 1)." },
+                    "position_offset": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "Per-copy world-space offset [dx, dy, dz]. Copy i is placed at source_pos + offset * i. Useful for creating rows, grids, or stacked items."
+                    }
                 },
                 "required": ["id"]
             }),
@@ -304,28 +357,67 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_set_transform",
-            "Set transform values on a single object by id (position/rotation/scale).",
+            "Set absolute world-space transform on a single object. Only fields provided are changed; omitted fields keep their current values. To update name/visible/locked use level_editor_update_object instead.",
             json!({
                 "type": "object",
                 "properties": {
-                    "id": { "type": "string" },
+                    "id": { "type": "string", "description": "Object id to update." },
                     "position": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "Absolute world-space [x, y, z]."
                     },
                     "rotation": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "Euler angles in degrees [pitch, yaw, roll]."
                     },
                     "scale": {
                         "type": "array",
                         "items": { "type": "number" },
                         "minItems": 3,
-                        "maxItems": 3
+                        "maxItems": 3,
+                        "description": "Non-uniform scale [x, y, z]."
+                    }
+                },
+                "required": ["id"]
+            }),
+        )
+        .with_category("editing"),
+        AiToolDefinition::new(
+            "level_editor_update_object",
+            "Update any combination of properties on a single object: name, visibility, locked state, and/or transform. Only supplied fields are changed. This is the preferred tool for modifying an existing object.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "id": { "type": "string", "description": "Object id to update." },
+                    "name": { "type": "string", "description": "New display name." },
+                    "visible": { "type": "boolean" },
+                    "locked": { "type": "boolean" },
+                    "position": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "Absolute world-space [x, y, z]."
+                    },
+                    "rotation": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "Euler angles in degrees [pitch, yaw, roll]."
+                    },
+                    "scale": {
+                        "type": "array",
+                        "items": { "type": "number" },
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "description": "Non-uniform scale [x, y, z]."
                     }
                 },
                 "required": ["id"]
@@ -334,7 +426,7 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_save_scene",
-            "Persist the currently open scene to disk using the editor's current scene path.",
+            "Write the current in-memory scene state to disk. Always call this after a series of edits to persist changes. Reports the saved file path.",
             json!({
                 "type": "object",
                 "properties": {}
@@ -343,20 +435,29 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_bulk_update_objects",
-            "Bulk-update objects in the currently open level editor scene (in-memory only).",
+            "Apply the same property changes to all objects matching a filter. Useful for hiding all lights, locking all cameras, repositioning a group, etc. Omit filter to affect all objects.",
             json!({
                 "type": "object",
                 "properties": {
                     "filter": {
                         "type": "object",
+                        "description": "All filter fields are AND-combined. Omit to match all objects.",
                         "properties": {
                             "id": { "type": "string" },
-                            "name_contains": { "type": "string" },
-                            "visible": { "type": "boolean" }
-                        }
+                            "name_contains": { "type": "string", "description": "Case-insensitive substring match." },
+                            "object_type": {
+                                "type": "string",
+                                "description": "One of: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
+                            },
+                            "visible": { "type": "boolean" },
+                            "locked": { "type": "boolean" },
+                            "parent_id": { "type": ["string", "null"] }
+                        },
+                        "additionalProperties": false
                     },
                     "set": {
                         "type": "object",
+                        "description": "Fields to overwrite on every matched object.",
                         "properties": {
                             "name": { "type": "string" },
                             "visible": { "type": "boolean" },
@@ -389,17 +490,25 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .with_category("editing"),
         AiToolDefinition::new(
             "level_editor_bulk_delete_objects",
-            "Bulk-delete objects from the currently open level editor scene (in-memory only).",
+            "Delete all objects matching a filter. Omit filter to delete everything. Use level_editor_query_objects first to confirm the target set before deleting.",
             json!({
                 "type": "object",
                 "properties": {
                     "filter": {
                         "type": "object",
+                        "description": "All filter fields are AND-combined. Omit to match all objects.",
                         "properties": {
                             "id": { "type": "string" },
-                            "name_contains": { "type": "string" },
-                            "visible": { "type": "boolean" }
-                        }
+                            "name_contains": { "type": "string", "description": "Case-insensitive substring match." },
+                            "object_type": {
+                                "type": "string",
+                                "description": "One of: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
+                            },
+                            "visible": { "type": "boolean" },
+                            "locked": { "type": "boolean" },
+                            "parent_id": { "type": ["string", "null"] }
+                        },
+                        "additionalProperties": false
                     }
                 }
             }),
@@ -810,10 +919,32 @@ pub fn execute_ai_tool(
                 .unwrap_or(1)
                 .min(100) as usize;
 
+            let position_offset = vec3_from_value(tool_args.get("position_offset"));
+
             let mut state = state_arc.write();
+
+            // Capture source position before duplicating (needed for offset).
+            let source_position = state
+                .scene_database
+                .get_object(&source_id)
+                .map(|o| o.transform.position);
+
             let mut created_ids = Vec::new();
-            for _ in 0..count {
+            for i in 0..count {
                 if let Some(new_id) = state.scene_database.duplicate_object(&source_id) {
+                    // Apply cumulative position offset if requested.
+                    if let (Some(offset), Some(src_pos)) = (position_offset, source_position) {
+                        let copy_index = (i + 1) as f32;
+                        let new_pos = [
+                            src_pos[0] + offset[0] * copy_index,
+                            src_pos[1] + offset[1] * copy_index,
+                            src_pos[2] + offset[2] * copy_index,
+                        ];
+                        if let Some(mut copy) = state.scene_database.get_object(&new_id) {
+                            copy.transform.position = new_pos;
+                            state.scene_database.update_object(copy);
+                        }
+                    }
                     created_ids.push(new_id);
                 } else {
                     break;
@@ -833,6 +964,7 @@ pub fn execute_ai_tool(
                 "requested_count": count,
                 "created_count": created_ids.len(),
                 "created_ids": created_ids,
+                "position_offset_applied": position_offset.is_some(),
                 "no_op": created_ids.is_empty(),
                 "no_op_reason": if created_ids.is_empty() { "Source object not found" } else { "" },
             }))
@@ -931,6 +1063,92 @@ pub fn execute_ai_tool(
                     if updated { "" } else { "Transform update failed in scene database" }
                 } else {
                     "No transform fields changed"
+                },
+            }))
+        }
+        "level_editor_update_object" => {
+            let object_id = tool_args
+                .get("id")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| PluginError::Other {
+                    message: "level_editor_update_object requires `id`".to_string(),
+                })?
+                .to_string();
+
+            let mut state = state_arc.write();
+            let Some(mut object) = state.scene_database.get_object(&object_id) else {
+                return Ok(json!({
+                    "ok": false,
+                    "apply_mode": "editor_state",
+                    "persists_to_disk": false,
+                    "open_file": file_path.display().to_string(),
+                    "updated": false,
+                    "no_op": true,
+                    "no_op_reason": "Object not found",
+                }));
+            };
+
+            let mut changed = false;
+
+            if let Some(name) = tool_args.get("name").and_then(|v| v.as_str()) {
+                if object.name != name {
+                    object.name = name.to_string();
+                    changed = true;
+                }
+            }
+            if let Some(visible) = tool_args.get("visible").and_then(|v| v.as_bool()) {
+                if object.visible != visible {
+                    object.visible = visible;
+                    changed = true;
+                }
+            }
+            if let Some(locked) = tool_args.get("locked").and_then(|v| v.as_bool()) {
+                if object.locked != locked {
+                    object.locked = locked;
+                    changed = true;
+                }
+            }
+            if let Some(position) = vec3_from_value(tool_args.get("position")) {
+                if object.transform.position != position {
+                    object.transform.position = position;
+                    changed = true;
+                }
+            }
+            if let Some(rotation) = vec3_from_value(tool_args.get("rotation")) {
+                if object.transform.rotation != rotation {
+                    object.transform.rotation = rotation;
+                    changed = true;
+                }
+            }
+            if let Some(scale) = vec3_from_value(tool_args.get("scale")) {
+                if object.transform.scale != scale {
+                    object.transform.scale = scale;
+                    changed = true;
+                }
+            }
+
+            let updated = if changed {
+                state.scene_database.update_object(object.clone())
+            } else {
+                false
+            };
+
+            if updated {
+                bump_scene_revision(&mut state, true);
+            }
+
+            Ok(json!({
+                "ok": true,
+                "apply_mode": "editor_state",
+                "persists_to_disk": false,
+                "open_file": file_path.display().to_string(),
+                "id": object_id,
+                "updated": updated,
+                "no_op": !updated,
+                "no_op_reason": if changed {
+                    if updated { "" } else { "Update failed in scene database" }
+                } else {
+                    "No field values changed"
                 },
             }))
         }

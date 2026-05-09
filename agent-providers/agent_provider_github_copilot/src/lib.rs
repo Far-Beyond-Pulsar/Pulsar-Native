@@ -371,6 +371,7 @@ impl ChatProvider for GithubCopilotProvider {
         }
         if request.enable_tool_calls && !tools.is_empty() {
             payload["tools"] = Value::Array(tools);
+            payload["tool_choice"] = json!("auto");
         }
 
         let response = self
@@ -498,6 +499,7 @@ impl ChatProvider for GithubCopilotProvider {
         }
         if request.enable_tool_calls && !tools.is_empty() {
             payload["tools"] = Value::Array(tools);
+            payload["tool_choice"] = json!("auto");
         }
 
         let response = self

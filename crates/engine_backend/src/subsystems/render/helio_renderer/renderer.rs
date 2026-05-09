@@ -930,6 +930,10 @@ impl HelioRenderer {
             None
         };
 
+        // Build the set of SceneDb IDs that should be visible in the renderer
+        // this frame (mesh objects that are currently visible).
+        let mut live_ids = std::collections::HashSet::with_capacity(snapshots.len());
+
         for snap in &snapshots {
             let key = match snap.object_type {
                 ObjectType::Mesh(mt) => MeshKey::from(mt),
@@ -938,6 +942,8 @@ impl HelioRenderer {
             if !snap.visible {
                 continue;
             }
+
+            live_ids.insert(snap.id.clone());
 
             if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
                 // Skip transform update while the gizmo is dragging this object —
@@ -996,7 +1002,22 @@ impl HelioRenderer {
             }
         }
 
-        // Rebuild the BVH once per sync if any new objects were inserted.
+        // Remove Helio objects whose SceneDb entry was deleted or made invisible.
+        // Collect removals first to avoid borrowing object_map while mutating it.
+        let stale_ids: Vec<(String, ObjectId)> = inner
+            .object_map
+            .iter()
+            .filter(|(scene_id, _)| !live_ids.contains(*scene_id))
+            .map(|(scene_id, &(obj_id, _))| (scene_id.clone(), obj_id))
+            .collect();
+
+        for (scene_id, obj_id) in stale_ids {
+            let _ = inner.renderer.scene_mut().remove_object(obj_id);
+            inner.object_map.remove(&scene_id);
+            picker_dirty = true;
+        }
+
+        // Rebuild the BVH once per sync if any objects were added or removed.
         if picker_dirty {
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }

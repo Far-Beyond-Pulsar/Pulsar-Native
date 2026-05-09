@@ -364,7 +364,7 @@ impl AgentChatPanel {
             tools,
             temperature: Some(0.2),
             top_p: Some(1.0),
-            max_tokens: Some(1024),
+            max_tokens: Some(8192),
         };
         println!(
             "[agent_chat][request={}] dispatched provider={} model={} entering in-flight compacted={} message_count={}",
