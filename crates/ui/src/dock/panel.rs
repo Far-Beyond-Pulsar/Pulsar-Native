@@ -79,6 +79,14 @@ pub trait Panel: EventEmitter<PanelEvent> + Render + Focusable {
         None
     }
 
+    /// The file path associated with this panel (e.g. the file currently open in the editor).
+    ///
+    /// Used by AI tooling to know which file a panel is editing without relying on
+    /// display strings. Returns `None` for panels that are not file-based.
+    fn panel_file_path(&self, cx: &App) -> Option<std::path::PathBuf> {
+        None
+    }
+
     /// The title of the panel
     fn title(&self, window: &Window, cx: &App) -> AnyElement {
         SharedString::from(t!("Dock.Unnamed")).into_any_element()
@@ -184,6 +192,8 @@ pub trait PanelView: 'static + Send + Sync {
     fn panel_name(&self, cx: &App) -> &'static str;
     fn panel_id(&self, cx: &App) -> EntityId;
     fn tab_name(&self, cx: &App) -> Option<SharedString>;
+    /// The file path currently open in this panel, if any.
+    fn panel_file_path(&self, cx: &App) -> Option<std::path::PathBuf>;
     fn title(&self, window: &Window, cx: &App) -> AnyElement;
     fn title_suffix(&self, window: &mut Window, cx: &mut App) -> Option<AnyElement>;
     fn title_style(&self, cx: &App) -> Option<TitleStyle>;
@@ -212,6 +222,10 @@ impl<T: Panel> PanelView for Entity<T> {
 
     fn tab_name(&self, cx: &App) -> Option<SharedString> {
         self.read(cx).tab_name(cx)
+    }
+
+    fn panel_file_path(&self, cx: &App) -> Option<std::path::PathBuf> {
+        self.read(cx).panel_file_path(cx)
     }
 
     fn title(&self, window: &Window, cx: &App) -> AnyElement {

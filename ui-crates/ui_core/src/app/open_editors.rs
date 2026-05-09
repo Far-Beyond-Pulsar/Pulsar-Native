@@ -7,6 +7,8 @@ pub struct OpenEditorInfo {
     pub panel_name: String,
     pub tab_name: String,
     pub is_active: bool,
+    /// Absolute path of the file open in this panel, if any. Used by AI tooling.
+    pub file_path: Option<String>,
 }
 
 static OPEN_EDITORS: LazyLock<RwLock<Vec<OpenEditorInfo>>> =
@@ -38,6 +40,7 @@ pub fn snapshot_json() -> serde_json::Value {
                     "panel_name": editor.panel_name,
                     "tab_name": editor.tab_name,
                     "is_active": editor.is_active,
+                    "file_path": editor.file_path,
                 })
             })
             .collect::<Vec<_>>(),

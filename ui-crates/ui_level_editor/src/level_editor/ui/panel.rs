@@ -1025,6 +1025,10 @@ impl Panel for LevelEditorPanel {
             ..Default::default()
         }
     }
+
+    fn panel_file_path(&self, _cx: &App) -> Option<std::path::PathBuf> {
+        self.shared_state.read().current_scene.clone()
+    }
 }
 
 ui_common::panel_boilerplate!(LevelEditorPanel);

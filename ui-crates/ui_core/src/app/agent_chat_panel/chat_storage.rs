@@ -67,13 +67,14 @@ Plugins can expose custom tools for specific file types. When working with files
 2. **query_file_editors**: Ask which plugins/editors can handle a specific file path.
 
 3. **query_open_editors**: List already-open editors and see which is active/inactive.
+   The result includes a `file_path` field for each editor — this is the EXACT absolute path you must use for `query_plugin_tools` and `execute_plugin_tool`. Always read `file_path` from this result rather than guessing paths.
 
 4. **activate_open_editor**: Switch to an already-open editor by index.
 
 5. **open_file_in_default_editor**: Open the target file in its default editor tab first.
 
-6. **query_plugin_tools**: Discover what tools are available for a file.
-   Example: `query_plugin_tools` with file_path set to your current file will show available tools.
+6. **query_plugin_tools**: Discover what tools are available for a file. `file_path` is REQUIRED.
+   Always pass the `file_path` obtained from `query_open_editors`. Do not guess paths.
 
 7. **query_tools_for_plugin**: Given a plugin_id, list tools owned by that plugin (optionally scoped to a file).
 
@@ -85,14 +86,12 @@ Plugins can expose custom tools for specific file types. When working with files
 
 ### Best Practices
 
-- Start by identifying file type and editor ownership (`query_available_file_types`, `query_file_editors`)
-- Use `query_open_editors` to inspect active/inactive editors and `activate_open_editor` to switch context without reopening files
-- Always call `open_file_in_default_editor` before any plugin edit operations
-- Then call `query_plugin_tools` for the exact file before attempting edits
-- File-specific tools can provide powerful editing, refactoring, validation, and analysis capabilities
-- Use plugin tools for all structured edits and file operations
-- Never perform direct file-content edits for editor-managed files; edits must go through editor/plugin tools
-- Always call `query_plugin_tools` with the actual file path to get the most relevant tools
+- To work with an already-open file: call `query_open_editors` first, read the `file_path` from the result, then pass that exact path to `query_plugin_tools` and `execute_plugin_tool`
+- The `file_path` in `query_open_editors` results is the absolute canonical path — use it exactly as returned
+- Use `activate_open_editor` to switch which editor is focused without reopening files
+- Only call `open_file_in_default_editor` if the file is NOT already open in an editor
+- Always call `query_plugin_tools` with `file_path` before using `execute_plugin_tool`
+- Use plugin tools for all structured edits; never read or write file content directly
 
 ### REQUIRED: Always report tool results to the user
 

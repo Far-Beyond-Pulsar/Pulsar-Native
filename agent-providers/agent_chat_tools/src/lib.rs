@@ -113,12 +113,13 @@ impl ToolRegistry {
             }),
             json!({
                 "name": "query_plugin_tools",
-                "description": "Query available AI tools from plugins for the current file.",
+                "description": "Query available AI tools from plugins for a specific file. Call query_open_editors first to get the file_path for open editors.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "file_path": { "type": "string", "description": "Optional file path. If not provided, uses current_file from context." }
-                    }
+                        "file_path": { "type": "string", "description": "The file path to query tools for. Use the file_path from query_open_editors output." }
+                    },
+                    "required": ["file_path"]
                 }
             }),
             json!({
@@ -472,7 +473,14 @@ impl ChatTool for ExecutePluginToolTool {
             .map(|p| PathBuf::from(p))
             .or_else(|| ctx.current_file.clone())
             .ok_or_else(|| anyhow!("No file path provided or available in context"))?;
-        let full_file_path = resolve_workspace_path(&ctx.workspace_root, &file_path.display().to_string())?;
+
+        // Use soft resolution: the file path from query_open_editors is absolute and canonical,
+        // but even if it's relative we don't want to fail just because we can't canonicalize it.
+        let full_file_path = resolve_workspace_path_soft(&ctx.workspace_root, &file_path.display().to_string())?;
+
+        // For ai_sessions lookup the path must match exactly what was registered (canonical).
+        // Try to canonicalize here; fall back to the soft-resolved path so we don't fail outright.
+        let canonical_file_path = full_file_path.canonicalize().unwrap_or_else(|_| full_file_path.clone());
 
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -495,7 +503,7 @@ impl ChatTool for ExecutePluginToolTool {
         };
 
         let result = manager
-            .execute_plugin_ai_tool(&plugin_id, &full_file_path, tool_name, tool_args)
+            .execute_plugin_ai_tool(&plugin_id, &canonical_file_path, tool_name, tool_args)
             .map_err(|err| anyhow!(err.to_string()))?;
 
         Ok(json!({
