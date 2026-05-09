@@ -105,6 +105,50 @@ impl GithubCopilotProvider {
             .and_then(|content| content.as_str())
             .map(|s| s.to_string())
     }
+
+    fn extract_error_message(body: &str) -> Option<String> {
+        let parsed: Value = serde_json::from_str(body).ok()?;
+        parsed
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(|message| message.as_str())
+            .map(|message| message.trim().to_string())
+            .filter(|message| !message.is_empty())
+    }
+
+    fn format_http_error(response: reqwest::blocking::Response, api_name: &str) -> anyhow::Error {
+        let status = response.status();
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+        let body = response.text().unwrap_or_default();
+
+        if status.as_u16() == 429 {
+            let server_message = Self::extract_error_message(&body)
+                .unwrap_or_else(|| "Too many requests to GitHub Models.".to_string());
+            let retry_hint = retry_after
+                .as_deref()
+                .map(|seconds| format!(" Retry-After: {seconds} seconds."))
+                .unwrap_or_else(|| " Wait a short time and try again.".to_string());
+
+            return anyhow!(
+                "GitHub Models rate limit hit (429) during {api_name}. {server_message}{retry_hint}"
+            );
+        }
+
+        let body_for_message = if body.trim().is_empty() {
+            "<empty body>".to_string()
+        } else {
+            body
+        };
+
+        anyhow!(
+            "GitHub Models {api_name} returned {status}: {body_for_message}"
+        )
+    }
 }
 
 impl Default for GithubCopilotProvider {
@@ -175,13 +219,7 @@ impl ChatProvider for GithubCopilotProvider {
             .context("failed to call GitHub Models catalog API")?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "GitHub Models catalog API returned {}: {}",
-                status,
-                body
-            ));
+            return Err(Self::format_http_error(response, "catalog API"));
         }
 
         // The catalog returns an array of model objects; fall back to static list
@@ -269,9 +307,7 @@ impl ChatProvider for GithubCopilotProvider {
             .context("failed to call GitHub Models chat API")?;
 
         if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(anyhow!("GitHub Models API returned {}: {}", status, body));
+            return Err(Self::format_http_error(response, "chat API"));
         }
 
         let raw_response: Value = response
@@ -397,17 +433,12 @@ impl ChatProvider for GithubCopilotProvider {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().unwrap_or_default();
             eprintln!(
                 "[agent_provider_github_copilot] streaming request failed status={} body_len={}",
                 status,
-                body.len()
+                response.content_length().unwrap_or(0)
             );
-            return Err(anyhow!(
-                "GitHub Models streaming API returned {}: {}",
-                status,
-                body
-            ));
+            return Err(Self::format_http_error(response, "streaming API"));
         }
 
         let mut raw_events = Vec::new();
