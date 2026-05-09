@@ -127,6 +127,8 @@ pub enum ChatRole {
 pub struct ChatMessage {
     pub role: ChatRole,
     pub content: String,
+    /// Tool call ID for tool role messages (used for provider threading)
+    pub tool_call_id: Option<String>,
 }
 
 #[derive(Clone, Debug)]

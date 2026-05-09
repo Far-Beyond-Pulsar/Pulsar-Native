@@ -174,10 +174,15 @@ impl ChatProvider for OpenAiProvider {
             .messages
             .iter()
             .map(|message: &ChatMessage| {
-                json!({
+                let mut msg = json!({
                     "role": Self::map_role(message.role),
                     "content": message.content,
-                })
+                });
+                // Add tool_call_id if present (for tool role messages)
+                if let Some(tool_call_id) = &message.tool_call_id {
+                    msg["tool_call_id"] = json!(tool_call_id);
+                }
+                msg
             })
             .collect();
 
