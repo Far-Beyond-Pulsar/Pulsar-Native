@@ -90,6 +90,7 @@ impl AgentChatPanel {
                             value
                         ),
                         tool_call_id: None,
+                        tool_calls: vec![],
                     });
                     self.save_current_chat();
                     self.scroll_messages_to_bottom();
@@ -120,6 +121,7 @@ impl AgentChatPanel {
                             role: ChatRole::System,
                             content: "Enter yes/no for tools support.".to_string(),
                             tool_call_id: None,
+                            tool_calls: vec![],
                         });
                         self.save_current_chat();
                         self.scroll_messages_to_bottom();
@@ -177,6 +179,7 @@ impl AgentChatPanel {
                     content: "Custom provider saved to JSON and added to the provider list."
                         .to_string(),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -188,6 +191,7 @@ impl AgentChatPanel {
                     role: ChatRole::System,
                     content: format!("Failed to save custom provider: {err}"),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();
@@ -236,6 +240,7 @@ impl AgentChatPanel {
                     role: ChatRole::System,
                     content: format!("Custom provider '{}' deleted.", provider_id),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -247,6 +252,7 @@ impl AgentChatPanel {
                     role: ChatRole::System,
                     content: format!("Failed to delete custom provider '{}': {err}", provider_id),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.scroll_messages_to_bottom();

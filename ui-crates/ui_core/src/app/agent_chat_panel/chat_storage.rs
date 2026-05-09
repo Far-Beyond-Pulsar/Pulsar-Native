@@ -86,6 +86,7 @@ Plugins can expose custom tools for specific file types. When working with files
 
 Choose a provider/model and ask anything about your project. Mention specific files when you want to use plugin-specific tools."#.to_string(),
             tool_call_id: None,
+            tool_calls: vec![],
         }
     }
 
@@ -199,6 +200,7 @@ Choose a provider/model and ask anything about your project. Mention specific fi
                 role: Self::normalize_role(&m.role),
                 content: m.content,
                 tool_call_id: None,
+                tool_calls: vec![],
             })
             .collect();
 

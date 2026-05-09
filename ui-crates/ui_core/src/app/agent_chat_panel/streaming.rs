@@ -225,6 +225,7 @@ impl AgentChatPanel {
             role: ChatRole::User,
             content: prompt.clone(),
             tool_call_id: None,
+            tool_calls: vec![],
         });
         self.scroll_messages_to_bottom();
 
@@ -244,6 +245,7 @@ impl AgentChatPanel {
                 role: ChatRole::Assistant,
                 content: "Selected provider is still WIP and not yet executable.".to_string(),
                 tool_call_id: None,
+                tool_calls: vec![],
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -268,6 +270,7 @@ impl AgentChatPanel {
                 role: ChatRole::Assistant,
                 content: format!("Queued with {provider} / {model}."),
                 tool_call_id: None,
+                tool_calls: vec![],
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -292,6 +295,7 @@ impl AgentChatPanel {
                 role: ChatRole::Assistant,
                 content: "Authentication required. Paste token in the auth row above.".to_string(),
                 tool_call_id: None,
+                tool_calls: vec![],
             });
             self.prompt_input.update(cx, |input, cx| {
                 input.set_value("", window, cx);
@@ -308,6 +312,7 @@ impl AgentChatPanel {
             role: ChatRole::Assistant,
             content: String::new(),
             tool_call_id: None,
+            tool_calls: vec![],
         });
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);

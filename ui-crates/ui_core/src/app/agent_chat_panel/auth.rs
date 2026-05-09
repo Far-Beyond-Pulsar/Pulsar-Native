@@ -92,6 +92,7 @@ impl AgentChatPanel {
                     role: ChatRole::System,
                     content: format!("{} authenticated successfully.", provider_id),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -104,6 +105,7 @@ impl AgentChatPanel {
                     role: ChatRole::System,
                     content: format!("Authentication failed: {err}"),
                     tool_call_id: None,
+                    tool_calls: vec![],
                 });
                 self.save_current_chat();
                 self.refresh_chat_history_list(cx);
@@ -133,6 +135,7 @@ impl AgentChatPanel {
                             info.verification_uri, info.user_code
                         ),
                         tool_call_id: None,
+                        tool_calls: vec![],
                     });
                     self.pending_device_code = Some(info.device_code.clone());
                     self.scroll_messages_to_bottom();
@@ -173,6 +176,7 @@ impl AgentChatPanel {
                                                     provider_id
                                                 ),
                                                 tool_call_id: None,
+                                                tool_calls: vec![],
                                             });
                                             panel.save_current_chat();
                                             panel.refresh_chat_history_list(cx);
@@ -195,6 +199,7 @@ impl AgentChatPanel {
                                                 role: ChatRole::System,
                                                 content: "Device code authentication failed or timed out.".to_string(),
                                                 tool_call_id: None,
+                                                tool_calls: vec![],
                                             });
                                             panel.scroll_messages_to_bottom();
                                             cx.notify();
@@ -214,6 +219,7 @@ impl AgentChatPanel {
                         role: ChatRole::System,
                         content: format!("Failed to start device flow: {err}"),
                         tool_call_id: None,
+                        tool_calls: vec![],
                     });
                     self.scroll_messages_to_bottom();
                     cx.notify();

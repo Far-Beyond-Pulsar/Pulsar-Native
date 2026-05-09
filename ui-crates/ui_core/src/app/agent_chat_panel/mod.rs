@@ -253,6 +253,7 @@ impl AgentChatPanel {
                 role: ChatRole::System,
                 content: "Agent Chat is ready. Choose provider/model and ask anything about your project.".to_string(),
                 tool_call_id: None,
+                tool_calls: vec![],
             }],
             _subscriptions: subscriptions,
         };
