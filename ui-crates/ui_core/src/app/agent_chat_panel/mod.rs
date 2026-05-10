@@ -86,6 +86,8 @@ pub struct AgentChatPanel {
     /// collapsed tool-call blocks. System and raw Tool-role messages are excluded.
     pub(crate) display_items: Vec<DisplayItem>,
     pub(crate) display_item_heights: HashMap<usize, Pixels>,
+    /// Sender half of the per-request cancel channel. `None` when idle.
+    pub(crate) cancel_tx: Option<smol::channel::Sender<()>>,
     pub(crate) _subscriptions: Vec<Subscription>,
 }
 
@@ -314,6 +316,7 @@ impl AgentChatPanel {
             }],
             display_items: vec![],
             display_item_heights: HashMap::new(),
+            cancel_tx: None,
             _subscriptions: subscriptions,
         };
 
@@ -476,6 +479,43 @@ impl Render for AgentChatPanel {
                                     })),
                             ),
                     )
+                    .child({
+                        // Context-window usage meter (character-based estimate).
+                        let used: usize = self.messages.iter().map(|m| m.content.len()).sum();
+                        let pct = (used as f32 / Self::CONTEXT_CHAR_BUDGET as f32).min(1.0);
+                        let bar_color = if pct > 0.85 {
+                            cx.theme().danger
+                        } else if pct > 0.6 {
+                            cx.theme().warning
+                        } else {
+                            cx.theme().success
+                        };
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_1()
+                            .px(px(2.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h(px(3.0))
+                                    .rounded_full()
+                                    .bg(cx.theme().border.opacity(0.4))
+                                    .child(
+                                        div()
+                                            .h_full()
+                                            .rounded_full()
+                                            .bg(bar_color)
+                                            .w(relative(pct)),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .text_color(cx.theme().muted_foreground.opacity(0.7))
+                                    .text_xs()
+                                    .child(format!("{}%", (pct * 100.0) as u32)),
+                            )
+                    })
                     .when(auth_provider.is_some(), |el| {
                         el.child(
                             v_flex()
@@ -1105,6 +1145,7 @@ impl Render for AgentChatPanel {
                                                     }
                                                 );
                                                 let content = content.clone();
+                                                let copy_content = content.clone();
                                                 let message_index = *message_index;
                                                 let hover_group =
                                                     format!("agent-chat-msg-hover-{ix}");
@@ -1349,7 +1390,68 @@ impl Render for AgentChatPanel {
                                                                                 );
                                                                             },
                                                                         )),
-                                                                    ),
+                                                                    )
+                                                                    // Copy message content to clipboard
+                                                                    .child({
+                                                                        Button::new((
+                                                                            "agent-chat-copy",
+                                                                            ix,
+                                                                        ))
+                                                                        .xsmall()
+                                                                        .ghost()
+                                                                        .icon(IconName::Copy)
+                                                                        .tooltip("Copy message")
+                                                                        .on_click(cx.listener(
+                                                                            move |_, _, _, cx| {
+                                                                                cx.write_to_clipboard(
+                                                                                    gpui::ClipboardItem::new_string(copy_content.clone())
+                                                                                );
+                                                                            },
+                                                                        ))
+                                                                    })
+                                                                    // Edit: user messages only — put text back in input
+                                                                    .when(is_user && !is_confirming_rollback, |el| {
+                                                                        el.child(
+                                                                            Button::new((
+                                                                                "agent-chat-edit",
+                                                                                ix,
+                                                                            ))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::EditPencil)
+                                                                            .tooltip("Edit message")
+                                                                            .disabled(this.is_request_in_flight)
+                                                                            .on_click(cx.listener(
+                                                                                move |this, _, window, cx| {
+                                                                                    this.edit_user_message(
+                                                                                        ix,
+                                                                                        message_index,
+                                                                                        window,
+                                                                                        cx,
+                                                                                    );
+                                                                                },
+                                                                            ))
+                                                                        )
+                                                                    })
+                                                                    // Regenerate: last assistant message only
+                                                                    .when(!is_user && ix + 1 == display_count && !is_confirming_rollback, |el| {
+                                                                        el.child(
+                                                                            Button::new((
+                                                                                "agent-chat-regen",
+                                                                                ix,
+                                                                            ))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::Refresh)
+                                                                            .tooltip("Regenerate response")
+                                                                            .disabled(this.is_request_in_flight)
+                                                                            .on_click(cx.listener(
+                                                                                |this, _, _, cx| {
+                                                                                    this.regenerate_response(cx);
+                                                                                },
+                                                                            ))
+                                                                        )
+                                                                    }),
                                                             ),
                                                     )
                                                     .into_any_element()
@@ -1390,7 +1492,24 @@ impl Render for AgentChatPanel {
                             .items_end()
                             .child(TextInput::new(&self.prompt_input).flex_1().min_w_0())
                             .when(self.is_request_in_flight, |this| {
-                                this.child(Spinner::new().with_size(Size::Small))
+                                this.child(
+                                    h_flex()
+                                        .gap_1()
+                                        .items_center()
+                                        .child(Spinner::new().with_size(Size::Small))
+                                        .child(
+                                            Button::new("agent-chat-stop")
+                                                .icon(IconName::Square)
+                                                .xsmall()
+                                                .ghost()
+                                                .tooltip("Stop generation")
+                                                .on_click(cx.listener(|this, _, _, _cx| {
+                                                    if let Some(tx) = this.cancel_tx.take() {
+                                                        let _ = tx.try_send(());
+                                                    }
+                                                })),
+                                        ),
+                                )
                             })
                             .child(
                                 Button::new("agent-chat-send")

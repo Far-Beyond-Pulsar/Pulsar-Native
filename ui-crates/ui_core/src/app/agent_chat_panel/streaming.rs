@@ -13,7 +13,7 @@ use std::{
 use ui::input::Enter;
 
 impl AgentChatPanel {
-    const CONTEXT_CHAR_BUDGET: usize = 24_000;
+    pub(super) const CONTEXT_CHAR_BUDGET: usize = 24_000;
     const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
 
     fn build_provider_history_messages(&self) -> Vec<ChatMessage> {
@@ -61,9 +61,29 @@ impl AgentChatPanel {
         let mut kept_dialog_reversed = Vec::new();
         let mut kept_chars = 0usize;
 
+        // Walk backwards but never cut in the middle of a tool-call/result pair:
+        // if we include a Tool-role message we must also include the preceding
+        // Assistant message that spawned it.
+        let mut skip_until_assistant_with_calls = false;
         for message in dialog_messages.iter().rev() {
             let len = message.content.chars().count();
-            if kept_dialog_reversed.is_empty() || kept_chars + len <= kept_dialog_budget {
+            let fits = kept_dialog_reversed.is_empty() || kept_chars + len <= kept_dialog_budget;
+
+            if message.role == ChatRole::Tool {
+                // Include the tool result — we'll ensure its parent assistant follows.
+                skip_until_assistant_with_calls = true;
+                kept_chars += len;
+                kept_dialog_reversed.push(message.clone());
+            } else if message.role == ChatRole::Assistant && !message.tool_calls.is_empty() {
+                // This is the assistant message that owns the tool calls we kept.
+                skip_until_assistant_with_calls = false;
+                kept_chars += len;
+                kept_dialog_reversed.push(message.clone());
+            } else if skip_until_assistant_with_calls {
+                // Must keep this message to maintain the pair even if over budget.
+                kept_chars += len;
+                kept_dialog_reversed.push(message.clone());
+            } else if fits {
                 kept_chars += len;
                 kept_dialog_reversed.push(message.clone());
             } else {
@@ -114,6 +134,98 @@ impl AgentChatPanel {
         compacted.extend(kept_dialog_reversed);
 
         (compacted, true)
+    }
+
+    /// Scan `text` for `@path` tokens and inject matching file contents as a
+    /// fenced context block prepended to the message. Unresolvable tokens are
+    /// left as-is. Paths are tried absolute, relative to CWD, and relative to
+    /// the workspace root.
+    /// Produce a human-readable preview for the expanded tool card.
+    /// Web-search and fetch_url results get structured formatting; everything
+    /// else is truncated plain text.
+    fn format_tool_result_preview(tool_name: &str, raw: &str) -> String {
+        if tool_name == "web_search" {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) {
+                if let Some(results) = json.get("results").and_then(|r| r.as_array()) {
+                    let lines: Vec<String> = results
+                        .iter()
+                        .take(5)
+                        .enumerate()
+                        .map(|(i, r)| {
+                            let title = r.get("title").and_then(|v| v.as_str()).unwrap_or("—");
+                            let url = r.get("url").and_then(|v| v.as_str()).unwrap_or("");
+                            let summary = r
+                                .get("summary")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .chars()
+                                .take(120)
+                                .collect::<String>();
+                            format!("[{}] {}\n    {}\n    {}", i + 1, title, summary, url)
+                        })
+                        .collect();
+                    return lines.join("\n\n");
+                }
+            }
+        }
+
+        if tool_name == "fetch_url" {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(raw) {
+                if let Some(content) = json.get("content").and_then(|v| v.as_str()) {
+                    let preview: String = content.chars().take(400).collect();
+                    return format!("{}…", preview);
+                }
+            }
+        }
+
+        if raw.len() > 300 {
+            format!("{}…", &raw[..raw.char_indices().nth(300).map(|(i, _)| i).unwrap_or(raw.len())])
+        } else {
+            raw.to_string()
+        }
+    }
+
+    fn expand_file_references(text: &str) -> String {
+        use std::fs;
+
+        let workspace_root = engine_state::get_project_path()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let mut injections = Vec::new();
+        for word in text.split_whitespace() {
+            if !word.starts_with('@') {
+                continue;
+            }
+            let path_str = &word[1..];
+            if path_str.is_empty() {
+                continue;
+            }
+            let candidates = [
+                std::path::PathBuf::from(path_str),
+                workspace_root.join(path_str),
+            ];
+            for candidate in &candidates {
+                if candidate.is_file() {
+                    if let Ok(content) = fs::read_to_string(candidate) {
+                        let ext = candidate
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .unwrap_or("");
+                        let display = candidate.display().to_string();
+                        injections.push(format!(
+                            "```{ext}\n// {display}\n{content}\n```"
+                        ));
+                    }
+                    break;
+                }
+            }
+        }
+
+        if injections.is_empty() {
+            return text.to_string();
+        }
+        format!("{}\n\n{}", injections.join("\n\n"), text)
     }
 
     pub(super) fn scroll_messages_to_bottom(&self) {
@@ -251,11 +363,15 @@ impl AgentChatPanel {
             return;
         }
 
-        let prompt = self.prompt_input.read(cx).text().to_string();
-        let prompt = prompt.trim().to_string();
-        if prompt.is_empty() {
+        let raw_prompt = self.prompt_input.read(cx).text().to_string();
+        let raw_prompt = raw_prompt.trim().to_string();
+        if raw_prompt.is_empty() {
             return;
         }
+
+        // @file injection: resolve `@/some/path` or `@filename` references and
+        // prepend their contents as a context block before the user's message.
+        let prompt = Self::expand_file_references(&raw_prompt);
 
         let user_message_index = self.messages.len();
         self.messages.push(ChatMessage {
@@ -264,8 +380,9 @@ impl AgentChatPanel {
             tool_call_id: None,
             tool_calls: vec![],
         });
+        // Display shows the original typed text (without the injected file blobs).
         self.display_items.push(DisplayItem::UserMessage {
-            content: prompt.clone(),
+            content: raw_prompt.clone(),
             message_index: user_message_index,
         });
         self.scroll_messages_to_bottom();
@@ -342,6 +459,21 @@ impl AgentChatPanel {
             return;
         }
 
+        self.prompt_input.update(cx, |input, cx| {
+            input.set_value("", window, cx);
+        });
+        self.launch_provider_request(provider, token, cx);
+    }
+
+    /// Push an empty streaming assistant bubble and fire off the provider request.
+    /// Called by `send_prompt` (after the user message is pushed) and by
+    /// `regenerate_response` (after the old assistant message is removed).
+    pub(super) fn launch_provider_request(
+        &mut self,
+        provider: Arc<dyn agent_chat_core::ChatProvider>,
+        token: Option<String>,
+        cx: &mut Context<Self>,
+    ) {
         let message_ix = self.messages.len();
         self.messages.push(ChatMessage {
             role: ChatRole::Assistant,
@@ -358,6 +490,12 @@ impl AgentChatPanel {
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);
         self.streaming_display_item_ix = Some(streaming_dix);
+
+        let provider_id = provider.metadata().id;
+        let model = self
+            .active_model()
+            .map(|m| m.id.to_string())
+            .unwrap_or_else(|| "default".to_string());
 
         let provider_messages = self.build_provider_history_messages();
         let (provider_messages, was_compacted) =
@@ -439,14 +577,27 @@ impl AgentChatPanel {
         let plugin_bridge_for_task = self.plugin_bridge.clone();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
+        // Per-request cancel channel — UI sends () to abort.
+        let (cancel_tx, cancel_rx) = smol::channel::bounded::<()>(1);
+        self.cancel_tx = Some(cancel_tx);
+
         let completion_for_worker = completion_sent.clone();
         std::thread::spawn(move || {
             let mut current_messages = request.messages.clone();
             let mut iteration = 0u32;
-            // High ceiling — the watchdog and user-cancel are the real limits.
             const MAX_ITERATIONS: u32 = 50;
 
             loop {
+                // Check for user cancellation between iterations.
+                if cancel_rx.try_recv().is_ok() {
+                    if !completion_for_worker.swap(true, Ordering::SeqCst) {
+                        let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(
+                            "Request cancelled.".to_string(),
+                        )));
+                    }
+                    break;
+                }
+
                 if iteration >= MAX_ITERATIONS {
                     eprintln!("[agent_chat] max iterations ({MAX_ITERATIONS}) reached");
                     // Treat hitting the limit as a clean finish so the UI isn't left hanging.
@@ -600,36 +751,36 @@ impl AgentChatPanel {
                                 })),
                             };
 
+                            // Spawn one thread per tool call so they execute concurrently.
                             let mut all_results = Vec::new();
-                            for tool_call in &response.tool_calls {
+                            let handles: Vec<_> = response.tool_calls.iter().map(|tool_call| {
+                                let name = tool_call.name.clone();
+                                let args = tool_call.arguments_json.clone();
+                                let id = tool_call.id.clone();
+                                let registry = tool_registry_for_task.clone();
+                                let ctx = tool_context.clone();
+                                let tx = tx_for_chunks.clone();
+                                std::thread::spawn(move || {
+                                    let result = registry.execute(&name, args, &ctx);
+                                    let (tool_result, is_error) = match result {
+                                        Ok(value) => (value.to_string(), false),
+                                        Err(err) => (format!("Tool error: {}", err), true),
+                                    };
+                                    let result_preview = Self::format_tool_result_preview(&name, &tool_result);
+                                    let _ = tx.try_send(StreamEvent::ToolCallResult {
+                                        id: id.clone(),
+                                        result_preview,
+                                        is_error,
+                                    });
+                                    (id, name, tool_result)
+                                })
+                            }).collect();
 
-                                let result = tool_registry_for_task.execute(
-                                    &tool_call.name,
-                                    tool_call.arguments_json.clone(),
-                                    &tool_context,
-                                );
-
-                                let (tool_result, is_error) = match result {
-                                    Ok(value) => (value.to_string(), false),
-                                    Err(err) => (format!("Tool error: {}", err), true),
-                                };
-
-                                let result_preview = if tool_result.len() > 300 {
-                                    format!("{}…", &tool_result[..300])
-                                } else {
-                                    tool_result.clone()
-                                };
-                                let _ = tx_for_chunks.try_send(StreamEvent::ToolCallResult {
-                                    id: tool_call.id.clone(),
-                                    result_preview,
-                                    is_error,
-                                });
-
-                                all_results.push((
-                                    tool_call.id.clone(),
-                                    tool_call.name.clone(),
-                                    tool_result,
-                                ));
+                            // Collect parallel results in original order for message threading.
+                            for handle in handles {
+                                all_results.push(handle.join().unwrap_or_else(|_| {
+                                    ("".to_string(), "unknown".to_string(), "Tool thread panicked".to_string())
+                                }));
                             }
 
                             for (tool_call_id, _tool_name, tool_result) in all_results {
@@ -845,6 +996,7 @@ impl AgentChatPanel {
                             StreamEvent::Finished(Ok(response)) => {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
+                                panel.cancel_tx = None;
 
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
                                     let is_empty = panel
@@ -894,6 +1046,7 @@ impl AgentChatPanel {
                             StreamEvent::Finished(Err(err)) => {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
+                                panel.cancel_tx = None;
                                 eprintln!("[agent_chat] error: {err}");
                                 let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
@@ -959,12 +1112,82 @@ impl AgentChatPanel {
         })
         .detach();
 
-        self.prompt_input.update(cx, |input, cx| {
-            input.set_value("", window, cx);
-        });
         self.save_current_chat();
         self.refresh_chat_history_list(cx);
         self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    /// Remove the last assistant response and re-run the provider using the same
+    /// message history (which ends with the last user message after truncation).
+    pub(super) fn regenerate_response(&mut self, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            return;
+        }
+        // Find the last AssistantMessage in display_items and roll back to just before it.
+        let last_assistant_dix = self
+            .display_items
+            .iter()
+            .enumerate()
+            .rev()
+            .find_map(|(dix, item)| match item {
+                DisplayItem::AssistantMessage { message_index, .. } => Some((dix, *message_index)),
+                _ => None,
+            });
+
+        let Some((dix, msg_ix)) = last_assistant_dix else {
+            return;
+        };
+
+        // Truncate display_items and messages up to but NOT including this assistant.
+        self.display_items.truncate(dix);
+        self.messages.truncate(msg_ix);
+        if self.messages.is_empty() {
+            return;
+        }
+        self.display_item_heights.clear();
+        self.message_row_heights.clear();
+
+        let provider_id = self.active_provider().map(|p| p.id).unwrap_or("unknown");
+        let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
+            return;
+        };
+        let token = self.auth_token_for_provider(provider_id);
+        self.launch_provider_request(provider, token, cx);
+    }
+
+    /// Replace a user message at `display_ix` in-place: rolls back to before it
+    /// and puts its content into the prompt input ready for editing.
+    pub(super) fn edit_user_message(
+        &mut self,
+        display_ix: usize,
+        message_index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.is_request_in_flight {
+            return;
+        }
+        let content = match self.display_items.get(display_ix) {
+            Some(DisplayItem::UserMessage { content, .. }) => content.clone(),
+            _ => return,
+        };
+        // Roll back to just before this user message.
+        if display_ix == 0 || message_index == 0 {
+            return;
+        }
+        self.display_items.truncate(display_ix);
+        self.messages.truncate(message_index);
+        self.display_item_heights.clear();
+        self.message_row_heights.clear();
+        self.streaming_display_item_ix = None;
+        self.streaming_message_ix = None;
+        self.save_current_chat();
+        self.refresh_chat_history_list(cx);
+        self.scroll_messages_to_bottom();
+        self.prompt_input.update(cx, |input, cx| {
+            input.set_value(&content, window, cx);
+        });
         cx.notify();
     }
 }
