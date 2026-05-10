@@ -155,12 +155,11 @@ impl ToolRegistry {
             }),
             json!({
                 "name": "web_search",
-                "description": "Search the web using a search engine. Returns detailed results with title, summary, and URL.",
+                "description": "Search the web using a search engine. Returns up to 10 detailed results with title, summary, and URL.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": { "type": "string", "description": "The search query (e.g., 'Rust programming language', 'latest AI research 2024')" },
-                        "max_results": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Maximum number of results to return (default 10)" }
+                        "query": { "type": "string", "description": "The search query (e.g., 'Rust programming language', 'latest AI research 2024')" }
                     },
                     "required": ["query"]
                 }
@@ -555,11 +554,7 @@ impl ChatTool for WebSearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("web_search.query is required"))?;
 
-        let max_results = args
-            .get("max_results")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10)
-            .min(20) as usize;
+        let max_results = 10;  // Fixed at 10 results
 
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
@@ -568,7 +563,7 @@ impl ChatTool for WebSearchTool {
 
         // Use DuckDuckGo API which doesn't require authentication
         let url = format!(
-            "https://duckduckgo.com/?q={}&format=json&t=pulsar",
+            "https://duckduckgo.com/?q={}&format=json&t=pulsar&no_redirect=1&d_l=en-us",
             urlencoding::encode(query)
         );
 
@@ -592,59 +587,57 @@ impl ChatTool for WebSearchTool {
             .context("Failed to read search response")?;
 
         let json: Value = serde_json::from_str(&body)
-            .unwrap_or_else(|_| json!({"RelatedTopics": []}));
+            .unwrap_or_else(|_| json!({}));
 
-        let results: Vec<Value> = json
-            .get("RelatedTopics")
-            .and_then(|v| v.as_array())
-            .map(|topics| {
+        // Try multiple sources: RelatedTopics, Results, or AbstractText
+        let mut results: Vec<Value> = Vec::new();
+
+        // First, try RelatedTopics (usually for broader queries)
+        if let Some(topics) = json.get("RelatedTopics").and_then(|v| v.as_array()) {
+            results.extend(
                 topics
                     .iter()
-                    .take(max_results)
-                    .filter_map(|topic| {
-                        let text_content = topic.get("Text")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        
-                        if text_content.is_empty() {
-                            return None;
-                        }
+                    .take(max_results - results.len())
+                    .filter_map(|topic| parse_topic_result(topic))
+            );
+        }
 
-                        // Split text into title and summary
-                        // Format is typically "Title - Details" or just details
-                        let (title, summary) = if let Some(dash_pos) = text_content.find(" - ") {
-                            let (t, s) = text_content.split_at(dash_pos);
-                            (t.to_string(), s[3..].to_string()) // Skip " - "
-                        } else if text_content.len() > 100 {
-                            let title = text_content[..100].to_string();
-                            (title, text_content.clone())
-                        } else {
-                            (text_content.clone(), text_content.clone())
-                        };
+        // If we still need more results, try Results array (for specific queries)
+        if results.len() < max_results {
+            if let Some(res_array) = json.get("Results").and_then(|v| v.as_array()) {
+                results.extend(
+                    res_array
+                        .iter()
+                        .take(max_results - results.len())
+                        .filter_map(|result| parse_result_entry(result))
+                );
+            }
+        }
 
-                        let url = topic.get("FirstURL")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_default();
-
-                        // Truncate summary to ~300 chars for detailed but concise info
-                        let summary = if summary.len() > 300 {
-                            format!("{}...", &summary[..300])
-                        } else {
-                            summary
-                        };
-
-                        Some(json!({
-                            "title": title,
-                            "summary": summary,
-                            "url": url,
-                            "source": "DuckDuckGo"
-                        }))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        // If we still have no results, try to use AbstractText as a fallback
+        if results.is_empty() {
+            if let Some(abstract_text) = json.get("AbstractText").and_then(|v| v.as_str()) {
+                if !abstract_text.is_empty() {
+                    let abstract_url = json.get("AbstractURL")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "https://duckduckgo.com".to_string());
+                    
+                    let summary = if abstract_text.len() > 300 {
+                        format!("{}...", &abstract_text[..300])
+                    } else {
+                        abstract_text.to_string()
+                    };
+                    
+                    results.push(json!({
+                        "title": "Direct Answer",
+                        "summary": summary,
+                        "url": abstract_url,
+                        "source": "DuckDuckGo"
+                    }));
+                }
+            }
+        }
 
         Ok(json!({
             "ok": true,
@@ -655,6 +648,91 @@ impl ChatTool for WebSearchTool {
             "source": "DuckDuckGo"
         }))
     }
+}
+
+// Helper function to parse RelatedTopics entries
+fn parse_topic_result(topic: &Value) -> Option<Value> {
+    let text_content = topic.get("Text")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    
+    if text_content.is_empty() {
+        return None;
+    }
+
+    // Split text into title and summary
+    // Format is typically "Title - Details" or just details
+    let (title, summary) = if let Some(dash_pos) = text_content.find(" - ") {
+        let (t, s) = text_content.split_at(dash_pos);
+        (t.to_string(), s[3..].to_string()) // Skip " - "
+    } else if text_content.len() > 100 {
+        let title = text_content[..100].to_string();
+        (title, text_content.clone())
+    } else {
+        (text_content.clone(), text_content.clone())
+    };
+
+    let url = topic.get("FirstURL")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    // Truncate summary to ~300 chars for detailed but concise info
+    let summary = if summary.len() > 300 {
+        format!("{}...", &summary[..300])
+    } else {
+        summary
+    };
+
+    Some(json!({
+        "title": title,
+        "summary": summary,
+        "url": url,
+        "source": "DuckDuckGo"
+    }))
+}
+
+// Helper function to parse Results array entries (used when RelatedTopics is empty)
+fn parse_result_entry(result: &Value) -> Option<Value> {
+    let title = result.get("Title")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .or_else(|| {
+            result.get("Text")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })?;
+
+    if title.is_empty() {
+        return None;
+    }
+
+    let summary = result.get("Content")
+        .or_else(|| result.get("Text"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| title.clone());
+
+    // Truncate summary
+    let summary = if summary.len() > 300 {
+        format!("{}...", &summary[..300])
+    } else {
+        summary
+    };
+
+    let url = result.get("FirstURL")
+        .or_else(|| result.get("URL"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+
+    Some(json!({
+        "title": title,
+        "summary": summary,
+        "url": url,
+        "source": "DuckDuckGo"
+    }))
 }
 
 struct FetchUrlTool;
