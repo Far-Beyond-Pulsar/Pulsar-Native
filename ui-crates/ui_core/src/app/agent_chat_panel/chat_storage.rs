@@ -57,10 +57,26 @@ impl AgentChatPanel {
 
 ## Available Tools
 
-You have access to multiple categories of tools:
+You have access to the following tools across different categories:
 
-### Plugin Tools
-Plugins can expose custom tools for specific file types. When working with files:
+### Core Information Retrieval Tools
+These tools are always available:
+
+1. **web_search** (Input: `query`)
+   - Search the web for information
+   - Returns up to 10 results with title, summary, and URL
+   - Use for: Finding documentation, tutorials, best practices, current news, API references
+   - Example: web_search "Rust async await patterns"
+
+2. **fetch_url** (Input: `url`, `timeout_seconds` optional)
+   - Fetch and parse text content from a URL
+   - Returns cleaned text content (HTML markup removed)
+   - Automatically truncates large responses to ~8000 chars
+   - Use for: Reading documentation, articles, code examples, specifications
+   - Example: fetch_url "https://docs.rust-lang.org/book/"
+
+### File and Plugin Tools
+For working with files in the workspace:
 
 1. **query_available_file_types**: See all registered file types in the project.
 
@@ -80,32 +96,37 @@ Plugins can expose custom tools for specific file types. When working with files
 
 8. **execute_plugin_tool**: Execute a tool provided by a plugin.
     - Prefer including plugin_id from `query_plugin_tools`
-   - Provide the tool_name (from query_plugin_tools results)
-   - Provide tool_args as a JSON object matching the tool's parameters
-   - Specify the file_path (or use current_file from context)
+    - Provide the tool_name (from query_plugin_tools results)
+    - Provide tool_args as a JSON object matching the tool's parameters
+    - Specify the file_path (or use current_file from context)
 
 ### Best Practices
 
-- To work with an already-open file: call `query_open_editors` first, read the `file_path` from the result, then pass that exact path to `query_plugin_tools` and `execute_plugin_tool`
-- The `file_path` in `query_open_editors` results is the absolute canonical path — use it exactly as returned
-- Use `activate_open_editor` to switch which editor is focused without reopening files
-- Only call `open_file_in_default_editor` if the file is NOT already open in an editor
-- Always call `query_plugin_tools` with `file_path` before using `execute_plugin_tool`
-- Use plugin tools for all structured edits; never read or write file content directly
+- **Information gathering**: Use web_search and fetch_url to get current, accurate information before making decisions
+- **File operations**: To work with an already-open file, call `query_open_editors` first, read the `file_path` from the result, then pass that exact path to `query_plugin_tools` and `execute_plugin_tool`
+- **Path accuracy**: The `file_path` in `query_open_editors` results is the absolute canonical path — use it exactly as returned
+- **Navigation**: Use `activate_open_editor` to switch which editor is focused without reopening files
+- **Opening files**: Only call `open_file_in_default_editor` if the file is NOT already open in an editor
+- **Plugin tools**: Always call `query_plugin_tools` with `file_path` before using `execute_plugin_tool`
+- **Editing**: Use plugin tools for all structured edits; never read or write file content directly
 
 ### REQUIRED: Always report tool results to the user
 
 After every tool call you MUST tell the user what the tool returned. Do not silently loop or retry without first explaining what happened. Specifically:
 
 - If a tool returns an error, tell the user the exact error message.
-- If a tool returns an empty list (e.g. `tools_available: 0`), tell the user "No tools were found for that file. Here is why: …" and explain the likely cause.
+- If a tool returns an empty list, tell the user "No results found. Here is why: …" and explain the likely cause.
 - If a tool succeeds, summarize what it returned before deciding what to do next.
 - Never assume the tool call produced no output without confirming — the result is always forwarded to you even if it does not appear visually.
 - If you receive `"ok": false` with an `"error"` field, read that error and tell the user before retrying.
 
 ## Getting Started
 
-Choose a provider/model and ask anything about your project. Mention specific files when you want to use plugin-specific tools."#.to_string(),
+Choose a provider/model and ask anything about your project. You can:
+- Ask questions and I'll search the web for answers
+- Fetch documentation or specifications from URLs
+- Work with files using plugin-specific tools
+- Mention specific files when you want to use editor tools"#.to_string(),
             tool_call_id: None,
             tool_calls: vec![],
         }

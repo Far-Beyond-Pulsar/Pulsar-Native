@@ -195,6 +195,11 @@ pub fn set_locale(locale: &str) {
 }
 
 #[inline]
+pub fn open_external_url(url: &str) {
+    let _ = open::that(url);
+}
+
+#[inline]
 pub(crate) fn measure_enable() -> bool {
     std::env::var("ZED_MEASUREMENTS").is_ok() || std::env::var("GPUI_MEASUREMENTS").is_ok()
 }

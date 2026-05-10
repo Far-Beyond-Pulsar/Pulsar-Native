@@ -1,4 +1,6 @@
 use anyhow::{anyhow, Context};
+use reqwest::blocking::Client;
+use scraper::{Html, Selector};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
@@ -6,7 +8,6 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
-use reqwest::blocking::Client;
 
 #[derive(Clone)]
 pub struct ToolContext {
@@ -561,15 +562,19 @@ impl ChatTool for WebSearchTool {
             .build()
             .context("Failed to build HTTP client")?;
 
-        // Use DuckDuckGo API which doesn't require authentication
+        // Pull the real HTML results page and scrape it instead of relying on
+        // DuckDuckGo's limited instant-answer JSON endpoint.
         let url = format!(
-            "https://duckduckgo.com/?q={}&format=json&t=pulsar&no_redirect=1&d_l=en-us",
+            "https://html.duckduckgo.com/html/?q={}&kl=us-en",
             urlencoding::encode(query)
         );
 
         let response = client
             .get(&url)
-            .header("User-Agent", "Pulsar-Engine-AI/1.0")
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Pulsar-Engine-AI/1.0",
+            )
             .send()
             .context("Failed to perform web search")?;
 
@@ -577,67 +582,13 @@ impl ChatTool for WebSearchTool {
             return Ok(json!({
                 "ok": false,
                 "query": query,
-                "error": format!("Search API returned status {}", response.status()),
+                "error": format!("Search page returned status {}", response.status()),
                 "results": []
             }));
         }
 
-        let body = response
-            .text()
-            .context("Failed to read search response")?;
-
-        let json: Value = serde_json::from_str(&body)
-            .unwrap_or_else(|_| json!({}));
-
-        // Try multiple sources: RelatedTopics, Results, or AbstractText
-        let mut results: Vec<Value> = Vec::new();
-
-        // First, try RelatedTopics (usually for broader queries)
-        if let Some(topics) = json.get("RelatedTopics").and_then(|v| v.as_array()) {
-            results.extend(
-                topics
-                    .iter()
-                    .take(max_results - results.len())
-                    .filter_map(|topic| parse_topic_result(topic))
-            );
-        }
-
-        // If we still need more results, try Results array (for specific queries)
-        if results.len() < max_results {
-            if let Some(res_array) = json.get("Results").and_then(|v| v.as_array()) {
-                results.extend(
-                    res_array
-                        .iter()
-                        .take(max_results - results.len())
-                        .filter_map(|result| parse_result_entry(result))
-                );
-            }
-        }
-
-        // If we still have no results, try to use AbstractText as a fallback
-        if results.is_empty() {
-            if let Some(abstract_text) = json.get("AbstractText").and_then(|v| v.as_str()) {
-                if !abstract_text.is_empty() {
-                    let abstract_url = json.get("AbstractURL")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                        .unwrap_or_else(|| "https://duckduckgo.com".to_string());
-                    
-                    let summary = if abstract_text.len() > 300 {
-                        format!("{}...", &abstract_text[..300])
-                    } else {
-                        abstract_text.to_string()
-                    };
-                    
-                    results.push(json!({
-                        "title": "Direct Answer",
-                        "summary": summary,
-                        "url": abstract_url,
-                        "source": "DuckDuckGo"
-                    }));
-                }
-            }
-        }
+        let body = response.text().context("Failed to read search response")?;
+        let results = parse_duckduckgo_html_results(&body, max_results)?;
 
         Ok(json!({
             "ok": true,
@@ -650,89 +601,86 @@ impl ChatTool for WebSearchTool {
     }
 }
 
-// Helper function to parse RelatedTopics entries
-fn parse_topic_result(topic: &Value) -> Option<Value> {
-    let text_content = topic.get("Text")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
-    
-    if text_content.is_empty() {
-        return None;
+fn parse_duckduckgo_html_results(html: &str, max_results: usize) -> anyhow::Result<Vec<Value>> {
+    let document = Html::parse_document(html);
+    let result_selector = selector("div.result")?;
+    let title_selector = selector("a.result__a")?;
+    let snippet_selector = selector("a.result__snippet, div.result__snippet")?;
+
+    let mut results = Vec::new();
+
+    for result in document.select(&result_selector) {
+        if results.len() >= max_results {
+            break;
+        }
+
+        let Some(title_el) = result.select(&title_selector).next() else {
+            continue;
+        };
+
+        let title = normalized_text(title_el.text().collect::<Vec<_>>().join(" "));
+        if title.is_empty() {
+            continue;
+        }
+
+        let href = title_el.value().attr("href").unwrap_or("");
+        let url = normalize_duckduckgo_result_url(href);
+        if url.is_empty() {
+            continue;
+        }
+
+        let summary = result
+            .select(&snippet_selector)
+            .next()
+            .map(|el| normalized_text(el.text().collect::<Vec<_>>().join(" ")))
+            .filter(|text| !text.is_empty())
+            .map(|text| truncate_for_summary(&text, 300))
+            .unwrap_or_else(|| title.clone());
+
+        results.push(json!({
+            "title": title,
+            "summary": summary,
+            "url": url,
+            "source": "DuckDuckGo"
+        }));
     }
 
-    // Split text into title and summary
-    // Format is typically "Title - Details" or just details
-    let (title, summary) = if let Some(dash_pos) = text_content.find(" - ") {
-        let (t, s) = text_content.split_at(dash_pos);
-        (t.to_string(), s[3..].to_string()) // Skip " - "
-    } else if text_content.len() > 100 {
-        let title = text_content[..100].to_string();
-        (title, text_content.clone())
-    } else {
-        (text_content.clone(), text_content.clone())
-    };
-
-    let url = topic.get("FirstURL")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_default();
-
-    // Truncate summary to ~300 chars for detailed but concise info
-    let summary = if summary.len() > 300 {
-        format!("{}...", &summary[..300])
-    } else {
-        summary
-    };
-
-    Some(json!({
-        "title": title,
-        "summary": summary,
-        "url": url,
-        "source": "DuckDuckGo"
-    }))
+    Ok(results)
 }
 
-// Helper function to parse Results array entries (used when RelatedTopics is empty)
-fn parse_result_entry(result: &Value) -> Option<Value> {
-    let title = result.get("Title")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .or_else(|| {
-            result.get("Text")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-        })?;
+fn selector(css: &str) -> anyhow::Result<Selector> {
+    Selector::parse(css).map_err(|_| anyhow!("Invalid CSS selector: {}", css))
+}
 
-    if title.is_empty() {
-        return None;
+fn normalized_text(text: String) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+}
+
+fn truncate_for_summary(text: &str, max_len: usize) -> String {
+    if text.len() <= max_len {
+        return text.to_string();
     }
 
-    let summary = result.get("Content")
-        .or_else(|| result.get("Text"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| title.clone());
+    let mut end = max_len;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &text[..end])
+}
 
-    // Truncate summary
-    let summary = if summary.len() > 300 {
-        format!("{}...", &summary[..300])
-    } else {
-        summary
-    };
+fn normalize_duckduckgo_result_url(href: &str) -> String {
+    if let Some(encoded) = href.split("uddg=").nth(1) {
+        let encoded = encoded.split('&').next().unwrap_or(encoded);
+        return urlencoding::decode(encoded)
+            .map(|decoded| decoded.into_owned())
+            .unwrap_or_else(|_| href.to_string());
+    }
 
-    let url = result.get("FirstURL")
-        .or_else(|| result.get("URL"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .unwrap_or_default();
+    if href.starts_with("http://") || href.starts_with("https://") {
+        return href.to_string();
+    }
 
-    Some(json!({
-        "title": title,
-        "summary": summary,
-        "url": url,
-        "source": "DuckDuckGo"
-    }))
+    String::new()
 }
 
 struct FetchUrlTool;

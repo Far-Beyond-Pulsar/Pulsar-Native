@@ -338,26 +338,26 @@ impl Element for Inline {
             }
         });
 
-        if !is_selection {
-            // click to open link
-            window.on_mouse_event({
-                let links = self.links.clone();
-                let text_layout = text_layout.clone();
+        // click to open link (works even when text selection is enabled)
+        window.on_mouse_event({
+            let links = self.links.clone();
+            let text_layout = text_layout.clone();
 
-                move |event: &MouseUpEvent, phase, _, cx| {
-                    if !bounds.contains(&event.position) || !phase.bubble() {
-                        return;
-                    }
-
-                    if let Some(link) =
-                        Self::link_for_position(&text_layout, &links, event.position)
-                    {
-                        cx.stop_propagation();
-                        cx.open_url(&link.url);
-                    }
+            move |event: &MouseUpEvent, phase, _, cx| {
+                if event.button != gpui::MouseButton::Left
+                    || !bounds.contains(&event.position)
+                    || !phase.bubble()
+                {
+                    return;
                 }
-            });
-        }
+
+                if let Some(link) = Self::link_for_position(&text_layout, &links, event.position)
+                {
+                    cx.stop_propagation();
+                    crate::open_external_url(&link.url);
+                }
+            }
+        });
     }
 }
 

@@ -819,7 +819,7 @@ impl Paragraph {
                                     })
                                     .on_click(move |_, _, cx| {
                                         cx.stop_propagation();
-                                        cx.open_url(&link.url);
+                                        crate::open_external_url(&link.url);
                                     })
                             })
                             .into_any_element()
@@ -843,7 +843,7 @@ impl Paragraph {
                                     })
                                     .on_click(move |_, _, cx| {
                                         cx.stop_propagation();
-                                        cx.open_url(&link.url);
+                                        crate::open_external_url(&link.url);
                                     })
                             })
                             .into_any_element()
@@ -863,7 +863,7 @@ impl Paragraph {
                                 })
                                 .on_click(move |_, _, cx| {
                                     cx.stop_propagation();
-                                    cx.open_url(&link.url);
+                                    crate::open_external_url(&link.url);
                                 })
                         })
                         .into_any_element()
