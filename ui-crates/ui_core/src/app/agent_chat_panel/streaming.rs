@@ -8,7 +8,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 use ui::input::Enter;
 
@@ -236,7 +236,6 @@ impl AgentChatPanel {
 
     pub(super) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_request_in_flight {
-            println!("[agent_chat] send_prompt ignored: request already in flight");
             return;
         }
 
@@ -245,11 +244,6 @@ impl AgentChatPanel {
         if prompt.is_empty() {
             return;
         }
-
-        let request_id = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
 
         let user_message_index = self.messages.len();
         self.messages.push(ChatMessage {
@@ -268,12 +262,6 @@ impl AgentChatPanel {
             .active_provider()
             .map(|p| p.id)
             .unwrap_or("unknown_provider");
-        println!(
-            "[agent_chat][request={}] send_prompt started provider={} prompt_len={}",
-            request_id,
-            provider_id,
-            prompt.len()
-        );
 
         if self.wip_providers.contains_key(provider_id) {
             self.messages.push(ChatMessage {
@@ -409,13 +397,9 @@ impl AgentChatPanel {
             top_p: Some(1.0),
             max_tokens: Some(8192),
         };
-        println!(
-            "[agent_chat][request={}] dispatched provider={} model={} entering in-flight compacted={} message_count={}",
-            request_id,
-            provider_id,
-            request.model,
-            was_compacted,
-            request.messages.len()
+        eprintln!(
+            "[agent_chat] start provider={} model={} messages={} compacted={}",
+            provider_id, request.model, request.messages.len(), was_compacted
         );
 
         enum StreamEvent {
@@ -444,45 +428,24 @@ impl AgentChatPanel {
         let completion_sent = Arc::new(AtomicBool::new(false));
 
         let completion_for_worker = completion_sent.clone();
-        let worker_request_id = request_id;
         std::thread::spawn(move || {
-            println!(
-                "[agent_chat][request={}] background worker started",
-                worker_request_id
-            );
-
-            // Agentic loop: keep requesting until no more tool calls
             let mut current_messages = request.messages.clone();
-            let mut iteration = 0;
-            const MAX_ITERATIONS: usize = 10;
+            let mut iteration = 0u32;
+            // High ceiling — the watchdog and user-cancel are the real limits.
+            const MAX_ITERATIONS: u32 = 50;
 
             loop {
                 if iteration >= MAX_ITERATIONS {
-                    println!(
-                        "[agent_chat][request={}] max iterations reached",
-                        worker_request_id
-                    );
+                    eprintln!("[agent_chat] max iterations ({MAX_ITERATIONS}) reached");
+                    // Treat hitting the limit as a clean finish so the UI isn't left hanging.
+                    if !completion_for_worker.swap(true, Ordering::SeqCst) {
+                        let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(format!(
+                            "Reached the {MAX_ITERATIONS}-iteration limit."
+                        ))));
+                    }
                     break;
                 }
                 iteration += 1;
-
-                println!(
-                    "[agent_chat][request={}] iteration {} starting with {} messages",
-                    worker_request_id,
-                    iteration,
-                    current_messages.len()
-                );
-
-                for (idx, msg) in current_messages.iter().enumerate() {
-                    println!(
-                        "[agent_chat][request={}] msg[{}]: role={:?}, content_len={}, tool_call_id={:?}",
-                        worker_request_id,
-                        idx,
-                        msg.role,
-                        msg.content.len(),
-                        msg.tool_call_id.as_deref()
-                    );
-                }
 
                 let mut current_request = ChatRequest {
                     model: request.model.clone(),
@@ -493,26 +456,6 @@ impl AgentChatPanel {
                     top_p: request.top_p,
                     max_tokens: request.max_tokens,
                 };
-
-                // DEBUG: Log exact request details
-                println!(
-                    "[agent_chat][request={}] sending to provider: enable_tool_calls={}, tools_count={}",
-                    worker_request_id,
-                    current_request.enable_tool_calls,
-                    current_request.tools.len()
-                );
-
-                for (idx, msg) in current_request.messages.iter().enumerate() {
-                    if msg.role == ChatRole::Tool {
-                        println!(
-                            "[agent_chat][request={}] TOOL MESSAGE[{}]: tool_call_id={:?}, content_len={}",
-                            worker_request_id,
-                            idx,
-                            msg.tool_call_id.as_deref(),
-                            msg.content.len()
-                        );
-                    }
-                }
 
                 let mut pending_chunk = String::new();
                 let mut last_emit = Instant::now();
@@ -584,24 +527,7 @@ impl AgentChatPanel {
 
                 match result {
                     Ok(response) => {
-                        println!(
-                            "[agent_chat][request={}] iteration {} provider response: assistant_msg={}, tool_calls={}, finish_reason={:?}",
-                            worker_request_id,
-                            iteration,
-                            response.assistant_message.as_ref().map(|m| m.len()).unwrap_or(0),
-                            response.tool_calls.len(),
-                            response.finish_reason
-                        );
-
-                        // Check if response has tool calls
                         if !response.tool_calls.is_empty() {
-                            println!(
-                                "[agent_chat][request={}] iteration {} got {} tool calls",
-                                worker_request_id,
-                                iteration,
-                                response.tool_calls.len()
-                            );
-
                             // Always add assistant message (even if empty) so tool results can follow
                             let assistant_text =
                                 response.assistant_message.clone().unwrap_or_default();
@@ -662,13 +588,8 @@ impl AgentChatPanel {
                                 })),
                             };
 
-                            // Execute each tool call and show results
                             let mut all_results = Vec::new();
                             for tool_call in &response.tool_calls {
-                                println!(
-                                    "[agent_chat][request={}] executing tool: {}",
-                                    worker_request_id, tool_call.name
-                                );
 
                                 let result = tool_registry_for_task.execute(
                                     &tool_call.name,
@@ -699,17 +620,7 @@ impl AgentChatPanel {
                                 ));
                             }
 
-                            // Add all tool results to message history for LLM to read
-                            println!(
-                                "[agent_chat][request={}] adding {} tool results to history",
-                                worker_request_id,
-                                all_results.len()
-                            );
-                            for (tool_call_id, tool_name, tool_result) in all_results {
-                                println!(
-                                    "[agent_chat][request={}] adding tool result: id={}, name={}",
-                                    worker_request_id, tool_call_id, tool_name
-                                );
+                            for (tool_call_id, _tool_name, tool_result) in all_results {
                                 current_messages.push(ChatMessage {
                                     role: ChatRole::Tool,
                                     content: tool_result,
@@ -717,40 +628,17 @@ impl AgentChatPanel {
                                     tool_calls: vec![],
                                 });
                             }
-
-                            println!(
-                                "[agent_chat][request={}] total messages before provider call: {}",
-                                worker_request_id,
-                                current_messages.len()
-                            );
-
-                            // Loop again with updated message history
                             continue;
                         } else {
-                            // No tool calls, finish with response
-                            println!(
-                                "[agent_chat][request={}] iteration {} finishing: msg_len={}, finish_reason={:?}",
-                                worker_request_id,
-                                iteration,
-                                response.assistant_message.as_ref().map(|m| m.len()).unwrap_or(0),
-                                response.finish_reason
-                            );
                             if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                                println!(
-                                    "[agent_chat][request={}] iteration {} finished (no tool calls)",
-                                    worker_request_id, iteration
-                                );
                                 let _ = tx_for_finish.try_send(StreamEvent::Finished(Ok(response)));
                             }
                             break;
                         }
                     }
                     Err(err) => {
+                        eprintln!("[agent_chat] provider error (iter {iteration}): {err}");
                         if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                            println!(
-                                "[agent_chat][request={}] iteration {} error: {}",
-                                worker_request_id, iteration, err
-                            );
                             let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(err)));
                         }
                         break;
@@ -761,38 +649,25 @@ impl AgentChatPanel {
 
         let tx_timeout = tx.clone();
         let completion_for_timeout = completion_sent.clone();
-        let timeout_request_id = request_id;
         cx.background_spawn(async move {
-            Timer::after(Duration::from_secs(75)).await;
+            // 10-minute ceiling — long enough for extended agentic runs.
+            Timer::after(Duration::from_secs(600)).await;
             if !completion_for_timeout.swap(true, Ordering::SeqCst) {
-                eprintln!(
-                    "[agent_chat][request={}] watchdog timeout fired",
-                    timeout_request_id
-                );
+                eprintln!("[agent_chat] watchdog: 10-minute limit reached");
                 let _ = tx_timeout.try_send(StreamEvent::Finished(Err(
-                    "Provider response timed out.".to_string(),
+                    "Request timed out after 10 minutes.".to_string(),
                 )));
             }
         })
         .detach();
 
-        let consume_request_id = request_id;
         cx.spawn(async move |this, cx| {
-            let mut saw_first_chunk = false;
             while let Ok(event) = rx.recv().await {
                 let should_break = matches!(event, StreamEvent::Finished(_));
                 cx.update(|cx| {
                     this.update(cx, |panel, cx| {
                         match event {
                             StreamEvent::Chunk(chunk) => {
-                                if !saw_first_chunk {
-                                    println!(
-                                        "[agent_chat][request={}] first chunk received len={}",
-                                        consume_request_id,
-                                        chunk.len()
-                                    );
-                                    saw_first_chunk = true;
-                                }
                                 if panel.is_request_in_flight {
                                     panel.is_request_in_flight = false;
                                 }
@@ -959,9 +834,22 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
 
-                                // Finalize display bubble
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
-                                    if let Some(DisplayItem::AssistantMessage {
+                                    let is_empty = panel
+                                        .display_items
+                                        .get(dix)
+                                        .map(|item| matches!(item,
+                                            DisplayItem::AssistantMessage { content, .. }
+                                            if content.is_empty()
+                                        ))
+                                        .unwrap_or(false);
+
+                                    if is_empty && dix + 1 == panel.display_items.len() {
+                                        // Drop the trailing empty bubble — the turn ended with a
+                                        // tool call group and no follow-up text from the AI.
+                                        panel.display_items.pop();
+                                        panel.display_item_heights.remove(&dix);
+                                    } else if let Some(DisplayItem::AssistantMessage {
                                         content,
                                         is_streaming,
                                         ..
@@ -971,23 +859,16 @@ impl AgentChatPanel {
                                         if content.is_empty() {
                                             if let Some(text) = response.assistant_message.as_ref() {
                                                 *content = text.clone();
-                                            } else {
-                                                *content =
-                                                    "Provider returned an empty response."
-                                                        .to_string();
                                             }
                                         }
                                         panel.display_item_heights.remove(&dix);
                                     }
                                 }
-                                // Finalize provider history message
+
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     if message.content.is_empty() {
                                         if let Some(text) = response.assistant_message {
                                             message.content = text;
-                                        } else {
-                                            message.content =
-                                                "Provider returned an empty response.".to_string();
                                         }
                                     }
                                     panel.message_row_heights.remove(&message_ix);
@@ -1001,13 +882,32 @@ impl AgentChatPanel {
                             StreamEvent::Finished(Err(err)) => {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
-                                eprintln!(
-                                    "[agent_chat][request={}] stream error: {}",
-                                    consume_request_id, err
-                                );
-                                let error_text = format!("Provider request failed: {err}");
+                                eprintln!("[agent_chat] error: {err}");
+                                let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
-                                    if let Some(DisplayItem::AssistantMessage {
+                                    let is_empty = panel
+                                        .display_items
+                                        .get(dix)
+                                        .map(|item| matches!(item,
+                                            DisplayItem::AssistantMessage { content, .. }
+                                            if content.is_empty()
+                                        ))
+                                        .unwrap_or(false);
+                                    if is_empty && dix + 1 == panel.display_items.len() {
+                                        // Replace the empty bubble with the error message rather
+                                        // than leaving a blank card above the error indicator.
+                                        if let Some(item) = panel.display_items.get_mut(dix) {
+                                            if let DisplayItem::AssistantMessage {
+                                                content,
+                                                is_streaming,
+                                                ..
+                                            } = item
+                                            {
+                                                *is_streaming = false;
+                                                *content = error_text.clone();
+                                            }
+                                        }
+                                    } else if let Some(DisplayItem::AssistantMessage {
                                         content,
                                         is_streaming,
                                         ..
