@@ -340,12 +340,13 @@ impl Element for Inline {
 
         // click to open link (works even when text selection is enabled)
         window.on_mouse_event({
+            let hitbox = hitbox.clone();
             let links = self.links.clone();
             let text_layout = text_layout.clone();
 
-            move |event: &MouseUpEvent, phase, _, cx| {
+            move |event: &MouseUpEvent, phase, window, cx| {
                 if event.button != gpui::MouseButton::Left
-                    || !bounds.contains(&event.position)
+                    || !hitbox.is_hovered(window)
                     || !phase.bubble()
                 {
                     return;
