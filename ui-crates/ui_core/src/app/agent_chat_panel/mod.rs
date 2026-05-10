@@ -13,16 +13,27 @@ use crate::custom_providers::{self, CustomProvider};
 use agent_chat_core::{ChatMessage, ChatRole, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
 use agent_provider_anthropic::AnthropicProvider;
+use agent_provider_aws_bedrock::AwsBedrockProvider;
+use agent_provider_azure_openai::AzureOpenAIProvider;
+use agent_provider_cohere::CohereProvider;
+use agent_provider_deepseek::DeepSeekProvider;
 use agent_provider_demo_random::DemoRandomProvider;
 use agent_provider_docker_model_runner::DockerModelRunnerProvider;
+use agent_provider_fireworks::FireworksProvider;
 use agent_provider_gemini::GeminiProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use agent_provider_groq::GroqProvider;
+use agent_provider_llama_cpp::LlamaCppProvider;
+use agent_provider_lmstudio::LmStudioProvider;
 use agent_provider_mistral::MistralProvider;
 use agent_provider_ollama::OllamaProvider;
 use agent_provider_openai::{OpenAiCompatibleProvider, OpenAiProvider};
 use agent_provider_openrouter::OpenRouterProvider;
+use agent_provider_perplexity::PerplexityProvider;
 use agent_provider_together::TogetherProvider;
+use agent_provider_vertex_ai::VertexAiProvider;
+use agent_provider_vllm::VllmProvider;
+use agent_provider_xai::XaiProvider;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,
@@ -93,22 +104,10 @@ pub struct AgentChatPanel {
 
 impl AgentChatPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut provider_catalog = Self::default_provider_catalog();
-        let custom_providers_list =
-            custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
-        let custom_provider_ids = Rc::new(RefCell::new(
-            custom_providers_list
-                .iter()
-                .map(|provider| provider.id.clone())
-                .collect::<HashSet<_>>(),
-        ));
-        provider_catalog.extend(
-            custom_providers_list
-                .iter()
-                .map(Self::custom_provider_to_definition),
-        );
-
+        // --- Provider registry: single source of truth, no separate catalog ---
         let mut provider_registry = ProviderRegistry::new();
+
+        // Implemented cloud providers
         provider_registry.register(Arc::new(GithubCopilotProvider::new()));
         provider_registry.register(Arc::new(DemoRandomProvider::new()));
         provider_registry.register(Arc::new(OpenAiProvider::new()));
@@ -118,47 +117,102 @@ impl AgentChatPanel {
         provider_registry.register(Arc::new(TogetherProvider::new()));
         provider_registry.register(Arc::new(MistralProvider::new()));
         provider_registry.register(Arc::new(GeminiProvider::new()));
+        provider_registry.register(Arc::new(XaiProvider::new()));
+        provider_registry.register(Arc::new(DeepSeekProvider::new()));
+        provider_registry.register(Arc::new(FireworksProvider::new()));
+        provider_registry.register(Arc::new(PerplexityProvider::new()));
+        // Hollow cloud providers (real structure, not yet fully implemented)
+        provider_registry.register(Arc::new(AzureOpenAIProvider::new()));
+        provider_registry.register(Arc::new(AwsBedrockProvider::new()));
+        provider_registry.register(Arc::new(VertexAiProvider::new()));
+        provider_registry.register(Arc::new(CohereProvider::new()));
+        // Local providers
         provider_registry.register(Arc::new(DockerModelRunnerProvider::new()));
         provider_registry.register(Arc::new(OllamaProvider::new()));
-        for provider in &provider_catalog {
-            if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some()
-            {
-                continue;
-            }
+        provider_registry.register(Arc::new(LmStudioProvider::new()));
+        provider_registry.register(Arc::new(VllmProvider::new()));
+        provider_registry.register(Arc::new(LlamaCppProvider::new()));
 
-            let use_ollama_protocol =
-                provider.id == "ollama" || custom_provider_ids.borrow().contains(provider.id);
+        // --- Custom providers added by the user ---
+        let custom_providers_list =
+            custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
+        let custom_provider_ids = Rc::new(RefCell::new(
+            custom_providers_list
+                .iter()
+                .map(|provider| provider.id.clone())
+                .collect::<HashSet<_>>(),
+        ));
+        for provider in &custom_providers_list {
             let models = provider
                 .models
                 .iter()
-                .map(|model| {
-                    (
-                        model.id.to_string(),
-                        model.label.to_string(),
-                        model.supports_tools,
-                    )
-                })
+                .map(|model| (model.id.clone(), model.label.clone(), model.supports_tools))
                 .collect::<Vec<_>>();
-            let runtime_provider = if use_ollama_protocol {
+            let use_ollama = custom_provider_ids.borrow().contains(provider.id.as_str());
+            let runtime_provider = if use_ollama {
                 OpenAiCompatibleProvider::from_dynamic_ollama(
-                    provider.id.to_string(),
-                    provider.label.to_string(),
-                    provider.endpoint.to_string(),
+                    provider.id.clone(),
+                    provider.label.clone(),
+                    provider.endpoint.clone(),
                     agent_chat_core::ProviderKind::Local,
                     models,
                 )
             } else {
                 OpenAiCompatibleProvider::from_dynamic(
-                    provider.id.to_string(),
-                    provider.label.to_string(),
-                    provider.endpoint.to_string(),
+                    provider.id.clone(),
+                    provider.label.clone(),
+                    provider.endpoint.clone(),
                     agent_chat_core::ProviderKind::Local,
                     models,
                 )
             };
             provider_registry.register(Arc::new(runtime_provider));
         }
-        let wip_providers = Self::wip_providers_from_catalog(&provider_catalog, &provider_registry);
+
+        // --- Build provider catalog from registry (providers own their metadata) ---
+        let env = agent_chat_core::ProcessEnvironment;
+        let mut provider_catalog: Vec<ProviderDefinition> = provider_registry
+            .catalog(&env)
+            .into_iter()
+            .map(|entry| ProviderDefinition {
+                id: entry.metadata.id,
+                label: entry.metadata.display_name,
+                kind: match entry.metadata.kind {
+                    agent_chat_core::ProviderKind::Cloud => ProviderKind::Cloud,
+                    agent_chat_core::ProviderKind::Local => ProviderKind::Local,
+                },
+                endpoint: entry.metadata.endpoint,
+                models: Arc::new(
+                    entry
+                        .models
+                        .iter()
+                        .map(|m| ModelDefinition {
+                            id: m.id,
+                            label: m.label,
+                            supports_tools: m.supports_tools,
+                            context_tokens: m.context_tokens,
+                        })
+                        .collect(),
+                ),
+            })
+            .collect();
+
+        // Append custom provider definitions for display
+        provider_catalog.extend(
+            custom_providers_list
+                .iter()
+                .map(Self::custom_provider_to_definition),
+        );
+
+        // Mark providers whose availability() is Wip as WIP in the UI.
+        let wip_providers: HashMap<&'static str, String> = provider_registry
+            .catalog(&env)
+            .into_iter()
+            .filter(|e| {
+                matches!(e.availability.state, agent_chat_core::AvailabilityState::Wip)
+            })
+            .map(|e| (e.metadata.id, "Not yet implemented".to_string()))
+            .collect();
         let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
             manager_lock
                 .read()

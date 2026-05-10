@@ -64,6 +64,17 @@ agent_provider_mistral = { path = "agent-providers/agent_provider_mistral" }
 agent_provider_gemini = { path = "agent-providers/agent_provider_gemini" }
 agent_provider_docker_model_runner = { path = "agent-providers/agent_provider_docker_model_runner" }
 agent_provider_ollama = { path = "agent-providers/agent_provider_ollama" }
+agent_provider_xai = { path = "agent-providers/agent_provider_xai" }
+agent_provider_deepseek = { path = "agent-providers/agent_provider_deepseek" }
+agent_provider_fireworks = { path = "agent-providers/agent_provider_fireworks" }
+agent_provider_perplexity = { path = "agent-providers/agent_provider_perplexity" }
+agent_provider_lmstudio = { path = "agent-providers/agent_provider_lmstudio" }
+agent_provider_vllm = { path = "agent-providers/agent_provider_vllm" }
+agent_provider_llama_cpp = { path = "agent-providers/agent_provider_llama_cpp" }
+agent_provider_azure_openai = { path = "agent-providers/agent_provider_azure_openai" }
+agent_provider_aws_bedrock = { path = "agent-providers/agent_provider_aws_bedrock" }
+agent_provider_vertex_ai = { path = "agent-providers/agent_provider_vertex_ai" }
+agent_provider_cohere = { path = "agent-providers/agent_provider_cohere" }
 
 # ---------- Reflection System ----------
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
