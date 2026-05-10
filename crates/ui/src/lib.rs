@@ -156,9 +156,17 @@ pub const ENGINE_AUTHORS: &str = "Pulsar Contributors";
 // Common actions
 gpui::actions!(ui, [OpenSettings]);
 
-use std::ops::Deref;
+use std::{
+    ops::Deref,
+    time::{Duration, Instant},
+};
+
+use once_cell::sync::Lazy;
+use parking_lot::Mutex;
 
 rust_i18n::i18n!("locales", fallback = "en");
+
+static LAST_OPENED_URL: Lazy<Mutex<Option<(String, Instant)>>> = Lazy::new(|| Mutex::new(None));
 
 // Re-export translation function for use by other ui crates
 /// Translate a key to the current locale
@@ -196,6 +204,15 @@ pub fn set_locale(locale: &str) {
 
 #[inline]
 pub fn open_external_url(url: &str) {
+    let mut last_opened = LAST_OPENED_URL.lock();
+    let now = Instant::now();
+    if let Some((last_url, last_time)) = last_opened.as_ref() {
+        if last_url == url && now.duration_since(*last_time) <= Duration::from_millis(500) {
+            return;
+        }
+    }
+
+    *last_opened = Some((url.to_string(), now));
     let _ = open::that(url);
 }
 
