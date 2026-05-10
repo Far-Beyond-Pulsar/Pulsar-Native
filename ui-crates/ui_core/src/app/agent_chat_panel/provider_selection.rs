@@ -100,6 +100,7 @@ impl AgentChatPanel {
                         id: Self::static_str(model.id.to_string()),
                         label: Self::static_str(model.label.to_string()),
                         supports_tools: model.supports_tools,
+                        context_tokens: model.context_tokens,
                     })
                     .collect::<Vec<_>>();
 

@@ -91,6 +91,8 @@ pub struct ModelDefinition {
     pub id: &'static str,
     pub label: &'static str,
     pub supports_tools: bool,
+    /// Maximum context window in tokens. 0 means unknown.
+    pub context_tokens: u32,
 }
 
 #[derive(Clone, Debug)]

@@ -480,15 +480,37 @@ impl Render for AgentChatPanel {
                             ),
                     )
                     .child({
-                        // Context-window usage meter (character-based estimate).
+                        // Context-window usage meter.
+                        let total_chars = self.active_context_chars();
+                        let sliver_chars = Self::COMPACTION_SUMMARY_CHAR_BUDGET;
+                        let usable_chars = total_chars.saturating_sub(sliver_chars);
                         let used: usize = self.messages.iter().map(|m| m.content.len()).sum();
-                        let pct = (used as f32 / Self::CONTEXT_CHAR_BUDGET as f32).min(1.0);
-                        let bar_color = if pct > 0.85 {
+                        // Fraction of the USABLE window filled (not counting the sliver).
+                        let fill_pct = (used as f32 / usable_chars.max(1) as f32).min(1.0);
+                        // Fraction of total window the sliver occupies.
+                        let sliver_pct = sliver_chars as f32 / total_chars.max(1) as f32;
+                        let bar_color = if fill_pct > 0.85 {
                             cx.theme().danger
-                        } else if pct > 0.6 {
+                        } else if fill_pct > 0.6 {
                             cx.theme().warning
                         } else {
                             cx.theme().success
+                        };
+                        let model_ctx = self.active_model()
+                            .and_then(|m| {
+                                if m.context_tokens > 0 {
+                                    Some(m.context_tokens)
+                                } else {
+                                    Self::infer_context_tokens(m.id).map(|t| t as u32)
+                                }
+                            })
+                            .unwrap_or(6_000);
+                        let ctx_label = if model_ctx >= 1_000_000 {
+                            format!("{}M ctx", model_ctx / 1_000_000)
+                        } else if model_ctx >= 1_000 {
+                            format!("{}k ctx", model_ctx / 1_000)
+                        } else {
+                            format!("{} ctx", model_ctx)
                         };
                         h_flex()
                             .w_full()
@@ -496,24 +518,41 @@ impl Render for AgentChatPanel {
                             .gap_1()
                             .px(px(2.0))
                             .child(
+                                // Outer track
                                 div()
                                     .flex_1()
-                                    .h(px(3.0))
+                                    .h(px(4.0))
                                     .rounded_full()
-                                    .bg(cx.theme().border.opacity(0.4))
+                                    .bg(cx.theme().border.opacity(0.3))
+                                    .relative()
+                                    // Filled portion (usable budget consumed)
                                     .child(
                                         div()
+                                            .absolute()
+                                            .top_0()
+                                            .left_0()
                                             .h_full()
                                             .rounded_full()
                                             .bg(bar_color)
-                                            .w(relative(pct)),
+                                            .w(relative(fill_pct * (1.0 - sliver_pct))),
+                                    )
+                                    // Compaction-sliver indicator (right edge, always visible)
+                                    .child(
+                                        div()
+                                            .absolute()
+                                            .top_0()
+                                            .h_full()
+                                            .right_0()
+                                            .rounded_r_full()
+                                            .bg(cx.theme().muted_foreground.opacity(0.25))
+                                            .w(relative(sliver_pct)),
                                     ),
                             )
                             .child(
                                 div()
                                     .text_color(cx.theme().muted_foreground.opacity(0.7))
                                     .text_xs()
-                                    .child(format!("{}%", (pct * 100.0) as u32)),
+                                    .child(format!("{}% · {}", (fill_pct * 100.0) as u32, ctx_label)),
                             )
                     })
                     .when(auth_provider.is_some(), |el| {

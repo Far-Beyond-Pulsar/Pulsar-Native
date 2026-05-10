@@ -26,17 +26,17 @@ impl TogetherProvider {
             ModelDescriptor {
                 id: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 label: "Llama 3.3 70B Instruct Turbo",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "Qwen/Qwen2.5-Coder-32B-Instruct",
                 label: "Qwen 2.5 Coder 32B",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "mistralai/Mixtral-8x7B-Instruct-v0.1",
                 label: "Mixtral 8x7B Instruct",
-                supports_tools: false,
+                supports_tools: false, context_tokens: 0,
             },
         ]
     }

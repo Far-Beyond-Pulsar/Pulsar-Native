@@ -27,17 +27,17 @@ impl AnthropicProvider {
             ModelDescriptor {
                 id: "claude-3-7-sonnet-latest",
                 label: "Claude 3.7 Sonnet",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "claude-3-5-sonnet-latest",
                 label: "Claude 3.5 Sonnet",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "claude-3-5-haiku-latest",
                 label: "Claude 3.5 Haiku",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
         ]
     }

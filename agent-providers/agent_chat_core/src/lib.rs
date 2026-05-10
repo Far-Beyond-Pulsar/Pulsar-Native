@@ -19,6 +19,9 @@ pub struct ModelDescriptor {
     pub id: &'static str,
     pub label: &'static str,
     pub supports_tools: bool,
+    /// Maximum context window in tokens. 0 means unknown — callers should use a
+    /// conservative fallback (e.g. 8 192 tokens).
+    pub context_tokens: u32,
 }
 
 #[derive(Clone, Debug)]

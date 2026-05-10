@@ -14,7 +14,7 @@ use ui::input::Enter;
 
 impl AgentChatPanel {
     pub(super) const CONTEXT_CHAR_BUDGET: usize = 24_000;
-    const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
+    pub(super) const COMPACTION_SUMMARY_CHAR_BUDGET: usize = 2_400;
 
     fn build_provider_history_messages(&self) -> Vec<ChatMessage> {
         self.messages
@@ -140,6 +140,70 @@ impl AgentChatPanel {
     /// fenced context block prepended to the message. Unresolvable tokens are
     /// left as-is. Paths are tried absolute, relative to CWD, and relative to
     /// the workspace root.
+    /// Resolve the context window for the active model as a character budget.
+    ///
+    /// Priority: explicit `context_tokens` on the model → ID-pattern lookup →
+    /// conservative fallback of 6 000 tokens (≈ 21 000 chars).
+    ///
+    /// Uses 3.5 chars/token as the conversion ratio (mix of code and English).
+    /// Reserves `COMPACTION_SUMMARY_CHAR_BUDGET` chars as a sliver for the
+    /// compaction-instructions message so the bar fills right to the brim.
+    pub(super) fn active_context_chars(&self) -> usize {
+        let tokens = self
+            .active_model()
+            .and_then(|m| {
+                if m.context_tokens > 0 {
+                    Some(m.context_tokens as usize)
+                } else {
+                    Self::infer_context_tokens(m.id)
+                }
+            })
+            .unwrap_or(6_000);
+
+        // 3.5 chars/token — keep as integer math to avoid float noise.
+        tokens * 7 / 2
+    }
+
+    /// Infer the context window (in tokens) from a model ID string.
+    /// Returns `None` if the model is unknown.
+    pub(super) fn infer_context_tokens(id: &str) -> Option<usize> {
+        let id = id.to_ascii_lowercase();
+        // OpenAI
+        if id.contains("gpt-4.1") { return Some(1_047_576); }
+        if id.contains("gpt-4o") { return Some(128_000); }
+        if id.contains("o4-mini") || id == "o4-mini" { return Some(200_000); }
+        if id == "o3" { return Some(200_000); }
+        if id.contains("gpt-5") { return Some(200_000); }
+        // Anthropic Claude (all recent models are 200k)
+        if id.contains("claude") { return Some(200_000); }
+        // Google Gemini
+        if id.contains("gemini-2") { return Some(1_048_576); }
+        if id.contains("gemini") { return Some(1_048_576); }
+        // Mistral family
+        if id.contains("codestral") { return Some(256_000); }
+        if id.contains("mistral") || id.contains("ministral") { return Some(128_000); }
+        if id.contains("mixtral") { return Some(32_768); }
+        // Meta Llama
+        if id.contains("llama") { return Some(131_072); }
+        // Qwen
+        if id.contains("qwen") { return Some(131_072); }
+        // DeepSeek
+        if id.contains("deepseek-reasoner") { return Some(131_072); }
+        if id.contains("deepseek") { return Some(65_536); }
+        // xAI Grok
+        if id.contains("grok") { return Some(131_072); }
+        // Cohere
+        if id.contains("command-a") { return Some(256_000); }
+        if id.contains("command-r") { return Some(128_000); }
+        // Perplexity Sonar
+        if id.contains("sonar") { return Some(200_000); }
+        // Phi
+        if id.contains("phi-4") { return Some(16_384); }
+        // Gemma
+        if id.contains("gemma") { return Some(32_768); }
+        None
+    }
+
     /// Produce a human-readable preview for the expanded tool card.
     /// Web-search and fetch_url results get structured formatting; everything
     /// else is truncated plain text.
@@ -497,9 +561,13 @@ impl AgentChatPanel {
             .map(|m| m.id.to_string())
             .unwrap_or_else(|| "default".to_string());
 
+        // Leave a sliver for the compaction-instructions block itself.
+        let context_chars = self.active_context_chars();
+        let history_budget = context_chars.saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET);
+
         let provider_messages = self.build_provider_history_messages();
         let (provider_messages, was_compacted) =
-            Self::compact_provider_messages(provider_messages, Self::CONTEXT_CHAR_BUDGET);
+            Self::compact_provider_messages(provider_messages, history_budget);
 
         let token = token.unwrap_or_default();
         let tool_schemas = self.tool_registry.available_tools_schema();

@@ -39,27 +39,27 @@ impl OpenAiProvider {
             ModelDescriptor {
                 id: "gpt-4.1",
                 label: "GPT-4.1",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "gpt-4.1-mini",
                 label: "GPT-4.1 Mini",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "gpt-4o",
                 label: "GPT-4o",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "o4-mini",
                 label: "o4 Mini",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "o3",
                 label: "o3",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
         ]
     }
@@ -662,6 +662,7 @@ impl OpenAiCompatibleProvider {
                 id: Self::static_str(model_id),
                 label: Self::static_str(label),
                 supports_tools,
+                context_tokens: 0,
             })
             .collect::<Vec<_>>();
 
@@ -691,6 +692,7 @@ impl OpenAiCompatibleProvider {
                 id: Self::static_str(model_id),
                 label: Self::static_str(label),
                 supports_tools,
+                context_tokens: 0,
             })
             .collect::<Vec<_>>();
 

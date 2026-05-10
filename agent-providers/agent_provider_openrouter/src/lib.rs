@@ -26,27 +26,27 @@ impl OpenRouterProvider {
             ModelDescriptor {
                 id: "openai/gpt-4o",
                 label: "GPT-4o (OpenRouter)",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "anthropic/claude-3.7-sonnet",
                 label: "Claude 3.7 Sonnet (OpenRouter)",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "google/gemini-2.5-pro",
                 label: "Gemini 2.5 Pro (OpenRouter)",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "meta-llama/llama-3.3-70b-instruct",
                 label: "Llama 3.3 70B (OpenRouter)",
-                supports_tools: false,
+                supports_tools: false, context_tokens: 0,
             },
             ModelDescriptor {
                 id: "mistralai/mistral-large-latest",
                 label: "Mistral Large (OpenRouter)",
-                supports_tools: true,
+                supports_tools: true, context_tokens: 0,
             },
         ]
     }

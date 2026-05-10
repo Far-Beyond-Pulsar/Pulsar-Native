@@ -10,6 +10,7 @@ use std::io::{BufRead, BufReader};
 
 const OLLAMA_CHAT_URL: &str = "http://localhost:11434/api/chat";
 const OLLAMA_MODELS_URL: &str = "http://localhost:11434/api/tags";
+const OLLAMA_SHOW_URL: &str = "http://localhost:11434/api/show";
 const OLLAMA_MODEL_ENV: &str = "PULSAR_OLLAMA_MODEL";
 
 pub struct OllamaProvider {
@@ -25,31 +26,11 @@ impl OllamaProvider {
 
     fn default_models() -> Vec<ModelDescriptor> {
         vec![
-            ModelDescriptor {
-                id: "llama3.1:8b",
-                label: "Llama 3.1 8B",
-                supports_tools: true,
-            },
-            ModelDescriptor {
-                id: "qwen2.5-coder:7b",
-                label: "Qwen 2.5 Coder 7B",
-                supports_tools: true,
-            },
-            ModelDescriptor {
-                id: "llama3.1:70b",
-                label: "Llama 3.1 70B",
-                supports_tools: true,
-            },
-            ModelDescriptor {
-                id: "mistral-nemo:12b",
-                label: "Mistral Nemo 12B",
-                supports_tools: true,
-            },
-            ModelDescriptor {
-                id: "deepseek-coder-v2:16b",
-                label: "DeepSeek Coder V2 16B",
-                supports_tools: true,
-            },
+            ModelDescriptor { id: "llama3.1:8b",            label: "Llama 3.1 8B",         supports_tools: true,  context_tokens: 131_072 },
+            ModelDescriptor { id: "qwen2.5-coder:7b",       label: "Qwen 2.5 Coder 7B",    supports_tools: true,  context_tokens: 131_072 },
+            ModelDescriptor { id: "llama3.1:70b",           label: "Llama 3.1 70B",         supports_tools: true,  context_tokens: 131_072 },
+            ModelDescriptor { id: "mistral-nemo:12b",       label: "Mistral Nemo 12B",      supports_tools: true,  context_tokens: 128_000 },
+            ModelDescriptor { id: "deepseek-coder-v2:16b",  label: "DeepSeek Coder V2 16B", supports_tools: true,  context_tokens: 131_072 },
         ]
     }
 
@@ -185,6 +166,47 @@ impl OllamaProvider {
             .collect()
     }
 
+    /// Query `/api/show` for a single model to get its actual context length.
+    /// Returns 0 (unknown) on any error — callers treat 0 as "use fallback".
+    fn fetch_model_context_tokens(&self, model_id: &str) -> u32 {
+        let Ok(resp) = self
+            .client
+            .post(OLLAMA_SHOW_URL)
+            .json(&json!({"model": model_id}))
+            .send()
+        else {
+            return 0;
+        };
+        let Ok(body) = resp.json::<Value>() else {
+            return 0;
+        };
+
+        // 1. Try model_info.*.context_length (varies by architecture key)
+        if let Some(info) = body.get("model_info").and_then(|v| v.as_object()) {
+            for (_key, val) in info {
+                if _key.ends_with(".context_length") {
+                    if let Some(n) = val.as_u64() {
+                        return n as u32;
+                    }
+                }
+            }
+        }
+
+        // 2. Try parsing `num_ctx` from the parameters string
+        if let Some(params) = body.get("parameters").and_then(|v| v.as_str()) {
+            for line in params.lines() {
+                let line = line.trim();
+                if let Some(rest) = line.strip_prefix("num_ctx") {
+                    if let Ok(n) = rest.trim().parse::<u32>() {
+                        return n;
+                    }
+                }
+            }
+        }
+
+        0
+    }
+
     fn fetch_models_from_api(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
         let response = self
             .client
@@ -211,10 +233,12 @@ impl OllamaProvider {
                     .iter()
                     .filter_map(|item| {
                         let id = item.get("name")?.as_str()?.to_string();
+                        let context_tokens = self.fetch_model_context_tokens(&id);
                         Some(ModelDescriptor {
                             id: Box::leak(id.clone().into_boxed_str()),
                             label: Box::leak(id.into_boxed_str()),
                             supports_tools: true,
+                            context_tokens,
                         })
                     })
                     .collect::<Vec<_>>()
