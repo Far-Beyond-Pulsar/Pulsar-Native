@@ -275,6 +275,12 @@ impl OllamaProvider {
         let mut tool_calls = Vec::new();
         let mut next_call_index = 1usize;
 
+        // Accumulate thinking content from models that emit a separate `thinking`
+        // field (e.g. qwen3). Flushed as `<think>…</think>` before the first
+        // content chunk so the upstream tag-detection in streaming.rs picks it up.
+        let mut thinking_buf = String::new();
+        let mut thinking_flushed = false;
+
         let reader = BufReader::new(response);
         for line in reader.lines() {
             let line = line.context("failed reading Ollama streaming response line")?;
@@ -291,8 +297,22 @@ impl OllamaProvider {
             }
 
             if let Some(message) = event.get("message") {
+                // Accumulate thinking tokens (qwen3 and similar thinking models).
+                if let Some(thinking) = message.get("thinking").and_then(|v| v.as_str()) {
+                    if !thinking.is_empty() {
+                        thinking_buf.push_str(thinking);
+                    }
+                }
+
                 if let Some(content) = message.get("content").and_then(|value| value.as_str()) {
                     if !content.is_empty() {
+                        // Flush accumulated thinking as a tagged block before first content.
+                        if !thinking_flushed && !thinking_buf.is_empty() {
+                            let block = format!("<think>{}</think>", thinking_buf);
+                            on_chunk(block);
+                            thinking_flushed = true;
+                        }
+
                         let chunk = content.to_string();
                         assistant_message.push_str(&chunk);
                         streamed_text_chunks.push(chunk.clone());

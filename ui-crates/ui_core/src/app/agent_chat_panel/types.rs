@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 /// A single tool call within a `DisplayItem::ToolCallGroup`.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolCallDisplay {
     pub id: String,
     pub name: String,
@@ -15,7 +15,10 @@ pub struct ToolCallDisplay {
 
 /// Flat items rendered in the chat virtual list.
 /// System and raw Tool-role messages are never added here.
-#[derive(Clone, Debug)]
+///
+/// `is_streaming` is always written as `false` to disk — it is purely runtime
+/// state and should never be restored from a saved file.
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum DisplayItem {
     UserMessage {
         content: String,
@@ -25,6 +28,8 @@ pub enum DisplayItem {
     AssistantMessage {
         content: String,
         message_index: usize,
+        /// Always `false` when loaded from disk.
+        #[serde(default)]
         is_streaming: bool,
     },
     /// Collapsed tool-use block rendered between assistant messages.
@@ -36,9 +41,14 @@ pub enum DisplayItem {
     ThinkingBlock {
         content: String,
         is_expanded: bool,
-        /// False while the model is still generating the thinking content.
+        /// `false` only during live generation; always `true` on disk.
+        #[serde(default = "bool_true")]
         is_done: bool,
     },
+}
+
+fn bool_true() -> bool {
+    true
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -95,7 +105,13 @@ pub struct ChatSessionFile {
     pub title: String,
     pub created_at: u64,
     pub updated_at: u64,
+    /// Provider history — sent to the AI on every turn.
     pub messages: Vec<PersistedChatMessage>,
+    /// UI display items: tool call cards, thinking blocks, and message bubbles.
+    /// Not sent to the AI. Absent in files written before this field was added
+    /// (falls back to reconstructing from `messages`).
+    #[serde(default)]
+    pub display_items: Vec<DisplayItem>,
 }
 
 #[derive(Clone, Debug)]

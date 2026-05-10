@@ -126,6 +126,33 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
             return;
         };
 
+        // Snapshot display items: strip ephemeral streaming state before writing.
+        let persisted_display_items: Vec<DisplayItem> = self
+            .display_items
+            .iter()
+            .map(|item| match item {
+                DisplayItem::AssistantMessage {
+                    content,
+                    message_index,
+                    ..
+                } => DisplayItem::AssistantMessage {
+                    content: content.clone(),
+                    message_index: *message_index,
+                    is_streaming: false,
+                },
+                DisplayItem::ThinkingBlock {
+                    content,
+                    is_expanded,
+                    ..
+                } => DisplayItem::ThinkingBlock {
+                    content: content.clone(),
+                    is_expanded: *is_expanded,
+                    is_done: true,
+                },
+                other => other.clone(),
+            })
+            .collect();
+
         let payload = ChatSessionFile {
             id: self.current_chat_id.clone(),
             title: Self::inferred_chat_title(&self.messages),
@@ -145,6 +172,7 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
                     content: m.content.clone(),
                 })
                 .collect(),
+            display_items: persisted_display_items,
         };
 
         if let Ok(serialized) = serde_json::to_string_pretty(&payload) {
@@ -187,22 +215,27 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
             })
             .collect();
 
-        self.display_items = messages
-            .iter()
-            .enumerate()
-            .filter_map(|(ix, m)| match m.role {
-                ChatRole::User => Some(DisplayItem::UserMessage {
-                    content: m.content.clone(),
-                    message_index: ix,
-                }),
-                ChatRole::Assistant => Some(DisplayItem::AssistantMessage {
-                    content: m.content.clone(),
-                    message_index: ix,
-                    is_streaming: false,
-                }),
-                _ => None,
-            })
-            .collect();
+        // Use saved display items if present; reconstruct from messages for old files.
+        self.display_items = if !chat.display_items.is_empty() {
+            chat.display_items
+        } else {
+            messages
+                .iter()
+                .enumerate()
+                .filter_map(|(ix, m)| match m.role {
+                    ChatRole::User => Some(DisplayItem::UserMessage {
+                        content: m.content.clone(),
+                        message_index: ix,
+                    }),
+                    ChatRole::Assistant => Some(DisplayItem::AssistantMessage {
+                        content: m.content.clone(),
+                        message_index: ix,
+                        is_streaming: false,
+                    }),
+                    _ => None,
+                })
+                .collect()
+        };
 
         self.messages = messages;
         if self.messages.is_empty() {
