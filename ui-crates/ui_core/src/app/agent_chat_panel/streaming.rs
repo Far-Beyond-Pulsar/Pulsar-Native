@@ -148,7 +148,19 @@ impl AgentChatPanel {
             }
             DisplayItem::ToolCallGroup { calls, is_expanded } => {
                 if *is_expanded {
-                    px((60.0 + calls.len() as f32 * 72.0).min(600.0))
+                    px((56.0 + calls.len() as f32 * 72.0).min(600.0))
+                } else {
+                    px(40.0)
+                }
+            }
+            DisplayItem::ThinkingBlock { content, is_expanded, .. } => {
+                if *is_expanded {
+                    let visual_lines: usize = content
+                        .lines()
+                        .map(|line| line.chars().count().max(1).div_ceil(64))
+                        .sum::<usize>()
+                        .max(1);
+                    px((56.0 + (visual_lines as f32 * 16.0)).min(480.0))
                 } else {
                     px(40.0)
                 }
@@ -409,8 +421,12 @@ impl AgentChatPanel {
         enum StreamEvent {
             /// AI prose text chunk — appended to the current streaming assistant bubble.
             Chunk(String),
-            /// The AI returned tool calls; UI should render a collapsed tool call group
-            /// and start a new streaming assistant bubble for the next iteration.
+            /// A `<think>` tag was opened; UI inserts a ThinkingBlock.
+            ThinkingStarted,
+            /// `</think>` was reached; UI marks the ThinkingBlock done with its content.
+            ThinkingDone(String),
+            /// The AI returned tool calls; UI renders a collapsed tool call group
+            /// and starts a new streaming assistant bubble for the next iteration.
             ToolCallGroup(Vec<ToolCall>),
             /// A tool finished executing; update the matching call's result in the UI.
             ToolCallResult { id: String, result_preview: String, is_error: bool },
@@ -500,17 +516,56 @@ impl AgentChatPanel {
 
                 let mut pending_chunk = String::new();
                 let mut last_emit = Instant::now();
+                // Per-iteration thinking state — reset each loop turn automatically.
+                let mut in_thinking = false;
+                let mut thinking_buf = String::new();
+
                 let mut on_chunk = |chunk: String| {
-                    pending_chunk.push_str(&chunk);
-
-                    let should_emit = pending_chunk.len() >= 256
-                        || pending_chunk.contains('\n')
-                        || last_emit.elapsed() >= Duration::from_millis(24);
-
-                    if should_emit {
-                        let chunk = std::mem::take(&mut pending_chunk);
-                        let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk));
-                        last_emit = Instant::now();
+                    let mut rest: &str = &chunk;
+                    loop {
+                        if in_thinking {
+                            if let Some(end) = rest.find("</think>") {
+                                thinking_buf.push_str(&rest[..end]);
+                                let content = std::mem::take(&mut thinking_buf);
+                                let _ = tx_for_chunks
+                                    .try_send(StreamEvent::ThinkingDone(content));
+                                in_thinking = false;
+                                rest = &rest[end + "</think>".len()..];
+                                if rest.is_empty() {
+                                    break;
+                                }
+                            } else {
+                                thinking_buf.push_str(rest);
+                                break;
+                            }
+                        } else {
+                            if let Some(start) = rest.find("<think>") {
+                                // Flush any text before the tag
+                                let before = &rest[..start];
+                                if !before.is_empty() {
+                                    pending_chunk.push_str(before);
+                                    let chunk_out = std::mem::take(&mut pending_chunk);
+                                    let _ = tx_for_chunks
+                                        .try_send(StreamEvent::Chunk(chunk_out));
+                                    last_emit = Instant::now();
+                                }
+                                let _ = tx_for_chunks.try_send(StreamEvent::ThinkingStarted);
+                                in_thinking = true;
+                                rest = &rest[start + "<think>".len()..];
+                            } else {
+                                pending_chunk.push_str(rest);
+                                let should_emit = pending_chunk.len() >= 256
+                                    || pending_chunk.contains('\n')
+                                    || last_emit.elapsed() >= Duration::from_millis(24);
+                                if should_emit {
+                                    let chunk_out = std::mem::take(&mut pending_chunk);
+                                    let _ = tx_for_chunks
+                                        .try_send(StreamEvent::Chunk(chunk_out));
+                                    last_emit = Instant::now();
+                                }
+                                break;
+                            }
+                        }
                     }
                 };
 
@@ -518,8 +573,13 @@ impl AgentChatPanel {
                     .chat_completion_streaming(&token, &current_request, &mut on_chunk)
                     .map_err(|err| err.to_string());
 
+                // Flush any remaining prose text
                 if !pending_chunk.is_empty() {
                     let _ = tx_for_chunks.try_send(StreamEvent::Chunk(pending_chunk));
+                }
+                // If stream ended mid-think, still emit what we have
+                if in_thinking && !thinking_buf.is_empty() {
+                    let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone(thinking_buf));
                 }
 
                 match result {
@@ -754,16 +814,91 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ToolCallGroup(calls) => {
-                                // Finalize the current streaming bubble (stop its spinner)
+                            StreamEvent::ThinkingStarted => {
+                                // Drop the streaming bubble if it's still empty (thinking
+                                // arrived before any prose text).
                                 if let Some(dix) = panel.streaming_display_item_ix {
-                                    if let Some(DisplayItem::AssistantMessage {
-                                        is_streaming, ..
+                                    let is_empty = panel
+                                        .display_items
+                                        .get(dix)
+                                        .map(|item| matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty()))
+                                        .unwrap_or(false);
+                                    if is_empty && dix + 1 == panel.display_items.len() {
+                                        panel.display_items.pop();
+                                        panel.display_item_heights.remove(&dix);
+                                    } else if let Some(DisplayItem::AssistantMessage {
+                                        is_streaming,
+                                        ..
                                     }) = panel.display_items.get_mut(dix)
                                     {
                                         *is_streaming = false;
+                                        panel.display_item_heights.remove(&dix);
                                     }
-                                    panel.display_item_heights.remove(&dix);
+                                }
+
+                                // Insert the ThinkingBlock placeholder
+                                panel.display_items.push(DisplayItem::ThinkingBlock {
+                                    content: String::new(),
+                                    is_expanded: false,
+                                    is_done: false,
+                                });
+
+                                // Open a fresh streaming assistant bubble after the block
+                                let new_dix = panel.display_items.len();
+                                panel.display_items.push(DisplayItem::AssistantMessage {
+                                    content: String::new(),
+                                    message_index: message_ix,
+                                    is_streaming: true,
+                                });
+                                panel.streaming_display_item_ix = Some(new_dix);
+                                panel.scroll_messages_to_bottom();
+                                cx.notify();
+                            }
+
+                            StreamEvent::ThinkingDone(content) => {
+                                // Find the most recent ThinkingBlock and mark it complete
+                                for item in panel.display_items.iter_mut().rev() {
+                                    if let DisplayItem::ThinkingBlock {
+                                        content: stored,
+                                        is_done,
+                                        ..
+                                    } = item
+                                    {
+                                        *stored = content;
+                                        *is_done = true;
+                                        break;
+                                    }
+                                }
+                                // Invalidate height — expanded size may have changed
+                                for (ix, item) in panel.display_items.iter().enumerate().rev() {
+                                    if matches!(item, DisplayItem::ThinkingBlock { .. }) {
+                                        panel.display_item_heights.remove(&ix);
+                                        break;
+                                    }
+                                }
+                                cx.notify();
+                            }
+
+                            StreamEvent::ToolCallGroup(calls) => {
+                                // Drop the streaming bubble if it's still empty (tool call
+                                // arrived before any prose text in this iteration).
+                                if let Some(dix) = panel.streaming_display_item_ix {
+                                    let is_empty = panel
+                                        .display_items
+                                        .get(dix)
+                                        .map(|item| matches!(item, DisplayItem::AssistantMessage { content, .. } if content.is_empty()))
+                                        .unwrap_or(false);
+                                    if is_empty && dix + 1 == panel.display_items.len() {
+                                        panel.display_items.pop();
+                                        panel.display_item_heights.remove(&dix);
+                                    } else if let Some(DisplayItem::AssistantMessage {
+                                        is_streaming,
+                                        ..
+                                    }) = panel.display_items.get_mut(dix)
+                                    {
+                                        *is_streaming = false;
+                                        panel.display_item_heights.remove(&dix);
+                                    }
                                 }
 
                                 // Insert collapsed tool call group

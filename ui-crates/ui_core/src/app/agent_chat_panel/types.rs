@@ -32,6 +32,13 @@ pub enum DisplayItem {
         calls: Vec<ToolCallDisplay>,
         is_expanded: bool,
     },
+    /// Collapsed thinking/reasoning block rendered before the assistant's reply.
+    ThinkingBlock {
+        content: String,
+        is_expanded: bool,
+        /// False while the model is still generating the thinking content.
+        is_done: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

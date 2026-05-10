@@ -44,7 +44,7 @@ use ui::{
     scroll::{Scrollbar, ScrollbarState},
     spinner::Spinner,
     text::TextView,
-    v_flex, v_virtual_list, ActiveTheme as _, Disableable, IconName, Sizable, Size, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
     VirtualListScrollHandle,
 };
 
@@ -626,7 +626,15 @@ impl Render for AgentChatPanel {
                                                 } else if all_done {
                                                     cx.theme().success
                                                 } else {
-                                                    cx.theme().primary
+                                                    cx.theme().muted_foreground
+                                                };
+
+                                                let status_icon = if has_error {
+                                                    IconName::CircleX
+                                                } else if all_done {
+                                                    IconName::CircleCheck
+                                                } else {
+                                                    IconName::Loader
                                                 };
 
                                                 let header_label = if calls.len() == 1 {
@@ -707,16 +715,10 @@ impl Render for AgentChatPanel {
                                                                         },
                                                                     ))
                                                                     .child(
-                                                                        div()
-                                                                            .size(px(6.0))
-                                                                            .rounded_full()
-                                                                            .bg(accent)
-                                                                            .when(!all_done, |el| {
-                                                                                el.bg(cx
-                                                                                    .theme()
-                                                                                    .muted_foreground
-                                                                                    .opacity(0.5))
-                                                                            }),
+                                                                        // Category icon (tool wrench)
+                                                                        Icon::new(IconName::Terminal)
+                                                                            .size_3()
+                                                                            .text_color(accent),
                                                                     )
                                                                     .child(
                                                                         div()
@@ -729,18 +731,23 @@ impl Render for AgentChatPanel {
                                                                             .child(header_label),
                                                                     )
                                                                     .child(
-                                                                        div()
-                                                                            .text_xs()
-                                                                            .text_color(
-                                                                                cx.theme()
-                                                                                    .muted_foreground
-                                                                                    .opacity(0.6),
-                                                                            )
-                                                                            .child(if is_expanded {
-                                                                                "▲"
-                                                                            } else {
-                                                                                "▼"
-                                                                            }),
+                                                                        // Status icon — shape conveys state for colorblind users
+                                                                        Icon::new(status_icon)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        Icon::new(if is_expanded {
+                                                                            IconName::ChevronUp
+                                                                        } else {
+                                                                            IconName::ChevronDown
+                                                                        })
+                                                                        .size_3()
+                                                                        .text_color(
+                                                                            cx.theme()
+                                                                                .muted_foreground
+                                                                                .opacity(0.6),
+                                                                        ),
                                                                     ),
                                                             )
                                                             .when(is_expanded, |el| {
@@ -815,6 +822,146 @@ impl Render for AgentChatPanel {
                                                                                     )
                                                                             }),
                                                                         ),
+                                                                )
+                                                            }),
+                                                    )
+                                                    .into_any_element()
+                                            }
+
+                                            DisplayItem::ThinkingBlock {
+                                                content,
+                                                is_expanded,
+                                                is_done,
+                                            } => {
+                                                let content = content.clone();
+                                                let is_expanded = *is_expanded;
+                                                let is_done = *is_done;
+                                                let accent = cx.theme().info;
+                                                let status_icon = if is_done {
+                                                    IconName::Brain
+                                                } else {
+                                                    IconName::Loader
+                                                };
+                                                let header_label = if is_done {
+                                                    "Thought"
+                                                } else {
+                                                    "Thinking…"
+                                                };
+
+                                                div()
+                                                    .relative()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .px_3()
+                                                    .py_1()
+                                                    .child(
+                                                        canvas(
+                                                            move |bounds, _, cx| {
+                                                                panel.update(cx, |panel, cx| {
+                                                                    let measured =
+                                                                        bounds.size.height;
+                                                                    if panel
+                                                                        .display_item_heights
+                                                                        .get(&ix)
+                                                                        .copied()
+                                                                        != Some(measured)
+                                                                    {
+                                                                        panel
+                                                                            .display_item_heights
+                                                                            .insert(ix, measured);
+                                                                        cx.notify();
+                                                                    }
+                                                                });
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
+                                                        .absolute()
+                                                        .inset_0(),
+                                                    )
+                                                    .child(
+                                                        v_flex()
+                                                            .w_full()
+                                                            .rounded(px(6.0))
+                                                            .border_1()
+                                                            .border_color(accent.opacity(0.25))
+                                                            .bg(cx.theme().secondary)
+                                                            .overflow_hidden()
+                                                            .child(
+                                                                h_flex()
+                                                                    .id(("thinking-header", ix))
+                                                                    .w_full()
+                                                                    .px_3()
+                                                                    .py(px(6.0))
+                                                                    .gap_2()
+                                                                    .cursor_pointer()
+                                                                    .on_click(cx.listener(
+                                                                        move |this, _, _, cx| {
+                                                                            if let Some(
+                                                                                DisplayItem::ThinkingBlock {
+                                                                                    is_expanded,
+                                                                                    ..
+                                                                                },
+                                                                            ) = this
+                                                                                .display_items
+                                                                                .get_mut(ix)
+                                                                            {
+                                                                                *is_expanded =
+                                                                                    !*is_expanded;
+                                                                                this.display_item_heights
+                                                                                    .remove(&ix);
+                                                                            }
+                                                                            cx.notify();
+                                                                        },
+                                                                    ))
+                                                                    .child(
+                                                                        Icon::new(IconName::Brain)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .flex_1()
+                                                                            .text_xs()
+                                                                            .text_color(
+                                                                                cx.theme()
+                                                                                    .muted_foreground,
+                                                                            )
+                                                                            .child(header_label),
+                                                                    )
+                                                                    .child(
+                                                                        Icon::new(status_icon)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        Icon::new(if is_expanded {
+                                                                            IconName::ChevronUp
+                                                                        } else {
+                                                                            IconName::ChevronDown
+                                                                        })
+                                                                        .size_3()
+                                                                        .text_color(
+                                                                            cx.theme()
+                                                                                .muted_foreground
+                                                                                .opacity(0.6),
+                                                                        ),
+                                                                    ),
+                                                            )
+                                                            .when(is_expanded && !content.is_empty(), |el| {
+                                                                el.child(
+                                                                    div()
+                                                                        .w_full()
+                                                                        .px_3()
+                                                                        .py_2()
+                                                                        .border_t_1()
+                                                                        .border_color(cx.theme().border)
+                                                                        .text_xs()
+                                                                        .font_family("JetBrains Mono")
+                                                                        .text_color(
+                                                                            cx.theme().muted_foreground,
+                                                                        )
+                                                                        .whitespace_normal()
+                                                                        .child(content),
                                                                 )
                                                             }),
                                                     )
