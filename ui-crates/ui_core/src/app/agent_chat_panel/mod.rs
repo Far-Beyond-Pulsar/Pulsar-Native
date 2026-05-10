@@ -213,6 +213,17 @@ impl AgentChatPanel {
             })
             .map(|e| (e.metadata.id, "Not yet implemented".to_string()))
             .collect();
+
+        // Sort: active providers alphabetically first, WIP/disabled alphabetically at the bottom.
+        provider_catalog.sort_by(|a, b| {
+            let a_wip = wip_providers.contains_key(a.id);
+            let b_wip = wip_providers.contains_key(b.id);
+            match (a_wip, b_wip) {
+                (false, true) => std::cmp::Ordering::Less,
+                (true, false) => std::cmp::Ordering::Greater,
+                _ => a.label.cmp(b.label),
+            }
+        });
         let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
             manager_lock
                 .read()
@@ -248,7 +259,10 @@ impl AgentChatPanel {
             .with_empty_text("No providers found")
             .with_max_width(px(220.0))
             .with_max_height(px(320.0))
-            .with_icon_getter(|_| IconName::Brain)
+            .with_icon_getter(|p: &ProviderDefinition| match p.kind {
+                ProviderKind::Cloud => IconName::Cloud,
+                ProviderKind::Local => IconName::Server,
+            })
             .with_item_actions(move |provider| {
                 if custom_ids_for_list.borrow().contains(provider.id) {
                     vec![SearchableListItemAction {
