@@ -379,20 +379,23 @@ impl Render for AgentChatPanel {
                 .collect::<Vec<_>>(),
         );
 
+        let provider_label = provider
+            .map(|p| p.label.to_string())
+            .unwrap_or_else(|| "Provider".to_string());
+        let model_label = model
+            .map(|m| m.label.to_string())
+            .unwrap_or_else(|| "Model".to_string());
+
         let provider_popover =
             Popover::<SearchableList<ProviderDefinition>>::new("agent-chat-provider-popover")
                 .anchor(Corner::TopLeft)
                 .trigger(
                     Button::new("agent-chat-provider-trigger")
-                        .xsmall()
+                        .small()
                         .ghost()
                         .justify_start()
                         .tooltip("Select provider")
-                        .label(
-                            provider
-                                .map(|p| format!("Provider: {} ({})", p.label, p.id))
-                                .unwrap_or_else(|| "No provider".to_string()),
-                        )
+                        .label(provider_label)
                         .dropdown_caret(true),
                 )
                 .content(move |_window, _cx| provider_list.clone());
@@ -402,15 +405,11 @@ impl Render for AgentChatPanel {
                 .anchor(Corner::TopLeft)
                 .trigger(
                     Button::new("agent-chat-model-trigger")
-                        .xsmall()
+                        .small()
                         .ghost()
                         .justify_start()
                         .tooltip("Select model")
-                        .label(
-                            model
-                                .map(|m| format!("Model: {} ({})", m.label, m.id))
-                                .unwrap_or_else(|| "No model".to_string()),
-                        )
+                        .label(model_label)
                         .dropdown_caret(true),
                 )
                 .content(move |_window, _cx| model_list.clone());
@@ -423,8 +422,8 @@ impl Render for AgentChatPanel {
                         .xsmall()
                         .ghost()
                         .justify_start()
-                        .tooltip("Select chat")
-                        .label(format!("Chat: {}", current_chat_id))
+                        .tooltip("Switch chat")
+                        .icon(IconName::ChatBubble)
                         .dropdown_caret(true),
                 )
                 .content(move |_window, _cx| chat_history_list.clone());
@@ -436,18 +435,36 @@ impl Render for AgentChatPanel {
             .child(
                 v_flex()
                     .w_full()
-                    .gap_1()
                     .px_3()
-                    .py_2()
+                    .py(px(6.0))
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().tab_bar)
                     .child(
+                        // Single header row: provider | model | refresh | + add
                         h_flex()
                             .w_full()
                             .items_center()
-                            .gap_2()
+                            .gap_1()
                             .child(provider_popover)
+                            .child(
+                                div()
+                                    .text_color(cx.theme().border)
+                                    .text_sm()
+                                    .child("/"),
+                            )
+                            .child(model_popover)
+                            .flex_1()
+                            .child(
+                                Button::new("agent-chat-refresh-models")
+                                    .icon(IconName::Refresh)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Refresh model list from provider")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.refresh_models_for_active_provider(cx);
+                                    })),
+                            )
                             .child(
                                 Button::new("agent-chat-add-provider")
                                     .icon(IconName::Plus)
@@ -456,23 +473,6 @@ impl Render for AgentChatPanel {
                                     .tooltip("Add custom provider")
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.start_add_provider_prompt(window, cx);
-                                    })),
-                            ),
-                    )
-                    .child(
-                        h_flex()
-                            .w_full()
-                            .items_center()
-                            .gap_2()
-                            .child(model_popover)
-                            .child(
-                                Button::new("agent-chat-refresh-models")
-                                    .xsmall()
-                                    .ghost()
-                                    .label("Refresh Models")
-                                    .tooltip("Fetch latest models from provider")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.refresh_models_for_active_provider(cx);
                                     })),
                             ),
                     )
@@ -770,9 +770,10 @@ impl Render for AgentChatPanel {
                                                                                     .child(
                                                                                         h_flex()
                                                                                             .gap_2()
+                                                                                            .items_center()
                                                                                             .child(
                                                                                                 div()
-                                                                                                    .text_xs()
+                                                                                                    .text_sm()
                                                                                                     .font_semibold()
                                                                                                     .text_color(cx.theme().foreground)
                                                                                                     .child(call.name.clone()),
@@ -822,6 +823,123 @@ impl Render for AgentChatPanel {
                                                                                     )
                                                                             }),
                                                                         ),
+                                                                )
+                                                            }),
+                                                    )
+                                                    .into_any_element()
+                                            }
+
+                                            DisplayItem::SystemPrompt {
+                                                content,
+                                                is_expanded,
+                                                is_outdated,
+                                            } => {
+                                                let content = content.clone();
+                                                let is_expanded = *is_expanded;
+                                                let is_outdated = *is_outdated;
+                                                let accent = if is_outdated {
+                                                    cx.theme().warning
+                                                } else {
+                                                    cx.theme().muted_foreground
+                                                };
+
+                                                div()
+                                                    .relative()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .px_3()
+                                                    .py_1()
+                                                    .child(
+                                                        canvas(
+                                                            move |bounds, _, cx| {
+                                                                panel.update(cx, |panel, cx| {
+                                                                    let measured = bounds.size.height;
+                                                                    if panel.display_item_heights.get(&ix).copied() != Some(measured) {
+                                                                        panel.display_item_heights.insert(ix, measured);
+                                                                        cx.notify();
+                                                                    }
+                                                                });
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
+                                                        .absolute()
+                                                        .inset_0(),
+                                                    )
+                                                    .child(
+                                                        v_flex()
+                                                            .w_full()
+                                                            .rounded(px(6.0))
+                                                            .border_1()
+                                                            .border_color(accent.opacity(0.25))
+                                                            .bg(cx.theme().secondary)
+                                                            .overflow_hidden()
+                                                            .child(
+                                                                h_flex()
+                                                                    .id(("system-prompt-header", ix))
+                                                                    .w_full()
+                                                                    .px_3()
+                                                                    .py(px(6.0))
+                                                                    .gap_2()
+                                                                    .cursor_pointer()
+                                                                    .on_click(cx.listener(
+                                                                        move |this, _, _, cx| {
+                                                                            if let Some(DisplayItem::SystemPrompt { is_expanded, .. }) =
+                                                                                this.display_items.get_mut(ix)
+                                                                            {
+                                                                                *is_expanded = !*is_expanded;
+                                                                                this.display_item_heights.remove(&ix);
+                                                                            }
+                                                                            cx.notify();
+                                                                        },
+                                                                    ))
+                                                                    .child(
+                                                                        Icon::new(IconName::Settings)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .flex_1()
+                                                                            .text_xs()
+                                                                            .font_semibold()
+                                                                            .text_color(cx.theme().muted_foreground)
+                                                                            .child("System Prompt"),
+                                                                    )
+                                                                    .when(is_outdated, |el| {
+                                                                        el.child(
+                                                                            Button::new("system-prompt-update")
+                                                                                .xsmall()
+                                                                                .ghost()
+                                                                                .label("Update")
+                                                                                .tooltip("Replace with current default system prompt")
+                                                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                                                    this.apply_system_prompt_update(cx);
+                                                                                })),
+                                                                        )
+                                                                    })
+                                                                    .child(
+                                                                        Icon::new(if is_expanded {
+                                                                            IconName::ChevronUp
+                                                                        } else {
+                                                                            IconName::ChevronDown
+                                                                        })
+                                                                        .size_3()
+                                                                        .text_color(cx.theme().muted_foreground.opacity(0.6)),
+                                                                    ),
+                                                            )
+                                                            .when(is_expanded && !content.is_empty(), |el| {
+                                                                el.child(
+                                                                    div()
+                                                                        .w_full()
+                                                                        .px_3()
+                                                                        .py_2()
+                                                                        .border_t_1()
+                                                                        .border_color(cx.theme().border)
+                                                                        .text_xs()
+                                                                        .font_family("JetBrains Mono")
+                                                                        .text_color(cx.theme().muted_foreground)
+                                                                        .whitespace_normal()
+                                                                        .child(content),
                                                                 )
                                                             }),
                                                     )
@@ -1257,86 +1375,29 @@ impl Render for AgentChatPanel {
             .child(
                 v_flex()
                     .w_full()
-                    .gap_1()
+                    .gap(px(6.0))
                     .px_3()
                     .py_2()
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
                     .child(
-                        h_flex()
-                            .w_full()
-                            .min_w_0()
-                            .gap_1()
-                            .items_center()
-                            .child(chat_history_popover)
-                            .child(
-                                Button::new("agent-chat-new-chat")
-                                    .xsmall()
-                                    .ghost()
-                                    .label("+")
-                                    .tooltip("Start new chat")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.start_new_chat(cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("agent-chat-import")
-                                    .icon(IconName::Upload)
-                                    .xsmall()
-                                    .ghost()
-                                    .tooltip("Import chat")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.import_chat(cx);
-                                    })),
-                            )
-                            .child(
-                                Button::new("agent-chat-export")
-                                    .icon(IconName::Download)
-                                    .xsmall()
-                                    .ghost()
-                                    .tooltip("Export current chat")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.export_current_chat();
-                                    })),
-                            )
-                            .child(
-                                Button::new("agent-chat-export-all")
-                                    .icon(IconName::FolderOpen)
-                                    .xsmall()
-                                    .ghost()
-                                    .tooltip("Export all chats")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.export_all_chats();
-                                    })),
-                            ),
-                    )
-                    .child(
+                        // Prompt input row
                         h_flex()
                             .w_full()
                             .min_w_0()
                             .gap_2()
-                            .items_center()
+                            .items_end()
                             .child(TextInput::new(&self.prompt_input).flex_1().min_w_0())
                             .when(self.is_request_in_flight, |this| {
-                                this.child(
-                                    h_flex()
-                                        .gap_1()
-                                        .items_center()
-                                        .child(Spinner::new().with_size(Size::Small))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Thinking..."),
-                                        ),
-                                )
+                                this.child(Spinner::new().with_size(Size::Small))
                             })
                             .child(
                                 Button::new("agent-chat-send")
                                     .icon(IconName::Send)
                                     .label("Send")
-                                    .tooltip("Send message")
+                                    .primary()
+                                    .tooltip("Send message (Enter)")
                                     .disabled(
                                         self.is_request_in_flight
                                             || self
@@ -1349,6 +1410,55 @@ impl Render for AgentChatPanel {
                                     )
                                     .on_click(cx.listener(|this, _, window, cx| {
                                         this.send_prompt(window, cx);
+                                    })),
+                            ),
+                    )
+                    .child(
+                        // Utility toolbar
+                        h_flex()
+                            .w_full()
+                            .min_w_0()
+                            .gap_1()
+                            .items_center()
+                            .child(chat_history_popover)
+                            .child(
+                                Button::new("agent-chat-new-chat")
+                                    .icon(IconName::Plus)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("New chat")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_new_chat(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-import")
+                                    .icon(IconName::Upload)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Import chat from JSON")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.import_chat(cx);
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-export")
+                                    .icon(IconName::Download)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Export this chat to JSON")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_current_chat();
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-export-all")
+                                    .icon(IconName::FolderOpen)
+                                    .xsmall()
+                                    .ghost()
+                                    .tooltip("Export all chats")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.export_all_chats();
                                     })),
                             ),
                     ),

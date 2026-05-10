@@ -45,6 +45,15 @@ pub enum DisplayItem {
         #[serde(default = "bool_true")]
         is_done: bool,
     },
+    /// The system prompt card — always first in the list, never sent to the AI,
+    /// reconstructed from `messages[0]` on load so it is not persisted in
+    /// `display_items`.
+    #[serde(skip)]
+    SystemPrompt {
+        content: String,
+        is_expanded: bool,
+        is_outdated: bool,
+    },
 }
 
 fn bool_true() -> bool {

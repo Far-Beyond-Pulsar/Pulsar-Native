@@ -153,6 +153,18 @@ impl AgentChatPanel {
                     px(40.0)
                 }
             }
+            DisplayItem::SystemPrompt { content, is_expanded, .. } => {
+                if *is_expanded {
+                    let visual_lines: usize = content
+                        .lines()
+                        .map(|line| line.chars().count().max(1).div_ceil(64))
+                        .sum::<usize>()
+                        .max(1);
+                    px((56.0 + (visual_lines as f32 * 16.0)).min(400.0))
+                } else {
+                    px(40.0)
+                }
+            }
             DisplayItem::ThinkingBlock { content, is_expanded, .. } => {
                 if *is_expanded {
                     let visual_lines: usize = content

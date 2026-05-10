@@ -51,6 +51,38 @@ impl AgentChatPanel {
         }
     }
 
+    /// Build the system-prompt `DisplayItem` that heads every chat.
+    /// `is_outdated` is true when the stored message differs from the current default.
+    pub(super) fn system_prompt_display_item(
+        content: &str,
+        current_default: &str,
+    ) -> DisplayItem {
+        DisplayItem::SystemPrompt {
+            content: content.to_string(),
+            is_expanded: false,
+            is_outdated: content != current_default,
+        }
+    }
+
+    /// Replace the stored system message with the current default and refresh the card.
+    pub(super) fn apply_system_prompt_update(&mut self, cx: &mut Context<Self>) {
+        let new_msg = Self::default_system_message(&self.tool_registry);
+        // Update provider history
+        if let Some(msg) = self.messages.iter_mut().find(|m| m.role == ChatRole::System) {
+            msg.content = new_msg.content.clone();
+        }
+        // Refresh the card at the top of display_items
+        if let Some(DisplayItem::SystemPrompt { content, is_outdated, .. }) =
+            self.display_items.first_mut()
+        {
+            *content = new_msg.content;
+            *is_outdated = false;
+        }
+        self.display_item_heights.remove(&0);
+        self.save_current_chat();
+        cx.notify();
+    }
+
     pub(super) fn default_system_message(tool_registry: &ToolRegistry) -> ChatMessage {
         let tool_docs = tool_registry.system_prompt_tool_docs();
         let content = format!(
@@ -126,10 +158,11 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
             return;
         };
 
-        // Snapshot display items: strip ephemeral streaming state before writing.
+        // Snapshot display items: strip ephemeral state and SystemPrompt (reconstructed on load).
         let persisted_display_items: Vec<DisplayItem> = self
             .display_items
             .iter()
+            .filter(|item| !matches!(item, DisplayItem::SystemPrompt { .. }))
             .map(|item| match item {
                 DisplayItem::AssistantMessage {
                     content,
@@ -216,8 +249,12 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
             .collect();
 
         // Use saved display items if present; reconstruct from messages for old files.
-        self.display_items = if !chat.display_items.is_empty() {
+        // Either way, strip any stale SystemPrompt card — we rebuild it below.
+        let mut display_items: Vec<DisplayItem> = if !chat.display_items.is_empty() {
             chat.display_items
+                .into_iter()
+                .filter(|item| !matches!(item, DisplayItem::SystemPrompt { .. }))
+                .collect()
         } else {
             messages
                 .iter()
@@ -237,6 +274,16 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
                 .collect()
         };
 
+        // Always prepend a fresh system-prompt card.
+        let current_default = Self::default_system_message(&self.tool_registry);
+        let stored_content = messages
+            .iter()
+            .find(|m| m.role == ChatRole::System)
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
+        display_items.insert(0, Self::system_prompt_display_item(stored_content, &current_default.content));
+
+        self.display_items = display_items;
         self.messages = messages;
         if self.messages.is_empty() {
             self.messages.push(Self::default_system_message(&self.tool_registry));
@@ -251,9 +298,14 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
         self.current_chat_created_at = Self::now_epoch_secs();
         self.message_row_heights.clear();
         self.display_item_heights.clear();
-        self.display_items.clear();
         self.streaming_display_item_ix = None;
-        self.messages = vec![Self::default_system_message(&self.tool_registry)];
+        let system_msg = Self::default_system_message(&self.tool_registry);
+        self.display_items = vec![DisplayItem::SystemPrompt {
+            content: system_msg.content.clone(),
+            is_expanded: false,
+            is_outdated: false,
+        }];
+        self.messages = vec![system_msg];
         self.save_current_chat();
         self.refresh_chat_history_list(cx);
         self.scroll_messages_to_bottom();
