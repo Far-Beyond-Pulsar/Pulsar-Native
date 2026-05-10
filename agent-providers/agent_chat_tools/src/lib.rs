@@ -4,7 +4,9 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
+    time::Duration,
 };
+use reqwest::blocking::Client;
 
 #[derive(Clone)]
 pub struct ToolContext {
@@ -47,6 +49,8 @@ impl ToolRegistry {
         this.register(Arc::new(QueryPluginToolsTool));
         this.register(Arc::new(QueryToolsForPluginTool));
         this.register(Arc::new(ExecutePluginToolTool));
+        this.register(Arc::new(WebSearchTool));
+        this.register(Arc::new(FetchUrlTool));
         this
     }
 
@@ -147,6 +151,30 @@ impl ToolRegistry {
                         "tool_args": { "type": "object", "description": "Arguments to pass to the tool", "additionalProperties": true }
                     },
                     "required": ["tool_name", "tool_args"]
+                }
+            }),
+            json!({
+                "name": "web_search",
+                "description": "Search the web using a search engine. Returns top results with title, description, and URL.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "The search query (e.g., 'Rust programming language', 'latest AI research 2024')" },
+                        "max_results": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Maximum number of results to return (default 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+            json!({
+                "name": "fetch_url",
+                "description": "Fetch and parse the text content of a URL. Returns the HTML/text content, cleaned of markup.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": { "type": "string", "description": "The URL to fetch (must start with http:// or https://)" },
+                        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 30, "description": "Timeout in seconds (default 10)" }
+                    },
+                    "required": ["url"]
                 }
             }),
         ]
@@ -513,6 +541,231 @@ impl ChatTool for ExecutePluginToolTool {
             "result": result,
         }))
     }
+}
+
+struct WebSearchTool;
+impl ChatTool for WebSearchTool {
+    fn name(&self) -> &'static str {
+        "web_search"
+    }
+
+    fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("web_search.query is required"))?;
+
+        let max_results = args
+            .get("max_results")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(5)
+            .min(10) as usize;
+
+        let client = Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .context("Failed to build HTTP client")?;
+
+        // Use a simple search API (DuckDuckGo API which doesn't require authentication)
+        let url = format!(
+            "https://duckduckgo.com/?q={}&format=json",
+            urlencoding::encode(query)
+        );
+
+        let response = client
+            .get(&url)
+            .header("User-Agent", "Pulsar-Engine-AI/1.0")
+            .send()
+            .context("Failed to perform web search")?;
+
+        if !response.status().is_success() {
+            return Ok(json!({
+                "ok": false,
+                "query": query,
+                "error": format!("Search API returned status {}", response.status()),
+                "results": []
+            }));
+        }
+
+        let body = response
+            .text()
+            .context("Failed to read search response")?;
+
+        let json: Value = serde_json::from_str(&body)
+            .unwrap_or_else(|_| json!({"RelatedTopics": []}));
+
+        let results: Vec<Value> = json
+            .get("RelatedTopics")
+            .and_then(|v| v.as_array())
+            .map(|topics| {
+                topics
+                    .iter()
+                    .take(max_results)
+                    .filter_map(|topic| {
+                        let title = topic.get("Text")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        let url = topic.get("FirstURL")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                            .unwrap_or_default();
+
+                        if !title.is_empty() {
+                            Some(json!({
+                                "title": title,
+                                "url": url,
+                                "source": "DuckDuckGo"
+                            }))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        Ok(json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len(),
+            "max_results": max_results,
+            "results": results,
+            "source": "DuckDuckGo"
+        }))
+    }
+}
+
+struct FetchUrlTool;
+impl ChatTool for FetchUrlTool {
+    fn name(&self) -> &'static str {
+        "fetch_url"
+    }
+
+    fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
+        let url = args
+            .get("url")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("fetch_url.url is required"))?;
+
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Ok(json!({
+                "ok": false,
+                "url": url,
+                "error": "URL must start with http:// or https://",
+                "content": null
+            }));
+        }
+
+        let timeout_secs = args
+            .get("timeout_seconds")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(10)
+            .max(1)
+            .min(30);
+
+        let client = Client::builder()
+            .timeout(Duration::from_secs(timeout_secs))
+            .build()
+            .context("Failed to build HTTP client")?;
+
+        let response = match client
+            .get(url)
+            .header("User-Agent", "Pulsar-Engine-AI/1.0")
+            .send()
+        {
+            Ok(r) => r,
+            Err(e) => {
+                return Ok(json!({
+                    "ok": false,
+                    "url": url,
+                    "error": format!("Failed to fetch URL: {}", e),
+                    "content": null
+                }));
+            }
+        };
+
+        if !response.status().is_success() {
+            return Ok(json!({
+                "ok": false,
+                "url": url,
+                "status_code": response.status().as_u16(),
+                "error": format!("HTTP {}", response.status()),
+                "content": null
+            }));
+        }
+
+        let content = match response.text() {
+            Ok(text) => text,
+            Err(e) => {
+                return Ok(json!({
+                    "ok": false,
+                    "url": url,
+                    "error": format!("Failed to read response: {}", e),
+                    "content": null
+                }));
+            }
+        };
+
+        // Basic HTML stripping: remove script/style tags and common HTML markup
+        let cleaned = strip_html_tags(&content);
+        let truncated = if cleaned.len() > 8000 {
+            format!("{}... [truncated]", &cleaned[..8000])
+        } else {
+            cleaned
+        };
+
+        Ok(json!({
+            "ok": true,
+            "url": url,
+            "status_code": 200,
+            "content_length": truncated.len(),
+            "content": truncated
+        }))
+    }
+}
+
+fn strip_html_tags(html: &str) -> String {
+    // Simple HTML tag removal
+    let mut result = String::new();
+    let mut in_tag = false;
+    let mut in_script = false;
+    let mut in_style = false;
+
+    let lower = html.to_lowercase();
+    let bytes = html.as_bytes();
+
+    for (i, &byte) in bytes.iter().enumerate() {
+        if byte == b'<' {
+            in_tag = true;
+            // Check for script or style tags
+            if lower[i..].starts_with("<script") {
+                in_script = true;
+            } else if lower[i..].starts_with("<style") {
+                in_style = true;
+            }
+        } else if byte == b'>' {
+            in_tag = false;
+            if lower[i..].starts_with("</script>") {
+                in_script = false;
+            } else if lower[i..].starts_with("</style>") {
+                in_style = false;
+            }
+            if !in_script && !in_style {
+                result.push(' '); // Add space after closing tag for word separation
+            }
+        } else if !in_tag && !in_script && !in_style {
+            result.push(byte as char);
+        }
+    }
+
+    // Clean up whitespace
+    result
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
