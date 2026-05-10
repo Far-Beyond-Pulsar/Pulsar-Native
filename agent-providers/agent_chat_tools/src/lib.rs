@@ -155,12 +155,12 @@ impl ToolRegistry {
             }),
             json!({
                 "name": "web_search",
-                "description": "Search the web using a search engine. Returns top results with title, description, and URL.",
+                "description": "Search the web using a search engine. Returns detailed results with title, summary, and URL.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "The search query (e.g., 'Rust programming language', 'latest AI research 2024')" },
-                        "max_results": { "type": "integer", "minimum": 1, "maximum": 10, "description": "Maximum number of results to return (default 5)" }
+                        "max_results": { "type": "integer", "minimum": 1, "maximum": 20, "description": "Maximum number of results to return (default 10)" }
                     },
                     "required": ["query"]
                 }
@@ -558,17 +558,17 @@ impl ChatTool for WebSearchTool {
         let max_results = args
             .get("max_results")
             .and_then(|v| v.as_u64())
-            .unwrap_or(5)
-            .min(10) as usize;
+            .unwrap_or(10)
+            .min(20) as usize;
 
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
             .build()
             .context("Failed to build HTTP client")?;
 
-        // Use a simple search API (DuckDuckGo API which doesn't require authentication)
+        // Use DuckDuckGo API which doesn't require authentication
         let url = format!(
-            "https://duckduckgo.com/?q={}&format=json",
+            "https://duckduckgo.com/?q={}&format=json&t=pulsar",
             urlencoding::encode(query)
         );
 
@@ -602,24 +602,45 @@ impl ChatTool for WebSearchTool {
                     .iter()
                     .take(max_results)
                     .filter_map(|topic| {
-                        let title = topic.get("Text")
+                        let text_content = topic.get("Text")
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string();
+                        
+                        if text_content.is_empty() {
+                            return None;
+                        }
+
+                        // Split text into title and summary
+                        // Format is typically "Title - Details" or just details
+                        let (title, summary) = if let Some(dash_pos) = text_content.find(" - ") {
+                            let (t, s) = text_content.split_at(dash_pos);
+                            (t.to_string(), s[3..].to_string()) // Skip " - "
+                        } else if text_content.len() > 100 {
+                            let title = text_content[..100].to_string();
+                            (title, text_content.clone())
+                        } else {
+                            (text_content.clone(), text_content.clone())
+                        };
+
                         let url = topic.get("FirstURL")
                             .and_then(|v| v.as_str())
                             .map(|s| s.to_string())
                             .unwrap_or_default();
 
-                        if !title.is_empty() {
-                            Some(json!({
-                                "title": title,
-                                "url": url,
-                                "source": "DuckDuckGo"
-                            }))
+                        // Truncate summary to ~300 chars for detailed but concise info
+                        let summary = if summary.len() > 300 {
+                            format!("{}...", &summary[..300])
                         } else {
-                            None
-                        }
+                            summary
+                        };
+
+                        Some(json!({
+                            "title": title,
+                            "summary": summary,
+                            "url": url,
+                            "source": "DuckDuckGo"
+                        }))
                     })
                     .collect()
             })
