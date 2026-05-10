@@ -177,7 +177,44 @@ fi
 # 4. UNIT TESTS
 # ============================================================================
 if [[ "$SKIP_TESTS" != true ]]; then
-  write_step "4/6 Running unit tests (cargo nextest run --workspace --locked)"
+  write_step "4/6 Running pre-test cleanup (cargo clean + cache removal) and unit tests"
+
+  CLEANUP_FAILED=false
+
+  # Force a clean baseline for test execution.
+  if cargo clean; then
+    write_success "cargo clean completed"
+  else
+    write_error "cargo clean failed"
+    CLEANUP_FAILED=true
+  fi
+
+  CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+  CACHE_PATHS=(
+    "$CARGO_HOME_DIR/registry/cache"
+    "$CARGO_HOME_DIR/registry/index"
+    "$CARGO_HOME_DIR/registry/src"
+    "$CARGO_HOME_DIR/git/db"
+    "$CARGO_HOME_DIR/git/checkouts"
+  )
+
+  echo "    Removing Cargo caches in: $CARGO_HOME_DIR"
+  for cache_path in "${CACHE_PATHS[@]}"; do
+    if [[ -e "$cache_path" ]]; then
+      if rm -rf "$cache_path"; then
+        write_success "Removed cache path: $cache_path"
+      else
+        write_warning "Could not remove cache path: $cache_path"
+        CLEANUP_FAILED=true
+      fi
+    fi
+  done
+
+  if [[ "$CLEANUP_FAILED" == true ]]; then
+    write_error "Pre-test cleanup encountered errors"
+    ALL_CHECKS_PASSED=false
+    FAILED_CHECKS+=("Pre-test cleanup")
+  fi
 
   if ! run_quiet cargo nextest --version; then
     echo "    Installing cargo-nextest..."

@@ -191,7 +191,51 @@ try {
 # 4. UNIT TESTS
 # ============================================================================
 if (-not $SkipTests) {
-    Write-Step "4/6 Running unit tests (cargo nextest run --workspace --locked)"
+    Write-Step "4/6 Running pre-test cleanup (cargo clean + cache removal) and unit tests"
+
+    # Force a clean baseline for test execution.
+    $CleanupFailed = $false
+
+    try {
+        cargo clean
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "cargo clean failed"
+            $CleanupFailed = $true
+        } else {
+            Write-Success "cargo clean completed"
+        }
+    } catch {
+        Write-Error "Failed to run cargo clean: $_"
+        $CleanupFailed = $true
+    }
+
+    $CargoHome = if ([string]::IsNullOrWhiteSpace($env:CARGO_HOME)) { Join-Path $HOME ".cargo" } else { $env:CARGO_HOME }
+    $CachePaths = @(
+        (Join-Path $CargoHome "registry\cache"),
+        (Join-Path $CargoHome "registry\index"),
+        (Join-Path $CargoHome "registry\src"),
+        (Join-Path $CargoHome "git\db"),
+        (Join-Path $CargoHome "git\checkouts")
+    )
+
+    Write-Host "    Removing Cargo caches in: $CargoHome"
+    foreach ($CachePath in $CachePaths) {
+        if (Test-Path $CachePath) {
+            try {
+                Remove-Item $CachePath -Recurse -Force -ErrorAction Stop
+                Write-Success "Removed cache path: $CachePath"
+            } catch {
+                Write-Warning "Could not remove cache path '$CachePath': $_"
+                $CleanupFailed = $true
+            }
+        }
+    }
+
+    if ($CleanupFailed) {
+        Write-Error "Pre-test cleanup encountered errors"
+        $AllChecksPassed = $false
+        $FailedChecks += "Pre-test cleanup"
+    }
 
     # Check if cargo-nextest is installed
     $NextestInstalled = $false

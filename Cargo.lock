@@ -150,6 +150,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "agent_provider_ollama"
+version = "0.1.0"
+dependencies = [
+ "agent_chat_core",
+ "anyhow",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "agent_provider_openai"
 version = "0.1.0"
 dependencies = [
@@ -13245,6 +13257,7 @@ dependencies = [
  "agent_provider_github_copilot",
  "agent_provider_groq",
  "agent_provider_mistral",
+ "agent_provider_ollama",
  "agent_provider_openai",
  "agent_provider_openrouter",
  "agent_provider_together",

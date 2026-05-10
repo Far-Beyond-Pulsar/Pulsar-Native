@@ -19,6 +19,7 @@ use agent_provider_gemini::GeminiProvider;
 use agent_provider_github_copilot::GithubCopilotProvider;
 use agent_provider_groq::GroqProvider;
 use agent_provider_mistral::MistralProvider;
+use agent_provider_ollama::OllamaProvider;
 use agent_provider_openai::{OpenAiCompatibleProvider, OpenAiProvider};
 use agent_provider_openrouter::OpenRouterProvider;
 use agent_provider_together::TogetherProvider;
@@ -110,6 +111,7 @@ impl AgentChatPanel {
         provider_registry.register(Arc::new(MistralProvider::new()));
         provider_registry.register(Arc::new(GeminiProvider::new()));
         provider_registry.register(Arc::new(DockerModelRunnerProvider::new()));
+        provider_registry.register(Arc::new(OllamaProvider::new()));
         for provider in &provider_catalog {
             if provider.kind != ProviderKind::Local || provider_registry.get(provider.id).is_some()
             {

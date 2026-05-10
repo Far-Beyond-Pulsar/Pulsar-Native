@@ -63,6 +63,7 @@ agent_provider_together = { path = "agent-providers/agent_provider_together" }
 agent_provider_mistral = { path = "agent-providers/agent_provider_mistral" }
 agent_provider_gemini = { path = "agent-providers/agent_provider_gemini" }
 agent_provider_docker_model_runner = { path = "agent-providers/agent_provider_docker_model_runner" }
+agent_provider_ollama = { path = "agent-providers/agent_provider_ollama" }
 
 # ---------- Reflection System ----------
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
