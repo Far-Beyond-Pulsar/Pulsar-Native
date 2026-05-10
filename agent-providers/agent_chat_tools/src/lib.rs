@@ -25,8 +25,43 @@ pub struct ToolContext {
         Option<Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>>,
 }
 
+/// Build a JSON Schema `parameters` object from a list of named, typed fields.
+///
+/// Syntax:
+/// ```ignore
+/// tool_params! {
+///     req "param_name": string = "Description",
+///     opt "optional_param": integer = "Optional description",
+/// }
+/// ```
+/// Supported types: `string`, `integer`, `number`, `boolean`, `object`.
+#[macro_export]
+macro_rules! tool_params {
+    ( $( $req:ident $name:literal : $ty:ident = $desc:literal ),* $(,)? ) => {{
+        let mut properties = serde_json::Map::new();
+        let mut required: Vec<&'static str> = Vec::new();
+        $(
+            properties.insert(
+                $name.to_string(),
+                serde_json::json!({"type": stringify!($ty), "description": $desc}),
+            );
+            tool_params!(@mark $req required $name);
+        )*
+        serde_json::json!({
+            "type": "object",
+            "properties": properties,
+            "required": required,
+        })
+    }};
+    () => { serde_json::json!({ "type": "object", "properties": {} }) };
+    (@mark req $req:ident $name:literal) => { $req.push($name); };
+    (@mark opt $req:ident $name:literal) => {};
+}
+
 pub trait ChatTool: Send + Sync {
     fn name(&self) -> &'static str;
+    fn description(&self) -> &'static str;
+    fn parameters_schema(&self) -> Value;
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value>;
 }
 
@@ -67,126 +102,76 @@ impl ToolRegistry {
     }
 
     pub fn available_tools_schema(&self) -> Vec<Value> {
-        vec![
-            json!({
-                "name": "open_file_in_default_editor",
-                "description": "Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": { "type": "string" }
-                    },
-                    "required": ["file_path"]
+        self.tools
+            .values()
+            .map(|tool| {
+                json!({
+                    "name": tool.name(),
+                    "description": tool.description(),
+                    "parameters": tool.parameters_schema(),
+                })
+            })
+            .collect()
+    }
+
+    /// Build a concise "Available tools:" section for the system prompt.
+    /// Plugin-provided tools are excluded since their count is unbounded and
+    /// they are discovered dynamically via `query_plugin_tools`.
+    pub fn system_prompt_tool_docs(&self) -> String {
+        let mut lines = vec!["Available built-in tools:".to_string()];
+        let mut names: Vec<_> = self.tools.keys().collect();
+        names.sort();
+        for name in names {
+            if let Some(tool) = self.tools.get(name) {
+                let schema = tool.parameters_schema();
+                let params = schema
+                    .get("properties")
+                    .and_then(|p| p.as_object())
+                    .map(|props| {
+                        let required: Vec<&str> = schema
+                            .get("required")
+                            .and_then(|r| r.as_array())
+                            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+                            .unwrap_or_default();
+                        props
+                            .keys()
+                            .map(|k| {
+                                if required.contains(&k.as_str()) {
+                                    k.clone()
+                                } else {
+                                    format!("[{k}]")
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
+                    .unwrap_or_default();
+
+                if params.is_empty() {
+                    lines.push(format!("- {}: {}", tool.name(), tool.description()));
+                } else {
+                    lines.push(format!(
+                        "- {} ({}): {}",
+                        tool.name(),
+                        params,
+                        tool.description()
+                    ));
                 }
-            }),
-            json!({
-                "name": "query_open_editors",
-                "description": "List already open editors and indicate which one is active versus inactive.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }),
-            json!({
-                "name": "activate_open_editor",
-                "description": "Activate one of the already-open editors by its index from query_open_editors.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "index": { "type": "integer", "minimum": 0 }
-                    },
-                    "required": ["index"]
-                }
-            }),
-            json!({
-                "name": "query_available_file_types",
-                "description": "List all file types currently registered by plugins/editors.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
-            }),
-            json!({
-                "name": "query_file_editors",
-                "description": "Query which editors/plugins can handle a specific file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": { "type": "string" }
-                    },
-                    "required": ["file_path"]
-                }
-            }),
-            json!({
-                "name": "query_plugin_tools",
-                "description": "Query available AI tools from plugins for a specific file. Call query_open_editors first to get the file_path for open editors.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "file_path": { "type": "string", "description": "The file path to query tools for. Use the file_path from query_open_editors output." }
-                    },
-                    "required": ["file_path"]
-                }
-            }),
-            json!({
-                "name": "query_tools_for_plugin",
-                "description": "Query AI tools provided by a specific plugin, optionally scoped to a file.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "plugin_id": { "type": "string", "description": "Plugin id to inspect" },
-                        "file_path": { "type": "string", "description": "Optional file path to filter tools by capability for that file" }
-                    },
-                    "required": ["plugin_id"]
-                }
-            }),
-            json!({
-                "name": "execute_plugin_tool",
-                "description": "Execute an AI tool provided by a plugin.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "plugin_id": { "type": "string", "description": "Plugin id returned by query_plugin_tools. Recommended when tool names overlap." },
-                        "tool_name": { "type": "string", "description": "Name of the tool to execute" },
-                        "file_path": { "type": "string", "description": "File to operate on. If not provided, uses current_file from context." },
-                        "tool_args": { "type": "object", "description": "Arguments to pass to the tool", "additionalProperties": true }
-                    },
-                    "required": ["tool_name", "tool_args"]
-                }
-            }),
-            json!({
-                "name": "web_search",
-                "description": "Search the web using a search engine. Returns up to 10 detailed results with title, summary, and URL.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": { "type": "string", "description": "The search query (e.g., 'Rust programming language', 'latest AI research 2024')" }
-                    },
-                    "required": ["query"]
-                }
-            }),
-            json!({
-                "name": "fetch_url",
-                "description": "Fetch and parse the text content of a URL. Returns the HTML/text content, cleaned of markup.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": { "type": "string", "description": "The URL to fetch (must start with http:// or https://)" },
-                        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 30, "description": "Timeout in seconds (default 10)" }
-                    },
-                    "required": ["url"]
-                }
-            }),
-        ]
+            }
+        }
+        lines.join("\n")
     }
 }
 
 struct OpenFileInDefaultEditorTool;
 impl ChatTool for OpenFileInDefaultEditorTool {
-    fn name(&self) -> &'static str {
-        "open_file_in_default_editor"
+    fn name(&self) -> &'static str { "open_file_in_default_editor" }
+    fn description(&self) -> &'static str {
+        "Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! { req "file_path": string = "Absolute or workspace-relative path of the file to open" }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path = args
             .get("file_path")
@@ -210,10 +195,11 @@ impl ChatTool for OpenFileInDefaultEditorTool {
 
 struct QueryOpenEditorsTool;
 impl ChatTool for QueryOpenEditorsTool {
-    fn name(&self) -> &'static str {
-        "query_open_editors"
+    fn name(&self) -> &'static str { "query_open_editors" }
+    fn description(&self) -> &'static str {
+        "List already-open editors and indicate which is active. Returns file_path for each — use those exact paths with query_plugin_tools and execute_plugin_tool."
     }
-
+    fn parameters_schema(&self) -> Value { tool_params!() }
     fn execute(&self, _args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let callback = ctx
             .query_open_editors
@@ -225,10 +211,13 @@ impl ChatTool for QueryOpenEditorsTool {
 
 struct ActivateOpenEditorTool;
 impl ChatTool for ActivateOpenEditorTool {
-    fn name(&self) -> &'static str {
-        "activate_open_editor"
+    fn name(&self) -> &'static str { "activate_open_editor" }
+    fn description(&self) -> &'static str {
+        "Switch focus to an already-open editor by its index returned from query_open_editors."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! { req "index": integer = "Zero-based index of the editor to activate" }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let index = args
             .get("index")
@@ -252,10 +241,11 @@ impl ChatTool for ActivateOpenEditorTool {
 
 struct QueryAvailableFileTypesTool;
 impl ChatTool for QueryAvailableFileTypesTool {
-    fn name(&self) -> &'static str {
-        "query_available_file_types"
+    fn name(&self) -> &'static str { "query_available_file_types" }
+    fn description(&self) -> &'static str {
+        "List all file types registered by installed plugins/editors."
     }
-
+    fn parameters_schema(&self) -> Value { tool_params!() }
     fn execute(&self, _args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -286,10 +276,13 @@ impl ChatTool for QueryAvailableFileTypesTool {
 
 struct QueryFileEditorsTool;
 impl ChatTool for QueryFileEditorsTool {
-    fn name(&self) -> &'static str {
-        "query_file_editors"
+    fn name(&self) -> &'static str { "query_file_editors" }
+    fn description(&self) -> &'static str {
+        "Query which plugins/editors can handle a given file path."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! { req "file_path": string = "Path of the file to query editors for" }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path = args
             .get("file_path")
@@ -337,10 +330,13 @@ impl ChatTool for QueryFileEditorsTool {
 
 struct QueryPluginToolsTool;
 impl ChatTool for QueryPluginToolsTool {
-    fn name(&self) -> &'static str {
-        "query_plugin_tools"
+    fn name(&self) -> &'static str { "query_plugin_tools" }
+    fn description(&self) -> &'static str {
+        "Discover AI tools available from plugins for a specific file. Use the file_path returned by query_open_editors — do not guess paths."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! { req "file_path": string = "Exact file_path from query_open_editors output" }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path_raw = args
             .get("file_path")
@@ -426,10 +422,16 @@ impl ChatTool for QueryPluginToolsTool {
 
 struct QueryToolsForPluginTool;
 impl ChatTool for QueryToolsForPluginTool {
-    fn name(&self) -> &'static str {
-        "query_tools_for_plugin"
+    fn name(&self) -> &'static str { "query_tools_for_plugin" }
+    fn description(&self) -> &'static str {
+        "List AI tools provided by a specific plugin, optionally scoped to a file."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! {
+            req "plugin_id": string = "Plugin id to inspect",
+            opt "file_path": string = "Optional file path to filter tools by file capability"
+        }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let plugin_id = args
             .get("plugin_id")
@@ -484,10 +486,18 @@ impl ChatTool for QueryToolsForPluginTool {
 
 struct ExecutePluginToolTool;
 impl ChatTool for ExecutePluginToolTool {
-    fn name(&self) -> &'static str {
-        "execute_plugin_tool"
+    fn name(&self) -> &'static str { "execute_plugin_tool" }
+    fn description(&self) -> &'static str {
+        "Execute an AI tool provided by a plugin. Call query_plugin_tools first to discover available tools and their parameters."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! {
+            req "tool_name": string = "Name of the tool to execute (from query_plugin_tools)",
+            req "tool_args": object = "Arguments matching the tool's parameter schema",
+            opt "plugin_id": string = "Plugin id from query_plugin_tools — recommended when tool names may overlap",
+            opt "file_path": string = "File to operate on; defaults to current context file"
+        }
+    }
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let explicit_plugin_id = args.get("plugin_id").and_then(|v| v.as_str());
         let tool_name = args
@@ -545,10 +555,13 @@ impl ChatTool for ExecutePluginToolTool {
 
 struct WebSearchTool;
 impl ChatTool for WebSearchTool {
-    fn name(&self) -> &'static str {
-        "web_search"
+    fn name(&self) -> &'static str { "web_search" }
+    fn description(&self) -> &'static str {
+        "Search the web via DuckDuckGo. Returns up to 10 results with title, summary, and URL."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! { req "query": string = "Search query string" }
+    }
     fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
         let query = args
             .get("query")
@@ -685,10 +698,16 @@ fn normalize_duckduckgo_result_url(href: &str) -> String {
 
 struct FetchUrlTool;
 impl ChatTool for FetchUrlTool {
-    fn name(&self) -> &'static str {
-        "fetch_url"
+    fn name(&self) -> &'static str { "fetch_url" }
+    fn description(&self) -> &'static str {
+        "Fetch and return the text content of a URL (HTML markup stripped). Truncates large responses to ~8000 chars."
     }
-
+    fn parameters_schema(&self) -> Value {
+        tool_params! {
+            req "url": string = "URL to fetch (must start with http:// or https://)",
+            opt "timeout_seconds": integer = "Request timeout in seconds (1–30, default 10)"
+        }
+    }
     fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
         let url = args
             .get("url")

@@ -1,5 +1,5 @@
 use super::*;
-use agent_chat_core::{AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment};
+use agent_chat_core::{AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment, ToolCall};
 use engine_state;
 use smol::Timer;
 use std::{
@@ -125,16 +125,35 @@ impl AgentChatPanel {
         let visual_lines: usize = explicit_lines
             .iter()
             .map(|line| {
-                // Use a conservative wrap estimate so rows never under-size and overlap.
                 let chars = line.chars().count().max(1);
                 chars.div_ceil(64)
             })
             .sum::<usize>()
             .max(1);
 
-        // Header + paddings + line-height budget + row gap.
         let estimated = 10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0;
         px(estimated.min(520.0))
+    }
+
+    pub(super) fn display_item_height(item: &DisplayItem) -> Pixels {
+        match item {
+            DisplayItem::UserMessage { content, .. }
+            | DisplayItem::AssistantMessage { content, .. } => {
+                let visual_lines: usize = content
+                    .lines()
+                    .map(|line| line.chars().count().max(1).div_ceil(64))
+                    .sum::<usize>()
+                    .max(1);
+                px((10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0).min(520.0))
+            }
+            DisplayItem::ToolCallGroup { calls, is_expanded } => {
+                if *is_expanded {
+                    px((60.0 + calls.len() as f32 * 72.0).min(600.0))
+                } else {
+                    px(40.0)
+                }
+            }
+        }
     }
 
     pub(super) fn stream_assistant_chunks(
@@ -220,11 +239,16 @@ impl AgentChatPanel {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
+        let user_message_index = self.messages.len();
         self.messages.push(ChatMessage {
             role: ChatRole::User,
             content: prompt.clone(),
             tool_call_id: None,
             tool_calls: vec![],
+        });
+        self.display_items.push(DisplayItem::UserMessage {
+            content: prompt.clone(),
+            message_index: user_message_index,
         });
         self.scroll_messages_to_bottom();
 
@@ -313,8 +337,15 @@ impl AgentChatPanel {
             tool_call_id: None,
             tool_calls: vec![],
         });
+        let streaming_dix = self.display_items.len();
+        self.display_items.push(DisplayItem::AssistantMessage {
+            content: String::new(),
+            message_index: message_ix,
+            is_streaming: true,
+        });
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);
+        self.streaming_display_item_ix = Some(streaming_dix);
 
         let provider_messages = self.build_provider_history_messages();
         let (provider_messages, was_compacted) =
@@ -376,7 +407,13 @@ impl AgentChatPanel {
         );
 
         enum StreamEvent {
+            /// AI prose text chunk — appended to the current streaming assistant bubble.
             Chunk(String),
+            /// The AI returned tool calls; UI should render a collapsed tool call group
+            /// and start a new streaming assistant bubble for the next iteration.
+            ToolCallGroup(Vec<ToolCall>),
+            /// A tool finished executing; update the matching call's result in the UI.
+            ToolCallResult { id: String, result_preview: String, is_error: bool },
             OpenFile(PathBuf),
             ActivateOpenEditor(usize),
             Finished(Result<agent_chat_core::ChatResponse, String>),
@@ -520,25 +557,10 @@ impl AgentChatPanel {
                                 let _ = tx_for_chunks.try_send(StreamEvent::Chunk(assistant_text));
                             }
 
-                            // Show exact tool calls (name + id + args) before execution for debugging.
-                            let tool_calls_text = response
-                                .tool_calls
-                                .iter()
-                                .map(|call| {
-                                    let args_pretty =
-                                        serde_json::to_string_pretty(&call.arguments_json)
-                                            .unwrap_or_else(|_| call.arguments_json.to_string());
-                                    format!(
-                                        "*Calling {}*\n`id`: {}\n`args`:\n```json\n{}\n```",
-                                        call.name, call.id, args_pretty
-                                    )
-                                })
-                                .collect::<Vec<_>>()
-                                .join("\n\n");
-                            let _ = tx_for_chunks.try_send(StreamEvent::Chunk(format!(
-                                "\n\n{}\n\n",
-                                tool_calls_text
-                            )));
+                            // Tell the UI to render a collapsed tool-call block.
+                            let _ = tx_for_chunks.try_send(StreamEvent::ToolCallGroup(
+                                response.tool_calls.clone(),
+                            ));
 
                             // Create tool context for execution
                             let workspace_root = match engine_state::get_project_path() {
@@ -594,25 +616,22 @@ impl AgentChatPanel {
                                     &tool_context,
                                 );
 
-                                let tool_result = match result {
-                                    Ok(value) => value.to_string(),
-                                    Err(err) => format!("Tool error: {}", err),
+                                let (tool_result, is_error) = match result {
+                                    Ok(value) => (value.to_string(), false),
+                                    Err(err) => (format!("Tool error: {}", err), true),
                                 };
 
-                                // Show tool result to user (enough to be meaningful)
-                                let preview = if tool_result.len() > 800 {
-                                    format!(
-                                        "{}… (truncated, full result forwarded to AI)",
-                                        &tool_result[..800]
-                                    )
+                                let result_preview = if tool_result.len() > 300 {
+                                    format!("{}…", &tool_result[..300])
                                 } else {
                                     tool_result.clone()
                                 };
-                                let result_display =
-                                    format!("**{}**: {}\n\n", tool_call.name, preview);
-                                let _ = tx_for_chunks.try_send(StreamEvent::Chunk(result_display));
+                                let _ = tx_for_chunks.try_send(StreamEvent::ToolCallResult {
+                                    id: tool_call.id.clone(),
+                                    result_preview,
+                                    is_error,
+                                });
 
-                                // Store tool result with call ID for proper threading
                                 all_results.push((
                                     tool_call.id.clone(),
                                     tool_call.name.clone(),
@@ -716,28 +735,117 @@ impl AgentChatPanel {
                                 }
                                 if panel.is_request_in_flight {
                                     panel.is_request_in_flight = false;
-                                    println!(
-                                        "[agent_chat][request={}] in-flight cleared on first chunk",
-                                        consume_request_id
-                                    );
                                 }
+                                // Update provider history message
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     message.content.push_str(&chunk);
                                     panel.message_row_heights.remove(&message_ix);
                                 }
+                                // Update the streaming display bubble
+                                if let Some(dix) = panel.streaming_display_item_ix {
+                                    if let Some(DisplayItem::AssistantMessage { content, .. }) =
+                                        panel.display_items.get_mut(dix)
+                                    {
+                                        content.push_str(&chunk);
+                                        panel.display_item_heights.remove(&dix);
+                                    }
+                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
+
+                            StreamEvent::ToolCallGroup(calls) => {
+                                // Finalize the current streaming bubble (stop its spinner)
+                                if let Some(dix) = panel.streaming_display_item_ix {
+                                    if let Some(DisplayItem::AssistantMessage {
+                                        is_streaming, ..
+                                    }) = panel.display_items.get_mut(dix)
+                                    {
+                                        *is_streaming = false;
+                                    }
+                                    panel.display_item_heights.remove(&dix);
+                                }
+
+                                // Insert collapsed tool call group
+                                let group_dix = panel.display_items.len();
+                                panel.display_items.push(DisplayItem::ToolCallGroup {
+                                    calls: calls
+                                        .iter()
+                                        .map(|c| {
+                                            let args_raw = serde_json::to_string(&c.arguments_json)
+                                                .unwrap_or_default();
+                                            let args_preview = if args_raw.len() > 120 {
+                                                format!("{}…", &args_raw[..120])
+                                            } else {
+                                                args_raw
+                                            };
+                                            ToolCallDisplay {
+                                                id: c.id.clone(),
+                                                name: c.name.clone(),
+                                                args_preview,
+                                                result_preview: None,
+                                                is_error: false,
+                                            }
+                                        })
+                                        .collect(),
+                                    is_expanded: false,
+                                });
+
+                                // Start a fresh streaming assistant bubble for the next iteration
+                                let new_dix = panel.display_items.len();
+                                panel.display_items.push(DisplayItem::AssistantMessage {
+                                    content: String::new(),
+                                    message_index: message_ix,
+                                    is_streaming: true,
+                                });
+                                panel.streaming_display_item_ix = Some(new_dix);
+                                let _ = group_dix; // heights computed lazily by canvas
+                                panel.scroll_messages_to_bottom();
+                                cx.notify();
+                            }
+
+                            StreamEvent::ToolCallResult { id, result_preview, is_error } => {
+                                // Find the most recent ToolCallGroup and update the matching call
+                                for item in panel.display_items.iter_mut().rev() {
+                                    if let DisplayItem::ToolCallGroup { calls, .. } = item {
+                                        if let Some(call) =
+                                            calls.iter_mut().find(|c| c.id == id)
+                                        {
+                                            call.result_preview = Some(result_preview);
+                                            call.is_error = is_error;
+                                        }
+                                        break;
+                                    }
+                                }
+                                cx.notify();
+                            }
+
                             StreamEvent::Finished(Ok(response)) => {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
-                                println!(
-                                    "[agent_chat][request={}] stream finished ok had_chunks={} fallback_msg={}",
-                                    consume_request_id,
-                                    saw_first_chunk,
-                                    response.assistant_message.is_some()
-                                );
 
+                                // Finalize display bubble
+                                if let Some(dix) = panel.streaming_display_item_ix.take() {
+                                    if let Some(DisplayItem::AssistantMessage {
+                                        content,
+                                        is_streaming,
+                                        ..
+                                    }) = panel.display_items.get_mut(dix)
+                                    {
+                                        *is_streaming = false;
+                                        if content.is_empty() {
+                                            if let Some(text) = response.assistant_message.as_ref() {
+                                                *content = text.clone();
+                                            } else {
+                                                *content =
+                                                    "Provider returned an empty response."
+                                                        .to_string();
+                                            }
+                                        }
+                                        panel.display_item_heights.remove(&dix);
+                                    }
+                                }
+                                // Finalize provider history message
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     if message.content.is_empty() {
                                         if let Some(text) = response.assistant_message {
@@ -754,16 +862,29 @@ impl AgentChatPanel {
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
+
                             StreamEvent::Finished(Err(err)) => {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 eprintln!(
-                                    "[agent_chat][request={}] stream finished with error: {}",
-                                    consume_request_id,
-                                    err
+                                    "[agent_chat][request={}] stream error: {}",
+                                    consume_request_id, err
                                 );
+                                let error_text = format!("Provider request failed: {err}");
+                                if let Some(dix) = panel.streaming_display_item_ix.take() {
+                                    if let Some(DisplayItem::AssistantMessage {
+                                        content,
+                                        is_streaming,
+                                        ..
+                                    }) = panel.display_items.get_mut(dix)
+                                    {
+                                        *is_streaming = false;
+                                        *content = error_text.clone();
+                                        panel.display_item_heights.remove(&dix);
+                                    }
+                                }
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
-                                    message.content = format!("Provider request failed: {err}");
+                                    message.content = error_text;
                                     panel.message_row_heights.remove(&message_ix);
                                 }
                                 panel.save_current_chat();
@@ -771,6 +892,7 @@ impl AgentChatPanel {
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
+
                             StreamEvent::OpenFile(path) => {
                                 cx.dispatch_action(&crate::actions::OpenFile { path });
                             }

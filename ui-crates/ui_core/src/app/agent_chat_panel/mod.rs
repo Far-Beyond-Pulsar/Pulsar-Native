@@ -78,8 +78,14 @@ pub struct AgentChatPanel {
     pub(crate) active_model_ix: usize,
     pub(crate) is_request_in_flight: bool,
     pub(crate) streaming_message_ix: Option<usize>,
+    /// Index into `display_items` of the currently-streaming assistant bubble.
+    pub(crate) streaming_display_item_ix: Option<usize>,
     pub(crate) pending_rollback_confirm_ix: Option<usize>,
     pub(crate) messages: Vec<ChatMessage>,
+    /// Flat list of items rendered in the chat — user/assistant bubbles plus
+    /// collapsed tool-call blocks. System and raw Tool-role messages are excluded.
+    pub(crate) display_items: Vec<DisplayItem>,
+    pub(crate) display_item_heights: HashMap<usize, Pixels>,
     pub(crate) _subscriptions: Vec<Subscription>,
 }
 
@@ -298,6 +304,7 @@ impl AgentChatPanel {
             active_model_ix: 0,
             is_request_in_flight: false,
             streaming_message_ix: None,
+            streaming_display_item_ix: None,
             pending_rollback_confirm_ix: None,
             messages: vec![ChatMessage {
                 role: ChatRole::System,
@@ -305,6 +312,8 @@ impl AgentChatPanel {
                 tool_call_id: None,
                 tool_calls: vec![],
             }],
+            display_items: vec![],
+            display_item_heights: HashMap::new(),
             _subscriptions: subscriptions,
         };
 
@@ -353,17 +362,17 @@ impl Render for AgentChatPanel {
         let model_list = self.model_list.clone();
         let chat_history_list = self.chat_history_list.clone();
         let current_chat_id = self.current_chat_id.clone();
-        let message_count = self.messages.len();
-        let message_item_sizes = std::rc::Rc::new(
-            self.messages
+        let display_count = self.display_items.len();
+        let display_item_sizes = std::rc::Rc::new(
+            self.display_items
                 .iter()
                 .enumerate()
-                .map(|(ix, message)| {
+                .map(|(ix, item)| {
                     let h = self
-                        .message_row_heights
+                        .display_item_heights
                         .get(&ix)
                         .copied()
-                        .unwrap_or_else(|| Self::message_row_height(message));
+                        .unwrap_or_else(|| Self::display_item_height(item));
                     size(px(0.0), h)
                 })
                 .chain(std::iter::once(size(px(0.0), px(120.0))))
@@ -584,235 +593,503 @@ impl Render for AgentChatPanel {
                         v_virtual_list(
                             cx.entity().clone(),
                             "agent-chat-messages-virtual-list",
-                            message_item_sizes,
+                            display_item_sizes,
                             move |this,
                                   range: std::ops::Range<usize>,
                                   window,
                                   cx: &mut Context<Self>| {
                                 range
                                     .map(|ix| {
-                                        if ix == message_count {
+                                        if ix == display_count {
                                             return div().h(px(120.0)).into_any_element();
                                         }
 
-                                        let Some(message) = this.messages.get(ix) else {
+                                        let Some(item) = this.display_items.get(ix) else {
                                             return div().h(px(52.0)).into_any_element();
                                         };
 
-                                        let is_user = message.role == ChatRole::User;
-                                        let is_streaming_assistant =
-                                            !is_user && this.streaming_message_ix == Some(ix);
-                                        let is_actionable_message = message.role != ChatRole::System;
-                                        let hover_group = format!("agent-chat-msg-hover-{ix}");
-                                        let is_confirming_rollback =
-                                            this.pending_rollback_confirm_ix == Some(ix);
                                         let panel = cx.entity().clone();
-                                        let content = message.content.clone();
 
-                                        div()
-                                            .relative()
-                                            .group(hover_group.clone())
-                                            .w_full()
-                                            .min_w_0()
-                                            .px_3()
-                                            .py_1()
-                                            .child(
-                                                canvas(
-                                                    move |bounds, _, cx| {
-                                                        panel.update(cx, |panel, cx| {
-                                                            let measured = bounds.size.height;
-                                                            if panel
-                                                                .message_row_heights
-                                                                .get(&ix)
-                                                                .copied()
-                                                                != Some(measured)
-                                                            {
-                                                                panel
-                                                                    .message_row_heights
-                                                                    .insert(ix, measured);
-                                                                cx.notify();
-                                                            }
-                                                        });
-                                                    },
-                                                    |_, _, _, _| {},
-                                                )
-                                                .absolute()
-                                                .inset_0(),
-                                            )
-                                            .child(
-                                                h_flex()
+                                        match item {
+                                            DisplayItem::ToolCallGroup { calls, is_expanded } => {
+                                                let calls = calls.clone();
+                                                let is_expanded = *is_expanded;
+                                                let tool_names: Vec<String> =
+                                                    calls.iter().map(|c| c.name.clone()).collect();
+                                                let all_done =
+                                                    calls.iter().all(|c| c.result_preview.is_some());
+                                                let has_error =
+                                                    calls.iter().any(|c| c.is_error);
+
+                                                let accent = if has_error {
+                                                    cx.theme().danger
+                                                } else if all_done {
+                                                    cx.theme().success
+                                                } else {
+                                                    cx.theme().primary
+                                                };
+
+                                                let header_label = if calls.len() == 1 {
+                                                    format!("Used tool: {}", tool_names[0])
+                                                } else {
+                                                    format!(
+                                                        "Used {} tools: {}",
+                                                        calls.len(),
+                                                        tool_names.join(", ")
+                                                    )
+                                                };
+
+                                                div()
+                                                    .relative()
                                                     .w_full()
                                                     .min_w_0()
-                                                    .justify_start()
-                                                    .when(is_user, |el| el.justify_end())
+                                                    .px_3()
+                                                    .py_1()
+                                                    .child(
+                                                        canvas(
+                                                            move |bounds, _, cx| {
+                                                                panel.update(cx, |panel, cx| {
+                                                                    let measured =
+                                                                        bounds.size.height;
+                                                                    if panel
+                                                                        .display_item_heights
+                                                                        .get(&ix)
+                                                                        .copied()
+                                                                        != Some(measured)
+                                                                    {
+                                                                        panel
+                                                                            .display_item_heights
+                                                                            .insert(ix, measured);
+                                                                        cx.notify();
+                                                                    }
+                                                                });
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
+                                                        .absolute()
+                                                        .inset_0(),
+                                                    )
                                                     .child(
                                                         v_flex()
-                                                            .w_auto()
-                                                            .max_w(px(620.0))
-                                                            .min_w_0()
-                                                            .gap_1()
-                                                            .px_3()
-                                                            .py_2()
-                                                            .rounded(px(8.0))
-                                                            .bg(if is_user {
-                                                                cx.theme().primary.opacity(0.16)
-                                                            } else {
-                                                                cx.theme().secondary
-                                                            })
+                                                            .w_full()
+                                                            .gap_px()
+                                                            .rounded(px(6.0))
+                                                            .border_1()
+                                                            .border_color(accent.opacity(0.25))
+                                                            .bg(cx.theme().secondary)
+                                                            .overflow_hidden()
                                                             .child(
-                                                                div()
-                                                                    .text_xs()
-                                                                    .font_semibold()
-                                                                    .text_color(
-                                                                        cx.theme().muted_foreground,
+                                                                // Header row — always visible
+                                                                h_flex()
+                                                                    .id(("tool-call-header", ix))
+                                                                    .w_full()
+                                                                    .px_3()
+                                                                    .py(px(6.0))
+                                                                    .gap_2()
+                                                                    .cursor_pointer()
+                                                                    .on_click(cx.listener(
+                                                                        move |this, _, _, cx| {
+                                                                            if let Some(
+                                                                                DisplayItem::ToolCallGroup {
+                                                                                    is_expanded,
+                                                                                    ..
+                                                                                },
+                                                                            ) = this
+                                                                                .display_items
+                                                                                .get_mut(ix)
+                                                                            {
+                                                                                *is_expanded =
+                                                                                    !*is_expanded;
+                                                                                this.display_item_heights
+                                                                                    .remove(&ix);
+                                                                            }
+                                                                            cx.notify();
+                                                                        },
+                                                                    ))
+                                                                    .child(
+                                                                        div()
+                                                                            .size(px(6.0))
+                                                                            .rounded_full()
+                                                                            .bg(accent)
+                                                                            .when(!all_done, |el| {
+                                                                                el.bg(cx
+                                                                                    .theme()
+                                                                                    .muted_foreground
+                                                                                    .opacity(0.5))
+                                                                            }),
                                                                     )
-                                                                    .child(if is_user {
-                                                                        "You"
-                                                                    } else {
-                                                                        "Agent"
-                                                                    }),
+                                                                    .child(
+                                                                        div()
+                                                                            .flex_1()
+                                                                            .text_xs()
+                                                                            .text_color(
+                                                                                cx.theme()
+                                                                                    .muted_foreground,
+                                                                            )
+                                                                            .child(header_label),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(
+                                                                                cx.theme()
+                                                                                    .muted_foreground
+                                                                                    .opacity(0.6),
+                                                                            )
+                                                                            .child(if is_expanded {
+                                                                                "▲"
+                                                                            } else {
+                                                                                "▼"
+                                                                            }),
+                                                                    ),
                                                             )
-                                                            .child(if is_user {
-                                                                div()
-                                                                    .w_full()
-                                                                    .min_w_0()
-                                                                    .whitespace_normal()
-                                                                    .text_sm()
-                                                                    .text_color(
-                                                                        cx.theme().foreground,
-                                                                    )
-                                                                    .child(content)
-                                                                    .into_any_element()
-                                                            } else if is_streaming_assistant {
-                                                                div()
-                                                                    .w_full()
-                                                                    .min_w_0()
-                                                                    .whitespace_normal()
-                                                                    .text_sm()
-                                                                    .text_color(
-                                                                        cx.theme().foreground,
-                                                                    )
-                                                                    .child(content)
-                                                                    .into_any_element()
-                                                            } else {
-                                                                TextView::markdown_with_code_font(
-                                                                    ("agent-chat-md", ix),
-                                                                    content,
-                                                                    "JetBrains Mono",
-                                                                    window,
-                                                                    cx,
+                                                            .when(is_expanded, |el| {
+                                                                el.child(
+                                                                    v_flex()
+                                                                        .w_full()
+                                                                        .gap_px()
+                                                                        .children(
+                                                                            calls.iter().map(|call| {
+                                                                                v_flex()
+                                                                                    .w_full()
+                                                                                    .px_3()
+                                                                                    .py_2()
+                                                                                    .gap_1()
+                                                                                    .border_t_1()
+                                                                                    .border_color(
+                                                                                        cx.theme()
+                                                                                            .border,
+                                                                                    )
+                                                                                    .child(
+                                                                                        h_flex()
+                                                                                            .gap_2()
+                                                                                            .child(
+                                                                                                div()
+                                                                                                    .text_xs()
+                                                                                                    .font_semibold()
+                                                                                                    .text_color(cx.theme().foreground)
+                                                                                                    .child(call.name.clone()),
+                                                                                            )
+                                                                                            .when(call.is_error, |el| {
+                                                                                                el.child(
+                                                                                                    div()
+                                                                                                        .text_xs()
+                                                                                                        .text_color(cx.theme().danger)
+                                                                                                        .child("error"),
+                                                                                                )
+                                                                                            }),
+                                                                                    )
+                                                                                    .child(
+                                                                                        div()
+                                                                                            .text_xs()
+                                                                                            .font_family("JetBrains Mono")
+                                                                                            .text_color(cx.theme().muted_foreground)
+                                                                                            .child(format!("args: {}", call.args_preview)),
+                                                                                    )
+                                                                                    .when_some(
+                                                                                        call.result_preview.as_ref(),
+                                                                                        |el, result| {
+                                                                                            el.child(
+                                                                                                div()
+                                                                                                    .text_xs()
+                                                                                                    .font_family("JetBrains Mono")
+                                                                                                    .text_color(cx.theme().muted_foreground.opacity(0.8))
+                                                                                                    .child(format!("→ {result}")),
+                                                                                            )
+                                                                                        },
+                                                                                    )
+                                                                                    .when(
+                                                                                        call.result_preview.is_none(),
+                                                                                        |el| {
+                                                                                            el.child(
+                                                                                                div()
+                                                                                                    .text_xs()
+                                                                                                    .text_color(
+                                                                                                        cx.theme()
+                                                                                                            .muted_foreground
+                                                                                                            .opacity(0.5),
+                                                                                                    )
+                                                                                                    .child("running…"),
+                                                                                            )
+                                                                                        },
+                                                                                    )
+                                                                            }),
+                                                                        ),
                                                                 )
-                                                                .debounce_ms(0)
-                                                                .selectable()
-                                                                .into_any_element()
                                                             }),
                                                     )
-                                                    .id(("agent-chat-message", ix)),
-                                            )
-                                            .when(is_actionable_message, |el| {
-                                                el.child(
-                                                    h_flex()
+                                                    .into_any_element()
+                                            }
+
+                                            DisplayItem::UserMessage {
+                                                content,
+                                                message_index,
+                                            }
+                                            | DisplayItem::AssistantMessage {
+                                                content,
+                                                message_index,
+                                                ..
+                                            } => {
+                                                let is_user =
+                                                    matches!(item, DisplayItem::UserMessage { .. });
+                                                let is_streaming = matches!(
+                                                    item,
+                                                    DisplayItem::AssistantMessage {
+                                                        is_streaming: true,
+                                                        ..
+                                                    }
+                                                );
+                                                let content = content.clone();
+                                                let message_index = *message_index;
+                                                let hover_group =
+                                                    format!("agent-chat-msg-hover-{ix}");
+                                                let is_confirming_rollback =
+                                                    this.pending_rollback_confirm_ix == Some(ix);
+
+                                                div()
+                                                    .relative()
+                                                    .group(hover_group.clone())
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .px_3()
+                                                    .py_1()
+                                                    .child(
+                                                        canvas(
+                                                            move |bounds, _, cx| {
+                                                                panel.update(cx, |panel, cx| {
+                                                                    let measured =
+                                                                        bounds.size.height;
+                                                                    if panel
+                                                                        .display_item_heights
+                                                                        .get(&ix)
+                                                                        .copied()
+                                                                        != Some(measured)
+                                                                    {
+                                                                        panel
+                                                                            .display_item_heights
+                                                                            .insert(ix, measured);
+                                                                        cx.notify();
+                                                                    }
+                                                                });
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
                                                         .absolute()
-                                                        .w_full()
-                                                        .bottom(px(-8.0))
-                                                        .px_6()
-                                                        .justify_start()
-                                                        .when(is_user, |this| this.justify_end())
-                                                        .invisible()
-                                                        .group_hover(hover_group, |this| this.visible())
-                                                        .child(
-                                                            h_flex()
-                                                                .gap_1()
-                                                                .p_1()
-                                                                .rounded(px(8.0))
-                                                                .bg(cx.theme().background)
-                                                                .border_1()
-                                                                .border_color(cx.theme().border)
-                                                                .when(!is_confirming_rollback, |el| {
-                                                                    el.child(
-                                                                        Button::new((
-                                                                            "agent-chat-rollback",
-                                                                            ix,
-                                                                        ))
-                                                                        .xsmall()
-                                                                        .ghost()
-                                                                        .icon(IconName::Undo)
-                                                                        .tooltip("Rollback to this message")
-                                                                        .disabled(
-                                                                            this.is_request_in_flight,
-                                                                        )
-                                                                        .on_click(cx.listener(
-                                                                            move |this, _, _, cx| {
-                                                                                this.request_rollback_confirmation(
-                                                                                    ix, cx,
-                                                                                );
-                                                                            },
-                                                                        )),
+                                                        .inset_0(),
+                                                    )
+                                                    .child(
+                                                        h_flex()
+                                                            .w_full()
+                                                            .min_w_0()
+                                                            .justify_start()
+                                                            .when(is_user, |el| el.justify_end())
+                                                            .child(
+                                                                v_flex()
+                                                                    .w_auto()
+                                                                    .max_w(px(620.0))
+                                                                    .min_w_0()
+                                                                    .gap_1()
+                                                                    .px_3()
+                                                                    .py_2()
+                                                                    .rounded(px(8.0))
+                                                                    .bg(if is_user {
+                                                                        cx.theme()
+                                                                            .primary
+                                                                            .opacity(0.16)
+                                                                    } else {
+                                                                        cx.theme().secondary
+                                                                    })
+                                                                    .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .font_semibold()
+                                                                            .text_color(
+                                                                                cx.theme()
+                                                                                    .muted_foreground,
+                                                                            )
+                                                                            .child(if is_user {
+                                                                                "You"
+                                                                            } else {
+                                                                                "Agent"
+                                                                            }),
                                                                     )
-                                                                })
-                                                                .when(is_confirming_rollback, |el| {
-                                                                    el.child(
-                                                                        Button::new((
-                                                                            "agent-chat-rollback-confirm",
-                                                                            ix,
-                                                                        ))
-                                                                        .xsmall()
-                                                                        .primary()
-                                                                        .icon(IconName::Check)
-                                                                        .tooltip("Confirm rollback")
-                                                                        .disabled(
-                                                                            this.is_request_in_flight,
+                                                                    .child(if is_user || is_streaming {
+                                                                        div()
+                                                                            .w_full()
+                                                                            .min_w_0()
+                                                                            .whitespace_normal()
+                                                                            .text_sm()
+                                                                            .text_color(
+                                                                                cx.theme().foreground,
+                                                                            )
+                                                                            .child(content)
+                                                                            .into_any_element()
+                                                                    } else {
+                                                                        TextView::markdown_with_code_font(
+                                                                            ("agent-chat-md", ix),
+                                                                            content,
+                                                                            "JetBrains Mono",
+                                                                            window,
+                                                                            cx,
                                                                         )
-                                                                        .on_click(cx.listener(
-                                                                            move |this, _, _, cx| {
-                                                                                this.rollback_chat_to_message(
-                                                                                    ix, cx,
-                                                                                );
-                                                                            },
-                                                                        )),
+                                                                        .debounce_ms(0)
+                                                                        .selectable()
+                                                                        .into_any_element()
+                                                                    }),
+                                                            )
+                                                            .id(("agent-chat-message", ix)),
+                                                    )
+                                                    .child(
+                                                        h_flex()
+                                                            .absolute()
+                                                            .w_full()
+                                                            .bottom(px(-8.0))
+                                                            .px_6()
+                                                            .justify_start()
+                                                            .when(is_user, |this| {
+                                                                this.justify_end()
+                                                            })
+                                                            .invisible()
+                                                            .group_hover(
+                                                                hover_group,
+                                                                |this| this.visible(),
+                                                            )
+                                                            .child(
+                                                                h_flex()
+                                                                    .gap_1()
+                                                                    .p_1()
+                                                                    .rounded(px(8.0))
+                                                                    .bg(cx.theme().background)
+                                                                    .border_1()
+                                                                    .border_color(
+                                                                        cx.theme().border,
+                                                                    )
+                                                                    .when(
+                                                                        !is_confirming_rollback,
+                                                                        |el| {
+                                                                            el.child(
+                                                                                Button::new((
+                                                                                    "agent-chat-rollback",
+                                                                                    ix,
+                                                                                ))
+                                                                                .xsmall()
+                                                                                .ghost()
+                                                                                .icon(
+                                                                                    IconName::Undo,
+                                                                                )
+                                                                                .tooltip(
+                                                                                    "Rollback to this message",
+                                                                                )
+                                                                                .disabled(
+                                                                                    this.is_request_in_flight,
+                                                                                )
+                                                                                .on_click(
+                                                                                    cx.listener(
+                                                                                        move |this,
+                                                                                              _,
+                                                                                              _,
+                                                                                              cx| {
+                                                                                            this.request_rollback_confirmation(
+                                                                                                ix,
+                                                                                                cx,
+                                                                                            );
+                                                                                        },
+                                                                                    ),
+                                                                                ),
+                                                                            )
+                                                                        },
+                                                                    )
+                                                                    .when(
+                                                                        is_confirming_rollback,
+                                                                        |el| {
+                                                                            el.child(
+                                                                                Button::new((
+                                                                                    "agent-chat-rollback-confirm",
+                                                                                    ix,
+                                                                                ))
+                                                                                .xsmall()
+                                                                                .primary()
+                                                                                .icon(
+                                                                                    IconName::Check,
+                                                                                )
+                                                                                .tooltip(
+                                                                                    "Confirm rollback",
+                                                                                )
+                                                                                .disabled(
+                                                                                    this.is_request_in_flight,
+                                                                                )
+                                                                                .on_click(
+                                                                                    cx.listener(
+                                                                                        move |this,
+                                                                                              _,
+                                                                                              _,
+                                                                                              cx| {
+                                                                                            this.rollback_chat_to_message(
+                                                                                                ix,
+                                                                                                message_index,
+                                                                                                cx,
+                                                                                            );
+                                                                                        },
+                                                                                    ),
+                                                                                ),
+                                                                            )
+                                                                            .child(
+                                                                                Button::new((
+                                                                                    "agent-chat-rollback-cancel",
+                                                                                    ix,
+                                                                                ))
+                                                                                .xsmall()
+                                                                                .ghost()
+                                                                                .icon(
+                                                                                    IconName::Close,
+                                                                                )
+                                                                                .tooltip(
+                                                                                    "Cancel rollback",
+                                                                                )
+                                                                                .on_click(
+                                                                                    cx.listener(
+                                                                                        |this,
+                                                                                         _,
+                                                                                         _,
+                                                                                         cx| {
+                                                                                            this.cancel_rollback_confirmation(
+                                                                                                cx,
+                                                                                            );
+                                                                                        },
+                                                                                    ),
+                                                                                ),
+                                                                            )
+                                                                        },
                                                                     )
                                                                     .child(
                                                                         Button::new((
-                                                                            "agent-chat-rollback-cancel",
+                                                                            "agent-chat-fork",
                                                                             ix,
                                                                         ))
                                                                         .xsmall()
                                                                         .ghost()
-                                                                        .icon(IconName::Close)
-                                                                        .tooltip("Cancel rollback")
+                                                                        .icon(IconName::GitFork)
+                                                                        .tooltip(
+                                                                            "Fork conversation from here",
+                                                                        )
+                                                                        .disabled(
+                                                                            this.is_request_in_flight,
+                                                                        )
                                                                         .on_click(cx.listener(
-                                                                            |this, _, _, cx| {
-                                                                                this.cancel_rollback_confirmation(
+                                                                            move |this, _, _, cx| {
+                                                                                this.fork_chat_here(
+                                                                                    ix,
+                                                                                    message_index,
                                                                                     cx,
                                                                                 );
                                                                             },
                                                                         )),
-                                                                    )
-                                                                })
-                                                                .child(
-                                                                    Button::new((
-                                                                        "agent-chat-fork",
-                                                                        ix,
-                                                                    ))
-                                                                    .xsmall()
-                                                                    .ghost()
-                                                                    .icon(IconName::GitFork)
-                                                                    .tooltip("Fork conversation from here")
-                                                                    .disabled(
-                                                                        this.is_request_in_flight,
-                                                                    )
-                                                                    .on_click(cx.listener(
-                                                                        move |this, _, _, cx| {
-                                                                            this.fork_chat_here(
-                                                                                ix, cx,
-                                                                            );
-                                                                        },
-                                                                    )),
-                                                                ),
-                                                        ),
-                                                )
-                                            })
-                                            .into_any_element()
+                                                                    ),
+                                                            ),
+                                                    )
+                                                    .into_any_element()
+                                            }
+                                        }
                                     })
                                     .collect::<Vec<_>>()
                             },

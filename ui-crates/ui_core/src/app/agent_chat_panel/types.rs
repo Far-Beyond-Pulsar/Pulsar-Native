@@ -1,6 +1,39 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// A single tool call within a `DisplayItem::ToolCallGroup`.
+#[derive(Clone, Debug)]
+pub struct ToolCallDisplay {
+    pub id: String,
+    pub name: String,
+    /// Pre-formatted JSON for display (truncated to ~300 chars).
+    pub args_preview: String,
+    /// `None` while the tool is still running.
+    pub result_preview: Option<String>,
+    pub is_error: bool,
+}
+
+/// Flat items rendered in the chat virtual list.
+/// System and raw Tool-role messages are never added here.
+#[derive(Clone, Debug)]
+pub enum DisplayItem {
+    UserMessage {
+        content: String,
+        /// Index into `AgentChatPanel::messages` — used by rollback/fork.
+        message_index: usize,
+    },
+    AssistantMessage {
+        content: String,
+        message_index: usize,
+        is_streaming: bool,
+    },
+    /// Collapsed tool-use block rendered between assistant messages.
+    ToolCallGroup {
+        calls: Vec<ToolCallDisplay>,
+        is_expanded: bool,
+    },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ProviderKind {
     Cloud,
