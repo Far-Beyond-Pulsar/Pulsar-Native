@@ -13,9 +13,14 @@ use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
+use crate::level_editor::commands::{execute_command, SceneCommand};
+use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::ui::state::LevelEditorState;
+
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
+    shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
@@ -24,11 +29,13 @@ pub struct HelioViewport {
 impl HelioViewport {
     pub fn new<V: 'static>(
         gpu_engine: Arc<Mutex<GpuRenderer>>,
+        shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
         debug_replace_with_yellow: bool,
         cx: &mut Context<V>,
     ) -> Self {
         Self {
             gpu_engine,
+            shared_state,
             surface: None,
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
@@ -54,7 +61,7 @@ impl HelioViewport {
             cx,
         );
 
-        let result = Self::import_asset(path, kind, self.gpu_engine.clone());
+        let result = Self::import_asset(path, kind, self.gpu_engine.clone(), self.shared_state.clone());
         match result {
             Ok(()) => {
                 window.push_notification(
@@ -79,6 +86,7 @@ impl HelioViewport {
         path: PathBuf,
         kind: AssetKind,
         gpu_engine: Arc<Mutex<GpuRenderer>>,
+        shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Validate file exists
         if !path.exists() {
@@ -109,6 +117,15 @@ impl HelioViewport {
                     converted_scene.textures.len()
                 );
 
+                let imported_name = if converted_scene.name.is_empty() {
+                    path.file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("Imported Scene")
+                        .to_string()
+                } else {
+                    converted_scene.name.clone()
+                };
+
                 // Insert the scene into Helio. We use a blocking lock here so
                 // drops don't fail transiently during a render tick.
                 let mut engine = gpu_engine
@@ -118,6 +135,39 @@ impl HelioViewport {
                     .insert_scene_object(converted_scene)
                     .map_err(|e| format!("Failed to insert scene object: {}", e))?;
                 tracing::info!("Scene successfully inserted into Helio renderer");
+
+                // IMPORTANT: mirror import into SceneDatabase via unified command path so
+                // hierarchy/properties stay in sync with viewport drops.
+                let mut state = shared_state.write();
+                let import_root = SceneObjectData {
+                    id: String::new(),
+                    name: format!("Imported: {}", imported_name),
+                    object_type: ObjectType::Folder,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    components: vec![],
+                    scene_path: path.display().to_string(),
+                };
+
+                let add_result = execute_command(
+                    &mut state,
+                    SceneCommand::AddObject {
+                        data: import_root,
+                        parent_id: None,
+                    },
+                );
+
+                if let Some(id) = add_result.affected_ids.first() {
+                    let _ = execute_command(
+                        &mut state,
+                        SceneCommand::SelectObject {
+                            id: Some(id.clone()),
+                        },
+                    );
+                }
             }
             _ => {
                 return Err(format!("Unsupported asset type: {:?}", kind).into());

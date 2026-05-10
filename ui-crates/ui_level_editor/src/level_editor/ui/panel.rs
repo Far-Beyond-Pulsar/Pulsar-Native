@@ -201,15 +201,6 @@ impl LevelEditorPanel {
         let gpu_engine = Arc::new(Mutex::new(renderer_builder.build()));
         let render_enabled = Arc::new(std::sync::atomic::AtomicBool::new(true));
 
-        // Temporary debug toggle: replace viewport with a solid yellow panel to
-        // verify layout/overlap issues independently of GPU rendering.
-        let debug_replace_with_yellow = false;
-
-        // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
-        // Must be created AFTER gpu_engine so we can share the Arc.
-        let viewport =
-            cx.new(|cx| HelioViewport::new(gpu_engine.clone(), debug_replace_with_yellow, cx));
-
         // Store GPU renderer in global EngineContext using a marker that the render loop will pick up
         // The render loop will associate it with the correct window when it first renders
         if let Some(engine_context) = engine_state::EngineContext::global() {
@@ -234,6 +225,22 @@ impl LevelEditorPanel {
         state.scene_database.set_renderer(gpu_engine.clone());
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
+
+        // Temporary debug toggle: replace viewport with a solid yellow panel to
+        // verify layout/overlap issues independently of GPU rendering.
+        let debug_replace_with_yellow = false;
+
+        // Create HelioViewport — renders via WgpuSurfaceHandle every GPUI frame.
+        // It receives shared_state so viewport drop actions mutate SceneDatabase
+        // through the same command path as the rest of the editor.
+        let viewport = cx.new(|cx| {
+            HelioViewport::new(
+                gpu_engine.clone(),
+                shared_state.clone(),
+                debug_replace_with_yellow,
+                cx,
+            )
+        });
 
         // Poll for AI-driven scene mutations at 50 ms intervals.  AI tools
         // run on background threads and can't call cx.notify() directly, so
