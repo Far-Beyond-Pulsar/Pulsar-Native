@@ -6,6 +6,9 @@
 
 use gpui::Window;
 
+#[cfg(target_os = "macos")]
+use std::sync::atomic::{AtomicBool, Ordering};
+
 /// Lock cursor to window bounds (prevents cursor from leaving the window).
 ///
 /// This is used to keep the cursor confined during camera rotation to prevent
@@ -174,7 +177,112 @@ pub fn window_to_screen_position(
 
 // macOS implementations
 #[cfg(target_os = "macos")]
+static ACCESSIBILITY_PROMPTED: AtomicBool = AtomicBool::new(false);
+
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+unsafe extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: *const core::ffi::c_void) -> bool;
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreFoundation", kind = "framework")]
+unsafe extern "C" {
+    static kCFBooleanTrue: *const core::ffi::c_void;
+    static kCFBooleanFalse: *const core::ffi::c_void;
+}
+
+#[cfg(target_os = "macos")]
+fn is_accessibility_trusted(prompt_if_missing: bool) -> bool {
+    use core::ffi::c_void;
+    use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
+    use core_foundation_sys::dictionary::{
+        CFDictionaryCreate, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
+    };
+    use core_foundation_sys::string::{CFStringCreateWithCString, kCFStringEncodingUTF8};
+
+    unsafe {
+        let key = CFStringCreateWithCString(
+            kCFAllocatorDefault,
+            b"AXTrustedCheckOptionPrompt\0".as_ptr().cast(),
+            kCFStringEncodingUTF8,
+        );
+
+        if key.is_null() {
+            return AXIsProcessTrusted();
+        }
+
+        let keys: [*const c_void; 1] = [key.cast()];
+        let values: [*const c_void; 1] = [if prompt_if_missing {
+            kCFBooleanTrue
+        } else {
+            kCFBooleanFalse
+        }];
+
+        let options = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            keys.as_ptr(),
+            values.as_ptr(),
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks,
+        );
+
+        let trusted = if options.is_null() {
+            AXIsProcessTrusted()
+        } else {
+            let result = AXIsProcessTrustedWithOptions(options.cast());
+            CFRelease(options.cast());
+            result
+        };
+
+        CFRelease(key.cast());
+        trusted
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn request_accessibility_permission_once() {
+    if ACCESSIBILITY_PROMPTED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+
+    let _ = is_accessibility_trusted(true);
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_accessibility(prompt_if_missing: bool) -> bool {
+    if is_accessibility_trusted(false) {
+        return true;
+    }
+
+    if prompt_if_missing {
+        request_accessibility_permission_once();
+        tracing::warn!(
+            "[VIEWPORT] macOS Accessibility permission is required for relative mouse mode. Waiting for user approval."
+        );
+    }
+
+    false
+}
+
+#[cfg(target_os = "macos")]
+pub fn prepare_relative_mouse_mode() -> bool {
+    ensure_accessibility(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn prepare_relative_mouse_mode() -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
 pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
+    if !ensure_accessibility(false) {
+        return;
+    }
+
     // core-graphics2 is pulled in under the macos target; the crate alias
     // is `core_graphics2` (see Cargo.toml).  adjust imports accordingly.
     use core_graphics2::display::CGDisplay;
@@ -200,6 +308,10 @@ pub fn set_cursor_position(screen_x: i32, screen_y: i32) {
 
 #[cfg(target_os = "macos")]
 pub fn begin_relative_mouse_mode() {
+    if !ensure_accessibility(false) {
+        return;
+    }
+
     use core_graphics2::direct_display::CGGetLastMouseDelta;
     use core_graphics2::display::CGDisplay;
     use core_graphics2::event_source::CGEventSource;
@@ -225,6 +337,10 @@ pub fn begin_relative_mouse_mode() {
 
 #[cfg(target_os = "macos")]
 pub fn end_relative_mouse_mode() {
+    if !ensure_accessibility(false) {
+        return;
+    }
+
     use core_graphics2::display::CGDisplay;
     use core_graphics2::remote_operation::CGAssociateMouseAndMouseCursorPosition;
 
@@ -237,6 +353,10 @@ pub fn end_relative_mouse_mode() {
 
 #[cfg(target_os = "macos")]
 pub fn take_mouse_delta() -> (f32, f32) {
+    if !ensure_accessibility(false) {
+        return (0.0, 0.0);
+    }
+
     use core_graphics2::direct_display::CGGetLastMouseDelta;
 
     let mut delta_x = 0;
@@ -255,7 +375,7 @@ pub fn window_to_screen_position(
     window_y: f32,
 ) -> Option<(i32, i32)> {
     use objc2::runtime::AnyObject;
-    use objc2::{msg_send, msg_send_id};
+    use objc2::msg_send;
     use objc2_foundation::NSPoint;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
@@ -265,7 +385,15 @@ pub fn window_to_screen_position(
                 // `RawWindowHandle::AppKit` exposes an `ns_view` pointer but not
                 // the window directly. Query the view's window object at runtime.
                 let ns_view = appkit_handle.ns_view.as_ptr() as *mut AnyObject;
+                if ns_view.is_null() {
+                    return None;
+                }
+
                 let ns_window: *mut AnyObject = msg_send![ns_view, window];
+                if ns_window.is_null() {
+                    return None;
+                }
+
                 let point = NSPoint {
                     x: window_x as f64,
                     y: window_y as f64,

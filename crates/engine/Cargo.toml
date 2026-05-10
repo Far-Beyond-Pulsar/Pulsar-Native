@@ -20,7 +20,6 @@ image = "0.25"  # For loading window icon
 # Engine crates
 engine_backend.workspace = true
 engine_state.workspace = true
-
 # Profiling - instrumentation-based
 profiling = { path = "../profiling" }
 
@@ -58,6 +57,9 @@ tracing-appender = "0.2.4"
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation-sys = "0.8"
 
 [build-dependencies]
 winresource = "0.1"

@@ -42,6 +42,7 @@ wgpu.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-graphics2 = "0.5"
+core-foundation-sys = "0.8"
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"  # separate crate for Foundation types

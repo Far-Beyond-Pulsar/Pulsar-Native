@@ -9082,6 +9082,7 @@ version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "core-foundation-sys",
  "directories 5.0.1",
  "dotenv",
  "engine_backend",
@@ -13440,6 +13441,7 @@ name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "core-foundation-sys",
  "core-graphics2",
  "device_query 4.0.1",
  "engine_backend",

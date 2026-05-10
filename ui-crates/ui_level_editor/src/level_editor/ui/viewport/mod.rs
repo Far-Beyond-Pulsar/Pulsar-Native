@@ -680,6 +680,12 @@ impl ViewportPanel {
                 let input_state_clone = self.input_state.clone();
 
                 move |event, window, _cx| {
+                    if !crate::level_editor::ui::viewport::platform::prepare_relative_mouse_mode()
+                    {
+                        window.set_window_cursor_style(CursorStyle::Arrow);
+                        return;
+                    }
+
                     let shift_pressed = event.modifiers.shift;
                     let window_x: f32 = event.position.x.into();
                     let window_y: f32 = event.position.y.into();

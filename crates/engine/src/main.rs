@@ -65,6 +65,7 @@ pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
 pub mod discord; // Discord Rich Presence integration
 pub mod logging; // Logging setup and configuration
+pub mod macos_permissions;
 pub mod runtime;
 pub mod settings; // Engine settings loading and saving // Async runtime setup and management
                   // Window integration was previously handled by the `window` module, but
@@ -87,6 +88,8 @@ use init::{task_ids::*, InitContext, InitGraph, InitTask};
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    macos_permissions::ensure_accessibility_permission_blocking();
+
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
 
