@@ -105,6 +105,7 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     let cargo_content = format!(
         "{}\n\n[dependencies]\n\
 pulsar_game = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
+engine_class_derive = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
 tracing = \"0.1\"\n\
 tracing-subscriber = {{ version = \"0.3\", features = [\"fmt\", \"env-filter\"] }}\n\
 helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\" }}\n\n\
