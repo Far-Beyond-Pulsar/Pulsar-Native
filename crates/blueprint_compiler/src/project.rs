@@ -1,0 +1,643 @@
+//! # Project Generator
+//!
+//! Turns a collection of compiled blueprints into a complete, ready-to-ship
+//! Pulsar game project — a proper Rust crate you can `cargo run` straight away.
+//!
+//! ## Usage
+//!
+//! ```no_run
+//! use blueprint_compiler::{compile_blueprint, GraphDescription};
+//! use blueprint_compiler::project::{ProjectSpec, CompiledBlueprint, generate_project};
+//!
+//! // Compile your graphs first.
+//! let graph = GraphDescription::new("player_controller");
+//! let source = compile_blueprint(&graph).unwrap();
+//!
+//! // Describe the project and add blueprints.
+//! let spec = ProjectSpec::new("my_game")
+//!     .version("0.1.0")
+//!     .description("My Pulsar game")
+//!     .add_blueprint(CompiledBlueprint::new("player_controller", source));
+//!
+//! // Generate and write to disk.
+//! let project = generate_project(&spec);
+//! project.write_to_dir("./output/my_game").unwrap();
+//! ```
+
+use std::collections::BTreeMap;
+use std::path::Path;
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Convert `some_name` / `SomeName` to `some_name` (stable, allocation-free).
+fn to_snake_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 4);
+    let mut prev_upper = false;
+    for (i, ch) in name.char_indices() {
+        if ch.is_uppercase() {
+            if i != 0 && !prev_upper {
+                out.push('_');
+            }
+            out.push(ch.to_ascii_lowercase());
+            prev_upper = true;
+        } else if ch == '-' || ch == ' ' {
+            out.push('_');
+            prev_upper = false;
+        } else {
+            out.push(ch);
+            prev_upper = false;
+        }
+    }
+    out
+}
+
+/// Convert `some_name` / `some-name` to `SomeName`.
+fn to_pascal_case(name: &str) -> String {
+    name.split(|c: char| c == '_' || c == '-' || c == ' ')
+        .filter(|s| !s.is_empty())
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => {
+                    let mut s = first.to_uppercase().to_string();
+                    s.push_str(chars.as_str());
+                    s
+                }
+            }
+        })
+        .collect()
+}
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+/// Dependency reference for the generated `Cargo.toml`.
+#[derive(Debug, Clone)]
+pub enum DepSource {
+    /// A crates.io version string, e.g. `"0.1"`.
+    CratesIo(String),
+    /// A git URL with an optional rev/tag/branch.
+    Git {
+        url: String,
+        rev: Option<String>,
+    },
+    /// A local filesystem path (relative to the generated project root).
+    Path(String),
+}
+
+impl DepSource {
+    /// Serialize to the value side of a TOML dependency entry.
+    fn to_toml(&self, features: &[String]) -> String {
+        let feat = if features.is_empty() {
+            String::new()
+        } else {
+            let list: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
+            format!(", features = [{}]", list.join(", "))
+        };
+
+        match self {
+            DepSource::CratesIo(ver) => {
+                if feat.is_empty() {
+                    format!("\"{}\"", ver)
+                } else {
+                    format!("{{ version = \"{}\"{} }}", ver, feat)
+                }
+            }
+            DepSource::Git { url, rev: None } => {
+                format!("{{ git = \"{}\"{} }}", url, feat)
+            }
+            DepSource::Git { url, rev: Some(rev) } => {
+                format!("{{ git = \"{}\", rev = \"{}\"{} }}", url, rev, feat)
+            }
+            DepSource::Path(p) => {
+                format!("{{ path = \"{}\"{} }}", p, feat)
+            }
+        }
+    }
+}
+
+/// A single dependency entry.
+#[derive(Debug, Clone)]
+pub struct Dependency {
+    pub source: DepSource,
+    pub features: Vec<String>,
+}
+
+impl Dependency {
+    pub fn new(source: DepSource) -> Self {
+        Self { source, features: Vec::new() }
+    }
+
+    pub fn with_features(mut self, features: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.features = features.into_iter().map(|f| f.into()).collect();
+        self
+    }
+}
+
+// ── CompiledBlueprint ─────────────────────────────────────────────────────────
+
+/// A blueprint that has already been compiled to Rust source by `compile_blueprint`.
+#[derive(Debug, Clone)]
+pub struct CompiledBlueprint {
+    /// Original name as given to the blueprint graph.
+    pub name: String,
+    /// Rust source emitted by the blueprint compiler.
+    pub source: String,
+    /// Whether this blueprint has a `tick` event entry point in its source.
+    pub has_tick: bool,
+    /// Whether this blueprint has a `begin_play` event entry point in its source.
+    pub has_begin_play: bool,
+}
+
+impl CompiledBlueprint {
+    /// Create from a name and compiled source, auto-detecting event entry points.
+    pub fn new(name: impl Into<String>, source: impl Into<String>) -> Self {
+        let source = source.into();
+        let has_tick = source.contains("fn tick") || source.contains("fn on_tick");
+        let has_begin_play =
+            source.contains("fn begin_play") || source.contains("fn on_begin_play");
+        Self {
+            name: name.into(),
+            source,
+            has_tick,
+            has_begin_play,
+        }
+    }
+
+    /// Override tick detection.
+    pub fn with_tick(mut self, has_tick: bool) -> Self {
+        self.has_tick = has_tick;
+        self
+    }
+
+    /// Override begin_play detection.
+    pub fn with_begin_play(mut self, has_begin_play: bool) -> Self {
+        self.has_begin_play = has_begin_play;
+        self
+    }
+}
+
+// ── ProjectSpec ───────────────────────────────────────────────────────────────
+
+/// Everything needed to generate a complete Pulsar game project.
+pub struct ProjectSpec {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub blueprints: Vec<CompiledBlueprint>,
+    /// Extra Cargo dependencies beyond the defaults.
+    pub extra_deps: BTreeMap<String, Dependency>,
+    /// If true, include `helio` (wgpu renderer) in the generated project.
+    pub include_helio: bool,
+    /// Override for the `pulsar_game` dependency source.
+    pub pulsar_game_dep: Option<DepSource>,
+    /// Override for the `helio` dependency source.
+    pub helio_dep: Option<DepSource>,
+}
+
+impl ProjectSpec {
+    /// Start building a project spec with the given crate name.
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            version: "0.1.0".into(),
+            description: String::new(),
+            blueprints: Vec::new(),
+            extra_deps: BTreeMap::new(),
+            include_helio: true,
+            pulsar_game_dep: None,
+            helio_dep: None,
+        }
+    }
+
+    /// Set the crate version (defaults to `"0.1.0"`).
+    pub fn version(mut self, v: impl Into<String>) -> Self {
+        self.version = v.into();
+        self
+    }
+
+    /// Set the crate description.
+    pub fn description(mut self, d: impl Into<String>) -> Self {
+        self.description = d.into();
+        self
+    }
+
+    /// Add a compiled blueprint to the project.
+    pub fn add_blueprint(mut self, bp: CompiledBlueprint) -> Self {
+        self.blueprints.push(bp);
+        self
+    }
+
+    /// Add an extra Cargo dependency.
+    pub fn add_dep(mut self, name: impl Into<String>, dep: Dependency) -> Self {
+        self.extra_deps.insert(name.into(), dep);
+        self
+    }
+
+    /// Whether to include the Helio wgpu renderer (default: `true`).
+    pub fn include_helio(mut self, yes: bool) -> Self {
+        self.include_helio = yes;
+        self
+    }
+
+    /// Override the `pulsar_game` dependency source.
+    pub fn pulsar_game_dep(mut self, source: DepSource) -> Self {
+        self.pulsar_game_dep = Some(source);
+        self
+    }
+
+    /// Override the `helio` dependency source.
+    pub fn helio_dep(mut self, source: DepSource) -> Self {
+        self.helio_dep = Some(source);
+        self
+    }
+}
+
+// ── GeneratedProject ──────────────────────────────────────────────────────────
+
+/// The output of `generate_project` — a complete file tree ready to write to disk.
+pub struct GeneratedProject {
+    /// Map of relative file path → file content.
+    pub files: BTreeMap<String, String>,
+}
+
+impl GeneratedProject {
+    /// Write every file to `<dir>/<relative_path>`, creating directories as needed.
+    pub fn write_to_dir(&self, dir: impl AsRef<Path>) -> std::io::Result<()> {
+        let base = dir.as_ref();
+        for (rel_path, content) in &self.files {
+            let full = base.join(rel_path);
+            if let Some(parent) = full.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&full, content)?;
+        }
+        Ok(())
+    }
+
+    /// Iterate over all generated file paths (relative).
+    pub fn file_paths(&self) -> impl Iterator<Item = &str> {
+        self.files.keys().map(|s| s.as_str())
+    }
+}
+
+// ── generate_project ─────────────────────────────────────────────────────────
+
+/// Generate a complete Pulsar game project from a [`ProjectSpec`].
+///
+/// Returns a [`GeneratedProject`] whose files can be written anywhere with
+/// [`GeneratedProject::write_to_dir`].
+pub fn generate_project(spec: &ProjectSpec) -> GeneratedProject {
+    let mut files = BTreeMap::new();
+
+    files.insert("Cargo.toml".into(), gen_cargo_toml(spec));
+    files.insert("src/main.rs".into(), gen_main_rs(spec));
+    files.insert("src/blueprints/mod.rs".into(), gen_blueprints_mod(spec));
+
+    for bp in &spec.blueprints {
+        let ident = to_snake_case(&bp.name);
+        files.insert(
+            format!("src/blueprints/{ident}.rs"),
+            gen_blueprint_actor(bp),
+        );
+    }
+
+    GeneratedProject { files }
+}
+
+// ── File generators ───────────────────────────────────────────────────────────
+
+fn gen_cargo_toml(spec: &ProjectSpec) -> String {
+    let pulsar_game = spec
+        .pulsar_game_dep
+        .clone()
+        .unwrap_or_else(|| DepSource::Git {
+            url: "https://github.com/Far-Beyond-Pulsar/Pulsar-Native".into(),
+            rev: None,
+        });
+
+    let mut out = format!(
+        r#"[package]
+name = "{name}"
+version = "{version}"
+edition = "2021"
+{description}
+
+[dependencies]
+pulsar_game = {pulsar_game_dep}
+tracing = "0.1"
+tracing-subscriber = {{ version = "0.3", features = ["fmt", "env-filter"] }}
+"#,
+        name = spec.name,
+        version = spec.version,
+        description = if spec.description.is_empty() {
+            String::new()
+        } else {
+            format!("description = {:?}\n", spec.description)
+        },
+        pulsar_game_dep = pulsar_game.to_toml(&[]),
+    );
+
+    if spec.include_helio {
+        let helio = spec
+            .helio_dep
+            .clone()
+            .unwrap_or_else(|| DepSource::Git {
+                url: "https://github.com/Far-Beyond-Pulsar/Helio".into(),
+                rev: None,
+            });
+        out.push_str(&format!("helio = {}\n", helio.to_toml(&[])));
+    }
+
+    for (name, dep) in &spec.extra_deps {
+        out.push_str(&format!("{name} = {}\n", dep.source.to_toml(&dep.features)));
+    }
+
+    out
+}
+
+fn gen_main_rs(spec: &ProjectSpec) -> String {
+    let register_calls: String = spec
+        .blueprints
+        .iter()
+        .map(|bp| {
+            let ident = to_snake_case(&bp.name);
+            let ty = to_pascal_case(&bp.name);
+            format!(
+                "    game.actors.register(blueprints::{ident}::{ty}::new(), &mut game.world);\n"
+            )
+        })
+        .collect();
+
+    format!(
+        r#"//! {name} — generated by Pulsar Blueprint Compiler.
+
+use pulsar_game::prelude::*;
+
+mod blueprints;
+
+fn main() {{
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
+    tracing::info!("Starting {{}}", env!("CARGO_PKG_NAME"));
+
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
+    let mut game = TickLoop::new(TickMode::default(), threads);
+
+    // ── Register blueprint actors ─────────────────────────────────────────────
+{register_calls}
+    tracing::info!("World ready — entering tick loop");
+    game.run_blocking();
+}}
+"#,
+        name = spec.name,
+        register_calls = register_calls,
+    )
+}
+
+fn gen_blueprints_mod(spec: &ProjectSpec) -> String {
+    let mod_decls: String = spec
+        .blueprints
+        .iter()
+        .map(|bp| {
+            let ident = to_snake_case(&bp.name);
+            format!("pub mod {ident};\n")
+        })
+        .collect();
+
+    let use_decls: String = spec
+        .blueprints
+        .iter()
+        .map(|bp| {
+            let ident = to_snake_case(&bp.name);
+            let ty = to_pascal_case(&bp.name);
+            format!("pub use {ident}::{ty};\n")
+        })
+        .collect();
+
+    let register_body: String = spec
+        .blueprints
+        .iter()
+        .map(|bp| {
+            let ty = to_pascal_case(&bp.name);
+            format!("    actors.register({ty}::new(), world);\n")
+        })
+        .collect();
+
+    format!(
+        r#"//! Blueprint actor registry — generated by Pulsar Blueprint Compiler.
+//!
+//! Add new blueprints by placing a `.rs` file in this directory, implementing
+//! [`pulsar_game::Actor`], and calling `register_all` from `main`.
+
+{mod_decls}
+{use_decls}
+use pulsar_game::{{ActorRegistry, World}};
+
+/// Register every blueprint actor with the game world.
+///
+/// Called once at startup before the tick loop begins.
+pub fn register_all(world: &mut World, actors: &mut ActorRegistry) {{
+{register_body}}}
+"#,
+        mod_decls = mod_decls,
+        use_decls = use_decls,
+        register_body = register_body,
+    )
+}
+
+fn gen_blueprint_actor(bp: &CompiledBlueprint) -> String {
+    let ident = to_snake_case(&bp.name);
+    let ty = to_pascal_case(&bp.name);
+
+    let begin_play_body = if bp.has_begin_play {
+        format!("        logic::begin_play();\n")
+    } else {
+        "        // No begin_play event in this blueprint.\n".into()
+    };
+
+    let tick_body = if bp.has_tick {
+        format!("        logic::tick();\n")
+    } else {
+        "        // No tick event in this blueprint.\n".into()
+    };
+
+    // Indent the raw compiled source into the logic module.
+    let indented_source: String = bp
+        .source
+        .lines()
+        .map(|line| {
+            if line.trim().is_empty() {
+                "\n".into()
+            } else {
+                format!("    {line}\n")
+            }
+        })
+        .collect();
+
+    format!(
+        r#"//! Blueprint actor: `{ident}`
+//!
+//! Generated by Pulsar Blueprint Compiler.
+//! Edit the blueprint graph in the editor; do not hand-edit this file.
+
+use pulsar_game::prelude::*;
+
+// ── Actor ─────────────────────────────────────────────────────────────────────
+
+/// Actor for blueprint `{ident}`.
+pub struct {ty};
+
+impl {ty} {{
+    pub fn new() -> Self {{
+        Self
+    }}
+}}
+
+impl Default for {ty} {{
+    fn default() -> Self {{
+        Self::new()
+    }}
+}}
+
+impl Actor for {ty} {{
+    fn begin_play(&mut self, _entity: Entity, _world: &mut World) {{
+{begin_play_body}    }}
+
+    fn tick(&mut self, _entity: Entity, _world: &mut World, _time: GameTime) {{
+{tick_body}    }}
+}}
+
+// ── Blueprint logic ───────────────────────────────────────────────────────────
+//
+// Everything below is the raw output of the blueprint graph compiler.
+// You can read it to understand what your graph does, but changes here
+// will be overwritten the next time the blueprint is compiled.
+
+mod logic {{
+{indented_source}}}
+"#,
+        ident = ident,
+        ty = ty,
+        begin_play_body = begin_play_body,
+        tick_body = tick_body,
+        indented_source = indented_source,
+    )
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_spec() -> ProjectSpec {
+        let source = r#"
+pub fn begin_play() {
+    let x = add(1.0, 2.0);
+    print_number(x);
+}
+"#;
+        ProjectSpec::new("my_game")
+            .version("0.1.0")
+            .description("A test Pulsar game")
+            .add_blueprint(CompiledBlueprint::new("player_controller", source))
+            .add_blueprint(CompiledBlueprint::new("enemy_ai", "pub fn tick() { }")
+                .with_tick(true))
+    }
+
+    #[test]
+    fn generates_expected_files() {
+        let project = generate_project(&sample_spec());
+        let paths: Vec<&str> = project.file_paths().collect();
+
+        assert!(paths.contains(&"Cargo.toml"));
+        assert!(paths.contains(&"src/main.rs"));
+        assert!(paths.contains(&"src/blueprints/mod.rs"));
+        assert!(paths.contains(&"src/blueprints/player_controller.rs"));
+        assert!(paths.contains(&"src/blueprints/enemy_ai.rs"));
+    }
+
+    #[test]
+    fn cargo_toml_has_pulsar_game_dep() {
+        let project = generate_project(&sample_spec());
+        let toml = &project.files["Cargo.toml"];
+        assert!(toml.contains("pulsar_game"));
+        assert!(toml.contains("Far-Beyond-Pulsar/Pulsar-Native"));
+    }
+
+    #[test]
+    fn actor_file_contains_struct_and_impl() {
+        let project = generate_project(&sample_spec());
+        let actor = &project.files["src/blueprints/player_controller.rs"];
+        assert!(actor.contains("pub struct PlayerController"));
+        assert!(actor.contains("impl Actor for PlayerController"));
+        assert!(actor.contains("logic::begin_play()"));
+        // tick body should be a no-op comment because source has no fn tick
+        assert!(actor.contains("No tick event in this blueprint"));
+    }
+
+    #[test]
+    fn enemy_actor_wires_tick() {
+        let project = generate_project(&sample_spec());
+        let actor = &project.files["src/blueprints/enemy_ai.rs"];
+        assert!(actor.contains("logic::tick()"));
+    }
+
+    #[test]
+    fn mod_file_exports_all_actors() {
+        let project = generate_project(&sample_spec());
+        let modfile = &project.files["src/blueprints/mod.rs"];
+        assert!(modfile.contains("pub mod player_controller"));
+        assert!(modfile.contains("pub mod enemy_ai"));
+        assert!(modfile.contains("pub use player_controller::PlayerController"));
+        assert!(modfile.contains("pub use enemy_ai::EnemyAi"));
+        assert!(modfile.contains("fn register_all"));
+    }
+
+    #[test]
+    fn main_rs_registers_actors() {
+        let project = generate_project(&sample_spec());
+        let main = &project.files["src/main.rs"];
+        assert!(main.contains("game.actors.register"));
+        assert!(main.contains("PlayerController::new()"));
+        assert!(main.contains("EnemyAi::new()"));
+        assert!(main.contains("game.run_blocking()"));
+    }
+
+    #[test]
+    fn snake_to_pascal() {
+        assert_eq!(to_pascal_case("player_controller"), "PlayerController");
+        assert_eq!(to_pascal_case("enemy_ai"), "EnemyAi");
+        assert_eq!(to_pascal_case("my_cool_actor"), "MyCoolActor");
+    }
+
+    #[test]
+    fn pascal_to_snake() {
+        assert_eq!(to_snake_case("PlayerController"), "player_controller");
+        assert_eq!(to_snake_case("EnemyAI"), "enemy_ai");
+        assert_eq!(to_snake_case("my_cool_actor"), "my_cool_actor");
+    }
+
+    #[test]
+    fn write_to_dir() {
+        let project = generate_project(&sample_spec());
+        let dir = std::env::temp_dir().join("pulsar_project_gen_test");
+        project.write_to_dir(&dir).unwrap();
+
+        assert!(dir.join("Cargo.toml").exists());
+        assert!(dir.join("src/main.rs").exists());
+        assert!(dir.join("src/blueprints/mod.rs").exists());
+        assert!(dir.join("src/blueprints/player_controller.rs").exists());
+
+        // Cleanup
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}

@@ -4,6 +4,29 @@
 //!
 //! This crate provides the main API for compiling Blueprint graphs within the engine,
 //! delegating the heavy lifting to PBGC while providing engine-specific conveniences.
+//!
+//! ## Project generation
+//!
+//! Use [`project::generate_project`] to turn a set of compiled blueprints into a
+//! complete, ready-to-run Pulsar game crate:
+//!
+//! ```no_run
+//! use blueprint_compiler::{compile_blueprint, GraphDescription};
+//! use blueprint_compiler::project::{CompiledBlueprint, ProjectSpec, generate_project};
+//!
+//! let graph = GraphDescription::new("player_controller");
+//! let source = compile_blueprint(&graph).unwrap();
+//!
+//! let project = ProjectSpec::new("my_game")
+//!     .description("My first Pulsar game")
+//!     .add_blueprint(CompiledBlueprint::new("player_controller", source));
+//!
+//! generate_project(&project)
+//!     .write_to_dir("./output/my_game")
+//!     .unwrap();
+//! ```
+
+pub mod project;
 
 // Re-export the main PBGC API
 pub use pbgc::{

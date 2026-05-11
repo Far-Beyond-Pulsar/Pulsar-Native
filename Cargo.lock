@@ -9343,6 +9343,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_game"
+version = "0.1.0"
+dependencies = [
+ "ahash 0.8.12",
+ "once_cell",
+ "profiling 0.1.0",
+ "smol 1.3.0",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
@@ -13722,6 +13733,7 @@ dependencies = [
 name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
+ "blueprint_compiler",
  "chrono",
  "core-foundation-sys",
  "core-graphics2",
