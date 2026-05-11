@@ -26,22 +26,22 @@ impl MistralProvider {
             ModelDescriptor {
                 id: "mistral-large-latest",
                 label: "Mistral Large",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "mistral-medium-latest",
                 label: "Mistral Medium",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "codestral-latest",
                 label: "Codestral",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "ministral-8b-latest",
                 label: "Ministral 8B",
-                supports_tools: false, context_tokens: 0,
+                supports_tools: false, context_tokens: 0, compact_model: None,
             },
         ]
     }

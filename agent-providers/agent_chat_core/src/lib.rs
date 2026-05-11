@@ -19,9 +19,12 @@ pub struct ModelDescriptor {
     pub id: &'static str,
     pub label: &'static str,
     pub supports_tools: bool,
-    /// Maximum context window in tokens. 0 means unknown — callers should use a
-    /// conservative fallback (e.g. 8 192 tokens).
+    /// Maximum context window in tokens. 0 means unknown.
     pub context_tokens: u32,
+    /// A smaller/cheaper model in the same provider used for context compaction.
+    /// Must be a valid model ID served by the same provider.
+    /// `None` means use the current model.
+    pub compact_model: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]

@@ -36,31 +36,11 @@ impl OpenAiProvider {
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
-            ModelDescriptor {
-                id: "gpt-4.1",
-                label: "GPT-4.1",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "gpt-4.1-mini",
-                label: "GPT-4.1 Mini",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "gpt-4o",
-                label: "GPT-4o",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "o4-mini",
-                label: "o4 Mini",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "o3",
-                label: "o3",
-                supports_tools: true, context_tokens: 0,
-            },
+            ModelDescriptor { id: "gpt-4.1",      label: "GPT-4.1",      supports_tools: true, context_tokens: 1_047_576, compact_model: Some("gpt-4.1-mini") },
+            ModelDescriptor { id: "gpt-4.1-mini",  label: "GPT-4.1 Mini", supports_tools: true, context_tokens: 1_047_576, compact_model: None },
+            ModelDescriptor { id: "gpt-4o",        label: "GPT-4o",       supports_tools: true, context_tokens: 128_000,   compact_model: Some("gpt-4.1-mini") },
+            ModelDescriptor { id: "o4-mini",       label: "o4 Mini",      supports_tools: true, context_tokens: 200_000,   compact_model: None },
+            ModelDescriptor { id: "o3",            label: "o3",           supports_tools: true, context_tokens: 200_000,   compact_model: Some("gpt-4.1-mini") },
         ]
     }
 
@@ -662,7 +642,7 @@ impl OpenAiCompatibleProvider {
                 id: Self::static_str(model_id),
                 label: Self::static_str(label),
                 supports_tools,
-                context_tokens: 0,
+                context_tokens: 0, compact_model: None,
             })
             .collect::<Vec<_>>();
 
@@ -692,7 +672,7 @@ impl OpenAiCompatibleProvider {
                 id: Self::static_str(model_id),
                 label: Self::static_str(label),
                 supports_tools,
-                context_tokens: 0,
+                context_tokens: 0, compact_model: None,
             })
             .collect::<Vec<_>>();
 

@@ -18,6 +18,7 @@ impl AgentChatPanel {
                 label: Self::static_str(model.label.clone()),
                 supports_tools: model.supports_tools,
                 context_tokens: 0,
+                compact_model: None,
             })
             .collect::<Vec<_>>();
 

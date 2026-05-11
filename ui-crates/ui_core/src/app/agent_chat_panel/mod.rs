@@ -191,6 +191,7 @@ impl AgentChatPanel {
                             label: m.label,
                             supports_tools: m.supports_tools,
                             context_tokens: m.context_tokens,
+                            compact_model: m.compact_model,
                         })
                         .collect(),
                 ),
@@ -204,14 +205,26 @@ impl AgentChatPanel {
                 .map(Self::custom_provider_to_definition),
         );
 
-        // Mark providers whose availability() is Wip as WIP in the UI.
+        // Providers that are not immediately usable: Wip (not implemented) or
+        // RequiresAuth (implemented but no API key configured). Both are shown
+        // greyed-out at the bottom of the sorted dropdown.
         let wip_providers: HashMap<&'static str, String> = provider_registry
             .catalog(&env)
             .into_iter()
             .filter(|e| {
-                matches!(e.availability.state, agent_chat_core::AvailabilityState::Wip)
+                matches!(
+                    e.availability.state,
+                    agent_chat_core::AvailabilityState::Wip
+                        | agent_chat_core::AvailabilityState::RequiresAuth
+                )
             })
-            .map(|e| (e.metadata.id, "Not yet implemented".to_string()))
+            .map(|e| {
+                let reason = match e.availability.state {
+                    agent_chat_core::AvailabilityState::Wip => "Not yet implemented".to_string(),
+                    _ => "API key not configured".to_string(),
+                };
+                (e.metadata.id, reason)
+            })
             .collect();
 
         // Sort: active providers alphabetically first, WIP/disabled alphabetically at the bottom.

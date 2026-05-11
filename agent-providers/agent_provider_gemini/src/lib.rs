@@ -26,22 +26,22 @@ impl GeminiProvider {
             ModelDescriptor {
                 id: "gemini-2.5-pro",
                 label: "Gemini 2.5 Pro",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "gemini-2.5-flash",
                 label: "Gemini 2.5 Flash",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "gemini-2.0-flash",
                 label: "Gemini 2.0 Flash",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "gemini-2.0-flash-lite",
                 label: "Gemini 2.0 Flash Lite",
-                supports_tools: false, context_tokens: 0,
+                supports_tools: false, context_tokens: 0, compact_model: None,
             },
         ]
     }

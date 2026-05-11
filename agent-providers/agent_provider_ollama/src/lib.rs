@@ -25,13 +25,7 @@ impl OllamaProvider {
     }
 
     fn default_models() -> Vec<ModelDescriptor> {
-        vec![
-            ModelDescriptor { id: "llama3.1:8b",            label: "Llama 3.1 8B",         supports_tools: true,  context_tokens: 131_072 },
-            ModelDescriptor { id: "qwen2.5-coder:7b",       label: "Qwen 2.5 Coder 7B",    supports_tools: true,  context_tokens: 131_072 },
-            ModelDescriptor { id: "llama3.1:70b",           label: "Llama 3.1 70B",         supports_tools: true,  context_tokens: 131_072 },
-            ModelDescriptor { id: "mistral-nemo:12b",       label: "Mistral Nemo 12B",      supports_tools: true,  context_tokens: 128_000 },
-            ModelDescriptor { id: "deepseek-coder-v2:16b",  label: "DeepSeek Coder V2 16B", supports_tools: true,  context_tokens: 131_072 },
-        ]
+        vec![]
     }
 
     fn resolve_model(request_model: &str, env: &dyn ProviderEnvironment) -> String {
@@ -239,6 +233,7 @@ impl OllamaProvider {
                             label: Box::leak(id.into_boxed_str()),
                             supports_tools: true,
                             context_tokens,
+                            compact_model: None,
                         })
                     })
                     .collect::<Vec<_>>()

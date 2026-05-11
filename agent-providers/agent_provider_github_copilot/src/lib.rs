@@ -29,22 +29,22 @@ impl GithubCopilotProvider {
             ModelDescriptor {
                 id: "openai/gpt-4.1",
                 label: "GPT-4.1 (GitHub Models)",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "openai/gpt-5-mini",
                 label: "GPT-5 mini (GitHub Models)",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "anthropic/claude-sonnet-4-6",
                 label: "Claude Sonnet 4.6 (GitHub Models)",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "google/gemini-2.5-pro",
                 label: "Gemini 2.5 Pro (GitHub Models)",
-                supports_tools: true, context_tokens: 0,
+                supports_tools: true, context_tokens: 0, compact_model: None,
             },
         ]
     }

@@ -29,13 +29,19 @@ impl AgentChatPanel {
             .collect()
     }
 
+    /// Compact the message history to fit within `max_chars`.
+    ///
+    /// Returns `(compacted_messages, dropped_messages_opt)`.
+    /// `dropped_messages_opt` is `Some(dropped)` when messages were removed —
+    /// the caller should produce a summary of `dropped` and re-insert it as a
+    /// `System` message before calling the provider.
     fn compact_provider_messages(
         messages: Vec<ChatMessage>,
         max_chars: usize,
-    ) -> (Vec<ChatMessage>, bool) {
+    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
         let total_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
         if total_chars <= max_chars {
-            return (messages, false);
+            return (messages, None);
         }
 
         let mut system_messages = Vec::new();
@@ -99,41 +105,96 @@ impl AgentChatPanel {
         if dropped_count == 0 {
             let mut merged = system_messages;
             merged.extend(kept_dialog_reversed);
-            return (merged, false);
+            return (merged, None);
         }
 
-        let dropped = &dialog_messages[..dropped_count];
-        let mut summary_lines = Vec::new();
-        for message in dropped.iter().take(18) {
-            let role = match message.role {
-                ChatRole::User => "user",
-                ChatRole::Assistant => "assistant",
-                ChatRole::Tool => "tool",
-                ChatRole::System => "system",
-            };
+        let dropped: Vec<ChatMessage> = dialog_messages[..dropped_count].to_vec();
 
-            let snippet = message
-                .content
-                .replace('\n', " ")
-                .chars()
-                .take(220)
-                .collect::<String>();
-            summary_lines.push(format!("- {role}: {snippet}"));
-        }
-
+        // Return the kept messages WITHOUT a summary placeholder — the caller
+        // is responsible for generating the summary (using compact_model if
+        // available) and inserting it before the kept dialog.
         let mut compacted = system_messages;
-        compacted.push(ChatMessage {
-            role: ChatRole::System,
-            content: format!(
-                "Conversation summary (auto-compacted to fit context window):\n{}",
-                summary_lines.join("\n")
-            ),
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
         compacted.extend(kept_dialog_reversed);
 
-        (compacted, true)
+        (compacted, Some(dropped))
+    }
+
+    /// Call the provider with `compact_model` (or the current model) to produce
+    /// a concise AI-generated summary of `dropped_messages`.
+    /// Falls back to a heuristic snippet summary on any error.
+    fn ai_summarize_dropped(
+        dropped: &[ChatMessage],
+        provider: &Arc<dyn agent_chat_core::ChatProvider>,
+        compact_model: &str,
+        token: &str,
+    ) -> String {
+        let formatted: String = dropped
+            .iter()
+            .take(40)
+            .map(|m| {
+                let role = match m.role {
+                    ChatRole::User => "User",
+                    ChatRole::Assistant => "AI",
+                    ChatRole::Tool => "Tool",
+                    ChatRole::System => "System",
+                };
+                let snippet: String = m.content.chars().take(600).collect();
+                format!("[{role}]: {snippet}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let summary_request = agent_chat_core::ChatRequest {
+            model: compact_model.to_string(),
+            messages: vec![
+                ChatMessage {
+                    role: ChatRole::System,
+                    content: "You are a conversation summarizer. Given a list of messages, \
+                              produce a concise summary (max 250 words) that captures: \
+                              key decisions, important findings, files or tools used, \
+                              and any critical context needed to continue the conversation. \
+                              Write in past tense. Be specific, not vague."
+                        .to_string(),
+                    tool_call_id: None,
+                    tool_calls: vec![],
+                },
+                ChatMessage {
+                    role: ChatRole::User,
+                    content: format!(
+                        "Summarize these earlier conversation messages:\n\n{formatted}"
+                    ),
+                    tool_call_id: None,
+                    tool_calls: vec![],
+                },
+            ],
+            enable_tool_calls: false,
+            tools: vec![],
+            temperature: Some(0.3),
+            top_p: Some(1.0),
+            max_tokens: Some(350),
+        };
+
+        provider
+            .chat_completion(token, &summary_request)
+            .ok()
+            .and_then(|r| r.assistant_message)
+            .unwrap_or_else(|| {
+                // Heuristic fallback
+                dropped
+                    .iter()
+                    .take(12)
+                    .map(|m| {
+                        let role = match m.role {
+                            ChatRole::User => "user",
+                            ChatRole::Assistant => "assistant",
+                            _ => "system",
+                        };
+                        let snippet: String = m.content.replace('\n', " ").chars().take(180).collect();
+                        format!("- {role}: {snippet}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            })
     }
 
     /// Scan `text` for `@path` tokens and inject matching file contents as a
@@ -577,24 +638,49 @@ impl AgentChatPanel {
         let context_chars = self.active_context_chars();
         let history_budget = context_chars.saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET);
 
-        let provider_messages = self.build_provider_history_messages();
-        let (provider_messages, was_compacted) =
-            Self::compact_provider_messages(provider_messages, history_budget);
+        // Unwrap token early so it can be used for the compaction summary call.
+        let token = token.unwrap_or_default();
 
-        // Extract the summary text before provider_messages is moved into ChatRequest.
-        let initial_compaction_summary: Option<String> = if was_compacted {
-            Some(
+        // Resolve the compact model: use the specified one or fall back to the current model.
+        let compact_model: String = self
+            .active_model()
+            .and_then(|m| m.compact_model)
+            .unwrap_or_else(|| model.as_str())
+            .to_string();
+
+        let provider_messages_raw = self.build_provider_history_messages();
+        let (mut provider_messages, dropped_opt) =
+            Self::compact_provider_messages(provider_messages_raw, history_budget);
+
+        // If messages were dropped, call the compact model to produce a real summary.
+        let initial_compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
+            let summary = Self::ai_summarize_dropped(
+                &dropped,
+                &provider,
+                &compact_model,
+                &token,
+            );
+            // Insert the AI summary as a system message at the top of kept history.
+            provider_messages.insert(
+                // After system messages, before dialog
                 provider_messages
                     .iter()
-                    .find(|m| m.role == ChatRole::System && m.content.contains("auto-compacted"))
-                    .map(|m| m.content.clone())
-                    .unwrap_or_else(|| "Conversation compacted to fit context window.".to_string()),
-            )
+                    .position(|m| m.role != ChatRole::System)
+                    .unwrap_or(0),
+                ChatMessage {
+                    role: ChatRole::System,
+                    content: format!(
+                        "Conversation summary (auto-compacted):\n{summary}"
+                    ),
+                    tool_call_id: None,
+                    tool_calls: vec![],
+                },
+            );
+            Some(summary)
         } else {
             None
         };
 
-        let token = token.unwrap_or_default();
         let tool_schemas = self.tool_registry.available_tools_schema();
 
         // Validate and convert tool schemas
@@ -642,7 +728,8 @@ impl AgentChatPanel {
         };
         eprintln!(
             "[agent_chat] start provider={} model={} messages={} compacted={}",
-            provider_id, request.model, request.messages.len(), was_compacted
+            provider_id, request.model, request.messages.len(),
+            initial_compaction_summary.is_some()
         );
 
         enum StreamEvent {
@@ -692,7 +779,8 @@ impl AgentChatPanel {
         let (cancel_tx, cancel_rx) = smol::channel::bounded::<()>(1);
         self.cancel_tx = Some(cancel_tx);
 
-        let context_budget = history_budget; // passed into the worker for in-loop compaction
+        let context_budget = history_budget;
+        let compact_model_for_worker = compact_model.clone(); // used for in-loop AI summarization
         let completion_for_worker = completion_sent.clone();
         std::thread::spawn(move || {
             let mut current_messages = request.messages.clone();
@@ -908,26 +996,38 @@ impl AgentChatPanel {
                             let total_chars: usize =
                                 current_messages.iter().map(|m| m.content.len()).sum();
                             if total_chars > context_budget {
-                                let (compacted, did_compact) =
+                                let (mut compacted, dropped_opt) =
                                     AgentChatPanel::compact_provider_messages(
                                         std::mem::take(&mut current_messages),
                                         context_budget,
                                     );
-                                current_messages = compacted;
-                                if did_compact {
-                                    let summary = current_messages
+                                if let Some(dropped) = dropped_opt {
+                                    let summary = AgentChatPanel::ai_summarize_dropped(
+                                        &dropped,
+                                        &provider_for_task,
+                                        &compact_model_for_worker,
+                                        &token,
+                                    );
+                                    // Insert AI summary before the kept dialog.
+                                    let insert_at = compacted
                                         .iter()
-                                        .find(|m| {
-                                            m.role == ChatRole::System
-                                                && m.content.contains("auto-compacted")
-                                        })
-                                        .map(|m| m.content.clone())
-                                        .unwrap_or_else(|| {
-                                            "Context compacted to fit window.".to_string()
-                                        });
+                                        .position(|m| m.role != ChatRole::System)
+                                        .unwrap_or(0);
+                                    compacted.insert(
+                                        insert_at,
+                                        ChatMessage {
+                                            role: ChatRole::System,
+                                            content: format!(
+                                                "Conversation summary (auto-compacted):\n{summary}"
+                                            ),
+                                            tool_call_id: None,
+                                            tool_calls: vec![],
+                                        },
+                                    );
                                     let _ = tx_for_chunks
                                         .try_send(StreamEvent::ContextCompacted(summary));
                                 }
+                                current_messages = compacted;
                             }
 
                             continue;

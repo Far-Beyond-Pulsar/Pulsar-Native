@@ -27,19 +27,19 @@ impl LmStudioProvider {
                 id: "local-default",
                 label: "Local Default",
                 supports_tools: false,
-                context_tokens: 0,
+                context_tokens: 0, compact_model: None,
             },
             ModelDescriptor {
                 id: "qwen2.5-coder-14b",
                 label: "Qwen 2.5 Coder 14B",
                 supports_tools: false,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
             ModelDescriptor {
                 id: "llama-3.1-8b-instruct",
                 label: "Llama 3.1 8B Instruct",
                 supports_tools: false,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
         ]
     }

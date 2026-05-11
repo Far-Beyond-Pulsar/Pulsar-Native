@@ -27,19 +27,19 @@ impl VllmProvider {
                 id: "meta-llama/Llama-3.1-70B-Instruct",
                 label: "Llama 3.1 70B Instruct",
                 supports_tools: true,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
             ModelDescriptor {
                 id: "Qwen/Qwen2.5-Coder-32B-Instruct",
                 label: "Qwen 2.5 Coder 32B Instruct",
                 supports_tools: true,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
             ModelDescriptor {
                 id: "mistralai/Mistral-Nemo-Instruct-2407",
                 label: "Mistral Nemo Instruct 2407",
                 supports_tools: false,
-                context_tokens: 128000,
+                context_tokens: 128000, compact_model: None,
             },
         ]
     }

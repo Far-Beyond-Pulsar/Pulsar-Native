@@ -98,6 +98,9 @@ pub struct ModelDefinition {
     pub supports_tools: bool,
     /// Maximum context window in tokens. 0 means unknown.
     pub context_tokens: u32,
+    /// Cheaper model in the same provider used for context compaction summaries.
+    /// `None` → use the current model.
+    pub compact_model: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]

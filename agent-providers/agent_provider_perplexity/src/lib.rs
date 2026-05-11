@@ -27,19 +27,19 @@ impl PerplexityProvider {
                 id: "sonar-pro",
                 label: "Sonar Pro",
                 supports_tools: true,
-                context_tokens: 200000,
+                context_tokens: 200000, compact_model: None,
             },
             ModelDescriptor {
                 id: "sonar",
                 label: "Sonar",
                 supports_tools: true,
-                context_tokens: 200000,
+                context_tokens: 200000, compact_model: None,
             },
             ModelDescriptor {
                 id: "sonar-reasoning",
                 label: "Sonar Reasoning",
                 supports_tools: false,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
         ]
     }

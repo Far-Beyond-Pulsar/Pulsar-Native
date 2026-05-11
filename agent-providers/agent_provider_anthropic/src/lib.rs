@@ -24,21 +24,9 @@ impl AnthropicProvider {
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
-            ModelDescriptor {
-                id: "claude-3-7-sonnet-latest",
-                label: "Claude 3.7 Sonnet",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "claude-3-5-sonnet-latest",
-                label: "Claude 3.5 Sonnet",
-                supports_tools: true, context_tokens: 0,
-            },
-            ModelDescriptor {
-                id: "claude-3-5-haiku-latest",
-                label: "Claude 3.5 Haiku",
-                supports_tools: true, context_tokens: 0,
-            },
+            ModelDescriptor { id: "claude-3-7-sonnet-latest", label: "Claude 3.7 Sonnet",   supports_tools: true, context_tokens: 200_000, compact_model: Some("claude-3-5-haiku-latest") },
+            ModelDescriptor { id: "claude-3-5-sonnet-latest", label: "Claude 3.5 Sonnet",   supports_tools: true, context_tokens: 200_000, compact_model: Some("claude-3-5-haiku-latest") },
+            ModelDescriptor { id: "claude-3-5-haiku-latest",  label: "Claude 3.5 Haiku",    supports_tools: true, context_tokens: 200_000, compact_model: None },
         ]
     }
 

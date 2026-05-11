@@ -27,7 +27,7 @@ impl DockerModelRunnerProvider {
         vec![ModelDescriptor {
             id: "ai/gemma4:4B",
             label: "Gemma 4 4B (Docker)",
-            supports_tools: true, context_tokens: 0,
+            supports_tools: true, context_tokens: 0, compact_model: None,
         }]
     }
 
@@ -448,7 +448,7 @@ impl ChatProvider for DockerModelRunnerProvider {
                         Some(ModelDescriptor {
                             id: Box::leak(id.clone().into_boxed_str()),
                             label: Box::leak(id.into_boxed_str()),
-                            supports_tools: true, context_tokens: 0,
+                            supports_tools: true, context_tokens: 0, compact_model: None,
                         })
                     })
                     .collect::<Vec<_>>()

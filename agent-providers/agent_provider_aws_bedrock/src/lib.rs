@@ -18,31 +18,31 @@ impl AwsBedrockProvider {
                 id: "anthropic.claude-opus-4-1",
                 label: "Claude Opus 4.1",
                 supports_tools: true,
-                context_tokens: 200000,
+                context_tokens: 200000, compact_model: None,
             },
             ModelDescriptor {
                 id: "anthropic.claude-3-7-sonnet",
                 label: "Claude 3.7 Sonnet",
                 supports_tools: true,
-                context_tokens: 200000,
+                context_tokens: 200000, compact_model: None,
             },
             ModelDescriptor {
                 id: "anthropic.claude-3-5-sonnet-v2",
                 label: "Claude 3.5 Sonnet v2",
                 supports_tools: true,
-                context_tokens: 200000,
+                context_tokens: 200000, compact_model: None,
             },
             ModelDescriptor {
                 id: "amazon.nova-pro-v1",
                 label: "Amazon Nova Pro",
                 supports_tools: true,
-                context_tokens: 300000,
+                context_tokens: 300000, compact_model: None,
             },
             ModelDescriptor {
                 id: "meta.llama3-1-70b-instruct-v1",
                 label: "Llama 3.1 70B Instruct",
                 supports_tools: false,
-                context_tokens: 131072,
+                context_tokens: 131072, compact_model: None,
             },
         ]
     }
