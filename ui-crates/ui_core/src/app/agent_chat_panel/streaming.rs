@@ -1260,8 +1260,15 @@ impl AgentChatPanel {
                             StreamEvent::ThinkingDone => {
                                 let done_ms = now_ms();
                                 for (ix, item) in panel.display_items.iter_mut().enumerate().rev() {
-                                    if let DisplayItem::ThinkingBlock { is_done, finished_at_ms, .. } = item {
+                                    if let DisplayItem::ThinkingBlock {
+                                        is_done,
+                                        is_expanded,
+                                        finished_at_ms,
+                                        ..
+                                    } = item
+                                    {
                                         *is_done = true;
+                                        *is_expanded = false; // auto-collapse when thinking stops
                                         *finished_at_ms = Some(done_ms);
                                         panel.display_item_heights.remove(&ix);
                                         break;
