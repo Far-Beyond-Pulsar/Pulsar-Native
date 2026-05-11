@@ -72,69 +72,6 @@ fn to_pascal_case(name: &str) -> String {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/// Dependency reference for the generated `Cargo.toml`.
-#[derive(Debug, Clone)]
-pub enum DepSource {
-    /// A crates.io version string, e.g. `"0.1"`.
-    CratesIo(String),
-    /// A git URL with an optional rev/tag/branch.
-    Git {
-        url: String,
-        rev: Option<String>,
-    },
-    /// A local filesystem path (relative to the generated project root).
-    Path(String),
-}
-
-impl DepSource {
-    /// Serialize to the value side of a TOML dependency entry.
-    fn to_toml(&self, features: &[String]) -> String {
-        let feat = if features.is_empty() {
-            String::new()
-        } else {
-            let list: Vec<String> = features.iter().map(|f| format!("\"{f}\"")).collect();
-            format!(", features = [{}]", list.join(", "))
-        };
-
-        match self {
-            DepSource::CratesIo(ver) => {
-                if feat.is_empty() {
-                    format!("\"{}\"", ver)
-                } else {
-                    format!("{{ version = \"{}\"{} }}", ver, feat)
-                }
-            }
-            DepSource::Git { url, rev: None } => {
-                format!("{{ git = \"{}\"{} }}", url, feat)
-            }
-            DepSource::Git { url, rev: Some(rev) } => {
-                format!("{{ git = \"{}\", rev = \"{}\"{} }}", url, rev, feat)
-            }
-            DepSource::Path(p) => {
-                format!("{{ path = \"{}\"{} }}", p, feat)
-            }
-        }
-    }
-}
-
-/// A single dependency entry.
-#[derive(Debug, Clone)]
-pub struct Dependency {
-    pub source: DepSource,
-    pub features: Vec<String>,
-}
-
-impl Dependency {
-    pub fn new(source: DepSource) -> Self {
-        Self { source, features: Vec::new() }
-    }
-
-    pub fn with_features(mut self, features: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.features = features.into_iter().map(|f| f.into()).collect();
-        self
-    }
-}
-
 // ── CompiledBlueprint ─────────────────────────────────────────────────────────
 
 /// A blueprint that has already been compiled to Rust source by `compile_blueprint`.
@@ -186,14 +123,6 @@ pub struct ProjectSpec {
     pub version: String,
     pub description: String,
     pub blueprints: Vec<CompiledBlueprint>,
-    /// Extra Cargo dependencies beyond the defaults.
-    pub extra_deps: BTreeMap<String, Dependency>,
-    /// If true, include `helio` (wgpu renderer) in the generated project.
-    pub include_helio: bool,
-    /// Override for the `pulsar_game` dependency source.
-    pub pulsar_game_dep: Option<DepSource>,
-    /// Override for the `helio` dependency source.
-    pub helio_dep: Option<DepSource>,
 }
 
 impl ProjectSpec {
@@ -204,10 +133,6 @@ impl ProjectSpec {
             version: "0.1.0".into(),
             description: String::new(),
             blueprints: Vec::new(),
-            extra_deps: BTreeMap::new(),
-            include_helio: true,
-            pulsar_game_dep: None,
-            helio_dep: None,
         }
     }
 
@@ -226,30 +151,6 @@ impl ProjectSpec {
     /// Add a compiled blueprint to the project.
     pub fn add_blueprint(mut self, bp: CompiledBlueprint) -> Self {
         self.blueprints.push(bp);
-        self
-    }
-
-    /// Add an extra Cargo dependency.
-    pub fn add_dep(mut self, name: impl Into<String>, dep: Dependency) -> Self {
-        self.extra_deps.insert(name.into(), dep);
-        self
-    }
-
-    /// Whether to include the Helio wgpu renderer (default: `true`).
-    pub fn include_helio(mut self, yes: bool) -> Self {
-        self.include_helio = yes;
-        self
-    }
-
-    /// Override the `pulsar_game` dependency source.
-    pub fn pulsar_game_dep(mut self, source: DepSource) -> Self {
-        self.pulsar_game_dep = Some(source);
-        self
-    }
-
-    /// Override the `helio` dependency source.
-    pub fn helio_dep(mut self, source: DepSource) -> Self {
-        self.helio_dep = Some(source);
         self
     }
 }
@@ -304,88 +205,6 @@ pub fn generate_project(spec: &ProjectSpec) -> GeneratedProject {
 }
 
 // ── File generators ───────────────────────────────────────────────────────────
-
-fn gen_cargo_toml(spec: &ProjectSpec) -> String {
-    let pulsar_game = spec
-        .pulsar_game_dep
-        .clone()
-        .unwrap_or_else(|| DepSource::Git {
-            url: "https://github.com/Far-Beyond-Pulsar/Pulsar-Native".into(),
-            rev: None,
-        });
-
-    let mut out = format!(
-        r#"[package]
-name = "{name}"
-version = "{version}"
-edition = "2021"
-{description}
-
-[dependencies]
-pulsar_game = {pulsar_game_dep}
-pulsar_reflection = {{ git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native" }}
-engine_class_derive = {{ git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Native" }}
-tracing = "0.1"
-tracing-subscriber = {{ version = "0.3", features = ["fmt", "env-filter"] }}
-"#,
-        name = spec.name,
-        version = spec.version,
-        description = if spec.description.is_empty() {
-            String::new()
-        } else {
-            format!("description = {:?}\n", spec.description)
-        },
-        pulsar_game_dep = pulsar_game.to_toml(&[]),
-    );
-
-    if spec.include_helio {
-        let helio = spec
-            .helio_dep
-            .clone()
-            .unwrap_or_else(|| DepSource::Git {
-                url: "https://github.com/Far-Beyond-Pulsar/Helio".into(),
-                rev: None,
-            });
-        out.push_str(&format!("helio = {}\n", helio.to_toml(&[])));
-    }
-
-    for (name, dep) in &spec.extra_deps {
-        out.push_str(&format!("{name} = {}\n", dep.source.to_toml(&dep.features)));
-    }
-
-    out
-}
-
-fn gen_main_rs(spec: &ProjectSpec) -> String {
-    format!(
-        r#"//! {name} — generated by Pulsar Blueprint Compiler.
-
-use pulsar_game::prelude::*;
-
-mod blueprints;
-
-fn main() {{
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        )
-        .init();
-
-    tracing::info!("Starting {{}}", env!("CARGO_PKG_NAME"));
-
-    let threads = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
-
-    let mut game = TickLoop::new(TickMode::default(), threads);
-
-    tracing::info!("World ready — entering tick loop");
-    game.run_blocking();
-}}
-"#,
-        name = spec.name,
-    )
-}
 
 fn gen_blueprints_mod(spec: &ProjectSpec) -> String {
     let mod_decls: String = spec
