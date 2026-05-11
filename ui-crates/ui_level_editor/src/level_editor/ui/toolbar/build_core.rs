@@ -2,9 +2,11 @@
 //!
 //! On click:
 //! 1. Shows an immediate "Building…" toast.
-//! 2. Spawns a `std::thread` that scans `<project>/blueprints/*.json`, compiles
-//!    each graph with `blueprint_compiler`, calls `generate_project`, and writes
-//!    the output crate to `<project>/build/<name>/`.
+//! 2. Spawns a `std::thread` that walks the project tree for blueprint folders
+//!    (any directory containing `graph_save.json`, the same convention used by
+//!    the file manager), compiles each graph with `blueprint_compiler`, calls
+//!    `generate_project`, and writes the output directly into the project root
+//!    (which is already the Rust crate).
 //! 3. Sends the `Result<PathBuf, String>` back via a `smol::channel`.
 //! 4. `App::spawn` awaits the channel on the main thread and pushes a success
 //!    or error toast — the standard pattern used across this codebase.
@@ -109,36 +111,30 @@ fn project_crate_name(root: &PathBuf) -> String {
 /// Full build pipeline — runs on a background OS thread.
 fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
     let crate_name = project_crate_name(project_root);
-    let bp_dir = project_root.join("blueprints");
-    let out_dir = project_root.join("build").join(&crate_name);
+    // The project root IS the crate — write directly into it.
+    let out_dir = project_root.clone();
 
     tracing::info!("[BuildCore] Starting build → {}", out_dir.display());
 
-    let blueprint_paths: Vec<PathBuf> = if !bp_dir.exists() {
-        tracing::info!("[BuildCore] No blueprints/ dir — generating skeleton project");
-        vec![]
-    } else {
-        std::fs::read_dir(&bp_dir)
-            .map_err(|e| format!("Cannot read blueprints dir: {e}"))?
-            .filter_map(|e| e.ok())
-            .map(|e| e.path())
-            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
-            .collect()
-    };
+    // Blueprints are stored as folders containing graph_save.json — walk the whole
+    // project tree to find them (same convention used by the file manager).
+    let blueprint_paths: Vec<PathBuf> = find_blueprint_folders(project_root);
 
     tracing::info!("[BuildCore] {} blueprint(s) found", blueprint_paths.len());
 
     let mut compiled: Vec<CompiledBlueprint> = Vec::with_capacity(blueprint_paths.len());
 
     for path in &blueprint_paths {
+        // The folder name is the blueprint/class name.
         let name = path
-            .file_stem()
+            .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("unnamed")
             .to_owned();
 
-        let raw = std::fs::read_to_string(path)
-            .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
+        let graph_file = path.join("graph_save.json");
+        let raw = std::fs::read_to_string(&graph_file)
+            .map_err(|e| format!("Cannot read {}: {e}", graph_file.display()))?;
 
         let graph: GraphDescription = serde_json::from_str(&raw)
             .map_err(|e| format!("Cannot parse blueprint {name}: {e}"))?;
@@ -167,4 +163,25 @@ fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
 
     tracing::info!("[BuildCore] Done → {}", out_dir.display());
     Ok(out_dir)
+}
+
+/// Walk the project tree and return every directory that contains a
+/// `graph_save.json` file — the same convention used by the file manager.
+fn find_blueprint_folders(root: &PathBuf) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    fn walk(dir: &PathBuf, results: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.join("graph_save.json").exists() {
+                    results.push(path);
+                } else {
+                    walk(&path, results);
+                }
+            }
+        }
+    }
+    walk(root, &mut results);
+    results
 }
