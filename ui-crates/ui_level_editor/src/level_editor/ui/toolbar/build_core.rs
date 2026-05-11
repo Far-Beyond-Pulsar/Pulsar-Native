@@ -1,7 +1,8 @@
 //! "Build Core" toolbar button.
 //!
-//! Calls `blueprint_compiler::compile_project` — all blueprint parsing and
-//! type conversion is the compiler's responsibility, not ours.
+//! Triggers `cargo build` in the open project root.  This module has zero
+//! knowledge of blueprints or any other subsystem — it just invokes the
+//! standard Rust build toolchain.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -11,8 +12,6 @@ use gpui::*;
 use ui::button::{Button, ButtonVariants as _};
 use ui::notification::Notification;
 use ui::{ContextModal as _, Disableable as _, IconName};
-
-use blueprint_compiler::project::{ProjectSpec, generate_project};
 
 use super::super::state::LevelEditorState;
 
@@ -61,11 +60,9 @@ impl BuildCoreButton {
                     if let Ok(result) = rx.recv().await {
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             match result {
-                                Ok(out_path) => window.push_notification(
-                                    Notification::success("Build Core").message(format!(
-                                        "Project written to {}",
-                                        out_path.display()
-                                    )),
+                                Ok(_) => window.push_notification(
+                                    Notification::success("Build Core")
+                                        .message("Build succeeded."),
                                     cx,
                                 ),
                                 Err(msg) => window.push_notification(
@@ -82,24 +79,15 @@ impl BuildCoreButton {
 }
 
 fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
-    let crate_name = project_root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("pulsar_project")
-        .replace([' ', '-'], "_")
-        .to_ascii_lowercase();
+    let status = std::process::Command::new("cargo")
+        .arg("build")
+        .current_dir(project_root)
+        .status()
+        .map_err(|e| format!("Failed to spawn cargo: {e}"))?;
 
-    let compiled = blueprint_compiler::compile_project(project_root)?;
-
-    let mut spec = ProjectSpec::new(&crate_name)
-        .description(format!("Generated Pulsar game project: {crate_name}"));
-    for bp in compiled {
-        spec = spec.add_blueprint(bp);
+    if status.success() {
+        Ok(project_root.clone())
+    } else {
+        Err("cargo build failed".into())
     }
-
-    generate_project(&spec)
-        .write_to_dir(project_root)
-        .map_err(|e| format!("Failed to write project: {e}"))?;
-
-    Ok(project_root.clone())
 }
