@@ -27,6 +27,7 @@ dashmap = "6.1.0"
 
 # Reflection system
 pulsar_reflection.workspace = true
+engine_state.workspace = true
 
 # Profiling - instrumentation-based
 profiling = { path = "../profiling" }
