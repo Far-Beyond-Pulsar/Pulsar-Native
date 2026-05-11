@@ -160,7 +160,7 @@ fn pg_node(n: pulsar_graph::NodeInstance) -> NodeInstance {
     NodeInstance {
         id:         n.id,
         node_type:  n.node_type,
-        position:   Position { x: n.position.x, y: n.position.y },
+        position:   Position { x: n.position.x as f64, y: n.position.y as f64 },
         inputs:     n.inputs.into_iter().map(pg_pin).collect(),
         outputs:    n.outputs.into_iter().map(pg_pin).collect(),
         properties: n.properties.into_iter()
@@ -222,17 +222,16 @@ fn pg_data_type_str(dt: &pulsar_graph::DataType) -> String {
 }
 
 fn pg_connection(c: pulsar_graph::Connection) -> Connection {
-    Connection {
-        id:              c.id,
-        source_node:     c.source_node,
-        source_pin:      c.source_pin,
-        target_node:     c.target_node,
-        target_pin:      c.target_pin,
-        connection_type: match c.connection_type {
+    Connection::new(
+        c.source_node,
+        c.source_pin,
+        c.target_node,
+        c.target_pin,
+        match c.connection_type {
             pulsar_graph::ConnectionType::Execution => ConnectionType::Execution,
             pulsar_graph::ConnectionType::Data      => ConnectionType::Data,
         },
-    }
+    )
 }
 
 fn pg_prop(v: pulsar_graph::PropertyValue) -> PropertyValue {
@@ -240,9 +239,9 @@ fn pg_prop(v: pulsar_graph::PropertyValue) -> PropertyValue {
         pulsar_graph::PropertyValue::String(s)         => PropertyValue::String(s),
         pulsar_graph::PropertyValue::Number(n)         => PropertyValue::Number(n),
         pulsar_graph::PropertyValue::Boolean(b)        => PropertyValue::Boolean(b),
-        pulsar_graph::PropertyValue::Vector2(x, y)     => PropertyValue::Vector2(x, y),
-        pulsar_graph::PropertyValue::Vector3(x, y, z)  => PropertyValue::Vector3(x, y, z),
-        pulsar_graph::PropertyValue::Color(r, g, b, a) => PropertyValue::Color(r, g, b, a),
+        pulsar_graph::PropertyValue::Vector2(x, y)     => PropertyValue::Vector2(x as f64, y as f64),
+        pulsar_graph::PropertyValue::Vector3(x, y, z)  => PropertyValue::Vector3(x as f64, y as f64, z as f64),
+        pulsar_graph::PropertyValue::Color(r, g, b, a) => PropertyValue::Color(r as f64, g as f64, b as f64, a as f64),
     }
 }
 
