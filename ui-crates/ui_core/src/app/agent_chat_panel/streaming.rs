@@ -444,7 +444,7 @@ impl AgentChatPanel {
             .max(1);
 
         let estimated = 10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0;
-        px(estimated.min(520.0))
+        px(estimated)
     }
 
     pub(super) fn format_elapsed(started_ms: u64, finished_ms: Option<u64>, now_ms: u64) -> String {
@@ -463,70 +463,44 @@ impl AgentChatPanel {
     }
 
     pub(super) fn display_item_height(item: &DisplayItem) -> Pixels {
+        // These estimates are ONLY used for the very first render of each item —
+        // before the canvas callback fires with the actual measured height.
+        // Streaming items (ThinkingBlock, AssistantMessage) deliberately preserve
+        // their cached heights so the virtual list always uses the last real
+        // measurement, not a fresh (and potentially wrong) estimate.
+        //
+        // Caps are intentionally generous: the canvas overrides the value after the
+        // first layout, so an oversized estimate is far less harmful than one that
+        // is too small (which would cause scroll targets to undershoot the real bottom).
+        fn line_height(content: &str, per_line_px: f32, overhead_px: f32) -> Pixels {
+            let visual_lines: usize = content
+                .lines()
+                .map(|line| line.chars().count().max(1).div_ceil(64))
+                .sum::<usize>()
+                .max(1);
+            px(overhead_px + visual_lines as f32 * per_line_px)
+        }
+
         match item {
             DisplayItem::UserMessage { content, .. }
             | DisplayItem::AssistantMessage { content, .. } => {
-                let visual_lines: usize = content
-                    .lines()
-                    .map(|line| line.chars().count().max(1).div_ceil(64))
-                    .sum::<usize>()
-                    .max(1);
-                px((10.0 + 14.0 + 14.0 + (visual_lines as f32 * 18.0) + 6.0).min(520.0))
+                line_height(content, 18.0, 44.0)
             }
             DisplayItem::ToolCallGroup { calls, is_expanded, .. } => {
                 if *is_expanded {
-                    px((56.0 + calls.len() as f32 * 72.0).min(600.0))
+                    px(56.0 + calls.len() as f32 * 80.0)
                 } else {
                     px(40.0)
                 }
             }
-            DisplayItem::CompactionSummary {
-                summary,
-                is_expanded,
-                ..
-            } => {
-                if *is_expanded {
-                    let visual_lines: usize = summary
-                        .lines()
-                        .map(|line| line.chars().count().max(1).div_ceil(64))
-                        .sum::<usize>()
-                        .max(1);
-                    px((48.0 + (visual_lines as f32 * 15.0)).min(320.0))
-                } else {
-                    px(36.0)
-                }
+            DisplayItem::CompactionSummary { summary, is_expanded, .. } => {
+                if *is_expanded { line_height(summary, 15.0, 48.0) } else { px(36.0) }
             }
-            DisplayItem::SystemPrompt {
-                content,
-                is_expanded,
-                ..
-            } => {
-                if *is_expanded {
-                    let visual_lines: usize = content
-                        .lines()
-                        .map(|line| line.chars().count().max(1).div_ceil(64))
-                        .sum::<usize>()
-                        .max(1);
-                    px((56.0 + (visual_lines as f32 * 16.0)).min(400.0))
-                } else {
-                    px(40.0)
-                }
+            DisplayItem::SystemPrompt { content, is_expanded, .. } => {
+                if *is_expanded { line_height(content, 16.0, 56.0) } else { px(40.0) }
             }
-            DisplayItem::ThinkingBlock {
-                content,
-                is_expanded,
-                ..
-            } => {
-                if *is_expanded {
-                    let visual_lines: usize = content
-                        .lines()
-                        .map(|line| line.chars().count().max(1).div_ceil(64))
-                        .sum::<usize>()
-                        .max(1);
-                    px((56.0 + (visual_lines as f32 * 16.0)).min(480.0))
-                } else {
-                    px(40.0)
-                }
+            DisplayItem::ThinkingBlock { content, is_expanded, .. } => {
+                if *is_expanded { line_height(content, 16.0, 56.0) } else { px(40.0) }
             }
         }
     }
@@ -1196,17 +1170,20 @@ impl AgentChatPanel {
                                     message.content.push_str(&chunk);
                                     panel.message_row_heights.remove(&message_ix);
                                 }
-                                // Update the streaming display bubble
+                                // Update the streaming display bubble.
+                                // Do NOT remove the cached height — the canvas measurement from the
+                                // previous frame is accurate and close to current. Removing it
+                                // would cause the virtual list to use a capped estimate (e.g. 520px)
+                                // instead of the actual measured value (e.g. 3000px), making scroll
+                                // targets wrong until the canvas fires again.
                                 if let Some(dix) = panel.streaming_display_item_ix {
                                     if let Some(DisplayItem::AssistantMessage { content, .. }) =
                                         panel.display_items.get_mut(dix)
                                     {
                                         content.push_str(&chunk);
-                                        panel.display_item_heights.remove(&dix);
+                                        // height cache intentionally preserved
                                     }
                                 }
-                                // No scroll_to_bottom here — text chunks cause jitter if scrolled
-                                // every 24ms. The periodic timer + structural events handle scrolling.
                                 cx.notify();
                             }
 
@@ -1244,10 +1221,10 @@ impl AgentChatPanel {
                             }
 
                             StreamEvent::ThinkingChunk(chunk) => {
-                                for (ix, item) in panel.display_items.iter_mut().enumerate().rev() {
+                                for (_ix, item) in panel.display_items.iter_mut().enumerate().rev() {
                                     if let DisplayItem::ThinkingBlock { content, .. } = item {
                                         content.push_str(&chunk);
-                                        panel.display_item_heights.remove(&ix);
+                                        // height cache preserved — canvas corrects after layout
                                         break;
                                     }
                                 }
