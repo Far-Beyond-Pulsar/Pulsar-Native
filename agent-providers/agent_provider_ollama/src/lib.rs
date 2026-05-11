@@ -294,11 +294,11 @@ impl OllamaProvider {
         let mut tool_calls = Vec::new();
         let mut next_call_index = 1usize;
 
-        // Accumulate thinking content from models that emit a separate `thinking`
-        // field (e.g. qwen3). Flushed as `<think>…</think>` before the first
-        // content chunk so the upstream tag-detection in streaming.rs picks it up.
-        let mut thinking_buf = String::new();
-        let mut thinking_flushed = false;
+        // Stream thinking tokens individually so the UI can display them
+        // progressively. The upstream on_chunk handler in streaming.rs looks for
+        // `<think>` / `</think>` tags; we open the tag on the first thinking chunk
+        // and close it when content begins (or the stream ends).
+        let mut thinking_open = false;
 
         let reader = BufReader::new(response);
         for line in reader.lines() {
@@ -316,20 +316,25 @@ impl OllamaProvider {
             }
 
             if let Some(message) = event.get("message") {
-                // Accumulate thinking tokens (qwen3 and similar thinking models).
+                // Stream each thinking token immediately so the UI fills in real-time.
                 if let Some(thinking) = message.get("thinking").and_then(|v| v.as_str()) {
                     if !thinking.is_empty() {
-                        thinking_buf.push_str(thinking);
+                        if !thinking_open {
+                            // Open the tag with the first token attached.
+                            on_chunk(format!("<think>{}", thinking));
+                            thinking_open = true;
+                        } else {
+                            on_chunk(thinking.to_string());
+                        }
                     }
                 }
 
                 if let Some(content) = message.get("content").and_then(|value| value.as_str()) {
                     if !content.is_empty() {
-                        // Flush accumulated thinking as a tagged block before first content.
-                        if !thinking_flushed && !thinking_buf.is_empty() {
-                            let block = format!("<think>{}</think>", thinking_buf);
-                            on_chunk(block);
-                            thinking_flushed = true;
+                        // Close the thinking block before emitting the first prose chunk.
+                        if thinking_open {
+                            on_chunk("</think>".to_string());
+                            thinking_open = false;
                         }
 
                         let chunk = content.to_string();
@@ -366,6 +371,11 @@ impl OllamaProvider {
             if done {
                 break;
             }
+        }
+
+        // Stream ended while still in a thinking block (no content followed).
+        if thinking_open {
+            on_chunk("</think>".to_string());
         }
 
         Ok(ChatResponse {

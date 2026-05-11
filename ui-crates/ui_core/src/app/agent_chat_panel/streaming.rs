@@ -427,6 +427,11 @@ impl AgentChatPanel {
     }
 
     pub(super) fn format_elapsed(started_ms: u64, finished_ms: Option<u64>, now_ms: u64) -> String {
+        // started_at_ms == 0 is the serde default for items loaded from disk that
+        // predate timing support — don't show garbage elapsed times for those.
+        if started_ms == 0 {
+            return String::new();
+        }
         let end = finished_ms.unwrap_or(now_ms);
         let elapsed_ms = end.saturating_sub(started_ms);
         if elapsed_ms < 1_000 {
