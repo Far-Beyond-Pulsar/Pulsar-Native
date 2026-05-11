@@ -99,6 +99,12 @@ pub struct AgentChatPanel {
     pub(crate) display_item_heights: HashMap<usize, Pixels>,
     /// Sender half of the per-request cancel channel. `None` when idle.
     pub(crate) cancel_tx: Option<smol::channel::Sender<()>>,
+    /// Whether the chat should automatically scroll to new content.
+    /// Disabled when the user scrolls up; re-enabled when they scroll back to the
+    /// bottom or click the "jump to bottom" button.
+    pub(crate) auto_scroll: bool,
+    /// Height of the message-list viewport in pixels — measured each render frame.
+    pub(crate) chat_viewport_height: Pixels,
     pub(crate) _subscriptions: Vec<Subscription>,
 }
 
@@ -398,6 +404,8 @@ impl AgentChatPanel {
             display_items: vec![],
             display_item_heights: HashMap::new(),
             cancel_tx: None,
+            auto_scroll: true,
+            chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,
         };
 
@@ -435,6 +443,28 @@ impl Panel for AgentChatPanel {
 impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.maybe_reload_chats_from_disk(cx);
+
+        // ── Auto-scroll detection ──────────────────────────────────────────────
+        // Read the scroll handle every frame. When `chat_viewport_height` has been
+        // measured (> 0), we can compute the exact distance from the bottom and
+        // decide whether the user has scrolled up.
+        if self.chat_viewport_height > px(0.0) {
+            let dist = self.distance_from_bottom();
+            if self.is_request_in_flight {
+                if dist > px(80.0) {
+                    // User scrolled away — pause auto-scroll.
+                    self.auto_scroll = false;
+                } else if dist < px(20.0) {
+                    // User is at the bottom again — resume.
+                    self.auto_scroll = true;
+                }
+            } else {
+                // After a request ends, reset so the next one starts following.
+                self.auto_scroll = true;
+            }
+        }
+
+        let show_jump_button = !self.auto_scroll && self.distance_from_bottom() > px(80.0);
 
         let provider = self.active_provider();
         let model = self.active_model();
@@ -1720,7 +1750,48 @@ impl Render for AgentChatPanel {
                                 &self.messages_scroll_state,
                                 &self.messages_scroll_handle,
                             )),
-                    ),
+                    )
+                    // Viewport-height measurement canvas — runs after layout,
+                    // stores the value so distance_from_bottom() works correctly.
+                    .child(
+                        canvas(
+                            {
+                                let panel = cx.entity().clone();
+                                move |bounds, _, cx| {
+                                    let h = bounds.size.height;
+                                    panel.update(cx, |p, cx| {
+                                        if p.chat_viewport_height != h {
+                                            p.chat_viewport_height = h;
+                                            cx.notify();
+                                        }
+                                    });
+                                }
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0(),
+                    )
+                    // "Jump to bottom" floating button — appears when the user has
+                    // scrolled up during streaming.
+                    .when(show_jump_button, |el| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .bottom(px(16.0))
+                                .right(px(28.0))
+                                .child(
+                                    Button::new("agent-chat-jump-bottom")
+                                        .icon(IconName::ArrowDown)
+                                        .xsmall()
+                                        .primary()
+                                        .tooltip("Jump to bottom (re-enable auto-scroll)")
+                                        .on_click(cx.listener(|this, _, _, _cx| {
+                                            this.jump_to_bottom();
+                                        })),
+                                ),
+                        )
+                    }),
             )
             .child(
                 v_flex()

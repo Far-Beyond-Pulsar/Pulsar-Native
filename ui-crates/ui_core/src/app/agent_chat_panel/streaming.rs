@@ -12,7 +12,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use ui::input::Enter;
+use ui::{input::Enter, scroll::ScrollHandleOffsetable};
 
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
@@ -407,8 +407,29 @@ impl AgentChatPanel {
         format!("{}\n\n{}", injections.join("\n\n"), text)
     }
 
+    /// Scroll to the bottom only when `auto_scroll` is active (i.e. the user
+    /// has not manually scrolled up). Call this on structural events only —
+    /// NOT on every text chunk, which causes jitter.
     pub(super) fn scroll_messages_to_bottom(&self) {
+        if self.auto_scroll {
+            self.messages_scroll_handle.scroll_to_bottom();
+        }
+    }
+
+    /// Unconditional scroll to bottom — used by the "jump to bottom" action
+    /// which also re-enables auto_scroll.
+    pub(super) fn jump_to_bottom(&mut self) {
+        self.auto_scroll = true;
         self.messages_scroll_handle.scroll_to_bottom();
+    }
+
+    /// Compute the distance from the current scroll position to the bottom of
+    /// the content, using the measured viewport height.
+    pub(super) fn distance_from_bottom(&self) -> Pixels {
+        let content_h = self.messages_scroll_handle.content_size().height;
+        let offset_y = self.messages_scroll_handle.offset().y;
+        let viewport_h = self.chat_viewport_height;
+        (content_h - offset_y - viewport_h).max(px(0.0))
     }
 
     pub(super) fn message_row_height(message: &ChatMessage) -> Pixels {
@@ -708,6 +729,7 @@ impl AgentChatPanel {
         self.is_request_in_flight = true;
         self.streaming_message_ix = Some(message_ix);
         self.streaming_display_item_ix = Some(streaming_dix);
+        self.auto_scroll = true; // always follow the bottom for a new request
 
         let provider_id = provider.metadata().id;
         let model = self
@@ -1186,7 +1208,8 @@ impl AgentChatPanel {
                                         panel.display_item_heights.remove(&dix);
                                     }
                                 }
-                                panel.scroll_messages_to_bottom();
+                                // No scroll_to_bottom here — text chunks cause jitter if scrolled
+                                // every 24ms. The periodic timer + structural events handle scrolling.
                                 cx.notify();
                             }
 
@@ -1224,7 +1247,6 @@ impl AgentChatPanel {
                             }
 
                             StreamEvent::ThinkingChunk(chunk) => {
-                                // Append the incoming thinking content to the open ThinkingBlock.
                                 for (ix, item) in panel.display_items.iter_mut().enumerate().rev() {
                                     if let DisplayItem::ThinkingBlock { content, .. } = item {
                                         content.push_str(&chunk);
@@ -1232,7 +1254,6 @@ impl AgentChatPanel {
                                         break;
                                     }
                                 }
-                                panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
 
