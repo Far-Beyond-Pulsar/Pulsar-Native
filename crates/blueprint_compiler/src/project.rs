@@ -1,7 +1,8 @@
-//! # Project Generator
+//! # Blueprint Output Generator
 //!
-//! Turns a collection of compiled blueprints into a complete, ready-to-ship
-//! Pulsar game project — a proper Rust crate you can `cargo run` straight away.
+//! Turns a collection of compiled blueprints into blueprint-owned Rust source
+//! files only. Core project/bootstrap files (like `Cargo.toml` or `main.rs`)
+//! are intentionally out of scope and must be handled by the core build system.
 //!
 //! ## Usage
 //!
@@ -19,7 +20,7 @@
 //!     .description("My Pulsar game")
 //!     .add_blueprint(CompiledBlueprint::new("player_controller", source));
 //!
-//! // Generate and write to disk.
+//! // Generate blueprint files and write to disk.
 //! let project = generate_project(&spec);
 //! project.write_to_dir("./output/my_game").unwrap();
 //! ```
@@ -179,7 +180,7 @@ impl CompiledBlueprint {
 
 // ── ProjectSpec ───────────────────────────────────────────────────────────────
 
-/// Everything needed to generate a complete Pulsar game project.
+/// Everything needed to generate blueprint output files.
 pub struct ProjectSpec {
     pub name: String,
     pub version: String,
@@ -255,7 +256,7 @@ impl ProjectSpec {
 
 // ── GeneratedProject ──────────────────────────────────────────────────────────
 
-/// The output of `generate_project` — a complete file tree ready to write to disk.
+/// The output of `generate_project` — blueprint files ready to write to disk.
 pub struct GeneratedProject {
     /// Map of relative file path → file content.
     pub files: BTreeMap<String, String>,
@@ -283,15 +284,12 @@ impl GeneratedProject {
 
 // ── generate_project ─────────────────────────────────────────────────────────
 
-/// Generate a complete Pulsar game project from a [`ProjectSpec`].
+/// Generate blueprint-owned source files from a [`ProjectSpec`].
 ///
 /// Returns a [`GeneratedProject`] whose files can be written anywhere with
 /// [`GeneratedProject::write_to_dir`].
 pub fn generate_project(spec: &ProjectSpec) -> GeneratedProject {
     let mut files = BTreeMap::new();
-
-    files.insert("Cargo.toml".into(), gen_cargo_toml(spec));
-    files.insert("src/main.rs".into(), gen_main_rs(spec));
     files.insert("src/blueprints/mod.rs".into(), gen_blueprints_mod(spec));
 
     for bp in &spec.blueprints {
@@ -570,21 +568,9 @@ pub fn begin_play() {
         let project = generate_project(&sample_spec());
         let paths: Vec<&str> = project.file_paths().collect();
 
-        assert!(paths.contains(&"Cargo.toml"));
-        assert!(paths.contains(&"src/main.rs"));
         assert!(paths.contains(&"src/blueprints/mod.rs"));
         assert!(paths.contains(&"src/blueprints/player_controller.rs"));
         assert!(paths.contains(&"src/blueprints/enemy_ai.rs"));
-    }
-
-    #[test]
-    fn cargo_toml_has_pulsar_game_dep() {
-        let project = generate_project(&sample_spec());
-        let toml = &project.files["Cargo.toml"];
-        assert!(toml.contains("pulsar_game"));
-        assert!(toml.contains("pulsar_reflection"));
-        assert!(toml.contains("engine_class_derive"));
-        assert!(toml.contains("Far-Beyond-Pulsar/Pulsar-Native"));
     }
 
     #[test]
@@ -618,12 +604,11 @@ pub fn begin_play() {
     }
 
     #[test]
-    fn main_rs_registers_actors() {
+    fn mod_file_exposes_class_registry_helpers() {
         let project = generate_project(&sample_spec());
-        let main = &project.files["src/main.rs"];
-        assert!(!main.contains("game.actors.register"));
-        assert!(!main.contains("register_compiled_classes"));
-        assert!(main.contains("game.run_blocking()"));
+        let modfile = &project.files["src/blueprints/mod.rs"];
+        assert!(modfile.contains("fn compiled_class_names"));
+        assert!(modfile.contains("fn spawn_compiled_class"));
     }
 
     #[test]
@@ -646,8 +631,6 @@ pub fn begin_play() {
         let dir = std::env::temp_dir().join("pulsar_project_gen_test");
         project.write_to_dir(&dir).unwrap();
 
-        assert!(dir.join("Cargo.toml").exists());
-        assert!(dir.join("src/main.rs").exists());
         assert!(dir.join("src/blueprints/mod.rs").exists());
         assert!(dir.join("src/blueprints/player_controller.rs").exists());
 
