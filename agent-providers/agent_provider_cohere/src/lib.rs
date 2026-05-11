@@ -18,19 +18,22 @@ impl CohereProvider {
                 id: "command-a-03-2025",
                 label: "Command A (Mar 2025)",
                 supports_tools: true,
-                context_tokens: 256000, compact_model: None,
+                context_tokens: 256000,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "command-r-plus",
                 label: "Command R+",
                 supports_tools: true,
-                context_tokens: 128000, compact_model: None,
+                context_tokens: 128000,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "command-r",
                 label: "Command R",
                 supports_tools: true,
-                context_tokens: 128000, compact_model: None,
+                context_tokens: 128000,
+                compact_model: None,
             },
         ]
     }

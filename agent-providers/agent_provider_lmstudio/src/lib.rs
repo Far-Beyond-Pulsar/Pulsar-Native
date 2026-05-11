@@ -27,19 +27,22 @@ impl LmStudioProvider {
                 id: "local-default",
                 label: "Local Default",
                 supports_tools: false,
-                context_tokens: 0, compact_model: None,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "qwen2.5-coder-14b",
                 label: "Qwen 2.5 Coder 14B",
                 supports_tools: false,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "llama-3.1-8b-instruct",
                 label: "Llama 3.1 8B Instruct",
                 supports_tools: false,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
         ]
     }
@@ -145,9 +148,7 @@ impl ChatProvider for LmStudioProvider {
             return Err(anyhow!("LM Studio API returned {}: {}", status, body));
         }
 
-        let raw_response: Value = response
-            .json()
-            .context("invalid JSON from LM Studio API")?;
+        let raw_response: Value = response.json().context("invalid JSON from LM Studio API")?;
         let assistant_message = Self::parse_assistant_message(&raw_response);
         let streamed_text_chunks = assistant_message
             .as_ref()

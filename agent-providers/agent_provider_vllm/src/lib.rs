@@ -27,19 +27,22 @@ impl VllmProvider {
                 id: "meta-llama/Llama-3.1-70B-Instruct",
                 label: "Llama 3.1 70B Instruct",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "Qwen/Qwen2.5-Coder-32B-Instruct",
                 label: "Qwen 2.5 Coder 32B Instruct",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "mistralai/Mistral-Nemo-Instruct-2407",
                 label: "Mistral Nemo Instruct 2407",
                 supports_tools: false,
-                context_tokens: 128000, compact_model: None,
+                context_tokens: 128000,
+                compact_model: None,
             },
         ]
     }
@@ -219,11 +222,7 @@ impl ChatProvider for VllmProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "vLLM streaming API returned {}: {}",
-                status,
-                body
-            ));
+            return Err(anyhow!("vLLM streaming API returned {}: {}", status, body));
         }
 
         let mut raw_events = Vec::new();

@@ -27,19 +27,22 @@ impl LlamaCppProvider {
                 id: "qwen2.5-coder-7b-instruct-q4_k_m",
                 label: "Qwen 2.5 Coder 7B Instruct Q4_K_M",
                 supports_tools: false,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "llama-3.1-8b-instruct-q4_k_m",
                 label: "Llama 3.1 8B Instruct Q4_K_M",
                 supports_tools: false,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "phi-4-mini-instruct-q4_k_m",
                 label: "Phi-4 Mini Instruct Q4_K_M",
                 supports_tools: false,
-                context_tokens: 16384, compact_model: None,
+                context_tokens: 16384,
+                compact_model: None,
             },
         ]
     }

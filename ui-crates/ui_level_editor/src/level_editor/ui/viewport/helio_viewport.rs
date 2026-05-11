@@ -61,7 +61,12 @@ impl HelioViewport {
             cx,
         );
 
-        let result = Self::import_asset(path, kind, self.gpu_engine.clone(), self.shared_state.clone());
+        let result = Self::import_asset(
+            path,
+            kind,
+            self.gpu_engine.clone(),
+            self.shared_state.clone(),
+        );
         match result {
             Ok(()) => {
                 window.push_notification(

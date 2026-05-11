@@ -478,7 +478,11 @@ impl ChatProvider for OllamaProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            return Err(anyhow!("Ollama streaming API returned {}: {}", status, body));
+            return Err(anyhow!(
+                "Ollama streaming API returned {}: {}",
+                status,
+                body
+            ));
         }
 
         Self::read_stream_response(response, on_chunk)

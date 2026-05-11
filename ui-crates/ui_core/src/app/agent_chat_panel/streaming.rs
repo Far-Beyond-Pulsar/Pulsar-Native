@@ -1,5 +1,7 @@
 use super::*;
-use agent_chat_core::{AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment, ToolCall};
+use agent_chat_core::{
+    AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment, ToolCall,
+};
 use engine_state;
 use smol::Timer;
 use std::{
@@ -189,7 +191,8 @@ impl AgentChatPanel {
                             ChatRole::Assistant => "assistant",
                             _ => "system",
                         };
-                        let snippet: String = m.content.replace('\n', " ").chars().take(180).collect();
+                        let snippet: String =
+                            m.content.replace('\n', " ").chars().take(180).collect();
                         format!("- {role}: {snippet}")
                     })
                     .collect::<Vec<_>>()
@@ -230,38 +233,80 @@ impl AgentChatPanel {
     pub(super) fn infer_context_tokens(id: &str) -> Option<usize> {
         let id = id.to_ascii_lowercase();
         // OpenAI
-        if id.contains("gpt-4.1") { return Some(1_047_576); }
-        if id.contains("gpt-4o") { return Some(128_000); }
-        if id.contains("o4-mini") || id == "o4-mini" { return Some(200_000); }
-        if id == "o3" { return Some(200_000); }
-        if id.contains("gpt-5") { return Some(200_000); }
+        if id.contains("gpt-4.1") {
+            return Some(1_047_576);
+        }
+        if id.contains("gpt-4o") {
+            return Some(128_000);
+        }
+        if id.contains("o4-mini") || id == "o4-mini" {
+            return Some(200_000);
+        }
+        if id == "o3" {
+            return Some(200_000);
+        }
+        if id.contains("gpt-5") {
+            return Some(200_000);
+        }
         // Anthropic Claude (all recent models are 200k)
-        if id.contains("claude") { return Some(200_000); }
+        if id.contains("claude") {
+            return Some(200_000);
+        }
         // Google Gemini
-        if id.contains("gemini-2") { return Some(1_048_576); }
-        if id.contains("gemini") { return Some(1_048_576); }
+        if id.contains("gemini-2") {
+            return Some(1_048_576);
+        }
+        if id.contains("gemini") {
+            return Some(1_048_576);
+        }
         // Mistral family
-        if id.contains("codestral") { return Some(256_000); }
-        if id.contains("mistral") || id.contains("ministral") { return Some(128_000); }
-        if id.contains("mixtral") { return Some(32_768); }
+        if id.contains("codestral") {
+            return Some(256_000);
+        }
+        if id.contains("mistral") || id.contains("ministral") {
+            return Some(128_000);
+        }
+        if id.contains("mixtral") {
+            return Some(32_768);
+        }
         // Meta Llama
-        if id.contains("llama") { return Some(131_072); }
+        if id.contains("llama") {
+            return Some(131_072);
+        }
         // Qwen
-        if id.contains("qwen") { return Some(131_072); }
+        if id.contains("qwen") {
+            return Some(131_072);
+        }
         // DeepSeek
-        if id.contains("deepseek-reasoner") { return Some(131_072); }
-        if id.contains("deepseek") { return Some(65_536); }
+        if id.contains("deepseek-reasoner") {
+            return Some(131_072);
+        }
+        if id.contains("deepseek") {
+            return Some(65_536);
+        }
         // xAI Grok
-        if id.contains("grok") { return Some(131_072); }
+        if id.contains("grok") {
+            return Some(131_072);
+        }
         // Cohere
-        if id.contains("command-a") { return Some(256_000); }
-        if id.contains("command-r") { return Some(128_000); }
+        if id.contains("command-a") {
+            return Some(256_000);
+        }
+        if id.contains("command-r") {
+            return Some(128_000);
+        }
         // Perplexity Sonar
-        if id.contains("sonar") { return Some(200_000); }
+        if id.contains("sonar") {
+            return Some(200_000);
+        }
         // Phi
-        if id.contains("phi-4") { return Some(16_384); }
+        if id.contains("phi-4") {
+            return Some(16_384);
+        }
         // Gemma
-        if id.contains("gemma") { return Some(32_768); }
+        if id.contains("gemma") {
+            return Some(32_768);
+        }
         None
     }
 
@@ -304,7 +349,14 @@ impl AgentChatPanel {
         }
 
         if raw.len() > 300 {
-            format!("{}…", &raw[..raw.char_indices().nth(300).map(|(i, _)| i).unwrap_or(raw.len())])
+            format!(
+                "{}…",
+                &raw[..raw
+                    .char_indices()
+                    .nth(300)
+                    .map(|(i, _)| i)
+                    .unwrap_or(raw.len())]
+            )
         } else {
             raw.to_string()
         }
@@ -333,14 +385,9 @@ impl AgentChatPanel {
             for candidate in &candidates {
                 if candidate.is_file() {
                     if let Ok(content) = fs::read_to_string(candidate) {
-                        let ext = candidate
-                            .extension()
-                            .and_then(|e| e.to_str())
-                            .unwrap_or("");
+                        let ext = candidate.extension().and_then(|e| e.to_str()).unwrap_or("");
                         let display = candidate.display().to_string();
-                        injections.push(format!(
-                            "```{ext}\n// {display}\n{content}\n```"
-                        ));
+                        injections.push(format!("```{ext}\n// {display}\n{content}\n```"));
                     }
                     break;
                 }
@@ -390,7 +437,11 @@ impl AgentChatPanel {
                     px(40.0)
                 }
             }
-            DisplayItem::CompactionSummary { summary, is_expanded, .. } => {
+            DisplayItem::CompactionSummary {
+                summary,
+                is_expanded,
+                ..
+            } => {
                 if *is_expanded {
                     let visual_lines: usize = summary
                         .lines()
@@ -402,7 +453,11 @@ impl AgentChatPanel {
                     px(36.0)
                 }
             }
-            DisplayItem::SystemPrompt { content, is_expanded, .. } => {
+            DisplayItem::SystemPrompt {
+                content,
+                is_expanded,
+                ..
+            } => {
                 if *is_expanded {
                     let visual_lines: usize = content
                         .lines()
@@ -414,7 +469,11 @@ impl AgentChatPanel {
                     px(40.0)
                 }
             }
-            DisplayItem::ThinkingBlock { content, is_expanded, .. } => {
+            DisplayItem::ThinkingBlock {
+                content,
+                is_expanded,
+                ..
+            } => {
                 if *is_expanded {
                     let visual_lines: usize = content
                         .lines()
@@ -654,12 +713,7 @@ impl AgentChatPanel {
 
         // If messages were dropped, call the compact model to produce a real summary.
         let initial_compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
-            let summary = Self::ai_summarize_dropped(
-                &dropped,
-                &provider,
-                &compact_model,
-                &token,
-            );
+            let summary = Self::ai_summarize_dropped(&dropped, &provider, &compact_model, &token);
             // Insert the AI summary as a system message at the top of kept history.
             provider_messages.insert(
                 // After system messages, before dialog
@@ -669,9 +723,7 @@ impl AgentChatPanel {
                     .unwrap_or(0),
                 ChatMessage {
                     role: ChatRole::System,
-                    content: format!(
-                        "Conversation summary (auto-compacted):\n{summary}"
-                    ),
+                    content: format!("Conversation summary (auto-compacted):\n{summary}"),
                     tool_call_id: None,
                     tool_calls: vec![],
                 },
@@ -728,7 +780,9 @@ impl AgentChatPanel {
         };
         eprintln!(
             "[agent_chat] start provider={} model={} messages={} compacted={}",
-            provider_id, request.model, request.messages.len(),
+            provider_id,
+            request.model,
+            request.messages.len(),
             initial_compaction_summary.is_some()
         );
 
@@ -743,7 +797,11 @@ impl AgentChatPanel {
             /// and starts a new streaming assistant bubble for the next iteration.
             ToolCallGroup(Vec<ToolCall>),
             /// A tool finished executing; update the matching call's result in the UI.
-            ToolCallResult { id: String, result_preview: String, is_error: bool },
+            ToolCallResult {
+                id: String,
+                result_preview: String,
+                is_error: bool,
+            },
             /// Old messages were dropped inside the agentic loop to stay within context.
             ContextCompacted(String),
             OpenFile(PathBuf),
@@ -791,9 +849,8 @@ impl AgentChatPanel {
                 // Check for user cancellation between iterations.
                 if cancel_rx.try_recv().is_ok() {
                     if !completion_for_worker.swap(true, Ordering::SeqCst) {
-                        let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(
-                            "Request cancelled.".to_string(),
-                        )));
+                        let _ = tx_for_finish
+                            .try_send(StreamEvent::Finished(Err("Request cancelled.".to_string())));
                     }
                     break;
                 }
@@ -833,8 +890,7 @@ impl AgentChatPanel {
                             if let Some(end) = rest.find("</think>") {
                                 thinking_buf.push_str(&rest[..end]);
                                 let content = std::mem::take(&mut thinking_buf);
-                                let _ = tx_for_chunks
-                                    .try_send(StreamEvent::ThinkingDone(content));
+                                let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone(content));
                                 in_thinking = false;
                                 rest = &rest[end + "</think>".len()..];
                                 if rest.is_empty() {
@@ -851,8 +907,7 @@ impl AgentChatPanel {
                                 if !before.is_empty() {
                                     pending_chunk.push_str(before);
                                     let chunk_out = std::mem::take(&mut pending_chunk);
-                                    let _ = tx_for_chunks
-                                        .try_send(StreamEvent::Chunk(chunk_out));
+                                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk_out));
                                     last_emit = Instant::now();
                                 }
                                 let _ = tx_for_chunks.try_send(StreamEvent::ThinkingStarted);
@@ -865,8 +920,7 @@ impl AgentChatPanel {
                                     || last_emit.elapsed() >= Duration::from_millis(24);
                                 if should_emit {
                                     let chunk_out = std::mem::take(&mut pending_chunk);
-                                    let _ = tx_for_chunks
-                                        .try_send(StreamEvent::Chunk(chunk_out));
+                                    let _ = tx_for_chunks.try_send(StreamEvent::Chunk(chunk_out));
                                     last_emit = Instant::now();
                                 }
                                 break;
@@ -907,9 +961,8 @@ impl AgentChatPanel {
                             }
 
                             // Tell the UI to render a collapsed tool-call block.
-                            let _ = tx_for_chunks.try_send(StreamEvent::ToolCallGroup(
-                                response.tool_calls.clone(),
-                            ));
+                            let _ = tx_for_chunks
+                                .try_send(StreamEvent::ToolCallGroup(response.tool_calls.clone()));
 
                             // Create tool context for execution
                             let workspace_root = match engine_state::get_project_path() {
@@ -953,33 +1006,42 @@ impl AgentChatPanel {
 
                             // Spawn one thread per tool call so they execute concurrently.
                             let mut all_results = Vec::new();
-                            let handles: Vec<_> = response.tool_calls.iter().map(|tool_call| {
-                                let name = tool_call.name.clone();
-                                let args = tool_call.arguments_json.clone();
-                                let id = tool_call.id.clone();
-                                let registry = tool_registry_for_task.clone();
-                                let ctx = tool_context.clone();
-                                let tx = tx_for_chunks.clone();
-                                std::thread::spawn(move || {
-                                    let result = registry.execute(&name, args, &ctx);
-                                    let (tool_result, is_error) = match result {
-                                        Ok(value) => (value.to_string(), false),
-                                        Err(err) => (format!("Tool error: {}", err), true),
-                                    };
-                                    let result_preview = Self::format_tool_result_preview(&name, &tool_result);
-                                    let _ = tx.try_send(StreamEvent::ToolCallResult {
-                                        id: id.clone(),
-                                        result_preview,
-                                        is_error,
-                                    });
-                                    (id, name, tool_result)
+                            let handles: Vec<_> = response
+                                .tool_calls
+                                .iter()
+                                .map(|tool_call| {
+                                    let name = tool_call.name.clone();
+                                    let args = tool_call.arguments_json.clone();
+                                    let id = tool_call.id.clone();
+                                    let registry = tool_registry_for_task.clone();
+                                    let ctx = tool_context.clone();
+                                    let tx = tx_for_chunks.clone();
+                                    std::thread::spawn(move || {
+                                        let result = registry.execute(&name, args, &ctx);
+                                        let (tool_result, is_error) = match result {
+                                            Ok(value) => (value.to_string(), false),
+                                            Err(err) => (format!("Tool error: {}", err), true),
+                                        };
+                                        let result_preview =
+                                            Self::format_tool_result_preview(&name, &tool_result);
+                                        let _ = tx.try_send(StreamEvent::ToolCallResult {
+                                            id: id.clone(),
+                                            result_preview,
+                                            is_error,
+                                        });
+                                        (id, name, tool_result)
+                                    })
                                 })
-                            }).collect();
+                                .collect();
 
                             // Collect parallel results in original order for message threading.
                             for handle in handles {
                                 all_results.push(handle.join().unwrap_or_else(|_| {
-                                    ("".to_string(), "unknown".to_string(), "Tool thread panicked".to_string())
+                                    (
+                                        "".to_string(),
+                                        "unknown".to_string(),
+                                        "Tool thread panicked".to_string(),
+                                    )
                                 }));
                             }
 
@@ -1387,15 +1449,17 @@ impl AgentChatPanel {
             return;
         }
         // Find the last AssistantMessage in display_items and roll back to just before it.
-        let last_assistant_dix = self
-            .display_items
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(dix, item)| match item {
-                DisplayItem::AssistantMessage { message_index, .. } => Some((dix, *message_index)),
-                _ => None,
-            });
+        let last_assistant_dix =
+            self.display_items
+                .iter()
+                .enumerate()
+                .rev()
+                .find_map(|(dix, item)| match item {
+                    DisplayItem::AssistantMessage { message_index, .. } => {
+                        Some((dix, *message_index))
+                    }
+                    _ => None,
+                });
 
         let Some((dix, msg_ix)) = last_assistant_dix else {
             return;

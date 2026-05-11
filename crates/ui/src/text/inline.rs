@@ -352,8 +352,7 @@ impl Element for Inline {
                     return;
                 }
 
-                if let Some(link) = Self::link_for_position(&text_layout, &links, event.position)
-                {
+                if let Some(link) = Self::link_for_position(&text_layout, &links, event.position) {
                     cx.stop_propagation();
                     crate::open_external_url(&link.url);
                 }

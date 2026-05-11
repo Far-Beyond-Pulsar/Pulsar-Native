@@ -165,7 +165,9 @@ impl ToolRegistry {
 
 struct OpenFileInDefaultEditorTool;
 impl ChatTool for OpenFileInDefaultEditorTool {
-    fn name(&self) -> &'static str { "open_file_in_default_editor" }
+    fn name(&self) -> &'static str {
+        "open_file_in_default_editor"
+    }
     fn description(&self) -> &'static str {
         "Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access."
     }
@@ -195,11 +197,15 @@ impl ChatTool for OpenFileInDefaultEditorTool {
 
 struct QueryOpenEditorsTool;
 impl ChatTool for QueryOpenEditorsTool {
-    fn name(&self) -> &'static str { "query_open_editors" }
+    fn name(&self) -> &'static str {
+        "query_open_editors"
+    }
     fn description(&self) -> &'static str {
         "List already-open editors and indicate which is active. Returns file_path for each — use those exact paths with query_plugin_tools and execute_plugin_tool."
     }
-    fn parameters_schema(&self) -> Value { tool_params!() }
+    fn parameters_schema(&self) -> Value {
+        tool_params!()
+    }
     fn execute(&self, _args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let callback = ctx
             .query_open_editors
@@ -211,7 +217,9 @@ impl ChatTool for QueryOpenEditorsTool {
 
 struct ActivateOpenEditorTool;
 impl ChatTool for ActivateOpenEditorTool {
-    fn name(&self) -> &'static str { "activate_open_editor" }
+    fn name(&self) -> &'static str {
+        "activate_open_editor"
+    }
     fn description(&self) -> &'static str {
         "Switch focus to an already-open editor by its index returned from query_open_editors."
     }
@@ -241,11 +249,15 @@ impl ChatTool for ActivateOpenEditorTool {
 
 struct QueryAvailableFileTypesTool;
 impl ChatTool for QueryAvailableFileTypesTool {
-    fn name(&self) -> &'static str { "query_available_file_types" }
+    fn name(&self) -> &'static str {
+        "query_available_file_types"
+    }
     fn description(&self) -> &'static str {
         "List all file types registered by installed plugins/editors."
     }
-    fn parameters_schema(&self) -> Value { tool_params!() }
+    fn parameters_schema(&self) -> Value {
+        tool_params!()
+    }
     fn execute(&self, _args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -276,7 +288,9 @@ impl ChatTool for QueryAvailableFileTypesTool {
 
 struct QueryFileEditorsTool;
 impl ChatTool for QueryFileEditorsTool {
-    fn name(&self) -> &'static str { "query_file_editors" }
+    fn name(&self) -> &'static str {
+        "query_file_editors"
+    }
     fn description(&self) -> &'static str {
         "Query which plugins/editors can handle a given file path."
     }
@@ -330,7 +344,9 @@ impl ChatTool for QueryFileEditorsTool {
 
 struct QueryPluginToolsTool;
 impl ChatTool for QueryPluginToolsTool {
-    fn name(&self) -> &'static str { "query_plugin_tools" }
+    fn name(&self) -> &'static str {
+        "query_plugin_tools"
+    }
     fn description(&self) -> &'static str {
         "Discover AI tools available from plugins for a specific file. Use the file_path returned by query_open_editors — do not guess paths."
     }
@@ -422,7 +438,9 @@ impl ChatTool for QueryPluginToolsTool {
 
 struct QueryToolsForPluginTool;
 impl ChatTool for QueryToolsForPluginTool {
-    fn name(&self) -> &'static str { "query_tools_for_plugin" }
+    fn name(&self) -> &'static str {
+        "query_tools_for_plugin"
+    }
     fn description(&self) -> &'static str {
         "List AI tools provided by a specific plugin, optionally scoped to a file."
     }
@@ -486,7 +504,9 @@ impl ChatTool for QueryToolsForPluginTool {
 
 struct ExecutePluginToolTool;
 impl ChatTool for ExecutePluginToolTool {
-    fn name(&self) -> &'static str { "execute_plugin_tool" }
+    fn name(&self) -> &'static str {
+        "execute_plugin_tool"
+    }
     fn description(&self) -> &'static str {
         "Execute an AI tool provided by a plugin. Call query_plugin_tools first to discover available tools and their parameters."
     }
@@ -555,7 +575,9 @@ impl ChatTool for ExecutePluginToolTool {
 
 struct WebSearchTool;
 impl ChatTool for WebSearchTool {
-    fn name(&self) -> &'static str { "web_search" }
+    fn name(&self) -> &'static str {
+        "web_search"
+    }
     fn description(&self) -> &'static str {
         "Search the web via DuckDuckGo. Returns up to 10 results with title, summary, and URL."
     }
@@ -568,7 +590,7 @@ impl ChatTool for WebSearchTool {
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("web_search.query is required"))?;
 
-        let max_results = 10;  // Fixed at 10 results
+        let max_results = 10; // Fixed at 10 results
 
         let client = Client::builder()
             .timeout(Duration::from_secs(10))
@@ -666,7 +688,11 @@ fn selector(css: &str) -> anyhow::Result<Selector> {
 }
 
 fn normalized_text(text: String) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ").trim().to_string()
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim()
+        .to_string()
 }
 
 fn truncate_for_summary(text: &str, max_len: usize) -> String {
@@ -698,7 +724,9 @@ fn normalize_duckduckgo_result_url(href: &str) -> String {
 
 struct FetchUrlTool;
 impl ChatTool for FetchUrlTool {
-    fn name(&self) -> &'static str { "fetch_url" }
+    fn name(&self) -> &'static str {
+        "fetch_url"
+    }
     fn description(&self) -> &'static str {
         "Fetch and return the text content of a URL (HTML markup stripped). Truncates large responses to ~8000 chars."
     }

@@ -15,7 +15,8 @@ impl AgentChatPanel {
         self.display_items.truncate(display_ix + 1);
         self.messages.truncate(message_index + 1);
         if self.messages.is_empty() {
-            self.messages.push(Self::default_system_message(&self.tool_registry));
+            self.messages
+                .push(Self::default_system_message(&self.tool_registry));
         }
 
         self.streaming_message_ix = None;

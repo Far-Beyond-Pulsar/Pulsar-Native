@@ -27,13 +27,15 @@ impl DeepSeekProvider {
                 id: "deepseek-chat",
                 label: "DeepSeek Chat",
                 supports_tools: true,
-                context_tokens: 65536, compact_model: None,
+                context_tokens: 65536,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "deepseek-reasoner",
                 label: "DeepSeek Reasoner",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
         ]
     }

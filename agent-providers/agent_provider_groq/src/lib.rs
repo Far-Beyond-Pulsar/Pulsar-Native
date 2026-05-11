@@ -26,22 +26,30 @@ impl GroqProvider {
             ModelDescriptor {
                 id: "llama-3.3-70b-versatile",
                 label: "Llama 3.3 70B Versatile",
-                supports_tools: true, context_tokens: 0, compact_model: None,
+                supports_tools: true,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "llama-3.1-8b-instant",
                 label: "Llama 3.1 8B Instant",
-                supports_tools: true, context_tokens: 0, compact_model: None,
+                supports_tools: true,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "qwen-qwq-32b",
                 label: "Qwen QwQ 32B",
-                supports_tools: false, context_tokens: 0, compact_model: None,
+                supports_tools: false,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "mixtral-8x7b-32768",
                 label: "Mixtral 8x7B",
-                supports_tools: false, context_tokens: 0, compact_model: None,
+                supports_tools: false,
+                context_tokens: 0,
+                compact_model: None,
             },
         ]
     }

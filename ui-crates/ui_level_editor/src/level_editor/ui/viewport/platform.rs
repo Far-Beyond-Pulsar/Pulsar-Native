@@ -196,11 +196,11 @@ unsafe extern "C" {
 #[cfg(target_os = "macos")]
 fn is_accessibility_trusted(prompt_if_missing: bool) -> bool {
     use core::ffi::c_void;
-    use core_foundation_sys::base::{CFRelease, kCFAllocatorDefault};
+    use core_foundation_sys::base::{kCFAllocatorDefault, CFRelease};
     use core_foundation_sys::dictionary::{
-        CFDictionaryCreate, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
+        kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks, CFDictionaryCreate,
     };
-    use core_foundation_sys::string::{CFStringCreateWithCString, kCFStringEncodingUTF8};
+    use core_foundation_sys::string::{kCFStringEncodingUTF8, CFStringCreateWithCString};
 
     unsafe {
         let key = CFStringCreateWithCString(
@@ -374,8 +374,8 @@ pub fn window_to_screen_position(
     window_x: f32,
     window_y: f32,
 ) -> Option<(i32, i32)> {
-    use objc2::runtime::AnyObject;
     use objc2::msg_send;
+    use objc2::runtime::AnyObject;
     use objc2_foundation::NSPoint;
     use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 

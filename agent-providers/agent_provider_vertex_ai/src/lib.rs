@@ -18,25 +18,29 @@ impl VertexAiProvider {
                 id: "anthropic/claude-opus-4-1",
                 label: "Claude Opus 4.1",
                 supports_tools: true,
-                context_tokens: 200000, compact_model: None,
+                context_tokens: 200000,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "anthropic/claude-3-7-sonnet",
                 label: "Claude 3.7 Sonnet",
                 supports_tools: true,
-                context_tokens: 200000, compact_model: None,
+                context_tokens: 200000,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "google/gemini-2.5-pro",
                 label: "Gemini 2.5 Pro",
                 supports_tools: true,
-                context_tokens: 1048576, compact_model: None,
+                context_tokens: 1048576,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "google/gemini-2.5-flash",
                 label: "Gemini 2.5 Flash",
                 supports_tools: true,
-                context_tokens: 1048576, compact_model: None,
+                context_tokens: 1048576,
+                compact_model: None,
             },
         ]
     }

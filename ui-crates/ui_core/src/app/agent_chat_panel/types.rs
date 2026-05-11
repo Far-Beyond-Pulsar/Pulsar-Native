@@ -38,10 +38,7 @@ pub enum DisplayItem {
         is_expanded: bool,
     },
     /// Shown when old messages were dropped to fit the context window.
-    CompactionSummary {
-        summary: String,
-        is_expanded: bool,
-    },
+    CompactionSummary { summary: String, is_expanded: bool },
     /// Collapsed thinking/reasoning block rendered before the assistant's reply.
     ThinkingBlock {
         content: String,

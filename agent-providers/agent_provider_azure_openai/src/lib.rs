@@ -18,19 +18,22 @@ impl AzureOpenAIProvider {
                 id: "gpt-4.1",
                 label: "GPT-4.1",
                 supports_tools: true,
-                context_tokens: 1047576, compact_model: None,
+                context_tokens: 1047576,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "gpt-4.1-mini",
                 label: "GPT-4.1 Mini",
                 supports_tools: true,
-                context_tokens: 1047576, compact_model: None,
+                context_tokens: 1047576,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "gpt-4o",
                 label: "GPT-4o",
                 supports_tools: true,
-                context_tokens: 128000, compact_model: None,
+                context_tokens: 128000,
+                compact_model: None,
             },
         ]
     }

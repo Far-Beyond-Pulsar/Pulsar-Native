@@ -55,8 +55,8 @@ use ui::{
     scroll::{Scrollbar, ScrollbarState},
     spinner::Spinner,
     text::TextView,
-    v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
-    VirtualListScrollHandle,
+    v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size,
+    StyledExt, VirtualListScrollHandle,
 };
 
 pub struct AgentChatPanel {

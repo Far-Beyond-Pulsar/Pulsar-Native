@@ -21,17 +21,23 @@ impl DemoRandomProvider {
             ModelDescriptor {
                 id: "demo-breeze",
                 label: "Demo Breeze",
-                supports_tools: false, context_tokens: 0, compact_model: None,
+                supports_tools: false,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "demo-story",
                 label: "Demo Story",
-                supports_tools: false, context_tokens: 0, compact_model: None,
+                supports_tools: false,
+                context_tokens: 0,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "demo-chaos",
                 label: "Demo Chaos",
-                supports_tools: false, context_tokens: 0, compact_model: None,
+                supports_tools: false,
+                context_tokens: 0,
+                compact_model: None,
             },
         ]
     }

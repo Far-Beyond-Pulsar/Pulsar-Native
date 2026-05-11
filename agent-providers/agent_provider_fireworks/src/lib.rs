@@ -27,19 +27,22 @@ impl FireworksProvider {
                 id: "accounts/fireworks/models/llama-v3p1-405b-instruct",
                 label: "Llama 3.1 405B Instruct",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "accounts/fireworks/models/qwen2p5-coder-32b-instruct",
                 label: "Qwen 2.5 Coder 32B Instruct",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "accounts/fireworks/models/mixtral-8x7b-instruct",
                 label: "Mixtral 8x7B Instruct",
                 supports_tools: false,
-                context_tokens: 32768, compact_model: None,
+                context_tokens: 32768,
+                compact_model: None,
             },
         ]
     }

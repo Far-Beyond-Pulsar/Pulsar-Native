@@ -53,10 +53,7 @@ impl AgentChatPanel {
 
     /// Build the system-prompt `DisplayItem` that heads every chat.
     /// `is_outdated` is true when the stored message differs from the current default.
-    pub(super) fn system_prompt_display_item(
-        content: &str,
-        current_default: &str,
-    ) -> DisplayItem {
+    pub(super) fn system_prompt_display_item(content: &str, current_default: &str) -> DisplayItem {
         DisplayItem::SystemPrompt {
             content: content.to_string(),
             is_expanded: false,
@@ -68,12 +65,19 @@ impl AgentChatPanel {
     pub(super) fn apply_system_prompt_update(&mut self, cx: &mut Context<Self>) {
         let new_msg = Self::default_system_message(&self.tool_registry);
         // Update provider history
-        if let Some(msg) = self.messages.iter_mut().find(|m| m.role == ChatRole::System) {
+        if let Some(msg) = self
+            .messages
+            .iter_mut()
+            .find(|m| m.role == ChatRole::System)
+        {
             msg.content = new_msg.content.clone();
         }
         // Refresh the card at the top of display_items
-        if let Some(DisplayItem::SystemPrompt { content, is_outdated, .. }) =
-            self.display_items.first_mut()
+        if let Some(DisplayItem::SystemPrompt {
+            content,
+            is_outdated,
+            ..
+        }) = self.display_items.first_mut()
         {
             *content = new_msg.content;
             *is_outdated = false;
@@ -281,12 +285,16 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
             .find(|m| m.role == ChatRole::System)
             .map(|m| m.content.as_str())
             .unwrap_or("");
-        display_items.insert(0, Self::system_prompt_display_item(stored_content, &current_default.content));
+        display_items.insert(
+            0,
+            Self::system_prompt_display_item(stored_content, &current_default.content),
+        );
 
         self.display_items = display_items;
         self.messages = messages;
         if self.messages.is_empty() {
-            self.messages.push(Self::default_system_message(&self.tool_registry));
+            self.messages
+                .push(Self::default_system_message(&self.tool_registry));
         }
 
         self.scroll_messages_to_bottom();

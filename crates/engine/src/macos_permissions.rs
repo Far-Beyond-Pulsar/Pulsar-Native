@@ -18,9 +18,11 @@ fn ax_is_process_trusted(_prompt: bool) -> bool {
     unsafe {
         let pid = process::id() as i32;
         let app_ref = AXUIElementCreateApplication(pid);
-        
+
         if app_ref.is_null() {
-            eprintln!("[PERMISSIONS] AXUIElementCreateApplication returned null - trust not granted");
+            eprintln!(
+                "[PERMISSIONS] AXUIElementCreateApplication returned null - trust not granted"
+            );
             false
         } else {
             eprintln!("[PERMISSIONS] AXUIElementCreateApplication succeeded - trust confirmed");

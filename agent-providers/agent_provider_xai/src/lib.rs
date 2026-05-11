@@ -27,19 +27,22 @@ impl XaiProvider {
                 id: "grok-3",
                 label: "Grok 3",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "grok-3-mini",
                 label: "Grok 3 Mini",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
             ModelDescriptor {
                 id: "grok-2-latest",
                 label: "Grok 2 Latest",
                 supports_tools: true,
-                context_tokens: 131072, compact_model: None,
+                context_tokens: 131072,
+                compact_model: None,
             },
         ]
     }
