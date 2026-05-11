@@ -143,7 +143,15 @@ fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        let graph: GraphDescription = serde_json::from_str(&json)
+        // The file is saved as a BlueprintAsset wrapper (format_version,
+        // main_graph, local_macros, variables, editor_state, blueprint_metadata).
+        // We extract main_graph as a raw JSON value, then redeserialize it as
+        // the graphy::GraphDescription that compile_blueprint expects — both
+        // types share the same wire format (nodes/connections/metadata).
+        let asset: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|e| format!("Cannot parse blueprint file {name}: {e}"))?;
+        let main_graph = asset.get("main_graph").unwrap_or(&asset);
+        let graph: GraphDescription = serde_json::from_value(main_graph.clone())
             .map_err(|e| format!("Cannot parse blueprint {name}: {e}"))?;
 
         match compile_blueprint(&graph) {
