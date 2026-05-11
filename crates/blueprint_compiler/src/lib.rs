@@ -59,6 +59,193 @@ pub fn get_metadata_provider() -> BlueprintMetadataProvider {
     BlueprintMetadataProvider::new()
 }
 
+/// Compile every blueprint in a project directory.
+///
+/// Walks `project_root` for folders containing `graph_save.json` (the
+/// convention used by the Pulsar editor), compiles each one, and returns a
+/// `Vec<(name, rust_source)>`. Errors on individual blueprints are logged and
+/// skipped — the Vec contains only successful compilations.
+pub fn compile_project(project_root: &std::path::Path)
+    -> std::result::Result<Vec<project::CompiledBlueprint>, String>
+{
+    let folders = find_blueprint_folders(project_root);
+    tracing::info!("[blueprint_compiler] {} blueprint folder(s) found", folders.len());
+
+    let mut compiled = Vec::new();
+    for folder in &folders {
+        let name = folder
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unnamed")
+            .to_owned();
+
+        match compile_blueprint_folder(folder) {
+            Ok(source) => {
+                tracing::info!("[blueprint_compiler] Compiled: {name}");
+                compiled.push(project::CompiledBlueprint::new(name, source));
+            }
+            Err(e) => {
+                tracing::error!("[blueprint_compiler] Skipping {name}: {e}");
+            }
+        }
+    }
+
+    Ok(compiled)
+}
+
+/// Compile a single blueprint folder (containing `graph_save.json`) into Rust source.
+fn compile_blueprint_folder(folder: &std::path::Path) -> std::result::Result<String, String> {
+    let graph_file = folder.join("graph_save.json");
+    let raw = std::fs::read_to_string(&graph_file)
+        .map_err(|e| format!("Cannot read {}: {e}", graph_file.display()))?;
+
+    // graph_save.json starts with `//` comment lines before the JSON payload.
+    let json: String = raw.lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // Deserialize as the editor's native BlueprintAsset type (pulsar_graph),
+    // then convert to the compiler's graphy::GraphDescription.
+    let asset: pulsar_graph::BlueprintAsset = serde_json::from_str(&json)
+        .map_err(|e| format!("Cannot parse graph_save.json: {e}"))?;
+
+    let graph = pg_to_graphy(asset.main_graph);
+    compile_blueprint(&graph).map_err(|e| e.to_string())
+}
+
+/// Walk `root` recursively and return all directories containing `graph_save.json`.
+fn find_blueprint_folders(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut results = Vec::new();
+    fn walk(dir: &std::path::Path, results: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.join("graph_save.json").exists() {
+                    results.push(path);
+                } else {
+                    walk(&path, results);
+                }
+            }
+        }
+    }
+    walk(root, &mut results);
+    results
+}
+
+// ── pulsar_graph → graphy type conversion ────────────────────────────────────
+
+fn pg_to_graphy(pg: pulsar_graph::GraphDescription) -> GraphDescription {
+    use pbgc::*;
+    GraphDescription {
+        metadata: GraphMetadata {
+            name:        pg.metadata.name,
+            description: pg.metadata.description,
+            version:     pg.metadata.version,
+            created_at:  pg.metadata.created_at,
+            modified_at: pg.metadata.modified_at,
+        },
+        nodes: pg.nodes.into_iter()
+            .map(|(id, n)| (id, pg_node(n)))
+            .collect(),
+        connections: pg.connections.into_iter()
+            .map(pg_connection)
+            .collect(),
+        comments: vec![],
+    }
+}
+
+fn pg_node(n: pulsar_graph::NodeInstance) -> NodeInstance {
+    NodeInstance {
+        id:         n.id,
+        node_type:  n.node_type,
+        position:   Position { x: n.position.x, y: n.position.y },
+        inputs:     n.inputs.into_iter().map(pg_pin).collect(),
+        outputs:    n.outputs.into_iter().map(pg_pin).collect(),
+        properties: n.properties.into_iter()
+            .map(|(k, v)| (k, pg_prop(v)))
+            .collect(),
+    }
+}
+
+fn pg_pin(p: pulsar_graph::PinInstance) -> PinInstance {
+    let id = p.id.clone();
+    PinInstance {
+        id: id.clone(),
+        pin: Pin {
+            id,
+            name:      p.pin.name,
+            data_type: pg_data_type(p.pin.data_type),
+            pin_type:  match p.pin.pin_type {
+                pulsar_graph::PinType::Input  => pbgc::PinType::Input,
+                pulsar_graph::PinType::Output => pbgc::PinType::Output,
+            },
+        },
+    }
+}
+
+fn pg_data_type(dt: pulsar_graph::DataType) -> DataType {
+    match dt {
+        pulsar_graph::DataType::Execution    => DataType::Execution,
+        pulsar_graph::DataType::String       => DataType::String,
+        pulsar_graph::DataType::Number       => DataType::Number,
+        pulsar_graph::DataType::Boolean      => DataType::Boolean,
+        pulsar_graph::DataType::Vector2      => DataType::Vector2,
+        pulsar_graph::DataType::Vector3      => DataType::Vector3,
+        pulsar_graph::DataType::Color        => DataType::Color,
+        pulsar_graph::DataType::Any          => DataType::Any,
+        pulsar_graph::DataType::Object       => DataType::Any,
+        pulsar_graph::DataType::Typed(ti)    => DataType::Typed(pbgc::TypeInfo {
+            type_string: format!("{ti}"),
+        }),
+        pulsar_graph::DataType::Array(inner) => DataType::Typed(pbgc::TypeInfo {
+            type_string: format!("Vec<{}>", pg_data_type_str(&inner)),
+        }),
+    }
+}
+
+fn pg_data_type_str(dt: &pulsar_graph::DataType) -> String {
+    match dt {
+        pulsar_graph::DataType::Execution    => "()".into(),
+        pulsar_graph::DataType::String       => "String".into(),
+        pulsar_graph::DataType::Number       => "f64".into(),
+        pulsar_graph::DataType::Boolean      => "bool".into(),
+        pulsar_graph::DataType::Vector2      => "(f32,f32)".into(),
+        pulsar_graph::DataType::Vector3      => "(f32,f32,f32)".into(),
+        pulsar_graph::DataType::Color        => "(f32,f32,f32,f32)".into(),
+        pulsar_graph::DataType::Any
+        | pulsar_graph::DataType::Object     => "Any".into(),
+        pulsar_graph::DataType::Typed(ti)    => format!("{ti}"),
+        pulsar_graph::DataType::Array(inner) => format!("Vec<{}>", pg_data_type_str(inner)),
+    }
+}
+
+fn pg_connection(c: pulsar_graph::Connection) -> Connection {
+    Connection {
+        id:              c.id,
+        source_node:     c.source_node,
+        source_pin:      c.source_pin,
+        target_node:     c.target_node,
+        target_pin:      c.target_pin,
+        connection_type: match c.connection_type {
+            pulsar_graph::ConnectionType::Execution => ConnectionType::Execution,
+            pulsar_graph::ConnectionType::Data      => ConnectionType::Data,
+        },
+    }
+}
+
+fn pg_prop(v: pulsar_graph::PropertyValue) -> PropertyValue {
+    match v {
+        pulsar_graph::PropertyValue::String(s)         => PropertyValue::String(s),
+        pulsar_graph::PropertyValue::Number(n)         => PropertyValue::Number(n),
+        pulsar_graph::PropertyValue::Boolean(b)        => PropertyValue::Boolean(b),
+        pulsar_graph::PropertyValue::Vector2(x, y)     => PropertyValue::Vector2(x, y),
+        pulsar_graph::PropertyValue::Vector3(x, y, z)  => PropertyValue::Vector3(x, y, z),
+        pulsar_graph::PropertyValue::Color(r, g, b, a) => PropertyValue::Color(r, g, b, a),
+    }
+}
+
 /// Compile a Blueprint graph to Rust code
 ///
 /// This is a convenience function that wraps PBGC's compile_graph with

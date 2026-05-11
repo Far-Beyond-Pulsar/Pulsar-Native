@@ -1332,6 +1332,8 @@ version = "0.1.0"
 dependencies = [
  "graphy",
  "pbgc",
+ "pulsar_graph",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
