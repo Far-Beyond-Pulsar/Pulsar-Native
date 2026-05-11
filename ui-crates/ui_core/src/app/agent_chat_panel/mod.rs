@@ -100,8 +100,8 @@ pub struct AgentChatPanel {
     /// Sender half of the per-request cancel channel. `None` when idle.
     pub(crate) cancel_tx: Option<smol::channel::Sender<()>>,
     /// Whether the chat should automatically scroll to new content.
-    /// Disabled when the user scrolls up; re-enabled when they scroll back to the
-    /// bottom or click the "jump to bottom" button.
+    /// Disabled when the user explicitly scrolls up; re-enabled when they scroll
+    /// back near the bottom or click the "jump to bottom" button.
     pub(crate) auto_scroll: bool,
     /// Height of the message-list viewport in pixels — measured each render frame.
     pub(crate) chat_viewport_height: Pixels,
@@ -444,27 +444,18 @@ impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.maybe_reload_chats_from_disk(cx);
 
-        // ── Auto-scroll detection ──────────────────────────────────────────────
-        // Read the scroll handle every frame. When `chat_viewport_height` has been
-        // measured (> 0), we can compute the exact distance from the bottom and
-        // decide whether the user has scrolled up.
-        if self.chat_viewport_height > px(0.0) {
-            let dist = self.distance_from_bottom();
-            if self.is_request_in_flight {
-                if dist > px(80.0) {
-                    // User scrolled away — pause auto-scroll.
-                    self.auto_scroll = false;
-                } else if dist < px(20.0) {
-                    // User is at the bottom again — resume.
-                    self.auto_scroll = true;
-                }
-            } else {
-                // After a request ends, reset so the next one starts following.
-                self.auto_scroll = true;
-            }
+        // ── Auto-scroll safety net ─────────────────────────────────────────────
+        // Scroll intent is detected via on_scroll_wheel on the container (below).
+        // Here we only handle two passive cases:
+        //   • request ended → always reset to following
+        //   • user managed to drag/scroll back to within 100px of bottom → re-enable
+        if !self.is_request_in_flight {
+            self.auto_scroll = true;
+        } else if !self.auto_scroll && self.distance_from_bottom() < px(100.0) {
+            self.auto_scroll = true;
         }
 
-        let show_jump_button = !self.auto_scroll && self.distance_from_bottom() > px(80.0);
+        let show_jump_button = !self.auto_scroll && self.distance_from_bottom() > px(100.0);
 
         let provider = self.active_provider();
         let model = self.active_model();
@@ -781,8 +772,23 @@ impl Render for AgentChatPanel {
             )
             .child(
                 div()
+                    .id("agent-chat-scroll-area")
                     .relative()
                     .flex_1()
+                    // Detect explicit user scroll-up → pause auto-scroll.
+                    // Scrolling down is handled by the distance_from_bottom check above.
+                    .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _, cx| {
+                        // Detect explicit upward scroll — stop auto-following the bottom.
+                        let scrolled_up = match event.delta {
+                            ScrollDelta::Pixels(p) => p.y < px(0.0),
+                            ScrollDelta::Lines(l) => l.y < 0.0,
+                        };
+                        if scrolled_up && this.auto_scroll {
+                            this.auto_scroll = false;
+                            cx.notify();
+                        }
+                        // Scroll down is handled passively via distance_from_bottom in render.
+                    }))
                     .child(
                         v_virtual_list(
                             cx.entity().clone(),

@@ -1191,9 +1191,6 @@ impl AgentChatPanel {
                     this.update(cx, |panel, cx| {
                         match event {
                             StreamEvent::Chunk(chunk) => {
-                                if panel.is_request_in_flight {
-                                    panel.is_request_in_flight = false;
-                                }
                                 // Update provider history message
                                 if let Some(message) = panel.messages.get_mut(message_ix) {
                                     message.content.push_str(&chunk);
@@ -1484,7 +1481,8 @@ impl AgentChatPanel {
         })
         .detach();
 
-        // Drive live timers: notify every 500 ms while a request is in flight.
+        // Tick every 500 ms while in-flight: scroll to bottom (when auto_scroll is
+        // on) and update live timers in card headers.
         cx.spawn(async move |this, cx| {
             loop {
                 Timer::after(Duration::from_millis(500)).await;
@@ -1492,6 +1490,11 @@ impl AgentChatPanel {
                     .update(|cx| {
                         this.update(cx, |panel, cx| {
                             if panel.is_request_in_flight {
+                                // Auto-scroll: push to bottom every tick unless the
+                                // user has explicitly scrolled up.
+                                if panel.auto_scroll {
+                                    panel.messages_scroll_handle.scroll_to_bottom();
+                                }
                                 cx.notify();
                                 true
                             } else {
