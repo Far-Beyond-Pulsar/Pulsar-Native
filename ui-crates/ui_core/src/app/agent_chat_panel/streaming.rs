@@ -483,24 +483,48 @@ impl AgentChatPanel {
 
         match item {
             DisplayItem::UserMessage { content, .. }
-            | DisplayItem::AssistantMessage { content, .. } => {
-                line_height(content, 18.0, 44.0)
-            }
-            DisplayItem::ToolCallGroup { calls, is_expanded, .. } => {
+            | DisplayItem::AssistantMessage { content, .. } => line_height(content, 18.0, 44.0),
+            DisplayItem::ToolCallGroup {
+                calls, is_expanded, ..
+            } => {
                 if *is_expanded {
                     px(56.0 + calls.len() as f32 * 80.0)
                 } else {
                     px(40.0)
                 }
             }
-            DisplayItem::CompactionSummary { summary, is_expanded, .. } => {
-                if *is_expanded { line_height(summary, 15.0, 48.0) } else { px(36.0) }
+            DisplayItem::CompactionSummary {
+                summary,
+                is_expanded,
+                ..
+            } => {
+                if *is_expanded {
+                    line_height(summary, 15.0, 48.0)
+                } else {
+                    px(36.0)
+                }
             }
-            DisplayItem::SystemPrompt { content, is_expanded, .. } => {
-                if *is_expanded { line_height(content, 16.0, 56.0) } else { px(40.0) }
+            DisplayItem::SystemPrompt {
+                content,
+                is_expanded,
+                ..
+            } => {
+                if *is_expanded {
+                    line_height(content, 16.0, 56.0)
+                } else {
+                    px(40.0)
+                }
             }
-            DisplayItem::ThinkingBlock { content, is_expanded, .. } => {
-                if *is_expanded { line_height(content, 16.0, 56.0) } else { px(40.0) }
+            DisplayItem::ThinkingBlock {
+                content,
+                is_expanded,
+                ..
+            } => {
+                if *is_expanded {
+                    line_height(content, 16.0, 56.0)
+                } else {
+                    px(40.0)
+                }
             }
         }
     }
@@ -920,7 +944,9 @@ impl AgentChatPanel {
                                 let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone);
                                 in_thinking = false;
                                 rest = &rest[end + "</think>".len()..];
-                                if rest.is_empty() { break; }
+                                if rest.is_empty() {
+                                    break;
+                                }
                             } else {
                                 pending_thinking.push_str(rest);
                                 // Emit thinking in small batches so the block fills progressively.
@@ -970,7 +996,8 @@ impl AgentChatPanel {
                 // Stream ended mid-think: flush remaining content then close
                 if in_thinking {
                     if !pending_thinking.is_empty() {
-                        let _ = tx_for_chunks.try_send(StreamEvent::ThinkingChunk(pending_thinking));
+                        let _ =
+                            tx_for_chunks.try_send(StreamEvent::ThinkingChunk(pending_thinking));
                     }
                     let _ = tx_for_chunks.try_send(StreamEvent::ThinkingDone);
                 }
