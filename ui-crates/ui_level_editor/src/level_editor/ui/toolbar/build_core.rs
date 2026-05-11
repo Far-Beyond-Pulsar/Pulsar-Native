@@ -136,7 +136,14 @@ fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
         let raw = std::fs::read_to_string(&graph_file)
             .map_err(|e| format!("Cannot read {}: {e}", graph_file.display()))?;
 
-        let graph: GraphDescription = serde_json::from_str(&raw)
+        // graph_save.json is prefixed with `//` comment lines by the blueprint
+        // editor before the actual JSON payload — strip them before parsing.
+        let json = raw.lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let graph: GraphDescription = serde_json::from_str(&json)
             .map_err(|e| format!("Cannot parse blueprint {name}: {e}"))?;
 
         match compile_blueprint(&graph) {
