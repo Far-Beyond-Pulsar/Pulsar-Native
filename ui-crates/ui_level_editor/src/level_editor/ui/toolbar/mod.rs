@@ -8,6 +8,7 @@ use ui::{
 };
 
 mod actions;
+mod build_core;
 mod build_dropdowns;
 mod feature_toggles;
 mod mode_indicator;
@@ -16,6 +17,7 @@ mod playback_controls;
 mod time_scale_dropdown;
 
 pub use actions::*;
+use build_core::BuildCoreButton;
 use build_dropdowns::BuildDropdowns;
 use feature_toggles::FeatureToggles;
 use mode_indicator::ModeIndicator;
@@ -86,6 +88,8 @@ impl ToolbarPanel {
             ))
             .child(div().flex_1())
             .child(ModeIndicator::render(state, cx))
+            .child(self.render_separator(cx))
+            .child(BuildCoreButton::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
             .child(self.render_save_button(state_arc.clone()))
             .child(self.render_separator(cx))
