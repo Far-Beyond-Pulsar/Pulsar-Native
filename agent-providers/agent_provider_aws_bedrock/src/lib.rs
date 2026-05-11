@@ -69,7 +69,7 @@ impl ChatProvider for AwsBedrockProvider {
     }
 
     fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::requires_auth("AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY")
+        ProviderAvailability::wip("Not yet implemented — contribution welcome")
     }
 
     fn auth_methods(&self) -> Vec<AuthMethod> {

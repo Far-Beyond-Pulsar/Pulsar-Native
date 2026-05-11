@@ -57,7 +57,7 @@ impl ChatProvider for CohereProvider {
     }
 
     fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::requires_auth("COHERE_API_KEY environment variable")
+        ProviderAvailability::wip("Not yet implemented — contribution welcome")
     }
 
     fn auth_methods(&self) -> Vec<AuthMethod> {

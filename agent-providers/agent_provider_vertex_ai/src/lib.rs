@@ -63,7 +63,7 @@ impl ChatProvider for VertexAiProvider {
     }
 
     fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::requires_auth("Google service account credentials")
+        ProviderAvailability::wip("Not yet implemented — contribution welcome")
     }
 
     fn auth_methods(&self) -> Vec<AuthMethod> {

@@ -60,14 +60,8 @@ impl ChatProvider for AzureOpenAIProvider {
         Self::static_models()
     }
 
-    fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        if Self::auth_token_from_env(env).is_some() {
-            ProviderAvailability::ready()
-        } else {
-            ProviderAvailability::requires_auth(
-                "Authentication required. Set AZURE_OPENAI_API_KEY.",
-            )
-        }
+    fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
+        ProviderAvailability::wip("Not yet implemented — contribution welcome")
     }
 
     fn auth_methods(&self) -> Vec<AuthMethod> {
