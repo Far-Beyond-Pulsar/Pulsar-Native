@@ -1341,7 +1341,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=29c93b755302b1b3207612362cd7fba7168ac230#29c93b755302b1b3207612362cd7fba7168ac230"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c1b3fc27ecbddf2d95ea644198ea7e583d4c4a19#c1b3fc27ecbddf2d95ea644198ea7e583d4c4a19"
 dependencies = [
  "arboard",
  "chrono",
@@ -1350,7 +1350,7 @@ dependencies = [
  "gpui-ce",
  "graphy",
  "log",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=121d138c09e9300d987ebd60c0099eff655f4f14)",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=0dacf579a6b26a1da2ea855149b6a8732bb9cfbe)",
  "plugin_editor_api",
  "pulsar_std",
  "schemars",
@@ -3095,6 +3095,7 @@ dependencies = [
  "bytemuck",
  "crossbeam-channel",
  "dashmap 6.1.0",
+ "engine_state",
  "flume 0.11.1",
  "futures",
  "git2",
@@ -8347,7 +8348,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=121d138c09e9300d987ebd60c0099eff655f4f14#121d138c09e9300d987ebd60c0099eff655f4f14"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=0dacf579a6b26a1da2ea855149b6a8732bb9cfbe#0dacf579a6b26a1da2ea855149b6a8732bb9cfbe"
 dependencies = [
  "graphy",
  "pulsar_std",
