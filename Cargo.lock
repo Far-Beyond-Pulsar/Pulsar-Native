@@ -1341,7 +1341,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=9bb0cb7cceb083db78676b87c6e3dfb6534b0a20#9bb0cb7cceb083db78676b87c6e3dfb6534b0a20"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=e8ebba8187f7013a9bf06a4419715bf27dd80863#e8ebba8187f7013a9bf06a4419715bf27dd80863"
 dependencies = [
  "arboard",
  "chrono",
@@ -1350,7 +1350,7 @@ dependencies = [
  "gpui-ce",
  "graphy",
  "log",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=50ce368e4eb7d003ca4320cd3d4fc54ac9b5f4ee)",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=121d138c09e9300d987ebd60c0099eff655f4f14)",
  "plugin_editor_api",
  "pulsar_std",
  "schemars",
@@ -8347,7 +8347,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=50ce368e4eb7d003ca4320cd3d4fc54ac9b5f4ee#50ce368e4eb7d003ca4320cd3d4fc54ac9b5f4ee"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=121d138c09e9300d987ebd60c0099eff655f4f14#121d138c09e9300d987ebd60c0099eff655f4f14"
 dependencies = [
  "graphy",
  "pulsar_std",
@@ -13748,7 +13748,6 @@ dependencies = [
 name = "ui_level_editor"
 version = "0.1.0"
 dependencies = [
- "blueprint_compiler",
  "chrono",
  "core-foundation-sys",
  "core-graphics2",
