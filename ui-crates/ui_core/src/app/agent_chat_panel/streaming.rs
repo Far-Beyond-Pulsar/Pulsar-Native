@@ -329,6 +329,18 @@ impl AgentChatPanel {
                     px(40.0)
                 }
             }
+            DisplayItem::CompactionSummary { summary, is_expanded, .. } => {
+                if *is_expanded {
+                    let visual_lines: usize = summary
+                        .lines()
+                        .map(|line| line.chars().count().max(1).div_ceil(64))
+                        .sum::<usize>()
+                        .max(1);
+                    px((48.0 + (visual_lines as f32 * 15.0)).min(320.0))
+                } else {
+                    px(36.0)
+                }
+            }
             DisplayItem::SystemPrompt { content, is_expanded, .. } => {
                 if *is_expanded {
                     let visual_lines: usize = content
@@ -569,6 +581,19 @@ impl AgentChatPanel {
         let (provider_messages, was_compacted) =
             Self::compact_provider_messages(provider_messages, history_budget);
 
+        // Extract the summary text before provider_messages is moved into ChatRequest.
+        let initial_compaction_summary: Option<String> = if was_compacted {
+            Some(
+                provider_messages
+                    .iter()
+                    .find(|m| m.role == ChatRole::System && m.content.contains("auto-compacted"))
+                    .map(|m| m.content.clone())
+                    .unwrap_or_else(|| "Conversation compacted to fit context window.".to_string()),
+            )
+        } else {
+            None
+        };
+
         let token = token.unwrap_or_default();
         let tool_schemas = self.tool_registry.available_tools_schema();
 
@@ -632,6 +657,8 @@ impl AgentChatPanel {
             ToolCallGroup(Vec<ToolCall>),
             /// A tool finished executing; update the matching call's result in the UI.
             ToolCallResult { id: String, result_preview: String, is_error: bool },
+            /// Old messages were dropped inside the agentic loop to stay within context.
+            ContextCompacted(String),
             OpenFile(PathBuf),
             ActivateOpenEditor(usize),
             Finished(Result<agent_chat_core::ChatResponse, String>),
@@ -645,10 +672,27 @@ impl AgentChatPanel {
         let plugin_bridge_for_task = self.plugin_bridge.clone();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
+        // Handle initial compaction synchronously — insert the summary card before
+        // the streaming bubble so the user sees the context was trimmed.
+        if let Some(summary) = initial_compaction_summary {
+            if let Some(dix) = self.streaming_display_item_ix {
+                if dix + 1 == self.display_items.len() {
+                    let bubble = self.display_items.pop().unwrap();
+                    self.display_items.push(DisplayItem::CompactionSummary {
+                        summary,
+                        is_expanded: false,
+                    });
+                    self.display_items.push(bubble);
+                    self.streaming_display_item_ix = Some(dix + 1);
+                }
+            }
+        }
+
         // Per-request cancel channel — UI sends () to abort.
         let (cancel_tx, cancel_rx) = smol::channel::bounded::<()>(1);
         self.cancel_tx = Some(cancel_tx);
 
+        let context_budget = history_budget; // passed into the worker for in-loop compaction
         let completion_for_worker = completion_sent.clone();
         std::thread::spawn(move || {
             let mut current_messages = request.messages.clone();
@@ -859,6 +903,33 @@ impl AgentChatPanel {
                                     tool_calls: vec![],
                                 });
                             }
+
+                            // Compact current_messages if tool results pushed us over budget.
+                            let total_chars: usize =
+                                current_messages.iter().map(|m| m.content.len()).sum();
+                            if total_chars > context_budget {
+                                let (compacted, did_compact) =
+                                    AgentChatPanel::compact_provider_messages(
+                                        std::mem::take(&mut current_messages),
+                                        context_budget,
+                                    );
+                                current_messages = compacted;
+                                if did_compact {
+                                    let summary = current_messages
+                                        .iter()
+                                        .find(|m| {
+                                            m.role == ChatRole::System
+                                                && m.content.contains("auto-compacted")
+                                        })
+                                        .map(|m| m.content.clone())
+                                        .unwrap_or_else(|| {
+                                            "Context compacted to fit window.".to_string()
+                                        });
+                                    let _ = tx_for_chunks
+                                        .try_send(StreamEvent::ContextCompacted(summary));
+                                }
+                            }
+
                             continue;
                         } else {
                             if !completion_for_worker.swap(true, Ordering::SeqCst) {
@@ -982,6 +1053,29 @@ impl AgentChatPanel {
                                         break;
                                     }
                                 }
+                                cx.notify();
+                            }
+
+                            StreamEvent::ContextCompacted(summary) => {
+                                // Insert the compaction card immediately before the current
+                                // streaming bubble so it appears in context-order in the chat.
+                                if let Some(dix) = panel.streaming_display_item_ix {
+                                    if dix + 1 == panel.display_items.len() {
+                                        let bubble = panel.display_items.pop().unwrap();
+                                        panel.display_items.push(DisplayItem::CompactionSummary {
+                                            summary,
+                                            is_expanded: false,
+                                        });
+                                        panel.display_items.push(bubble);
+                                        panel.streaming_display_item_ix = Some(dix + 1);
+                                    }
+                                } else {
+                                    panel.display_items.push(DisplayItem::CompactionSummary {
+                                        summary,
+                                        is_expanded: false,
+                                    });
+                                }
+                                panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
 
