@@ -7,11 +7,13 @@
 
 pub mod gizmo_interaction_controller;
 pub mod gpu_renderer;
+pub mod core_project_builder;
 pub mod lsp_completion_provider;
 pub mod path_utils;
 pub mod physics_query_service;
 pub mod rust_analyzer_manager;
 
+pub use core_project_builder::ensure_core_bootstrap;
 pub use gizmo_interaction_controller::{DragState, GizmoInteractionController, InteractionState};
 pub use gpu_renderer::GpuRenderer;
 pub use lsp_completion_provider::GlobalRustAnalyzerCompletionProvider;

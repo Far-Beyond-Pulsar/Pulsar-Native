@@ -79,6 +79,8 @@ impl BuildCoreButton {
 }
 
 fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
+    engine_backend::services::ensure_core_bootstrap(project_root)?;
+
     let status = std::process::Command::new("cargo")
         .arg("build")
         .current_dir(project_root)
