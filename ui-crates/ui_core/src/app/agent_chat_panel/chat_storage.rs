@@ -180,11 +180,15 @@ Plugin-provided tools are discovered dynamically via query_plugin_tools — call
                 DisplayItem::ThinkingBlock {
                     content,
                     is_expanded,
+                    started_at_ms,
+                    finished_at_ms,
                     ..
                 } => DisplayItem::ThinkingBlock {
                     content: content.clone(),
                     is_expanded: *is_expanded,
                     is_done: true,
+                    started_at_ms: *started_at_ms,
+                    finished_at_ms: *finished_at_ms,
                 },
                 other => other.clone(),
             })

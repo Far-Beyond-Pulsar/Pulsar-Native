@@ -447,6 +447,10 @@ impl Render for AgentChatPanel {
         let chat_history_list = self.chat_history_list.clone();
         let current_chat_id = self.current_chat_id.clone();
         let display_count = self.display_items.len();
+        let render_now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         let display_item_sizes = std::rc::Rc::new(
             self.display_items
                 .iter()
@@ -771,9 +775,10 @@ impl Render for AgentChatPanel {
                                         let panel = cx.entity().clone();
 
                                         match item {
-                                            DisplayItem::ToolCallGroup { calls, is_expanded } => {
+                                            DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms } => {
                                                 let calls = calls.clone();
                                                 let is_expanded = *is_expanded;
+                                                let group_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
                                                 let tool_names: Vec<String> =
                                                     calls.iter().map(|c| c.name.clone()).collect();
                                                 let all_done =
@@ -891,6 +896,13 @@ impl Render for AgentChatPanel {
                                                                             .child(header_label),
                                                                     )
                                                                     .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(cx.theme().muted_foreground.opacity(0.6))
+                                                                            .font_family("JetBrains Mono")
+                                                                            .child(group_elapsed),
+                                                                    )
+                                                                    .child(
                                                                         // Status icon — shape conveys state for colorblind users
                                                                         Icon::new(status_icon)
                                                                             .size_3()
@@ -992,9 +1004,12 @@ impl Render for AgentChatPanel {
                                             DisplayItem::CompactionSummary {
                                                 summary,
                                                 is_expanded,
+                                                started_at_ms,
+                                                finished_at_ms,
                                             } => {
                                                 let summary = summary.clone();
                                                 let is_expanded = *is_expanded;
+                                                let compact_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
                                                 let accent = cx.theme().warning;
 
                                                 div()
@@ -1055,6 +1070,13 @@ impl Render for AgentChatPanel {
                                                                             .text_xs()
                                                                             .text_color(cx.theme().muted_foreground)
                                                                             .child("Context compacted — earlier messages summarised"),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(accent.opacity(0.7))
+                                                                            .font_family("JetBrains Mono")
+                                                                            .child(compact_elapsed),
                                                                     )
                                                                     .child(
                                                                         Icon::new(if is_expanded {
@@ -1206,10 +1228,13 @@ impl Render for AgentChatPanel {
                                                 content,
                                                 is_expanded,
                                                 is_done,
+                                                started_at_ms,
+                                                finished_at_ms,
                                             } => {
                                                 let content = content.clone();
                                                 let is_expanded = *is_expanded;
                                                 let is_done = *is_done;
+                                                let think_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
                                                 let accent = cx.theme().info;
                                                 let status_icon = if is_done {
                                                     IconName::Brain
@@ -1301,6 +1326,13 @@ impl Render for AgentChatPanel {
                                                                                     .muted_foreground,
                                                                             )
                                                                             .child(header_label),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(accent.opacity(0.7))
+                                                                            .font_family("JetBrains Mono")
+                                                                            .child(think_elapsed),
                                                                     )
                                                                     .child(
                                                                         Icon::new(status_icon)

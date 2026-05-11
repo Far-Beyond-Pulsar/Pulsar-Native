@@ -11,6 +11,12 @@ pub struct ToolCallDisplay {
     /// `None` while the tool is still running.
     pub result_preview: Option<String>,
     pub is_error: bool,
+    /// Unix-epoch milliseconds when this tool call was dispatched.
+    #[serde(default)]
+    pub started_at_ms: u64,
+    /// Unix-epoch milliseconds when the result arrived. `None` while running.
+    #[serde(default)]
+    pub finished_at_ms: Option<u64>,
 }
 
 /// Flat items rendered in the chat virtual list.
@@ -36,9 +42,21 @@ pub enum DisplayItem {
     ToolCallGroup {
         calls: Vec<ToolCallDisplay>,
         is_expanded: bool,
+        #[serde(default)]
+        started_at_ms: u64,
+        /// Set when the last call in the group finishes.
+        #[serde(default)]
+        finished_at_ms: Option<u64>,
     },
     /// Shown when old messages were dropped to fit the context window.
-    CompactionSummary { summary: String, is_expanded: bool },
+    CompactionSummary {
+        summary: String,
+        is_expanded: bool,
+        #[serde(default)]
+        started_at_ms: u64,
+        #[serde(default)]
+        finished_at_ms: Option<u64>,
+    },
     /// Collapsed thinking/reasoning block rendered before the assistant's reply.
     ThinkingBlock {
         content: String,
@@ -46,6 +64,11 @@ pub enum DisplayItem {
         /// `false` only during live generation; always `true` on disk.
         #[serde(default = "bool_true")]
         is_done: bool,
+        #[serde(default)]
+        started_at_ms: u64,
+        /// Set when `</think>` is seen.
+        #[serde(default)]
+        finished_at_ms: Option<u64>,
     },
     /// The system prompt card — always first in the list, never sent to the AI,
     /// reconstructed from `messages[0]` on load so it is not persisted in
