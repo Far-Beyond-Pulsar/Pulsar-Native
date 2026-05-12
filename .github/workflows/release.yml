@@ -75,11 +75,11 @@ jobs:
 
       - name: Check if Cargo.toml version changed
         id: check
+        shell: bash
         run: |
           CRATE_PATH="${{ steps.get-crate.outputs.first_crate }}"
           CURRENT_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
-          git checkout HEAD^1
-          PREVIOUS_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
+          PREVIOUS_VERSION=$(git show "HEAD^1:$CRATE_PATH/Cargo.toml" | grep -m1 version | cut -d '"' -f2)
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
@@ -97,7 +97,7 @@ jobs:
         env:
           UI_OVERRIDE: ${{ github.event.inputs.allow_dangerous_release || 'false' }}
         run: |
-          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          COMMIT_MESSAGE=$(git show -s --format=%B "$GITHUB_SHA")
           FORCE_COMMIT=false
 
           if printf '%s' "$COMMIT_MESSAGE" | grep -q '\[FORCE-RELEASE\]'; then
