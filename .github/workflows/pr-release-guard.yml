@@ -1,0 +1,64 @@
+name: PR Release Guard
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+jobs:
+  block-force-release-commits:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Scan PR commits for force-release marker
+        id: scan
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '[FORCE-RELEASE]';
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const offendingCommits = commits
+              .filter((commit) => (commit.commit?.message || '').includes(marker))
+              .map((commit) => ({
+                sha: commit.sha,
+                message: commit.commit.message.split('\n')[0],
+              }));
+
+            core.setOutput('has_forced_release', offendingCommits.length > 0 ? 'true' : 'false');
+            core.setOutput('offending_commits', JSON.stringify(offendingCommits));
+
+            if (offendingCommits.length > 0) {
+              const summary = offendingCommits
+                .map((commit) => `- ${commit.sha.slice(0, 7)}: ${commit.message}`)
+                .join('\n');
+
+              const body = [
+                'This pull request contains one or more commits with the force-release marker `[FORCE-RELEASE]`.',
+                '',
+                'That marker is reserved for release commits only. Remove it before merging.',
+                '',
+                'Offending commits:',
+                summary,
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+
+              core.setFailed('Force-release marker found in PR commit history.');
+            }
