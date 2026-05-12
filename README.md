@@ -3,7 +3,9 @@
 <!-- =============================== -->
 
 <p align="center">
-  <img width="160" height="160" alt="Pulsar Logo" src="https://github.com/user-attachments/assets/e36bfc3b-f5e8-437e-a50a-967ee254a0eb" />
+  <a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native">
+    <img width="160" height="160" alt="Pulsar Logo" src="https://github.com/user-attachments/assets/e36bfc3b-f5e8-437e-a50a-967ee254a0eb" style="background-color: transparent !important; border: none !important;" />
+  </a>
 </p>
 
 <h1 align="center">Pulsar Engine</h1>
