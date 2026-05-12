@@ -255,6 +255,8 @@ impl TextInput {
                                 state.scroll_handle.clone(),
                                 content_height,
                                 viewport_height,
+                                last_layout.line_height,
+                                state.mode.highlighter_ref(),
                                 state.minimap_drag.clone(),
                             ));
                         }
