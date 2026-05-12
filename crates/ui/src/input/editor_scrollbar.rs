@@ -163,8 +163,9 @@ impl Element for EditorScrollbar {
         window.on_mouse_event({
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
-            move |event: &MouseDownEvent, phase, _window, _cx| {
+            move |event: &MouseDownEvent, phase, _window, cx| {
                 if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) { return; }
+                cx.stop_propagation();
 
                 let max_scroll = (content_height - viewport_height).max(px(0.0));
 
@@ -175,7 +176,6 @@ impl Element for EditorScrollbar {
                         start_offset_y: f32::from(scroll_handle.offset().y),
                     });
                 } else {
-                    // Click on track → jump, thumb centered on cursor
                     let click_y = event.position.y - bounds.origin.y;
                     let (_, thumb_h) = {
                         let ratio = (viewport_height / content_height.max(px(1.0))).min(1.0);
@@ -195,10 +195,11 @@ impl Element for EditorScrollbar {
         window.on_mouse_event({
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
-            move |event: &MouseMoveEvent, phase, _window, _cx| {
+            move |event: &MouseMoveEvent, phase, _window, cx| {
                 if phase != DispatchPhase::Bubble { return; }
                 let state = drag_state.0.get();
                 if !state.active { return; }
+                cx.stop_propagation();
 
                 let max_scroll = (content_height - viewport_height).max(px(0.0));
                 let ratio = (viewport_height / content_height.max(px(1.0))).min(1.0);
@@ -206,7 +207,7 @@ impl Element for EditorScrollbar {
                 let travel = (track_h - thumb_h).max(px(1.0));
 
                 let delta_y = f32::from(event.position.y) - state.start_y;
-                let scroll_per_px = max_scroll / travel; // f32 (Pixels/Pixels)
+                let scroll_per_px = max_scroll / travel;
                 let new_y = px(state.start_offset_y) - px(delta_y) * scroll_per_px;
                 let clamped = new_y.min(px(0.0)).max(-max_scroll);
 
@@ -217,9 +218,13 @@ impl Element for EditorScrollbar {
         });
 
         window.on_mouse_event({
-            move |_: &MouseUpEvent, _phase, _window, _cx| {
+            move |_: &MouseUpEvent, phase, _window, cx| {
                 let mut s = drag_state.0.get();
-                if s.active { s.active = false; drag_state.0.set(s); }
+                if s.active {
+                    s.active = false;
+                    drag_state.0.set(s);
+                    if phase == DispatchPhase::Bubble { cx.stop_propagation(); }
+                }
             }
         });
     }

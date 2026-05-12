@@ -273,12 +273,12 @@ impl Element for Minimap {
         window.on_mouse_event({
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
-            move |event: &MouseDownEvent, phase, _window, _cx| {
+            move |event: &MouseDownEvent, phase, _window, cx| {
                 if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) { return; }
+                cx.stop_propagation();
 
                 let click_frac = f32::from(event.position.y - bounds.origin.y)
                     / f32::from(container_h).max(1.0);
-                // Map minimap click to document position
                 let target_line = minimap_first_line as f32
                     + click_frac * minimap_visible_lines as f32;
                 let new_y = if max_scroll > px(0.0) {
@@ -301,13 +301,13 @@ impl Element for Minimap {
         window.on_mouse_event({
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
-            move |event: &MouseMoveEvent, phase, _window, _cx| {
+            move |event: &MouseMoveEvent, phase, _window, cx| {
                 if phase != DispatchPhase::Bubble { return; }
                 let state = drag_state.0.get();
                 if !state.active { return; }
+                cx.stop_propagation();
 
                 let delta_px = f32::from(event.position.y) - state.start_y;
-                // Dragging 1px in the minimap = (total_lines / minimap_visible_lines) editor lines
                 let lines_per_minimap_px = total_lines as f32 / minimap_visible_lines.max(1) as f32;
                 let delta_lines = delta_px * lines_per_minimap_px;
                 let delta_scroll = editor_lh * delta_lines;
@@ -321,9 +321,13 @@ impl Element for Minimap {
         });
 
         window.on_mouse_event({
-            move |_: &MouseUpEvent, _phase, _window, _cx| {
+            move |_: &MouseUpEvent, phase, _window, cx| {
                 let mut s = drag_state.0.get();
-                if s.active { s.active = false; drag_state.0.set(s); }
+                if s.active {
+                    s.active = false;
+                    drag_state.0.set(s);
+                    if phase == DispatchPhase::Bubble { cx.stop_propagation(); }
+                }
             }
         });
     }
