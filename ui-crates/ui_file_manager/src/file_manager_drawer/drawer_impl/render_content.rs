@@ -12,14 +12,27 @@ impl FileManagerDrawer {
             return v_flex().flex_1().min_h_0().into_any_element();
         }
 
-        let vp_width: f32 = window.viewport_size().width.into();
-        let available_w = (vp_width - 250.0 - 32.0).max(100.0);
+        let pane_width = self
+            .resizable_state
+            .read(cx)
+            .sizes()
+            .get(1)
+            .copied()
+            .map(f32::from)
+            .unwrap_or_else(|| {
+                let vp_width: f32 = window.viewport_size().width.into();
+                (vp_width - 250.0).max(100.0)
+            });
 
-        const CARD_W: f32 = 100.0;
+        const CARD_MIN_W: f32 = 100.0;
         const CARD_H: f32 = 110.0;
         const GAP: f32 = 12.0;
+        const H_PADDING: f32 = 16.0;
 
-        let cols = (((available_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
+        let available_w = (pane_width - H_PADDING).max(CARD_MIN_W);
+        let cols = (((available_w + GAP) / (CARD_MIN_W + GAP)).floor() as usize).max(1);
+        let card_w = ((available_w - (cols.saturating_sub(1)) as f32 * GAP) / cols as f32)
+            .max(CARD_MIN_W);
         let total_rows = total_items.div_ceil(cols);
         let row_h = CARD_H + GAP;
         let item_sizes = Rc::new(vec![size(px(0.0), px(row_h)); total_rows]);
@@ -53,11 +66,11 @@ impl FileManagerDrawer {
                                             .map(|offset| {
                                                 let item_index = start + offset;
                                                 if item_index < end {
-                                                    this.render_grid_item(&items[item_index], window, cx)
+                                                    this.render_grid_item(&items[item_index], card_w, window, cx)
                                                         .into_any_element()
                                                 } else {
                                                     div()
-                                                        .w(px(CARD_W))
+                                                        .w(px(card_w))
                                                         .h(px(CARD_H))
                                                         .invisible()
                                                         .into_any_element()
@@ -79,6 +92,7 @@ impl FileManagerDrawer {
     pub fn render_grid_item(
         &mut self,
         item: &FileItem,
+        card_width: f32,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
@@ -190,7 +204,7 @@ impl FileManagerDrawer {
         }
 
         div()
-            .w(px(100.0))
+            .w(px(card_width))
             .h(px(110.0))
             .rounded_lg()
             .border_1()
