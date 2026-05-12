@@ -31,7 +31,7 @@ impl FileManagerDrawer {
             )
             .child(
                 {
-                    let mut content_div = div()
+                    let mut content_div = v_flex()
                         .id("file-content-area")
                         .relative()
                         .flex_1()

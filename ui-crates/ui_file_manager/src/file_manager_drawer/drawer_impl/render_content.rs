@@ -26,9 +26,11 @@ impl FileManagerDrawer {
         let view = cx.entity().clone();
         let scroll_handle = self.grid_scroll_handle.clone();
 
-        v_flex()
+        div()
+            .relative()
             .flex_1()
             .min_h_0()
+            .overflow_hidden()
             .px_2()
             .pt_2()
             .child(
@@ -47,10 +49,19 @@ impl FileManagerDrawer {
                                     .py(px(GAP / 2.0))
                                     .items_start()
                                     .children(
-                                        (start..end)
-                                            .map(|i| {
-                                                this.render_grid_item(&items[i], window, cx)
-                                                    .into_any_element()
+                                        (0..cols)
+                                            .map(|offset| {
+                                                let item_index = start + offset;
+                                                if item_index < end {
+                                                    this.render_grid_item(&items[item_index], window, cx)
+                                                        .into_any_element()
+                                                } else {
+                                                    div()
+                                                        .w(px(CARD_W))
+                                                        .h(px(CARD_H))
+                                                        .invisible()
+                                                        .into_any_element()
+                                                }
                                             })
                                             .collect::<Vec<_>>(),
                                     )
@@ -62,6 +73,7 @@ impl FileManagerDrawer {
                 .track_scroll(&scroll_handle),
             )
             .into_any_element()
+
     }
 
     pub fn render_grid_item(
@@ -177,76 +189,99 @@ impl FileManagerDrawer {
                 }));
         }
 
-        content
+        div()
+            .w(px(100.0))
+            .h(px(110.0))
+            .rounded_lg()
+            .border_1()
+            .when(is_selected, |this| {
+                this.border_color(cx.theme().accent)
+                    .bg(cx.theme().accent.opacity(0.1))
+                    .shadow_md()
+            })
+            .when(!is_selected, |this| {
+                this.border_color(cx.theme().border.opacity(0.3))
+                    .bg(cx.theme().sidebar.opacity(0.5))
+            })
+            .cursor_pointer()
+            .hover(|style| {
+                style
+                    .bg(cx.theme().secondary.opacity(0.7))
+                    .border_color(cx.theme().accent.opacity(0.7))
+                    .shadow_lg()
+            })
             .child(
-                div()
-                    .w(px(48.0))
-                    .h(px(48.0))
-                    .rounded_lg()
-                    .bg(icon_color.opacity(0.15))
-                    .border_1()
-                    .border_color(icon_color.opacity(0.3))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .shadow_sm()
-                    .child(Icon::new(icon).size(px(24.0)).text_color(icon_color)),
-            )
-            .child(if is_renaming {
-                div()
-                    .w_full()
-                    .text_xs()
-                    .text_center()
-                    .child(TextInput::new(&self.rename_input_state).xsmall())
-                    .into_any_element()
-            } else {
-                div()
-                    .w_full()
-                    .text_xs()
-                    .text_center()
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(cx.theme().foreground)
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .line_height(rems(1.3))
-                    .child(item.name.clone())
-                    .into_any_element()
-            })
-            .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
-                if is_renaming {
-                    cx.stop_propagation();
-                } else {
-                    if drawer.renaming_item.is_some() {
-                        drawer.commit_rename(cx);
-                    }
-
-                    if event.click_count == 2 {
-                        drawer.handle_item_double_click(&item_clone3, cx);
+                content
+                    .child(
+                        div()
+                            .w(px(48.0))
+                            .h(px(48.0))
+                            .rounded_lg()
+                            .bg(icon_color.opacity(0.15))
+                            .border_1()
+                            .border_color(icon_color.opacity(0.3))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .shadow_sm()
+                            .child(Icon::new(icon).size(px(24.0)).text_color(icon_color)),
+                    )
+                    .child(if is_renaming {
+                        div()
+                            .w_full()
+                            .text_xs()
+                            .text_center()
+                            .child(TextInput::new(&self.rename_input_state).xsmall())
+                            .into_any_element()
                     } else {
-                        drawer.handle_item_click(&item_clone, &event.modifiers, cx);
-                    }
-                }
-            }))
-            .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
-                if !drawer.selected_items.contains(&item_clone2.path) {
-                    drawer.selected_items.clear();
-                    drawer.selected_items.insert(item_clone2.path.clone());
-                    cx.notify();
-                }
-                cx.stop_propagation();
-            }))
-            .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
-                drawer.hovered_drop_folder = if is_folder {
-                    Some(item_hover_path.clone())
-                } else {
-                    None
-                };
-                drawer.show_drop_hint = is_folder;
-                cx.notify();
-            }))
-            .context_menu(move |menu, _window, _cx| {
-                context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
-            })
+                        div()
+                            .w_full()
+                            .text_xs()
+                            .text_center()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(cx.theme().foreground)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .line_height(rems(1.3))
+                            .child(item.name.clone())
+                            .into_any_element()
+                    })
+                    .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
+                        if is_renaming {
+                            cx.stop_propagation();
+                        } else {
+                            if drawer.renaming_item.is_some() {
+                                drawer.commit_rename(cx);
+                            }
+
+                            if event.click_count == 2 {
+                                drawer.handle_item_double_click(&item_clone3, cx);
+                            } else {
+                                drawer.handle_item_click(&item_clone, &event.modifiers, cx);
+                            }
+                        }
+                    }))
+                    .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
+                        if !drawer.selected_items.contains(&item_clone2.path) {
+                            drawer.selected_items.clear();
+                            drawer.selected_items.insert(item_clone2.path.clone());
+                            cx.notify();
+                        }
+                        cx.stop_propagation();
+                    }))
+                    .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
+                        drawer.hovered_drop_folder = if is_folder {
+                            Some(item_hover_path.clone())
+                        } else {
+                            None
+                        };
+                        drawer.show_drop_hint = is_folder;
+                        cx.notify();
+                    }))
+                    .context_menu(move |menu, _window, _cx| {
+                        context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
+                    }),
+            )
     }
 
     pub fn render_list_view(
@@ -266,9 +301,11 @@ impl FileManagerDrawer {
         let view = cx.entity().clone();
         let scroll_handle = self.list_scroll_handle.clone();
 
-        v_flex()
+        div()
+            .relative()
             .flex_1()
             .min_h_0()
+            .overflow_hidden()
             .px_2()
             .pt_2()
             .child(
@@ -278,7 +315,10 @@ impl FileManagerDrawer {
                     item_sizes,
                     move |this, range, window, cx| {
                         range
-                            .map(|i| this.render_list_item(&items[i], window, cx).into_any_element())
+                            .map(|i| {
+                                this.render_list_item(&items[i], window, cx)
+                                    .into_any_element()
+                            })
                             .collect()
                     },
                 )
