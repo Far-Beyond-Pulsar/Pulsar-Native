@@ -52,6 +52,27 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Detect dangerous release override
+        id: override
+        shell: bash
+        env:
+          UI_OVERRIDE: ${{ github.event.inputs.allow_dangerous_release || 'false' }}
+        run: |
+          COMMIT_MESSAGE=$(git show -s --format=%B "$GITHUB_SHA")
+          FORCE_COMMIT=false
+
+          if printf '%s' "$COMMIT_MESSAGE" | grep -q '\[FORCE-RELEASE\]'; then
+            FORCE_COMMIT=true
+          fi
+
+          if [ "$UI_OVERRIDE" = "true" ] || [ "$FORCE_COMMIT" = "true" ]; then
+            echo "allow_dangerous_release=true" >> $GITHUB_OUTPUT
+            echo "Dangerous release override enabled"
+          else
+            echo "allow_dangerous_release=false" >> $GITHUB_OUTPUT
+            echo "Dangerous release override disabled"
+          fi
+
       - name: Get first crate path
         id: get-crate
         run: |
@@ -76,6 +97,8 @@ jobs:
       - name: Check if Cargo.toml version changed
         id: check
         shell: bash
+        env:
+          ALLOW_DANGEROUS_RELEASE: ${{ steps.override.outputs.allow_dangerous_release }}
         run: |
           CRATE_PATH="${{ steps.get-crate.outputs.first_crate }}"
           CURRENT_VERSION=$(grep -m1 version "$CRATE_PATH/Cargo.toml" | cut -d '"' -f2)
@@ -86,30 +109,13 @@ jobs:
             echo "should_release=true" >> $GITHUB_OUTPUT
             echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
             echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
+          elif [ "$ALLOW_DANGEROUS_RELEASE" = "true" ]; then
+            echo "should_release=true" >> $GITHUB_OUTPUT
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "Dangerous release override forcing release for version: $CURRENT_VERSION"
           else
             echo "should_release=false" >> $GITHUB_OUTPUT
             echo "Version unchanged: $CURRENT_VERSION"
-          fi
-
-      - name: Detect dangerous release override
-        id: override
-        shell: bash
-        env:
-          UI_OVERRIDE: ${{ github.event.inputs.allow_dangerous_release || 'false' }}
-        run: |
-          COMMIT_MESSAGE=$(git show -s --format=%B "$GITHUB_SHA")
-          FORCE_COMMIT=false
-
-          if printf '%s' "$COMMIT_MESSAGE" | grep -q '\[FORCE-RELEASE\]'; then
-            FORCE_COMMIT=true
-          fi
-
-          if [ "$UI_OVERRIDE" = "true" ] || [ "$FORCE_COMMIT" = "true" ]; then
-            echo "allow_dangerous_release=true" >> $GITHUB_OUTPUT
-            echo "Dangerous release override enabled"
-          else
-            echo "allow_dangerous_release=false" >> $GITHUB_OUTPUT
-            echo "Dangerous release override disabled"
           fi
 
   lint-and-test:
