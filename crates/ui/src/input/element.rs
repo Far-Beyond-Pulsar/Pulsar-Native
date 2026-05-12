@@ -1353,32 +1353,64 @@ impl Element for TextElement {
             let char_width = shaped_space.width;
             let tab_pixel_width = char_width * tab_size as f32;
 
-            let mut offset_y = invisible_top_padding;
             let rope = &state.text;
+            let mut offset_y = invisible_top_padding;
+            let mut previous_non_empty_indent = 0usize;
+            let mut active_segments: Vec<Option<Pixels>> = Vec::new();
 
-            // Paint indent guides for each visible line
+            // Paint guides as contiguous vertical segments instead of per-line ticks.
             for (ix, line_layout) in prepaint.last_layout.lines.iter().enumerate() {
                 let row = visible_range.start + ix;
-
-                // Get the actual line text from the rope
                 let line_text = rope.slice_line(row);
                 let line_str = line_text.as_str().unwrap_or("");
-                let indent_level = calculate_indent_level(line_str, tab_size);
+                let raw_indent = calculate_indent_level(line_str, tab_size);
+                let is_blank = line_str.trim().is_empty();
+                let effective_indent = if is_blank {
+                    previous_non_empty_indent
+                } else {
+                    previous_non_empty_indent = raw_indent;
+                    raw_indent
+                };
 
-                // Draw a vertical line at each indent level
-                for level in 0..indent_level {
-                    let x_offset = prepaint.last_layout.line_number_width
-                        + (tab_pixel_width * (level + 1) as f32);
-                    let guide_x = origin.x + x_offset;
-                    let guide_y = origin.y + offset_y;
+                if active_segments.len() < effective_indent {
+                    active_segments.resize(effective_indent, None);
+                }
 
-                    window.paint_quad(fill(
-                        Bounds::new(point(guide_x, guide_y), size(px(1.0), line_height)),
-                        indent_guide_color,
-                    ));
+                for level in 0..active_segments.len() {
+                    if level < effective_indent {
+                        if active_segments[level].is_none() {
+                            active_segments[level] = Some(offset_y);
+                        }
+                    } else if let Some(start_y) = active_segments[level].take() {
+                        let x_offset =
+                            prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
+                        let guide_x = origin.x + x_offset;
+                        let guide_h = offset_y - start_y;
+                        if guide_h > px(0.0) {
+                            window.paint_quad(fill(
+                                Bounds::new(point(guide_x, origin.y + start_y), size(px(1.0), guide_h)),
+                                indent_guide_color,
+                            ));
+                        }
+                    }
                 }
 
                 offset_y += line_layout.size(line_height).height;
+            }
+
+            for (level, maybe_start_y) in active_segments.into_iter().enumerate() {
+                if let Some(start_y) = maybe_start_y {
+                    let x_offset =
+                        prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
+                    let guide_x = origin.x + x_offset;
+                    let guide_h = offset_y - start_y;
+                    if guide_h > px(0.0) {
+                        window.paint_quad(fill(
+                            Bounds::new(point(guide_x, origin.y + start_y), size(px(1.0), guide_h)),
+                            indent_guide_color,
+                        ));
+                    }
+                }
             }
         }
 
