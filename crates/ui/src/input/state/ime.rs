@@ -128,6 +128,16 @@ impl EntityInputHandler for InputState {
         let old_text = self.text.clone();
         self.text.replace(range.clone(), new_text);
 
+        // Invalidate minimap cache for the edited line range.
+        if self.show_minimap {
+            let new_end = (range.start + new_text.len()).min(self.text.len());
+            let first_line = self.text.offset_to_point(range.start).row;
+            let last_line = self.text.offset_to_point(new_end).row;
+            self.minimap_drag.cache
+                .borrow_mut()
+                .mark_dirty_range(first_line, last_line);
+        }
+
         let mut new_offset = (range.start + new_text.len()).min(self.text.len());
 
         if self.mode.is_single_line() {

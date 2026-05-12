@@ -671,8 +671,9 @@ impl InputState {
         } else {
             self.selected_range.clear();
         }
-        // Move scroll to top
+        // Move scroll to top and wipe minimap cache (whole document replaced).
         self.scroll_handle.set_offset(point(px(0.), px(0.)));
+        self.minimap_drag.cache.borrow_mut().invalidate_all();
 
         cx.notify();
     }

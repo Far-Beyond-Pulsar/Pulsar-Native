@@ -27,7 +27,7 @@ pub use cursor::*;
 pub use line_cache::{CachedLineLayout, OptimizedLineCache};
 pub use lsp::*;
 pub use mask_pattern::MaskPattern;
-pub use minimap::{Minimap, MinimapDrag, MinimapState, MINIMAP_WIDTH};
+pub use minimap::{Minimap, MinimapDrag, MinimapLineCache, MinimapSpan, MinimapState, MINIMAP_WIDTH};
 pub use editor_scrollbar::{EditorScrollbar, EditorScrollbarDrag, EditorScrollbarState};
 pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
