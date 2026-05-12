@@ -106,6 +106,14 @@ impl EntityInputHandler for InputState {
             return;
         }
 
+        // When Ctrl (or Cmd on macOS) is held, don't insert characters — those are shortcuts.
+        let modifiers = window.modifiers();
+        if modifiers.control || modifiers.platform {
+            if new_text.chars().all(|c| c.is_alphabetic() || c.is_ascii_punctuation()) {
+                return;
+            }
+        }
+
         self.pause_blink_cursor(cx);
 
         let range = range_utf16
