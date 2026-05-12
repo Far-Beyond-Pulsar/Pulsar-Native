@@ -59,8 +59,7 @@ impl PulsarApp {
             kind: WindowKind::Normal,
             is_resizable: true,
             window_decorations: Some(gpui::WindowDecorations::Client),
-            #[cfg(target_os = "linux")]
-            window_background: gpui::WindowBackgroundAppearance::Transparent,
+            window_background: gpui::WindowBackgroundAppearance::Opaque,
             ..Default::default()
         };
 

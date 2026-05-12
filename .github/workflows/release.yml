@@ -26,6 +26,13 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      allow_dangerous_release:
+        description: Skip fmt, clippy, tests, lockfile, and audit checks for this release run
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   check-version:
@@ -34,6 +41,7 @@ jobs:
       contents: read
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
+      allow_dangerous_release: ${{ steps.override.outputs.allow_dangerous_release }}
       version: ${{ steps.check.outputs.version }}
       package_name: ${{ steps.get-name.outputs.package_name }}
       first_crate: ${{ steps.get-crate.outputs.first_crate }}
@@ -83,9 +91,30 @@ jobs:
             echo "Version unchanged: $CURRENT_VERSION"
           fi
 
+      - name: Detect dangerous release override
+        id: override
+        shell: bash
+        env:
+          UI_OVERRIDE: ${{ github.event.inputs.allow_dangerous_release || 'false' }}
+        run: |
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B)
+          FORCE_COMMIT=false
+
+          if printf '%s' "$COMMIT_MESSAGE" | grep -q '\[FORCE-RELEASE\]'; then
+            FORCE_COMMIT=true
+          fi
+
+          if [ "$UI_OVERRIDE" = "true" ] || [ "$FORCE_COMMIT" = "true" ]; then
+            echo "allow_dangerous_release=true" >> $GITHUB_OUTPUT
+            echo "Dangerous release override enabled"
+          else
+            echo "allow_dangerous_release=false" >> $GITHUB_OUTPUT
+            echo "Dangerous release override disabled"
+          fi
+
   lint-and-test:
     needs: check-version
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Lint/test stage marker
@@ -93,7 +122,7 @@ jobs:
 
   fmt-check:
     needs: [check-version, lint-and-test]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -111,7 +140,7 @@ jobs:
 
   clippy:
     needs: [check-version, lint-and-test]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -146,7 +175,7 @@ jobs:
 
   unit-tests:
     needs: [check-version, lint-and-test]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -176,7 +205,7 @@ jobs:
 
   check-lockfile:
     needs: [check-version, lint-and-test]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -199,7 +228,7 @@ jobs:
 
   cargo-audit:
     needs: [check-version, lint-and-test]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: needs.check-version.outputs.should_release == 'true' && needs.check-version.outputs.allow_dangerous_release != 'true'
     runs-on: ubuntu-latest
     outputs:
       audit_section: ${{ steps.audit.outputs.audit_section }}
@@ -248,6 +277,36 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
           exit 0
+
+  validation-gate:
+    needs: [check-version, fmt-check, clippy, unit-tests, check-lockfile, cargo-audit]
+    if: always() && needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      release_allowed: ${{ steps.gate.outputs.release_allowed }}
+    steps:
+      - name: Evaluate release gate
+        id: gate
+        shell: bash
+        run: |
+          if [ "${{ needs.check-version.outputs.allow_dangerous_release }}" = "true" ]; then
+            echo "release_allowed=true" >> "$GITHUB_OUTPUT"
+            echo "Dangerous release enabled: skipping validation gate"
+            exit 0
+          fi
+
+          if [ "${{ needs.fmt-check.result }}" = "success" ] && \
+             [ "${{ needs.clippy.result }}" = "success" ] && \
+             [ "${{ needs.unit-tests.result }}" = "success" ] && \
+             [ "${{ needs.check-lockfile.result }}" = "success" ] && \
+             [ "${{ needs.cargo-audit.result }}" = "success" ]; then
+            echo "release_allowed=true" >> "$GITHUB_OUTPUT"
+            echo "All release validations passed"
+          else
+            echo "release_allowed=false" >> "$GITHUB_OUTPUT"
+            echo "Release validation failed"
+            exit 1
+          fi
 
   get-changelog:
     needs: check-version
@@ -411,12 +470,9 @@ jobs:
       [
         check-version,
         create-release,
-        fmt-check,
-        clippy,
-        unit-tests,
-        check-lockfile,
+        validation-gate,
       ]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.create-release.result == 'success' && needs.validation-gate.outputs.release_allowed == 'true'
     permissions:
       contents: write
     strategy:
@@ -627,12 +683,9 @@ jobs:
       [
         check-version,
         create-release,
-        fmt-check,
-        clippy,
-        unit-tests,
-        check-lockfile,
+        validation-gate,
       ]
-    if: needs.check-version.outputs.should_release == 'true'
+    if: always() && needs.check-version.outputs.should_release == 'true' && needs.create-release.result == 'success' && needs.validation-gate.outputs.release_allowed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
