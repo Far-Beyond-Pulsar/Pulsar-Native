@@ -31,12 +31,12 @@ impl FileManagerDrawer {
             )
             .child(
                 {
-                    let mut content_div = div()
-                        .id("file-content-scroll")
+                    let mut content_div = v_flex()
+                        .id("file-content-area")
                         .relative()
                         .flex_1()
-                        .p_4()
-                        .overflow_y_scroll()
+                        .min_h_0()
+                        .overflow_hidden()
                         .on_mouse_down(gpui::MouseButton::Left, cx.listener(|drawer, _event, _window, cx| {
                             // Commit rename if clicking on blank area
                             if drawer.renaming_item.is_some() {

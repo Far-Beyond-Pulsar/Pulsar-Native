@@ -1341,7 +1341,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c1b3fc27ecbddf2d95ea644198ea7e583d4c4a19#c1b3fc27ecbddf2d95ea644198ea7e583d4c4a19"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=28f5764f30067b5ec8e763c44b4c14b200313dd3#28f5764f30067b5ec8e763c44b4c14b200313dd3"
 dependencies = [
  "arboard",
  "chrono",
@@ -1350,7 +1350,7 @@ dependencies = [
  "gpui-ce",
  "graphy",
  "log",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=0dacf579a6b26a1da2ea855149b6a8732bb9cfbe)",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5ad02cdf9baed974665f8774ad670bf6fbbf84b8)",
  "plugin_editor_api",
  "pulsar_std",
  "schemars",
@@ -8348,7 +8348,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=0dacf579a6b26a1da2ea855149b6a8732bb9cfbe#0dacf579a6b26a1da2ea855149b6a8732bb9cfbe"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5ad02cdf9baed974665f8774ad670bf6fbbf84b8#5ad02cdf9baed974665f8774ad670bf6fbbf84b8"
 dependencies = [
  "graphy",
  "pulsar_std",
@@ -10934,6 +10934,30 @@ dependencies = [
  "once_cell",
  "selectors",
  "tendril",
+]
+
+[[package]]
+name = "script_editor_plugin"
+version = "0.1.4"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=be1740e76a13d59515b189d1eaeb0255b14aecc7#be1740e76a13d59515b189d1eaeb0255b14aecc7"
+dependencies = [
+ "anyhow",
+ "engine_backend",
+ "engine_state",
+ "futures",
+ "gpui-ce",
+ "log",
+ "parking_lot",
+ "plugin_editor_api",
+ "schemars",
+ "serde",
+ "serde_json",
+ "similar",
+ "tracing",
+ "ui",
+ "ui_common",
+ "ui_types_common",
+ "uuid",
 ]
 
 [[package]]
@@ -13583,6 +13607,7 @@ dependencies = [
  "rfd 0.14.1",
  "rust-i18n",
  "schemars",
+ "script_editor_plugin",
  "serde",
  "serde_json",
  "smol 2.0.2",

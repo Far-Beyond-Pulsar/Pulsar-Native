@@ -1,26 +1,108 @@
 impl FileManagerDrawer {
-    pub fn render_grid_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_grid_view(
+        &mut self,
+        items: &[FileItem],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let items: Vec<FileItem> = items.to_vec();
+        let total_items = items.len();
+
+        if total_items == 0 {
+            return v_flex().flex_1().min_h_0().into_any_element();
+        }
+
+        let pane_width = self
+            .resizable_state
+            .read(cx)
+            .sizes()
+            .get(1)
+            .copied()
+            .map(f32::from)
+            .unwrap_or_else(|| {
+                let vp_width: f32 = window.viewport_size().width.into();
+                (vp_width - 250.0).max(100.0)
+            });
+
+        const CARD_MIN_W: f32 = 100.0;
+        const CARD_H: f32 = 110.0;
+        const GAP: f32 = 12.0;
+        const H_PADDING: f32 = 16.0;
+
+        let available_w = (pane_width - H_PADDING).max(CARD_MIN_W);
+        let cols = (((available_w + GAP) / (CARD_MIN_W + GAP)).floor() as usize).max(1);
+        let card_w = ((available_w - (cols.saturating_sub(1)) as f32 * GAP) / cols as f32)
+            .max(CARD_MIN_W);
+        let total_rows = total_items.div_ceil(cols);
+        let row_h = CARD_H + GAP;
+        let item_sizes = Rc::new(vec![size(px(0.0), px(row_h)); total_rows]);
+        let view = cx.entity().clone();
+        let scroll_handle = self.grid_scroll_handle.clone();
+
         div()
-            .w_full()
-            .flex()
-            .flex_wrap()
-            .gap_3()
-            .children(
-                items.iter().map(|item| {
-                    self.render_grid_item(item, window, cx)
-                })
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .px_2()
+            .pt_2()
+            .child(
+                v_virtual_list(
+                    view,
+                    "file-manager-grid",
+                    item_sizes,
+                    move |this, range, window, cx| {
+                        range
+                            .map(|row| {
+                                let start = row * cols;
+                                let end = (start + cols).min(total_items);
+                                h_flex()
+                                    .w_full()
+                                    .gap(px(GAP))
+                                    .py(px(GAP / 2.0))
+                                    .items_start()
+                                    .children(
+                                        (0..cols)
+                                            .map(|offset| {
+                                                let item_index = start + offset;
+                                                if item_index < end {
+                                                    this.render_grid_item(&items[item_index], card_w, window, cx)
+                                                        .into_any_element()
+                                                } else {
+                                                    div()
+                                                        .w(px(card_w))
+                                                        .h(px(CARD_H))
+                                                        .invisible()
+                                                        .into_any_element()
+                                                }
+                                            })
+                                            .collect::<Vec<_>>(),
+                                    )
+                                    .into_any_element()
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(&scroll_handle),
             )
+            .into_any_element()
+
     }
 
-    pub fn render_grid_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_grid_item(
+        &mut self,
+        item: &FileItem,
+        card_width: f32,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
-        let _path = item.path.clone();
         let icon = get_icon_for_file_type(item);
         let icon_color = get_icon_color_for_file_type(item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
-        let item_clone3 = item.clone(); // For double-click
+        let item_clone3 = item.clone();
         let item_path = item.path.clone();
         let item_hover_path = item.path.clone();
         let drawer_entity = cx.entity().clone();
@@ -28,7 +110,6 @@ impl FileManagerDrawer {
         let is_class = item.is_class();
         let is_folder = item.is_folder;
 
-        // Create drag data for this item
         let drag_paths = if is_selected {
             self.selected_items.iter().cloned().collect()
         } else {
@@ -52,9 +133,6 @@ impl FileManagerDrawer {
             .items_center()
             .justify_center();
 
-        // Add drag functionality.
-        // Folders emit DraggedFile (intra-drawer moves); non-folders emit AssetPayload
-        // so external panels can receive them via on_drop::<AssetPayload>.
         if is_folder {
             content = content.on_drag(drag_data, move |drag, position, _, cx| {
                 let mut drag_with_pos = drag.clone();
@@ -67,16 +145,16 @@ impl FileManagerDrawer {
             let payload_for_event = asset_payload.clone();
             let drawer_entity_for_drag = drawer_entity.clone();
             content = content.on_drag(asset_payload, move |drag, _, _, cx| {
-                // Emit drag start event to close the drawer
                 drawer_entity_for_drag.update(cx, |_, cx| {
-                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone().into()));
+                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(
+                        payload_for_event.clone().into(),
+                    ));
                 });
                 cx.stop_propagation();
                 cx.new(|_| drag.clone())
             });
         }
 
-        // Add drop functionality if this is a folder
         if is_folder {
             let folder_path_for_external_drag_move = item_for_drop.path.clone();
             let folder_path_for_internal_drop = item_for_drop.path.clone();
@@ -126,7 +204,7 @@ impl FileManagerDrawer {
         }
 
         div()
-            .w(px(100.0))
+            .w(px(card_width))
             .h(px(110.0))
             .rounded_lg()
             .border_1()
@@ -146,10 +224,12 @@ impl FileManagerDrawer {
                     .border_color(cx.theme().accent.opacity(0.7))
                     .shadow_lg()
             })
-            .child(content
+            .child(
+                content
                     .child(
                         div()
-                            .size(px(48.0))
+                            .w(px(48.0))
+                            .h(px(48.0))
                             .rounded_lg()
                             .bg(icon_color.opacity(0.15))
                             .border_1()
@@ -158,43 +238,32 @@ impl FileManagerDrawer {
                             .items_center()
                             .justify_center()
                             .shadow_sm()
-                            .child(
-                                Icon::new(icon)
-                                    .size(px(24.0))
-                                    .text_color(icon_color)
-                            )
+                            .child(Icon::new(icon).size(px(24.0)).text_color(icon_color)),
                     )
-                    .child(
-                        if is_renaming {
-                            div()
-                                .w_full()
-                                .text_xs()
-                                .text_center()
-                                .child(
-                                    TextInput::new(&self.rename_input_state)
-                                        .xsmall()
-                                )
-                                .into_any_element()
-                        } else {
-                            div()
-                                .w_full()
-                                .text_xs()
-                                .text_center()
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .text_color(cx.theme().foreground)
-                                .overflow_hidden()
-                                .text_ellipsis()
-                                .line_height(rems(1.3))
-                                .child(item.name.clone())
-                                .into_any_element()
-                        }
-                    )
+                    .child(if is_renaming {
+                        div()
+                            .w_full()
+                            .text_xs()
+                            .text_center()
+                            .child(TextInput::new(&self.rename_input_state).xsmall())
+                            .into_any_element()
+                    } else {
+                        div()
+                            .w_full()
+                            .text_xs()
+                            .text_center()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(cx.theme().foreground)
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .line_height(rems(1.3))
+                            .child(item.name.clone())
+                            .into_any_element()
+                    })
                     .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                         if is_renaming {
-                            // Stop propagation when clicking the item being renamed
                             cx.stop_propagation();
                         } else {
-                            // Commit any active rename before handling this item
                             if drawer.renaming_item.is_some() {
                                 drawer.commit_rename(cx);
                             }
@@ -207,14 +276,11 @@ impl FileManagerDrawer {
                         }
                     }))
                     .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
-                        // Select item on right-click if not already selected (without changing folder view)
                         if !drawer.selected_items.contains(&item_clone2.path) {
                             drawer.selected_items.clear();
                             drawer.selected_items.insert(item_clone2.path.clone());
-                            // Don't change selected_folder on right-click to avoid navigating
                             cx.notify();
                         }
-                        // Stop propagation so parent container's context menu doesn't show
                         cx.stop_propagation();
                     }))
                     .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
@@ -227,30 +293,67 @@ impl FileManagerDrawer {
                         cx.notify();
                     }))
                     .context_menu(move |menu, _window, _cx| {
-                        // All items (files and folders) use item_context_menu
-                        // Only blank area uses folder_context_menu with "New" options
                         context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
-                    })
+                    }),
             )
     }
 
-    pub fn render_list_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .gap_1()
-            .children(items.iter().map(|item| {
-                self.render_list_item(item, window, cx)
-            }))
+    pub fn render_list_view(
+        &mut self,
+        items: &[FileItem],
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let items: Vec<FileItem> = items.to_vec();
+        let item_count = items.len();
+
+        if item_count == 0 {
+            return v_flex().flex_1().min_h_0().into_any_element();
+        }
+
+        let item_sizes = Rc::new(vec![size(px(0.0), px(40.0)); item_count]);
+        let view = cx.entity().clone();
+        let scroll_handle = self.list_scroll_handle.clone();
+
+        div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden()
+            .px_2()
+            .pt_2()
+            .child(
+                v_virtual_list(
+                    view,
+                    "file-manager-list",
+                    item_sizes,
+                    move |this, range, window, cx| {
+                        range
+                            .map(|i| {
+                                this.render_list_item(&items[i], window, cx)
+                                    .into_any_element()
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(&scroll_handle),
+            )
+            .into_any_element()
     }
 
-    pub fn render_list_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    pub fn render_list_item(
+        &mut self,
+        item: &FileItem,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let is_selected = self.selected_items.contains(&item.path);
         let is_renaming = self.renaming_item.as_ref() == Some(&item.path);
         let icon = get_icon_for_file_type(item);
         let icon_color = get_icon_color_for_file_type(item, cx.theme(), &mut self.fs_metadata);
         let item_clone = item.clone();
         let item_clone2 = item.clone();
-        let item_clone3 = item.clone(); // For double-click
+        let item_clone3 = item.clone();
         let item_path = item.path.clone();
         let item_hover_path = item.path.clone();
         let drawer_entity = cx.entity().clone();
@@ -258,7 +361,6 @@ impl FileManagerDrawer {
         let is_class = item.is_class();
         let is_folder = item.is_folder;
 
-        // Create drag data for this item
         let drag_paths = if is_selected {
             self.selected_items.iter().cloned().collect()
         } else {
@@ -290,15 +392,12 @@ impl FileManagerDrawer {
                     .border_l_2()
                     .border_color(cx.theme().accent)
             })
-            .when(!is_selected, |this| {
-                this.border_color(gpui::transparent_black())
-            })
+            .when(!is_selected, |this| this.border_color(gpui::transparent_black()))
             .hover(|this| {
                 this.bg(cx.theme().secondary.opacity(0.5))
                     .border_color(cx.theme().accent.opacity(0.2))
             });
 
-        // Add drag functionality
         list_item = list_item.on_drag(drag_data, move |drag, position, _, cx| {
             let mut drag_with_pos = drag.clone();
             drag_with_pos.drag_start_position = Some(position);
@@ -306,23 +405,21 @@ impl FileManagerDrawer {
             cx.new(|_| drag_with_pos)
         });
 
-        // Non-folder list items emit AssetPayload so external panels can receive them.
-        // Folders emit DraggedFile for intra-drawer folder moves.
         if !is_folder {
             let asset_payload = AssetPayload::from_path(&item_clone2.path);
             let payload_for_event = asset_payload.clone();
             let drawer_entity_for_drag = drawer_entity.clone();
             list_item = list_item.on_drag(asset_payload, move |drag, _, _, cx| {
-                // Emit drag start event to close the drawer
                 drawer_entity_for_drag.update(cx, |_, cx| {
-                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(payload_for_event.clone().into()));
+                    cx.emit(ui_types_common::DragEvent::AssetDragStarted(
+                        payload_for_event.clone().into(),
+                    ));
                 });
                 cx.stop_propagation();
                 cx.new(|_| drag.clone())
             });
         }
 
-        // Add drop functionality if this is a folder
         if is_folder {
             let folder_path_for_external_drag_move = item_for_drop.path.clone();
             let folder_path_for_internal_drop = item_for_drop.path.clone();
@@ -378,37 +475,27 @@ impl FileManagerDrawer {
                     .justify_center()
                     .rounded_sm()
                     .bg(icon_color.opacity(0.15))
-                    .child(
-                        Icon::new(icon)
-                            .size_4()
-                            .text_color(icon_color)
-                    )
+                    .child(Icon::new(icon).size_4().text_color(icon_color)),
             )
-            .child(
-                if is_renaming {
-                    div()
-                        .flex_1()
-                        .text_sm()
-                        .child(
-                            TextInput::new(&self.rename_input_state)
-                                .w_full()
-                                .xsmall()
-                        )
-                        .into_any_element()
-                } else {
-                    div()
-                        .flex_1()
-                        .text_sm()
-                        .font_weight(if is_selected {
-                            gpui::FontWeight::SEMIBOLD
-                        } else {
-                            gpui::FontWeight::NORMAL
-                        })
-                        .text_color(cx.theme().foreground)
-                        .child(item.name.clone())
-                        .into_any_element()
-                }
-            )
+            .child(if is_renaming {
+                div()
+                    .flex_1()
+                    .text_sm()
+                    .child(TextInput::new(&self.rename_input_state).w_full().xsmall())
+                    .into_any_element()
+            } else {
+                div()
+                    .flex_1()
+                    .text_sm()
+                    .font_weight(if is_selected {
+                        gpui::FontWeight::SEMIBOLD
+                    } else {
+                        gpui::FontWeight::NORMAL
+                    })
+                    .text_color(cx.theme().foreground)
+                    .child(item.name.clone())
+                    .into_any_element()
+            })
             .when(!item.is_folder, |this| {
                 this.child(
                     div()
@@ -419,15 +506,13 @@ impl FileManagerDrawer {
                         .text_xs()
                         .font_family("monospace")
                         .text_color(cx.theme().muted_foreground)
-                        .child(format_file_size(item.size))
+                        .child(format_file_size(item.size)),
                 )
             })
             .on_mouse_down(gpui::MouseButton::Left, cx.listener(move |drawer, event: &MouseDownEvent, _window: &mut Window, cx| {
                 if is_renaming {
-                    // Stop propagation when clicking the item being renamed
                     cx.stop_propagation();
                 } else {
-                    // Commit any active rename before handling this item
                     if drawer.renaming_item.is_some() {
                         drawer.commit_rename(cx);
                     }
@@ -440,14 +525,11 @@ impl FileManagerDrawer {
                 }
             }))
             .on_mouse_down(gpui::MouseButton::Right, cx.listener(move |drawer, _event: &MouseDownEvent, _window: &mut Window, cx| {
-                // Select item on right-click if not already selected (without changing folder view)
                 if !drawer.selected_items.contains(&item_clone2.path) {
                     drawer.selected_items.clear();
                     drawer.selected_items.insert(item_clone2.path.clone());
-                    // Don't change selected_folder on right-click to avoid navigating
                     cx.notify();
                 }
-                // Stop propagation so parent container's context menu doesn't show
                 cx.stop_propagation();
             }))
             .on_drag_move(cx.listener(move |drawer, _event: &DragMoveEvent<DraggedFile>, _window, cx| {
@@ -460,8 +542,6 @@ impl FileManagerDrawer {
                 cx.notify();
             }))
             .context_menu(move |menu, _window, _cx| {
-                // All items (files and folders) use item_context_menu
-                // Only blank area uses folder_context_menu with "New" options
                 context_menus::item_context_menu(item_path.clone(), has_clipboard, is_class)(menu, _window, _cx)
             })
     }

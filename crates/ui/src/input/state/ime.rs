@@ -106,6 +106,14 @@ impl EntityInputHandler for InputState {
             return;
         }
 
+        // When Ctrl (or Cmd on macOS) is held, don't insert characters — those are shortcuts.
+        let modifiers = window.modifiers();
+        if modifiers.control || modifiers.platform {
+            if new_text.chars().all(|c| c.is_alphabetic() || c.is_ascii_punctuation()) {
+                return;
+            }
+        }
+
         self.pause_blink_cursor(cx);
 
         let range = range_utf16
@@ -119,6 +127,16 @@ impl EntityInputHandler for InputState {
 
         let old_text = self.text.clone();
         self.text.replace(range.clone(), new_text);
+
+        // Invalidate minimap cache for the edited line range.
+        if self.show_minimap {
+            let new_end = (range.start + new_text.len()).min(self.text.len());
+            let first_line = self.text.offset_to_point(range.start).row;
+            let last_line = self.text.offset_to_point(new_end).row;
+            self.minimap_drag.cache
+                .borrow_mut()
+                .mark_dirty_range(first_line, last_line);
+        }
 
         let mut new_offset = (range.start + new_text.len()).min(self.text.len());
 

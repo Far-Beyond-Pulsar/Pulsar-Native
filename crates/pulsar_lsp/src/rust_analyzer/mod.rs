@@ -12,6 +12,7 @@ use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
 use pulsar_diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -78,8 +79,6 @@ pub struct RustAnalyzerManager {
     initial_analysis_complete: bool,
 }
 
-use std::collections::HashMap;
-
 impl EventEmitter<AnalyzerEvent> for RustAnalyzerManager {}
 
 impl RustAnalyzerManager {
@@ -108,103 +107,208 @@ impl RustAnalyzerManager {
 
     /// Find rust-analyzer in PATH or use bundled version
     fn find_or_use_bundled_analyzer() -> PathBuf {
+        if let Some(custom_path) = std::env::var_os("PULSAR_RUST_ANALYZER_PATH") {
+            let custom_path = PathBuf::from(custom_path);
+            if Self::verify_rust_analyzer_executable(&custom_path).is_ok() {
+                tracing::debug!("✓ Using rust-analyzer from PULSAR_RUST_ANALYZER_PATH");
+                return custom_path;
+            }
+            tracing::warn!(
+                "⚠️  PULSAR_RUST_ANALYZER_PATH is set but invalid: {:?}",
+                custom_path
+            );
+        }
+
         // First, try using rustup to get the component path (handles rustup proxies)
         if let Some(rustup_path) = Self::find_rust_analyzer_via_rustup() {
             return rustup_path;
         }
 
-        // Try to find in PATH first
-        let candidates = vec!["rust-analyzer.exe", "rust-analyzer"];
-
-        for candidate in &candidates {
-            if let Ok(output) = Command::new(candidate).arg("--version").output() {
-                if output.status.success() {
-                    let version_output = String::from_utf8_lossy(&output.stdout);
-                    // Check if this is a rustup proxy by looking for the error message
-                    if version_output.contains("Unknown binary")
-                        || version_output.contains("official toolchain")
-                    {
-                        tracing::debug!(
-                            "⚠️  Found rustup proxy, but rust-analyzer component not installed"
-                        );
-                        continue;
-                    }
-                    tracing::debug!("✓ Found system rust-analyzer: {}", candidate);
-                    tracing::debug!("   Version: {}", version_output.trim());
-                    return PathBuf::from(candidate);
-                }
+        // Try command-based discovery in PATH.
+        for candidate in Self::command_name_candidates() {
+            let candidate_path = PathBuf::from(candidate);
+            if let Ok(version) = Self::verify_rust_analyzer_executable(&candidate_path) {
+                tracing::debug!("✓ Found system rust-analyzer via command: {}", candidate);
+                tracing::debug!("   Version: {}", version);
+                return candidate_path;
             }
         }
 
-        // Check cargo bin directory
-        if let Ok(home) = std::env::var("CARGO_HOME") {
-            let cargo_bin = PathBuf::from(home).join("bin").join("rust-analyzer.exe");
-            if cargo_bin.exists() {
-                tracing::debug!("✓ Found rust-analyzer in cargo bin: {:?}", cargo_bin);
-                return cargo_bin;
+        // Check common absolute locations used when apps are launched outside shell PATH.
+        for candidate in Self::absolute_rust_analyzer_candidates() {
+            if let Ok(version) = Self::verify_rust_analyzer_executable(&candidate) {
+                tracing::debug!("✓ Found rust-analyzer at: {:?}", candidate);
+                tracing::debug!("   Version: {}", version);
+                return candidate;
             }
         }
 
-        if let Ok(home) = std::env::var("USERPROFILE") {
-            let cargo_bin = PathBuf::from(home)
-                .join(".cargo")
-                .join("bin")
-                .join("rust-analyzer.exe");
-            if cargo_bin.exists() {
-                tracing::debug!("✓ Found rust-analyzer in user cargo bin: {:?}", cargo_bin);
-                return cargo_bin;
-            }
-        }
-
-        // Check engine deps directory
+        // Check engine deps directory.
         let deps_path = Self::get_engine_deps_analyzer_path();
-        if deps_path.exists() {
+        if let Ok(version) = Self::verify_rust_analyzer_executable(&deps_path) {
             tracing::debug!("✓ Found rust-analyzer in engine deps: {:?}", deps_path);
+            tracing::debug!("   Version: {}", version);
             return deps_path;
         }
 
-        // Fallback to rust-analyzer command (may not exist)
+        // Fallback command (may be installed later in runtime).
         tracing::debug!("⚠️  rust-analyzer not found in standard locations");
-        tracing::debug!("   Will attempt to use 'rust-analyzer' from PATH");
+        tracing::debug!("   Will attempt to use rust-analyzer from PATH at runtime");
         PathBuf::from("rust-analyzer")
     }
 
-    /// Try to find rust-analyzer via rustup (handles rustup proxy wrappers)
-    fn find_rust_analyzer_via_rustup() -> Option<PathBuf> {
-        let rustup_cmd = if cfg!(windows) {
+    fn command_name_candidates() -> Vec<&'static str> {
+        if cfg!(windows) {
+            vec!["rust-analyzer.exe", "rust-analyzer"]
+        } else {
+            vec!["rust-analyzer"]
+        }
+    }
+
+    fn absolute_rust_analyzer_candidates() -> Vec<PathBuf> {
+        let exe_name = if cfg!(windows) {
+            "rust-analyzer.exe"
+        } else {
+            "rust-analyzer"
+        };
+
+        let mut candidates = Vec::new();
+
+        if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
+            candidates.push(PathBuf::from(cargo_home).join("bin").join(exe_name));
+        }
+
+        if let Ok(home) = std::env::var("HOME") {
+            candidates.push(PathBuf::from(home).join(".cargo").join("bin").join(exe_name));
+        }
+
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            candidates.push(
+                PathBuf::from(user_profile)
+                    .join(".cargo")
+                    .join("bin")
+                    .join(exe_name),
+            );
+        }
+
+        candidates
+    }
+
+    fn rustup_candidates() -> Vec<PathBuf> {
+        let rustup_name = if cfg!(windows) {
             "rustup.exe"
         } else {
             "rustup"
         };
 
-        // First check if rust-analyzer component is installed
-        if let Ok(output) = Command::new(rustup_cmd)
-            .args(&["component", "list", "--installed"])
+        let mut candidates = vec![PathBuf::from(rustup_name)];
+
+        if let Ok(cargo_home) = std::env::var("CARGO_HOME") {
+            candidates.push(PathBuf::from(cargo_home).join("bin").join(rustup_name));
+        }
+
+        if let Ok(home) = std::env::var("HOME") {
+            candidates.push(
+                PathBuf::from(home)
+                    .join(".cargo")
+                    .join("bin")
+                    .join(rustup_name),
+            );
+        }
+
+        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+            candidates.push(
+                PathBuf::from(user_profile)
+                    .join(".cargo")
+                    .join("bin")
+                    .join(rustup_name),
+            );
+        }
+
+        let mut seen = HashSet::new();
+        candidates
+            .into_iter()
+            .filter(|path| seen.insert(path.clone()))
+            .collect()
+    }
+
+    fn output_text(output: &std::process::Output) -> String {
+        format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+    }
+
+    fn looks_like_missing_rustup_component(message: &str) -> bool {
+        let msg = message.to_lowercase();
+        msg.contains("unknown binary")
+            || msg.contains("not installed for the toolchain")
+            || msg.contains("component 'rust-analyzer' is not installed")
+            || msg.contains("did you mean 'rustup component add rust-analyzer'")
+    }
+
+    fn verify_rust_analyzer_executable(path: &PathBuf) -> Result<String> {
+        let output = Command::new(path)
+            .arg("--version")
             .output()
-        {
-            if output.status.success() {
-                let installed = String::from_utf8_lossy(&output.stdout);
-                if installed.contains("rust-analyzer") {
-                    // Component is installed, try to get its path
-                    if let Ok(output) = Command::new(rustup_cmd)
-                        .args(&["which", "rust-analyzer"])
-                        .output()
-                    {
-                        if output.status.success() {
-                            let path_str =
-                                String::from_utf8_lossy(&output.stdout).trim().to_string();
-                            let path = PathBuf::from(path_str);
-                            if path.exists() {
-                                tracing::debug!("✓ Found rust-analyzer via rustup: {:?}", path);
-                                return Some(path);
-                            }
+            .map_err(|e| anyhow!("failed to execute {:?}: {}", path, e))?;
+
+        let message = Self::output_text(&output);
+        if !output.status.success() {
+            if Self::looks_like_missing_rustup_component(&message) {
+                return Err(anyhow!(
+                    "rustup proxy detected without rust-analyzer component"
+                ));
+            }
+            return Err(anyhow!(
+                "binary {:?} did not execute correctly: {}",
+                path,
+                message.trim()
+            ));
+        }
+
+        if Self::looks_like_missing_rustup_component(&message) {
+            return Err(anyhow!("rustup proxy detected without rust-analyzer component"));
+        }
+
+        let version = message.lines().next().unwrap_or_default().trim().to_string();
+        if version.is_empty() {
+            return Err(anyhow!("could not determine rust-analyzer version"));
+        }
+
+        Ok(version)
+    }
+
+    /// Try to find rust-analyzer via rustup (handles rustup proxy wrappers)
+    fn find_rust_analyzer_via_rustup() -> Option<PathBuf> {
+        for rustup_cmd in Self::rustup_candidates() {
+            if let Ok(output) = Command::new(&rustup_cmd)
+                .args(["which", "rust-analyzer"])
+                .output()
+            {
+                if output.status.success() {
+                    let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    if !path_str.is_empty() {
+                        let path = PathBuf::from(path_str);
+                        if let Ok(version) = Self::verify_rust_analyzer_executable(&path) {
+                            tracing::debug!(
+                                "✓ Found rust-analyzer via rustup ({:?}): {:?}",
+                                rustup_cmd,
+                                path
+                            );
+                            tracing::debug!("   Version: {}", version);
+                            return Some(path);
                         }
                     }
                 } else {
-                    tracing::debug!("ℹ️  rust-analyzer component not installed via rustup");
-                    tracing::debug!(
-                        "   You can install it with: rustup component add rust-analyzer"
-                    );
+                    let message = Self::output_text(&output);
+                    if Self::looks_like_missing_rustup_component(&message) {
+                        tracing::debug!(
+                            "ℹ️  rust-analyzer component is not installed for rustup at {:?}",
+                            rustup_cmd
+                        );
+                    }
                 }
             }
         }
@@ -243,52 +347,150 @@ impl RustAnalyzerManager {
 
     /// Try to install rust-analyzer via rustup component
     fn install_rust_analyzer_via_rustup() -> Result<PathBuf> {
-        let rustup_cmd = if cfg!(windows) {
-            "rustup.exe"
-        } else {
-            "rustup"
-        };
-
         tracing::debug!("   Trying to install via rustup...");
 
-        let output = Command::new(rustup_cmd)
-            .args(&["component", "add", "rust-analyzer"])
-            .output()
-            .map_err(|e| anyhow!("Failed to run rustup: {}", e))?;
+        let mut errors = Vec::new();
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow!("Rustup component add failed: {}", stderr));
+        for rustup_cmd in Self::rustup_candidates() {
+            let add_output = match Command::new(&rustup_cmd)
+                .args(["component", "add", "rust-analyzer"])
+                .output()
+            {
+                Ok(output) => output,
+                Err(e) => {
+                    errors.push(format!("{:?}: failed to run rustup: {}", rustup_cmd, e));
+                    continue;
+                }
+            };
+
+            if !add_output.status.success() {
+                errors.push(format!(
+                    "{:?}: component add failed: {}",
+                    rustup_cmd,
+                    Self::output_text(&add_output).trim()
+                ));
+                continue;
+            }
+
+            let which_output = match Command::new(&rustup_cmd)
+                .args(["which", "rust-analyzer"])
+                .output()
+            {
+                Ok(output) => output,
+                Err(e) => {
+                    errors.push(format!("{:?}: failed to locate rust-analyzer: {}", rustup_cmd, e));
+                    continue;
+                }
+            };
+
+            if !which_output.status.success() {
+                errors.push(format!(
+                    "{:?}: rustup which failed: {}",
+                    rustup_cmd,
+                    Self::output_text(&which_output).trim()
+                ));
+                continue;
+            }
+
+            let path_str = String::from_utf8_lossy(&which_output.stdout).trim().to_string();
+            let path = PathBuf::from(path_str);
+            let version = match Self::verify_rust_analyzer_executable(&path) {
+                Ok(version) => version,
+                Err(e) => {
+                    errors.push(format!("{:?}: installed binary verification failed: {}", rustup_cmd, e));
+                    continue;
+                }
+            };
+
+            tracing::debug!("✓ rust-analyzer installed and verified via rustup!");
+            tracing::debug!("   Path: {:?}", path);
+            tracing::debug!("   Version: {}", version);
+            return Ok(path);
         }
 
-        tracing::debug!("✓ Installed rust-analyzer component via rustup");
+        Err(anyhow!(
+            "Rustup installation failed for all candidates: {}",
+            errors.join(" | ")
+        ))
+    }
 
-        let output = Command::new(rustup_cmd)
-            .args(&["which", "rust-analyzer"])
-            .output()
-            .map_err(|e| anyhow!("Failed to locate rust-analyzer: {}", e))?;
+    fn release_asset_name() -> Result<String> {
+        let target = match (std::env::consts::OS, std::env::consts::ARCH) {
+            ("windows", "x86_64") => "x86_64-pc-windows-msvc.exe",
+            ("windows", "aarch64") => "aarch64-pc-windows-msvc.exe",
+            ("linux", "x86_64") => "x86_64-unknown-linux-gnu",
+            ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
+            ("macos", "x86_64") => "x86_64-apple-darwin",
+            ("macos", "aarch64") => "aarch64-apple-darwin",
+            (os, arch) => {
+                return Err(anyhow!(
+                    "Unsupported platform for automatic rust-analyzer installation: {}/{}",
+                    os,
+                    arch
+                ))
+            }
+        };
 
-        if !output.status.success() {
-            return Err(anyhow!("Failed to locate rust-analyzer after installation"));
+        Ok(format!("rust-analyzer-{}", target))
+    }
+
+    fn download_file(url: &str, dest: &PathBuf) -> Result<()> {
+        if cfg!(windows) {
+            let powershell_result = Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!(
+                        "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
+                        url,
+                        dest.display()
+                    ),
+                ])
+                .output();
+
+            if let Ok(output) = powershell_result {
+                if output.status.success() {
+                    return Ok(());
+                }
+            }
+
+            let curl_result = Command::new("curl")
+                .args(["-fL", url, "-o", &dest.to_string_lossy()])
+                .output()
+                .map_err(|e| anyhow!("failed to run downloader: {}", e))?;
+
+            if curl_result.status.success() {
+                return Ok(());
+            }
+
+            return Err(anyhow!(
+                "download failed: {}",
+                Self::output_text(&curl_result).trim()
+            ));
         }
 
-        let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let path = PathBuf::from(path_str);
-
-        if !path.exists() {
-            return Err(anyhow!("rust-analyzer path does not exist: {:?}", path));
-        }
-
-        if let Ok(output) = Command::new(&path).arg("--version").output() {
+        let curl_result = Command::new("curl")
+            .args(["-fL", url, "-o", &dest.to_string_lossy()])
+            .output();
+        if let Ok(output) = curl_result {
             if output.status.success() {
-                let version = String::from_utf8_lossy(&output.stdout);
-                tracing::debug!("✓ rust-analyzer installed and verified via rustup!");
-                tracing::debug!("   Version: {}", version.trim());
-                return Ok(path);
+                return Ok(());
             }
         }
 
-        Err(anyhow!("rust-analyzer installed but verification failed"))
+        let wget_result = Command::new("wget")
+            .args(["-O", &dest.to_string_lossy(), url])
+            .output()
+            .map_err(|e| anyhow!("failed to run downloader: {}", e))?;
+
+        if wget_result.status.success() {
+            return Ok(());
+        }
+
+        Err(anyhow!(
+            "download failed: {}",
+            Self::output_text(&wget_result).trim()
+        ))
     }
 
     /// Download rust-analyzer binary directly from GitHub
@@ -303,71 +505,32 @@ impl RustAnalyzerManager {
         fs::create_dir_all(deps_dir)?;
         tracing::debug!("   Created deps directory: {:?}", deps_dir);
 
-        let (platform, extension) = if cfg!(target_os = "windows") {
-            ("pc-windows-msvc", ".exe")
-        } else if cfg!(target_os = "linux") {
-            ("unknown-linux-gnu", "")
-        } else if cfg!(target_os = "macos") {
-            ("apple-darwin", "")
-        } else {
-            return Err(anyhow!("Unsupported platform for automatic installation"));
-        };
-
+        let asset_name = Self::release_asset_name()?;
         let url = format!(
-            "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-x86_64-{}{}",
-            platform, extension
+            "https://github.com/rust-lang/rust-analyzer/releases/latest/download/{}",
+            asset_name
         );
 
         tracing::debug!("   Downloading from: {}", url);
 
-        let download_result = if cfg!(windows) {
-            Command::new("powershell")
-                .args(&[
-                    "-NoProfile",
-                    "-Command",
-                    &format!(
-                        "Invoke-WebRequest -Uri '{}' -OutFile '{}'",
-                        url,
-                        deps_path.display()
-                    ),
-                ])
-                .output()
-        } else {
-            Command::new("curl")
-                .args(&["-L", &url, "-o", &deps_path.to_string_lossy()])
-                .output()
-        };
+        Self::download_file(&url, &deps_path)?;
+        tracing::debug!("✓ Downloaded rust-analyzer successfully");
 
-        match download_result {
-            Ok(output) if output.status.success() => {
-                tracing::debug!("✓ Downloaded rust-analyzer successfully");
-
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let mut perms = fs::metadata(&deps_path)?.permissions();
-                    perms.set_mode(0o755);
-                    fs::set_permissions(&deps_path, perms)?;
-                    tracing::debug!("✓ Made rust-analyzer executable");
-                }
-
-                if let Ok(output) = Command::new(&deps_path).arg("--version").output() {
-                    if output.status.success() {
-                        let version = String::from_utf8_lossy(&output.stdout);
-                        tracing::debug!("✓ rust-analyzer installed successfully!");
-                        tracing::debug!("   Version: {}", version.trim());
-                        return Ok(deps_path);
-                    }
-                }
-
-                Err(anyhow!("Downloaded rust-analyzer but failed to verify"))
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                Err(anyhow!("Failed to download rust-analyzer: {}", stderr))
-            }
-            Err(e) => Err(anyhow!("Failed to execute download command: {}", e)),
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(&deps_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(&deps_path, perms)?;
+            tracing::debug!("✓ Made rust-analyzer executable");
         }
+
+        let version = Self::verify_rust_analyzer_executable(&deps_path)
+            .map_err(|e| anyhow!("Downloaded rust-analyzer but verification failed: {}", e))?;
+
+        tracing::debug!("✓ rust-analyzer installed successfully!");
+        tracing::debug!("   Version: {}", version);
+        Ok(deps_path)
     }
 
     /// Start rust-analyzer for the given workspace
@@ -412,8 +575,13 @@ impl RustAnalyzerManager {
             .join();
 
             match spawn_result {
-                Ok(Ok(())) => {
+                Ok(Ok(resolved_analyzer_path)) => {
                     tracing::debug!("✓ rust-analyzer process spawned successfully");
+                    tracing::debug!("   Active binary: {:?}", resolved_analyzer_path);
+
+                    let _ = manager.update(cx, |manager, _cx| {
+                        manager.analyzer_path = resolved_analyzer_path;
+                    });
 
                     let workspace_root_for_init = workspace_root.clone();
                     let stdin_arc_for_init = stdin_arc.clone();
@@ -474,12 +642,22 @@ impl RustAnalyzerManager {
         stdin_arc: Arc<Mutex<Option<std::process::ChildStdin>>>,
         progress_tx: Sender<ProgressUpdate>,
         pending_requests: Arc<Mutex<HashMap<i64, flume::Sender<serde_json::Value>>>>,
-    ) -> Result<()> {
+    ) -> Result<PathBuf> {
         tracing::debug!("Spawning rust-analyzer process...");
         tracing::debug!("  Binary: {:?}", analyzer_path);
         tracing::debug!("  Workspace: {:?}", workspace_root);
 
-        let spawn_result = Command::new(analyzer_path)
+        let mut active_analyzer_path = analyzer_path.clone();
+
+        // Validate candidate before spawn so rustup proxy stubs can trigger self-healing install.
+        if let Err(e) = Self::verify_rust_analyzer_executable(&active_analyzer_path) {
+            tracing::warn!("⚠️  rust-analyzer candidate failed validation: {}", e);
+            tracing::debug!("   Attempting to install rust-analyzer...");
+            active_analyzer_path = Self::install_rust_analyzer_to_deps()?;
+            tracing::debug!("   Using installed rust-analyzer: {:?}", active_analyzer_path);
+        }
+
+        let spawn_result = Command::new(&active_analyzer_path)
             .current_dir(workspace_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -608,7 +786,7 @@ impl RustAnalyzerManager {
             let _process_lock = process_arc.lock().unwrap();
         }
 
-        Ok(())
+        Ok(active_analyzer_path)
     }
 
     fn send_initialize_request(

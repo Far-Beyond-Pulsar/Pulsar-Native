@@ -67,6 +67,8 @@ impl FileManagerDrawer {
             show_hidden_files: false,
             clipboard: None,
             registered_file_types: Vec::new(), // Will be populated from plugin manager
+            grid_scroll_handle: VirtualListScrollHandle::new(),
+            list_scroll_handle: VirtualListScrollHandle::new(),
         }
     }
 

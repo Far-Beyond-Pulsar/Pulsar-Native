@@ -204,6 +204,131 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Script Editor — built-in provider (no DLL boundary)
+// ---------------------------------------------------------------------------
+
+/// Wraps the script_editor_plugin crate as a built-in editor provider.
+pub struct ScriptEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.script-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        use serde_json::json;
+
+        vec![
+            FileTypeDefinition {
+                id: FileTypeId::new("rust_script"),
+                extension: "rs".to_string(),
+                display_name: "Rust".to_string(),
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0xFF5722).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("// New Rust script\n"),
+                categories: vec!["Scripts".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("javascript"),
+                extension: "js".to_string(),
+                display_name: "JavaScript".to_string(),
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0xF7DF1E).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("// New JavaScript file\n"),
+                categories: vec!["Scripts".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("typescript"),
+                extension: "ts".to_string(),
+                display_name: "TypeScript".to_string(),
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0x3178C6).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("// New TypeScript file\n"),
+                categories: vec!["Scripts".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("python"),
+                extension: "py".to_string(),
+                display_name: "Python Script".to_string(),
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0x3776AB).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("# New Python script\n"),
+                categories: vec!["Scripts".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("lua"),
+                extension: "lua".to_string(),
+                display_name: "Lua Script".to_string(),
+                icon: ui::IconName::Code,
+                color: gpui::rgb(0x2196F3).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("-- New Lua script\n"),
+                categories: vec!["Scripts".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("toml"),
+                extension: "toml".to_string(),
+                display_name: "TOML Configuration".to_string(),
+                icon: ui::IconName::Page,
+                color: gpui::rgb(0x9E9E9E).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("# TOML configuration file\n"),
+                categories: vec!["Data".to_string()],
+            },
+            FileTypeDefinition {
+                id: FileTypeId::new("markdown"),
+                extension: "md".to_string(),
+                display_name: "Markdown Document".to_string(),
+                icon: ui::IconName::Page,
+                color: gpui::rgb(0xFF5722).into(),
+                structure: FileStructure::Standalone,
+                default_content: json!("# New Document\n"),
+                categories: vec!["Documents".to_string()],
+            },
+        ]
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        vec![EditorMetadata {
+            id: EditorId::new("script-editor"),
+            display_name: "Script Editor".into(),
+            supported_file_types: vec![
+                FileTypeId::new("rust_script"),
+                FileTypeId::new("javascript"),
+                FileTypeId::new("typescript"),
+                FileTypeId::new("python"),
+                FileTypeId::new("lua"),
+                FileTypeId::new("toml"),
+                FileTypeId::new("markdown"),
+            ],
+        }]
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "script-editor"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let panel = cx.new(|cx| script_editor_plugin::ScriptEditorPanel::new(window, cx));
+        panel.update(cx, |editor, ecx| {
+            editor.open_file(file_path.clone(), window, ecx);
+        });
+
+        Ok(Arc::new(panel))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // File Manager Tools — built-in provider (AI tools only)
 // ---------------------------------------------------------------------------
 
@@ -270,6 +395,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Blueprint editor (compiled-in, no DLL boundary)
     registry.register_provider(Arc::new(BlueprintEditorBuiltinProvider));
+
+    // Script editor (compiled-in, no DLL boundary)
+    registry.register_provider(Arc::new(ScriptEditorBuiltinProvider));
 
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));

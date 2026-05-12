@@ -236,6 +236,16 @@ impl InputMode {
             _ => None,
         }
     }
+
+    /// Returns a clone of the syntax highlighter handle for code-editor mode.
+    pub(in crate::input) fn highlighter_ref(
+        &self,
+    ) -> Option<Rc<RefCell<Option<SyntaxHighlighter>>>> {
+        match self {
+            InputMode::CodeEditor { highlighter, .. } => Some(highlighter.clone()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -183,8 +183,8 @@ impl TextInput {
 
         const MIN_SCROLL_PADDING: Pixels = px(2.0);
 
-        // Determine if we should show minimap
-        let show_minimap = state.show_minimap && state.mode.is_code_editor();
+        let is_code_editor = state.mode.is_code_editor();
+        let show_minimap = state.show_minimap && is_code_editor;
 
         v_flex()
             .size_full()
@@ -194,11 +194,9 @@ impl TextInput {
                     let left = if last_layout.line_number_width.is_zero() {
                         px(0.)
                     } else {
-                        // Align left edge to the Line number.
                         paddings.left + last_layout.line_number_width - LINE_NUMBER_RIGHT_MARGIN
                     };
 
-                    // Virtual scrolling optimization: Calculate scroll size more efficiently
                     let scroll_size = Self::calculate_virtual_scroll_size(
                         &state.scroll_size,
                         left,
@@ -206,86 +204,62 @@ impl TextInput {
                         &last_layout,
                     );
 
-                    // Always use standard scrollbar for interaction
-                    let scrollbar = if !state.soft_wrap {
-                        Scrollbar::both(&state.scroll_state, &state.scroll_handle)
+                    let mut container = if is_code_editor {
+                        // Code editor: no generic scrollbar — custom ones are painted below.
+                        this.relative()
                     } else {
-                        Scrollbar::vertical(&state.scroll_state, &state.scroll_handle)
-                    };
-
-                    let mut container = this.relative().child(
-                        div()
-                            .absolute()
-                            .top(-paddings.top + MIN_SCROLL_PADDING)
-                            .left(left)
-                            .right(-paddings.right + MIN_SCROLL_PADDING)
-                            .bottom(-paddings.bottom + MIN_SCROLL_PADDING)
-                            .child(scrollbar.scroll_size(scroll_size)),
-                    );
-
-                    // Add minimap overlay if enabled
-                    if show_minimap {
-                        use super::minimap::{
-                            calculate_viewport_indicator, render_minimap_content,
-                            render_viewport_indicator, MinimapConfig,
+                        // Non-code inputs keep the standard scrollbar.
+                        let scrollbar = if !state.soft_wrap {
+                            Scrollbar::both(&state.scroll_state, &state.scroll_handle)
+                        } else {
+                            Scrollbar::vertical(&state.scroll_state, &state.scroll_handle)
                         };
-                        use gpui::{point, size, Bounds};
-                        use ropey::LineType;
-
-                        let total_lines = state.text.len_lines(ropey::LineType::LF);
-                        let visible_range = last_layout.visible_range.clone();
-                        let config = MinimapConfig::default();
-
-                        // Calculate minimap bounds
-                        let minimap_bounds =
-                            Bounds::new(point(px(0.0), px(0.0)), size(config.width, px(100.0)));
-
-                        // Render minimap content lines
-                        let minimap_content_elements = render_minimap_content(
-                            &state.text,
-                            visible_range.clone(),
-                            total_lines,
-                            &config,
-                            minimap_bounds,
-                        );
-
-                        container = container.child(
+                        this.relative().child(
                             div()
                                 .absolute()
-                                .right_0()
-                                .top_0()
-                                .w(config.width)
-                                .h_full()
-                                .bg(cx.theme().secondary.opacity(0.3))
-                                .rounded_md()
-                                .overflow_hidden()
-                                .children(minimap_content_elements)
-                                .child(
-                                    // Viewport indicator showing current scroll position
-                                    div()
-                                        .id("minimap-indicator")
-                                        .absolute()
-                                        .w_full()
-                                        .border_2()
-                                        .border_color(cx.theme().accent)
-                                        .bg(cx.theme().accent.opacity(0.15))
-                                        .rounded_sm()
-                                        // Position calculated based on scroll position
-                                        .when(total_lines > 0, |div| {
-                                            let start_ratio =
-                                                visible_range.start as f32 / total_lines as f32;
-                                            let height_ratio = (visible_range.len() as f32
-                                                / total_lines as f32)
-                                                .min(1.0);
-                                            let min_height_px = 20.0;
-                                            let calculated_height =
-                                                height_ratio.max(min_height_px / 100.0); // Convert to relative
+                                .top(-paddings.top + MIN_SCROLL_PADDING)
+                                .left(left)
+                                .right(-paddings.right + MIN_SCROLL_PADDING)
+                                .bottom(-paddings.bottom + MIN_SCROLL_PADDING)
+                                .child(scrollbar.scroll_size(scroll_size)),
+                        )
+                    };
 
-                                            div.top(relative(start_ratio))
-                                                .h(relative(calculated_height))
-                                        }),
-                                ),
-                        );
+                    if is_code_editor {
+                        use ropey::LineType;
+                        use super::minimap::{Minimap, MINIMAP_WIDTH};
+                        use super::editor_scrollbar::EditorScrollbar;
+
+                        let total_lines = state.text.len_lines(LineType::LF);
+                        // scroll_size.height is the authoritative total content height.
+                        let content_height = state.scroll_size.height;
+                        // input_bounds.size.height is the visible viewport height.
+                        let viewport_height = state.input_bounds.size.height;
+
+                        let minimap_w = if show_minimap { MINIMAP_WIDTH } else { px(0.0) };
+
+                        // Custom thin scrollbar (sits to the left of the minimap)
+                        container = container.child(EditorScrollbar::new(
+                            state.scroll_handle.clone(),
+                            content_height,
+                            viewport_height,
+                            state.editor_scrollbar_drag.clone(),
+                            minimap_w,
+                        ));
+
+                        // Minimap (only when enabled)
+                        if show_minimap {
+                            container = container.child(Minimap::new(
+                                state.text.clone(),
+                                total_lines,
+                                state.scroll_handle.clone(),
+                                content_height,
+                                viewport_height,
+                                last_layout.line_height,
+                                state.mode.highlighter_ref(),
+                                state.minimap_drag.clone(),
+                            ));
+                        }
                     }
 
                     container
