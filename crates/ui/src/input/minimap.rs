@@ -1,207 +1,259 @@
-//! Studio-quality minimap component for text editors.
+//! VS Code-style minimap — a proper GPUI Element with correct bounds at paint time.
 //!
-//! Provides a VSCode-style minimap that shows a thumbnail view of the entire document
-//! with the visible viewport highlighted. Supports:
-//! - Efficient rendering of large files (100k+ lines)
-//! - Click and drag to navigate
-//! - Syntax highlighting in minimap (simplified)
-//! - Visible viewport indicator
-//! - Smooth scrolling synchronization
+//! Features: density-bar content scaled to actual container, a viewport indicator
+//! that tracks the scroll position, and click/drag to scroll.
+
+use std::{cell::Cell, rc::Rc};
 
 use gpui::*;
 use ropey::{LineType, Rope};
-use std::ops::Range;
 
-use crate::{ActiveTheme, PixelsExt};
+use crate::ActiveTheme;
 
-/// Configuration for the minimap display.
-#[derive(Clone, Debug)]
-pub struct MinimapConfig {
-    /// Width of the minimap in pixels.
-    pub width: Pixels,
+pub const MINIMAP_WIDTH: Pixels = px(110.0);
+const LINE_PX: f32 = 2.0; // minimap pixels per source line
 
-    /// Height of each line in the minimap (much smaller than editor).
-    pub line_height: Pixels,
-
-    /// Maximum number of characters to render per line.
-    pub max_chars_per_line: usize,
-
-    /// Font size for minimap text.
-    pub font_size: Pixels,
-
-    /// Whether to show syntax highlighting in minimap.
-    pub show_highlighting: bool,
-
-    /// Opacity of the minimap (0.0 - 1.0).
-    pub opacity: f32,
+/// Persistent drag state stored in InputState.
+#[derive(Clone, Copy, Default)]
+pub struct MinimapDrag {
+    pub active: bool,
+    pub start_y: f32,
+    pub start_offset_y: f32,
 }
 
-impl Default for MinimapConfig {
-    fn default() -> Self {
-        Self {
-            width: px(120.0),
-            line_height: px(2.0), // Very compact - 2px per line like VSCode
-            max_chars_per_line: 80,
-            font_size: px(2.0),
-            show_highlighting: false, // Disable by default for performance
-            opacity: 0.7,
-        }
-    }
-}
-
-/// Minimap state for tracking user interactions.
-pub struct MinimapState {
-    /// Whether the user is currently dragging the minimap.
-    pub is_dragging: bool,
-
-    /// Last drag position for calculating delta.
-    pub last_drag_pos: Option<Point<Pixels>>,
-}
+#[derive(Clone, Default)]
+pub struct MinimapState(pub Rc<Cell<MinimapDrag>>);
 
 impl MinimapState {
-    pub fn new() -> Self {
-        Self {
-            is_dragging: false,
-            last_drag_pos: None,
-        }
+    pub fn new() -> Self { Self::default() }
+}
+
+// ── Element ─────────────────────────────────────────────────────────────────
+
+pub struct Minimap {
+    text: Rope,
+    total_lines: usize,
+    scroll_handle: ScrollHandle,
+    drag_state: MinimapState,
+}
+
+impl Minimap {
+    pub fn new(
+        text: Rope,
+        total_lines: usize,
+        scroll_handle: ScrollHandle,
+        drag_state: MinimapState,
+    ) -> Self {
+        Self { text, total_lines, scroll_handle, drag_state }
     }
 }
 
-/// Calculate the minimap viewport indicator bounds.
-///
-/// Returns the bounds of the visible viewport indicator within the minimap.
-pub fn calculate_viewport_indicator(
-    minimap_bounds: &Bounds<Pixels>,
-    visible_range: &Range<usize>,
-    total_lines: usize,
-    config: &MinimapConfig,
-) -> Bounds<Pixels> {
-    if total_lines == 0 {
-        return Bounds::new(minimap_bounds.origin, Size::default());
+pub struct MinimapPrepaint {
+    bounds: Bounds<Pixels>,
+}
+
+impl IntoElement for Minimap {
+    type Element = Self;
+    fn into_element(self) -> Self { self }
+}
+
+impl Element for Minimap {
+    type RequestLayoutState = ();
+    type PrepaintState = MinimapPrepaint;
+
+    fn id(&self) -> Option<ElementId> { None }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+
+    fn request_layout(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, ()) {
+        let mut style = Style::default();
+        style.size.width = MINIMAP_WIDTH.into();
+        style.size.height = relative(1.0).into();
+        style.position = Position::Absolute;
+        style.inset.right = px(0.0).into();
+        style.inset.top = px(0.0).into();
+        (window.request_layout(style, [], cx), ())
     }
 
-    // Calculate the total content height in minimap coordinates
-    let total_minimap_height = config.line_height * total_lines as f32;
-
-    // Calculate the scale factor (how much of the minimap represents visible content)
-    let scale = minimap_bounds.size.height / total_minimap_height;
-
-    // Calculate indicator position and size
-    let indicator_top = (visible_range.start as f32 * config.line_height) * scale;
-    let indicator_height = (visible_range.len() as f32 * config.line_height) * scale;
-
-    // Ensure indicator is at least visible (minimum 20px height)
-    let indicator_height = indicator_height.max(px(20.0));
-
-    Bounds::new(
-        point(
-            minimap_bounds.origin.x,
-            minimap_bounds.origin.y + indicator_top,
-        ),
-        size(minimap_bounds.size.width, indicator_height),
-    )
-}
-
-/// Convert a click position in the minimap to a line number in the document.
-pub fn minimap_click_to_line(
-    click_pos: Point<Pixels>,
-    minimap_bounds: &Bounds<Pixels>,
-    total_lines: usize,
-    config: &MinimapConfig,
-) -> usize {
-    // Calculate where in the minimap the click occurred (0.0 - 1.0)
-    let relative_y = (click_pos.y - minimap_bounds.origin.y) / minimap_bounds.size.height;
-    let relative_y = relative_y.max(0.0).min(1.0);
-
-    // Calculate the total content height in minimap coordinates
-    let total_minimap_height = config.line_height * total_lines as f32;
-
-    // Calculate the scale factor
-    let scale = minimap_bounds.size.height / total_minimap_height;
-
-    // Convert back to line number
-    let line = (relative_y * total_lines as f32) as usize;
-    line.min(total_lines.saturating_sub(1))
-}
-
-/// Render a simplified representation of lines for the minimap.
-///
-/// This renders a "heatmap" style minimap where each line is represented as
-/// a colored bar based on its content density and length.
-pub fn render_minimap_content(
-    text: &Rope,
-    _visible_lines: Range<usize>,
-    total_lines: usize,
-    config: &MinimapConfig,
-    minimap_bounds: Bounds<Pixels>,
-) -> Vec<AnyElement> {
-    let mut elements = vec![];
-
-    // Calculate how many lines to sample for rendering
-    // We don't render every line - we sample intelligently
-    let sample_rate = if total_lines > 10000 {
-        50 // Sample every 50th line for huge files
-    } else if total_lines > 1000 {
-        10 // Sample every 10th line for large files
-    } else {
-        1 // Render every line for small files
-    };
-
-    // Render sampled lines
-    for line_idx in (0..total_lines).step_by(sample_rate) {
-        // Get line content (if we can) - line() returns a Rope slice
-        if line_idx >= text.len_lines(LineType::LF) {
-            break;
-        }
-
-        let line_text = text.line(line_idx, LineType::LF).to_string();
-
-        // Calculate visual density (how full is this line)
-        let density = (line_text.trim().len() as f32 / config.max_chars_per_line as f32).min(1.0);
-
-        // Calculate Y position in minimap
-        let y_pos = minimap_bounds.origin.y + (line_idx as f32 * config.line_height);
-
-        // Skip if outside minimap bounds
-        if y_pos >= minimap_bounds.origin.y + minimap_bounds.size.height {
-            break;
-        }
-
-        // Create a density bar for this line
-        if density > 0.05 {
-            // Only render non-empty lines
-            let bar_width = config.width * density;
-
-            elements.push(
-                div()
-                    .absolute()
-                    .left(minimap_bounds.origin.x)
-                    .top(y_pos)
-                    .w(bar_width)
-                    .h(config.line_height)
-                    .bg(rgb(0x808080)) // Gray color for code
-                    .into_any_element(),
-            );
-        }
+    fn prepaint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _: &mut (),
+        window: &mut Window,
+        _: &mut App,
+    ) -> MinimapPrepaint {
+        window.insert_hitbox(bounds, HitboxBehavior::default());
+        MinimapPrepaint { bounds }
     }
 
-    elements
-}
+    fn paint(
+        &mut self,
+        _: Option<&GlobalElementId>,
+        _: Option<&InspectorElementId>,
+        _: Bounds<Pixels>,
+        _: &mut (),
+        prepaint: &mut MinimapPrepaint,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let bounds = prepaint.bounds;
+        let total_lines = self.total_lines;
+        if total_lines == 0 { return; }
 
-/// Render the minimap viewport indicator (shows which part of the document is visible).
-pub fn render_viewport_indicator(
-    indicator_bounds: Bounds<Pixels>,
-    theme_color: Hsla,
-) -> AnyElement {
-    div()
-        .absolute()
-        .left(indicator_bounds.origin.x)
-        .top(indicator_bounds.origin.y)
-        .w(indicator_bounds.size.width)
-        .h(indicator_bounds.size.height)
-        .border_2()
-        .border_color(theme_color)
-        .bg(theme_color.opacity(0.15))
-        .rounded_sm()
-        .into_any_element()
+        let container_h = bounds.size.height;
+
+        // Total document height in minimap-pixel units.
+        let doc_minimap_h = px(total_lines as f32 * LINE_PX);
+
+        // Background
+        window.paint_quad(fill(bounds, cx.theme().secondary.opacity(0.35)));
+
+        // ── Scroll math ───────────────────────────────────────────────────
+
+        let max_offset_y = self.scroll_handle.max_offset().height; // positive px
+        let scroll_abs = (-self.scroll_handle.offset().y).max(px(0.0));
+        let viewport_h = self.scroll_handle.bounds().size.height.max(px(1.0));
+
+        // Fraction of document scrolled (0..1)
+        let scroll_frac = if max_offset_y > px(0.0) {
+            (scroll_abs / max_offset_y).min(1.0) // f32
+        } else {
+            0.0_f32
+        };
+
+        // When the minimap is shorter than the full doc, slide it to follow scroll.
+        let minimap_scroll_offset = if doc_minimap_h > container_h {
+            (doc_minimap_h - container_h) * scroll_frac
+        } else {
+            px(0.0)
+        };
+
+        // ── Density bars ──────────────────────────────────────────────────
+
+        let sample_rate = match total_lines {
+            0..=2000  => 1,
+            2001..=20_000 => 5,
+            _          => 20,
+        };
+
+        let code_color = cx.theme().foreground.opacity(0.22);
+
+        for line_idx in (0..total_lines).step_by(sample_rate.max(1)) {
+            if line_idx >= self.text.len_lines(LineType::LF) { break; }
+
+            let line_text = self.text.line(line_idx, LineType::LF).to_string();
+            let trimmed_len = line_text.trim().len() as f32;
+            if trimmed_len < 1.0 { continue; }
+
+            let density = (trimmed_len / 80.0_f32).min(1.0);
+
+            // Y in minimap coordinate space, offset for scroll
+            let raw_y = px(line_idx as f32 * LINE_PX) - minimap_scroll_offset;
+            if raw_y < px(0.0) || raw_y > container_h { continue; }
+
+            let bar_y = bounds.origin.y + raw_y;
+            let bar_w = (MINIMAP_WIDTH - px(8.0)) * density;
+            let bar_h = px(LINE_PX * sample_rate as f32).max(px(1.0));
+
+            window.paint_quad(fill(
+                Bounds::new(
+                    point(bounds.origin.x + px(4.0), bar_y),
+                    size(bar_w, bar_h),
+                ),
+                code_color,
+            ));
+        }
+
+        // ── Viewport indicator ────────────────────────────────────────────
+
+        // Total content height (actual pixels)
+        let content_h = max_offset_y + viewport_h;
+
+        // In minimap space, what's the visible window fraction?
+        let viewport_frac = (viewport_h / content_h).min(1.0); // f32
+
+        // Where does the visible window start, as a fraction of total document?
+        let viewport_start_frac = if content_h > px(0.0) {
+            (scroll_abs / content_h).min(1.0) // f32
+        } else {
+            0.0_f32
+        };
+
+        let indicator_top = container_h * viewport_start_frac;
+        let indicator_h = (container_h * viewport_frac).max(px(16.0)).min(container_h - indicator_top);
+
+        window.paint_quad(PaintQuad {
+            bounds: Bounds::new(
+                point(bounds.origin.x, bounds.origin.y + indicator_top),
+                size(MINIMAP_WIDTH, indicator_h),
+            ),
+            corner_radii: Corners::all(px(0.0)),
+            background: cx.theme().accent.opacity(0.12).into(),
+            border_widths: Edges { top: px(1.0), bottom: px(1.0), left: px(0.0), right: px(0.0) },
+            border_color: cx.theme().accent.opacity(0.55),
+            border_style: BorderStyle::Solid,
+        });
+
+        // ── Mouse events ──────────────────────────────────────────────────
+
+        let drag_state = self.drag_state.clone();
+        let scroll_handle = self.scroll_handle.clone();
+
+        window.on_mouse_event({
+            let drag_state = drag_state.clone();
+            let scroll_handle = scroll_handle.clone();
+            move |event: &MouseDownEvent, phase, _window, _cx| {
+                if phase != DispatchPhase::Bubble { return; }
+                if !bounds.contains(&event.position) { return; }
+
+                let click_frac = f32::from(event.position.y - bounds.origin.y)
+                    / f32::from(container_h).max(1.0);
+
+                let max_off = scroll_handle.max_offset().height;
+                let new_y = -(max_off * click_frac.clamp(0.0, 1.0));
+                let mut offset = scroll_handle.offset();
+                offset.y = new_y;
+                scroll_handle.set_offset(offset);
+
+                drag_state.0.set(MinimapDrag {
+                    active: true,
+                    start_y: f32::from(event.position.y),
+                    start_offset_y: f32::from(new_y),
+                });
+            }
+        });
+
+        window.on_mouse_event({
+            let drag_state = drag_state.clone();
+            let scroll_handle = scroll_handle.clone();
+            move |event: &MouseMoveEvent, phase, _window, _cx| {
+                if phase != DispatchPhase::Bubble { return; }
+                let state = drag_state.0.get();
+                if !state.active { return; }
+
+                let delta_frac = (f32::from(event.position.y) - state.start_y)
+                    / f32::from(container_h).max(1.0);
+                let max_off = scroll_handle.max_offset().height;
+                let new_y = px(state.start_offset_y) - max_off * delta_frac;
+                let clamped = new_y.min(px(0.0)).max(-max_off);
+                let mut offset = scroll_handle.offset();
+                offset.y = clamped;
+                scroll_handle.set_offset(offset);
+            }
+        });
+
+        window.on_mouse_event({
+            move |_: &MouseUpEvent, _phase, _window, _cx| {
+                let mut s = drag_state.0.get();
+                if s.active { s.active = false; drag_state.0.set(s); }
+            }
+        });
+    }
 }

@@ -332,6 +332,11 @@ pub struct InputState {
     /// Whether to show VSCode-style minimap scrollbar
     pub(in crate::input) show_minimap: bool,
 
+    /// Persistent drag state for the custom minimap element.
+    pub(in crate::input) minimap_drag: crate::input::minimap::MinimapState,
+    /// Persistent drag state for the custom editor scrollbar element.
+    pub(in crate::input) editor_scrollbar_drag: crate::input::editor_scrollbar::EditorScrollbarState,
+
     /// Popover
     pub(in crate::input) diagnostic_popover: Option<Entity<DiagnosticPopover>>,
     /// Completion/CodeAction context menu
@@ -448,6 +453,8 @@ impl InputState {
             mask_pattern: MaskPattern::default(),
             line_cache: crate::input::line_cache::OptimizedLineCache::default(),
             show_minimap: false,
+            minimap_drag: crate::input::minimap::MinimapState::new(),
+            editor_scrollbar_drag: crate::input::editor_scrollbar::EditorScrollbarState::new(),
             lsp: Lsp::default(),
             diagnostic_popover: None,
             context_menu: None,
