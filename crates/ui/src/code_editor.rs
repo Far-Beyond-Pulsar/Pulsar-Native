@@ -1,21 +1,15 @@
-//! Studio-Quality Virtualized Code Editor - Production Ready
-//! Custom virtual scrolling for maximum performance on massive codebases
+//! Full-featured code editor backed by InputState — syntax highlighting, virtualization,
+//! minimap, find/replace, LSP diagnostics, undo/redo, and all keyboard shortcuts.
 
 use anyhow::Result;
-use gpui::*;
-use ropey::{LineType, Rope};
-use std::ops::Range;
+use gpui::{prelude::FluentBuilder as _, *};
 use std::path::PathBuf;
 
 use crate::{
     h_flex,
-    scroll::{Scrollbar, ScrollbarState},
+    input::{InputEvent, InputState, TabSize, TextInput},
     v_flex, ActiveTheme,
 };
-
-const MAX_RENDERED_LINES: usize = 200;
-const OVERSCAN_LINES: usize = 10;
-const LINE_NUMBER_WIDTH: Pixels = px(60.0);
 
 #[derive(Clone)]
 pub enum CodeEditorEvent {
@@ -23,85 +17,149 @@ pub enum CodeEditorEvent {
     Saved { path: PathBuf, content: String },
 }
 
-#[derive(Clone, Debug)]
-pub struct EditorConfig {
-    pub show_line_numbers: bool,
-    pub show_minimap: bool,
-    pub tab_size: usize,
-    pub minimap_width: Pixels,
-}
-
-impl Default for EditorConfig {
-    fn default() -> Self {
-        Self {
-            show_line_numbers: true,
-            show_minimap: true,
-            tab_size: 4,
-            minimap_width: px(120.0),
-        }
+/// Language detection from file extension.
+fn detect_language(path: &PathBuf) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase()
+        .as_str()
+    {
+        "rs" => "rust",
+        "js" | "mjs" | "cjs" => "javascript",
+        "ts" | "mts" | "cts" => "typescript",
+        "jsx" => "jsx",
+        "tsx" => "tsx",
+        "py" => "python",
+        "go" => "go",
+        "c" | "h" => "c",
+        "cpp" | "cc" | "cxx" | "hpp" | "hxx" => "cpp",
+        "java" => "java",
+        "cs" => "c_sharp",
+        "rb" => "ruby",
+        "php" => "php",
+        "swift" => "swift",
+        "kt" | "kts" => "kotlin",
+        "json" | "jsonc" => "json",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "xml" | "svg" | "xhtml" => "xml",
+        "html" | "htm" => "html",
+        "css" => "css",
+        "scss" => "scss",
+        "sh" | "bash" | "zsh" => "bash",
+        "md" | "mdx" => "markdown",
+        "sql" => "sql",
+        "lua" => "lua",
+        "r" => "r",
+        "ex" | "exs" => "elixir",
+        "hs" => "haskell",
+        "nix" => "nix",
+        "dockerfile" => "dockerfile",
+        _ => "plaintext",
     }
-}
-
-#[derive(Default, Clone, Debug)]
-pub struct EditorStats {
-    pub total_lines: usize,
-    pub rendered_lines: usize,
-    pub visible_range: Range<usize>,
 }
 
 pub struct CodeEditor {
     focus_handle: FocusHandle,
-    text: Rope,
+    input: Entity<InputState>,
     path: Option<PathBuf>,
-    config: EditorConfig,
-    cursor: usize,
-    scroll_handle: ScrollHandle,
-    scroll_state: ScrollbarState,
-    stats: EditorStats,
-    visible_range: Range<usize>,
+    language: SharedString,
     is_modified: bool,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl CodeEditor {
-    pub fn new(cx: &mut Context<Self>) -> Self {
+    /// Create a new CodeEditor with the given language for syntax highlighting.
+    ///
+    /// The editor includes: virtual scrolling, syntax highlighting, line numbers,
+    /// minimap, find/replace (Cmd/Ctrl+F), full keyboard shortcuts, LSP diagnostics,
+    /// undo/redo, and all standard editor features.
+    pub fn new(language: impl Into<SharedString>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let language: SharedString = language.into();
+
+        let input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .code_editor(language.clone())
+                .minimap(true)
+                .tab_size(TabSize {
+                    tab_size: 4,
+                    hard_tabs: false,
+                })
+                .line_number(true)
+        });
+
+        let focus_handle = cx.focus_handle();
+
+        let _subscriptions = vec![
+            cx.subscribe_in(
+                &input,
+                window,
+                |this: &mut CodeEditor, _, event: &InputEvent, _window, cx| {
+                    if let InputEvent::Change = event {
+                        this.is_modified = true;
+                        let content = this.input.read(cx).value().to_string();
+                        cx.emit(CodeEditorEvent::Changed { content });
+                    }
+                },
+            ),
+        ];
+
         Self {
-            focus_handle: cx.focus_handle(),
-            text: Rope::new(),
+            focus_handle,
+            input,
             path: None,
-            config: EditorConfig::default(),
-            cursor: 0,
-            scroll_handle: ScrollHandle::new(),
-            scroll_state: ScrollbarState::default(),
-            stats: EditorStats::default(),
-            visible_range: 0..0,
+            language,
             is_modified: false,
+            _subscriptions,
         }
     }
 
-    pub fn set_text(&mut self, content: impl Into<String>, cx: &mut Context<Self>) {
+    /// Set the text content of the editor.
+    pub fn set_text(
+        &mut self,
+        content: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let content = content.into();
-        self.text = Rope::from(content.as_str());
-        self.cursor = 0;
+        self.input.update(cx, |state, cx| {
+            state.set_value(content, window, cx);
+        });
         self.is_modified = false;
-        self.stats.total_lines = self.text.len_lines(LineType::LF);
         cx.notify();
     }
 
-    pub fn load_file(&mut self, path: impl Into<PathBuf>, cx: &mut Context<Self>) -> Result<()> {
+    /// Load a file from disk, auto-detecting language from extension.
+    pub fn load_file(
+        &mut self,
+        path: impl Into<PathBuf>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Result<()> {
         let path = path.into();
-        let content = std::fs::read_to_string(&path)?;
+        let content: SharedString = std::fs::read_to_string(&path)?.into();
+        let lang = detect_language(&path);
+        self.input.update(cx, |state, cx| {
+            state.set_highlighter(lang, cx);
+            state.set_value(content.clone(), window, cx);
+        });
+        self.language = lang.into();
         self.path = Some(path);
-        self.set_text(content, cx);
+        self.is_modified = false;
+        cx.notify();
         Ok(())
     }
 
+    /// Save the current content to disk (requires a path — set via `load_file` or `set_path`).
     pub fn save(&mut self, cx: &mut Context<Self>) -> Result<()> {
-        if let Some(path) = &self.path {
-            let content = self.text.to_string();
-            std::fs::write(path, &content)?;
+        if let Some(path) = self.path.clone() {
+            let content = self.input.read(cx).value().to_string();
+            std::fs::write(&path, &content)?;
             self.is_modified = false;
             cx.emit(CodeEditorEvent::Saved {
-                path: path.clone(),
+                path,
                 content,
             });
             cx.notify();
@@ -109,38 +167,76 @@ impl CodeEditor {
         Ok(())
     }
 
-    pub fn content(&self) -> String {
-        self.text.to_string()
+    /// Set the file path (for save-to-disk). Does not load content.
+    pub fn set_path(&mut self, path: impl Into<PathBuf>) {
+        self.path = Some(path.into());
     }
 
+    /// Change the active syntax highlighting language.
+    pub fn set_language(&mut self, language: impl Into<SharedString>, cx: &mut Context<Self>) {
+        let language = language.into();
+        self.language = language.clone();
+        self.input.update(cx, |state, cx| {
+            state.set_highlighter(language, cx);
+        });
+    }
+
+    /// Get the full text content.
+    pub fn content(&self, cx: &App) -> String {
+        self.input.read(cx).value().to_string()
+    }
+
+    /// Whether the editor content has unsaved changes.
     pub fn is_modified(&self) -> bool {
         self.is_modified
     }
 
-    pub fn stats(&self) -> &EditorStats {
-        &self.stats
+    /// Expose the underlying InputState entity for advanced usage (LSP, diagnostics, etc.).
+    pub fn input_state(&self) -> &Entity<InputState> {
+        &self.input
     }
 
-    fn calculate_visible_range(
-        &self,
-        viewport_height: Pixels,
-        line_height: Pixels,
-    ) -> Range<usize> {
-        let total_lines = self.text.len_lines(LineType::LF);
-        if total_lines == 0 {
-            return 0..0;
-        }
+    fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let state = self.input.read(cx);
+        let total_lines = state.text().len_lines(ropey::LineType::LF);
+        let pos = state.cursor_position();
+        let line = pos.line + 1;
+        let col = pos.character + 1;
+        let lang = self.language.clone();
+        let modified = self.is_modified;
+        let path_label: SharedString = self
+            .path
+            .as_ref()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string().into())
+            .unwrap_or_else(|| "Untitled".into());
 
-        let scroll_y = self.scroll_handle.offset().y;
-        let first_visible = ((scroll_y / line_height).floor() as usize)
-            .saturating_sub(OVERSCAN_LINES)
-            .min(total_lines);
-
-        let lines_in_viewport = ((viewport_height / line_height).ceil() as usize) + 1;
-        let total_to_render = (lines_in_viewport + OVERSCAN_LINES * 2).min(MAX_RENDERED_LINES);
-        let last_visible = (first_visible + total_to_render).min(total_lines);
-
-        first_visible..last_visible
+        h_flex()
+            .w_full()
+            .h(px(24.0))
+            .px_3()
+            .bg(cx.theme().secondary)
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .justify_between()
+            .items_center()
+            .text_xs()
+            .text_color(cx.theme().secondary_foreground)
+            .child(
+                h_flex()
+                    .gap_3()
+                    .child(path_label)
+                    .when(modified, |this: gpui::Div| this.child("●")),
+            )
+            .child(
+                h_flex()
+                    .gap_4()
+                    .child(format!("Ln {line}, Col {col}"))
+                    .child(format!("{total_lines} lines"))
+                    .child(lang)
+                    .child("UTF-8"),
+            )
     }
 }
 
@@ -153,231 +249,16 @@ impl Focusable for CodeEditor {
 }
 
 impl Render for CodeEditor {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let line_height = window.line_height();
-        let viewport_height = px(600.0);
-
-        let visible_range = self.calculate_visible_range(viewport_height, line_height);
-        self.visible_range = visible_range.clone();
-        self.stats.rendered_lines = visible_range.len();
-        self.stats.visible_range = visible_range.clone();
-
-        let total_lines = self.text.len_lines(LineType::LF);
-        let total_height = line_height * total_lines as f32;
-
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
             .child(
                 div()
                     .flex_1()
-                    .relative()
-                    .overflow_hidden()
-                    .child(
-                        // Virtual scroll container
-                        div()
-                            .id("code-editor-scroll")
-                            .size_full()
-                            .overflow_scroll()
-                            .track_scroll(&self.scroll_handle)
-                            .child(
-                                // Content with total height for scrolling
-                                div().w_full().h(total_height).relative().child(
-                                    // Absolutely positioned visible content
-                                    div()
-                                        .absolute()
-                                        .top(line_height * visible_range.start as f32)
-                                        .left_0()
-                                        .right_0()
-                                        .child(
-                                            h_flex()
-                                                .child(self.render_line_numbers(
-                                                    &visible_range,
-                                                    line_height,
-                                                    cx,
-                                                ))
-                                                .child(self.render_content(
-                                                    &visible_range,
-                                                    line_height,
-                                                    cx,
-                                                )),
-                                        ),
-                                ),
-                            ),
-                    )
-                    .child(
-                        // Scrollbar overlay
-                        div().absolute().inset_0().children(vec![Scrollbar::both(
-                            &self.scroll_state,
-                            &self.scroll_handle,
-                        )
-                        .into_any_element()]),
-                    ),
+                    .min_h_0()
+                    .child(TextInput::new(&self.input).h_full().appearance(false)),
             )
             .child(self.render_status_bar(cx))
-    }
-}
-
-impl CodeEditor {
-    fn render_line_numbers(
-        &self,
-        visible_range: &Range<usize>,
-        line_height: Pixels,
-        cx: &App,
-    ) -> impl IntoElement {
-        div()
-            .w(LINE_NUMBER_WIDTH)
-            .bg(cx.theme().muted.opacity(0.05))
-            .border_r_1()
-            .border_color(cx.theme().border)
-            .px_2()
-            .text_xs()
-            .children((visible_range.start..visible_range.end).map(|line_idx| {
-                div()
-                    .h(line_height)
-                    .flex()
-                    .items_center()
-                    .justify_end()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("{}", line_idx + 1))
-            }))
-    }
-
-    fn render_content(
-        &self,
-        visible_range: &Range<usize>,
-        line_height: Pixels,
-        cx: &App,
-    ) -> impl IntoElement {
-        div()
-            .flex_1()
-            .px_4()
-            .text_sm()
-            .font_family("monospace")
-            .children((visible_range.start..visible_range.end).map(|line_idx| {
-                let line_text = if line_idx < self.text.len_lines(LineType::LF) {
-                    self.text.line(line_idx, LineType::LF).to_string()
-                } else {
-                    String::new()
-                };
-
-                div()
-                    .h(line_height)
-                    .flex()
-                    .items_center()
-                    .text_color(cx.theme().foreground)
-                    .child(line_text)
-            }))
-    }
-
-    fn render_minimap(
-        &self,
-        line_height: Pixels,
-        total_lines: usize,
-        cx: &App,
-    ) -> impl IntoElement {
-        let scroll_handle = self.scroll_handle.clone();
-
-        div()
-            .absolute()
-            .right_0()
-            .top_0()
-            .w(self.config.minimap_width)
-            .h_full()
-            .bg(cx.theme().secondary.opacity(0.2))
-            .border_l_1()
-            .border_color(cx.theme().border)
-            .cursor_pointer()
-            .on_mouse_down(MouseButton::Left, move |event, _window, _cx| {
-                let relative_y = event.position.y / px(600.0);
-                let target_line = (relative_y * total_lines as f32) as usize;
-                let target_offset = line_height * target_line as f32;
-                scroll_handle.set_offset(point(px(0.0), target_offset));
-            })
-            .child(
-                // Density bars for minimap
-                div().size_full().children(
-                    (0..total_lines)
-                        .step_by(if total_lines > 1000 { 20 } else { 10 })
-                        .filter_map(|line_idx| {
-                            let line_text = if line_idx < self.text.len_lines(LineType::LF) {
-                                self.text.line(line_idx, LineType::LF).to_string()
-                            } else {
-                                String::new()
-                            };
-                            let density = (line_text.trim().len() as f32 / 80.0).min(1.0);
-
-                            if density > 0.05 {
-                                let y_ratio = line_idx as f32 / total_lines as f32;
-                                Some(
-                                    div()
-                                        .absolute()
-                                        .left_0()
-                                        .top(relative(y_ratio))
-                                        .w(relative(density * 0.8))
-                                        .h(px(2.0))
-                                        .bg(cx.theme().foreground.opacity(0.3)),
-                                )
-                            } else {
-                                None
-                            }
-                        }),
-                ),
-            )
-            .child(
-                // Viewport indicator
-                div()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .top(relative(
-                        self.visible_range.start as f32 / total_lines as f32,
-                    ))
-                    .h(relative(
-                        self.visible_range.len() as f32 / total_lines as f32,
-                    ))
-                    .border_2()
-                    .border_color(cx.theme().accent)
-                    .bg(cx.theme().accent.opacity(0.1)),
-            )
-    }
-
-    fn render_status_bar(&self, cx: &App) -> impl IntoElement {
-        h_flex()
-            .w_full()
-            .h(px(28.0))
-            .px_4()
-            .bg(cx.theme().accent)
-            .border_t_1()
-            .border_color(cx.theme().border)
-            .justify_between()
-            .items_center()
-            .text_xs()
-            .text_color(cx.theme().accent_foreground)
-            .child(
-                h_flex()
-                    .gap_4()
-                    .child(format!("Lines: {}", self.stats.total_lines))
-                    .child(format!(
-                        "Rendered: {}/{}",
-                        self.stats.rendered_lines, self.stats.total_lines
-                    ))
-                    .child(if self.is_modified {
-                        "●  Modified"
-                    } else {
-                        "Saved"
-                    }),
-            )
-            .child(
-                h_flex()
-                    .gap_4()
-                    .child(format!(
-                        "Visible: {}-{}",
-                        self.visible_range.start + 1,
-                        self.visible_range.end
-                    ))
-                    .child(format!("Tab: {}", self.config.tab_size))
-                    .child(format!("UTF-8")),
-            )
     }
 }
