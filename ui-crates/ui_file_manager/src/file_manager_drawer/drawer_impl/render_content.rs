@@ -1,14 +1,59 @@
 impl FileManagerDrawer {
     pub fn render_grid_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let items: Vec<FileItem> = items.to_vec();
+        let total_items = items.len();
+
+        // Estimate the usable width of the right content pane.
+        // Tree panel default is 250 px; 16 px side padding each side = 32 px total.
+        let vp_width: f32 = window.viewport_size().width.into();
+        let available_w = (vp_width - 250.0 - 32.0).max(100.0);
+
+        // Card dimensions (must match render_grid_item).
+        const CARD_W: f32 = 100.0;
+        const CARD_H: f32 = 110.0;
+        const GAP: f32 = 12.0; // gap_3
+
+        let cols = (((available_w + GAP) / (CARD_W + GAP)).floor() as usize).max(1);
+        let total_rows = (total_items + cols - 1) / cols; // ceiling division
+
+        // Each virtual row occupies card height + gap.
+        let row_h = CARD_H + GAP;
+        let item_sizes = Rc::new(vec![size(px(0.0), px(row_h)); total_rows]);
+        let view = cx.entity().clone();
+        let scroll_handle = self.grid_scroll_handle.clone();
+
         div()
-            .w_full()
-            .flex()
-            .flex_wrap()
-            .gap_3()
-            .children(
-                items.iter().map(|item| {
-                    self.render_grid_item(item, window, cx)
-                })
+            .flex_1()
+            .min_h_0()
+            .px_2()
+            .pt_2()
+            .child(
+                v_virtual_list(
+                    view,
+                    "file-manager-grid",
+                    item_sizes,
+                    move |this, range, window, cx| {
+                        range
+                            .map(|row| {
+                                let start = row * cols;
+                                let end = (start + cols).min(total_items);
+                                h_flex()
+                                    .w_full()
+                                    .gap(px(GAP))
+                                    .py(px(GAP / 2.0))
+                                    .items_start()
+                                    .children(
+                                        (start..end).map(|i| {
+                                            this.render_grid_item(&items[i], window, cx)
+                                                .into_any_element()
+                                        }),
+                                    )
+                                    .into_any_element()
+                            })
+                            .collect()
+                    },
+                )
+                .track_scroll(&scroll_handle),
             )
     }
 
@@ -234,13 +279,32 @@ impl FileManagerDrawer {
             )
     }
 
-    pub fn render_list_view(&mut self, items: &[FileItem], window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .w_full()
-            .gap_1()
-            .children(items.iter().map(|item| {
-                self.render_list_item(item, window, cx)
-            }))
+    pub fn render_list_view(&mut self, items: &[FileItem], _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let items: Vec<FileItem> = items.to_vec();
+        let item_count = items.len();
+        // Each list row is 36 px tall + 4 px gap = 40 px per slot.
+        let item_sizes = Rc::new(vec![size(px(0.0), px(40.0)); item_count]);
+        let view = cx.entity().clone();
+        let scroll_handle = self.list_scroll_handle.clone();
+
+        div()
+            .flex_1()
+            .min_h_0()
+            .px_2()
+            .pt_2()
+            .child(
+                v_virtual_list(
+                    view,
+                    "file-manager-list",
+                    item_sizes,
+                    move |this, range, window, cx| {
+                        range
+                            .map(|i| this.render_list_item(&items[i], window, cx).into_any_element())
+                            .collect()
+                    },
+                )
+                .track_scroll(&scroll_handle),
+            )
     }
 
     pub fn render_list_item(&mut self, item: &FileItem, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

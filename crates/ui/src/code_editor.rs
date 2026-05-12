@@ -62,7 +62,6 @@ fn detect_language(path: &PathBuf) -> &'static str {
 }
 
 pub struct CodeEditor {
-    focus_handle: FocusHandle,
     input: Entity<InputState>,
     path: Option<PathBuf>,
     language: SharedString,
@@ -90,8 +89,6 @@ impl CodeEditor {
                 .line_number(true)
         });
 
-        let focus_handle = cx.focus_handle();
-
         let _subscriptions = vec![
             cx.subscribe_in(
                 &input,
@@ -107,7 +104,6 @@ impl CodeEditor {
         ];
 
         Self {
-            focus_handle,
             input,
             path: None,
             language,
@@ -243,8 +239,8 @@ impl CodeEditor {
 impl EventEmitter<CodeEditorEvent> for CodeEditor {}
 
 impl Focusable for CodeEditor {
-    fn focus_handle(&self, _cx: &App) -> FocusHandle {
-        self.focus_handle.clone()
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.input.read(cx).focus_handle(cx)
     }
 }
 

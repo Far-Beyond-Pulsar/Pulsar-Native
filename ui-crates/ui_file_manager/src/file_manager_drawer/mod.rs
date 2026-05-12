@@ -3,6 +3,7 @@ use gpui::*;
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     draggable::Draggable,
@@ -10,7 +11,8 @@ use ui::{
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     resizable::{h_resizable, resizable_panel, ResizableState},
-    v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
+    v_flex, v_virtual_list, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _,
+    StyledExt, VirtualListScrollHandle,
 };
 
 // Import from our modular structure
@@ -65,6 +67,10 @@ pub struct FileManagerDrawer {
 
     // Clipboard
     clipboard: Option<(Vec<PathBuf>, bool)>, // (paths, is_cut)
+
+    // Virtual scroll handles for grid and list views
+    grid_scroll_handle: VirtualListScrollHandle,
+    list_scroll_handle: VirtualListScrollHandle,
 }
 
 // ============================================================================
