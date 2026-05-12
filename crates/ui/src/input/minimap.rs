@@ -34,6 +34,10 @@ pub struct Minimap {
     text: Rope,
     total_lines: usize,
     scroll_handle: ScrollHandle,
+    /// scroll_size.height from InputState — total content height.
+    content_height: Pixels,
+    /// input_bounds.size.height from InputState — visible viewport height.
+    viewport_height: Pixels,
     drag_state: MinimapState,
 }
 
@@ -42,9 +46,11 @@ impl Minimap {
         text: Rope,
         total_lines: usize,
         scroll_handle: ScrollHandle,
+        content_height: Pixels,
+        viewport_height: Pixels,
         drag_state: MinimapState,
     ) -> Self {
-        Self { text, total_lines, scroll_handle, drag_state }
+        Self { text, total_lines, scroll_handle, content_height, viewport_height, drag_state }
     }
 }
 
@@ -117,13 +123,14 @@ impl Element for Minimap {
 
         // ── Scroll math ───────────────────────────────────────────────────
 
-        let max_offset_y = self.scroll_handle.max_offset().height; // positive px
+        let content_h = self.content_height.max(self.viewport_height).max(px(1.0));
+        let viewport_h = self.viewport_height.max(px(1.0));
+        let max_scroll = (content_h - viewport_h).max(px(0.0));
         let scroll_abs = (-self.scroll_handle.offset().y).max(px(0.0));
-        let viewport_h = self.scroll_handle.bounds().size.height.max(px(1.0));
 
         // Fraction of document scrolled (0..1)
-        let scroll_frac = if max_offset_y > px(0.0) {
-            (scroll_abs / max_offset_y).min(1.0) // f32
+        let scroll_frac = if max_scroll > px(0.0) {
+            (scroll_abs / max_scroll).min(1.0) // f32
         } else {
             0.0_f32
         };
@@ -173,13 +180,10 @@ impl Element for Minimap {
 
         // ── Viewport indicator ────────────────────────────────────────────
 
-        // Total content height (actual pixels)
-        let content_h = max_offset_y + viewport_h;
-
-        // In minimap space, what's the visible window fraction?
+        // Fraction of the document that is visible.
         let viewport_frac = (viewport_h / content_h).min(1.0); // f32
 
-        // Where does the visible window start, as a fraction of total document?
+        // Where the visible window starts, as a fraction of total document.
         let viewport_start_frac = if content_h > px(0.0) {
             (scroll_abs / content_h).min(1.0) // f32
         } else {
@@ -210,14 +214,11 @@ impl Element for Minimap {
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseDownEvent, phase, _window, _cx| {
-                if phase != DispatchPhase::Bubble { return; }
-                if !bounds.contains(&event.position) { return; }
+                if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) { return; }
 
                 let click_frac = f32::from(event.position.y - bounds.origin.y)
                     / f32::from(container_h).max(1.0);
-
-                let max_off = scroll_handle.max_offset().height;
-                let new_y = -(max_off * click_frac.clamp(0.0, 1.0));
+                let new_y = -(max_scroll * click_frac.clamp(0.0, 1.0));
                 let mut offset = scroll_handle.offset();
                 offset.y = new_y;
                 scroll_handle.set_offset(offset);
@@ -240,9 +241,8 @@ impl Element for Minimap {
 
                 let delta_frac = (f32::from(event.position.y) - state.start_y)
                     / f32::from(container_h).max(1.0);
-                let max_off = scroll_handle.max_offset().height;
-                let new_y = px(state.start_offset_y) - max_off * delta_frac;
-                let clamped = new_y.min(px(0.0)).max(-max_off);
+                let new_y = px(state.start_offset_y) - max_scroll * delta_frac;
+                let clamped = new_y.min(px(0.0)).max(-max_scroll);
                 let mut offset = scroll_handle.offset();
                 offset.y = clamped;
                 scroll_handle.set_offset(offset);

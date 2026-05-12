@@ -1,6 +1,4 @@
 //! Custom thin scrollbar for the code editor — VS Code-style vertical bar.
-//!
-//! Always visible, proportional thumb, click-track-to-jump, drag-thumb-to-scroll.
 
 use std::{cell::Cell, rc::Rc};
 
@@ -24,19 +22,19 @@ pub struct EditorScrollbarDrag {
 pub struct EditorScrollbarState(pub Rc<Cell<EditorScrollbarDrag>>);
 
 impl EditorScrollbarState {
-    pub fn new() -> Self {
-        Self::default()
-    }
+    pub fn new() -> Self { Self::default() }
 }
 
 // ── Element ─────────────────────────────────────────────────────────────────
 
 pub struct EditorScrollbar {
     scroll_handle: ScrollHandle,
-    /// Total document height = line_height * total_lines.
+    /// Total document height in pixels (scroll_size.height from InputState).
     content_height: Pixels,
+    /// Visible editor viewport height (input_bounds.size.height from InputState).
+    viewport_height: Pixels,
     drag_state: EditorScrollbarState,
-    /// Left offset from right edge: if minimap is shown, push scrollbar left of it.
+    /// Right-side offset in px (MINIMAP_WIDTH when minimap is shown, else 0).
     right_offset: Pixels,
 }
 
@@ -44,29 +42,24 @@ impl EditorScrollbar {
     pub fn new(
         scroll_handle: ScrollHandle,
         content_height: Pixels,
+        viewport_height: Pixels,
         drag_state: EditorScrollbarState,
         right_offset: Pixels,
     ) -> Self {
-        Self {
-            scroll_handle,
-            content_height,
-            drag_state,
-            right_offset,
-        }
+        Self { scroll_handle, content_height, viewport_height, drag_state, right_offset }
     }
 
-    /// Returns (thumb_top, thumb_height) relative to the track's top.
     fn thumb(&self, track_h: Pixels) -> (Pixels, Pixels) {
-        let viewport_h = self.scroll_handle.bounds().size.height.max(px(1.0));
-        let content_h = self.content_height.max(viewport_h);
+        let content_h = self.content_height.max(self.viewport_height).max(px(1.0));
+        let viewport_h = self.viewport_height.max(px(1.0));
+        let max_scroll = (content_h - viewport_h).max(px(0.0));
 
         let ratio = viewport_h / content_h; // f32
         let thumb_h = (track_h * ratio).max(MIN_THUMB_HEIGHT).min(track_h);
 
-        let max_offset = self.scroll_handle.max_offset().height; // Size<Pixels>.height
         let scroll_abs = (-self.scroll_handle.offset().y).max(px(0.0));
-        let scroll_ratio = if max_offset > px(0.0) {
-            scroll_abs / max_offset // Pixels/Pixels = f32
+        let scroll_ratio = if max_scroll > px(0.0) {
+            (scroll_abs / max_scroll).min(1.0) // f32
         } else {
             0.0_f32
         };
@@ -120,10 +113,7 @@ impl Element for EditorScrollbar {
     ) -> EditorScrollbarPrepaint {
         let (thumb_top, thumb_h) = self.thumb(bounds.size.height);
         let thumb_bounds = Bounds::new(
-            point(
-                bounds.origin.x + THUMB_INSET,
-                bounds.origin.y + thumb_top,
-            ),
+            point(bounds.origin.x + THUMB_INSET, bounds.origin.y + thumb_top),
             size(TRACK_WIDTH - THUMB_INSET * 2.0, thumb_h),
         );
         window.insert_hitbox(bounds, HitboxBehavior::default());
@@ -167,13 +157,16 @@ impl Element for EditorScrollbar {
 
         let drag_state = self.drag_state.clone();
         let scroll_handle = self.scroll_handle.clone();
+        let content_height = self.content_height;
+        let viewport_height = self.viewport_height;
 
         window.on_mouse_event({
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseDownEvent, phase, _window, _cx| {
-                if phase != DispatchPhase::Bubble { return; }
-                if !bounds.contains(&event.position) { return; }
+                if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) { return; }
+
+                let max_scroll = (content_height - viewport_height).max(px(0.0));
 
                 if thumb_bounds.contains(&event.position) {
                     drag_state.0.set(EditorScrollbarDrag {
@@ -182,23 +175,19 @@ impl Element for EditorScrollbar {
                         start_offset_y: f32::from(scroll_handle.offset().y),
                     });
                 } else {
-                    // Click on track → jump so thumb centers on click
+                    // Click on track → jump, thumb centered on cursor
                     let click_y = event.position.y - bounds.origin.y;
                     let (_, thumb_h) = {
-                        let vp = scroll_handle.bounds().size.height.max(px(1.0));
-                        let ch = scroll_handle.content_height_px();
-                        let th = (track_h * (vp / ch)).max(MIN_THUMB_HEIGHT).min(track_h);
+                        let ratio = (viewport_height / content_height.max(px(1.0))).min(1.0);
+                        let th = (track_h * ratio).max(MIN_THUMB_HEIGHT).min(track_h);
                         (px(0.0), th)
                     };
-                    let travel = track_h - thumb_h;
-                    if travel > px(0.0) {
-                        let ratio = ((click_y - thumb_h / 2.0) / travel).clamp(0.0, 1.0);
-                        let max_off = scroll_handle.max_offset().height;
-                        let new_y = -(ratio * max_off);
-                        let mut offset = scroll_handle.offset();
-                        offset.y = new_y;
-                        scroll_handle.set_offset(offset);
-                    }
+                    let travel = (track_h - thumb_h).max(px(1.0));
+                    let ratio = ((click_y - thumb_h / 2.0) / travel).clamp(0.0, 1.0);
+                    let new_y = -(ratio * max_scroll);
+                    let mut offset = scroll_handle.offset();
+                    offset.y = new_y;
+                    scroll_handle.set_offset(offset);
                 }
             }
         });
@@ -211,18 +200,16 @@ impl Element for EditorScrollbar {
                 let state = drag_state.0.get();
                 if !state.active { return; }
 
+                let max_scroll = (content_height - viewport_height).max(px(0.0));
+                let ratio = (viewport_height / content_height.max(px(1.0))).min(1.0);
+                let thumb_h = (track_h * ratio).max(MIN_THUMB_HEIGHT).min(track_h);
+                let travel = (track_h - thumb_h).max(px(1.0));
+
                 let delta_y = f32::from(event.position.y) - state.start_y;
-                let max_off = scroll_handle.max_offset().height;
-                let vp = scroll_handle.bounds().size.height.max(px(1.0));
-                let ch = scroll_handle.content_height_px();
-                let th = (track_h * (vp / ch)).max(MIN_THUMB_HEIGHT).min(track_h);
-                let travel = track_h - th;
-
-                if travel <= px(0.0) { return; }
-
-                let scroll_per_px = max_off / travel; // f32 (Pixels/Pixels)
+                let scroll_per_px = max_scroll / travel; // f32 (Pixels/Pixels)
                 let new_y = px(state.start_offset_y) - px(delta_y) * scroll_per_px;
-                let clamped = new_y.max(-max_off).min(px(0.0));
+                let clamped = new_y.min(px(0.0)).max(-max_scroll);
+
                 let mut offset = scroll_handle.offset();
                 offset.y = clamped;
                 scroll_handle.set_offset(offset);
@@ -230,21 +217,10 @@ impl Element for EditorScrollbar {
         });
 
         window.on_mouse_event({
-            let drag_state = drag_state.clone();
             move |_: &MouseUpEvent, _phase, _window, _cx| {
                 let mut s = drag_state.0.get();
                 if s.active { s.active = false; drag_state.0.set(s); }
             }
         });
-    }
-}
-
-// Helper: compute total content height from scroll handle
-trait ScrollHandleExt {
-    fn content_height_px(&self) -> Pixels;
-}
-impl ScrollHandleExt for ScrollHandle {
-    fn content_height_px(&self) -> Pixels {
-        self.max_offset().height + self.bounds().size.height
     }
 }

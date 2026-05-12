@@ -231,8 +231,10 @@ impl TextInput {
                         use super::editor_scrollbar::EditorScrollbar;
 
                         let total_lines = state.text.len_lines(LineType::LF);
-                        let line_height = last_layout.line_height;
-                        let content_height = line_height * total_lines as f32;
+                        // scroll_size.height is the authoritative total content height.
+                        let content_height = state.scroll_size.height;
+                        // input_bounds.size.height is the visible viewport height.
+                        let viewport_height = state.input_bounds.size.height;
 
                         let minimap_w = if show_minimap { MINIMAP_WIDTH } else { px(0.0) };
 
@@ -240,6 +242,7 @@ impl TextInput {
                         container = container.child(EditorScrollbar::new(
                             state.scroll_handle.clone(),
                             content_height,
+                            viewport_height,
                             state.editor_scrollbar_drag.clone(),
                             minimap_w,
                         ));
@@ -250,6 +253,8 @@ impl TextInput {
                                 state.text.clone(),
                                 total_lines,
                                 state.scroll_handle.clone(),
+                                content_height,
+                                viewport_height,
                                 state.minimap_drag.clone(),
                             ));
                         }
