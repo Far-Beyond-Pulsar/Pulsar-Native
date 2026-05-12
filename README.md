@@ -59,19 +59,6 @@ Development happens in the open. Talk directly with the core developers, follow 
 
 ---
 
-## 🚧 Platform Support Notice
-
-### Temporary Loss of Support for Non‑Windows Platforms
-
-Non‑Windows support is temporarily limited while core architectural changes are underway.
-
-📌 **Tracking discussion:**
-[https://github.com/orgs/Far-Beyond-Pulsar/discussions/17](https://github.com/orgs/Far-Beyond-Pulsar/discussions/17)
-
-We are actively working toward restoring cross‑platform compatibility.
-
----
-
 ## ⚠️ Project Status
 
 > **You probably can’t make a full game in Pulsar yet.**
@@ -90,13 +77,7 @@ Progress and milestones are tracked here:
 
 ## 🚀 Quick Start
 
-Pulsar automatically manages dependencies and setup where possible.
-
-```bash
-cargo run --release
-```
-
-If required dependencies are missing, the engine will guide you through installation before you can enter the launcher.
+[Please see the Docs](https://pulsar.farbeyond.dev/docs/docs/getting-started/first-project)
 
 ---
 
