@@ -836,37 +836,161 @@ impl RustAnalyzerManager {
                 "capabilities": {
                     "workspace": {
                         "configuration": true,
-                        "workspaceFolders": true
+                        "workspaceFolders": true,
+                        "symbol": {
+                            "symbolKind": {
+                                "valueSet": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
+                            }
+                        },
+                        "didChangeWatchedFiles": {
+                            "dynamicRegistration": false
+                        }
                     },
                     "textDocument": {
+                        "synchronization": {
+                            "dynamicRegistration": false,
+                            "willSave": false,
+                            "willSaveWaitUntil": false,
+                            "didSave": true
+                        },
                         "completion": {
+                            "dynamicRegistration": false,
+                            "contextSupport": true,
                             "completionItem": {
                                 "snippetSupport": true,
+                                "commitCharactersSupport": true,
+                                "documentationFormat": ["markdown", "plaintext"],
+                                "deprecatedSupport": true,
+                                "preselectSupport": true,
+                                "tagSupport": { "valueSet": [1] },
+                                "insertReplaceSupport": true,
                                 "resolveSupport": {
                                     "properties": ["documentation", "detail", "additionalTextEdits"]
-                                }
+                                },
+                                "insertTextModeSupport": { "valueSet": [1, 2] },
+                                "labelDetailsSupport": true
+                            },
+                            "completionItemKind": {
+                                "valueSet": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25]
                             }
                         },
                         "hover": {
-                            "contentFormat": ["plaintext", "markdown"]
+                            "dynamicRegistration": false,
+                            "contentFormat": ["markdown", "plaintext"]
+                        },
+                        "signatureHelp": {
+                            "dynamicRegistration": false,
+                            "signatureInformation": {
+                                "documentationFormat": ["markdown", "plaintext"],
+                                "parameterInformation": {
+                                    "labelOffsetSupport": true
+                                },
+                                "activeParameterSupport": true
+                            },
+                            "contextSupport": true
+                        },
+                        "definition": {
+                            "dynamicRegistration": false,
+                            "linkSupport": true
+                        },
+                        "references": { "dynamicRegistration": false },
+                        "documentHighlight": { "dynamicRegistration": false },
+                        "documentSymbol": {
+                            "dynamicRegistration": false,
+                            "symbolKind": {
+                                "valueSet": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26]
+                            },
+                            "hierarchicalDocumentSymbolSupport": true
+                        },
+                        "codeAction": {
+                            "dynamicRegistration": false,
+                            "codeActionLiteralSupport": {
+                                "codeActionKind": {
+                                    "valueSet": ["", "quickfix", "refactor", "refactor.extract", "refactor.inline", "refactor.rewrite", "source", "source.organizeImports"]
+                                }
+                            },
+                            "resolveSupport": { "properties": ["edit"] },
+                            "dataSupport": true
+                        },
+                        "rename": {
+                            "dynamicRegistration": false,
+                            "prepareSupport": true
+                        },
+                        "publishDiagnostics": {
+                            "relatedInformation": true,
+                            "versionSupport": true,
+                            "tagSupport": { "valueSet": [1, 2] },
+                            "codeDescriptionSupport": true,
+                            "dataSupport": true
+                        },
+                        "foldingRange": {
+                            "dynamicRegistration": false,
+                            "rangeLimit": 5000,
+                            "lineFoldingOnly": true
+                        },
+                        "semanticTokens": {
+                            "dynamicRegistration": false,
+                            "tokenTypes": [
+                                "namespace","type","class","enum","interface","struct","typeParameter",
+                                "parameter","variable","property","enumMember","event","function",
+                                "method","macro","keyword","modifier","comment","string","number",
+                                "regexp","operator","decorator"
+                            ],
+                            "tokenModifiers": [
+                                "declaration","definition","readonly","static","deprecated",
+                                "abstract","async","modification","documentation","defaultLibrary"
+                            ],
+                            "formats": ["relative"],
+                            "requests": { "range": true, "full": { "delta": true } },
+                            "multilineTokenSupport": false,
+                            "overlappingTokenSupport": false
+                        },
+                        "inlayHint": {
+                            "dynamicRegistration": false,
+                            "resolveSupport": { "properties": ["tooltip", "textEdits", "label.tooltip", "label.location", "label.command"] }
                         }
                     },
                     "window": {
-                        "workDoneProgress": true
+                        "workDoneProgress": true,
+                        "showMessage": { "messageActionItem": { "additionalPropertiesSupport": true } },
+                        "showDocument": { "support": true }
+                    },
+                    "general": {
+                        "staleRequestSupport": {
+                            "cancel": true,
+                            "retryOnContentModified": ["textDocument/semanticTokens/full", "textDocument/semanticTokens/full/delta", "textDocument/semanticTokens/range"]
+                        },
+                        "regularExpressions": { "engine": "ECMAScript", "version": "ES2020" },
+                        "markdown": { "parser": "marked", "version": "1.1.0" }
                     },
                     "experimental": {
                         "serverStatusNotification": true
                     }
                 },
                 "initializationOptions": {
-                    "checkOnSave": {
+                    "checkOnSave": true,
+                    "check": {
                         "command": "clippy"
                     },
                     "cargo": {
-                        "loadOutDirsFromCheck": true
+                        "buildScripts": { "enable": true },
+                        "features": "all"
                     },
                     "procMacro": {
                         "enable": true
+                    },
+                    "completion": {
+                        "autoimport": { "enable": true },
+                        "autoself": { "enable": true },
+                        "callable": { "snippets": "fill_arguments" },
+                        "limit": null
+                    },
+                    "inlayHints": {
+                        "enable": true,
+                        "renderColons": true,
+                        "typeHints": { "enable": true },
+                        "parameterHints": { "enable": true },
+                        "chainingHints": { "enable": true }
                     }
                 }
             }
