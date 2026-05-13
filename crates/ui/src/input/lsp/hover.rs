@@ -41,8 +41,15 @@ impl InputState {
         // Clear any existing hover popover when moving to a new location
         self.hover_popover = None;
 
+        // Do not spam LSP for whitespace / punctuation locations.
+        let Some(symbol_range) = self.text.word_range(offset) else {
+            return;
+        };
+        if symbol_range.is_empty() {
+            return;
+        }
+
         // Create popover IMMEDIATELY (invisible, will show after delay)
-        let symbol_range = self.text.word_range(offset).unwrap_or(offset..offset);
         let hover_popover =
             HoverPopover::new(cx.entity(), symbol_range.clone(), mouse_position, cx);
         self.hover_popover = Some(hover_popover.clone());
@@ -79,8 +86,8 @@ impl InputState {
                         cx.notify();
                     }
                     None => {
-                        // No hover data, remove the popover
-                        editor.hover_popover = None;
+                        // Keep the popover entity so repeated mouse-move events at the
+                        // same symbol do not continuously re-query null hover responses.
                     }
                 }
             });

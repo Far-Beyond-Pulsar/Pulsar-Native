@@ -10939,7 +10939,7 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=be1740e76a13d59515b189d1eaeb0255b14aecc7#be1740e76a13d59515b189d1eaeb0255b14aecc7"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=2b6910c928515f27381b6f6d46e38c30b2a7508e#2b6910c928515f27381b6f6d46e38c30b2a7508e"
 dependencies = [
  "anyhow",
  "engine_backend",

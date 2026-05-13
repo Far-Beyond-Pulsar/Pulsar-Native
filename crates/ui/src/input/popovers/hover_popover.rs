@@ -58,7 +58,11 @@ impl HoverPopover {
     }
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
+        // `symbol_range` is end-exclusive. Mouse hit-testing can resolve to the
+        // right-edge offset of a word (offset == end), which should still count
+        // as the same symbol for hover de-duplication.
         self.symbol_range.contains(&offset)
+            || (!self.symbol_range.is_empty() && offset == self.symbol_range.end)
     }
 
     /// Set hover data when LSP responds (before or after delay)
