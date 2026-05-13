@@ -293,49 +293,65 @@ impl RenderOnce for CompletionMenuItem {
 
         // Map LSP CompletionItemKind → IconName using LSP metadata on each item.
         // Icons come from assets/icons/*.svg, named by the macro's PascalCase rule.
-        let icon: IconName = match item.kind {
-            // Functions / methods / constructors
+        let (icon, icon_color): (IconName, fn(&crate::theme::ThemeColor) -> gpui::Hsla) =
+            match item.kind {
+            // Functions / methods / constructors  →  purple (matches VSCode/Zed)
             Some(lsp_types::CompletionItemKind::FUNCTION)
             | Some(lsp_types::CompletionItemKind::METHOD)
-            | Some(lsp_types::CompletionItemKind::CONSTRUCTOR) => IconName::SigmaFunction,
-            // Nominal types
+            | Some(lsp_types::CompletionItemKind::CONSTRUCTOR) =>
+                (IconName::SigmaFunction, |t| t.magenta),
+            // Nominal types (struct / class)  →  cyan
             Some(lsp_types::CompletionItemKind::STRUCT)
-            | Some(lsp_types::CompletionItemKind::CLASS) => IconName::Cube,
-            // Enum variants / enum itself
+            | Some(lsp_types::CompletionItemKind::CLASS) =>
+                (IconName::Cube, |t| t.cyan),
+            // Enum / enum member  →  yellow
             Some(lsp_types::CompletionItemKind::ENUM)
-            | Some(lsp_types::CompletionItemKind::ENUM_MEMBER) => IconName::CodeBracketsSquare,
-            // Interfaces / traits
-            Some(lsp_types::CompletionItemKind::INTERFACE) => IconName::CodeBrackets,
-            // Modules / namespaces / folders
+            | Some(lsp_types::CompletionItemKind::ENUM_MEMBER) =>
+                (IconName::CodeBracketsSquare, |t| t.yellow),
+            // Interfaces / traits  →  blue
+            Some(lsp_types::CompletionItemKind::INTERFACE) =>
+                (IconName::CodeBrackets, |t| t.blue),
+            // Modules / namespaces / folders  →  muted foreground
             Some(lsp_types::CompletionItemKind::MODULE)
-            | Some(lsp_types::CompletionItemKind::FOLDER) => IconName::FolderOpen,
-            // Struct fields / object properties
+            | Some(lsp_types::CompletionItemKind::FOLDER) =>
+                (IconName::FolderOpen, |t| t.muted_foreground),
+            // Struct fields / properties  →  cyan (lighter shade)
             Some(lsp_types::CompletionItemKind::FIELD)
-            | Some(lsp_types::CompletionItemKind::PROPERTY) => IconName::InputField,
-            // Local variables
-            Some(lsp_types::CompletionItemKind::VARIABLE) => IconName::Code,
-            // Constants / units / plain values
+            | Some(lsp_types::CompletionItemKind::PROPERTY) =>
+                (IconName::InputField, |t| t.cyan_light),
+            // Local variables  →  blue (lighter)
+            Some(lsp_types::CompletionItemKind::VARIABLE) =>
+                (IconName::Code, |t| t.blue_light),
+            // Constants / values / units  →  red/orange
             Some(lsp_types::CompletionItemKind::CONSTANT)
             | Some(lsp_types::CompletionItemKind::VALUE)
-            | Some(lsp_types::CompletionItemKind::UNIT) => IconName::FxTag,
-            // Language keywords
-            Some(lsp_types::CompletionItemKind::KEYWORD) => IconName::Key,
-            // Code snippets
-            Some(lsp_types::CompletionItemKind::SNIPPET) => IconName::CodeBracketsSquare,
-            // Generic type parameters
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => IconName::Type,
-            // Colors
-            Some(lsp_types::CompletionItemKind::COLOR) => IconName::FillColor,
-            // Events
-            Some(lsp_types::CompletionItemKind::EVENT) => IconName::Flash,
-            // Operators
-            Some(lsp_types::CompletionItemKind::OPERATOR) => IconName::Fx,
-            // Files / references / plain text
+            | Some(lsp_types::CompletionItemKind::UNIT) =>
+                (IconName::FxTag, |t| t.red_light),
+            // Keywords  →  primary accent
+            Some(lsp_types::CompletionItemKind::KEYWORD) =>
+                (IconName::Key, |t| t.primary),
+            // Snippets  →  green
+            Some(lsp_types::CompletionItemKind::SNIPPET) =>
+                (IconName::CodeBracketsSquare, |t| t.green),
+            // Generic type parameters  →  yellow (lighter)
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) =>
+                (IconName::Type, |t| t.yellow_light),
+            // Colors  →  magenta
+            Some(lsp_types::CompletionItemKind::COLOR) =>
+                (IconName::FillColor, |t| t.magenta_light),
+            // Events  →  warning orange
+            Some(lsp_types::CompletionItemKind::EVENT) =>
+                (IconName::Flash, |t| t.warning),
+            // Operators  →  red
+            Some(lsp_types::CompletionItemKind::OPERATOR) =>
+                (IconName::Fx, |t| t.red),
+            // Files / references / plain text  →  muted
             Some(lsp_types::CompletionItemKind::FILE)
             | Some(lsp_types::CompletionItemKind::REFERENCE)
-            | Some(lsp_types::CompletionItemKind::TEXT) => IconName::Notes,
-            // Unknown / unset
-            _ => IconName::Code,
+            | Some(lsp_types::CompletionItemKind::TEXT) =>
+                (IconName::Notes, |t| t.muted_foreground),
+            // Unknown / unset  →  foreground
+            _ => (IconName::Code, |t| t.foreground),
         };
 
         let source = "LSP";
@@ -353,8 +369,10 @@ impl RenderOnce for CompletionMenuItem {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            // Icon — sized to match the text_xs row height
-            .child(Icon::new(icon).xsmall())
+            // Icon — slightly larger than text, coloured by completion kind.
+            // When the row is selected the accent background provides enough contrast,
+            // so we keep the kind colour even in the selected state.
+            .child(Icon::new(icon).small().text_color(icon_color(cx.theme())))
             // Label
             .child(div().child(StyledText::new(item.label.clone()).with_highlights(highlights)))
             // Detail (type info, etc.)
