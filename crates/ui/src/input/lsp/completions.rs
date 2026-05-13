@@ -61,6 +61,13 @@ impl InputState {
             _ => None,
         };
 
+        // Backspace / deletion (new_text is empty): only update an already-open menu.
+        // Never open a fresh menu from a deletion event.
+        let menu_is_open = existing_menu.as_ref().map_or(false, |m| m.read(cx).is_open());
+        if new_text.is_empty() && !menu_is_open {
+            return;
+        }
+
         let menu = existing_menu.clone().unwrap_or_else(|| {
             let new_menu = CompletionMenu::new(cx.entity(), window, cx);
             self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
