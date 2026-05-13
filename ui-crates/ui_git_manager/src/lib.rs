@@ -13,7 +13,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme as _, TitleBar, h_flex,
+    ActiveTheme as _, TitleBar, VirtualListScrollHandle, h_flex,
     input::{InputEvent, InputState},
     v_flex,
 };
@@ -83,6 +83,15 @@ impl PendingAuthOp {
     }
 }
 
+/// A flattened row in the changes virtual list.
+#[derive(Clone)]
+pub enum ChangesRow {
+    /// Section header: title, file count, is_staged
+    Header { title: String, count: usize, is_staged: bool },
+    /// A file entry
+    File { change: FileChange, is_staged: bool },
+}
+
 /// Main Git Manager window
 pub struct GitManager {
     project_path: PathBuf,
@@ -94,6 +103,10 @@ pub struct GitManager {
     file_diff_expanded: HashSet<usize>,
     commit_message_input: Entity<InputState>,
     commit_description_input: Entity<InputState>,
+    /// Flattened row list for the virtual changes list (rebuilt when repo_state changes).
+    pub(crate) changes_rows: Vec<ChangesRow>,
+    /// Scroll handle for the virtual changes list.
+    pub(crate) changes_scroll: VirtualListScrollHandle,
     // History view
     selected_commit: Option<String>,
     selected_commit_files: Vec<FileChange>,
@@ -191,6 +204,7 @@ impl GitManager {
                         }
                     }
                     git_manager.stored_creds = stored_creds;
+                    git_manager.rebuild_changes_rows();
                     cx.notify();
                 })
                 .ok();
@@ -208,6 +222,8 @@ impl GitManager {
             file_diff_expanded: HashSet::new(),
             commit_message_input,
             commit_description_input,
+            changes_rows: Vec::new(),
+            changes_scroll: VirtualListScrollHandle::new(),
             selected_commit: None,
             selected_commit_files: Vec::new(),
             selected_commit_file: None,
@@ -222,6 +238,47 @@ impl GitManager {
             current_view: GitView::Changes,
             focus_handle: cx.focus_handle(),
         }
+    }
+
+    /// Rebuild the flat row list used by the virtual changes list.
+    /// Called after every repo state refresh.
+    pub(crate) fn rebuild_changes_rows(&mut self) {
+        let state = self.repo_state.read();
+        let staged = state.staged_files.clone();
+        let unstaged = state.unstaged_files.clone();
+        let untracked = state.untracked_files.clone();
+        drop(state);
+
+        let mut unstaged_all: Vec<FileChange> = unstaged;
+        unstaged_all.extend(untracked.iter().map(|path| FileChange {
+            path: path.clone(),
+            status: ChangeStatus::Untracked,
+            additions: 0,
+            deletions: 0,
+        }));
+
+        let mut rows = Vec::new();
+        if !staged.is_empty() {
+            rows.push(ChangesRow::Header {
+                title: "Staged".into(),
+                count: staged.len(),
+                is_staged: true,
+            });
+            for f in staged {
+                rows.push(ChangesRow::File { change: f, is_staged: true });
+            }
+        }
+        if !unstaged_all.is_empty() {
+            rows.push(ChangesRow::Header {
+                title: "Changes".into(),
+                count: unstaged_all.len(),
+                is_staged: false,
+            });
+            for f in unstaged_all {
+                rows.push(ChangesRow::File { change: f, is_staged: false });
+            }
+        }
+        self.changes_rows = rows;
     }
 
     fn switch_view(&mut self, view: GitView, cx: &mut Context<Self>) {
@@ -249,6 +306,7 @@ impl GitManager {
                                 Some(format!("Refresh failed for {}: {}", path.display(), e));
                         }
                     }
+                    git_manager.rebuild_changes_rows();
                     cx.notify();
                 })
                 .ok();
