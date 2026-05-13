@@ -181,12 +181,14 @@ impl ContextMenuDelegate {
     /// Apply `query` as a case-insensitive fuzzy filter over the current items.
     /// Immediately updates `filtered_indices`, `filter_highlights`, and `selected_ix`.
     fn apply_filter(&mut self, query: &str) {
+        tracing::info!("🔍 apply_filter called: query='{}', items.len()={}", query, self.items.len());
         self.query = SharedString::from(query.to_string());
 
         if query.is_empty() {
             self.filtered_indices = (0..self.items.len()).collect();
             self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
             self.selected_ix = 0;
+            tracing::info!("📝 Empty query: showing all {} items", self.items.len());
             return;
         }
 
@@ -201,6 +203,8 @@ impl ContextMenuDelegate {
                 match_score(&item.label, filter_text, &query_lower).map(|s| (ix, s))
             })
             .collect();
+
+        tracing::info!("✨ After scoring: {} items match query '{}'", scored.len(), query);
 
         // Higher score first, ties broken by server's sortText.
         scored.sort_by(|a, b| {
@@ -217,6 +221,7 @@ impl ContextMenuDelegate {
             .collect();
         self.filtered_indices = scored.into_iter().map(|(ix, _)| ix).collect();
         self.selected_ix = 0;
+        tracing::info!("✅ apply_filter done: filtered_indices.len()={}", self.filtered_indices.len());
     }
 }
 
@@ -335,7 +340,9 @@ impl ListDelegate for ContextMenuDelegate {
     type Item = CompletionMenuItem;
 
     fn items_count(&self, _: usize, _: &gpui::App) -> usize {
-        self.filtered_indices.len()
+        let count = self.filtered_indices.len();
+        tracing::debug!("📊 items_count: filtered_indices.len()={}, items.len()={}", count, self.items.len());
+        count
     }
 
     fn render_item(
@@ -346,7 +353,8 @@ impl ListDelegate for ContextMenuDelegate {
     ) -> Option<Self::Item> {
         let filtered_ix = *self.filtered_indices.get(ix.row)?;
         let item = self.items.get(filtered_ix)?;
-        Some(CompletionMenuItem::new(ix.row, item.clone()))
+        let highlights = self.filter_highlights.get(ix.row).cloned().unwrap_or_default();
+        Some(CompletionMenuItem::new(ix.row, item.clone()).with_highlights(highlights))
     }
 
     fn set_selected_index(
@@ -614,8 +622,9 @@ impl CompletionMenu {
         }
         let q = query.into();
         self.query = q.clone();
-        self.list.update(cx, |list, _| {
+        self.list.update(cx, |list, cx| {
             list.delegate_mut().apply_filter(&q);
+            cx.notify();
         });
         cx.notify();
     }
@@ -628,14 +637,18 @@ impl CompletionMenu {
         query: &str,
         cx: &mut Context<Self>,
     ) {
+        tracing::info!("🎯 CompletionMenu::apply_query called: trigger_start={}, query='{}'", trigger_start, query);
         if self.trigger_start_offset.is_none() {
             self.trigger_start_offset = Some(trigger_start);
         }
         self.query = SharedString::from(query.to_string());
         self.open = true;
         let q = query.to_string();
-        self.list.update(cx, |list, _| {
+        self.list.update(cx, |list, cx| {
+            tracing::info!("📋 Before apply_filter in list: delegate items.len()={}", list.delegate().items.len());
             list.delegate_mut().apply_filter(&q);
+            tracing::info!("📋 After apply_filter in list: delegate filtered_indices.len()={}", list.delegate().filtered_indices.len());
+            cx.notify();
         });
         cx.notify();
     }
@@ -651,6 +664,7 @@ impl CompletionMenu {
         self.offset = offset;
         self.open = true;
         self.loading = false;
+        let current_query = self.query.to_string();
         self.list.update(cx, |this, cx| {
             let longest_ix = items
                 .iter()
@@ -662,6 +676,9 @@ impl CompletionMenu {
                 .unwrap_or(0);
 
             this.delegate_mut().set_items(items);
+            // Re-apply the active query so filter state survives server round-trips.
+            this.delegate_mut().apply_filter(&current_query);
+            cx.notify();
             this.set_selected_index(Some(IndexPath::new(0)), window, cx);
             this.set_item_to_measure_index(IndexPath::new(longest_ix), window, cx);
         });

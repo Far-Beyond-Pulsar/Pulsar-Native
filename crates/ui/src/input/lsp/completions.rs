@@ -67,6 +67,27 @@ impl InputState {
             new_menu
         });
 
+        // Build the prefix the user has typed so far (walk back from cursor to word start).
+        // word_at/word_range spans the whole word; we only want chars LEFT of the cursor.
+        let (word_start, query) = {
+            let mut q = String::new();
+            for c in self.text.chars_at(new_offset).reversed() {
+                if c.is_alphanumeric() || c == '_' {
+                    q.insert(0, c);
+                } else {
+                    break;
+                }
+            }
+            let ws = new_offset.saturating_sub(q.len());
+            (ws, q)
+        };
+        tracing::info!("🎯 handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}", new_offset, word_start, query, self.text.len());
+        // Instantly re-filter whatever items the menu already has.
+        menu.update(cx, |menu, cx| {
+            tracing::info!("📢 Calling menu.apply_query with query='{}', trigger_start={}", query, word_start);
+            menu.apply_query(word_start, &query, cx);
+        });
+
         self.request_completions_now(
             new_offset,
             start,
