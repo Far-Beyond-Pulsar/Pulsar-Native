@@ -730,6 +730,12 @@ impl InputState {
 
         //FIX: This patched the inability to type in WINIT windows
         let text = event.keystroke.key_char.clone().unwrap_or("".into());
+
+        if text.is_empty() && self.is_context_menu_open(cx) {
+            let cursor = self.cursor();
+            self.handle_completion_trigger(&(cursor..cursor), "", window, cx);
+        }
+
         self.replace(text, window, cx);
     }
 

@@ -1,10 +1,10 @@
-use std::rc::Rc;
+use std::{ops::Range, rc::Rc};
 
 use gpui::{
     canvas, deferred, div, prelude::FluentBuilder, px, relative, Action, AnyElement, App,
-    AppContext, Bounds, Context, DismissEvent, Empty, Entity, EventEmitter, HighlightStyle,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render, RenderOnce,
-    SharedString, Styled, StyledText, Subscription, Window,
+    AppContext, Bounds, Context, DismissEvent, Empty, Entity, EventEmitter, FontWeight,
+    HighlightStyle, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, Render,
+    RenderOnce, SharedString, Styled, StyledText, Subscription, Window,
 };
 use lsp_types::{CompletionItem, CompletionTextEdit};
 
@@ -28,31 +28,149 @@ struct ContextMenuDelegate {
     query: SharedString,
     menu: Entity<CompletionMenu>,
     items: Vec<Rc<CompletionItem>>,
-    filtered_indices: Vec<usize>, // Indices of items that match the filter
+    /// Indices into `items` that pass the current query filter, in sorted order.
+    filtered_indices: Vec<usize>,
+    /// Per-entry highlight byte-ranges for the current query (parallel to `filtered_indices`).
+    filter_highlights: Vec<Vec<(Range<usize>, HighlightStyle)>>,
     selected_ix: usize,
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy / prefix matching helpers
+// ---------------------------------------------------------------------------
+
+/// Match score (higher = better).
+fn match_score(label: &str, filter_text: &str, query_lower: &str) -> Option<i32> {
+    if query_lower.is_empty() {
+        return Some(0);
+    }
+    let label_lower = label.to_lowercase();
+    let filter_lower = filter_text.to_lowercase();
+
+    // Exact
+    if filter_lower == query_lower {
+        return Some(1000);
+    }
+    // Prefix on filterText
+    if filter_lower.starts_with(query_lower) {
+        return Some(900);
+    }
+    // Prefix on label
+    if label_lower.starts_with(query_lower) {
+        return Some(800);
+    }
+    // Word-boundary prefix: each word in the label starts with consecutive query chars
+    if word_boundary_match(&label_lower, query_lower) {
+        return Some(700);
+    }
+    // Substring in filterText
+    if filter_lower.contains(query_lower) {
+        return Some(600);
+    }
+    // Substring in label
+    if label_lower.contains(query_lower) {
+        return Some(500);
+    }
+    // Fuzzy subsequence
+    if is_subsequence(query_lower, &filter_lower) {
+        return Some(300);
+    }
+    None
+}
+
+/// Returns true if the letters of `needle` each appear (in order) at the start
+/// of successive words in `haystack` (e.g. "hcf" matches "hash_code_function").
+fn word_boundary_match(haystack: &str, needle: &str) -> bool {
+    let mut nchars = needle.chars();
+    let Some(mut nc) = nchars.next() else { return true };
+    let mut at_word_start = true;
+    for hc in haystack.chars() {
+        let is_delim = hc == '_' || hc == '-' || hc == ':' || hc == '.';
+        if is_delim {
+            at_word_start = true;
+            continue;
+        }
+        if at_word_start && hc == nc {
+            match nchars.next() {
+                Some(next) => nc = next,
+                None => return true,
+            }
+        }
+        at_word_start = false;
+    }
+    false
+}
+
+fn is_subsequence(needle: &str, haystack: &str) -> bool {
+    let mut hchars = haystack.chars();
+    for nc in needle.chars() {
+        if !hchars.any(|h| h == nc) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Compute highlight ranges (byte offsets in `label`) for the matched characters.
+fn compute_highlights(label: &str, query_lower: &str) -> Vec<(Range<usize>, HighlightStyle)> {
+    if query_lower.is_empty() {
+        return vec![];
+    }
+    let label_lower = label.to_lowercase();
+    let bold = HighlightStyle {
+        font_weight: Some(FontWeight::BOLD),
+        ..Default::default()
+    };
+
+    // Prefix: highlight the matching prefix
+    if label_lower.starts_with(query_lower) {
+        let byte_len = label
+            .char_indices()
+            .nth(query_lower.chars().count())
+            .map(|(b, _)| b)
+            .unwrap_or(label.len());
+        return vec![(0..byte_len, bold)];
+    }
+
+    // Substring: highlight the matching span
+    if let Some(pos) = label_lower.find(query_lower) {
+        let end = pos + query_lower.len();
+        return vec![(pos..end, bold)];
+    }
+
+    // Fuzzy: highlight each matched character individually
+    let mut ranges: Vec<(Range<usize>, HighlightStyle)> = vec![];
+    let mut qchars = query_lower.chars().peekable();
+    let mut byte_offset = 0usize;
+    for (_, lc) in label_lower.char_indices() {
+        let qc = match qchars.peek() {
+            Some(&c) => c,
+            None => break,
+        };
+        let char_len = lc.len_utf8();
+        if lc == qc {
+            ranges.push((byte_offset..byte_offset + char_len, bold));
+            qchars.next();
+        }
+        byte_offset += char_len;
+    }
+    ranges
 }
 
 impl ContextMenuDelegate {
     fn set_items(&mut self, items: Vec<CompletionItem>) {
-        // Sort items by sortText (or label if sortText is absent)
-        // This is how VSCode and other LSP clients handle completions
         let mut items: Vec<Rc<CompletionItem>> = items.into_iter().map(Rc::new).collect();
-
         items.sort_by(|a, b| {
-            // Use sortText if present, otherwise fall back to label
             let sort_a = a.sort_text.as_ref().unwrap_or(&a.label);
             let sort_b = b.sort_text.as_ref().unwrap_or(&b.label);
             sort_a.cmp(sort_b)
         });
-
         self.items = items;
-        self.filtered_indices = (0..self.items.len()).collect();
-        self.selected_ix = 0;
+            self.filtered_indices = (0..self.items.len()).collect();
+            self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
+            self.selected_ix = 0;
 
-        tracing::info!(
-            "📋 Showing {} completions (sorted by relevance)",
-            self.items.len()
-        );
+            tracing::info!("📋 Set {} completions", self.items.len());
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
@@ -60,11 +178,45 @@ impl ContextMenuDelegate {
         self.items.get(filtered_ix)
     }
 
-    fn set_query(&mut self, query: SharedString) {
-        // NO client-side filtering - server does ALL the work
-        // We only store query for display purposes
-        self.query = query;
-        // DO NOT filter items here!
+    /// Apply `query` as a case-insensitive fuzzy filter over the current items.
+    /// Immediately updates `filtered_indices`, `filter_highlights`, and `selected_ix`.
+    fn apply_filter(&mut self, query: &str) {
+        self.query = SharedString::from(query.to_string());
+
+        if query.is_empty() {
+            self.filtered_indices = (0..self.items.len()).collect();
+            self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
+            self.selected_ix = 0;
+            return;
+        }
+
+        let query_lower = query.to_lowercase();
+
+        let mut scored: Vec<(usize, i32)> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter_map(|(ix, item)| {
+                let filter_text = item.filter_text.as_deref().unwrap_or(&item.label);
+                match_score(&item.label, filter_text, &query_lower).map(|s| (ix, s))
+            })
+            .collect();
+
+        // Higher score first, ties broken by server's sortText.
+        scored.sort_by(|a, b| {
+            b.1.cmp(&a.1).then_with(|| {
+                let sa = self.items[a.0].sort_text.as_ref().unwrap_or(&self.items[a.0].label);
+                let sb = self.items[b.0].sort_text.as_ref().unwrap_or(&self.items[b.0].label);
+                sa.cmp(sb)
+            })
+        });
+
+        self.filter_highlights = scored
+            .iter()
+            .map(|(ix, _)| compute_highlights(&self.items[*ix].label, &query_lower))
+            .collect();
+        self.filtered_indices = scored.into_iter().map(|(ix, _)| ix).collect();
+        self.selected_ix = 0;
     }
 }
 
@@ -74,7 +226,7 @@ struct CompletionMenuItem {
     item: Rc<CompletionItem>,
     children: Vec<AnyElement>,
     selected: bool,
-    highlight_prefix: SharedString,
+    highlights: Vec<(Range<usize>, HighlightStyle)>,
 }
 
 impl CompletionMenuItem {
@@ -84,12 +236,12 @@ impl CompletionMenuItem {
             item,
             children: vec![],
             selected: false,
-            highlight_prefix: "".into(),
+            highlights: vec![],
         }
     }
 
-    fn highlight_prefix(mut self, s: impl Into<SharedString>) -> Self {
-        self.highlight_prefix = s.into();
+    fn with_highlights(mut self, h: Vec<(Range<usize>, HighlightStyle)>) -> Self {
+        self.highlights = h;
         self
     }
 }
@@ -115,30 +267,27 @@ impl RenderOnce for CompletionMenuItem {
 
         let deprecated = item.deprecated.unwrap_or(false);
 
-        // Don't highlight based on filter text - server already ranked items
-        // Just show the label as-is
-        let highlights = vec![];
+        let highlights = self.highlights;
 
         // Get icon based on completion kind
         let icon = match item.kind {
             Some(lsp_types::CompletionItemKind::FUNCTION)
-            | Some(lsp_types::CompletionItemKind::METHOD) => "🔧", // Function/Method
-            Some(lsp_types::CompletionItemKind::STRUCT) => "📦", // Struct
-            Some(lsp_types::CompletionItemKind::ENUM) => "📋",   // Enum
+            | Some(lsp_types::CompletionItemKind::METHOD) => "🔧",
+            Some(lsp_types::CompletionItemKind::STRUCT) => "📦",
+            Some(lsp_types::CompletionItemKind::ENUM) => "📋",
             Some(lsp_types::CompletionItemKind::INTERFACE)
-            | Some(lsp_types::CompletionItemKind::CLASS) => "🎯", // Interface/Class
-            Some(lsp_types::CompletionItemKind::MODULE) => "📂", // Module
+            | Some(lsp_types::CompletionItemKind::CLASS) => "🎯",
+            Some(lsp_types::CompletionItemKind::MODULE) => "📂",
             Some(lsp_types::CompletionItemKind::FIELD)
-            | Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️", // Field/Property
+            | Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️",
             Some(lsp_types::CompletionItemKind::VARIABLE)
-            | Some(lsp_types::CompletionItemKind::CONSTANT) => "💎", // Variable/Constant
-            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑", // Keyword
-            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️", // Snippet
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤", // Type param
-            _ => "📄",                                           // Default
+            | Some(lsp_types::CompletionItemKind::CONSTANT) => "💎",
+            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑",
+            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️",
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤",
+            _ => "📄",
         };
 
-        // Determine source label (always [LSP] for rust-analyzer completions)
         let source = "LSP";
 
         h_flex()
@@ -197,7 +346,7 @@ impl ListDelegate for ContextMenuDelegate {
     ) -> Option<Self::Item> {
         let filtered_ix = *self.filtered_indices.get(ix.row)?;
         let item = self.items.get(filtered_ix)?;
-        Some(CompletionMenuItem::new(ix.row, item.clone()).highlight_prefix(self.query.clone()))
+        Some(CompletionMenuItem::new(ix.row, item.clone()))
     }
 
     fn set_selected_index(
@@ -252,6 +401,7 @@ impl CompletionMenu {
                 menu: view,
                 items: vec![],
                 filtered_indices: vec![],
+                filter_highlights: vec![],
                 selected_ix: 0,
             };
 
@@ -453,25 +603,41 @@ impl CompletionMenu {
         cx.notify();
     }
 
-    /// Sets the trigger start offset if it is not already set.
-    pub(crate) fn update_query(&mut self, start_offset: usize, query: impl Into<SharedString>) {
-        if self.trigger_start_offset.is_none() {
-            self.trigger_start_offset = Some(start_offset);
-        }
-        self.query = query.into();
-    }
-
-    /// Update just the query without changing trigger offset (for server tracking only)
-    pub(crate) fn update_query_only(
+    pub(crate) fn update_query(
         &mut self,
+        start_offset: usize,
         query: impl Into<SharedString>,
         cx: &mut Context<Self>,
     ) {
-        self.query = query.into();
-        // Just update query reference, no filtering needed
-        self.list.update(cx, |list, _cx| {
-            list.delegate_mut().set_query(self.query.clone());
+        if self.trigger_start_offset.is_none() {
+            self.trigger_start_offset = Some(start_offset);
+        }
+        let q = query.into();
+        self.query = q.clone();
+        self.list.update(cx, |list, _| {
+            list.delegate_mut().apply_filter(&q);
         });
+        cx.notify();
+    }
+
+    /// Apply a new query instantly (synchronous re-filter of cached items).
+    /// Call this on every keystroke before dispatching the async server request.
+    pub(crate) fn apply_query(
+        &mut self,
+        trigger_start: usize,
+        query: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.trigger_start_offset.is_none() {
+            self.trigger_start_offset = Some(trigger_start);
+        }
+        self.query = SharedString::from(query.to_string());
+        self.open = true;
+        let q = query.to_string();
+        self.list.update(cx, |list, _| {
+            list.delegate_mut().apply_filter(&q);
+        });
+        cx.notify();
     }
 
     pub(crate) fn show(
@@ -484,7 +650,7 @@ impl CompletionMenu {
         let items = items.into();
         self.offset = offset;
         self.open = true;
-        self.loading = false; // Done loading since we have items
+        self.loading = false;
         self.list.update(cx, |this, cx| {
             let longest_ix = items
                 .iter()
@@ -495,7 +661,6 @@ impl CompletionMenu {
                 .map(|(ix, _)| ix)
                 .unwrap_or(0);
 
-            this.delegate_mut().query = self.query.clone();
             this.delegate_mut().set_items(items);
             this.set_selected_index(Some(IndexPath::new(0)), window, cx);
             this.set_item_to_measure_index(IndexPath::new(longest_ix), window, cx);
@@ -504,11 +669,14 @@ impl CompletionMenu {
         cx.notify();
     }
 
-    /// Show the menu in loading state while waiting for completions
+    /// Show the menu in loading state while waiting for completions.
+    /// Keeps any existing items visible (filtered by current query) so the user
+    /// doesn't see a blank spinner between keystrokes.
     pub(crate) fn show_loading(&mut self, offset: usize, cx: &mut Context<Self>) {
         self.offset = offset;
         self.open = true;
         self.loading = true;
+        // Do NOT clear items or filter — stale results stay visible while we wait.
         cx.notify();
     }
 
@@ -536,8 +704,8 @@ impl Render for CompletionMenu {
             return Empty.into_any_element();
         }
 
-        // Show loading state if we're loading
-        if self.loading {
+        // Show spinner only when loading AND no items cached yet (first request).
+        if self.loading && self.list.read(cx).delegate().items.is_empty() {
             let view = cx.entity();
             let Some(pos) = self.origin(cx) else {
                 return Empty.into_any_element();

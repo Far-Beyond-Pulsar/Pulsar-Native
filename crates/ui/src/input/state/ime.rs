@@ -47,9 +47,18 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let range_for_refresh = range_utf16.clone();
         self.silent_replace_text = true;
         self.replace_text_in_range(range_utf16, new_text, window, cx);
         self.silent_replace_text = false;
+        // Silent edits still need to refresh completions (backspace, paste, undo/redo, etc.).
+        if !self.completion_inserting {
+            let range = range_for_refresh
+                .as_ref()
+                .map(|range_utf16| self.range_from_utf16(range_utf16))
+                .unwrap_or(self.selected_range.into());
+            self.handle_completion_trigger(&range, new_text, window, cx);
+        }
     }
 }
 
