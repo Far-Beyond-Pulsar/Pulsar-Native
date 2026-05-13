@@ -160,11 +160,11 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
 
         // Spawn immediately - do ALL potentially slow work in the async block
         cx.spawn_in(window, async move |_, cx| {
-            // Convert to position in background (can be slow for large files)
-            // Ensure offset is within bounds before converting
-            // Rope stores characters, so we check the length in chars
-            let safe_offset = if offset >= text_clone.len() {
-                text_clone.len().saturating_sub(1)
+            // Convert to position in background (can be slow for large files).
+            // LSP positions are allowed at EOF, so keep offset == len untouched.
+            // Only clamp truly out-of-bounds offsets.
+            let safe_offset = if offset > text_clone.len() {
+                text_clone.len()
             } else {
                 offset
             };

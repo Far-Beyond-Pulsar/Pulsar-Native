@@ -81,6 +81,8 @@ impl InputState {
             let ws = new_offset.saturating_sub(q.len());
             (ws, q)
         };
+        println!("[FILTER] handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}",
+            new_offset, word_start, query, self.text.len());
         tracing::info!("🎯 handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}", new_offset, word_start, query, self.text.len());
         // Instantly re-filter whatever items the menu already has.
         menu.update(cx, |menu, cx| {

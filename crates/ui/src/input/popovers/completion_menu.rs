@@ -181,6 +181,7 @@ impl ContextMenuDelegate {
     /// Apply `query` as a case-insensitive fuzzy filter over the current items.
     /// Immediately updates `filtered_indices`, `filter_highlights`, and `selected_ix`.
     fn apply_filter(&mut self, query: &str) {
+        println!("[FILTER] apply_filter: query='{}', items.len()={}", query, self.items.len());
         tracing::info!("🔍 apply_filter called: query='{}', items.len()={}", query, self.items.len());
         self.query = SharedString::from(query.to_string());
 
@@ -188,11 +189,21 @@ impl ContextMenuDelegate {
             self.filtered_indices = (0..self.items.len()).collect();
             self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
             self.selected_ix = 0;
+            println!("[FILTER] empty query → showing all {} items", self.items.len());
             tracing::info!("📝 Empty query: showing all {} items", self.items.len());
             return;
         }
 
         let query_lower = query.to_lowercase();
+
+        // Print first few items so we can see what the filter is working with.
+        for (i, item) in self.items.iter().enumerate().take(5) {
+            let ft = item.filter_text.as_deref().unwrap_or("<none>");
+            println!("[FILTER]   item[{}] label={:?} filter_text={:?}", i, item.label, ft);
+        }
+        if self.items.len() > 5 {
+            println!("[FILTER]   … {} more items", self.items.len() - 5);
+        }
 
         let mut scored: Vec<(usize, i32)> = self
             .items
@@ -200,10 +211,15 @@ impl ContextMenuDelegate {
             .enumerate()
             .filter_map(|(ix, item)| {
                 let filter_text = item.filter_text.as_deref().unwrap_or(&item.label);
-                match_score(&item.label, filter_text, &query_lower).map(|s| (ix, s))
+                let score = match_score(&item.label, filter_text, &query_lower);
+                if ix < 5 {
+                    println!("[FILTER]   score item[{}] ({:?}) = {:?}", ix, item.label, score);
+                }
+                score.map(|s| (ix, s))
             })
             .collect();
 
+        println!("[FILTER] → {} / {} items matched query='{}'", scored.len(), self.items.len(), query);
         tracing::info!("✨ After scoring: {} items match query '{}'", scored.len(), query);
 
         // Higher score first, ties broken by server's sortText.
@@ -221,6 +237,7 @@ impl ContextMenuDelegate {
             .collect();
         self.filtered_indices = scored.into_iter().map(|(ix, _)| ix).collect();
         self.selected_ix = 0;
+        println!("[FILTER] filtered_indices.len()={}", self.filtered_indices.len());
         tracing::info!("✅ apply_filter done: filtered_indices.len()={}", self.filtered_indices.len());
     }
 }
@@ -637,6 +654,9 @@ impl CompletionMenu {
         query: &str,
         cx: &mut Context<Self>,
     ) {
+        println!("[FILTER] apply_query: trigger_start={}, query='{}', menu.open={}, items_in_delegate={}",
+            trigger_start, query, self.open,
+            self.list.read(cx).delegate().items.len());
         tracing::info!("🎯 CompletionMenu::apply_query called: trigger_start={}, query='{}'", trigger_start, query);
         if self.trigger_start_offset.is_none() {
             self.trigger_start_offset = Some(trigger_start);
@@ -645,8 +665,10 @@ impl CompletionMenu {
         self.open = true;
         let q = query.to_string();
         self.list.update(cx, |list, cx| {
+            println!("[FILTER] apply_query→list update: delegate items.len()={}", list.delegate().items.len());
             tracing::info!("📋 Before apply_filter in list: delegate items.len()={}", list.delegate().items.len());
             list.delegate_mut().apply_filter(&q);
+            println!("[FILTER] apply_query→after filter: filtered_indices.len()={}", list.delegate().filtered_indices.len());
             tracing::info!("📋 After apply_filter in list: delegate filtered_indices.len()={}", list.delegate().filtered_indices.len());
             cx.notify();
         });
@@ -665,22 +687,29 @@ impl CompletionMenu {
         self.open = true;
         self.loading = false;
         let current_query = self.query.to_string();
+        println!("[FILTER] show: offset={}, {} new items, will filter with query='{}'",
+            offset, items.len(), current_query);
         self.list.update(cx, |this, cx| {
-            let longest_ix = items
-                .iter()
-                .enumerate()
-                .max_by_key(|(_, item)| {
-                    item.label.len() + item.detail.as_ref().map(|d| d.len()).unwrap_or(0)
-                })
-                .map(|(ix, _)| ix)
-                .unwrap_or(0);
-
             this.delegate_mut().set_items(items);
             // Re-apply the active query so filter state survives server round-trips.
             this.delegate_mut().apply_filter(&current_query);
             cx.notify();
             this.set_selected_index(Some(IndexPath::new(0)), window, cx);
-            this.set_item_to_measure_index(IndexPath::new(longest_ix), window, cx);
+            // item_to_measure_index must be a POST-FILTER row index (0..filtered_indices.len()).
+            // The old code used a raw items index which would be out-of-bounds when the active
+            // query filtered the list down, causing render_item to return None, the virtual list
+            // to measure a 0px row height, and the entire dropdown to collapse invisibly.
+            let longest_filtered_row = {
+                let d = this.delegate();
+                (0..d.filtered_indices.len())
+                    .max_by_key(|&row| {
+                        let raw_ix = d.filtered_indices[row];
+                        let item = &d.items[raw_ix];
+                        item.label.len() + item.detail.as_ref().map(|dl| dl.len()).unwrap_or(0)
+                    })
+                    .unwrap_or(0)
+            };
+            this.set_item_to_measure_index(IndexPath::new(longest_filtered_row), window, cx);
         });
 
         cx.notify();
