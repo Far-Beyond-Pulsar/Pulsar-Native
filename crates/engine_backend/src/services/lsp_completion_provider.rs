@@ -5,7 +5,7 @@ use gpui::{App, Context, Task, Window};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicI32, Ordering},
     Arc,
 };
 use ui::input::{CompletionProvider, DefinitionProvider, InputState, RopeExt};
@@ -23,6 +23,8 @@ pub struct GlobalRustAnalyzerCompletionProvider {
     workspace_root: PathBuf,
     /// Tracks whether this document has been didOpen'd in the current analyzer session.
     did_open_sent: Arc<AtomicBool>,
+    /// Monotonically increasing version for textDocument/didChange notifications.
+    text_version: Arc<AtomicI32>,
 }
 
 impl GlobalRustAnalyzerCompletionProvider {
@@ -36,6 +38,7 @@ impl GlobalRustAnalyzerCompletionProvider {
             file_path,
             workspace_root,
             did_open_sent: Arc::new(AtomicBool::new(false)),
+            text_version: Arc::new(AtomicI32::new(1)),
         }
     }
 
@@ -123,6 +126,21 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         println!("[LSP COMPLETION] BEFORE ensure_document_open_with_ra");
         self.ensure_document_open_with_ra(text, cx);
         println!("[LSP COMPLETION] AFTER ensure_document_open_with_ra");
+
+        // Send didChange to keep rust-analyzer in sync with current editor content.
+        // This is essential: without it, rust-analyzer uses stale content from the original didOpen.
+        if self.did_open_sent.load(Ordering::Relaxed) {
+            let content = text.to_string();
+            let path = self.file_path.clone();
+            let version = self.text_version.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = self.analyzer.update(cx, move |analyzer, _| {
+                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
+                    println!("[LSP SYNC] didChange failed: {}", e);
+                } else {
+                    println!("[LSP SYNC] didChange sent version={} for {:?}", version, path.file_name());
+                }
+            });
+        }
 
         // Clone only what we need - DO NOT convert rope to string here (blocks UI!)
         let uri = self.path_to_uri();
@@ -451,6 +469,19 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         println!("[LSP HOVER] BEFORE ensure_document_open_with_ra");
         self.ensure_document_open_with_ra(text, cx);
         println!("[LSP HOVER] AFTER ensure_document_open_with_ra");
+
+        // Sync current content to rust-analyzer before hovering.
+        if self.did_open_sent.load(Ordering::Relaxed) {
+            let content = text.to_string();
+            let path = self.file_path.clone();
+            let version = self.text_version.fetch_add(1, Ordering::Relaxed) + 1;
+            let _ = self.analyzer.update(cx, move |analyzer, _| {
+                if let Err(e) = analyzer.did_change_file(&path, &content, version) {
+                    println!("[LSP SYNC] hover didChange failed: {}", e);
+                }
+            });
+        }
+
         println!("[LSP HOVER] URI being used: {}", uri);
         println!("[LSP HOVER] sending textDocument/hover uri={} line={} char={} word={:?}",
             uri, position.line, position.character, word);
