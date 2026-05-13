@@ -206,6 +206,8 @@ impl PulsarApp {
             analyzer
         };
 
+        crate::builtin_editors::set_shared_script_editor_analyzer(cx, rust_analyzer.clone());
+
         // Subscribe to analyzer events
         cx.subscribe_in(&rust_analyzer, window, event_handlers::on_analyzer_event)
             .detach();
