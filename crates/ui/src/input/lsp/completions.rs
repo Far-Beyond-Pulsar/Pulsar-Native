@@ -146,54 +146,68 @@ impl InputState {
             trigger_character: trigger_char,
         };
 
+        let request_id = self.completion_request_id.wrapping_add(1);
+        self.completion_request_id = request_id;
+
         // Request completions from LSP server (non-blocking!)
         let provider_responses =
             provider.completions(&text, new_offset, completion_context, window, cx);
 
         // Handle response asynchronously - UI stays responsive
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
-            let mut completions: Vec<CompletionItem> = vec![];
-
-            match provider_responses.await {
-                Ok(provider_responses) => match provider_responses {
-                    CompletionResponse::Array(items) => {
-                        tracing::info!("📦 Received {} completions (Array)", items.len());
-                        completions.extend(items);
-                    }
-                    CompletionResponse::List(list) => {
-                        tracing::info!(
-                            "📦 Received {} completions (isIncomplete: {})",
-                            list.items.len(),
-                            list.is_incomplete
-                        );
-                        completions.extend(list.items);
-                    }
-                },
-                Err(e) => {
-                    tracing::error!("❌ Error getting completions: {:?}", e);
-                    _ = menu.update(cx, |menu, cx| {
-                        menu.hide(cx);
-                    });
-                    return Ok(());
-                }
-            }
-
-            if completions.is_empty() {
-                tracing::warn!("❌ No completions - hiding menu");
-                _ = menu.update(cx, |menu, cx| {
-                    menu.hide(cx);
-                    cx.notify();
-                });
-                return Ok(());
-            }
-
-            tracing::info!("✅ Showing {} completions from server", completions.len());
+            let response = provider_responses.await;
 
             editor
                 .update_in(cx, |editor, window, cx| {
+                    if editor.completion_request_id != request_id {
+                        tracing::debug!(
+                            "Ignoring stale completion response: request_id={} current={}",
+                            request_id,
+                            editor.completion_request_id
+                        );
+                        return;
+                    }
+
                     if !editor.focus_handle.is_focused(window) {
                         return;
                     }
+
+                    let mut completions: Vec<CompletionItem> = vec![];
+
+                    match response {
+                        Ok(provider_responses) => match provider_responses {
+                            CompletionResponse::Array(items) => {
+                                tracing::info!("📦 Received {} completions (Array)", items.len());
+                                completions.extend(items);
+                            }
+                            CompletionResponse::List(list) => {
+                                tracing::info!(
+                                    "📦 Received {} completions (isIncomplete: {})",
+                                    list.items.len(),
+                                    list.is_incomplete
+                                );
+                                completions.extend(list.items);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("❌ Error getting completions: {:?}", e);
+                            _ = menu.update(cx, |menu, cx| {
+                                menu.hide(cx);
+                            });
+                            return;
+                        }
+                    }
+
+                    if completions.is_empty() {
+                        tracing::warn!("❌ No completions - hiding menu");
+                        _ = menu.update(cx, |menu, cx| {
+                            menu.hide(cx);
+                            cx.notify();
+                        });
+                        return;
+                    }
+
+                    tracing::info!("✅ Showing {} completions from server", completions.len());
 
                     _ = menu.update(cx, |menu, cx| {
                         // Show completions exactly as received from rust-analyzer

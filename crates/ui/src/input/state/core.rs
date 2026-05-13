@@ -344,6 +344,8 @@ pub struct InputState {
     pub(in crate::input) mouse_context_menu: Entity<MouseContextMenu>,
     /// A flag to indicate if we are currently inserting a completion item.
     pub(in crate::input) completion_inserting: bool,
+    /// Monotonic request token so stale completion responses cannot overwrite newer menus.
+    pub(in crate::input) completion_request_id: usize,
     pub(in crate::input) hover_popover: Option<Entity<HoverPopover>>,
     /// The LSP definitions locations for "Go to Definition" feature.
     pub(in crate::input) hover_definition: HoverDefinition,
@@ -460,6 +462,7 @@ impl InputState {
             context_menu: None,
             mouse_context_menu,
             completion_inserting: false,
+            completion_request_id: 0,
             hover_popover: None,
             hover_definition: HoverDefinition::default(),
             silent_replace_text: false,

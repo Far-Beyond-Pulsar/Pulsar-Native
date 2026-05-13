@@ -51,6 +51,8 @@ impl GlobalRustAnalyzerCompletionProvider {
     ) {
         println!("[LSP SYNC] ensure_document_open_with_ra called, did_open_sent={}", 
             self.did_open_sent.load(Ordering::Relaxed));
+        println!("[LSP SYNC] file_path={:?}", self.file_path);
+        println!("[LSP SYNC] workspace_root={:?}", self.workspace_root);
             
         if self.did_open_sent.load(Ordering::Relaxed) {
             println!("[LSP SYNC] early return: didOpen already sent for {:?}", self.file_path.file_name());
@@ -62,6 +64,10 @@ impl GlobalRustAnalyzerCompletionProvider {
         let content = text.to_string();
         let path = self.file_path.clone();
         let sent = self.did_open_sent.clone();
+        
+        println!("[LSP SYNC] content length: {} bytes", content.len());
+        println!("[LSP SYNC] content preview (first 100 chars): {:?}", 
+            content.chars().take(100).collect::<String>());
 
         let result = self.analyzer.update(cx, move |analyzer, _| {
             println!("[LSP SYNC] INSIDE closure: analyzer.update closure executing for {:?}", path.file_name());
@@ -74,17 +80,19 @@ impl GlobalRustAnalyzerCompletionProvider {
             match analyzer.did_open_file(&path, &content, "rust") {
                 Ok(()) => {
                     println!(
-                        "[LSP SYNC] didOpen ensured for {:?} before request",
+                        "[LSP SYNC] didOpen succeeded for {:?}",
                         path.file_name()
                     );
+                    // Only mark as sent if didOpen actually succeeded
                     sent.store(true, Ordering::Relaxed);
                 }
                 Err(e) => {
                     println!(
-                        "[LSP SYNC] didOpen ensure failed for {:?}: {}",
+                        "[LSP SYNC] didOpen failed for {:?}: {} (will retry on next hover)",
                         path.file_name(),
                         e
                     );
+                    // DO NOT set sent flag - allow retry on next request
                 }
             }
         });
@@ -443,6 +451,7 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         println!("[LSP HOVER] BEFORE ensure_document_open_with_ra");
         self.ensure_document_open_with_ra(text, cx);
         println!("[LSP HOVER] AFTER ensure_document_open_with_ra");
+        println!("[LSP HOVER] URI being used: {}", uri);
         println!("[LSP HOVER] sending textDocument/hover uri={} line={} char={} word={:?}",
             uri, position.line, position.character, word);
 

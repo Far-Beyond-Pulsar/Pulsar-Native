@@ -605,7 +605,8 @@ impl RustAnalyzerManager {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
                         };
-                        manager.initialized = true;
+                        // DO NOT set initialized=true here - wait for initialize response
+                        println!("[LSP ANALYZER] Sent initialize request, waiting for response before setting initialized flag");
                         cx.emit(AnalyzerEvent::IndexingProgress {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
@@ -750,8 +751,23 @@ impl RustAnalyzerManager {
                                 if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
                                     if let Ok(mut pending) = pending_requests_clone.lock() {
                                         if let Some(tx) = pending.remove(&id) {
+                                            println!("[LSP ANALYZER] Received response for request id={}", id);
                                             let _ = tx.send(msg.clone());
                                             continue;
+                                        }
+                                    }
+                                    // Handle initialize response specially (id=17 based on our send_initialize_request code)
+                                    if id == 17 {
+                                        println!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
+                                            msg.get("result"), msg.get("error"));
+                                        if msg.get("error").is_some() {
+                                            println!("[LSP ANALYZER] Initialize response contains an error!");
+                                            let _ = progress_tx_stdout.send(ProgressUpdate::Error(
+                                                format!("Initialize error: {:?}", msg.get("error"))
+                                            ));
+                                        } else if msg.get("result").is_some() {
+                                            println!("[LSP ANALYZER] Initialize succeeded, server is ready");
+                                            // Initialization complete - server is ready for document operations
                                         }
                                     }
                                 }
@@ -801,7 +817,7 @@ impl RustAnalyzerManager {
             format!("file://{}", workspace_str)
         };
 
-        tracing::debug!("  Using workspace URI: {}", uri);
+        println!("[LSP ANALYZER] Sending initialize with workspace URI: {}", uri);
 
         let mut req_id = request_id_arc
             .lock()
@@ -856,6 +872,8 @@ impl RustAnalyzerManager {
             }
         });
 
+        println!("[LSP ANALYZER] Sending initialize request with id={}", id);
+
         let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
         if let Some(stdin) = stdin_lock.as_mut() {
             let content = serde_json::to_string(&init_request)?;
@@ -864,7 +882,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            tracing::debug!("✓ Sent initialize request to rust-analyzer");
+            println!("[LSP ANALYZER] Initialize request sent, now sending initialized notification");
 
             let initialized_notification = json!({
                 "jsonrpc": "2.0",
@@ -878,7 +896,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            tracing::debug!("✓ Sent initialized notification");
+            println!("[LSP ANALYZER] Initialized notification sent");
         } else {
             return Err(anyhow!("stdin not available"));
         }
@@ -1240,6 +1258,13 @@ impl RustAnalyzerManager {
         )
     }
 
+    /// Check if analyzer is fully initialized (LSP handshake complete)
+    /// Per LSP spec, server must complete initialize handshake before accepting document operations.
+    /// We know this is complete once we transition to Indexing status (which happens after initialize response).
+    pub fn is_initialized(&self) -> bool {
+        matches!(self.status, AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Ready)
+    }
+
     /// Send didOpen notification for a file
     pub fn did_open_file(
         &self,
@@ -1247,11 +1272,25 @@ impl RustAnalyzerManager {
         content: &str,
         language_id: &str,
     ) -> Result<()> {
+        // CRITICAL: Per LSP spec, must wait for initialize response before sending didOpen
+        if !self.is_initialized() {
+            println!(
+                "[LSP ANALYZER] did_open_file: NOT YET INITIALIZED, deferring didOpen (status={:?}, initialized={})",
+                self.status,
+                self.initialized
+            );
+            return Err(anyhow!("Analyzer not yet initialized"));
+        }
+        
         if !self.is_running() {
-            return Ok(());
+            println!("[LSP ANALYZER] did_open_file called but analyzer not running");
+            return Err(anyhow!("Analyzer not running"));
         }
 
         let uri = self.path_to_uri(file_path);
+        println!("[LSP ANALYZER] did_open_file: path={:?} uri={} content_len={}", 
+            file_path, uri, content.len());
+        
         let notification = json!({
             "jsonrpc": "2.0",
             "method": "textDocument/didOpen",
@@ -1339,6 +1378,16 @@ impl RustAnalyzerManager {
     }
 
     fn send_notification(&self, notification: Value) -> Result<()> {
+        if let Some(method) = notification.get("method").and_then(|m| m.as_str()) {
+            if method == "textDocument/didOpen" {
+                if let Some(params) = notification.get("params") {
+                    println!("[LSP ANALYZER] Sending didOpen notification: {:?}", params);
+                }
+            } else if method == "textDocument/didChange" {
+                println!("[LSP ANALYZER] Sending didChange notification");
+            }
+        }
+        
         let mut stdin_lock = self
             .stdin
             .lock()
@@ -1388,6 +1437,11 @@ impl RustAnalyzerManager {
             "method": method,
             "params": params
         });
+
+        if method == "textDocument/hover" {
+            println!("[LSP ANALYZER] sending hover request: id={} params={}", id, 
+                serde_json::to_string(&params).unwrap_or_default());
+        }
 
         let mut stdin_lock = self
             .stdin
