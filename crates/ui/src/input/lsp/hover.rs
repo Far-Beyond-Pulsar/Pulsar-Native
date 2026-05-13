@@ -1,6 +1,7 @@
 use anyhow::Result;
 use gpui::{App, Context, MouseMoveEvent, Pixels, Point, Task, Window};
 use ropey::Rope;
+use std::time::Duration;
 
 use crate::input::{popovers::HoverPopover, InputState, RopeExt};
 
@@ -61,10 +62,14 @@ impl InputState {
         let requested_popover = hover_popover.clone();
 
         self.lsp._hover_task = cx.spawn_in(window, async move |_, cx| {
-            // LSP request is already in flight, just wait for it
+            // Wait for the LSP response.
             let result = task.await?;
 
-            // Process the result and set hover data
+            // 1-second delay after the response arrives — only show if mouse is still.
+            cx.background_executor()
+                .timer(Duration::from_millis(1000))
+                .await;
+
             _ = editor.update(cx, |editor, cx| {
                 let is_current_popover = editor
                     .hover_popover

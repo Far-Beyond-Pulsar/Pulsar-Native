@@ -1341,7 +1341,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=28f5764f30067b5ec8e763c44b4c14b200313dd3#28f5764f30067b5ec8e763c44b4c14b200313dd3"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=133f983e383ee696fab15eed48c5123948cbf7bf#133f983e383ee696fab15eed48c5123948cbf7bf"
 dependencies = [
  "arboard",
  "chrono",
@@ -4379,7 +4379,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=1f6f3843e8bea050ed3882b45b5ca1d433adf61f#1f6f3843e8bea050ed3882b45b5ca1d433adf61f"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=b43b910b2bb71c3a1faacf7837d585bcc24c718b#b43b910b2bb71c3a1faacf7837d585bcc24c718b"
 dependencies = [
  "anyhow",
  "arboard",
@@ -6623,7 +6623,7 @@ dependencies = [
 [[package]]
 name = "lockfree"
 version = "0.5.1"
-source = "git+https://github.com/mdeand/priority-threadpool#28df6ed5ebef6818f2ea0cde9bfd99d3067d42ce"
+source = "git+https://github.com/tristanpoland/priority-threadpool?rev=bb1ab91#bb1ab91e284332975ca6889303582c7352ec6509"
 dependencies = [
  "owned-alloc",
 ]
@@ -8971,7 +8971,7 @@ dependencies = [
 [[package]]
 name = "priority-threadpool"
 version = "0.1.0"
-source = "git+https://github.com/mdeand/priority-threadpool#28df6ed5ebef6818f2ea0cde9bfd99d3067d42ce"
+source = "git+https://github.com/tristanpoland/priority-threadpool?rev=bb1ab91#bb1ab91e284332975ca6889303582c7352ec6509"
 dependencies = [
  "async-task",
  "lockfree",
@@ -10939,7 +10939,7 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=2b6910c928515f27381b6f6d46e38c30b2a7508e#2b6910c928515f27381b6f6d46e38c30b2a7508e"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=dcda023d9e6f5594528992837de32a7c2dae5af6#dcda023d9e6f5594528992837de32a7c2dae5af6"
 dependencies = [
  "anyhow",
  "engine_backend",

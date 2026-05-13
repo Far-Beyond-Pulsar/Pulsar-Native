@@ -14,7 +14,7 @@ use crate::{
 const MAX_HOVER_WIDTH: Pixels = px(500.);
 const MAX_HOVER_HEIGHT: Pixels = px(400.);
 const HOVER_OFFSET_X: Pixels = px(15.); // Offset to the right of cursor
-const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300); // Quick 300ms delay
+const HOVER_SHOW_DELAY: Duration = Duration::from_millis(300);
 
 pub struct HoverPopover {
     editor: Entity<InputState>,
@@ -39,22 +39,15 @@ impl HoverPopover {
         mouse_position: Point<Pixels>,
         cx: &mut App,
     ) -> Entity<Self> {
-        let entity = cx.new(|_| Self {
+        cx.new(|_| Self {
             editor,
             symbol_range,
-            hover: None, // Will be set when LSP responds
+            hover: None,
             mouse_position,
             bounds: Bounds::default(),
             visible: false,
             _show_task: Task::ready(()),
-        });
-
-        // Start the show delay task
-        entity.update(cx, |popover, cx| {
-            popover.start_show_delay(cx);
-        });
-
-        entity
+        })
     }
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
@@ -65,11 +58,9 @@ impl HoverPopover {
             || (!self.symbol_range.is_empty() && offset == self.symbol_range.end)
     }
 
-    /// Set hover data when LSP responds (before or after delay)
+    /// Set hover data when LSP responds and make it visible.
     pub fn set_hover(&mut self, hover: lsp_types::Hover, cx: &mut Context<Self>) {
         self.hover = Some(Rc::new(hover));
-        // Show immediately once real content arrives so hover data is never
-        // lost behind the delay task if the request resolves after motion settles.
         self.visible = true;
         cx.notify();
     }
