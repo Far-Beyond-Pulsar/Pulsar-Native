@@ -1,13 +1,13 @@
 //! Commit detail panel: shows files changed in the selected commit (left)
 //! and diff of the selected file from that commit (right).
 
-use crate::views::file_panel::render_diff_segments;
+use crate::views::file_panel::render_diff_virtual;
 use crate::{GitManager, models::*};
 use gpui::*;
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex};
 
 pub fn render_commit_detail(
-    git_manager: &GitManager,
+    git_manager: &mut GitManager,
     cx: &mut Context<GitManager>,
 ) -> impl IntoElement {
     let border = cx.theme().border;
@@ -175,14 +175,7 @@ pub fn render_commit_detail(
             &git_manager.commit_file_diff,
             &git_manager.commit_file_diff_error,
         ) {
-            (Some(diff), _) => render_diff_segments(
-                diff,
-                &git_manager.commit_file_expanded,
-                "commit-diff",
-                true,
-                cx,
-            )
-            .into_any_element(),
+            (Some(_), _) => render_diff_virtual(git_manager, true, cx).into_any_element(),
             (None, Some(err)) => v_flex()
                 .flex_1()
                 .items_center()

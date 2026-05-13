@@ -23,6 +23,10 @@ use ui::{
 pub use git_operations::*;
 pub use models::*;
 
+// ── Diff-row constants (public for file_panel / commit_detail) ───────────────
+pub const DIFF_LINE_ROW_H: f32 = 20.0;
+pub const DIFF_COLLAPSE_ROW_H: f32 = 24.0;
+
 // ── File context-menu actions ────────────────────────────────────────────────
 #[derive(Clone, Debug, PartialEq, serde::Deserialize, Action)]
 #[action(namespace = git_manager, no_json)]
@@ -113,6 +117,14 @@ pub struct GitManager {
     pub(crate) changes_scrollbar_state: ScrollbarState,
     /// Avatar image cache keyed by commit email. `None` = fetch in-flight.
     pub(crate) avatar_cache: HashMap<String, Option<Arc<gpui::RenderImage>>>,
+    // ── File diff virtual list ─────────────────────────────────────────────
+    pub(crate) file_diff_rows: Vec<DiffRow>,
+    pub(crate) file_diff_scroll: VirtualListScrollHandle,
+    pub(crate) file_diff_scrollbar: ScrollbarState,
+    // ── Commit diff virtual list ───────────────────────────────────────────
+    pub(crate) commit_diff_rows: Vec<DiffRow>,
+    pub(crate) commit_diff_scroll: VirtualListScrollHandle,
+    pub(crate) commit_diff_scrollbar: ScrollbarState,
     // History view
     selected_commit: Option<String>,
     selected_commit_files: Vec<FileChange>,
@@ -232,6 +244,12 @@ impl GitManager {
             changes_scroll: VirtualListScrollHandle::new(),
             changes_scrollbar_state: ScrollbarState::default(),
             avatar_cache: HashMap::new(),
+            file_diff_rows: Vec::new(),
+            file_diff_scroll: VirtualListScrollHandle::new(),
+            file_diff_scrollbar: ScrollbarState::default(),
+            commit_diff_rows: Vec::new(),
+            commit_diff_scroll: VirtualListScrollHandle::new(),
+            commit_diff_scrollbar: ScrollbarState::default(),
             selected_commit: None,
             selected_commit_files: Vec::new(),
             selected_commit_file: None,
@@ -512,6 +530,7 @@ impl GitManager {
         };
         self.selected_commit_file = Some(file_path.clone());
         self.commit_file_diff = None;
+        self.commit_diff_rows = Vec::new();
         self.commit_file_diff_error = None;
         self.commit_file_expanded.clear();
         cx.notify();
@@ -530,6 +549,7 @@ impl GitManager {
                         Ok(diff) => {
                             gm.commit_file_diff = Some(diff);
                             gm.commit_file_diff_error = None;
+                            gm.rebuild_commit_diff_rows();
                         }
                         Err(msg) => {
                             gm.commit_file_diff = None;
@@ -548,6 +568,7 @@ impl GitManager {
     pub fn select_file(&mut self, file_path: String, cx: &mut Context<Self>) {
         self.selected_file = Some(file_path.clone());
         self.file_diff = None;
+        self.file_diff_rows = Vec::new();
         self.file_diff_error = None;
         self.file_diff_expanded.clear();
         cx.notify();
@@ -563,6 +584,7 @@ impl GitManager {
                         Ok(diff) => {
                             gm.file_diff = Some(diff);
                             gm.file_diff_error = None;
+                            gm.rebuild_file_diff_rows();
                         }
                         Err(msg) => {
                             gm.file_diff = None;
@@ -580,12 +602,30 @@ impl GitManager {
 
     pub fn expand_file_diff_region(&mut self, region_idx: usize, cx: &mut Context<Self>) {
         self.file_diff_expanded.insert(region_idx);
+        self.rebuild_file_diff_rows();
         cx.notify();
     }
 
     pub fn expand_commit_diff_region(&mut self, region_idx: usize, cx: &mut Context<Self>) {
         self.commit_file_expanded.insert(region_idx);
+        self.rebuild_commit_diff_rows();
         cx.notify();
+    }
+
+    pub(crate) fn rebuild_file_diff_rows(&mut self) {
+        self.file_diff_rows = self
+            .file_diff
+            .as_ref()
+            .map(|d| flatten_diff(d, &self.file_diff_expanded))
+            .unwrap_or_default();
+    }
+
+    pub(crate) fn rebuild_commit_diff_rows(&mut self) {
+        self.commit_diff_rows = self
+            .commit_file_diff
+            .as_ref()
+            .map(|d| flatten_diff(d, &self.commit_file_expanded))
+            .unwrap_or_default();
     }
 
     fn fetch(&mut self, cx: &mut Context<Self>) {

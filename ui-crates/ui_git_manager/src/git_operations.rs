@@ -694,6 +694,72 @@ pub struct DiffResult {
     pub segments: Vec<DiffSegment>,
 }
 
+/// A single flat row used by the virtualized diff viewer.
+#[derive(Debug, Clone)]
+pub enum DiffRow {
+    /// A source code line (added / removed / context).
+    Line {
+        kind: DiffLineKind,
+        content: String,
+        /// Pre-formatted line number string, e.g. `"  42 "`.
+        line_num_str: String,
+    },
+    /// A collapsed-region button row.
+    Collapse {
+        region_idx: usize,
+        count: usize,
+    },
+}
+
+/// Flatten a `DiffResult` + expanded-region set into a flat `Vec<DiffRow>` that the
+/// virtual diff list can render directly.
+pub fn flatten_diff(
+    diff: &DiffResult,
+    expanded: &std::collections::HashSet<usize>,
+) -> Vec<DiffRow> {
+    let mut rows = Vec::new();
+    for segment in &diff.segments {
+        match segment {
+            DiffSegment::Hunk(lines) => {
+                for line in lines {
+                    let line_num_str = line
+                        .new_line_num
+                        .or(line.old_line_num)
+                        .map(|n| format!("{:>5}", n))
+                        .unwrap_or_else(|| "     ".to_string());
+                    rows.push(DiffRow::Line {
+                        kind: line.kind,
+                        content: line.content.clone(),
+                        line_num_str,
+                    });
+                }
+            }
+            DiffSegment::Collapsed { lines, region_idx } => {
+                if expanded.contains(region_idx) {
+                    for line in lines {
+                        let line_num_str = line
+                            .new_line_num
+                            .or(line.old_line_num)
+                            .map(|n| format!("{:>5}", n))
+                            .unwrap_or_else(|| "     ".to_string());
+                        rows.push(DiffRow::Line {
+                            kind: DiffLineKind::Context,
+                            content: line.content.clone(),
+                            line_num_str,
+                        });
+                    }
+                } else {
+                    rows.push(DiffRow::Collapse {
+                        region_idx: *region_idx,
+                        count: lines.len(),
+                    });
+                }
+            }
+        }
+    }
+    rows
+}
+
 /// Get the list of files changed in a specific commit (blocking — run on background executor)
 pub fn get_commit_files(
     repo_path: &Path,
