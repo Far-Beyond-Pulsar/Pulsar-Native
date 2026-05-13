@@ -18,8 +18,8 @@ use ui::{
 };
 
 /// Fixed row heights used for item_sizes pre-computation.
-const HEADER_ROW_HEIGHT: f32 = 24.0;
-const FILE_ROW_HEIGHT: f32 = 28.0;
+const HEADER_ROW_HEIGHT: f32 = 28.0;
+const FILE_ROW_HEIGHT: f32 = 32.0;
 
 pub fn render_changes_view(
     git_manager: &mut GitManager,

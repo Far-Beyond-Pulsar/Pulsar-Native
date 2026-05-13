@@ -1,10 +1,10 @@
-//! Compact toolbar: tab selector + branch/sync row
+//! Compact toolbar: segmented tab selector + branch pill + sync row
 
 use crate::{GitManager, GitView};
-use gpui::*;
+use gpui::{prelude::FluentBuilder as _, *};
 use ui::{
     ActiveTheme as _, Icon, IconName,
-    button::{Button, ButtonVariant, ButtonVariants as _},
+    button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
     v_flex,
@@ -19,66 +19,172 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
     drop(repo_state);
 
     let border = cx.theme().border;
-    let muted_fg = cx.theme().muted_foreground;
     let danger = cx.theme().danger;
     let warning = cx.theme().warning;
+    let primary = cx.theme().primary;
+    let foreground = cx.theme().foreground;
+    let radius = cx.theme().radius;
+    let tab_bar = cx.theme().tab_bar;
+    let tab_active = cx.theme().tab_active;
+    let tab_active_fg = cx.theme().tab_active_foreground;
+    let tab_fg = cx.theme().tab_foreground;
+    let tab_seg = cx.theme().tab_bar_segmented;
+    let muted = cx.theme().muted;
 
-    // Tab row
+    // ── Segmented tab control ─────────────────────────────────────────────────
+    let is_changes = current_view == GitView::Changes;
+    let tab_changes = h_flex()
+        .id("tab-changes")
+        .flex_1()
+        .py(px(5.))
+        .rounded(radius)
+        .justify_center()
+        .text_xs()
+        .font_weight(if is_changes { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .text_color(if is_changes { tab_active_fg } else { tab_fg })
+        .bg(if is_changes { tab_active } else { transparent_black() })
+        .hover(move |s| if is_changes { s } else { s.bg(muted.opacity(0.6)) })
+        .cursor_pointer()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseDownEvent, _, cx| this.switch_view(GitView::Changes, cx)),
+        )
+        .child("Changes");
+
+    let is_history = current_view == GitView::History;
+    let tab_history = h_flex()
+        .id("tab-history")
+        .flex_1()
+        .py(px(5.))
+        .rounded(radius)
+        .justify_center()
+        .text_xs()
+        .font_weight(if is_history { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .text_color(if is_history { tab_active_fg } else { tab_fg })
+        .bg(if is_history { tab_active } else { transparent_black() })
+        .hover(move |s| if is_history { s } else { s.bg(muted.opacity(0.6)) })
+        .cursor_pointer()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseDownEvent, _, cx| this.switch_view(GitView::History, cx)),
+        )
+        .child("History");
+
+    let is_branches = current_view == GitView::Branches;
+    let tab_branches = h_flex()
+        .id("tab-branches")
+        .flex_1()
+        .py(px(5.))
+        .rounded(radius)
+        .justify_center()
+        .text_xs()
+        .font_weight(if is_branches { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .text_color(if is_branches { tab_active_fg } else { tab_fg })
+        .bg(if is_branches { tab_active } else { transparent_black() })
+        .hover(move |s| if is_branches { s } else { s.bg(muted.opacity(0.6)) })
+        .cursor_pointer()
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|this, _: &MouseDownEvent, _, cx| this.switch_view(GitView::Branches, cx)),
+        )
+        .child("Branches");
+
     let tabs = h_flex()
         .w_full()
+        .p(px(3.))
+        .bg(tab_seg)
+        .rounded(radius)
         .gap_px()
-        .child(
-            Button::new("tab-changes")
-                .label("Changes")
-                .compact()
-                .with_variant(if current_view == GitView::Changes {
-                    ButtonVariant::Primary
-                } else {
-                    ButtonVariant::Ghost
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::Changes, cx))),
-        )
-        .child(
-            Button::new("tab-history")
-                .label("History")
-                .compact()
-                .with_variant(if current_view == GitView::History {
-                    ButtonVariant::Primary
-                } else {
-                    ButtonVariant::Ghost
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::History, cx))),
-        )
-        .child(
-            Button::new("tab-branches")
-                .label("Branches")
-                .compact()
-                .with_variant(if current_view == GitView::Branches {
-                    ButtonVariant::Primary
-                } else {
-                    ButtonVariant::Ghost
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.switch_view(GitView::Branches, cx))),
-        );
+        .child(tab_changes)
+        .child(tab_history)
+        .child(tab_branches);
 
-    // Branch + sync row — always show Fetch; show Push/Pull with counts when known
-    let sync_row = h_flex()
-        .w_full()
+    // ── Branch pill + sync row ────────────────────────────────────────────────
+    let branch_pill = h_flex()
+        .flex_1()
+        .px(px(7.))
+        .py(px(4.))
         .gap_1()
+        .rounded(radius)
+        .bg(muted.opacity(0.4))
+        .border_1()
+        .border_color(border)
         .items_center()
-        .child(
-            Icon::new(IconName::GitBranch)
-                .size(px(12.))
-                .text_color(muted_fg),
-        )
+        .overflow_hidden()
+        .child(Icon::new(IconName::GitBranch).size(px(11.)).text_color(primary))
         .child(
             div()
                 .flex_1()
                 .text_xs()
-                .text_color(muted_fg)
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(foreground)
                 .overflow_hidden()
                 .child(current_branch),
+        );
+
+    let pull_btn = h_flex()
+        .gap(px(2.))
+        .items_center()
+        .child(
+            Button::new("pull")
+                .icon(IconName::ArrowDown)
+                .ghost()
+                .compact()
+                .tooltip(if behind > 0 {
+                    format!("Pull {} commit(s)", behind)
+                } else {
+                    "Pull".to_string()
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.pull(cx))),
         )
+        .when(behind > 0, |this| {
+            this.child(
+                div()
+                    .px(px(4.))
+                    .py(px(1.))
+                    .rounded_full()
+                    .bg(primary.opacity(0.18))
+                    .text_size(px(9.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(primary)
+                    .child(behind.to_string()),
+            )
+        });
+
+    let push_btn = h_flex()
+        .gap(px(2.))
+        .items_center()
+        .child(
+            Button::new("push")
+                .icon(IconName::ArrowUp)
+                .ghost()
+                .compact()
+                .tooltip(if ahead > 0 {
+                    format!("Push {} commit(s)", ahead)
+                } else {
+                    "Push".to_string()
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.push(cx))),
+        )
+        .when(ahead > 0, |this| {
+            this.child(
+                div()
+                    .px(px(4.))
+                    .py(px(1.))
+                    .rounded_full()
+                    .bg(primary.opacity(0.18))
+                    .text_size(px(9.))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(primary)
+                    .child(ahead.to_string()),
+            )
+        });
+
+    let sync_row = h_flex()
+        .w_full()
+        .gap_1()
+        .items_center()
+        .child(branch_pill)
         .child(
             Button::new("refresh")
                 .icon(IconName::Refresh)
@@ -95,63 +201,48 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                 .tooltip("Fetch from remote".to_string())
                 .on_click(cx.listener(|this, _, _, cx| this.fetch(cx))),
         )
-        .child(
-            Button::new("pull")
-                .icon(IconName::ArrowDown)
-                .ghost()
-                .compact()
-                .tooltip(if behind > 0 {
-                    format!("Pull {} commit(s)", behind)
-                } else {
-                    "Pull".to_string()
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.pull(cx))),
-        )
-        .child(
-            Button::new("push")
-                .icon(IconName::ArrowUp)
-                .ghost()
-                .compact()
-                .tooltip(if ahead > 0 {
-                    format!("Push {} commit(s)", ahead)
-                } else {
-                    "Push".to_string()
-                })
-                .on_click(cx.listener(|this, _, _, cx| this.push(cx))),
-        );
+        .child(pull_btn)
+        .child(push_btn);
 
     let mut toolbar = v_flex()
         .w_full()
         .px_2()
         .pt_2()
-        .pb_1()
-        .gap_1()
+        .pb(px(7.))
+        .gap_2()
+        .bg(tab_bar)
         .border_b_1()
         .border_color(border)
         .child(tabs)
         .child(sync_row);
 
-    // Auth credential prompt — shown when a remote op returns 401
+    // ── Auth credential prompt ────────────────────────────────────────────────
     if let Some(pending_op) = git_manager.pending_auth_op {
         toolbar = toolbar.child(
             v_flex()
                 .w_full()
-                .px_1()
-                .py_1()
-                .gap_1()
-                .rounded(cx.theme().radius)
+                .px_2()
+                .py_2()
+                .gap(px(6.))
+                .rounded(radius)
                 .bg(warning.opacity(0.08))
                 .border_1()
                 .border_color(warning.opacity(0.3))
                 .child(
-                    div()
-                        .text_xs()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(warning)
-                        .child(format!(
-                            "Authentication required for {}",
-                            pending_op.label()
-                        )),
+                    h_flex()
+                        .gap_1()
+                        .items_center()
+                        .child(Icon::new(IconName::TriangleAlert).size(px(12.)).text_color(warning))
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(warning)
+                                .child(format!(
+                                    "Authentication required for {}",
+                                    pending_op.label()
+                                )),
+                        ),
                 )
                 .child(TextInput::new(&git_manager.auth_username_input))
                 .child(TextInput::new(&git_manager.auth_password_input))
@@ -175,22 +266,19 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                 ),
         );
     } else if let Some(err) = &git_manager.op_error {
-        // Non-auth errors: plain dismissible banner
         let err = err.clone();
         toolbar = toolbar.child(
             h_flex()
                 .w_full()
                 .px_2()
-                .py_1()
-                .gap_1()
+                .py(px(7.))
+                .gap(px(6.))
                 .items_center()
-                .rounded(cx.theme().radius)
-                .bg(danger.opacity(0.12))
-                .child(
-                    Icon::new(IconName::CircleX)
-                        .size(px(11.))
-                        .text_color(danger),
-                )
+                .rounded(radius)
+                .bg(danger.opacity(0.1))
+                .border_1()
+                .border_color(danger.opacity(0.25))
+                .child(Icon::new(IconName::CircleX).size(px(12.)).text_color(danger))
                 .child(
                     div()
                         .flex_1()
