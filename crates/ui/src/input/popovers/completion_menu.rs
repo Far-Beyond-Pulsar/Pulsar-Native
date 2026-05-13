@@ -21,7 +21,7 @@ use crate::{
     },
     label::Label,
     list::{List, ListDelegate, ListEvent},
-    ActiveTheme, IndexPath, Selectable,
+    ActiveTheme, Icon, IconName, IndexPath, Selectable, Sizable as _,
 };
 
 struct ContextMenuDelegate {
@@ -291,23 +291,51 @@ impl RenderOnce for CompletionMenuItem {
 
         let highlights = self.highlights;
 
-        // Get icon based on completion kind
-        let icon = match item.kind {
+        // Map LSP CompletionItemKind → IconName using LSP metadata on each item.
+        // Icons come from assets/icons/*.svg, named by the macro's PascalCase rule.
+        let icon: IconName = match item.kind {
+            // Functions / methods / constructors
             Some(lsp_types::CompletionItemKind::FUNCTION)
-            | Some(lsp_types::CompletionItemKind::METHOD) => "🔧",
-            Some(lsp_types::CompletionItemKind::STRUCT) => "📦",
-            Some(lsp_types::CompletionItemKind::ENUM) => "📋",
-            Some(lsp_types::CompletionItemKind::INTERFACE)
-            | Some(lsp_types::CompletionItemKind::CLASS) => "🎯",
-            Some(lsp_types::CompletionItemKind::MODULE) => "📂",
+            | Some(lsp_types::CompletionItemKind::METHOD)
+            | Some(lsp_types::CompletionItemKind::CONSTRUCTOR) => IconName::SigmaFunction,
+            // Nominal types
+            Some(lsp_types::CompletionItemKind::STRUCT)
+            | Some(lsp_types::CompletionItemKind::CLASS) => IconName::Cube,
+            // Enum variants / enum itself
+            Some(lsp_types::CompletionItemKind::ENUM)
+            | Some(lsp_types::CompletionItemKind::ENUM_MEMBER) => IconName::CodeBracketsSquare,
+            // Interfaces / traits
+            Some(lsp_types::CompletionItemKind::INTERFACE) => IconName::CodeBrackets,
+            // Modules / namespaces / folders
+            Some(lsp_types::CompletionItemKind::MODULE)
+            | Some(lsp_types::CompletionItemKind::FOLDER) => IconName::FolderOpen,
+            // Struct fields / object properties
             Some(lsp_types::CompletionItemKind::FIELD)
-            | Some(lsp_types::CompletionItemKind::PROPERTY) => "🏷️",
-            Some(lsp_types::CompletionItemKind::VARIABLE)
-            | Some(lsp_types::CompletionItemKind::CONSTANT) => "💎",
-            Some(lsp_types::CompletionItemKind::KEYWORD) => "🔑",
-            Some(lsp_types::CompletionItemKind::SNIPPET) => "✂️",
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => "🔤",
-            _ => "📄",
+            | Some(lsp_types::CompletionItemKind::PROPERTY) => IconName::InputField,
+            // Local variables
+            Some(lsp_types::CompletionItemKind::VARIABLE) => IconName::Code,
+            // Constants / units / plain values
+            Some(lsp_types::CompletionItemKind::CONSTANT)
+            | Some(lsp_types::CompletionItemKind::VALUE)
+            | Some(lsp_types::CompletionItemKind::UNIT) => IconName::FxTag,
+            // Language keywords
+            Some(lsp_types::CompletionItemKind::KEYWORD) => IconName::Key,
+            // Code snippets
+            Some(lsp_types::CompletionItemKind::SNIPPET) => IconName::CodeBracketsSquare,
+            // Generic type parameters
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => IconName::Type,
+            // Colors
+            Some(lsp_types::CompletionItemKind::COLOR) => IconName::FillColor,
+            // Events
+            Some(lsp_types::CompletionItemKind::EVENT) => IconName::Flash,
+            // Operators
+            Some(lsp_types::CompletionItemKind::OPERATOR) => IconName::Fx,
+            // Files / references / plain text
+            Some(lsp_types::CompletionItemKind::FILE)
+            | Some(lsp_types::CompletionItemKind::REFERENCE)
+            | Some(lsp_types::CompletionItemKind::TEXT) => IconName::Notes,
+            // Unknown / unset
+            _ => IconName::Code,
         };
 
         let source = "LSP";
@@ -325,8 +353,8 @@ impl RenderOnce for CompletionMenuItem {
                 this.bg(cx.theme().accent)
                     .text_color(cx.theme().accent_foreground)
             })
-            // Icon
-            .child(div().child(icon))
+            // Icon — sized to match the text_xs row height
+            .child(Icon::new(icon).xsmall())
             // Label
             .child(div().child(StyledText::new(item.label.clone()).with_highlights(highlights)))
             // Detail (type info, etc.)
