@@ -153,6 +153,8 @@ pub fn render_diff_virtual(
                     let mut row = h_flex()
                         .w_full()
                         .h(px(DIFF_LINE_ROW_H))
+                        .overflow_hidden()
+                        .flex_shrink_0()
                         .font(mono_font.clone())
                         .text_size(px(13.));
                     if let Some(bg) = bg {
@@ -164,6 +166,8 @@ pub fn render_diff_virtual(
                                 .w(px(48.))
                                 .px_1()
                                 .flex_shrink_0()
+                                .whitespace_nowrap()
+                                .overflow_hidden()
                                 .text_color(muted_fg)
                                 .child(line_num_str),
                         )
@@ -178,7 +182,9 @@ pub fn render_diff_virtual(
                         .child(
                             div()
                                 .flex_1()
+                                .min_w_0()
                                 .text_color(foreground)
+                                .whitespace_nowrap()
                                 .overflow_hidden()
                                 .child(content),
                         )
