@@ -15,9 +15,16 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/stargazers"><img src="https://img.shields.io/github/stars/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=gold" alt="stars" /></a>
-  <a href="https://discord.gg/5eAKDC53SX"><img src="https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=for-the-badge&logo=discord" alt="discord" /></a>
-  <a href="https://pulsar.farbeyond.dev/docs/docs/getting-started/first-project"><img src="https://img.shields.io/badge/Docs-View%20Guides-blueviolet?style=for-the-badge" alt="docs" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/stargazers"><img src="https://img.shields.io/github/stars/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=gold" alt="GitHub Stars" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/network/members"><img src="https://img.shields.io/github/forks/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=8A2BE2" alt="Forks" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/watchers"><img src="https://img.shields.io/github/watchers/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=0099ff" alt="Watchers" /></a>
+<a href="https://discord.gg/5eAKDC53SX"><img src="https://img.shields.io/badge/Discord-Join%20Us-7289DA?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
+<a href="https://pulsar.farbeyond.dev/docs/docs/getting-started/first-project"><img src="https://img.shields.io/badge/Docs-View%20Guides-blueviolet?style=for-the-badge" alt="Documentation" /></a>
+<a href="https://githubtracker.com/Far-Beyond-Pulsar/Pulsar-Native"><img src="https://img.shields.io/badge/Stats-GitHubTracker-111111?style=for-the-badge&logo=github&logoColor=white" alt="GitHubTracker Stats" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/issues"><img src="https://img.shields.io/github/issues/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=ff4444" alt="Issues" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/pulls"><img src="https://img.shields.io/github/issues-pr/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=ffaa00" alt="Pull Requests" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/actions"><img src="https://img.shields.io/github/actions/workflow/status/Far-Beyond-Pulsar/Pulsar-Native/rust.yml?style=for-the-badge" alt="Build Status" /></a>
+<a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/commits/main"><img src="https://img.shields.io/github/last-commit/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=00C851" alt="Last Commit" /></a>
 </p>
 
 ---
