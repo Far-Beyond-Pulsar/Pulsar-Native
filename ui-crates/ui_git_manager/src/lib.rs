@@ -2,6 +2,7 @@
 //!
 //! A GitHub Desktop-like Git manager built with GPUI and the UI crate
 
+mod avatar_loader;
 mod git_operations;
 mod models;
 mod views;
@@ -9,12 +10,13 @@ mod views;
 use gpui::ClipboardItem;
 use gpui::*;
 use parking_lot::RwLock;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     ActiveTheme as _, TitleBar, VirtualListScrollHandle, h_flex,
     input::{InputEvent, InputState},
+    scroll::ScrollbarState,
     v_flex,
 };
 
@@ -107,6 +109,10 @@ pub struct GitManager {
     pub(crate) changes_rows: Vec<ChangesRow>,
     /// Scroll handle for the virtual changes list.
     pub(crate) changes_scroll: VirtualListScrollHandle,
+    /// Scrollbar state for the virtual changes list.
+    pub(crate) changes_scrollbar_state: ScrollbarState,
+    /// Avatar image cache keyed by commit email. `None` = fetch in-flight.
+    pub(crate) avatar_cache: HashMap<String, Option<Arc<gpui::RenderImage>>>,
     // History view
     selected_commit: Option<String>,
     selected_commit_files: Vec<FileChange>,
@@ -224,6 +230,8 @@ impl GitManager {
             commit_description_input,
             changes_rows: Vec::new(),
             changes_scroll: VirtualListScrollHandle::new(),
+            changes_scrollbar_state: ScrollbarState::default(),
+            avatar_cache: HashMap::new(),
             selected_commit: None,
             selected_commit_files: Vec::new(),
             selected_commit_file: None,
@@ -279,6 +287,48 @@ impl GitManager {
             }
         }
         self.changes_rows = rows;
+    }
+
+    /// Ensure the GitHub avatar for a commit author is loaded.
+    /// Uses the commit email to derive a GitHub username; falls back gracefully.
+    /// Safe to call every render — it's a no-op if the entry is already cached or in-flight.
+    pub(crate) fn ensure_avatar_loaded(
+        &mut self,
+        email: &str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.avatar_cache.contains_key(email) {
+            return;
+        }
+        let Some(username) = avatar_loader::github_username_from_email(email) else {
+            // Email is not a GitHub noreply address — insert a permanent miss so we
+            // never retry, and fall back to the initials avatar in the UI.
+            self.avatar_cache.insert(email.to_string(), None);
+            return;
+        };
+        let url = avatar_loader::avatar_url(&username);
+        // Mark as in-flight with `None` so we don't spawn a second request.
+        self.avatar_cache.insert(email.to_string(), None);
+
+        let email_key = email.to_string();
+        let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
+        std::thread::spawn(move || {
+            let result = avatar_loader::fetch_avatar(&url).ok();
+            smol::block_on(tx.send(result)).ok();
+        });
+        cx.spawn(async move |this, cx| {
+            if let Ok(maybe) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |gm, cx| {
+                        gm.avatar_cache.insert(email_key, maybe);
+                        cx.notify();
+                    })
+                    .ok();
+                })
+                .ok();
+            }
+        })
+        .detach();
     }
 
     fn switch_view(&mut self, view: GitView, cx: &mut Context<Self>) {

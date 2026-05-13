@@ -14,6 +14,7 @@ use ui::{
     h_flex,
     input::TextInput,
     menu::context_menu::ContextMenuExt as _,
+    scroll::{Scrollbar, ScrollbarAxis},
     v_flex,
 };
 
@@ -49,6 +50,7 @@ pub fn render_changes_view(
 
     let entity = cx.entity().clone();
     let scroll_handle = git_manager.changes_scroll.clone();
+    let scrollbar_state = git_manager.changes_scrollbar_state.clone();
 
     let list = v_virtual_list(entity, "git-changes-list", item_sizes, {
         move |git_manager: &mut GitManager, range: std::ops::Range<usize>, _window: &mut Window, cx: &mut Context<GitManager>| {
@@ -144,6 +146,7 @@ pub fn render_changes_view(
                         h_flex()
                             .id(row_id)
                             .px_1()
+                            .w_full()
                             .h(px(FILE_ROW_HEIGHT))
                             .rounded(radius)
                             .gap_1()
@@ -236,6 +239,18 @@ pub fn render_changes_view(
     })
     .track_scroll(&scroll_handle);
 
+    let changes_container = div()
+        .relative()
+        .flex_1()
+        .overflow_hidden()
+        .child(list)
+        .child(
+            div()
+                .absolute()
+                .inset_0()
+                .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
+        );
+
     let commit_section = v_flex()
         .px_2()
         .py_2()
@@ -274,7 +289,7 @@ pub fn render_changes_view(
             )
         })
         .when(!has_no_changes, |this| {
-            this.child(div().flex_1().overflow_hidden().child(list))
+            this.child(changes_container)
         })
         .child(commit_section)
 }

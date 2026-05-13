@@ -49,6 +49,9 @@ pub fn render_history_view(
     let mut commit_list = v_flex().id("git-history-scroll").w_full().gap_px().p_1();
 
     for commit in &commits {
+        // Ensure the avatar for this author is fetched (no-op if cached/in-flight).
+        git_manager.ensure_avatar_loaded(&commit.email, cx);
+
         let is_selected = selected_commit.as_ref() == Some(&commit.hash);
         let commit_msg = commit.message.lines().next().unwrap_or("").to_string();
         let short_hash = commit.short_hash.clone();
@@ -57,10 +60,40 @@ pub fn render_history_view(
         let author_date = format!("{} · {}", author, date_str);
         let commit_hash = commit.hash.clone();
 
-        // Avatar color — deterministic from author name
+        // Avatar color — deterministic from author name (fallback)
         let h = author_hue(&author);
         let avatar_bg = hsla(h, 0.55, 0.45, 1.0);
         let initials = author_initials(&author);
+
+        // Resolve cached avatar image (may be None if not yet fetched).
+        let cached_avatar = git_manager
+            .avatar_cache
+            .get(&commit.email)
+            .and_then(|v| v.clone());
+
+        let avatar_el: AnyElement = if let Some(arc) = cached_avatar {
+            img(gpui::ImageSource::Render(arc))
+                .w(px(28.))
+                .h(px(28.))
+                .rounded_full()
+                .flex_shrink_0()
+                .object_fit(gpui::ObjectFit::Cover)
+                .into_any_element()
+        } else {
+            h_flex()
+                .w(px(28.))
+                .h(px(28.))
+                .rounded_full()
+                .flex_shrink_0()
+                .items_center()
+                .justify_center()
+                .bg(avatar_bg)
+                .text_size(px(10.))
+                .font_weight(FontWeight::BOLD)
+                .text_color(white())
+                .child(initials)
+                .into_any_element()
+        };
 
         let bg = if is_selected {
             list_active
@@ -87,20 +120,7 @@ pub fn render_history_view(
                 this.border_l_2().border_color(list_active_border)
             })
             // Author avatar circle
-            .child(
-                h_flex()
-                    .w(px(28.))
-                    .h(px(28.))
-                    .rounded_full()
-                    .flex_shrink_0()
-                    .items_center()
-                    .justify_center()
-                    .bg(avatar_bg)
-                    .text_size(px(10.))
-                    .font_weight(FontWeight::BOLD)
-                    .text_color(white())
-                    .child(initials),
-            )
+            .child(avatar_el)
             // Message + meta
             .child(
                 v_flex()
