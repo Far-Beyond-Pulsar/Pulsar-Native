@@ -47,9 +47,18 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let range_for_refresh = range_utf16.clone();
         self.silent_replace_text = true;
         self.replace_text_in_range(range_utf16, new_text, window, cx);
         self.silent_replace_text = false;
+        // Silent edits still need to refresh completions (backspace, paste, undo/redo, etc.).
+        if !self.completion_inserting {
+            let range = range_for_refresh
+                .as_ref()
+                .map(|range_utf16| self.range_from_utf16(range_utf16))
+                .unwrap_or(self.selected_range.into());
+            self.handle_completion_trigger(&range, new_text, window, cx);
+        }
     }
 }
 
@@ -109,7 +118,10 @@ impl EntityInputHandler for InputState {
         // When Ctrl (or Cmd on macOS) is held, don't insert characters — those are shortcuts.
         let modifiers = window.modifiers();
         if modifiers.control || modifiers.platform {
-            if new_text.chars().all(|c| c.is_alphabetic() || c.is_ascii_punctuation()) {
+            if new_text
+                .chars()
+                .all(|c| c.is_alphabetic() || c.is_ascii_punctuation())
+            {
                 return;
             }
         }
@@ -133,7 +145,8 @@ impl EntityInputHandler for InputState {
             let new_end = (range.start + new_text.len()).min(self.text.len());
             let first_line = self.text.offset_to_point(range.start).row;
             let last_line = self.text.offset_to_point(new_end).row;
-            self.minimap_drag.cache
+            self.minimap_drag
+                .cache
                 .borrow_mut()
                 .mark_dirty_range(first_line, last_line);
         }

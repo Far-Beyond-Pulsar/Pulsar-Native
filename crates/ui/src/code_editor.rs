@@ -75,7 +75,11 @@ impl CodeEditor {
     /// The editor includes: virtual scrolling, syntax highlighting, line numbers,
     /// minimap, find/replace (Cmd/Ctrl+F), full keyboard shortcuts, LSP diagnostics,
     /// undo/redo, and all standard editor features.
-    pub fn new(language: impl Into<SharedString>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        language: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let language: SharedString = language.into();
 
         let input = cx.new(|cx| {
@@ -89,19 +93,17 @@ impl CodeEditor {
                 .line_number(true)
         });
 
-        let _subscriptions = vec![
-            cx.subscribe_in(
-                &input,
-                window,
-                |this: &mut CodeEditor, _, event: &InputEvent, _window, cx| {
-                    if let InputEvent::Change = event {
-                        this.is_modified = true;
-                        let content = this.input.read(cx).value().to_string();
-                        cx.emit(CodeEditorEvent::Changed { content });
-                    }
-                },
-            ),
-        ];
+        let _subscriptions = vec![cx.subscribe_in(
+            &input,
+            window,
+            |this: &mut CodeEditor, _, event: &InputEvent, _window, cx| {
+                if let InputEvent::Change = event {
+                    this.is_modified = true;
+                    let content = this.input.read(cx).value().to_string();
+                    cx.emit(CodeEditorEvent::Changed { content });
+                }
+            },
+        )];
 
         Self {
             input,
@@ -154,10 +156,7 @@ impl CodeEditor {
             let content = self.input.read(cx).value().to_string();
             std::fs::write(&path, &content)?;
             self.is_modified = false;
-            cx.emit(CodeEditorEvent::Saved {
-                path,
-                content,
-            });
+            cx.emit(CodeEditorEvent::Saved { path, content });
             cx.notify();
         }
         Ok(())

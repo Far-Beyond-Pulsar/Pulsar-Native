@@ -58,12 +58,19 @@ impl HoverPopover {
     }
 
     pub(crate) fn is_same(&self, offset: usize) -> bool {
+        // `symbol_range` is end-exclusive. Mouse hit-testing can resolve to the
+        // right-edge offset of a word (offset == end), which should still count
+        // as the same symbol for hover de-duplication.
         self.symbol_range.contains(&offset)
+            || (!self.symbol_range.is_empty() && offset == self.symbol_range.end)
     }
 
     /// Set hover data when LSP responds (before or after delay)
     pub fn set_hover(&mut self, hover: lsp_types::Hover, cx: &mut Context<Self>) {
         self.hover = Some(Rc::new(hover));
+        // Show immediately once real content arrives so hover data is never
+        // lost behind the delay task if the request resolves after motion settles.
+        self.visible = true;
         cx.notify();
     }
 

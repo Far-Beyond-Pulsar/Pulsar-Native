@@ -55,7 +55,11 @@ impl Clock {
         self.last_tick = now;
         let tick = self.tick_counter;
         self.tick_counter += 1;
-        GameTime { elapsed, delta, tick }
+        GameTime {
+            elapsed,
+            delta,
+            tick,
+        }
     }
 
     pub fn reset(&mut self) {

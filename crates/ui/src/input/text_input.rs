@@ -226,9 +226,9 @@ impl TextInput {
                     };
 
                     if is_code_editor {
-                        use ropey::LineType;
-                        use super::minimap::{Minimap, MINIMAP_WIDTH};
                         use super::editor_scrollbar::EditorScrollbar;
+                        use super::minimap::{Minimap, MINIMAP_WIDTH};
+                        use ropey::LineType;
 
                         let total_lines = state.text.len_lines(LineType::LF);
                         // scroll_size.height is the authoritative total content height.

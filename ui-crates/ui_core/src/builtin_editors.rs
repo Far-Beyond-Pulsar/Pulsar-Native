@@ -3,13 +3,32 @@
 //! This module provides a single function to register all built-in editors
 //! with the plugin manager's registries.
 
+use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
 use gpui::AppContext;
-use gpui::{App, Window};
+use gpui::{App, Entity, Global, Window};
 use plugin_editor_api::*;
 use plugin_manager::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use ui::dock::PanelView;
+
+#[derive(Clone)]
+pub struct SharedScriptEditorAnalyzer(pub Entity<RustAnalyzerManager>);
+
+impl Global for SharedScriptEditorAnalyzer {}
+
+pub fn set_shared_script_editor_analyzer(cx: &mut App, analyzer: Entity<RustAnalyzerManager>) {
+    if cx.has_global::<SharedScriptEditorAnalyzer>() {
+        cx.global_mut::<SharedScriptEditorAnalyzer>().0 = analyzer;
+    } else {
+        cx.set_global(SharedScriptEditorAnalyzer(analyzer));
+    }
+}
+
+fn get_shared_script_editor_analyzer(cx: &App) -> Option<Entity<RustAnalyzerManager>> {
+    cx.try_global::<SharedScriptEditorAnalyzer>()
+        .map(|shared| shared.0.clone())
+}
 
 // ---------------------------------------------------------------------------
 // Level Editor — built-in provider
@@ -319,8 +338,16 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let shared_analyzer = get_shared_script_editor_analyzer(cx);
         let panel = cx.new(|cx| script_editor_plugin::ScriptEditorPanel::new(window, cx));
         panel.update(cx, |editor, ecx| {
+            if let Some(analyzer) = shared_analyzer.clone() {
+                editor.set_rust_analyzer(analyzer, ecx);
+            } else {
+                tracing::warn!(
+                    "Shared Rust analyzer not available; Script Editor LSP will be limited"
+                );
+            }
             editor.open_file(file_path.clone(), window, ecx);
         });
 

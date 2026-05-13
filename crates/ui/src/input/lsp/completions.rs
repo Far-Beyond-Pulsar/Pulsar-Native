@@ -6,18 +6,11 @@ use std::{cell::RefCell, ops::Range, rc::Rc};
 
 use crate::input::{
     popovers::{CompletionMenu, ContextMenu},
-    InputState,
+    InputState, RopeExt,
 };
 
 /// A trait for providing code completions based on the current input state and context.
 pub trait CompletionProvider {
-    /// Fetches completions based on the given byte offset.
-    ///
-    /// - The `offset` is in bytes of current cursor.
-    ///
-    /// textDocument/completion
-    ///
-    /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_completion
     fn completions(
         &self,
         text: &Rope,
@@ -36,9 +29,6 @@ pub trait CompletionProvider {
         Task::ready(Ok(false))
     }
 
-    /// Determines if the completion should be triggered based on the given byte offset.
-    ///
-    /// This is called on the main thread.
     fn is_completion_trigger(
         &self,
         offset: usize,
@@ -66,33 +56,58 @@ impl InputState {
         let start = range.end;
         let new_offset = self.cursor();
 
-        // VSCode behavior: Request on EVERY character that could be part of completion
-        // Let rust-analyzer decide what to return
-        let should_trigger = provider.is_completion_trigger(start, new_text, cx);
-
-        if !should_trigger {
-            // Not a valid completion character - close menu if open
-            if let Some(ContextMenu::Completion(menu)) = self.context_menu.as_ref() {
-                if menu.read(cx).is_open() {
-                    menu.update(cx, |menu, cx| {
-                        menu.hide(cx);
-                    });
-                }
-            }
-            return;
-        }
-
-        // Get or create menu
         let existing_menu = match self.context_menu.as_ref() {
             Some(ContextMenu::Completion(menu)) => Some(menu.clone()),
             _ => None,
         };
 
-        // Determine completion context
-        let last_char = new_text.chars().last().unwrap_or(' ');
+        // Backspace / deletion (new_text is empty): only update an already-open menu.
+        // Never open a fresh menu from a deletion event.
+        let menu_is_open = existing_menu
+            .as_ref()
+            .map_or(false, |m| m.read(cx).is_open());
+        if new_text.is_empty() && !menu_is_open {
+            return;
+        }
 
-        // ALWAYS request new completions from server on every keystroke
-        // The server does all filtering, sorting, and prioritization
+        let menu = existing_menu.clone().unwrap_or_else(|| {
+            let new_menu = CompletionMenu::new(cx.entity(), window, cx);
+            self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
+            new_menu
+        });
+
+        // Build the prefix the user has typed so far (walk back from cursor to word start).
+        // word_at/word_range spans the whole word; we only want chars LEFT of the cursor.
+        let (word_start, query) = {
+            let mut q = String::new();
+            for c in self.text.chars_at(new_offset).reversed() {
+                if c.is_alphanumeric() || c == '_' {
+                    q.insert(0, c);
+                } else {
+                    break;
+                }
+            }
+            let ws = new_offset.saturating_sub(q.len());
+            (ws, q)
+        };
+        println!("[FILTER] handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}",
+            new_offset, word_start, query, self.text.len());
+        tracing::info!(
+            "🎯 handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}",
+            new_offset,
+            word_start,
+            query,
+            self.text.len()
+        );
+        // Instantly re-filter whatever items the menu already has.
+        menu.update(cx, |menu, cx| {
+            tracing::info!(
+                "📢 Calling menu.apply_query with query='{}', trigger_start={}",
+                query,
+                word_start
+            );
+            menu.apply_query(word_start, &query, cx);
+        });
 
         self.request_completions_now(
             new_offset,
@@ -100,7 +115,7 @@ impl InputState {
             new_text,
             provider,
             self.text.clone(),
-            existing_menu,
+            Some(menu),
             window,
             cx,
         );
@@ -117,87 +132,84 @@ impl InputState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Create or get the menu
         let menu = existing_menu.unwrap_or_else(|| {
             let new_menu = CompletionMenu::new(cx.entity(), window, cx);
             self.context_menu = Some(ContextMenu::Completion(new_menu.clone()));
             new_menu
         });
 
-        // Show loading state immediately (non-blocking UI)
+        // Mark as loading (keeps existing filtered items visible).
         menu.update(cx, |menu, cx| {
             menu.show_loading(new_offset, cx);
         });
 
-        // Determine trigger kind based on what was typed
-        let last_char = new_text.chars().last();
-        let (trigger_kind, trigger_char) =
-            if last_char.map_or(false, |c| matches!(c, '.' | ':' | '<' | '(')) {
-                (
-                    lsp_types::CompletionTriggerKind::TRIGGER_CHARACTER,
-                    last_char.map(|c| c.to_string()),
-                )
-            } else {
-                (lsp_types::CompletionTriggerKind::INVOKED, None)
-            };
-
         let completion_context = CompletionContext {
-            trigger_kind,
-            trigger_character: trigger_char,
+            trigger_kind: lsp_types::CompletionTriggerKind::INVOKED,
+            trigger_character: None,
         };
 
-        // Request completions from LSP server (non-blocking!)
+        let request_id = self.completion_request_id.wrapping_add(1);
+        self.completion_request_id = request_id;
+
         let provider_responses =
             provider.completions(&text, new_offset, completion_context, window, cx);
 
-        // Handle response asynchronously - UI stays responsive
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
-            let mut completions: Vec<CompletionItem> = vec![];
-
-            match provider_responses.await {
-                Ok(provider_responses) => match provider_responses {
-                    CompletionResponse::Array(items) => {
-                        tracing::info!("📦 Received {} completions (Array)", items.len());
-                        completions.extend(items);
-                    }
-                    CompletionResponse::List(list) => {
-                        tracing::info!(
-                            "📦 Received {} completions (isIncomplete: {})",
-                            list.items.len(),
-                            list.is_incomplete
-                        );
-                        completions.extend(list.items);
-                    }
-                },
-                Err(e) => {
-                    tracing::error!("❌ Error getting completions: {:?}", e);
-                    _ = menu.update(cx, |menu, cx| {
-                        menu.hide(cx);
-                    });
-                    return Ok(());
-                }
-            }
-
-            if completions.is_empty() {
-                tracing::warn!("❌ No completions - hiding menu");
-                _ = menu.update(cx, |menu, cx| {
-                    menu.hide(cx);
-                    cx.notify();
-                });
-                return Ok(());
-            }
-
-            tracing::info!("✅ Showing {} completions from server", completions.len());
+            let response = provider_responses.await;
 
             editor
                 .update_in(cx, |editor, window, cx| {
+                    if editor.completion_request_id != request_id {
+                        tracing::debug!(
+                            "Ignoring stale completion response: request_id={} current={}",
+                            request_id,
+                            editor.completion_request_id
+                        );
+                        return;
+                    }
+
                     if !editor.focus_handle.is_focused(window) {
                         return;
                     }
 
+                    let mut completions: Vec<CompletionItem> = vec![];
+
+                    match response {
+                        Ok(provider_responses) => match provider_responses {
+                            CompletionResponse::Array(items) => {
+                                tracing::info!("📦 Received {} completions (Array)", items.len());
+                                completions.extend(items);
+                            }
+                            CompletionResponse::List(list) => {
+                                tracing::info!(
+                                    "📦 Received {} completions (isIncomplete: {})",
+                                    list.items.len(),
+                                    list.is_incomplete
+                                );
+                                completions.extend(list.items);
+                            }
+                        },
+                        Err(e) => {
+                            tracing::error!("❌ Error getting completions: {:?}", e);
+                            _ = menu.update(cx, |menu, cx| {
+                                menu.hide(cx);
+                            });
+                            return;
+                        }
+                    }
+
+                    if completions.is_empty() {
+                        tracing::warn!("❌ No completions - hiding menu");
+                        _ = menu.update(cx, |menu, cx| {
+                            menu.hide(cx);
+                            cx.notify();
+                        });
+                        return;
+                    }
+
+                    tracing::info!("✅ Showing {} completions from server", completions.len());
+
                     _ = menu.update(cx, |menu, cx| {
-                        // Show completions exactly as received from rust-analyzer
-                        // Server did all filtering, sorting, and prioritization
                         menu.show(new_offset, completions, window, cx);
                     });
 

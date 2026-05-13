@@ -110,7 +110,13 @@ impl World {
 
         // Migrate: collect all component values from the old archetype row as
         // owning pointers, then push them into the new archetype.
-        self.migrate_row(entity, old_arch_id, old_row, new_arch_id, None::<fn(TypeId)>);
+        self.migrate_row(
+            entity,
+            old_arch_id,
+            old_row,
+            new_arch_id,
+            None::<fn(TypeId)>,
+        );
 
         // Push the new component T.
         self.ensure_column::<T>(new_arch_id);
@@ -120,7 +126,9 @@ impl World {
             .push(value);
 
         let new_row = (self.archetypes[new_arch_id.0 as usize].entities.len()) as u32;
-        self.archetypes[new_arch_id.0 as usize].entities.push(entity);
+        self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .push(entity);
 
         let slot = &mut self.entity_slots[entity.index() as usize];
         slot.archetype = new_arch_id;
@@ -245,9 +253,7 @@ impl World {
                 .columns
                 .contains_key(&type_id)
             {
-                let proto = self.archetypes[old_arch_id.0 as usize]
-                    .columns[&type_id]
-                    .new_empty();
+                let proto = self.archetypes[old_arch_id.0 as usize].columns[&type_id].new_empty();
                 self.archetypes[new_arch_id.0 as usize]
                     .columns
                     .insert(type_id, proto);
@@ -276,7 +282,9 @@ impl World {
         if let Some(m) = moved {
             self.entity_slots[m.index() as usize].row = old_row as u32;
         }
-        self.archetypes[new_arch_id.0 as usize].entities.push(entity);
+        self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .push(entity);
         let slot = &mut self.entity_slots[entity.index() as usize];
         slot.archetype = new_arch_id;
         slot.row = new_row;
@@ -310,9 +318,7 @@ impl World {
                 .columns
                 .contains_key(&type_id)
             {
-                let proto = self.archetypes[old_arch_id.0 as usize]
-                    .columns[&type_id]
-                    .new_empty();
+                let proto = self.archetypes[old_arch_id.0 as usize].columns[&type_id].new_empty();
                 self.archetypes[new_arch_id.0 as usize]
                     .columns
                     .insert(type_id, proto);

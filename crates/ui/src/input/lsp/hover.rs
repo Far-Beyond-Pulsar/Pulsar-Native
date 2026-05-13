@@ -41,8 +41,15 @@ impl InputState {
         // Clear any existing hover popover when moving to a new location
         self.hover_popover = None;
 
+        // Do not spam LSP for whitespace / punctuation locations.
+        let Some(symbol_range) = self.text.word_range(offset) else {
+            return;
+        };
+        if symbol_range.is_empty() {
+            return;
+        }
+
         // Create popover IMMEDIATELY (invisible, will show after delay)
-        let symbol_range = self.text.word_range(offset).unwrap_or(offset..offset);
         let hover_popover =
             HoverPopover::new(cx.entity(), symbol_range.clone(), mouse_position, cx);
         self.hover_popover = Some(hover_popover.clone());
@@ -51,6 +58,7 @@ impl InputState {
         let text = self.text.clone();
         let task = provider.hover(&text, offset, window, cx);
         let editor = cx.entity();
+        let requested_popover = hover_popover.clone();
 
         self.lsp._hover_task = cx.spawn_in(window, async move |_, cx| {
             // LSP request is already in flight, just wait for it
@@ -58,6 +66,15 @@ impl InputState {
 
             // Process the result and set hover data
             _ = editor.update(cx, |editor, cx| {
+                let is_current_popover = editor
+                    .hover_popover
+                    .as_ref()
+                    .is_some_and(|current| current == &requested_popover);
+
+                if !is_current_popover {
+                    return;
+                }
+
                 match result {
                     Some(hover) => {
                         let mut updated_range = symbol_range;
@@ -68,19 +85,16 @@ impl InputState {
                             updated_range = start..end;
                         }
 
-                        // Update the hover popover with the data
-                        if let Some(popover_entity) = &editor.hover_popover {
-                            _ = popover_entity.update(cx, |popover, cx| {
-                                popover.symbol_range = updated_range;
-                                popover.set_hover(hover, cx);
-                            });
-                        }
+                        _ = requested_popover.update(cx, |popover, cx| {
+                            popover.symbol_range = updated_range;
+                            popover.set_hover(hover, cx);
+                        });
 
                         cx.notify();
                     }
                     None => {
-                        // No hover data, remove the popover
-                        editor.hover_popover = None;
+                        // Keep the popover entity so repeated mouse-move events at the
+                        // same symbol do not continuously re-query null hover responses.
                     }
                 }
             });

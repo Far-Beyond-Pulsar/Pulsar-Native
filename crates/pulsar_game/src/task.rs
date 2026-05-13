@@ -59,17 +59,13 @@ impl TaskPool {
     }
 
     /// Spawn a future and detach it — fire-and-forget.
-    pub fn fire<T: Send + 'static>(
-        &self,
-        future: impl Future<Output = T> + Send + 'static,
-    ) {
+    pub fn fire<T: Send + 'static>(&self, future: impl Future<Output = T> + Send + 'static) {
         self.executor.spawn(future).detach();
     }
 }
 
 impl Drop for TaskPool {
     fn drop(&mut self) {
-        self.stop
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        self.stop.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 }

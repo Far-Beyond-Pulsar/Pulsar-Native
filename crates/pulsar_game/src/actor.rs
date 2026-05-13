@@ -41,11 +41,7 @@ impl ActorRegistry {
     }
 
     /// Register an actor, calling `begin_play` immediately.
-    pub fn register<A: Actor>(
-        &mut self,
-        mut actor: A,
-        world: &mut World,
-    ) -> Entity {
+    pub fn register<A: Actor>(&mut self, mut actor: A, world: &mut World) -> Entity {
         let entity = world.spawn();
         actor.begin_play(entity, world);
         self.entries.push(ActorEntry {
@@ -58,7 +54,11 @@ impl ActorRegistry {
 
     /// Deregister an actor, calling `end_play` then despawning its entity.
     pub fn deregister(&mut self, entity: Entity, world: &mut World) {
-        if let Some(entry) = self.entries.iter_mut().find(|e| e.entity == entity && e.alive) {
+        if let Some(entry) = self
+            .entries
+            .iter_mut()
+            .find(|e| e.entity == entity && e.alive)
+        {
             entry.actor.end_play(entity, world);
             entry.alive = false;
             world.despawn(entity);
