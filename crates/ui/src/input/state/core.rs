@@ -335,7 +335,8 @@ pub struct InputState {
     /// Persistent drag state for the custom minimap element.
     pub(in crate::input) minimap_drag: crate::input::minimap::MinimapState,
     /// Persistent drag state for the custom editor scrollbar element.
-    pub(in crate::input) editor_scrollbar_drag: crate::input::editor_scrollbar::EditorScrollbarState,
+    pub(in crate::input) editor_scrollbar_drag:
+        crate::input::editor_scrollbar::EditorScrollbarState,
 
     /// Popover
     pub(in crate::input) diagnostic_popover: Option<Entity<DiagnosticPopover>>,

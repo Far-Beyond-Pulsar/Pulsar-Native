@@ -5,9 +5,9 @@
 //! - Rust Analyzer integration for code intelligence
 //! - LSP completion provider for code suggestions
 
+pub mod core_project_builder;
 pub mod gizmo_interaction_controller;
 pub mod gpu_renderer;
-pub mod core_project_builder;
 pub mod lsp_completion_provider;
 pub mod path_utils;
 pub mod physics_query_service;

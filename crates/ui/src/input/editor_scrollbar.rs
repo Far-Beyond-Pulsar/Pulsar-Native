@@ -22,7 +22,9 @@ pub struct EditorScrollbarDrag {
 pub struct EditorScrollbarState(pub Rc<Cell<EditorScrollbarDrag>>);
 
 impl EditorScrollbarState {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 // ── Element ─────────────────────────────────────────────────────────────────
@@ -46,7 +48,13 @@ impl EditorScrollbar {
         drag_state: EditorScrollbarState,
         right_offset: Pixels,
     ) -> Self {
-        Self { scroll_handle, content_height, viewport_height, drag_state, right_offset }
+        Self {
+            scroll_handle,
+            content_height,
+            viewport_height,
+            drag_state,
+            right_offset,
+        }
     }
 
     fn thumb(&self, track_h: Pixels) -> (Pixels, Pixels) {
@@ -76,15 +84,21 @@ pub struct EditorScrollbarPrepaint {
 
 impl IntoElement for EditorScrollbar {
     type Element = Self;
-    fn into_element(self) -> Self { self }
+    fn into_element(self) -> Self {
+        self
+    }
 }
 
 impl Element for EditorScrollbar {
     type RequestLayoutState = ();
     type PrepaintState = EditorScrollbarPrepaint;
 
-    fn id(&self) -> Option<ElementId> { None }
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
 
     fn request_layout(
         &mut self,
@@ -117,7 +131,10 @@ impl Element for EditorScrollbar {
             size(TRACK_WIDTH - THUMB_INSET * 2.0, thumb_h),
         );
         window.insert_hitbox(bounds, HitboxBehavior::default());
-        EditorScrollbarPrepaint { bounds, thumb_bounds }
+        EditorScrollbarPrepaint {
+            bounds,
+            thumb_bounds,
+        }
     }
 
     fn paint(
@@ -164,7 +181,9 @@ impl Element for EditorScrollbar {
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseDownEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) { return; }
+                if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) {
+                    return;
+                }
                 cx.stop_propagation();
 
                 let max_scroll = (content_height - viewport_height).max(px(0.0));
@@ -196,9 +215,13 @@ impl Element for EditorScrollbar {
             let drag_state = drag_state.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseMoveEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble { return; }
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
                 let state = drag_state.0.get();
-                if !state.active { return; }
+                if !state.active {
+                    return;
+                }
                 cx.stop_propagation();
 
                 let max_scroll = (content_height - viewport_height).max(px(0.0));
@@ -223,7 +246,9 @@ impl Element for EditorScrollbar {
                 if s.active {
                     s.active = false;
                     drag_state.0.set(s);
-                    if phase == DispatchPhase::Bubble { cx.stop_propagation(); }
+                    if phase == DispatchPhase::Bubble {
+                        cx.stop_propagation();
+                    }
                 }
             }
         });

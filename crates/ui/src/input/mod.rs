@@ -1,8 +1,8 @@
 mod blink_cursor;
-pub mod editor_scrollbar;
 mod change;
 mod clear_button;
 mod cursor;
+pub mod editor_scrollbar;
 mod element;
 mod line_cache;
 mod lsp;
@@ -24,11 +24,13 @@ mod virtual_editor_utils;
 
 pub(crate) use clear_button::*;
 pub use cursor::*;
+pub use editor_scrollbar::{EditorScrollbar, EditorScrollbarDrag, EditorScrollbarState};
 pub use line_cache::{CachedLineLayout, OptimizedLineCache};
 pub use lsp::*;
 pub use mask_pattern::MaskPattern;
-pub use minimap::{Minimap, MinimapDrag, MinimapLineCache, MinimapSpan, MinimapState, MINIMAP_WIDTH};
-pub use editor_scrollbar::{EditorScrollbar, EditorScrollbarDrag, EditorScrollbarState};
+pub use minimap::{
+    Minimap, MinimapDrag, MinimapLineCache, MinimapSpan, MinimapState, MINIMAP_WIDTH,
+};
 pub use mode::TabSize;
 pub use number_input::{NumberInput, NumberInputEvent, StepAction};
 pub use otp_input::*;

@@ -82,7 +82,9 @@ fn match_score(label: &str, filter_text: &str, query_lower: &str) -> Option<i32>
 /// of successive words in `haystack` (e.g. "hcf" matches "hash_code_function").
 fn word_boundary_match(haystack: &str, needle: &str) -> bool {
     let mut nchars = needle.chars();
-    let Some(mut nc) = nchars.next() else { return true };
+    let Some(mut nc) = nchars.next() else {
+        return true;
+    };
     let mut at_word_start = true;
     for hc in haystack.chars() {
         let is_delim = hc == '_' || hc == '-' || hc == ':' || hc == '.';
@@ -166,11 +168,11 @@ impl ContextMenuDelegate {
             sort_a.cmp(sort_b)
         });
         self.items = items;
-            self.filtered_indices = (0..self.items.len()).collect();
-            self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
-            self.selected_ix = 0;
+        self.filtered_indices = (0..self.items.len()).collect();
+        self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
+        self.selected_ix = 0;
 
-            tracing::info!("📋 Set {} completions", self.items.len());
+        tracing::info!("📋 Set {} completions", self.items.len());
     }
 
     fn selected_item(&self) -> Option<&Rc<CompletionItem>> {
@@ -181,15 +183,26 @@ impl ContextMenuDelegate {
     /// Apply `query` as a case-insensitive fuzzy filter over the current items.
     /// Immediately updates `filtered_indices`, `filter_highlights`, and `selected_ix`.
     fn apply_filter(&mut self, query: &str) {
-        println!("[FILTER] apply_filter: query='{}', items.len()={}", query, self.items.len());
-        tracing::info!("🔍 apply_filter called: query='{}', items.len()={}", query, self.items.len());
+        println!(
+            "[FILTER] apply_filter: query='{}', items.len()={}",
+            query,
+            self.items.len()
+        );
+        tracing::info!(
+            "🔍 apply_filter called: query='{}', items.len()={}",
+            query,
+            self.items.len()
+        );
         self.query = SharedString::from(query.to_string());
 
         if query.is_empty() {
             self.filtered_indices = (0..self.items.len()).collect();
             self.filter_highlights = self.filtered_indices.iter().map(|_| vec![]).collect();
             self.selected_ix = 0;
-            println!("[FILTER] empty query → showing all {} items", self.items.len());
+            println!(
+                "[FILTER] empty query → showing all {} items",
+                self.items.len()
+            );
             tracing::info!("📝 Empty query: showing all {} items", self.items.len());
             return;
         }
@@ -199,7 +212,10 @@ impl ContextMenuDelegate {
         // Print first few items so we can see what the filter is working with.
         for (i, item) in self.items.iter().enumerate().take(5) {
             let ft = item.filter_text.as_deref().unwrap_or("<none>");
-            println!("[FILTER]   item[{}] label={:?} filter_text={:?}", i, item.label, ft);
+            println!(
+                "[FILTER]   item[{}] label={:?} filter_text={:?}",
+                i, item.label, ft
+            );
         }
         if self.items.len() > 5 {
             println!("[FILTER]   … {} more items", self.items.len() - 5);
@@ -213,20 +229,38 @@ impl ContextMenuDelegate {
                 let filter_text = item.filter_text.as_deref().unwrap_or(&item.label);
                 let score = match_score(&item.label, filter_text, &query_lower);
                 if ix < 5 {
-                    println!("[FILTER]   score item[{}] ({:?}) = {:?}", ix, item.label, score);
+                    println!(
+                        "[FILTER]   score item[{}] ({:?}) = {:?}",
+                        ix, item.label, score
+                    );
                 }
                 score.map(|s| (ix, s))
             })
             .collect();
 
-        println!("[FILTER] → {} / {} items matched query='{}'", scored.len(), self.items.len(), query);
-        tracing::info!("✨ After scoring: {} items match query '{}'", scored.len(), query);
+        println!(
+            "[FILTER] → {} / {} items matched query='{}'",
+            scored.len(),
+            self.items.len(),
+            query
+        );
+        tracing::info!(
+            "✨ After scoring: {} items match query '{}'",
+            scored.len(),
+            query
+        );
 
         // Higher score first, ties broken by server's sortText.
         scored.sort_by(|a, b| {
             b.1.cmp(&a.1).then_with(|| {
-                let sa = self.items[a.0].sort_text.as_ref().unwrap_or(&self.items[a.0].label);
-                let sb = self.items[b.0].sort_text.as_ref().unwrap_or(&self.items[b.0].label);
+                let sa = self.items[a.0]
+                    .sort_text
+                    .as_ref()
+                    .unwrap_or(&self.items[a.0].label);
+                let sb = self.items[b.0]
+                    .sort_text
+                    .as_ref()
+                    .unwrap_or(&self.items[b.0].label);
                 sa.cmp(sb)
             })
         });
@@ -237,8 +271,14 @@ impl ContextMenuDelegate {
             .collect();
         self.filtered_indices = scored.into_iter().map(|(ix, _)| ix).collect();
         self.selected_ix = 0;
-        println!("[FILTER] filtered_indices.len()={}", self.filtered_indices.len());
-        tracing::info!("✅ apply_filter done: filtered_indices.len()={}", self.filtered_indices.len());
+        println!(
+            "[FILTER] filtered_indices.len()={}",
+            self.filtered_indices.len()
+        );
+        tracing::info!(
+            "✅ apply_filter done: filtered_indices.len()={}",
+            self.filtered_indices.len()
+        );
     }
 }
 
@@ -293,63 +333,65 @@ impl RenderOnce for CompletionMenuItem {
 
         // Map LSP CompletionItemKind → IconName using LSP metadata on each item.
         // Icons come from assets/icons/*.svg, named by the macro's PascalCase rule.
-        let (icon, icon_color): (IconName, fn(&crate::theme::ThemeColor) -> gpui::Hsla) =
-            match item.kind {
+        let (icon, icon_color): (IconName, fn(&crate::theme::ThemeColor) -> gpui::Hsla) = match item
+            .kind
+        {
             // Functions / methods / constructors  →  purple (matches VSCode/Zed)
             Some(lsp_types::CompletionItemKind::FUNCTION)
             | Some(lsp_types::CompletionItemKind::METHOD)
-            | Some(lsp_types::CompletionItemKind::CONSTRUCTOR) =>
-                (IconName::SigmaFunction, |t| t.magenta),
+            | Some(lsp_types::CompletionItemKind::CONSTRUCTOR) => {
+                (IconName::SigmaFunction, |t| t.magenta)
+            }
             // Nominal types (struct / class)  →  cyan
             Some(lsp_types::CompletionItemKind::STRUCT)
-            | Some(lsp_types::CompletionItemKind::CLASS) =>
-                (IconName::Cube, |t| t.cyan),
+            | Some(lsp_types::CompletionItemKind::CLASS) => (IconName::Cube, |t| t.cyan),
             // Enum / enum member  →  yellow
             Some(lsp_types::CompletionItemKind::ENUM)
-            | Some(lsp_types::CompletionItemKind::ENUM_MEMBER) =>
-                (IconName::CodeBracketsSquare, |t| t.yellow),
+            | Some(lsp_types::CompletionItemKind::ENUM_MEMBER) => {
+                (IconName::CodeBracketsSquare, |t| t.yellow)
+            }
             // Interfaces / traits  →  blue
-            Some(lsp_types::CompletionItemKind::INTERFACE) =>
-                (IconName::CodeBrackets, |t| t.blue),
+            Some(lsp_types::CompletionItemKind::INTERFACE) => (IconName::CodeBrackets, |t| t.blue),
             // Modules / namespaces / folders  →  muted foreground
             Some(lsp_types::CompletionItemKind::MODULE)
-            | Some(lsp_types::CompletionItemKind::FOLDER) =>
-                (IconName::FolderOpen, |t| t.muted_foreground),
+            | Some(lsp_types::CompletionItemKind::FOLDER) => {
+                (IconName::FolderOpen, |t| t.muted_foreground)
+            }
             // Struct fields / properties  →  cyan (lighter shade)
             Some(lsp_types::CompletionItemKind::FIELD)
-            | Some(lsp_types::CompletionItemKind::PROPERTY) =>
-                (IconName::InputField, |t| t.cyan_light),
+            | Some(lsp_types::CompletionItemKind::PROPERTY) => {
+                (IconName::InputField, |t| t.cyan_light)
+            }
             // Local variables  →  blue (lighter)
-            Some(lsp_types::CompletionItemKind::VARIABLE) =>
-                (IconName::Code, |t| t.blue_light),
+            Some(lsp_types::CompletionItemKind::VARIABLE) => (IconName::Code, |t| t.blue_light),
             // Constants / values / units  →  red/orange
             Some(lsp_types::CompletionItemKind::CONSTANT)
             | Some(lsp_types::CompletionItemKind::VALUE)
-            | Some(lsp_types::CompletionItemKind::UNIT) =>
-                (IconName::FxTag, |t| t.red_light),
+            | Some(lsp_types::CompletionItemKind::UNIT) => (IconName::FxTag, |t| t.red_light),
             // Keywords  →  primary accent
-            Some(lsp_types::CompletionItemKind::KEYWORD) =>
-                (IconName::Key, |t| t.primary),
+            Some(lsp_types::CompletionItemKind::KEYWORD) => (IconName::Key, |t| t.primary),
             // Snippets  →  green
-            Some(lsp_types::CompletionItemKind::SNIPPET) =>
-                (IconName::CodeBracketsSquare, |t| t.green),
+            Some(lsp_types::CompletionItemKind::SNIPPET) => {
+                (IconName::CodeBracketsSquare, |t| t.green)
+            }
             // Generic type parameters  →  yellow (lighter)
-            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) =>
-                (IconName::Type, |t| t.yellow_light),
+            Some(lsp_types::CompletionItemKind::TYPE_PARAMETER) => {
+                (IconName::Type, |t| t.yellow_light)
+            }
             // Colors  →  magenta
-            Some(lsp_types::CompletionItemKind::COLOR) =>
-                (IconName::FillColor, |t| t.magenta_light),
+            Some(lsp_types::CompletionItemKind::COLOR) => {
+                (IconName::FillColor, |t| t.magenta_light)
+            }
             // Events  →  warning orange
-            Some(lsp_types::CompletionItemKind::EVENT) =>
-                (IconName::Flash, |t| t.warning),
+            Some(lsp_types::CompletionItemKind::EVENT) => (IconName::Flash, |t| t.warning),
             // Operators  →  red
-            Some(lsp_types::CompletionItemKind::OPERATOR) =>
-                (IconName::Fx, |t| t.red),
+            Some(lsp_types::CompletionItemKind::OPERATOR) => (IconName::Fx, |t| t.red),
             // Files / references / plain text  →  muted
             Some(lsp_types::CompletionItemKind::FILE)
             | Some(lsp_types::CompletionItemKind::REFERENCE)
-            | Some(lsp_types::CompletionItemKind::TEXT) =>
-                (IconName::Notes, |t| t.muted_foreground),
+            | Some(lsp_types::CompletionItemKind::TEXT) => {
+                (IconName::Notes, |t| t.muted_foreground)
+            }
             // Unknown / unset  →  foreground
             _ => (IconName::Code, |t| t.foreground),
         };
@@ -404,7 +446,11 @@ impl ListDelegate for ContextMenuDelegate {
 
     fn items_count(&self, _: usize, _: &gpui::App) -> usize {
         let count = self.filtered_indices.len();
-        tracing::debug!("📊 items_count: filtered_indices.len()={}, items.len()={}", count, self.items.len());
+        tracing::debug!(
+            "📊 items_count: filtered_indices.len()={}, items.len()={}",
+            count,
+            self.items.len()
+        );
         count
     }
 
@@ -416,7 +462,11 @@ impl ListDelegate for ContextMenuDelegate {
     ) -> Option<Self::Item> {
         let filtered_ix = *self.filtered_indices.get(ix.row)?;
         let item = self.items.get(filtered_ix)?;
-        let highlights = self.filter_highlights.get(ix.row).cloned().unwrap_or_default();
+        let highlights = self
+            .filter_highlights
+            .get(ix.row)
+            .cloned()
+            .unwrap_or_default();
         Some(CompletionMenuItem::new(ix.row, item.clone()).with_highlights(highlights))
     }
 
@@ -703,7 +753,11 @@ impl CompletionMenu {
         println!("[FILTER] apply_query: trigger_start={}, query='{}', menu.open={}, items_in_delegate={}",
             trigger_start, query, self.open,
             self.list.read(cx).delegate().items.len());
-        tracing::info!("🎯 CompletionMenu::apply_query called: trigger_start={}, query='{}'", trigger_start, query);
+        tracing::info!(
+            "🎯 CompletionMenu::apply_query called: trigger_start={}, query='{}'",
+            trigger_start,
+            query
+        );
         if self.trigger_start_offset.is_none() {
             self.trigger_start_offset = Some(trigger_start);
         }
@@ -711,11 +765,23 @@ impl CompletionMenu {
         self.open = true;
         let q = query.to_string();
         self.list.update(cx, |list, cx| {
-            println!("[FILTER] apply_query→list update: delegate items.len()={}", list.delegate().items.len());
-            tracing::info!("📋 Before apply_filter in list: delegate items.len()={}", list.delegate().items.len());
+            println!(
+                "[FILTER] apply_query→list update: delegate items.len()={}",
+                list.delegate().items.len()
+            );
+            tracing::info!(
+                "📋 Before apply_filter in list: delegate items.len()={}",
+                list.delegate().items.len()
+            );
             list.delegate_mut().apply_filter(&q);
-            println!("[FILTER] apply_query→after filter: filtered_indices.len()={}", list.delegate().filtered_indices.len());
-            tracing::info!("📋 After apply_filter in list: delegate filtered_indices.len()={}", list.delegate().filtered_indices.len());
+            println!(
+                "[FILTER] apply_query→after filter: filtered_indices.len()={}",
+                list.delegate().filtered_indices.len()
+            );
+            tracing::info!(
+                "📋 After apply_filter in list: delegate filtered_indices.len()={}",
+                list.delegate().filtered_indices.len()
+            );
             cx.notify();
         });
         cx.notify();
@@ -733,8 +799,12 @@ impl CompletionMenu {
         self.open = true;
         self.loading = false;
         let current_query = self.query.to_string();
-        println!("[FILTER] show: offset={}, {} new items, will filter with query='{}'",
-            offset, items.len(), current_query);
+        println!(
+            "[FILTER] show: offset={}, {} new items, will filter with query='{}'",
+            offset,
+            items.len(),
+            current_query
+        );
         self.list.update(cx, |this, cx| {
             this.delegate_mut().set_items(items);
             // Re-apply the active query so filter state survives server round-trips.

@@ -179,7 +179,12 @@ impl RustAnalyzerManager {
         }
 
         if let Ok(home) = std::env::var("HOME") {
-            candidates.push(PathBuf::from(home).join(".cargo").join("bin").join(exe_name));
+            candidates.push(
+                PathBuf::from(home)
+                    .join(".cargo")
+                    .join("bin")
+                    .join(exe_name),
+            );
         }
 
         if let Ok(user_profile) = std::env::var("USERPROFILE") {
@@ -269,10 +274,17 @@ impl RustAnalyzerManager {
         }
 
         if Self::looks_like_missing_rustup_component(&message) {
-            return Err(anyhow!("rustup proxy detected without rust-analyzer component"));
+            return Err(anyhow!(
+                "rustup proxy detected without rust-analyzer component"
+            ));
         }
 
-        let version = message.lines().next().unwrap_or_default().trim().to_string();
+        let version = message
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .trim()
+            .to_string();
         if version.is_empty() {
             return Err(anyhow!("could not determine rust-analyzer version"));
         }
@@ -378,7 +390,10 @@ impl RustAnalyzerManager {
             {
                 Ok(output) => output,
                 Err(e) => {
-                    errors.push(format!("{:?}: failed to locate rust-analyzer: {}", rustup_cmd, e));
+                    errors.push(format!(
+                        "{:?}: failed to locate rust-analyzer: {}",
+                        rustup_cmd, e
+                    ));
                     continue;
                 }
             };
@@ -392,12 +407,17 @@ impl RustAnalyzerManager {
                 continue;
             }
 
-            let path_str = String::from_utf8_lossy(&which_output.stdout).trim().to_string();
+            let path_str = String::from_utf8_lossy(&which_output.stdout)
+                .trim()
+                .to_string();
             let path = PathBuf::from(path_str);
             let version = match Self::verify_rust_analyzer_executable(&path) {
                 Ok(version) => version,
                 Err(e) => {
-                    errors.push(format!("{:?}: installed binary verification failed: {}", rustup_cmd, e));
+                    errors.push(format!(
+                        "{:?}: installed binary verification failed: {}",
+                        rustup_cmd, e
+                    ));
                     continue;
                 }
             };
@@ -655,7 +675,10 @@ impl RustAnalyzerManager {
             tracing::warn!("⚠️  rust-analyzer candidate failed validation: {}", e);
             tracing::debug!("   Attempting to install rust-analyzer...");
             active_analyzer_path = Self::install_rust_analyzer_to_deps()?;
-            tracing::debug!("   Using installed rust-analyzer: {:?}", active_analyzer_path);
+            tracing::debug!(
+                "   Using installed rust-analyzer: {:?}",
+                active_analyzer_path
+            );
         }
 
         let spawn_result = Command::new(&active_analyzer_path)
@@ -763,7 +786,7 @@ impl RustAnalyzerManager {
                                         if msg.get("error").is_some() {
                                             println!("[LSP ANALYZER] Initialize response contains an error!");
                                             let _ = progress_tx_stdout.send(ProgressUpdate::Error(
-                                                format!("Initialize error: {:?}", msg.get("error"))
+                                                format!("Initialize error: {:?}", msg.get("error")),
                                             ));
                                         } else if msg.get("result").is_some() {
                                             println!("[LSP ANALYZER] Initialize succeeded, server is ready");
@@ -817,7 +840,10 @@ impl RustAnalyzerManager {
             format!("file://{}", workspace_str)
         };
 
-        println!("[LSP ANALYZER] Sending initialize with workspace URI: {}", uri);
+        println!(
+            "[LSP ANALYZER] Sending initialize with workspace URI: {}",
+            uri
+        );
 
         let mut req_id = request_id_arc
             .lock()
@@ -1006,7 +1032,9 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            println!("[LSP ANALYZER] Initialize request sent, now sending initialized notification");
+            println!(
+                "[LSP ANALYZER] Initialize request sent, now sending initialized notification"
+            );
 
             let initialized_notification = json!({
                 "jsonrpc": "2.0",
@@ -1386,7 +1414,10 @@ impl RustAnalyzerManager {
     /// Per LSP spec, server must complete initialize handshake before accepting document operations.
     /// We know this is complete once we transition to Indexing status (which happens after initialize response).
     pub fn is_initialized(&self) -> bool {
-        matches!(self.status, AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Ready)
+        matches!(
+            self.status,
+            AnalyzerStatus::Indexing { .. } | AnalyzerStatus::Ready
+        )
     }
 
     /// Send didOpen notification for a file
@@ -1405,16 +1436,20 @@ impl RustAnalyzerManager {
             );
             return Err(anyhow!("Analyzer not yet initialized"));
         }
-        
+
         if !self.is_running() {
             println!("[LSP ANALYZER] did_open_file called but analyzer not running");
             return Err(anyhow!("Analyzer not running"));
         }
 
         let uri = self.path_to_uri(file_path);
-        println!("[LSP ANALYZER] did_open_file: path={:?} uri={} content_len={}", 
-            file_path, uri, content.len());
-        
+        println!(
+            "[LSP ANALYZER] did_open_file: path={:?} uri={} content_len={}",
+            file_path,
+            uri,
+            content.len()
+        );
+
         let notification = json!({
             "jsonrpc": "2.0",
             "method": "textDocument/didOpen",
@@ -1511,7 +1546,7 @@ impl RustAnalyzerManager {
                 println!("[LSP ANALYZER] Sending didChange notification");
             }
         }
-        
+
         let mut stdin_lock = self
             .stdin
             .lock()
@@ -1563,8 +1598,11 @@ impl RustAnalyzerManager {
         });
 
         if method == "textDocument/hover" {
-            println!("[LSP ANALYZER] sending hover request: id={} params={}", id, 
-                serde_json::to_string(&params).unwrap_or_default());
+            println!(
+                "[LSP ANALYZER] sending hover request: id={} params={}",
+                id,
+                serde_json::to_string(&params).unwrap_or_default()
+            );
         }
 
         let mut stdin_lock = self

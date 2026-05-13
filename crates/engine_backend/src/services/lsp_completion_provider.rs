@@ -47,34 +47,43 @@ impl GlobalRustAnalyzerCompletionProvider {
         super::path_utils::path_to_uri(&self.file_path)
     }
 
-    fn ensure_document_open_with_ra(
-        &self,
-        text: &ropey::Rope,
-        cx: &mut App,
-    ) {
-        println!("[LSP SYNC] ensure_document_open_with_ra called, did_open_sent={}", 
-            self.did_open_sent.load(Ordering::Relaxed));
+    fn ensure_document_open_with_ra(&self, text: &ropey::Rope, cx: &mut App) {
+        println!(
+            "[LSP SYNC] ensure_document_open_with_ra called, did_open_sent={}",
+            self.did_open_sent.load(Ordering::Relaxed)
+        );
         println!("[LSP SYNC] file_path={:?}", self.file_path);
         println!("[LSP SYNC] workspace_root={:?}", self.workspace_root);
-            
+
         if self.did_open_sent.load(Ordering::Relaxed) {
-            println!("[LSP SYNC] early return: didOpen already sent for {:?}", self.file_path.file_name());
+            println!(
+                "[LSP SYNC] early return: didOpen already sent for {:?}",
+                self.file_path.file_name()
+            );
             return;
         }
 
-        println!("[LSP SYNC] about to call analyzer.update for {:?}", self.file_path.file_name());
-        
+        println!(
+            "[LSP SYNC] about to call analyzer.update for {:?}",
+            self.file_path.file_name()
+        );
+
         let content = text.to_string();
         let path = self.file_path.clone();
         let sent = self.did_open_sent.clone();
-        
+
         println!("[LSP SYNC] content length: {} bytes", content.len());
-        println!("[LSP SYNC] content preview (first 100 chars): {:?}", 
-            content.chars().take(100).collect::<String>());
+        println!(
+            "[LSP SYNC] content preview (first 100 chars): {:?}",
+            content.chars().take(100).collect::<String>()
+        );
 
         let result = self.analyzer.update(cx, move |analyzer, _| {
-            println!("[LSP SYNC] INSIDE closure: analyzer.update closure executing for {:?}", path.file_name());
-            
+            println!(
+                "[LSP SYNC] INSIDE closure: analyzer.update closure executing for {:?}",
+                path.file_name()
+            );
+
             if sent.load(Ordering::Relaxed) {
                 println!("[LSP SYNC] double-check: sent flag already true, returning");
                 return;
@@ -82,10 +91,7 @@ impl GlobalRustAnalyzerCompletionProvider {
 
             match analyzer.did_open_file(&path, &content, "rust") {
                 Ok(()) => {
-                    println!(
-                        "[LSP SYNC] didOpen succeeded for {:?}",
-                        path.file_name()
-                    );
+                    println!("[LSP SYNC] didOpen succeeded for {:?}", path.file_name());
                     // Only mark as sent if didOpen actually succeeded
                     sent.store(true, Ordering::Relaxed);
                 }
@@ -99,7 +105,7 @@ impl GlobalRustAnalyzerCompletionProvider {
                 }
             }
         });
-        
+
         println!("[LSP SYNC] analyzer.update returned: {:?}", result);
     }
 }
@@ -116,8 +122,13 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let status = self.analyzer.read(cx).status().clone();
         let is_ready = self.analyzer.read(cx).is_running();
-        println!("[LSP COMPLETION] file={:?} is_running={} status={:?} offset={}",
-            self.file_path.file_name(), is_ready, status, offset);
+        println!(
+            "[LSP COMPLETION] file={:?} is_running={} status={:?} offset={}",
+            self.file_path.file_name(),
+            is_ready,
+            status,
+            offset
+        );
         if !is_ready {
             println!("[LSP COMPLETION] early-exit: analyzer not running");
             return Task::ready(Ok(lsp_types::CompletionResponse::Array(vec![])));
@@ -137,14 +148,21 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                 if let Err(e) = analyzer.did_change_file(&path, &content, version) {
                     println!("[LSP SYNC] didChange failed: {}", e);
                 } else {
-                    println!("[LSP SYNC] didChange sent version={} for {:?}", version, path.file_name());
+                    println!(
+                        "[LSP SYNC] didChange sent version={} for {:?}",
+                        version,
+                        path.file_name()
+                    );
                 }
             });
         }
 
         // Clone only what we need - DO NOT convert rope to string here (blocks UI!)
         let uri = self.path_to_uri();
-        println!("[LSP COMPLETION] sending textDocument/completion for uri={}", uri);
+        println!(
+            "[LSP COMPLETION] sending textDocument/completion for uri={}",
+            uri
+        );
         let _file_path = self.file_path.clone();
         let analyzer = self.analyzer.clone();
         let text_clone = text.clone(); // Rope clone is cheap (it's a rope, not a copy)
@@ -287,7 +305,10 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
         // VSCode behavior: Trigger on almost every keystroke to let rust-analyzer decide
         // rust-analyzer is smart enough to return empty results when appropriate
 
-        println!("[LSP TRIGGER] is_completion_trigger called new_text={:?}", new_text);
+        println!(
+            "[LSP TRIGGER] is_completion_trigger called new_text={:?}",
+            new_text
+        );
         if new_text.is_empty() {
             // Explicit/manual completion invocation paths pass empty text.
             return true;
@@ -454,8 +475,13 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         // Check if analyzer is ready (fast check)
         let is_ready = self.analyzer.read(cx).is_running();
         let status = self.analyzer.read(cx).status().clone();
-        println!("[LSP HOVER] file={:?} is_running={} status={:?} offset={}",
-            self.file_path.file_name(), is_ready, status, offset);
+        println!(
+            "[LSP HOVER] file={:?} is_running={} status={:?} offset={}",
+            self.file_path.file_name(),
+            is_ready,
+            status,
+            offset
+        );
         if !is_ready {
             println!("[LSP HOVER] early-exit: analyzer not running");
             tracing::debug!("⚠️  rust-analyzer is not running, cannot get hover info");
@@ -483,8 +509,10 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         }
 
         println!("[LSP HOVER] URI being used: {}", uri);
-        println!("[LSP HOVER] sending textDocument/hover uri={} line={} char={} word={:?}",
-            uri, position.line, position.character, word);
+        println!(
+            "[LSP HOVER] sending textDocument/hover uri={} line={} char={} word={:?}",
+            uri, position.line, position.character, word
+        );
 
         // Prepare the request parameters
         let params = json!({
@@ -503,7 +531,10 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
             .read(cx)
             .send_request_async("textDocument/hover", params)
         {
-            Ok(rx) => { println!("[LSP HOVER] request sent, awaiting response"); rx }
+            Ok(rx) => {
+                println!("[LSP HOVER] request sent, awaiting response");
+                rx
+            }
             Err(e) => {
                 println!("[LSP HOVER] send_request_async failed: {}", e);
                 tracing::error!("⚠️  Failed to send hover request: {}", e);
@@ -516,7 +547,10 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         executor.spawn(async move {
             // Wait for response
             let response = match response_rx.recv_async().await {
-                Ok(resp) => { println!("[LSP HOVER] got response: {:?}", resp); resp }
+                Ok(resp) => {
+                    println!("[LSP HOVER] got response: {:?}", resp);
+                    resp
+                }
                 Err(e) => {
                     println!("[LSP HOVER] recv failed: {}", e);
                     tracing::error!("⚠️  Failed to receive hover response: {}", e);
@@ -540,7 +574,10 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
 
                 // Try to parse as Hover
                 if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result.clone()) {
-                    println!("[LSP HOVER] parsed hover successfully: {:?}", hover.contents);
+                    println!(
+                        "[LSP HOVER] parsed hover successfully: {:?}",
+                        hover.contents
+                    );
                     return Ok(Some(hover));
                 }
 

@@ -43,7 +43,10 @@ pub struct MinimapLineCache {
 
 impl MinimapLineCache {
     fn new() -> Self {
-        Self { lines: Vec::new(), cached_total_lines: 0 }
+        Self {
+            lines: Vec::new(),
+            cached_total_lines: 0,
+        }
     }
 
     /// Resize to match the current document. New slots start dirty (None).
@@ -106,7 +109,9 @@ impl Clone for MinimapState {
 }
 
 impl MinimapState {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 }
 
 // ── Element ───────────────────────────────────────────────────────────────────
@@ -152,15 +157,21 @@ pub struct MinimapPrepaint {
 
 impl IntoElement for Minimap {
     type Element = Self;
-    fn into_element(self) -> Self { self }
+    fn into_element(self) -> Self {
+        self
+    }
 }
 
 impl Element for Minimap {
     type RequestLayoutState = ();
     type PrepaintState = MinimapPrepaint;
 
-    fn id(&self) -> Option<ElementId> { None }
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
 
     fn request_layout(
         &mut self,
@@ -203,7 +214,9 @@ impl Element for Minimap {
     ) {
         let bounds = prepaint.bounds;
         let total_lines = self.total_lines;
-        if total_lines == 0 || bounds.size.height < px(1.0) { return; }
+        if total_lines == 0 || bounds.size.height < px(1.0) {
+            return;
+        }
 
         let container_h = bounds.size.height;
 
@@ -244,11 +257,12 @@ impl Element for Minimap {
 
         // Borrow the highlighter read-only (try_borrow so we never panic).
         // We hold it for the loop but drop before the closure section.
-        let highlighter_guard =
-            self.highlighter.as_ref().and_then(|rc| rc.try_borrow().ok());
-        let highlighter: Option<&SyntaxHighlighter> = highlighter_guard
+        let highlighter_guard = self
+            .highlighter
             .as_ref()
-            .and_then(|g| g.as_ref());
+            .and_then(|rc| rc.try_borrow().ok());
+        let highlighter: Option<&SyntaxHighlighter> =
+            highlighter_guard.as_ref().and_then(|g| g.as_ref());
 
         {
             let mut cache = self.drag_state.cache.borrow_mut();
@@ -257,10 +271,11 @@ impl Element for Minimap {
             use crate::input::RopeExt as _;
 
             for line_idx in minimap_first_line..last_minimap_line {
-                if line_idx >= text.len_lines(LineType::LF) { break; }
+                if line_idx >= text.len_lines(LineType::LF) {
+                    break;
+                }
 
-                let line_y = bounds.origin.y
-                    + px((line_idx - minimap_first_line) as f32 * LINE_PX);
+                let line_y = bounds.origin.y + px((line_idx - minimap_first_line) as f32 * LINE_PX);
 
                 // Cache miss → compute and store.
                 if cache.lines[line_idx].is_none() {
@@ -286,14 +301,11 @@ impl Element for Minimap {
 
         // ── Viewport indicator ────────────────────────────────────────────
 
-        let indicator_top_line =
-            editor_first_line.saturating_sub(minimap_first_line);
-        let indicator_top =
-            bounds.origin.y + px(indicator_top_line as f32 * LINE_PX);
+        let indicator_top_line = editor_first_line.saturating_sub(minimap_first_line);
+        let indicator_top = bounds.origin.y + px(indicator_top_line as f32 * LINE_PX);
+        let indicator_h = px(editor_visible_lines as f32 * LINE_PX).max(px(8.0));
         let indicator_h =
-            px(editor_visible_lines as f32 * LINE_PX).max(px(8.0));
-        let indicator_h = indicator_h
-            .min(container_h - (indicator_top - bounds.origin.y).max(px(0.0)));
+            indicator_h.min(container_h - (indicator_top - bounds.origin.y).max(px(0.0)));
 
         if indicator_h > px(0.0) {
             window.paint_quad(PaintQuad {
@@ -323,21 +335,17 @@ impl Element for Minimap {
             let drag = drag.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseDownEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble
-                    || !bounds.contains(&event.position)
-                {
+                if phase != DispatchPhase::Bubble || !bounds.contains(&event.position) {
                     return;
                 }
                 cx.stop_propagation();
 
                 let click_frac =
-                    f32::from(event.position.y - bounds.origin.y)
-                        / f32::from(container_h).max(1.0);
-                let target_line = minimap_first_line as f32
-                    + click_frac * minimap_visible_lines as f32;
+                    f32::from(event.position.y - bounds.origin.y) / f32::from(container_h).max(1.0);
+                let target_line =
+                    minimap_first_line as f32 + click_frac * minimap_visible_lines as f32;
                 let new_y = if max_scroll > px(0.0) {
-                    -(max_scroll
-                        * (target_line / total_lines as f32).min(1.0))
+                    -(max_scroll * (target_line / total_lines as f32).min(1.0))
                 } else {
                     px(0.0)
                 };
@@ -357,15 +365,17 @@ impl Element for Minimap {
             let drag = drag.clone();
             let scroll_handle = scroll_handle.clone();
             move |event: &MouseMoveEvent, phase, _window, cx| {
-                if phase != DispatchPhase::Bubble { return; }
+                if phase != DispatchPhase::Bubble {
+                    return;
+                }
                 let state = drag.get();
-                if !state.active { return; }
+                if !state.active {
+                    return;
+                }
                 cx.stop_propagation();
 
-                let delta_px =
-                    f32::from(event.position.y) - state.start_y;
-                let lines_per_px =
-                    total_lines as f32 / minimap_visible_lines.max(1) as f32;
+                let delta_px = f32::from(event.position.y) - state.start_y;
+                let lines_per_px = total_lines as f32 / minimap_visible_lines.max(1) as f32;
                 let delta_scroll = editor_lh * (delta_px * lines_per_px);
 
                 let new_y = px(state.start_offset_y) - delta_scroll;
@@ -402,7 +412,9 @@ fn compute_line_spans(
     default_fg: Hsla,
 ) -> Vec<MinimapSpan> {
     let line_len = line_str.len();
-    if line_len == 0 { return Vec::new(); }
+    if line_len == 0 {
+        return Vec::new();
+    }
 
     // Get syntax-coloured byte ranges for this line.
     let style_spans: Vec<(std::ops::Range<usize>, Hsla)> = if let Some(h) = highlighter {
@@ -424,10 +436,7 @@ fn compute_line_spans(
 
 /// Convert byte-range style spans into character-column `MinimapSpan` runs,
 /// merging consecutive non-whitespace characters of the same colour.
-fn build_spans(
-    line: &str,
-    style_spans: &[(std::ops::Range<usize>, Hsla)],
-) -> Vec<MinimapSpan> {
+fn build_spans(line: &str, style_spans: &[(std::ops::Range<usize>, Hsla)]) -> Vec<MinimapSpan> {
     let mut result: Vec<MinimapSpan> = Vec::new();
 
     // Active run state
@@ -449,11 +458,16 @@ fn build_spans(
             }
         }
         // Default: use the last span's colour, or transparent.
-        style_spans.last().map(|(_, c)| *c).unwrap_or(Hsla::default())
+        style_spans
+            .last()
+            .map(|(_, c)| *c)
+            .unwrap_or(Hsla::default())
     };
 
     for (char_idx, (byte_off, ch)) in line.char_indices().enumerate() {
-        if char_idx > 800 { break; } // hard cap per line for the minimap
+        if char_idx > 800 {
+            break;
+        } // hard cap per line for the minimap
 
         if ch.is_whitespace() {
             if in_run {
@@ -491,20 +505,19 @@ fn build_spans(
 
 /// Paint pre-computed spans — zero allocation, just quads.
 #[inline]
-fn paint_spans(
-    window: &mut Window,
-    spans: &[MinimapSpan],
-    y: Pixels,
-    origin_x: Pixels,
-) {
+fn paint_spans(window: &mut Window, spans: &[MinimapSpan], y: Pixels, origin_x: Pixels) {
     let left = origin_x + PAD_X;
     let right = origin_x + MINIMAP_WIDTH - PAD_X;
 
     for span in spans {
         let x = left + px(f32::from(span.col) * CHAR_PX);
-        if x >= right { break; }
+        if x >= right {
+            break;
+        }
         let w = (px(f32::from(span.len) * CHAR_PX)).min(right - x);
-        if w <= px(0.0) { break; }
+        if w <= px(0.0) {
+            break;
+        }
 
         window.paint_quad(fill(
             Bounds::new(point(x, y), size(w, px(LINE_PX))),

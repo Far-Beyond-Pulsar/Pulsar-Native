@@ -34,8 +34,7 @@ impl BuildCoreButton {
             .tooltip("Compile all blueprints and generate a runnable Pulsar game crate")
             .when(is_playing, |b: Button| b.disabled(true))
             .on_click(move |_, window, cx| {
-                let Some(project_root) = engine_state::get_project_path().map(PathBuf::from)
-                else {
+                let Some(project_root) = engine_state::get_project_path().map(PathBuf::from) else {
                     window.push_notification(
                         Notification::warning("Build Core")
                             .message("No project is open — open a project first."),
@@ -58,19 +57,17 @@ impl BuildCoreButton {
                 let window_handle = window.window_handle();
                 cx.spawn(async move |async_app: &mut AsyncApp| {
                     if let Ok(result) = rx.recv().await {
-                        let _ = async_app.update_window(window_handle, |_, window, cx| {
-                            match result {
+                        let _ =
+                            async_app.update_window(window_handle, |_, window, cx| match result {
                                 Ok(_) => window.push_notification(
-                                    Notification::success("Build Core")
-                                        .message("Build succeeded."),
+                                    Notification::success("Build Core").message("Build succeeded."),
                                     cx,
                                 ),
                                 Err(msg) => window.push_notification(
                                     Notification::error("Build Core").message(msg),
                                     cx,
                                 ),
-                            }
-                        });
+                            });
                     }
                 })
                 .detach();

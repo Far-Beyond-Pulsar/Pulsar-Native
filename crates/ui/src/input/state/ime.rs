@@ -118,7 +118,10 @@ impl EntityInputHandler for InputState {
         // When Ctrl (or Cmd on macOS) is held, don't insert characters — those are shortcuts.
         let modifiers = window.modifiers();
         if modifiers.control || modifiers.platform {
-            if new_text.chars().all(|c| c.is_alphabetic() || c.is_ascii_punctuation()) {
+            if new_text
+                .chars()
+                .all(|c| c.is_alphabetic() || c.is_ascii_punctuation())
+            {
                 return;
             }
         }
@@ -142,7 +145,8 @@ impl EntityInputHandler for InputState {
             let new_end = (range.start + new_text.len()).min(self.text.len());
             let first_line = self.text.offset_to_point(range.start).row;
             let last_line = self.text.offset_to_point(new_end).row;
-            self.minimap_drag.cache
+            self.minimap_drag
+                .cache
                 .borrow_mut()
                 .mark_dirty_range(first_line, last_line);
         }

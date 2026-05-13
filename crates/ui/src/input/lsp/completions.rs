@@ -63,7 +63,9 @@ impl InputState {
 
         // Backspace / deletion (new_text is empty): only update an already-open menu.
         // Never open a fresh menu from a deletion event.
-        let menu_is_open = existing_menu.as_ref().map_or(false, |m| m.read(cx).is_open());
+        let menu_is_open = existing_menu
+            .as_ref()
+            .map_or(false, |m| m.read(cx).is_open());
         if new_text.is_empty() && !menu_is_open {
             return;
         }
@@ -90,10 +92,20 @@ impl InputState {
         };
         println!("[FILTER] handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}",
             new_offset, word_start, query, self.text.len());
-        tracing::info!("🎯 handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}", new_offset, word_start, query, self.text.len());
+        tracing::info!(
+            "🎯 handle_completion_trigger: cursor={}, word_start={}, query='{}', text.len()={}",
+            new_offset,
+            word_start,
+            query,
+            self.text.len()
+        );
         // Instantly re-filter whatever items the menu already has.
         menu.update(cx, |menu, cx| {
-            tracing::info!("📢 Calling menu.apply_query with query='{}', trigger_start={}", query, word_start);
+            tracing::info!(
+                "📢 Calling menu.apply_query with query='{}', trigger_start={}",
+                query,
+                word_start
+            );
             menu.apply_query(word_start, &query, cx);
         });
 

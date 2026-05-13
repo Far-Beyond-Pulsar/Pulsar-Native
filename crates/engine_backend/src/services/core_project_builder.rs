@@ -1,15 +1,25 @@
 use std::path::Path;
 
-use engine_state::{ProjectSettings, register_default_settings};
+use engine_state::{register_default_settings, ProjectSettings};
 
-fn settings_string(settings: Option<&ProjectSettings>, owner: &str, key: &str, default: &str) -> String {
+fn settings_string(
+    settings: Option<&ProjectSettings>,
+    owner: &str,
+    key: &str,
+    default: &str,
+) -> String {
     settings
         .and_then(|s| s.get(owner, key))
         .and_then(|v| v.as_str().ok().map(str::to_string))
         .unwrap_or_else(|| default.to_string())
 }
 
-fn settings_bool(settings: Option<&ProjectSettings>, owner: &str, key: &str, default: bool) -> bool {
+fn settings_bool(
+    settings: Option<&ProjectSettings>,
+    owner: &str,
+    key: &str,
+    default: bool,
+) -> bool {
     settings
         .and_then(|s| s.get(owner, key))
         .and_then(|v| v.as_bool().ok())
@@ -90,13 +100,19 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     ];
 
     if !description.is_empty() {
-        package_lines.push(format!("description = \"{}\"", description.replace('"', "\\\"")));
+        package_lines.push(format!(
+            "description = \"{}\"",
+            description.replace('"', "\\\"")
+        ));
     }
     if !author.is_empty() {
         package_lines.push(format!("authors = [\"{}\"]", author.replace('"', "\\\"")));
     }
     if !selected_license.is_empty() {
-        package_lines.push(format!("license = \"{}\"", selected_license.replace('"', "\\\"")));
+        package_lines.push(format!(
+            "license = \"{}\"",
+            selected_license.replace('"', "\\\"")
+        ));
     }
 
     let profile_opt = if optimize { 3 } else { 0 };

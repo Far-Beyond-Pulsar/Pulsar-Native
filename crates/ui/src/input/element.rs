@@ -1382,13 +1382,16 @@ impl Element for TextElement {
                             active_segments[level] = Some(offset_y);
                         }
                     } else if let Some(start_y) = active_segments[level].take() {
-                        let x_offset =
-                            prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
+                        let x_offset = prepaint.last_layout.line_number_width
+                            + (tab_pixel_width * (level + 1) as f32);
                         let guide_x = origin.x + x_offset;
                         let guide_h = offset_y - start_y;
                         if guide_h > px(0.0) {
                             window.paint_quad(fill(
-                                Bounds::new(point(guide_x, origin.y + start_y), size(px(1.0), guide_h)),
+                                Bounds::new(
+                                    point(guide_x, origin.y + start_y),
+                                    size(px(1.0), guide_h),
+                                ),
                                 indent_guide_color,
                             ));
                         }
@@ -1400,8 +1403,8 @@ impl Element for TextElement {
 
             for (level, maybe_start_y) in active_segments.into_iter().enumerate() {
                 if let Some(start_y) = maybe_start_y {
-                    let x_offset =
-                        prepaint.last_layout.line_number_width + (tab_pixel_width * (level + 1) as f32);
+                    let x_offset = prepaint.last_layout.line_number_width
+                        + (tab_pixel_width * (level + 1) as f32);
                     let guide_x = origin.x + x_offset;
                     let guide_h = offset_y - start_y;
                     if guide_h > px(0.0) {

@@ -3,9 +3,15 @@ mod ecs {
     use crate::prelude::*;
 
     #[derive(Debug, PartialEq)]
-    struct Pos { x: f32, y: f32 }
+    struct Pos {
+        x: f32,
+        y: f32,
+    }
     #[derive(Debug, PartialEq)]
-    struct Vel { dx: f32, dy: f32 }
+    struct Vel {
+        dx: f32,
+        dy: f32,
+    }
     #[derive(Debug, PartialEq)]
     struct Health(u32);
 
@@ -111,9 +117,7 @@ mod actors {
             .actors
             .register(Counter(log.clone()), &mut tick_loop.world);
         tick_loop.tick_once();
-        tick_loop
-            .actors
-            .deregister(entity, &mut tick_loop.world);
+        tick_loop.actors.deregister(entity, &mut tick_loop.world);
         let events = log.lock().unwrap().clone();
         assert_eq!(events, vec!["begin", "tick", "end"]);
     }
