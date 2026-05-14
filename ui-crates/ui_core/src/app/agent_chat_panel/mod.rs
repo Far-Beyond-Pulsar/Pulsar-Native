@@ -380,7 +380,7 @@ impl AgentChatPanel {
             pending_custom_provider_step: None,
             wip_providers,
             provider_registry,
-            tool_registry: ToolRegistry::with_default_tools(),
+            tool_registry: agent_chat_tools::build_default_registry(),
             plugin_bridge,
             provider_tokens: HashMap::new(),
             pending_auth_provider: None,

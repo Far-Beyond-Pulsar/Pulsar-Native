@@ -88,7 +88,7 @@ impl AgentChatPanel {
     }
 
     pub(super) fn default_system_message(tool_registry: &ToolRegistry) -> ChatMessage {
-        let tool_docs = tool_registry.system_prompt_tool_docs();
+        let tool_docs = tool_registry.system_prompt_section();
         let content = format!(
             "You are an AI assistant integrated into Pulsar, a software development environment.\n\
 Use your tools whenever they help answer the user's question.\n\

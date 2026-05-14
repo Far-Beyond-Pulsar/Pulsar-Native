@@ -356,60 +356,6 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
-// File Manager Tools — built-in provider (AI tools only)
-// ---------------------------------------------------------------------------
-
-/// Exposes file-manager AI tools via the built-in provider path.
-pub struct FileManagerBuiltinProvider;
-
-impl BuiltinEditorProvider for FileManagerBuiltinProvider {
-    fn provider_id(&self) -> &str {
-        "com.pulsar.file-manager"
-    }
-
-    fn file_types(&self) -> Vec<FileTypeDefinition> {
-        Vec::new()
-    }
-
-    fn editors(&self) -> Vec<EditorMetadata> {
-        Vec::new()
-    }
-
-    fn can_handle(&self, _editor_id: &EditorId) -> bool {
-        false
-    }
-
-    fn ai_tools(&self) -> Vec<AiToolDefinition> {
-        ui_file_manager::ai_tools::ai_tools()
-    }
-
-    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
-        ui_file_manager::ai_tools::capabilities_for_file(file_path)
-    }
-
-    fn execute_ai_tool(
-        &self,
-        file_path: &Path,
-        tool_name: &str,
-        tool_args: JsonValue,
-    ) -> Result<JsonValue, PluginError> {
-        ui_file_manager::ai_tools::execute_ai_tool(file_path, tool_name, tool_args)
-    }
-
-    fn create_editor(
-        &self,
-        _file_path: PathBuf,
-        _editor_context: &EditorContext,
-        _window: &mut Window,
-        _cx: &mut App,
-    ) -> Result<Arc<dyn PanelView>, PluginError> {
-        Err(PluginError::EditorNotFound {
-            editor_id: EditorId::new("file-manager-tools"),
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -429,8 +375,6 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
 
-    // File manager AI tools provider (no editor surface)
-    registry.register_provider(Arc::new(FileManagerBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

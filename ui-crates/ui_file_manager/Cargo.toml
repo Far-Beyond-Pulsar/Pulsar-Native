@@ -21,8 +21,6 @@ tracing.workspace = true
 
 # Plugin system
 plugin_editor_api = { path = "../../crates/plugin_editor_api" }
-plugin_ai_tools = { path = "../../crates/plugin_ai_tools" }
-plugin_ai_macro = { path = "../../crates/plugin_ai_macro" }
 
 # Utilities
 anyhow = "1.0"

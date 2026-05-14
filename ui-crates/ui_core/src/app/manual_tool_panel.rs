@@ -1,4 +1,4 @@
-use agent_chat_tools::{ToolContext, ToolRegistry};
+use agent_chat_tools::ToolRegistry;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     div, px, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle, Focusable,
@@ -92,7 +92,7 @@ pub struct ManualToolPanel {
 
 impl ManualToolPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let tool_registry = ToolRegistry::with_default_tools();
+        let tool_registry = agent_chat_tools::build_default_registry();
         let tool_catalog = Self::build_tool_catalog(&tool_registry);
 
         let file_path_input = cx.new(|cx| {
@@ -168,23 +168,13 @@ impl ManualToolPanel {
         // Exclude meta-tools that are only meaningful for agent-to-agent calls
         const HIDDEN_CORE: &[&str] = &["execute_plugin_tool", "query_plugin_tools"];
 
-        for schema in tool_registry.available_tools_schema() {
-            let name = match schema.get("name").and_then(|v| v.as_str()) {
-                Some(n) => n.to_string(),
-                None => continue,
-            };
+        for definition in tool_registry.definitions() {
+            let name = definition.name;
             if HIDDEN_CORE.contains(&name.as_str()) {
                 continue;
             }
-            let description = schema
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let parameters = schema
-                .get("parameters")
-                .cloned()
-                .unwrap_or_else(|| json!({}));
+            let description = definition.description;
+            let parameters = definition.parameters_schema;
             catalog.push(ToolOption {
                 display_name: name.clone(),
                 tool_name: name,
@@ -457,14 +447,16 @@ impl ManualToolPanel {
                 .map(|manager| Arc::new(RwLock::new(manager.build_tool_bridge())))
         });
 
-        let ctx = ToolContext {
+        let ctx = agent_chat_tools::make_tool_context(
             workspace_root,
-            plugin_bridge,
-            current_file: first_file_path.clone().map(PathBuf::from),
-            open_file_request: None,
-            query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
-            activate_open_editor_request: None,
-        };
+            first_file_path.clone().map(PathBuf::from),
+            agent_chat_tools::PulsarToolExtras {
+                plugin_bridge,
+                open_file_request: None,
+                query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
+                activate_open_editor_request: None,
+            },
+        );
 
         let result = self
             .tool_registry

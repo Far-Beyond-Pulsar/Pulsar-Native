@@ -1,166 +1,66 @@
 use anyhow::{anyhow, Context};
-use reqwest::blocking::Client;
-use scraper::{Html, Selector};
 use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, RwLock},
-    time::Duration,
 };
 
-#[derive(Clone)]
-pub struct ToolContext {
-    pub workspace_root: PathBuf,
-    /// Optional plugin tool bridge for accessing plugin tools
-    pub plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
-    /// Current file being edited (if any)
-    pub current_file: Option<PathBuf>,
-    /// Optional callback to open a file through the app's default editor flow.
-    pub open_file_request: Option<Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>>,
-    /// Optional callback to query active/inactive open editors tracked by the engine.
-    pub query_open_editors: Option<Arc<dyn Fn() -> Result<Value, String> + Send + Sync>>,
-    /// Optional callback to activate one of the already-open editor tabs by index.
-    pub activate_open_editor_request:
-        Option<Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>>,
-}
+pub use tool_registry::{ChatTool, ToolContext, ToolRegistry};
 
-/// Build a JSON Schema `parameters` object from a list of named, typed fields.
-///
-/// Syntax:
-/// ```ignore
-/// tool_params! {
-///     req "param_name": string = "Description",
-///     opt "optional_param": integer = "Optional description",
-/// }
-/// ```
-/// Supported types: `string`, `integer`, `number`, `boolean`, `object`.
-#[macro_export]
-macro_rules! tool_params {
-    ( $( $req:ident $name:literal : $ty:ident = $desc:literal ),* $(,)? ) => {{
-        let mut properties = serde_json::Map::new();
-        let mut required: Vec<&'static str> = Vec::new();
-        $(
-            properties.insert(
-                $name.to_string(),
-                serde_json::json!({"type": stringify!($ty), "description": $desc}),
-            );
-            tool_params!(@mark $req required $name);
-        )*
-        serde_json::json!({
-            "type": "object",
-            "properties": properties,
-            "required": required,
-        })
-    }};
-    () => { serde_json::json!({ "type": "object", "properties": {} }) };
-    (@mark req $req:ident $name:literal) => { $req.push($name); };
-    (@mark opt $req:ident $name:literal) => {};
-}
-
-pub trait ChatTool: Send + Sync {
-    fn name(&self) -> &'static str;
-    fn description(&self) -> &'static str;
-    fn parameters_schema(&self) -> Value;
-    fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value>;
-}
+pub type OpenFileRequest = Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>;
+pub type QueryOpenEditorsRequest = Arc<dyn Fn() -> Result<Value, String> + Send + Sync>;
+pub type ActivateOpenEditorRequest = Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>;
 
 #[derive(Clone, Default)]
-pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn ChatTool>>,
+pub struct PulsarToolExtras {
+    pub plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
+    pub open_file_request: Option<OpenFileRequest>,
+    pub query_open_editors: Option<QueryOpenEditorsRequest>,
+    pub activate_open_editor_request: Option<ActivateOpenEditorRequest>,
 }
 
-impl ToolRegistry {
-    pub fn new() -> Self {
-        Self::default()
-    }
+const EXTRAS_KEY: &str = "pulsar_tool_extras";
 
-    pub fn with_default_tools() -> Self {
-        let mut this = Self::new();
-        this.register(Arc::new(OpenFileInDefaultEditorTool));
-        this.register(Arc::new(QueryOpenEditorsTool));
-        this.register(Arc::new(ActivateOpenEditorTool));
-        this.register(Arc::new(QueryAvailableFileTypesTool));
-        this.register(Arc::new(QueryFileEditorsTool));
-        this.register(Arc::new(QueryPluginToolsTool));
-        this.register(Arc::new(QueryToolsForPluginTool));
-        this.register(Arc::new(ExecutePluginToolTool));
-        this.register(Arc::new(WebSearchTool));
-        this.register(Arc::new(FetchUrlTool));
-        this
+pub fn make_tool_context(
+    workspace_root: PathBuf,
+    current_file: Option<PathBuf>,
+    extras: PulsarToolExtras,
+) -> ToolContext {
+    let mut ctx = ToolContext::new().with_workspace(workspace_root);
+    if let Some(file) = current_file {
+        ctx = ctx.with_current_file(file);
     }
+    ctx.insert_extra(EXTRAS_KEY, extras);
+    ctx
+}
 
-    pub fn register(&mut self, tool: Arc<dyn ChatTool>) {
-        self.tools.insert(tool.name().to_string(), tool);
-    }
+pub fn build_default_registry() -> ToolRegistry {
+    let mut registry = ToolRegistry::new();
+    register_pulsar_tools(&mut registry);
+    tool_registry_builtin::register_builtins(&mut registry);
+    registry
+}
 
-    pub fn execute(&self, name: &str, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let Some(tool) = self.tools.get(name) else {
-            return Err(anyhow!("Unknown tool: {name}"));
-        };
-        tool.execute(args, ctx)
-    }
+pub fn register_pulsar_tools(registry: &mut ToolRegistry) {
+    registry.register(Arc::new(OpenFileInDefaultEditorTool));
+    registry.register(Arc::new(QueryOpenEditorsTool));
+    registry.register(Arc::new(ActivateOpenEditorTool));
+    registry.register(Arc::new(QueryAvailableFileTypesTool));
+    registry.register(Arc::new(QueryFileEditorsTool));
+    registry.register(Arc::new(QueryPluginToolsTool));
+    registry.register(Arc::new(QueryToolsForPluginTool));
+    registry.register(Arc::new(ExecutePluginToolTool));
+}
 
-    pub fn available_tools_schema(&self) -> Vec<Value> {
-        self.tools
-            .values()
-            .map(|tool| {
-                json!({
-                    "name": tool.name(),
-                    "description": tool.description(),
-                    "parameters": tool.parameters_schema(),
-                })
-            })
-            .collect()
-    }
+fn extras(ctx: &ToolContext) -> Option<&PulsarToolExtras> {
+    ctx.get_extra::<PulsarToolExtras>(EXTRAS_KEY)
+}
 
-    /// Build a concise "Available tools:" section for the system prompt.
-    /// Plugin-provided tools are excluded since their count is unbounded and
-    /// they are discovered dynamically via `query_plugin_tools`.
-    pub fn system_prompt_tool_docs(&self) -> String {
-        let mut lines = vec!["Available built-in tools:".to_string()];
-        let mut names: Vec<_> = self.tools.keys().collect();
-        names.sort();
-        for name in names {
-            if let Some(tool) = self.tools.get(name) {
-                let schema = tool.parameters_schema();
-                let params = schema
-                    .get("properties")
-                    .and_then(|p| p.as_object())
-                    .map(|props| {
-                        let required: Vec<&str> = schema
-                            .get("required")
-                            .and_then(|r| r.as_array())
-                            .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
-                            .unwrap_or_default();
-                        props
-                            .keys()
-                            .map(|k| {
-                                if required.contains(&k.as_str()) {
-                                    k.clone()
-                                } else {
-                                    format!("[{k}]")
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    })
-                    .unwrap_or_default();
-
-                if params.is_empty() {
-                    lines.push(format!("- {}: {}", tool.name(), tool.description()));
-                } else {
-                    lines.push(format!(
-                        "- {} ({}): {}",
-                        tool.name(),
-                        params,
-                        tool.description()
-                    ));
-                }
-            }
-        }
-        lines.join("\n")
-    }
+fn workspace_root(ctx: &ToolContext) -> PathBuf {
+    ctx.workspace_root
+        .clone()
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 struct OpenFileInDefaultEditorTool;
@@ -168,22 +68,30 @@ impl ChatTool for OpenFileInDefaultEditorTool {
     fn name(&self) -> &'static str {
         "open_file_in_default_editor"
     }
+
     fn description(&self) -> &'static str {
         "Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access."
     }
-    fn parameters_schema(&self) -> Value {
-        tool_params! { req "file_path": string = "Absolute or workspace-relative path of the file to open" }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
     }
+
+    fn parameters_schema(&self) -> Value {
+        tool_registry::tool_params! {
+            req "file_path": string = "Absolute or workspace-relative path of the file to open"
+        }
+    }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path = args
             .get("file_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("open_file_in_default_editor.file_path is required"))?;
-        let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
+        let full = resolve_workspace_path(&workspace_root(ctx), file_path)?;
 
-        let callback = ctx
-            .open_file_request
-            .as_ref()
+        let callback = extras(ctx)
+            .and_then(|e| e.open_file_request.as_ref())
             .ok_or_else(|| anyhow!("Open-file callback unavailable in this context"))?;
         callback(full.clone()).map_err(|err| anyhow!(err))?;
 
@@ -200,16 +108,22 @@ impl ChatTool for QueryOpenEditorsTool {
     fn name(&self) -> &'static str {
         "query_open_editors"
     }
+
     fn description(&self) -> &'static str {
-        "List already-open editors and indicate which is active. Returns file_path for each — use those exact paths with query_plugin_tools and execute_plugin_tool."
+        "List already-open editors and indicate which is active. Returns file_path for each - use those exact paths with query_plugin_tools and execute_plugin_tool."
     }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
+    }
+
     fn parameters_schema(&self) -> Value {
-        tool_params!()
+        tool_registry::tool_params!()
     }
+
     fn execute(&self, _args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
-        let callback = ctx
-            .query_open_editors
-            .as_ref()
+        let callback = extras(ctx)
+            .and_then(|e| e.query_open_editors.as_ref())
             .ok_or_else(|| anyhow!("Open-editors callback unavailable in this context"))?;
         callback().map_err(|err| anyhow!(err))
     }
@@ -220,12 +134,21 @@ impl ChatTool for ActivateOpenEditorTool {
     fn name(&self) -> &'static str {
         "activate_open_editor"
     }
+
     fn description(&self) -> &'static str {
         "Switch focus to an already-open editor by its index returned from query_open_editors."
     }
-    fn parameters_schema(&self) -> Value {
-        tool_params! { req "index": integer = "Zero-based index of the editor to activate" }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
     }
+
+    fn parameters_schema(&self) -> Value {
+        tool_registry::tool_params! {
+            req "index": integer = "Zero-based index of the editor to activate"
+        }
+    }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let index = args
             .get("index")
@@ -233,9 +156,8 @@ impl ChatTool for ActivateOpenEditorTool {
             .ok_or_else(|| anyhow!("activate_open_editor.index is required"))?
             as usize;
 
-        let callback = ctx
-            .activate_open_editor_request
-            .as_ref()
+        let callback = extras(ctx)
+            .and_then(|e| e.activate_open_editor_request.as_ref())
             .ok_or_else(|| anyhow!("Activate-open-editor callback unavailable in this context"))?;
         callback(index).map_err(|err| anyhow!(err))?;
 
@@ -252,12 +174,19 @@ impl ChatTool for QueryAvailableFileTypesTool {
     fn name(&self) -> &'static str {
         "query_available_file_types"
     }
+
     fn description(&self) -> &'static str {
         "List all file types registered by installed plugins/editors."
     }
-    fn parameters_schema(&self) -> Value {
-        tool_params!()
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
     }
+
+    fn parameters_schema(&self) -> Value {
+        tool_registry::tool_params!()
+    }
+
     fn execute(&self, _args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -291,18 +220,27 @@ impl ChatTool for QueryFileEditorsTool {
     fn name(&self) -> &'static str {
         "query_file_editors"
     }
+
     fn description(&self) -> &'static str {
         "Query which plugins/editors can handle a given file path."
     }
-    fn parameters_schema(&self) -> Value {
-        tool_params! { req "file_path": string = "Path of the file to query editors for" }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
     }
+
+    fn parameters_schema(&self) -> Value {
+        tool_registry::tool_params! {
+            req "file_path": string = "Path of the file to query editors for"
+        }
+    }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path = args
             .get("file_path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow!("query_file_editors.file_path is required"))?;
-        let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
+        let full = resolve_workspace_path(&workspace_root(ctx), file_path)?;
 
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -347,12 +285,21 @@ impl ChatTool for QueryPluginToolsTool {
     fn name(&self) -> &'static str {
         "query_plugin_tools"
     }
+
     fn description(&self) -> &'static str {
-        "Discover AI tools available from plugins for a specific file. Use the file_path returned by query_open_editors — do not guess paths."
+        "Discover AI tools available from plugins for a specific file. Use the file_path returned by query_open_editors - do not guess paths."
     }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
+    }
+
     fn parameters_schema(&self) -> Value {
-        tool_params! { req "file_path": string = "Exact file_path from query_open_editors output" }
+        tool_registry::tool_params! {
+            req "file_path": string = "Exact file_path from query_open_editors output"
+        }
     }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let file_path_raw = args
             .get("file_path")
@@ -370,9 +317,7 @@ impl ChatTool for QueryPluginToolsTool {
             }));
         };
 
-        // Use soft resolution so tool discovery works even if the file hasn't been
-        // saved to disk yet (e.g. a new unsaved level file open in the editor).
-        let full = resolve_workspace_path_soft(&ctx.workspace_root, &file_path_raw)?;
+        let full = resolve_workspace_path_soft(&workspace_root(ctx), &file_path_raw)?;
         let file_path_str = full.display().to_string();
 
         let manager_lock = plugin_manager::global()
@@ -423,8 +368,7 @@ impl ChatTool for QueryPluginToolsTool {
             "tools_available": tool_schemas.len(),
             "note": if tool_schemas.is_empty() {
                 format!(
-                    "No tools are registered for '{}'. The file type may not be supported, or the required editor is not loaded. \
-                     Check that the file is open in an editor first.",
+                    "No tools are registered for '{}'. The file type may not be supported, or the required editor is not loaded. Check that the file is open in an editor first.",
                     file_path_str
                 )
             } else {
@@ -441,15 +385,22 @@ impl ChatTool for QueryToolsForPluginTool {
     fn name(&self) -> &'static str {
         "query_tools_for_plugin"
     }
+
     fn description(&self) -> &'static str {
         "List AI tools provided by a specific plugin, optionally scoped to a file."
     }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
+    }
+
     fn parameters_schema(&self) -> Value {
-        tool_params! {
+        tool_registry::tool_params! {
             req "plugin_id": string = "Plugin id to inspect",
             opt "file_path": string = "Optional file path to filter tools by file capability"
         }
     }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let plugin_id = args
             .get("plugin_id")
@@ -463,7 +414,7 @@ impl ChatTool for QueryToolsForPluginTool {
             .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
         let tools = if let Some(file_path) = args.get("file_path").and_then(|v| v.as_str()) {
-            let full = resolve_workspace_path(&ctx.workspace_root, file_path)?;
+            let full = resolve_workspace_path(&workspace_root(ctx), file_path)?;
             manager
                 .build_tool_bridge_for_file(&full)
                 .all_tools()
@@ -507,17 +458,24 @@ impl ChatTool for ExecutePluginToolTool {
     fn name(&self) -> &'static str {
         "execute_plugin_tool"
     }
+
     fn description(&self) -> &'static str {
         "Execute an AI tool provided by a plugin. Call query_plugin_tools first to discover available tools and their parameters."
     }
+
+    fn category(&self) -> Option<&'static str> {
+        Some("pulsar")
+    }
+
     fn parameters_schema(&self) -> Value {
-        tool_params! {
+        tool_registry::tool_params! {
             req "tool_name": string = "Name of the tool to execute (from query_plugin_tools)",
             req "tool_args": object = "Arguments matching the tool's parameter schema",
-            opt "plugin_id": string = "Plugin id from query_plugin_tools — recommended when tool names may overlap",
+            opt "plugin_id": string = "Plugin id from query_plugin_tools - recommended when tool names may overlap",
             opt "file_path": string = "File to operate on; defaults to current context file"
         }
     }
+
     fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<Value> {
         let explicit_plugin_id = args.get("plugin_id").and_then(|v| v.as_str());
         let tool_name = args
@@ -530,14 +488,12 @@ impl ChatTool for ExecutePluginToolTool {
         let file_path = args
             .get("file_path")
             .and_then(|v| v.as_str())
-            .map(|p| PathBuf::from(p))
+            .map(PathBuf::from)
             .or_else(|| ctx.current_file.clone())
             .ok_or_else(|| anyhow!("No file path provided or available in context"))?;
 
-        // Use soft resolution: the file path from query_open_editors is absolute and canonical,
-        // but even if it's relative we don't want to fail just because we can't canonicalize it.
         let full_file_path =
-            resolve_workspace_path_soft(&ctx.workspace_root, &file_path.display().to_string())?;
+            resolve_workspace_path_soft(&workspace_root(ctx), &file_path.display().to_string())?;
 
         let manager_lock = plugin_manager::global()
             .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
@@ -550,9 +506,11 @@ impl ChatTool for ExecutePluginToolTool {
             bridge
                 .all_tools()
                 .into_iter()
-                .find(|tool| tool.plugin_id.to_string() == plugin_id)
+                .find(|tool| {
+                    tool.plugin_id.to_string() == plugin_id && tool.definition.name == tool_name
+                })
                 .map(|tool| tool.plugin_id)
-                .ok_or_else(|| anyhow!("Plugin id not found: {}", plugin_id))?
+                .ok_or_else(|| anyhow!("Tool '{}' not found for plugin id '{}'", tool_name, plugin_id))?
         } else {
             bridge
                 .plugin_for_tool(tool_name)
@@ -573,295 +531,6 @@ impl ChatTool for ExecutePluginToolTool {
     }
 }
 
-struct WebSearchTool;
-impl ChatTool for WebSearchTool {
-    fn name(&self) -> &'static str {
-        "web_search"
-    }
-    fn description(&self) -> &'static str {
-        "Search the web via DuckDuckGo. Returns up to 10 results with title, summary, and URL."
-    }
-    fn parameters_schema(&self) -> Value {
-        tool_params! { req "query": string = "Search query string" }
-    }
-    fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("web_search.query is required"))?;
-
-        let max_results = 10; // Fixed at 10 results
-
-        let client = Client::builder()
-            .timeout(Duration::from_secs(10))
-            .build()
-            .context("Failed to build HTTP client")?;
-
-        // Pull the real HTML results page and scrape it instead of relying on
-        // DuckDuckGo's limited instant-answer JSON endpoint.
-        let url = format!(
-            "https://html.duckduckgo.com/html/?q={}&kl=us-en",
-            urlencoding::encode(query)
-        );
-
-        let response = client
-            .get(&url)
-            .header(
-                "User-Agent",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Pulsar-Engine-AI/1.0",
-            )
-            .send()
-            .context("Failed to perform web search")?;
-
-        if !response.status().is_success() {
-            return Ok(json!({
-                "ok": false,
-                "query": query,
-                "error": format!("Search page returned status {}", response.status()),
-                "results": []
-            }));
-        }
-
-        let body = response.text().context("Failed to read search response")?;
-        let results = parse_duckduckgo_html_results(&body, max_results)?;
-
-        Ok(json!({
-            "ok": true,
-            "query": query,
-            "result_count": results.len(),
-            "max_results": max_results,
-            "results": results,
-            "source": "DuckDuckGo"
-        }))
-    }
-}
-
-fn parse_duckduckgo_html_results(html: &str, max_results: usize) -> anyhow::Result<Vec<Value>> {
-    let document = Html::parse_document(html);
-    let result_selector = selector("div.result")?;
-    let title_selector = selector("a.result__a")?;
-    let snippet_selector = selector("a.result__snippet, div.result__snippet")?;
-
-    let mut results = Vec::new();
-
-    for result in document.select(&result_selector) {
-        if results.len() >= max_results {
-            break;
-        }
-
-        let Some(title_el) = result.select(&title_selector).next() else {
-            continue;
-        };
-
-        let title = normalized_text(title_el.text().collect::<Vec<_>>().join(" "));
-        if title.is_empty() {
-            continue;
-        }
-
-        let href = title_el.value().attr("href").unwrap_or("");
-        let url = normalize_duckduckgo_result_url(href);
-        if url.is_empty() {
-            continue;
-        }
-
-        let summary = result
-            .select(&snippet_selector)
-            .next()
-            .map(|el| normalized_text(el.text().collect::<Vec<_>>().join(" ")))
-            .filter(|text| !text.is_empty())
-            .map(|text| truncate_for_summary(&text, 300))
-            .unwrap_or_else(|| title.clone());
-
-        results.push(json!({
-            "title": title,
-            "summary": summary,
-            "url": url,
-            "source": "DuckDuckGo"
-        }));
-    }
-
-    Ok(results)
-}
-
-fn selector(css: &str) -> anyhow::Result<Selector> {
-    Selector::parse(css).map_err(|_| anyhow!("Invalid CSS selector: {}", css))
-}
-
-fn normalized_text(text: String) -> String {
-    text.split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-        .trim()
-        .to_string()
-}
-
-fn truncate_for_summary(text: &str, max_len: usize) -> String {
-    if text.len() <= max_len {
-        return text.to_string();
-    }
-
-    let mut end = max_len;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}...", &text[..end])
-}
-
-fn normalize_duckduckgo_result_url(href: &str) -> String {
-    if let Some(encoded) = href.split("uddg=").nth(1) {
-        let encoded = encoded.split('&').next().unwrap_or(encoded);
-        return urlencoding::decode(encoded)
-            .map(|decoded| decoded.into_owned())
-            .unwrap_or_else(|_| href.to_string());
-    }
-
-    if href.starts_with("http://") || href.starts_with("https://") {
-        return href.to_string();
-    }
-
-    String::new()
-}
-
-struct FetchUrlTool;
-impl ChatTool for FetchUrlTool {
-    fn name(&self) -> &'static str {
-        "fetch_url"
-    }
-    fn description(&self) -> &'static str {
-        "Fetch and return the text content of a URL (HTML markup stripped). Truncates large responses to ~8000 chars."
-    }
-    fn parameters_schema(&self) -> Value {
-        tool_params! {
-            req "url": string = "URL to fetch (must start with http:// or https://)",
-            opt "timeout_seconds": integer = "Request timeout in seconds (1–30, default 10)"
-        }
-    }
-    fn execute(&self, args: Value, _ctx: &ToolContext) -> anyhow::Result<Value> {
-        let url = args
-            .get("url")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow!("fetch_url.url is required"))?;
-
-        if !url.starts_with("http://") && !url.starts_with("https://") {
-            return Ok(json!({
-                "ok": false,
-                "url": url,
-                "error": "URL must start with http:// or https://",
-                "content": null
-            }));
-        }
-
-        let timeout_secs = args
-            .get("timeout_seconds")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10)
-            .max(1)
-            .min(30);
-
-        let client = Client::builder()
-            .timeout(Duration::from_secs(timeout_secs))
-            .build()
-            .context("Failed to build HTTP client")?;
-
-        let response = match client
-            .get(url)
-            .header("User-Agent", "Pulsar-Engine-AI/1.0")
-            .send()
-        {
-            Ok(r) => r,
-            Err(e) => {
-                return Ok(json!({
-                    "ok": false,
-                    "url": url,
-                    "error": format!("Failed to fetch URL: {}", e),
-                    "content": null
-                }));
-            }
-        };
-
-        if !response.status().is_success() {
-            return Ok(json!({
-                "ok": false,
-                "url": url,
-                "status_code": response.status().as_u16(),
-                "error": format!("HTTP {}", response.status()),
-                "content": null
-            }));
-        }
-
-        let content = match response.text() {
-            Ok(text) => text,
-            Err(e) => {
-                return Ok(json!({
-                    "ok": false,
-                    "url": url,
-                    "error": format!("Failed to read response: {}", e),
-                    "content": null
-                }));
-            }
-        };
-
-        // Basic HTML stripping: remove script/style tags and common HTML markup
-        let cleaned = strip_html_tags(&content);
-        let truncated = if cleaned.len() > 8000 {
-            format!("{}... [truncated]", &cleaned[..8000])
-        } else {
-            cleaned
-        };
-
-        Ok(json!({
-            "ok": true,
-            "url": url,
-            "status_code": 200,
-            "content_length": truncated.len(),
-            "content": truncated
-        }))
-    }
-}
-
-fn strip_html_tags(html: &str) -> String {
-    // Simple HTML tag removal
-    let mut result = String::new();
-    let mut in_tag = false;
-    let mut in_script = false;
-    let mut in_style = false;
-
-    let lower = html.to_lowercase();
-    let bytes = html.as_bytes();
-
-    for (i, &byte) in bytes.iter().enumerate() {
-        if byte == b'<' {
-            in_tag = true;
-            // Check for script or style tags
-            if lower[i..].starts_with("<script") {
-                in_script = true;
-            } else if lower[i..].starts_with("<style") {
-                in_style = true;
-            }
-        } else if byte == b'>' {
-            in_tag = false;
-            if lower[i..].starts_with("</script>") {
-                in_script = false;
-            } else if lower[i..].starts_with("</style>") {
-                in_style = false;
-            }
-            if !in_script && !in_style {
-                result.push(' '); // Add space after closing tag for word separation
-            }
-        } else if !in_tag && !in_script && !in_style {
-            result.push(byte as char);
-        }
-    }
-
-    // Clean up whitespace
-    result
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
     let p = PathBuf::from(rel_or_abs);
     let joined = if p.is_absolute() { p } else { root.join(p) };
@@ -879,21 +548,11 @@ fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathB
     Ok(canonical)
 }
 
-/// Resolve a workspace-relative path, canonicalizing it if the file exists on disk
-/// or falling back to manual component normalization if it doesn't.
-///
-/// This is used for both tool discovery (extension check only) and tool execution
-/// (session lookup), so it must return the canonical path when the file is on disk
-/// — otherwise `ai_sessions::get_open_scene_state` won't find the registered entry.
 fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {
     let p = PathBuf::from(rel_or_abs);
     let joined = if p.is_absolute() { p } else { root.join(&p) };
 
-    // Happy path: if the file is on disk, canonicalize gives us the exact path
-    // that was stored in ai_sessions (which also canonicalizes on registration).
     if let Ok(canonical) = joined.canonicalize() {
-        // Security check: must still be inside the workspace root.
-        // Use the canonical root if available, otherwise skip the check for dot-roots.
         if let Ok(root_canonical) = root.canonicalize() {
             if !canonical.starts_with(&root_canonical) {
                 return Err(anyhow!("Path escapes workspace root"));
@@ -902,7 +561,6 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
         return Ok(canonical);
     }
 
-    // File doesn't exist yet on disk — normalize manually without requiring existence.
     let mut components = Vec::new();
     for part in joined.components() {
         use std::path::Component;
@@ -931,7 +589,6 @@ fn resolve_workspace_path_soft(root: &Path, rel_or_abs: &str) -> anyhow::Result<
         c.iter().collect()
     };
 
-    // Only enforce root prefix when we have a meaningful absolute root.
     if root_normalized.is_absolute() && !normalized.starts_with(&root_normalized) {
         return Err(anyhow!("Path escapes workspace root"));
     }

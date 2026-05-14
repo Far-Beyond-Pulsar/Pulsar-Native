@@ -775,31 +775,25 @@ impl AgentChatPanel {
             None
         };
 
-        let tool_schemas = self.tool_registry.available_tools_schema();
-
         // Validate and convert tool schemas
-        let tools: Vec<agent_chat_core::ToolDefinition> = tool_schemas
-            .iter()
-            .filter_map(|schema| {
-                let name = schema.get("name")?.as_str()?.to_string();
-                let description = schema
-                    .get("description")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string());
-                let params = schema.get("parameters")?.clone();
+        let tools: Vec<agent_chat_core::ToolDefinition> = self
+            .tool_registry
+            .definitions()
+            .into_iter()
+            .filter_map(|def| {
+                let params = def.parameters_schema;
 
-                // Validate that parameters is an object with a "type" field
                 if params.get("type").and_then(|v| v.as_str()) != Some("object") {
                     eprintln!(
                         "[agent_chat] WARNING: Tool {} has invalid parameters schema, skipping",
-                        name
+                        def.name
                     );
                     return None;
                 }
 
                 Some(agent_chat_core::ToolDefinition {
-                    name,
-                    description,
+                    name: def.name,
+                    description: Some(def.description),
                     parameters_json_schema: params,
                 })
             })
@@ -1029,40 +1023,42 @@ impl AgentChatPanel {
                                 Some(path) => PathBuf::from(path),
                                 None => PathBuf::from("."),
                             };
-                            let tool_context = agent_chat_tools::ToolContext {
+                            let tool_context = agent_chat_tools::make_tool_context(
                                 workspace_root,
-                                plugin_bridge: plugin_bridge_for_task.clone(),
-                                current_file: None,
-                                open_file_request: Some(Arc::new({
-                                    let tx_for_open = tx_for_chunks.clone();
-                                    move |path: PathBuf| {
-                                        tx_for_open
-                                            .try_send(StreamEvent::OpenFile(path))
-                                            .map_err(|err| {
-                                                format!(
-                                                    "Failed to dispatch open-file request to UI thread: {}",
-                                                    err
-                                                )
-                                            })
-                                    }
-                                })),
-                                query_open_editors: Some(Arc::new(|| {
-                                    Ok(crate::app::open_editors::snapshot_json())
-                                })),
-                                activate_open_editor_request: Some(Arc::new({
-                                    let tx_for_activate = tx_for_chunks.clone();
-                                    move |index: usize| {
-                                        tx_for_activate
-                                            .try_send(StreamEvent::ActivateOpenEditor(index))
-                                            .map_err(|err| {
-                                                format!(
-                                                    "Failed to dispatch activate-open-editor request to UI thread: {}",
-                                                    err
-                                                )
-                                            })
-                                    }
-                                })),
-                            };
+                                None,
+                                agent_chat_tools::PulsarToolExtras {
+                                    plugin_bridge: plugin_bridge_for_task.clone(),
+                                    open_file_request: Some(Arc::new({
+                                        let tx_for_open = tx_for_chunks.clone();
+                                        move |path: PathBuf| {
+                                            tx_for_open
+                                                .try_send(StreamEvent::OpenFile(path))
+                                                .map_err(|err| {
+                                                    format!(
+                                                        "Failed to dispatch open-file request to UI thread: {}",
+                                                        err
+                                                    )
+                                                })
+                                        }
+                                    })),
+                                    query_open_editors: Some(Arc::new(|| {
+                                        Ok(crate::app::open_editors::snapshot_json())
+                                    })),
+                                    activate_open_editor_request: Some(Arc::new({
+                                        let tx_for_activate = tx_for_chunks.clone();
+                                        move |index: usize| {
+                                            tx_for_activate
+                                                .try_send(StreamEvent::ActivateOpenEditor(index))
+                                                .map_err(|err| {
+                                                    format!(
+                                                        "Failed to dispatch activate-open-editor request to UI thread: {}",
+                                                        err
+                                                    )
+                                                })
+                                        }
+                                    })),
+                                },
+                            );
 
                             // Spawn one thread per tool call so they execute concurrently.
                             let mut all_results = Vec::new();
