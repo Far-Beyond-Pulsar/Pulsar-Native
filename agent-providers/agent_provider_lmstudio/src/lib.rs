@@ -52,28 +52,10 @@ impl LmStudioProvider {
             .messages
             .iter()
             .map(|message: &ChatMessage| {
-                let mut msg = serde_json::Map::new();
-                msg.insert("role".to_string(), json!(Self::map_role(message.role)));
-                msg.insert("content".to_string(), json!(message.content));
-
-                if !message.tool_calls.is_empty() {
-                    let lmstudio_calls = message
-                        .tool_calls
-                        .iter()
-                        .map(|call| {
-                            json!({
-                                "id": call.id,
-                                "function": {
-                                    "name": call.name,
-                                    "arguments": call.arguments_json,
-                                }
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    msg.insert("tool_calls".to_string(), Value::Array(lmstudio_calls));
-                }
-
-                Value::Object(msg)
+                json!({
+                    "role": Self::map_role(message.role),
+                    "content": message.content,
+                })
             })
             .collect::<Vec<_>>();
 
