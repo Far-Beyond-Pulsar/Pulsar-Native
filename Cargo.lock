@@ -77,6 +77,7 @@ dependencies = [
  "serde_json",
  "tool_registry",
  "tool_registry_builtin",
+ "tool_registry_macros",
 ]
 
 [[package]]

@@ -11,3 +11,4 @@ engine_fs = { path = "../../crates/engine_fs" }
 plugin_manager = { path = "../../crates/plugin_manager" }
 tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef" }
 tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef" }
+tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef" }
