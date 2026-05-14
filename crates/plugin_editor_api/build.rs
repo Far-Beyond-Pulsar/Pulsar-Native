@@ -11,8 +11,8 @@ fn main() {
         String::from_utf8(output.stdout).expect("rustc version output is not valid UTF-8");
 
     // Set as environment variable for compile-time access
-    tracing::debug!("cargo:rustc-env=RUSTC_VERSION={}", version_str.trim());
+    println!("cargo:rustc-env=RUSTC_VERSION={}", version_str.trim());
 
     // Rerun this build script if rustc version changes
-    tracing::debug!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=build.rs");
 }
