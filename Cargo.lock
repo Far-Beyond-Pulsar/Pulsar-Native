@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=104338f5583fdd38809c3f8b055c7eeb8d1cde39#104338f5583fdd38809c3f8b055c7eeb8d1cde39"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=8337616b6a9edff6a1e6f62ade9630a9dfcf5e87#8337616b6a9edff6a1e6f62ade9630a9dfcf5e87"
 dependencies = [
  "anyhow",
  "arboard",
@@ -10933,7 +10933,7 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=3f095e1eaa7c1e5ea99246e398854225630b4b93#3f095e1eaa7c1e5ea99246e398854225630b4b93"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=984909eaed9d385a4d707f0747ce99c1aab4541c#984909eaed9d385a4d707f0747ce99c1aab4541c"
 dependencies = [
  "anyhow",
  "engine_backend",
