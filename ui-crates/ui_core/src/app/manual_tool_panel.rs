@@ -1,8 +1,8 @@
 use agent_chat_tools::ToolRegistry;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, px, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
+    div, px, AnyWindowHandle, App, AppContext, Context, Corner, Entity, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
 use serde_json::{json, Number, Value};
@@ -13,7 +13,7 @@ use std::{
 };
 use ui::{
     button::{Button, ButtonVariants as _},
-    dock::{Panel, PanelEvent},
+    dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
     input::{InputState, TextInput},
@@ -74,6 +74,9 @@ struct DynamicField {
 }
 
 pub struct ManualToolPanel {
+    dock_area: Entity<DockArea>,
+    center_tabs: Entity<TabPanel>,
+    parent_window_handle: AnyWindowHandle,
     focus_handle: FocusHandle,
     tool_registry: ToolRegistry,
     tool_catalog: Vec<ToolOption>,
@@ -91,7 +94,12 @@ pub struct ManualToolPanel {
 }
 
 impl ManualToolPanel {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        dock_area: Entity<DockArea>,
+        center_tabs: Entity<TabPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         let tool_registry = agent_chat_tools::build_default_registry();
         let tool_catalog = Self::build_tool_catalog(&tool_registry);
 
@@ -137,6 +145,9 @@ impl ManualToolPanel {
         )];
 
         Self {
+            dock_area,
+            center_tabs,
+            parent_window_handle: window.window_handle(),
             focus_handle: cx.focus_handle(),
             tool_registry,
             tool_catalog,
@@ -150,6 +161,156 @@ impl ManualToolPanel {
             result_text: "Ready. Select a tool and click Run Tool.".to_string(),
             result_scroll: ScrollHandle::new(),
             _subscriptions: subscriptions,
+        }
+    }
+
+    fn refresh_open_editor_snapshot(&self, cx: &App) {
+        let mut snapshot = Vec::new();
+        let mut global_index = 0usize;
+
+        fn visit_item(
+            item: &DockItem,
+            snapshot: &mut Vec<crate::app::open_editors::OpenEditorInfo>,
+            global_index: &mut usize,
+            cx: &App,
+        ) {
+            match item {
+                DockItem::Split { items, .. } => {
+                    for child in items {
+                        visit_item(child, snapshot, global_index, cx);
+                    }
+                }
+                DockItem::Tabs { view, .. } => {
+                    let active_local = view.read(cx).active_tab_index();
+                    let panels = view.read(cx).all_panels();
+                    for (local_ix, panel) in panels.into_iter().enumerate() {
+                        let panel_name = panel.panel_name(cx).to_string();
+                        let tab_name = panel
+                            .tab_name(cx)
+                            .map(|name| name.to_string())
+                            .unwrap_or_else(|| panel_name.clone());
+                        let file_path = panel.panel_file_path(cx).map(|p| p.display().to_string());
+                        snapshot.push(crate::app::open_editors::OpenEditorInfo {
+                            index: *global_index,
+                            panel_name,
+                            tab_name,
+                            is_active: active_local == Some(local_ix),
+                            file_path,
+                        });
+                        *global_index += 1;
+                    }
+                }
+                DockItem::Tiles { .. } | DockItem::Panel { .. } => {}
+            }
+        }
+
+        let items = {
+            let dock = self.dock_area.read(cx);
+            dock.items().clone()
+        };
+        visit_item(&items, &mut snapshot, &mut global_index, cx);
+        crate::app::open_editors::set_snapshot(snapshot);
+    }
+
+    fn open_path_in_default_editor(
+        &self,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let center_tabs = self.center_tabs.clone();
+        let project_path = engine_state::get_project_path().map(PathBuf::from);
+        let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
+            let pm_lock = plugin_manager::global()
+                .ok_or_else(|| "Global plugin manager not available".to_string())?;
+            let mut pm = pm_lock
+                .write()
+                .map_err(|_| "Failed to lock plugin manager".to_string())?;
+
+            pm.set_project_root(project_path);
+            let panel = pm
+                .create_editor_for_file(&path, window, cx)
+                .map_err(|err| err.to_string())?;
+
+            center_tabs.update(cx, |tabs, cx| {
+                tabs.add_panel(panel, window, cx);
+            });
+            Ok::<(), String>(())
+        });
+
+        match update_result {
+            Ok(Ok(())) => {
+                self.refresh_open_editor_snapshot(cx);
+                Ok(())
+            }
+            Ok(Err(err)) => Err(format!("Failed to open file {:?}: {}", path, err)),
+            Err(err) => Err(format!(
+                "Failed to update parent window during OpenFile: {}",
+                err
+            )),
+        }
+    }
+
+    fn activate_open_editor_by_global_index(
+        &self,
+        target_index: usize,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        fn find_and_activate(
+            item: &DockItem,
+            current_index: &mut usize,
+            target_index: usize,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> bool {
+            match item {
+                DockItem::Split { items, .. } => {
+                    for child in items {
+                        if find_and_activate(child, current_index, target_index, window, cx) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                DockItem::Tabs { view, .. } => {
+                    let panels = view.read(cx).all_panels();
+                    for (local_ix, _panel) in panels.into_iter().enumerate() {
+                        if *current_index == target_index {
+                            view.update(cx, |tab_panel, cx| {
+                                tab_panel.set_active_tab(local_ix, window, cx);
+                            });
+                            return true;
+                        }
+                        *current_index += 1;
+                    }
+                    false
+                }
+                DockItem::Tiles { .. } | DockItem::Panel { .. } => false,
+            }
+        }
+
+        let dock_area = self.dock_area.clone();
+        let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
+            let items = {
+                let dock = dock_area.read(cx);
+                dock.items().clone()
+            };
+            let mut current_index = 0usize;
+            find_and_activate(&items, &mut current_index, target_index, window, cx)
+        });
+
+        match update_result {
+            Ok(true) => {
+                self.refresh_open_editor_snapshot(cx);
+                Ok(())
+            }
+            Ok(false) => Err(format!(
+                "ActivateOpenEditor index out of range: {}",
+                target_index
+            )),
+            Err(err) => Err(format!(
+                "Failed to update parent window during ActivateOpenEditor: {}",
+                err
+            )),
         }
     }
 
@@ -409,31 +570,48 @@ impl ManualToolPanel {
             }
         };
 
-        // Action-backed shortcut tools
         if tool_name == "open_file_in_default_editor" {
-            if let Some(ref path) = first_file_path {
-                let path_buf = PathBuf::from(path);
-                cx.dispatch_action(&crate::actions::OpenFile {
-                    path: path_buf.clone(),
-                });
-                self.result_text = json!({"ok": true, "dispatched": "OpenFile", "path": path_buf.display().to_string()}).to_string();
+            let Some(path) = first_file_path.clone() else {
+                self.result_text = "Missing required field: file_path".to_string();
                 cx.notify();
                 return;
-            }
+            };
+
+            self.result_text = match self.open_path_in_default_editor(PathBuf::from(&path), cx) {
+                Ok(()) => json!({
+                    "ok": true,
+                    "file_path": path,
+                    "opened": true,
+                })
+                .to_string(),
+                Err(err) => format!("Tool error: {err}"),
+            };
+            cx.notify();
+            return;
         }
+
         if tool_name == "activate_open_editor" {
-            if let Some(index) = args
+            let Some(index) = args
                 .get("index")
                 .and_then(|v| v.as_u64())
                 .map(|v| v as usize)
-            {
-                cx.dispatch_action(&crate::actions::ActivateOpenEditor { index });
-                self.result_text =
-                    json!({"ok": true, "dispatched": "ActivateOpenEditor", "index": index})
-                        .to_string();
+            else {
+                self.result_text = "Missing required field: index".to_string();
                 cx.notify();
                 return;
-            }
+            };
+
+            self.result_text = match self.activate_open_editor_by_global_index(index, cx) {
+                Ok(()) => json!({
+                    "ok": true,
+                    "index": index,
+                    "activated": true,
+                })
+                .to_string(),
+                Err(err) => format!("Tool error: {err}"),
+            };
+            cx.notify();
+            return;
         }
 
         let workspace_root = engine_state::get_project_path()

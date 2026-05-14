@@ -44,7 +44,7 @@ use std::{
 };
 use ui::{
     button::{Button, ButtonVariants as _},
-    dock::{DockArea, DockItem, Panel, PanelEvent},
+    dock::{DockArea, DockItem, Panel, PanelEvent, TabPanel},
     dropdown::{
         SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
     },
@@ -61,6 +61,7 @@ use ui::{
 
 pub struct AgentChatPanel {
     pub(crate) dock_area: Entity<DockArea>,
+    pub(crate) center_tabs: Entity<TabPanel>,
     pub(crate) parent_window_handle: AnyWindowHandle,
     pub(crate) focus_handle: FocusHandle,
     pub(crate) messages_scroll_handle: VirtualListScrollHandle,
@@ -111,7 +112,12 @@ pub struct AgentChatPanel {
 }
 
 impl AgentChatPanel {
-    pub fn new(dock_area: Entity<DockArea>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(
+        dock_area: Entity<DockArea>,
+        center_tabs: Entity<TabPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
         // --- Provider registry: single source of truth, no separate catalog ---
         let mut provider_registry = ProviderRegistry::new();
 
@@ -367,6 +373,7 @@ impl AgentChatPanel {
 
         let mut this = Self {
             dock_area,
+            center_tabs,
             parent_window_handle: window.window_handle(),
             focus_handle: cx.focus_handle(),
             messages_scroll_handle: VirtualListScrollHandle::new(),
@@ -415,6 +422,92 @@ impl AgentChatPanel {
 
         this.bootstrap_chat_storage(cx);
         this
+    }
+
+    pub(crate) fn refresh_open_editor_snapshot(&self, cx: &App) {
+        let mut snapshot = Vec::new();
+        let mut global_index = 0usize;
+
+        fn visit_item(
+            item: &DockItem,
+            snapshot: &mut Vec<crate::app::open_editors::OpenEditorInfo>,
+            global_index: &mut usize,
+            cx: &App,
+        ) {
+            match item {
+                DockItem::Split { items, .. } => {
+                    for child in items {
+                        visit_item(child, snapshot, global_index, cx);
+                    }
+                }
+                DockItem::Tabs { view, .. } => {
+                    let active_local = view.read(cx).active_tab_index();
+                    let panels = view.read(cx).all_panels();
+                    for (local_ix, panel) in panels.into_iter().enumerate() {
+                        let panel_name = panel.panel_name(cx).to_string();
+                        let tab_name = panel
+                            .tab_name(cx)
+                            .map(|name| name.to_string())
+                            .unwrap_or_else(|| panel_name.clone());
+                        let file_path = panel.panel_file_path(cx).map(|p| p.display().to_string());
+                        snapshot.push(crate::app::open_editors::OpenEditorInfo {
+                            index: *global_index,
+                            panel_name,
+                            tab_name,
+                            is_active: active_local == Some(local_ix),
+                            file_path,
+                        });
+                        *global_index += 1;
+                    }
+                }
+                DockItem::Tiles { .. } | DockItem::Panel { .. } => {}
+            }
+        }
+
+        let items = {
+            let dock = self.dock_area.read(cx);
+            dock.items().clone()
+        };
+        visit_item(&items, &mut snapshot, &mut global_index, cx);
+        crate::app::open_editors::set_snapshot(snapshot);
+    }
+
+    pub(crate) fn open_path_in_default_editor(
+        &self,
+        path: PathBuf,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        let center_tabs = self.center_tabs.clone();
+        let project_path = engine_state::get_project_path().map(PathBuf::from);
+        let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
+            let pm_lock = plugin_manager::global()
+                .ok_or_else(|| "Global plugin manager not available".to_string())?;
+            let mut pm = pm_lock
+                .write()
+                .map_err(|_| "Failed to lock plugin manager".to_string())?;
+
+            pm.set_project_root(project_path);
+            let panel = pm
+                .create_editor_for_file(&path, window, cx)
+                .map_err(|err| err.to_string())?;
+
+            center_tabs.update(cx, |tabs, cx| {
+                tabs.add_panel(panel, window, cx);
+            });
+            Ok::<(), String>(())
+        });
+
+        match update_result {
+            Ok(Ok(())) => {
+                self.refresh_open_editor_snapshot(cx);
+                Ok(())
+            }
+            Ok(Err(err)) => Err(format!("Failed to open file {:?}: {}", path, err)),
+            Err(err) => Err(format!(
+                "Failed to update parent window during OpenFile: {}",
+                err
+            )),
+        }
     }
 
     pub(crate) fn activate_open_editor_by_global_index(
@@ -466,7 +559,10 @@ impl AgentChatPanel {
         });
 
         match update_result {
-            Ok(true) => Ok(()),
+            Ok(true) => {
+                self.refresh_open_editor_snapshot(cx);
+                Ok(())
+            }
             Ok(false) => Err(format!(
                 "ActivateOpenEditor index out of range: {}",
                 target_index
