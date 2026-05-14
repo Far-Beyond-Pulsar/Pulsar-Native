@@ -8,7 +8,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Condvar, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -843,7 +843,7 @@ impl AgentChatPanel {
             /// Old messages were dropped inside the agentic loop to stay within context.
             ContextCompacted(String),
             OpenFile(PathBuf),
-            ActivateOpenEditor(usize),
+            ActivateOpenEditor(usize, Arc<(Mutex<Option<Result<(), String>>>, Condvar)>),
             Finished(Result<agent_chat_core::ChatResponse, String>),
         }
 
@@ -1038,7 +1038,8 @@ impl AgentChatPanel {
                                                         "Failed to dispatch open-file request to UI thread: {}",
                                                         err
                                                     )
-                                                })
+                                                })?;
+                                            Ok(())
                                         }
                                     })),
                                     query_open_editors: Some(Arc::new(|| {
@@ -1047,13 +1048,50 @@ impl AgentChatPanel {
                                     activate_open_editor_request: Some(Arc::new({
                                         let tx_for_activate = tx_for_chunks.clone();
                                         move |index: usize| {
+                                            let before = crate::app::open_editors::snapshot_json();
+                                            let open_count = before
+                                                .get("open_count")
+                                                .and_then(|v| v.as_u64())
+                                                .unwrap_or(0) as usize;
+                                            if index >= open_count {
+                                                let active_before = before
+                                                    .get("active_index")
+                                                    .and_then(|v| v.as_u64())
+                                                    .map(|v| v as usize);
+                                                return Err(format!(
+                                                    "ActivateOpenEditor index {} is out of range (open_count={}, active_before={:?}).",
+                                                    index, open_count, active_before
+                                                ));
+                                            }
+
+                                            let waiter = Arc::new((Mutex::new(None), Condvar::new()));
+
                                             tx_for_activate
-                                                .try_send(StreamEvent::ActivateOpenEditor(index))
+                                                .try_send(StreamEvent::ActivateOpenEditor(
+                                                    index,
+                                                    waiter.clone(),
+                                                ))
                                                 .map_err(|err| {
                                                     format!(
                                                         "Failed to dispatch activate-open-editor request to UI thread: {}",
                                                         err
                                                     )
+                                                })?;
+
+                                            let (lock, cvar) = &*waiter;
+                                            let mut guard = lock.lock().map_err(|_| {
+                                                "ActivateOpenEditor waiter mutex poisoned".to_string()
+                                            })?;
+                                            while guard.is_none() {
+                                                guard = cvar.wait(guard).map_err(|_| {
+                                                    "ActivateOpenEditor waiter mutex poisoned".to_string()
+                                                })?;
+                                            }
+
+                                            guard
+                                                .take()
+                                                .unwrap_or_else(|| {
+                                                    Err("ActivateOpenEditor waiter signaled without a result".to_string())
                                                 })
                                         }
                                     })),
@@ -1465,8 +1503,13 @@ impl AgentChatPanel {
                             StreamEvent::OpenFile(path) => {
                                 cx.dispatch_action(&crate::actions::OpenFile { path });
                             }
-                            StreamEvent::ActivateOpenEditor(index) => {
-                                cx.dispatch_action(&crate::actions::ActivateOpenEditor { index });
+                            StreamEvent::ActivateOpenEditor(index, waiter) => {
+                                let result = panel.activate_open_editor_by_global_index(index, cx);
+                                let (lock, cvar) = &*waiter;
+                                if let Ok(mut guard) = lock.lock() {
+                                    *guard = Some(result);
+                                    cvar.notify_all();
+                                }
                             }
                         }
                     })

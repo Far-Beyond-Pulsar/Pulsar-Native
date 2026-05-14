@@ -126,7 +126,7 @@ impl PulsarApp {
         };
 
         // Build left dock tabs before mutating DockArea to avoid re-entrant DockArea reads.
-        let agent_chat_panel = cx.new(|cx| AgentChatPanel::new(window, cx));
+        let agent_chat_panel = cx.new(|cx| AgentChatPanel::new(dock_area.clone(), window, cx));
         let manual_tool_panel = cx.new(|cx| ManualToolPanel::new(window, cx));
         let left_dock = DockItem::tabs(
             vec![

@@ -44,7 +44,7 @@ use std::{
 };
 use ui::{
     button::{Button, ButtonVariants as _},
-    dock::{Panel, PanelEvent},
+    dock::{DockArea, DockItem, Panel, PanelEvent},
     dropdown::{
         SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
     },
@@ -60,6 +60,8 @@ use ui::{
 };
 
 pub struct AgentChatPanel {
+    pub(crate) dock_area: Entity<DockArea>,
+    pub(crate) parent_window_handle: AnyWindowHandle,
     pub(crate) focus_handle: FocusHandle,
     pub(crate) messages_scroll_handle: VirtualListScrollHandle,
     pub(crate) messages_scroll_state: ScrollbarState,
@@ -109,7 +111,7 @@ pub struct AgentChatPanel {
 }
 
 impl AgentChatPanel {
-    pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    pub fn new(dock_area: Entity<DockArea>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // --- Provider registry: single source of truth, no separate catalog ---
         let mut provider_registry = ProviderRegistry::new();
 
@@ -364,6 +366,8 @@ impl AgentChatPanel {
         ];
 
         let mut this = Self {
+            dock_area,
+            parent_window_handle: window.window_handle(),
             focus_handle: cx.focus_handle(),
             messages_scroll_handle: VirtualListScrollHandle::new(),
             messages_scroll_state: ScrollbarState::default(),
@@ -411,6 +415,67 @@ impl AgentChatPanel {
 
         this.bootstrap_chat_storage(cx);
         this
+    }
+
+    pub(crate) fn activate_open_editor_by_global_index(
+        &self,
+        target_index: usize,
+        cx: &mut Context<Self>,
+    ) -> Result<(), String> {
+        fn find_and_activate(
+            item: &DockItem,
+            current_index: &mut usize,
+            target_index: usize,
+            window: &mut Window,
+            cx: &mut App,
+        ) -> bool {
+            match item {
+                DockItem::Split { items, .. } => {
+                    for child in items {
+                        if find_and_activate(child, current_index, target_index, window, cx) {
+                            return true;
+                        }
+                    }
+                    false
+                }
+                DockItem::Tabs { view, .. } => {
+                    let panels = view.read(cx).all_panels();
+                    for (local_ix, _panel) in panels.into_iter().enumerate() {
+                        if *current_index == target_index {
+                            view.update(cx, |tab_panel, cx| {
+                                tab_panel.set_active_tab(local_ix, window, cx);
+                            });
+                            return true;
+                        }
+                        *current_index += 1;
+                    }
+                    false
+                }
+                DockItem::Tiles { .. } | DockItem::Panel { .. } => false,
+            }
+        }
+
+        let dock_area = self.dock_area.clone();
+        let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
+            let items = {
+                let dock = dock_area.read(cx);
+                dock.items().clone()
+            };
+            let mut current_index = 0usize;
+            find_and_activate(&items, &mut current_index, target_index, window, cx)
+        });
+
+        match update_result {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(format!(
+                "ActivateOpenEditor index out of range: {}",
+                target_index
+            )),
+            Err(err) => Err(format!(
+                "Failed to update parent window during ActivateOpenEditor: {}",
+                err
+            )),
+        }
     }
 }
 

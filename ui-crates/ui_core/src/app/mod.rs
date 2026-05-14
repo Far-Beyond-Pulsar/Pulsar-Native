@@ -96,13 +96,7 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let activated = self.state.center_tabs.update(cx, |tabs, cx| {
-            if action.index >= tabs.all_panels().len() {
-                return false;
-            }
-            tabs.set_active_tab(action.index, window, cx);
-            true
-        });
+        let activated = self.activate_open_editor_by_global_index(action.index, window, cx);
 
         if !activated {
             tracing::warn!("ActivateOpenEditor index out of range: {}", action.index);
