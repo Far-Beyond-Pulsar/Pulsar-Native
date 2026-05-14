@@ -47,15 +47,48 @@ impl LmStudioProvider {
         }
     }
 
+    fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
+        match value {
+            Some(Value::String(raw)) => {
+                serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.clone()))
+            }
+            Some(value) => value.clone(),
+            None => json!({}),
+        }
+    }
+
     fn build_request_payload(model: &str, request: &ChatRequest, stream: bool) -> Value {
         let messages = request
             .messages
             .iter()
             .map(|message: &ChatMessage| {
-                json!({
+                let mut msg = json!({
                     "role": Self::map_role(message.role),
                     "content": message.content,
-                })
+                });
+
+                if let Some(tool_call_id) = &message.tool_call_id {
+                    msg["tool_call_id"] = json!(tool_call_id);
+                }
+
+                if !message.tool_calls.is_empty() {
+                    msg["tool_calls"] = json!(message
+                        .tool_calls
+                        .iter()
+                        .map(|call| {
+                            json!({
+                                "id": call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.name,
+                                    "arguments": call.arguments_json.to_string(),
+                                }
+                            })
+                        })
+                        .collect::<Vec<_>>());
+                }
+
+                msg
             })
             .collect::<Vec<_>>();
 
@@ -91,42 +124,110 @@ impl LmStudioProvider {
                 })
                 .collect::<Vec<_>>();
             payload["tools"] = Value::Array(tools);
+            payload["tool_choice"] = json!("auto");
         }
 
         payload
     }
 
-    fn parse_tool_calls(message: Option<&Value>, next_call_index: &mut usize) -> Vec<ToolCall> {
-        let Some(message) = message else {
-            return Vec::new();
-        };
-        let Some(calls) = message.get("tool_calls").and_then(|value| value.as_array()) else {
-            return Vec::new();
-        };
+    fn parse_tool_calls(raw: &Value) -> Vec<ToolCall> {
+        raw.get("choices")
+            .and_then(|choices| choices.as_array())
+            .and_then(|choices| choices.first())
+            .and_then(|choice| choice.get("message"))
+            .and_then(|message| message.get("tool_calls"))
+            .and_then(|tool_calls| tool_calls.as_array())
+            .map(|calls| {
+                calls
+                    .iter()
+                    .filter_map(|call| {
+                        let id = call.get("id")?.as_str()?.to_string();
+                        let function = call.get("function")?;
+                        let name = function.get("name")?.as_str()?.to_string();
+                        let arguments_json =
+                            Self::parse_tool_arguments_value(function.get("arguments"));
 
-        calls
-            .iter()
-            .filter_map(|call| {
-                let function = call.get("function")?;
-                let name = function.get("name")?.as_str()?.to_string();
+                        Some(ToolCall {
+                            id,
+                            name,
+                            arguments_json,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default()
+    }
 
-                let arguments_json = match function.get("arguments") {
-                    Some(Value::String(raw)) => {
-                        serde_json::from_str::<Value>(raw).unwrap_or_else(|_| json!({}))
+    fn parse_stream_tool_calls(raw_events: &[Value]) -> Vec<ToolCall> {
+        #[derive(Default)]
+        struct PartialToolCall {
+            id: Option<String>,
+            name: Option<String>,
+            arguments: String,
+        }
+
+        let mut partials: Vec<PartialToolCall> = Vec::new();
+
+        for event in raw_events {
+            if let Some(choice) = event
+                .get("choices")
+                .and_then(|choices| choices.as_array())
+                .and_then(|choices| choices.first())
+            {
+                if let Some(delta) = choice.get("delta") {
+                    if let Some(tool_calls_array) =
+                        delta.get("tool_calls").and_then(|value| value.as_array())
+                    {
+                        for tool_call in tool_calls_array {
+                            let index = tool_call
+                                .get("index")
+                                .and_then(|value| value.as_u64())
+                                .unwrap_or(partials.len() as u64)
+                                as usize;
+
+                            while partials.len() <= index {
+                                partials.push(PartialToolCall::default());
+                            }
+
+                            let partial = &mut partials[index];
+
+                            if let Some(id) = tool_call.get("id").and_then(|value| value.as_str()) {
+                                partial.id = Some(id.to_string());
+                            }
+
+                            if let Some(function) = tool_call.get("function") {
+                                if let Some(name) =
+                                    function.get("name").and_then(|value| value.as_str())
+                                {
+                                    partial.name = Some(name.to_string());
+                                }
+
+                                if let Some(arguments_fragment) =
+                                    function.get("arguments").and_then(|value| value.as_str())
+                                {
+                                    partial.arguments.push_str(arguments_fragment);
+                                }
+                            }
+                        }
                     }
-                    Some(value) => value.clone(),
-                    None => json!({}),
-                };
+                }
+            }
+        }
 
-                let id = call
-                    .get("id")
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| {
-                        let generated = format!("lmstudio_call_{}", *next_call_index);
-                        *next_call_index += 1;
-                        generated
-                    });
+        partials
+            .into_iter()
+            .enumerate()
+            .filter_map(|(idx, partial)| {
+                let id = partial
+                    .id
+                    .unwrap_or_else(|| format!("lmstudio_call_{}", idx));
+                let name = partial.name?;
+                let arguments_json = if partial.arguments.trim().is_empty() {
+                    json!({})
+                } else {
+                    serde_json::from_str::<Value>(&partial.arguments)
+                        .unwrap_or_else(|_| Value::String(partial.arguments.clone()))
+                };
 
                 Some(ToolCall {
                     id,
@@ -187,15 +288,7 @@ impl LmStudioProvider {
             .map(|content| content.to_string())
             .filter(|content| !content.is_empty());
 
-        let mut next_call_index = 1usize;
-        let tool_calls = Self::parse_tool_calls(
-            raw_response
-                .get("choices")
-                .and_then(|c| c.as_array())
-                .and_then(|c| c.first())
-                .and_then(|c| c.get("message")),
-            &mut next_call_index,
-        );
+        let tool_calls = Self::parse_tool_calls(&raw_response);
 
         let streamed_text_chunks = assistant_message
             .as_ref()
@@ -233,8 +326,6 @@ impl LmStudioProvider {
         let mut streamed_text_chunks = Vec::new();
         let mut assistant_message = String::new();
         let mut finish_reason = None;
-        let mut tool_calls_by_index: std::collections::BTreeMap<usize, ToolCall> = std::collections::BTreeMap::new();
-        let mut next_call_index = 0usize;
 
         let reader = BufReader::new(response);
         for line in reader.lines() {
@@ -275,45 +366,16 @@ impl LmStudioProvider {
                             streamed_text_chunks.push(chunk.clone());
                             on_chunk(chunk);
                         }
-                    }
-
-                    // Handle incremental tool_calls from delta (OpenAI format)
-                    // Each delta event has a tool_calls array with index and partial data
-                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
-                        for tool_call in tool_calls_array {
-                            if let Some(index) = tool_call.get("index").and_then(|v| v.as_u64()) {
-                                let idx = index as usize;
-                                let entry = tool_calls_by_index.entry(idx).or_insert_with(|| {
-                                    if idx >= next_call_index {
-                                        next_call_index = idx + 1;
-                                    }
-                                    ToolCall {
-                                        id: format!("lmstudio_call_{}", idx),
-                                        name: String::new(),
-                                        arguments_json: json!({}),
-                                    }
-                                });
-
-                                // Update function name if present
-                                if let Some(fn_obj) = tool_call.get("function") {
-                                    if let Some(name) = fn_obj.get("name").and_then(|v| v.as_str()) {
-                                        entry.name = name.to_string();
-                                    }
-                                    // Accumulate arguments string
-                                    if let Some(args_delta) = fn_obj.get("arguments").and_then(|v| v.as_str()) {
-                                        entry.arguments_json = match &entry.arguments_json {
-                                            Value::Object(obj) if obj.is_empty() => {
-                                                // First chunk - try to parse as JSON
-                                                serde_json::from_str::<Value>(args_delta)
-                                                    .unwrap_or_else(|_| Value::String(args_delta.to_string()))
-                                            }
-                                            existing => {
-                                                // Append to existing - if it's not a complete JSON yet,
-                                                // just keep it as a string representation
-                                                existing.clone()
-                                            }
-                                        };
-                                    }
+                    } else if let Some(parts) =
+                        delta.get("content").and_then(|value| value.as_array())
+                    {
+                        for part in parts {
+                            if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
+                                if !text.is_empty() {
+                                    let chunk = text.to_string();
+                                    assistant_message.push_str(&chunk);
+                                    streamed_text_chunks.push(chunk.clone());
+                                    on_chunk(chunk);
                                 }
                             }
                         }
@@ -327,7 +389,7 @@ impl LmStudioProvider {
             }
         }
 
-        let tool_calls = tool_calls_by_index.into_values().collect();
+        let tool_calls = Self::parse_stream_tool_calls(&raw_events);
 
         Ok(ChatResponse {
             assistant_message: if assistant_message.is_empty() {
