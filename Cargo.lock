@@ -13718,6 +13718,7 @@ dependencies = [
  "smallvec",
  "smol 2.0.2",
  "tokio",
+ "tracing",
  "ui",
  "ui_common",
  "urlencoding",

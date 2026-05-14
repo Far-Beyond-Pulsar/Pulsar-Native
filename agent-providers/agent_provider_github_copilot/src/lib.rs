@@ -435,7 +435,7 @@ impl ChatProvider for GithubCopilotProvider {
         request: &ChatRequest,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
-        println!(
+        tracing::debug!(
             "[agent_provider_github_copilot] starting streaming request model={}",
             request.model
         );
@@ -523,7 +523,7 @@ impl ChatProvider for GithubCopilotProvider {
 
         if !response.status().is_success() {
             let status = response.status();
-            eprintln!(
+            tracing::error!(
                 "[agent_provider_github_copilot] streaming request failed status={} body_len={}",
                 status,
                 response.content_length().unwrap_or(0)
@@ -582,7 +582,7 @@ impl ChatProvider for GithubCopilotProvider {
                             let chunk = content.to_string();
                             if !saw_first_chunk {
                                 saw_first_chunk = true;
-                                println!(
+                                tracing::debug!(
                                     "[agent_provider_github_copilot] first chunk len={}",
                                     chunk.len()
                                 );
@@ -598,7 +598,7 @@ impl ChatProvider for GithubCopilotProvider {
                                     let chunk = text.to_string();
                                     if !saw_first_chunk {
                                         saw_first_chunk = true;
-                                        println!(
+                                        tracing::debug!(
                                             "[agent_provider_github_copilot] first chunk len={}",
                                             chunk.len()
                                         );
@@ -623,7 +623,7 @@ impl ChatProvider for GithubCopilotProvider {
             raw_events.push(event);
         }
 
-        println!(
+        tracing::debug!(
             "[agent_provider_github_copilot] streaming completed events={} chunks={} assistant_len={} finish_reason={} end_reason={}",
             event_count,
             streamed_text_chunks.len(),

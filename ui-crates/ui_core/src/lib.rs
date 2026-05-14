@@ -46,11 +46,11 @@ pub fn init(cx: &mut gpui::App) {
     use ui_settings::SettingsWindow;
 
     cx.on_action(|_: &Settings, cx| {
-        println!("[MENU] global: Settings → SettingsWindow");
+        tracing::debug!("[MENU] global: Settings → SettingsWindow");
         open_pulsar_window::<SettingsWindow>((), cx);
     });
     cx.on_action(|_: &Preferences, cx| {
-        println!("[MENU] global: Preferences → SettingsWindow");
+        tracing::debug!("[MENU] global: Preferences → SettingsWindow");
         open_pulsar_window::<SettingsWindow>((), cx);
     });
     cx.on_action(|_: &AboutApp, cx| {

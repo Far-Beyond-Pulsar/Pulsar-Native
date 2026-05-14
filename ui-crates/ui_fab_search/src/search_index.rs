@@ -103,7 +103,7 @@ pub(crate) fn fetch_sketchfab_models(url: &str) -> (Vec<String>, Result<SearchPa
     let url = url.to_string();
     let (log, result) = rt.block_on(async move {
         let mut log: Vec<String> = Vec::new();
-        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); println!("{}", s); log.push(s); }} }
+        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); tracing::debug!("{}", s); log.push(s); }} }
 
         logv!("→ GET {}", url);
         let client = match reqwest::Client::builder()
@@ -161,7 +161,7 @@ pub(crate) fn fetch_sketchfab_model_detail(
     let url2 = url.clone();
     let (log, result) = rt.block_on(async move {
         let mut log: Vec<String> = Vec::new();
-        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); println!("{}", s); log.push(s); }} }
+        macro_rules! logv { ($($t:tt)*) => {{ let s = format!($($t)*); tracing::debug!("{}", s); log.push(s); }} }
 
         logv!("→ GET {}", url2);
         let client = match reqwest::Client::builder()

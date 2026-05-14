@@ -17,6 +17,7 @@ smol = "2"
 image = "0.25"
 smallvec = "1"
 dirs = "5"
+tracing = "0.1"
 
 [lints]
 workspace = true

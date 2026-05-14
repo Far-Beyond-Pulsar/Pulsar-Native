@@ -26,7 +26,7 @@ use crate::IconName;
 /// ```rust,ignore
 /// Draggable::new("my-item", my_payload)
 ///     .on_drag_start(|payload, _window, _cx| {
-///         println!("started dragging: {:?}", payload);
+///         tracing::debug!("started dragging: {:?}", payload);
 ///     })
 ///     .child(my_content)
 /// ```

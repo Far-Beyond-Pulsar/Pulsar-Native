@@ -22,7 +22,7 @@ use std::rc::Rc;
 /// DropArea::new("my-zone")
 ///     .can_accept(|payload: &MyDragType| payload.is_compatible())
 ///     .on_drop(|payload, _window, _cx| {
-///         println!("dropped: {:?}", payload);
+///         tracing::debug!("dropped: {:?}", payload);
 ///     })
 ///     .child(my_content)
 /// ```

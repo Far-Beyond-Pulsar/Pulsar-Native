@@ -911,11 +911,11 @@ fn ai_tools(&self) -> Vec<AiToolDefinition> {
 **Debugging**:
 ```rust
 // 1. Check plugin loads without errors
-println!("Plugin loaded: {}", metadata.name);
+tracing::debug!("Plugin loaded: {}", metadata.name);
 
 // 2. Verify ai_tools() returns non-empty vector
 let tools = self.ai_tools();
-println!("Exporting {} tools", tools.len());
+tracing::debug!("Exporting {} tools", tools.len());
 
 // 3. Check tool registry was updated
 // (AI should call query_available_file_types first)
@@ -934,16 +934,16 @@ println!("Exporting {} tools", tools.len());
 **Debugging**:
 ```rust
 fn execute_ai_tool(...) {
-    eprintln!("Executing tool: {}", tool_name);
-    eprintln!("Args: {}", serde_json::to_string_pretty(&tool_args)?);
+    tracing::error!("Executing tool: {}", tool_name);
+    tracing::error!("Args: {}", serde_json::to_string_pretty(&tool_args)?);
     
     match self.actual_operation() {
         Ok(result) => {
-            eprintln!("Success: {}", serde_json::to_string_pretty(&result)?);
+            tracing::error!("Success: {}", serde_json::to_string_pretty(&result)?);
             Ok(result)
         }
         Err(e) => {
-            eprintln!("Error: {}", e);
+            tracing::error!("Error: {}", e);
             // ... return detailed error
         }
     }

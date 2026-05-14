@@ -129,8 +129,8 @@ mod tests {
         let inline = render_math_svg(r"x^2 + y^2", false).expect("inline svg");
         let block = render_math_svg(r"\\frac{a}{b}", true).expect("block svg");
 
-        println!("INLINE SVG:\n{}", inline);
-        println!("BLOCK SVG:\n{}", block);
+        tracing::debug!("INLINE SVG:\n{}", inline);
+        tracing::debug!("BLOCK SVG:\n{}", block);
     }
 }
 

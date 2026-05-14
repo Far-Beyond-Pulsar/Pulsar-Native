@@ -20,12 +20,12 @@ fn ax_is_process_trusted(_prompt: bool) -> bool {
         let app_ref = AXUIElementCreateApplication(pid);
 
         if app_ref.is_null() {
-            eprintln!(
+            tracing::error!(
                 "[PERMISSIONS] AXUIElementCreateApplication returned null - trust not granted"
             );
             false
         } else {
-            eprintln!("[PERMISSIONS] AXUIElementCreateApplication succeeded - trust confirmed");
+            tracing::error!("[PERMISSIONS] AXUIElementCreateApplication succeeded - trust confirmed");
             core_foundation_sys::base::CFRelease(app_ref.cast());
             true
         }
@@ -96,13 +96,13 @@ pub fn ensure_accessibility_permission_blocking() {
     }
 
     if let Ok(exe) = std::env::current_exe() {
-        eprintln!("[PERMISSIONS] Executable: {}", exe.display());
+        tracing::error!("[PERMISSIONS] Executable: {}", exe.display());
     }
 
     // Trigger the system prompt once at startup, but throttle it across launches
     // to avoid repeated system dialogs when TCC state is delayed or identity differs.
     if prompt_cooldown_active(PROMPT_COOLDOWN_SECS) {
-        eprintln!(
+        tracing::error!(
             "[PERMISSIONS] Prompt throttled (cooldown active). Skipping system prompt this launch."
         );
     } else {
@@ -110,7 +110,7 @@ pub fn ensure_accessibility_permission_blocking() {
         mark_prompted_now();
     }
 
-    eprintln!(
+    tracing::error!(
         "[PERMISSIONS] Waiting for macOS Accessibility permission so viewport input can start safely..."
     );
 
@@ -122,18 +122,18 @@ pub fn ensure_accessibility_permission_blocking() {
         attempt += 1;
         let elapsed = start.elapsed();
         let trusted = ax_is_process_trusted(false);
-        eprintln!(
+        tracing::error!(
             "[PERMISSIONS] Check #{attempt}: trusted={trusted} elapsed={}ms",
             elapsed.as_millis()
         );
 
         if trusted {
-            eprintln!("[PERMISSIONS] Accessibility permission granted");
+            tracing::error!("[PERMISSIONS] Accessibility permission granted");
             break;
         }
 
         if elapsed >= timeout {
-            eprintln!(
+            tracing::error!(
                 "[PERMISSIONS] Accessibility permission was not detected within 180s; continuing startup and relying on runtime guards"
             );
             break;

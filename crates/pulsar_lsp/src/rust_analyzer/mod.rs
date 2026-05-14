@@ -626,7 +626,7 @@ impl RustAnalyzerManager {
                             message: "Initializing...".to_string(),
                         };
                         // DO NOT set initialized=true here - wait for initialize response
-                        println!("[LSP ANALYZER] Sent initialize request, waiting for response before setting initialized flag");
+                        tracing::debug!("[LSP ANALYZER] Sent initialize request, waiting for response before setting initialized flag");
                         cx.emit(AnalyzerEvent::IndexingProgress {
                             progress: 0.0,
                             message: "Initializing...".to_string(),
@@ -774,22 +774,22 @@ impl RustAnalyzerManager {
                                 if let Some(id) = msg.get("id").and_then(|id| id.as_i64()) {
                                     if let Ok(mut pending) = pending_requests_clone.lock() {
                                         if let Some(tx) = pending.remove(&id) {
-                                            println!("[LSP ANALYZER] Received response for request id={}", id);
+                                            tracing::debug!("[LSP ANALYZER] Received response for request id={}", id);
                                             let _ = tx.send(msg.clone());
                                             continue;
                                         }
                                     }
                                     // Handle initialize response specially (id=17 based on our send_initialize_request code)
                                     if id == 17 {
-                                        println!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
+                                        tracing::debug!("[LSP ANALYZER] Received initialize response: result={:?} error={:?}", 
                                             msg.get("result"), msg.get("error"));
                                         if msg.get("error").is_some() {
-                                            println!("[LSP ANALYZER] Initialize response contains an error!");
+                                            tracing::debug!("[LSP ANALYZER] Initialize response contains an error!");
                                             let _ = progress_tx_stdout.send(ProgressUpdate::Error(
                                                 format!("Initialize error: {:?}", msg.get("error")),
                                             ));
                                         } else if msg.get("result").is_some() {
-                                            println!("[LSP ANALYZER] Initialize succeeded, server is ready");
+                                            tracing::debug!("[LSP ANALYZER] Initialize succeeded, server is ready");
                                             // Initialization complete - server is ready for document operations
                                         }
                                     }
@@ -840,7 +840,7 @@ impl RustAnalyzerManager {
             format!("file://{}", workspace_str)
         };
 
-        println!(
+        tracing::debug!(
             "[LSP ANALYZER] Sending initialize with workspace URI: {}",
             uri
         );
@@ -1022,7 +1022,7 @@ impl RustAnalyzerManager {
             }
         });
 
-        println!("[LSP ANALYZER] Sending initialize request with id={}", id);
+        tracing::debug!("[LSP ANALYZER] Sending initialize request with id={}", id);
 
         let mut stdin_lock = stdin_arc.lock().map_err(|e| anyhow!("Lock error: {}", e))?;
         if let Some(stdin) = stdin_lock.as_mut() {
@@ -1032,7 +1032,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            println!(
+            tracing::debug!(
                 "[LSP ANALYZER] Initialize request sent, now sending initialized notification"
             );
 
@@ -1048,7 +1048,7 @@ impl RustAnalyzerManager {
             stdin.write_all(message.as_bytes())?;
             stdin.flush()?;
 
-            println!("[LSP ANALYZER] Initialized notification sent");
+            tracing::debug!("[LSP ANALYZER] Initialized notification sent");
         } else {
             return Err(anyhow!("stdin not available"));
         }
@@ -1429,7 +1429,7 @@ impl RustAnalyzerManager {
     ) -> Result<()> {
         // CRITICAL: Per LSP spec, must wait for initialize response before sending didOpen
         if !self.is_initialized() {
-            println!(
+            tracing::debug!(
                 "[LSP ANALYZER] did_open_file: NOT YET INITIALIZED, deferring didOpen (status={:?}, initialized={})",
                 self.status,
                 self.initialized
@@ -1438,12 +1438,12 @@ impl RustAnalyzerManager {
         }
 
         if !self.is_running() {
-            println!("[LSP ANALYZER] did_open_file called but analyzer not running");
+            tracing::debug!("[LSP ANALYZER] did_open_file called but analyzer not running");
             return Err(anyhow!("Analyzer not running"));
         }
 
         let uri = self.path_to_uri(file_path);
-        println!(
+        tracing::debug!(
             "[LSP ANALYZER] did_open_file: path={:?} uri={} content_len={}",
             file_path,
             uri,
@@ -1540,10 +1540,10 @@ impl RustAnalyzerManager {
         if let Some(method) = notification.get("method").and_then(|m| m.as_str()) {
             if method == "textDocument/didOpen" {
                 if let Some(params) = notification.get("params") {
-                    println!("[LSP ANALYZER] Sending didOpen notification: {:?}", params);
+                    tracing::debug!("[LSP ANALYZER] Sending didOpen notification: {:?}", params);
                 }
             } else if method == "textDocument/didChange" {
-                println!("[LSP ANALYZER] Sending didChange notification");
+                tracing::debug!("[LSP ANALYZER] Sending didChange notification");
             }
         }
 
@@ -1598,7 +1598,7 @@ impl RustAnalyzerManager {
         });
 
         if method == "textDocument/hover" {
-            println!(
+            tracing::debug!(
                 "[LSP ANALYZER] sending hover request: id={} params={}",
                 id,
                 serde_json::to_string(&params).unwrap_or_default()

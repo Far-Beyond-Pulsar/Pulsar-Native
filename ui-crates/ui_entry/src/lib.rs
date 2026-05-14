@@ -67,7 +67,7 @@ pub fn create_entry_component(
         cx.subscribe(
             &intro_screen,
             move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-                println!("✅ [OOBE subscriber] IntroComplete received — opening entry screen");
+                tracing::debug!("✅ [OOBE subscriber] IntroComplete received — opening entry screen");
                 mark_intro_seen();
 
                 let on_proj2 = on_proj_oobe.clone();
@@ -87,10 +87,10 @@ pub fn create_entry_component(
                 };
 
                 let result = cx.open_window(opts, move |window, cx| {
-                    println!("✅ [OOBE] Entry window opened, building component");
+                    tracing::debug!("✅ [OOBE] Entry window opened, building component");
                     create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
                 });
-                println!("✅ [OOBE] open_window result: {:?}", result.is_ok());
+                tracing::debug!("✅ [OOBE] open_window result: {:?}", result.is_ok());
                 // The OOBE window closes itself via should_close flag in render()
             },
         )

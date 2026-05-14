@@ -784,7 +784,7 @@ impl AgentChatPanel {
                 let params = def.parameters_schema;
 
                 if params.get("type").and_then(|v| v.as_str()) != Some("object") {
-                    eprintln!(
+                    tracing::error!(
                         "[agent_chat] WARNING: Tool {} has invalid parameters schema, skipping",
                         def.name
                     );
@@ -799,7 +799,7 @@ impl AgentChatPanel {
             })
             .collect();
 
-        eprintln!(
+        tracing::error!(
             "[agent_chat] Validated {} tools for sending to provider",
             tools.len()
         );
@@ -814,7 +814,7 @@ impl AgentChatPanel {
             top_p: Some(1.0),
             max_tokens: Some(8192),
         };
-        eprintln!(
+        tracing::error!(
             "[agent_chat] start provider={} model={} messages={} compacted={}",
             provider_id,
             request.model,
@@ -898,7 +898,7 @@ impl AgentChatPanel {
                 }
 
                 if iteration >= MAX_ITERATIONS {
-                    eprintln!("[agent_chat] max iterations ({MAX_ITERATIONS}) reached");
+                    tracing::error!("[agent_chat] max iterations ({MAX_ITERATIONS}) reached");
                     // Treat hitting the limit as a clean finish so the UI isn't left hanging.
                     if !completion_for_worker.swap(true, Ordering::SeqCst) {
                         let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(format!(
@@ -1214,7 +1214,7 @@ impl AgentChatPanel {
                         }
                     }
                     Err(err) => {
-                        eprintln!("[agent_chat] provider error (iter {iteration}): {err}");
+                        tracing::error!("[agent_chat] provider error (iter {iteration}): {err}");
                         if !completion_for_worker.swap(true, Ordering::SeqCst) {
                             let _ = tx_for_finish.try_send(StreamEvent::Finished(Err(err)));
                         }
@@ -1230,7 +1230,7 @@ impl AgentChatPanel {
             // 10-minute ceiling — long enough for extended agentic runs.
             Timer::after(Duration::from_secs(600)).await;
             if !completion_for_timeout.swap(true, Ordering::SeqCst) {
-                eprintln!("[agent_chat] watchdog: 10-minute limit reached");
+                tracing::error!("[agent_chat] watchdog: 10-minute limit reached");
                 let _ = tx_timeout.try_send(StreamEvent::Finished(Err(
                     "Request timed out after 10 minutes.".to_string(),
                 )));
@@ -1476,7 +1476,7 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel_tx = None;
-                                eprintln!("[agent_chat] error: {err}");
+                                tracing::error!("[agent_chat] error: {err}");
                                 let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
                                     let is_empty = panel

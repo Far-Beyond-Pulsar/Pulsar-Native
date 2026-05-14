@@ -77,7 +77,7 @@ impl EventEmitter<IntroComplete> for IntroScreen {}
 impl IntroScreen {
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
-        println!("🎬 [IntroScreen] Instance #{} created", instance_id);
+        tracing::debug!("🎬 [IntroScreen] Instance #{} created", instance_id);
 
         // Initialize shared animation state (first call wins)
         let already_created = INTRO_SCREEN_CREATED.swap(true, Ordering::SeqCst);
@@ -85,7 +85,7 @@ impl IntroScreen {
         {
             let mut state = SHARED_ANIM_STATE.lock();
             if state.is_none() {
-                println!("🎬 [IntroScreen::new] Initializing shared animation state");
+                tracing::debug!("🎬 [IntroScreen::new] Initializing shared animation state");
                 let now = Instant::now();
                 *state = Some(SharedAnimState {
                     phase: IntroPhase::FadeIn,
@@ -96,7 +96,7 @@ impl IntroScreen {
                     swipe_direction: 1,
                 });
             } else {
-                println!(
+                tracing::debug!(
                     "🎬 [IntroScreen] Instance #{} reusing existing shared state at phase {:?}",
                     instance_id,
                     state.as_ref().map(|s| s.phase)
@@ -107,7 +107,7 @@ impl IntroScreen {
         if already_created {
             tracing::warn!("🎬 [IntroScreen::new] IntroScreen already exists, using shared state");
         } else {
-            println!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
+            tracing::debug!("🎬 [IntroScreen::new] Creating new IntroScreen instance (first time)");
         }
 
         let audio = IntroAudio::new();
@@ -199,7 +199,7 @@ impl IntroScreen {
 
         // Start the animation loop only on first creation
         if !already_created {
-            println!("🎬 [IntroScreen] Starting animation loop");
+            tracing::debug!("🎬 [IntroScreen] Starting animation loop");
             cx.spawn(async move |this, cx| {
                 loop {
                     cx.background_executor()
@@ -213,7 +213,7 @@ impl IntroScreen {
                         .map(|s| s.phase)
                         .unwrap_or(IntroPhase::Complete);
                     if phase == IntroPhase::Complete {
-                        println!("🎬 [IntroScreen] Animation loop complete");
+                        tracing::debug!("🎬 [IntroScreen] Animation loop complete");
                         break;
                     }
 
@@ -292,7 +292,7 @@ impl IntroScreen {
             }
             IntroPhase::PageTransition => {
                 if phase_elapsed > Duration::from_millis(500) {
-                    println!(
+                    tracing::debug!(
                         "🎬 [tick] PageTransition elapsed {:?}, advancing to Ready",
                         phase_elapsed
                     );
@@ -320,7 +320,7 @@ impl IntroScreen {
             if old_phase == new_phase {
                 return;
             }
-            println!("🎬 [advance_phase] {:?} -> {:?}", old_phase, new_phase);
+            tracing::debug!("🎬 [advance_phase] {:?} -> {:?}", old_phase, new_phase);
             s.phase = new_phase;
             s.phase_start_time = Instant::now();
         }
@@ -336,18 +336,18 @@ impl IntroScreen {
             if let Some(s) = state.as_ref() {
                 (s.current_page, self.pages.len(), s.phase)
             } else {
-                println!("🎬 [next_page] SHARED_ANIM_STATE is None — returning early");
+                tracing::debug!("🎬 [next_page] SHARED_ANIM_STATE is None — returning early");
                 return;
             }
         };
 
-        println!(
+        tracing::debug!(
             "🎬 [next_page] called: page={}/{}, phase={:?}",
             current_page, total_pages, phase
         );
 
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
-            println!("🔒 [next_page] BLOCKED by phase {:?}", phase);
+            tracing::debug!("🔒 [next_page] BLOCKED by phase {:?}", phase);
             return;
         }
 
@@ -398,9 +398,9 @@ impl IntroScreen {
     fn finish(&mut self, cx: &mut Context<Self>) {
         // Only start FadeOut if not already fading/complete.
         let phase = self.get_phase();
-        println!("🎬 [finish] called, phase={:?}", phase);
+        tracing::debug!("🎬 [finish] called, phase={:?}", phase);
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {
-            println!("🎬 [finish] already fading/complete, skipping");
+            tracing::debug!("🎬 [finish] already fading/complete, skipping");
             return;
         }
         self.audio.play_complete();
@@ -408,11 +408,11 @@ impl IntroScreen {
 
         // Don't rely on tick() — schedule emit directly after fade duration.
         cx.spawn(async move |this, cx| {
-            println!("🎬 [finish] spawn started, waiting 550ms");
+            tracing::debug!("🎬 [finish] spawn started, waiting 550ms");
             cx.background_executor()
                 .timer(Duration::from_millis(550))
                 .await;
-            println!("🎬 [finish] timer fired, emitting IntroComplete");
+            tracing::debug!("🎬 [finish] timer fired, emitting IntroComplete");
             let _ = cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     {
@@ -423,11 +423,11 @@ impl IntroScreen {
                         }
                     }
                     screen.audio.stop_all();
-                    println!("🎬 [finish] cx.emit(IntroComplete) called");
+                    tracing::debug!("🎬 [finish] cx.emit(IntroComplete) called");
                     cx.emit(IntroComplete);
                 });
             });
-            println!("🎬 [finish] spawn done");
+            tracing::debug!("🎬 [finish] spawn done");
         })
         .detach();
     }
@@ -614,7 +614,7 @@ impl IntroScreen {
                     })
                     .when(!is_first_page, |el| {
                         el.on_click(cx.listener(|this, _, _, cx| {
-                            println!("🖱️ [back-btn] clicked");
+                            tracing::debug!("🖱️ [back-btn] clicked");
                             this.prev_page(cx);
                         }))
                     })
@@ -661,7 +661,7 @@ impl IntroScreen {
                     .cursor_pointer()
                     .hover(|s| s.bg(white().opacity(0.25)))
                     .on_click(cx.listener(|this, _, _, cx| {
-                        println!("🖱️ [next-btn] clicked");
+                        tracing::debug!("🖱️ [next-btn] clicked");
                         this.next_page(cx);
                     }))
                     .child(
@@ -703,7 +703,7 @@ impl Render for IntroScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Close this window if skip/finish was called
         if self.should_close {
-            println!("🪟 [IntroScreen::render] should_close=true, removing window");
+            tracing::debug!("🪟 [IntroScreen::render] should_close=true, removing window");
             _window.remove_window();
         }
 
@@ -933,7 +933,7 @@ pub fn has_seen_intro() -> bool {
         .iter()
         .any(|arg| arg == "--skip-oobe" || arg == "--no-oobe")
     {
-        println!("🎯 [OOBE] --skip-oobe flag detected, skipping OOBE");
+        tracing::debug!("🎯 [OOBE] --skip-oobe flag detected, skipping OOBE");
         return true;
     }
 
@@ -941,10 +941,10 @@ pub fn has_seen_intro() -> bool {
     if args.iter().any(|arg| arg == "--OOBE" || arg == "--oobe") {
         // Only show OOBE once per session even with the flag
         if !OOBE_SHOWN_THIS_SESSION.swap(true, Ordering::SeqCst) {
-            println!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
+            tracing::debug!("🎯 [OOBE] --OOBE flag detected, forcing OOBE display");
             return false;
         } else {
-            println!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
+            tracing::debug!("🎯 [OOBE] --OOBE flag present but OOBE already shown this session");
         }
     }
 
