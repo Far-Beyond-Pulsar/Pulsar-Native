@@ -10,6 +10,8 @@ use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
+use tracing::debug;
 
 type ToolExecFn = Arc<dyn Fn(&Path, serde_json::Value) -> Result<serde_json::Value, PluginError> + Send + Sync>;
 
@@ -53,6 +55,7 @@ impl PluginToolBridge {
         plugin_id: PluginId,
         plugin: &'static dyn EditorPlugin,
     ) {
+        debug!(plugin_id = %plugin_id, "discover_plugin_tools start");
         let tool_defs = plugin.ai_tools();
 
         for tool_def in tool_defs {
@@ -73,6 +76,7 @@ impl PluginToolBridge {
             self.tool_to_plugin
                 .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
         }
+        debug!(plugin_id = %plugin_id, tool_count = self.tools.len(), "discover_plugin_tools end");
     }
 
     /// Discover tools from a built-in provider.
@@ -81,6 +85,7 @@ impl PluginToolBridge {
         plugin_id: PluginId,
         provider: Arc<dyn BuiltinEditorProvider>,
     ) {
+        debug!(plugin_id = %plugin_id, "discover_builtin_tools start");
         let tool_defs = provider.ai_tools();
 
         for tool_def in tool_defs {
@@ -102,6 +107,7 @@ impl PluginToolBridge {
             self.tool_to_plugin
                 .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
         }
+        debug!(plugin_id = %plugin_id, tool_count = self.tools.len(), "discover_builtin_tools end");
     }
 
     /// Discover tools from a built-in provider for a specific file.
@@ -111,8 +117,10 @@ impl PluginToolBridge {
         provider: Arc<dyn BuiltinEditorProvider>,
         file_path: &Path,
     ) {
+        debug!(plugin_id = %plugin_id, file = %file_path.display(), "discover_builtin_tools_for_file start");
         let capabilities = provider.capabilities_for_file(file_path);
         if capabilities.is_empty() {
+            debug!(plugin_id = %plugin_id, file = %file_path.display(), "discover_builtin_tools_for_file skipped: no capabilities");
             return;
         }
 
@@ -139,6 +147,7 @@ impl PluginToolBridge {
                     .insert(tool_name.clone(), (plugin_id.clone(), tool_name));
             }
         }
+        debug!(plugin_id = %plugin_id, file = %file_path.display(), tool_count = self.tools.len(), "discover_builtin_tools_for_file end");
     }
 
     /// Discover tools from a plugin for a specific file type
@@ -149,6 +158,7 @@ impl PluginToolBridge {
         file_path: &Path,
     ) {
         // Get tools available for this file from the plugin
+        debug!(plugin_id = %plugin_id, file = %file_path.display(), "discover_plugin_tools_for_file start");
         let capabilities = plugin.capabilities_for_file(file_path);
 
         if !capabilities.is_empty() {
@@ -176,6 +186,7 @@ impl PluginToolBridge {
                 }
             }
         }
+        debug!(plugin_id = %plugin_id, file = %file_path.display(), tool_count = self.tools.len(), "discover_plugin_tools_for_file end");
     }
 
     /// Get all available tools
@@ -246,7 +257,11 @@ impl PluginToolBridge {
     ) -> Option<Result<serde_json::Value, PluginError>> {
         let tool = self.tools.get(tool_name)?;
         let exec = tool.execute.as_ref()?;
-        Some(exec(file_path, tool_args))
+        let started_at = Instant::now();
+        debug!(tool = tool_name, plugin_id = %tool.plugin_id, file = %file_path.display(), "bridge direct execute start");
+        let result = exec(file_path, tool_args);
+        debug!(tool = tool_name, plugin_id = %tool.plugin_id, file = %file_path.display(), elapsed_ms = started_at.elapsed().as_millis() as u64, success = result.is_ok(), "bridge direct execute end");
+        Some(result)
     }
 
     /// Clear all cached tools

@@ -9,6 +9,7 @@ anyhow = "1"
 serde_json = "1"
 engine_fs = { path = "../../crates/engine_fs" }
 plugin_manager = { path = "../../crates/plugin_manager" }
-tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa" }
-tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa" }
-tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa" }
+tracing.workspace = true
+tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }

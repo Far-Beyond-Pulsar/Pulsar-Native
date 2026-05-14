@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock, RwLock},
 };
+use std::time::Instant;
+use tracing::debug;
 
 pub use tool_registry::{ChatTool, PluginToolRegistry, ToolContext, ToolRegistry};
 use tool_registry_macros::tool;
@@ -349,6 +351,8 @@ fn execute_plugin_tool_inner(
     plugin_id: Option<String>,
     full_file_path: PathBuf,
 ) -> anyhow::Result<Value> {
+    let started_at = Instant::now();
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool start");
     let manager_lock = plugin_manager::global()
         .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
@@ -357,6 +361,7 @@ fn execute_plugin_tool_inner(
 
     // Resolve through the same file-scoped bridge used by query_plugin_tools so
     // execution matches file capabilities and plugin ownership for that file.
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), "building tool bridge for file");
     let bridge = manager.build_tool_bridge_for_file(&full_file_path);
     let resolved_plugin_id = if let Some(explicit_plugin_id) = plugin_id.as_deref() {
         bridge
@@ -410,6 +415,8 @@ fn execute_plugin_tool_inner(
         })?
         .map_err(|err| anyhow!(err.to_string()))?;
 
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = %resolved_plugin_id, elapsed_ms = started_at.elapsed().as_millis() as u64, "call_plugin_tool end");
+
     Ok(json!({
         "status": "ok",
         "plugin_id": resolved_plugin_id.to_string(),
@@ -429,6 +436,7 @@ pub fn call_plugin_tool(
 ) -> anyhow::Result<Value> {
     let root = runtime_workspace_root()?;
     let full_file_path = resolve_workspace_path_soft(&root, &file_path)?;
+    debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool resolved file path");
     execute_plugin_tool_inner(tool_name, args, plugin_id, full_file_path)
 }
 

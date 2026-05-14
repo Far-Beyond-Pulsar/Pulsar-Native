@@ -482,6 +482,7 @@ impl PluginManager {
 
     /// Build a snapshot bridge containing AI tools exposed by all loaded plugins.
     pub fn build_tool_bridge(&self) -> PluginToolBridge {
+        tracing::debug!(plugin_count = self.plugins.len(), builtin_count = self.builtin_registry.providers().len(), "build_tool_bridge start");
         let mut bridge = PluginToolBridge::new();
         for (plugin_id, loaded_plugin) in &self.plugins {
             bridge.discover_plugin_tools(plugin_id.clone(), loaded_plugin.plugin);
@@ -491,11 +492,13 @@ impl PluginManager {
             bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.clone());
         }
 
+        tracing::debug!(tool_count = bridge.tool_names().len(), "build_tool_bridge end");
         bridge
     }
 
     /// Build a snapshot bridge containing AI tools applicable to a specific file.
     pub fn build_tool_bridge_for_file(&self, file_path: &Path) -> PluginToolBridge {
+        tracing::debug!(file = %file_path.display(), plugin_count = self.plugins.len(), builtin_count = self.builtin_registry.providers().len(), "build_tool_bridge_for_file start");
         let mut bridge = PluginToolBridge::new();
         for (plugin_id, loaded_plugin) in &self.plugins {
             bridge.discover_plugin_tools_for_file(
@@ -513,6 +516,7 @@ impl PluginManager {
             );
         }
 
+        tracing::debug!(file = %file_path.display(), tool_count = bridge.tool_names().len(), "build_tool_bridge_for_file end");
         bridge
     }
 
