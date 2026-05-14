@@ -233,8 +233,8 @@ impl LmStudioProvider {
         let mut streamed_text_chunks = Vec::new();
         let mut assistant_message = String::new();
         let mut finish_reason = None;
-        let mut tool_calls = Vec::new();
-        let mut next_call_index = 1usize;
+        let mut tool_calls_by_index: std::collections::BTreeMap<usize, ToolCall> = std::collections::BTreeMap::new();
+        let mut next_call_index = 0usize;
 
         let reader = BufReader::new(response);
         for line in reader.lines() {
@@ -277,9 +277,47 @@ impl LmStudioProvider {
                         }
                     }
 
-                    // Parse tool calls from streaming delta
-                    let mut calls = Self::parse_tool_calls(Some(delta), &mut next_call_index);
-                    tool_calls.append(&mut calls);
+                    // Handle incremental tool_calls from delta (OpenAI format)
+                    // Each delta event has a tool_calls array with index and partial data
+                    if let Some(tool_calls_array) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                        for tool_call in tool_calls_array {
+                            if let Some(index) = tool_call.get("index").and_then(|v| v.as_u64()) {
+                                let idx = index as usize;
+                                let entry = tool_calls_by_index.entry(idx).or_insert_with(|| {
+                                    if idx >= next_call_index {
+                                        next_call_index = idx + 1;
+                                    }
+                                    ToolCall {
+                                        id: format!("lmstudio_call_{}", idx),
+                                        name: String::new(),
+                                        arguments_json: json!({}),
+                                    }
+                                });
+
+                                // Update function name if present
+                                if let Some(fn_obj) = tool_call.get("function") {
+                                    if let Some(name) = fn_obj.get("name").and_then(|v| v.as_str()) {
+                                        entry.name = name.to_string();
+                                    }
+                                    // Accumulate arguments string
+                                    if let Some(args_delta) = fn_obj.get("arguments").and_then(|v| v.as_str()) {
+                                        entry.arguments_json = match &entry.arguments_json {
+                                            Value::Object(obj) if obj.is_empty() => {
+                                                // First chunk - try to parse as JSON
+                                                serde_json::from_str::<Value>(args_delta)
+                                                    .unwrap_or_else(|_| Value::String(args_delta.to_string()))
+                                            }
+                                            existing => {
+                                                // Append to existing - if it's not a complete JSON yet,
+                                                // just keep it as a string representation
+                                                existing.clone()
+                                            }
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -288,6 +326,8 @@ impl LmStudioProvider {
                 break;
             }
         }
+
+        let tool_calls = tool_calls_by_index.into_values().collect();
 
         Ok(ChatResponse {
             assistant_message: if assistant_message.is_empty() {
