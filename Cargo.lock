@@ -1342,8 +1342,9 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=3cd703aa43d431d0157ed6faa6fe985471546f78#3cd703aa43d431d0157ed6faa6fe985471546f78"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c2f866091a2f277e884de4aaa78bb79b60bf8980#c2f866091a2f277e884de4aaa78bb79b60bf8980"
 dependencies = [
+ "anyhow",
  "arboard",
  "chrono",
  "engine_backend",
@@ -1358,6 +1359,8 @@ dependencies = [
  "serde",
  "serde_json",
  "smol 2.0.2",
+ "tool_registry",
+ "tool_registry_macros",
  "tracing",
  "ui",
  "ui_common",
@@ -10921,7 +10924,6 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=63f291a8af6acc27700f19e60119661b3635d717#63f291a8af6acc27700f19e60119661b3635d717"
 dependencies = [
  "anyhow",
  "engine_backend",
@@ -12844,7 +12846,7 @@ dependencies = [
 [[package]]
 name = "tool_registry"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef#4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef"
+source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa#0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa"
 dependencies = [
  "anyhow",
  "inventory",
@@ -12855,7 +12857,7 @@ dependencies = [
 [[package]]
 name = "tool_registry_builtin"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef#4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef"
+source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa#0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa"
 dependencies = [
  "anyhow",
  "reqwest 0.12.28",
@@ -12869,7 +12871,7 @@ dependencies = [
 [[package]]
 name = "tool_registry_macros"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef#4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef"
+source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa#0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa"
 dependencies = [
  "proc-macro2",
  "quote",

@@ -838,6 +838,7 @@ impl AgentChatPanel {
             ToolCallResult {
                 id: String,
                 result_preview: String,
+                result_full: String,
                 is_error: bool,
             },
             /// Old messages were dropped inside the agentic loop to stay within context.
@@ -1138,6 +1139,7 @@ impl AgentChatPanel {
                                         let _ = tx.try_send(StreamEvent::ToolCallResult {
                                             id: id.clone(),
                                             result_preview,
+                                            result_full: tool_result.clone(),
                                             is_error,
                                         });
                                         (id, name, tool_result)
@@ -1372,12 +1374,14 @@ impl AgentChatPanel {
                                         let args_raw = serde_json::to_string(&c.arguments_json).unwrap_or_default();
                                         let args_preview = if args_raw.len() > 120 {
                                             format!("{}…", &args_raw[..120])
-                                        } else { args_raw };
+                                        } else { args_raw.clone() };
                                         ToolCallDisplay {
                                             id: c.id.clone(),
                                             name: c.name.clone(),
                                             args_preview,
+                                            args_full: args_raw,
                                             result_preview: None,
+                                            result_full: None,
                                             is_error: false,
                                             started_at_ms: group_start,
                                             finished_at_ms: None,
@@ -1398,12 +1402,13 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ToolCallResult { id, result_preview, is_error } => {
+                            StreamEvent::ToolCallResult { id, result_preview, result_full, is_error } => {
                                 let done_ms = now_ms();
                                 for item in panel.display_items.iter_mut().rev() {
                                     if let DisplayItem::ToolCallGroup { calls, finished_at_ms, .. } = item {
                                         if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
                                             call.result_preview = Some(result_preview);
+                                            call.result_full = Some(result_full);
                                             call.is_error = is_error;
                                             call.finished_at_ms = Some(done_ms);
                                         }

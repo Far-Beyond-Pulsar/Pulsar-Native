@@ -9,9 +9,12 @@ use crate::builtin::BuiltinEditorProvider;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
+
+type ToolExecFn = Arc<dyn Fn(&Path, serde_json::Value) -> Result<serde_json::Value, PluginError> + Send + Sync>;
 
 /// Represents a tool available from a specific plugin
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct AvailableTool {
     /// The tool definition
     pub definition: AiToolDefinition,
@@ -21,10 +24,12 @@ pub struct AvailableTool {
 
     /// File types this tool applies to (empty = applies to all)
     pub file_types: Vec<String>,
+
+    /// Optional direct execution closure captured at bridge build time.
+    pub execute: Option<ToolExecFn>,
 }
 
 /// Bridges between plugin system and AI tool system
-#[derive(Debug)]
 pub struct PluginToolBridge {
     /// Cached tools from all plugins
     tools: HashMap<String, AvailableTool>,
@@ -43,16 +48,25 @@ impl PluginToolBridge {
     }
 
     /// Discover all tools from a specific plugin
-    pub fn discover_plugin_tools(&mut self, plugin_id: PluginId, plugin: &dyn EditorPlugin) {
+    pub fn discover_plugin_tools(
+        &mut self,
+        plugin_id: PluginId,
+        plugin: &'static dyn EditorPlugin,
+    ) {
         let tool_defs = plugin.ai_tools();
 
         for tool_def in tool_defs {
             let tool_name = tool_def.name.clone();
+            let tool_name_for_exec = tool_name.clone();
+            let exec: ToolExecFn = Arc::new(move |file_path, tool_args| {
+                plugin.execute_ai_tool(file_path, &tool_name_for_exec, tool_args)
+            });
 
             let available_tool = AvailableTool {
                 definition: tool_def,
                 plugin_id: plugin_id.clone(),
                 file_types: Vec::new(),
+                execute: Some(exec),
             };
 
             self.tools.insert(tool_name.clone(), available_tool);
@@ -65,17 +79,23 @@ impl PluginToolBridge {
     pub fn discover_builtin_tools(
         &mut self,
         plugin_id: PluginId,
-        provider: &dyn BuiltinEditorProvider,
+        provider: Arc<dyn BuiltinEditorProvider>,
     ) {
         let tool_defs = provider.ai_tools();
 
         for tool_def in tool_defs {
             let tool_name = tool_def.name.clone();
+            let tool_name_for_exec = tool_name.clone();
+            let provider_for_exec = provider.clone();
+            let exec: ToolExecFn = Arc::new(move |file_path, tool_args| {
+                provider_for_exec.execute_ai_tool(file_path, &tool_name_for_exec, tool_args)
+            });
 
             let available_tool = AvailableTool {
                 definition: tool_def,
                 plugin_id: plugin_id.clone(),
                 file_types: Vec::new(),
+                execute: Some(exec),
             };
 
             self.tools.insert(tool_name.clone(), available_tool);
@@ -88,7 +108,7 @@ impl PluginToolBridge {
     pub fn discover_builtin_tools_for_file(
         &mut self,
         plugin_id: PluginId,
-        provider: &dyn BuiltinEditorProvider,
+        provider: Arc<dyn BuiltinEditorProvider>,
         file_path: &Path,
     ) {
         let capabilities = provider.capabilities_for_file(file_path);
@@ -100,6 +120,11 @@ impl PluginToolBridge {
         for tool_def in tool_defs {
             if capabilities.contains(&tool_def.name) {
                 let tool_name = tool_def.name.clone();
+                let tool_name_for_exec = tool_name.clone();
+                let provider_for_exec = provider.clone();
+                let exec: ToolExecFn = Arc::new(move |file_path, tool_args| {
+                    provider_for_exec.execute_ai_tool(file_path, &tool_name_for_exec, tool_args)
+                });
 
                 self.tools
                     .entry(tool_name.clone())
@@ -107,6 +132,7 @@ impl PluginToolBridge {
                         definition: tool_def,
                         plugin_id: plugin_id.clone(),
                         file_types: vec![],
+                        execute: Some(exec),
                     });
 
                 self.tool_to_plugin
@@ -119,7 +145,7 @@ impl PluginToolBridge {
     pub fn discover_plugin_tools_for_file(
         &mut self,
         plugin_id: PluginId,
-        plugin: &dyn EditorPlugin,
+        plugin: &'static dyn EditorPlugin,
         file_path: &Path,
     ) {
         // Get tools available for this file from the plugin
@@ -131,6 +157,10 @@ impl PluginToolBridge {
             for tool_def in tool_defs {
                 if capabilities.contains(&tool_def.name) {
                     let tool_name = tool_def.name.clone();
+                    let tool_name_for_exec = tool_name.clone();
+                    let exec: ToolExecFn = Arc::new(move |file_path, tool_args| {
+                        plugin.execute_ai_tool(file_path, &tool_name_for_exec, tool_args)
+                    });
 
                     self.tools
                         .entry(tool_name.clone())
@@ -138,6 +168,7 @@ impl PluginToolBridge {
                             definition: tool_def,
                             plugin_id: plugin_id.clone(),
                             file_types: vec![],
+                            execute: Some(exec),
                         });
 
                     self.tool_to_plugin
@@ -206,6 +237,18 @@ impl PluginToolBridge {
         plugin.execute_ai_tool(file_path, tool_name, tool_args)
     }
 
+    /// Execute using the closure captured during discovery, if available.
+    pub fn execute_tool_direct(
+        &self,
+        tool_name: &str,
+        file_path: &Path,
+        tool_args: serde_json::Value,
+    ) -> Option<Result<serde_json::Value, PluginError>> {
+        let tool = self.tools.get(tool_name)?;
+        let exec = tool.execute.as_ref()?;
+        Some(exec(file_path, tool_args))
+    }
+
     /// Clear all cached tools
     pub fn clear(&mut self) {
         self.tools.clear();
@@ -213,7 +256,7 @@ impl PluginToolBridge {
     }
 
     /// Refresh tools from a plugin
-    pub fn refresh_plugin(&mut self, plugin_id: &PluginId, plugin: &dyn EditorPlugin) {
+    pub fn refresh_plugin(&mut self, plugin_id: &PluginId, plugin: &'static dyn EditorPlugin) {
         // Remove old tools from this plugin
         self.tools.retain(|_, tool| tool.plugin_id != *plugin_id);
         self.tool_to_plugin.retain(|_, (pid, _)| pid != plugin_id);

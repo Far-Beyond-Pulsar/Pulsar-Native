@@ -8,8 +8,14 @@ pub struct ToolCallDisplay {
     pub name: String,
     /// Pre-formatted JSON for display (truncated to ~300 chars).
     pub args_preview: String,
+    /// Full, untruncated args payload for copy/export.
+    #[serde(default)]
+    pub args_full: String,
     /// `None` while the tool is still running.
     pub result_preview: Option<String>,
+    /// Full, untruncated result payload for copy/export.
+    #[serde(default)]
+    pub result_full: Option<String>,
     pub is_error: bool,
     /// Unix-epoch milliseconds when this tool call was dispatched.
     #[serde(default)]

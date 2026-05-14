@@ -109,7 +109,7 @@ struct LoadedPlugin {
     /// 1. The plugin library is never unloaded (PermanentLibrary prevents it)
     /// 2. The plugin is created by leaking a Box (intentional permanent allocation)
     /// 3. The reference remains valid for the process lifetime
-    plugin: &'static mut dyn EditorPlugin,
+    plugin: &'static dyn EditorPlugin,
 
     /// The dynamic library handle (must be kept alive).
     ///
@@ -392,6 +392,8 @@ impl PluginManager {
             create_fn(theme_ptr)
         };
 
+        let plugin: &'static mut dyn EditorPlugin = plugin;
+
         // Get plugin metadata
         let metadata = plugin.metadata();
         let plugin_id = metadata.id.clone();
@@ -405,6 +407,9 @@ impl PluginManager {
 
         // Call on_load hook
         plugin.on_load();
+
+        // After load-time initialization we keep only an immutable static plugin ref.
+        let plugin: &'static dyn EditorPlugin = plugin;
 
         // Register file types
         let file_types = plugin.file_types();
@@ -483,7 +488,7 @@ impl PluginManager {
         }
 
         for provider in self.builtin_registry.providers() {
-            bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.as_ref());
+            bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.clone());
         }
 
         bridge
@@ -503,7 +508,7 @@ impl PluginManager {
         for provider in self.builtin_registry.providers() {
             bridge.discover_builtin_tools_for_file(
                 PluginId::new(provider.provider_id()),
-                provider.as_ref(),
+                provider.clone(),
                 file_path,
             );
         }

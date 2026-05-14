@@ -96,7 +96,8 @@ Tool usage is displayed automatically in the UI — do not narrate or repeat too
     For file operations call query_open_editors first and use the exact file_path it returns.\n\
     Use cd to change the AI working directory, list_files to inspect directories, and tree for bounded recursive directory views.\n\n\
 {tool_docs}\n\n\
-Plugin-provided tools are discovered dynamically via query_plugin_tools — call that first whenever you want to edit a file."
+Plugin-provided tools are discovered dynamically via query_plugin_tools — call that first whenever you want to edit a file.\n\
+Plugin-provided tool execution should use call_plugin_tool with an explicit file_path and plugin_id for reliable, unambiguous routing."
         );
         ChatMessage {
             role: ChatRole::System,

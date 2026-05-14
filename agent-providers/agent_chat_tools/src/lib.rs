@@ -301,75 +301,63 @@ pub fn query_plugin_tools(file_path: Option<String>) -> anyhow::Result<Value> {
 /// List AI tools provided by a specific plugin, optionally scoped to a file.
 #[tool(category = "pulsar")]
 pub fn query_tools_for_plugin(plugin_id: String, file_path: Option<String>) -> anyhow::Result<Value> {
+    let full = if let Some(file_path) = file_path {
+        let root = runtime_workspace_root()?;
+        Some(resolve_workspace_path_soft(&root, &file_path)?)
+    } else {
+        None
+    };
+
     let manager_lock = plugin_manager::global()
         .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
-    let tools = if let Some(file_path) = file_path {
-        let root = runtime_workspace_root()?;
-        let full = resolve_workspace_path(&root, &file_path)?;
-        manager
-            .build_tool_bridge_for_file(&full)
-            .all_tools()
-            .into_iter()
-            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
-            .map(|tool| tool.definition)
-            .collect::<Vec<_>>()
+    let bridge = if let Some(path) = full.as_ref() {
+        manager.build_tool_bridge_for_file(path)
     } else {
-        manager
-            .build_tool_bridge()
-            .all_tools()
-            .into_iter()
-            .filter(|tool| tool.plugin_id.to_string() == plugin_id)
-            .map(|tool| tool.definition)
-            .collect::<Vec<_>>()
+        manager.build_tool_bridge()
     };
 
-    let tool_schemas = tools
-        .iter()
+    let tool_schemas = bridge
+        .all_tools()
+        .into_iter()
+        .filter(|tool| tool.plugin_id.to_string() == plugin_id)
         .map(|tool| {
             json!({
-                "name": tool.name,
-                "description": tool.description,
-                "category": tool.category,
-                "parameters": tool.parameters_json_schema,
-                "plugin_id": plugin_id,
+                "name": tool.definition.name,
+                "description": tool.definition.description,
+                "category": tool.definition.category,
+                "parameters": tool.definition.parameters_json_schema,
+                "plugin_id": tool.plugin_id.to_string(),
             })
         })
         .collect::<Vec<_>>();
 
     Ok(json!({
         "plugin_id": plugin_id,
+        "file_path": full.as_ref().map(|p| p.display().to_string()),
         "tools_available": tool_schemas.len(),
         "tools": tool_schemas,
     }))
 }
 
-/// Execute an AI tool provided by a plugin. Call query_plugin_tools first to discover available tools and their parameters.
-#[tool(category = "pulsar")]
-pub fn execute_plugin_tool(
+fn execute_plugin_tool_inner(
     tool_name: String,
     args: Value,
     plugin_id: Option<String>,
-    file_path: Option<String>,
+    full_file_path: PathBuf,
 ) -> anyhow::Result<Value> {
-    let file_path = file_path
-        .map(PathBuf::from)
-        .or_else(|| runtime_current_file().ok().flatten())
-        .ok_or_else(|| anyhow!("No file path provided or available in context"))?;
-
-    let root = runtime_workspace_root()?;
-    let full_file_path = resolve_workspace_path_soft(&root, &file_path.display().to_string())?;
-
     let manager_lock = plugin_manager::global()
         .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
 
-    let bridge = manager.build_tool_bridge();
+    // Resolve through the same file-scoped bridge used by query_plugin_tools so
+    // execution matches file capabilities and plugin ownership for that file.
+    let bridge = manager.build_tool_bridge_for_file(&full_file_path);
     let resolved_plugin_id = if let Some(explicit_plugin_id) = plugin_id.as_deref() {
         bridge
             .all_tools()
@@ -381,13 +369,45 @@ pub fn execute_plugin_tool(
             .map(|tool| tool.plugin_id)
             .ok_or_else(|| anyhow!("Tool '{}' not found for plugin id '{}'", tool_name, explicit_plugin_id))?
     } else {
-        bridge
-            .plugin_for_tool(&tool_name)
-            .ok_or_else(|| anyhow!("Tool not found or plugin not resolvable: {}", tool_name))?
+        let matches = bridge
+            .all_tools()
+            .into_iter()
+            .filter(|tool| tool.definition.name == tool_name)
+            .map(|tool| tool.plugin_id)
+            .collect::<Vec<_>>();
+
+        match matches.len() {
+            0 => {
+                return Err(anyhow!(
+                    "Tool not found for file '{}': {}",
+                    full_file_path.display(),
+                    tool_name
+                ));
+            }
+            1 => matches.into_iter().next().expect("len checked"),
+            _ => {
+                let plugin_ids = matches
+                    .into_iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>();
+                return Err(anyhow!(
+                    "Ambiguous tool '{}'. Provide plugin_id. Candidates: {}",
+                    tool_name,
+                    plugin_ids.join(", ")
+                ));
+            }
+        }
     };
 
-    let result = manager
-        .execute_plugin_ai_tool(&resolved_plugin_id, &full_file_path, &tool_name, args)
+    let result = bridge
+        .execute_tool_direct(&tool_name, &full_file_path, args)
+        .ok_or_else(|| {
+            anyhow!(
+                "No direct handler registered for tool '{}' (plugin '{}').",
+                tool_name,
+                resolved_plugin_id
+            )
+        })?
         .map_err(|err| anyhow!(err.to_string()))?;
 
     Ok(json!({
@@ -397,6 +417,40 @@ pub fn execute_plugin_tool(
         "file_path": full_file_path.display().to_string(),
         "result": result,
     }))
+}
+
+/// Execute a plugin tool with explicit file context (preferred for LLM calls).
+#[tool(category = "pulsar")]
+pub fn call_plugin_tool(
+    file_path: String,
+    tool_name: String,
+    args: Value,
+    plugin_id: Option<String>,
+) -> anyhow::Result<Value> {
+    let root = runtime_workspace_root()?;
+    let full_file_path = resolve_workspace_path_soft(&root, &file_path)?;
+    execute_plugin_tool_inner(tool_name, args, plugin_id, full_file_path)
+}
+
+/// Execute an AI tool provided by a plugin. Back-compat wrapper around call_plugin_tool.
+#[tool(category = "pulsar")]
+pub fn execute_plugin_tool(
+    tool_name: String,
+    args: Value,
+    plugin_id: Option<String>,
+    file_path: Option<String>,
+) -> anyhow::Result<Value> {
+    let file_path = if let Some(path) = file_path {
+        path
+    } else {
+        runtime_current_file()?
+            .map(|p| p.display().to_string())
+            .ok_or_else(|| anyhow!(
+                "No file path provided. Prefer call_plugin_tool(file_path, tool_name, args, plugin_id)."
+            ))?
+    };
+
+    call_plugin_tool(file_path, tool_name, args, plugin_id)
 }
 
 fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {

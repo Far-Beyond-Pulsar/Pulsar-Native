@@ -975,6 +975,29 @@ impl Render for AgentChatPanel {
                                             DisplayItem::ToolCallGroup { calls, is_expanded, started_at_ms, finished_at_ms } => {
                                                 let calls = calls.clone();
                                                 let is_expanded = *is_expanded;
+                                                let copy_tool_block = calls
+                                                    .iter()
+                                                    .map(|call| {
+                                                        let args = if call.args_full.is_empty() {
+                                                            call.args_preview.clone()
+                                                        } else {
+                                                            call.args_full.clone()
+                                                        };
+                                                        let result = call
+                                                            .result_full
+                                                            .as_deref()
+                                                            .or(call.result_preview.as_deref())
+                                                            .unwrap_or("running…");
+                                                        format!(
+                                                            "tool: {}\nargs: {}\nresult: {}{}",
+                                                            call.name,
+                                                            args,
+                                                            result,
+                                                            if call.is_error { "\nstatus: error" } else { "" }
+                                                        )
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .join("\n\n");
                                                 let group_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
                                                 let tool_names: Vec<String> =
                                                     calls.iter().map(|c| c.name.clone()).collect();
@@ -1100,6 +1123,22 @@ impl Render for AgentChatPanel {
                                                                             .child(group_elapsed),
                                                                     )
                                                                     .child(
+                                                                        Button::new(("tool-call-copy", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::Copy)
+                                                                            .tooltip("Copy full tool block")
+                                                                            .on_click(cx.listener(
+                                                                                move |_, _, _, cx| {
+                                                                                    cx.write_to_clipboard(
+                                                                                        gpui::ClipboardItem::new_string(
+                                                                                            copy_tool_block.clone(),
+                                                                                        ),
+                                                                                    );
+                                                                                },
+                                                                            )),
+                                                                    )
+                                                                    .child(
                                                                         // Status icon — shape conveys state for colorblind users
                                                                         Icon::new(status_icon)
                                                                             .size_3()
@@ -1205,6 +1244,7 @@ impl Render for AgentChatPanel {
                                                 finished_at_ms,
                                             } => {
                                                 let summary = summary.clone();
+                                                let copy_summary = summary.clone();
                                                 let is_expanded = *is_expanded;
                                                 let compact_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
                                                 let accent = cx.theme().warning;
@@ -1276,6 +1316,22 @@ impl Render for AgentChatPanel {
                                                                             .child(compact_elapsed),
                                                                     )
                                                                     .child(
+                                                                        Button::new(("compaction-copy", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::Copy)
+                                                                            .tooltip("Copy full compacted summary")
+                                                                            .on_click(cx.listener(
+                                                                                move |_, _, _, cx| {
+                                                                                    cx.write_to_clipboard(
+                                                                                        gpui::ClipboardItem::new_string(
+                                                                                            copy_summary.clone(),
+                                                                                        ),
+                                                                                    );
+                                                                                },
+                                                                            )),
+                                                                    )
+                                                                    .child(
                                                                         Icon::new(if is_expanded {
                                                                             IconName::ChevronUp
                                                                         } else {
@@ -1310,6 +1366,7 @@ impl Render for AgentChatPanel {
                                                 is_outdated,
                                             } => {
                                                 let content = content.clone();
+                                                let copy_content = content.clone();
                                                 let is_expanded = *is_expanded;
                                                 let is_outdated = *is_outdated;
                                                 let accent = if is_outdated {
@@ -1393,6 +1450,22 @@ impl Render for AgentChatPanel {
                                                                         )
                                                                     })
                                                                     .child(
+                                                                        Button::new(("system-prompt-copy", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::Copy)
+                                                                            .tooltip("Copy full system prompt")
+                                                                            .on_click(cx.listener(
+                                                                                move |_, _, _, cx| {
+                                                                                    cx.write_to_clipboard(
+                                                                                        gpui::ClipboardItem::new_string(
+                                                                                            copy_content.clone(),
+                                                                                        ),
+                                                                                    );
+                                                                                },
+                                                                            )),
+                                                                    )
+                                                                    .child(
                                                                         Icon::new(if is_expanded {
                                                                             IconName::ChevronUp
                                                                         } else {
@@ -1429,6 +1502,7 @@ impl Render for AgentChatPanel {
                                                 finished_at_ms,
                                             } => {
                                                 let content = content.clone();
+                                                let copy_content = content.clone();
                                                 let is_expanded = *is_expanded;
                                                 let is_done = *is_done;
                                                 let think_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
@@ -1530,6 +1604,22 @@ impl Render for AgentChatPanel {
                                                                             .text_color(accent.opacity(0.7))
                                                                             .font_family("JetBrains Mono")
                                                                             .child(think_elapsed),
+                                                                    )
+                                                                    .child(
+                                                                        Button::new(("thinking-copy", ix))
+                                                                            .xsmall()
+                                                                            .ghost()
+                                                                            .icon(IconName::Copy)
+                                                                            .tooltip("Copy full thinking block")
+                                                                            .on_click(cx.listener(
+                                                                                move |_, _, _, cx| {
+                                                                                    cx.write_to_clipboard(
+                                                                                        gpui::ClipboardItem::new_string(
+                                                                                            copy_content.clone(),
+                                                                                        ),
+                                                                                    );
+                                                                                },
+                                                                            )),
                                                                     )
                                                                     .child(
                                                                         Icon::new(status_icon)

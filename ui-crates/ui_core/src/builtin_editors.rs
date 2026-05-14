@@ -196,6 +196,23 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
         editor_id.as_str() == "blueprint-editor"
     }
 
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        blueprint_editor_plugin::BlueprintEditorPlugin::default().ai_tools()
+    }
+
+    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
+        blueprint_editor_plugin::BlueprintEditorPlugin::default().capabilities_for_file(file_path)
+    }
+
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        blueprint_editor_plugin::execute_compiled_tool(file_path, tool_name, tool_args)
+    }
+
     fn create_editor(
         &self,
         file_path: PathBuf,
@@ -217,6 +234,10 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
                     }
                 }
             });
+
+        // Keep plugin AI tools aligned with the currently opened blueprint panel state.
+        let graph_snapshot = panel.read(cx).get_graph().clone();
+        blueprint_editor_plugin::upsert_ai_session(file_path.clone(), graph_snapshot);
 
         Ok(Arc::new(panel))
     }

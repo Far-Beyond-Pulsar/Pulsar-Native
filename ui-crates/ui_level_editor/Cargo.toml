@@ -15,7 +15,7 @@ ui_types_common.workspace = true
 window_manager.workspace = true
 plugin_editor_api.workspace = true
 anyhow.workspace = true
-tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "4300ccf8a2f79d307ebecd6b3b2bd45f166c59ef" }
+tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "0b4c70232e0ef10a29e2b3a1daf1b7cbdfdba5aa" }
 
 # Engine
 engine_state.workspace = true
