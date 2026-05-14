@@ -31,12 +31,16 @@ pub fn make_tool_context(
     if let Some(file) = current_file {
         ctx = ctx.with_current_file(file);
     }
+    if let Some(root) = ctx.workspace_root.clone() {
+        engine_fs::tooling::insert_tooling_state(&mut ctx, root);
+    }
     ctx.insert_extra(EXTRAS_KEY, extras);
     ctx
 }
 
 pub fn build_default_registry() -> ToolRegistry {
     let mut registry = ToolRegistry::new();
+    engine_fs::tooling::register_tools(&mut registry);
     register_pulsar_tools(&mut registry);
     tool_registry_builtin::register_builtins(&mut registry);
     registry
@@ -58,7 +62,8 @@ fn extras(ctx: &ToolContext) -> Option<&PulsarToolExtras> {
 }
 
 fn workspace_root(ctx: &ToolContext) -> PathBuf {
-    ctx.workspace_root
+    engine_fs::tooling::current_working_dir(ctx)
+        .or_else(|| ctx.workspace_root.clone())
         .clone()
         .unwrap_or_else(|| PathBuf::from("."))
 }

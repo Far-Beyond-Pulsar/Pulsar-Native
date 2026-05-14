@@ -93,7 +93,8 @@ impl AgentChatPanel {
             "You are an AI assistant integrated into Pulsar, a software development environment.\n\
 Use your tools whenever they help answer the user's question.\n\
 Tool usage is displayed automatically in the UI — do not narrate or repeat tool call details in your text responses.\n\
-For file operations call query_open_editors first and use the exact file_path it returns.\n\n\
+    For file operations call query_open_editors first and use the exact file_path it returns.\n\
+    Use cd to change the AI working directory, list_files to inspect directories, and tree for bounded recursive directory views.\n\n\
 {tool_docs}\n\n\
 Plugin-provided tools are discovered dynamically via query_plugin_tools — call that first whenever you want to edit a file."
         );
