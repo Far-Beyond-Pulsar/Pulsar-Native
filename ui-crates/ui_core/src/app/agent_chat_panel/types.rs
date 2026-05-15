@@ -25,6 +25,30 @@ pub struct ToolCallDisplay {
     pub finished_at_ms: Option<u64>,
 }
 
+/// A single step/invocation within a `DisplayItem::SubagentInvocation`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SubagentStepDisplay {
+    pub id: String,
+    pub description: String,
+    /// The reasoning or execution details (may be empty if still running).
+    pub details: String,
+    pub status: SubagentStepStatus,
+    /// Unix-epoch milliseconds when this step started.
+    #[serde(default)]
+    pub started_at_ms: u64,
+    /// Unix-epoch milliseconds when this step completed. `None` while running.
+    #[serde(default)]
+    pub finished_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub enum SubagentStepStatus {
+    Pending,
+    Running,
+    Success,
+    Error,
+}
+
 /// Flat items rendered in the chat virtual list.
 /// System and raw Tool-role messages are never added here.
 ///
@@ -73,6 +97,28 @@ pub enum DisplayItem {
         #[serde(default)]
         started_at_ms: u64,
         /// Set when `</think>` is seen.
+        #[serde(default)]
+        finished_at_ms: Option<u64>,
+    },
+    /// Collapsed subagent invocation block — rendered when an agent spawns a subagent.
+    /// Contains the subagent name, status, and nested steps showing the subagent's work.
+    SubagentInvocation {
+        /// Stable ID returned by the subagent tools layer.
+        #[serde(default)]
+        subagent_id: String,
+        /// Display name of the subagent (e.g., "Search Agent" or "Code Analyzer").
+        name: String,
+        /// Brief description of what the subagent was asked to do.
+        task: String,
+        /// The nested steps/reasoning from the subagent.
+        steps: Vec<SubagentStepDisplay>,
+        /// Whether the subagent details are expanded for viewing.
+        is_expanded: bool,
+        /// Overall status of the subagent invocation.
+        status: SubagentStepStatus,
+        #[serde(default)]
+        started_at_ms: u64,
+        /// Set when the subagent returns a result.
         #[serde(default)]
         finished_at_ms: Option<u64>,
     },

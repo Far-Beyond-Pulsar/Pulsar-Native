@@ -526,6 +526,18 @@ impl AgentChatPanel {
                     px(40.0)
                 }
             }
+            DisplayItem::SubagentInvocation {
+                steps,
+                is_expanded,
+                ..
+            } => {
+                if *is_expanded {
+                    // Header + each step estimated at ~60px + detail content
+                    px(52.0 + steps.len() as f32 * 75.0)
+                } else {
+                    px(40.0)
+                }
+            }
         }
     }
 
@@ -595,33 +607,26 @@ impl AgentChatPanel {
         }
     }
 
-    pub(super) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.is_request_in_flight {
-            return;
-        }
-
-        let raw_prompt = self.prompt_input.read(cx).text().to_string();
-        let raw_prompt = raw_prompt.trim().to_string();
-        if raw_prompt.is_empty() {
-            return;
-        }
-
-        // @file injection: resolve `@/some/path` or `@filename` references and
-        // prepend their contents as a context block before the user's message.
-        let prompt = Self::expand_file_references(&raw_prompt);
-
+    fn submit_user_prompt_text(
+        &mut self,
+        raw_prompt: String,
+        prompt_for_model: String,
+        display_user_bubble: bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
         let user_message_index = self.messages.len();
         self.messages.push(ChatMessage {
             role: ChatRole::User,
-            content: prompt.clone(),
+            content: prompt_for_model,
             tool_call_id: None,
             tool_calls: vec![],
         });
-        // Display shows the original typed text (without the injected file blobs).
-        self.display_items.push(DisplayItem::UserMessage {
-            content: raw_prompt.clone(),
-            message_index: user_message_index,
-        });
+        if display_user_bubble {
+            self.display_items.push(DisplayItem::UserMessage {
+                content: raw_prompt,
+                message_index: user_message_index,
+            });
+        }
         self.scroll_messages_to_bottom();
 
         let provider_id = self
@@ -636,14 +641,11 @@ impl AgentChatPanel {
                 tool_call_id: None,
                 tool_calls: vec![],
             });
-            self.prompt_input.update(cx, |input, cx| {
-                input.set_value("", window, cx);
-            });
             self.save_current_chat();
             self.refresh_chat_history_list(cx);
             self.scroll_messages_to_bottom();
             cx.notify();
-            return;
+            return false;
         }
 
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
@@ -661,21 +663,14 @@ impl AgentChatPanel {
                 tool_call_id: None,
                 tool_calls: vec![],
             });
-            self.prompt_input.update(cx, |input, cx| {
-                input.set_value("", window, cx);
-            });
             self.save_current_chat();
             self.refresh_chat_history_list(cx);
             self.scroll_messages_to_bottom();
             cx.notify();
-            return;
+            return false;
         };
 
         let token = self.auth_token_for_provider(provider_id);
-        let model = self
-            .active_model()
-            .map(|m| m.id.to_string())
-            .unwrap_or_else(|| "default".to_string());
         let availability = provider.availability(&ProcessEnvironment);
 
         if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
@@ -686,20 +681,288 @@ impl AgentChatPanel {
                 tool_call_id: None,
                 tool_calls: vec![],
             });
-            self.prompt_input.update(cx, |input, cx| {
-                input.set_value("", window, cx);
-            });
             self.save_current_chat();
             self.refresh_chat_history_list(cx);
             self.scroll_messages_to_bottom();
             cx.notify();
+            return false;
+        }
+
+        self.launch_provider_request(provider, token, cx);
+        true
+    }
+
+    fn update_subagent_invocation_started(
+        &mut self,
+        subagent_id: &str,
+        name: &str,
+        task: &str,
+        created_at_ms: u64,
+        cx: &mut Context<Self>,
+    ) {
+        if self.display_items.iter().any(|item| {
+            matches!(
+                item,
+                DisplayItem::SubagentInvocation { subagent_id: existing_id, .. } if existing_id == subagent_id
+            )
+        }) {
             return;
         }
+
+        let step = SubagentStepDisplay {
+            id: format!("{subagent_id}:start"),
+            description: "Spawned and running".to_string(),
+            details: "Subagent execution started. Completion will be queued when ready.".to_string(),
+            status: SubagentStepStatus::Running,
+            started_at_ms: created_at_ms,
+            finished_at_ms: None,
+        };
+
+        self.display_items.push(DisplayItem::SubagentInvocation {
+            subagent_id: subagent_id.to_string(),
+            name: name.to_string(),
+            task: task.to_string(),
+            steps: vec![step],
+            is_expanded: false,
+            status: SubagentStepStatus::Running,
+            started_at_ms: created_at_ms,
+            finished_at_ms: None,
+        });
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    fn apply_subagent_completion_event(
+        &mut self,
+        event: &serde_json::Value,
+        queue_depth_after_enqueue: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let subagent_id = event
+            .get("subagent_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default();
+        if subagent_id.is_empty() {
+            return;
+        }
+
+        let finished_at_ms = event
+            .get("finished_at_ms")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_else(now_ms);
+        let status_raw = event
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("success");
+        let status = match status_raw {
+            "error" => SubagentStepStatus::Error,
+            "cancelled" => SubagentStepStatus::Error,
+            _ => SubagentStepStatus::Success,
+        };
+
+        for item in self.display_items.iter_mut() {
+            if let DisplayItem::SubagentInvocation {
+                subagent_id: existing_id,
+                steps,
+                status: overall,
+                finished_at_ms: card_finished_at_ms,
+                ..
+            } = item
+            {
+                if existing_id == subagent_id {
+                    if let Some(last) = steps.last_mut() {
+                        if last.finished_at_ms.is_none() {
+                            last.status = status;
+                            last.finished_at_ms = Some(finished_at_ms);
+                        }
+                    }
+
+                    let details = format!(
+                        "Queued for main-agent processing. {} completion(s) waiting.",
+                        queue_depth_after_enqueue.max(1)
+                    );
+                    steps.push(SubagentStepDisplay {
+                        id: format!("{subagent_id}:queued"),
+                        description: "Waiting for main agent".to_string(),
+                        details,
+                        status: SubagentStepStatus::Pending,
+                        started_at_ms: finished_at_ms,
+                        finished_at_ms: None,
+                    });
+                    *overall = status;
+                    *card_finished_at_ms = Some(finished_at_ms);
+                    break;
+                }
+            }
+        }
+
+        let name = event
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("subagent");
+        let queue_text = if queue_depth_after_enqueue > 1 {
+            format!(
+                "Subagent '{}' finished and joined the completion queue ({} waiting).",
+                name, queue_depth_after_enqueue
+            )
+        } else {
+            format!("Subagent '{}' finished and is waiting for main-agent processing.", name)
+        };
+
+        let assistant_ix = self.messages.len();
+        self.messages.push(ChatMessage {
+            role: ChatRole::Assistant,
+            content: queue_text.clone(),
+            tool_call_id: None,
+            tool_calls: vec![],
+        });
+        self.display_items.push(DisplayItem::AssistantMessage {
+            content: queue_text,
+            message_index: assistant_ix,
+            is_streaming: false,
+        });
+        self.scroll_messages_to_bottom();
+        cx.notify();
+    }
+
+    pub(super) fn maybe_start_next_subagent_processing(&mut self, cx: &mut Context<Self>) {
+        if self.is_request_in_flight || self.is_processing_subagent_event {
+            return;
+        }
+        let prompt_text = self.prompt_input.read(cx).text().to_string();
+        if !prompt_text.trim().is_empty() {
+            return;
+        }
+
+        let Some(event) = self.pending_subagent_events.pop_front() else {
+            return;
+        };
+
+        let subagent_id = event
+            .get("subagent_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown-subagent");
+        let name = event
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Subagent");
+        let status = event
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("success");
+
+        for item in self.display_items.iter_mut() {
+            if let DisplayItem::SubagentInvocation {
+                subagent_id: existing_id,
+                steps,
+                ..
+            } = item
+            {
+                if existing_id == subagent_id {
+                    if let Some(last) = steps.last_mut() {
+                        if last.description == "Waiting for main agent" {
+                            last.status = SubagentStepStatus::Running;
+                            last.description = "Main agent processing completion".to_string();
+                            last.details =
+                                "Main agent lock acquired for this completion.".to_string();
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        self.is_processing_subagent_event = true;
+        self.processing_subagent_id = Some(subagent_id.to_string());
+        let internal_prompt = format!(
+            "Subagent completion event: id={subagent_id}, name={name}, status={status}. Retrieve details with get_subagent_result(subagent_id) and continue helping the user."
+        );
+        let launched =
+            self.submit_user_prompt_text(internal_prompt.clone(), internal_prompt, false, cx);
+        if !launched {
+            self.is_processing_subagent_event = false;
+            self.processing_subagent_id = None;
+        }
+    }
+
+    pub(super) fn process_next_subagent_completion_now(&mut self, cx: &mut Context<Self>) {
+        if self.is_request_in_flight || self.is_processing_subagent_event {
+            return;
+        }
+        self.maybe_start_next_subagent_processing(cx);
+    }
+
+    fn complete_active_subagent_processing(&mut self, success: bool) {
+        let Some(subagent_id) = self.processing_subagent_id.clone() else {
+            return;
+        };
+
+        for item in self.display_items.iter_mut() {
+            if let DisplayItem::SubagentInvocation {
+                subagent_id: existing_id,
+                steps,
+                ..
+            } = item
+            {
+                if *existing_id == subagent_id {
+                    if let Some(last) = steps.last_mut() {
+                        if last.description == "Main agent processing completion" {
+                            last.status = if success {
+                                SubagentStepStatus::Success
+                            } else {
+                                SubagentStepStatus::Error
+                            };
+                            last.details = if success {
+                                "Main agent processed this completion.".to_string()
+                            } else {
+                                "Main agent processing failed; completion remains visible.".to_string()
+                            };
+                            last.finished_at_ms = Some(now_ms());
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    pub(super) fn poll_subagent_completion_events(&mut self, cx: &mut Context<Self>) {
+        let mut enqueued = 0usize;
+        while let Some(event) = agent_chat_tools::dequeue_subagent_completion_event() {
+            self.pending_subagent_events.push_back(event.clone());
+            enqueued += 1;
+            self.apply_subagent_completion_event(&event, self.pending_subagent_events.len(), cx);
+        }
+
+        if enqueued > 0 {
+            self.save_current_chat();
+            self.refresh_chat_history_list(cx);
+        }
+
+        if self.subagent_completion_mode == SubagentCompletionMode::Auto {
+            self.maybe_start_next_subagent_processing(cx);
+        }
+    }
+
+    pub(super) fn send_prompt(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_request_in_flight {
+            return;
+        }
+
+        let raw_prompt = self.prompt_input.read(cx).text().to_string();
+        let raw_prompt = raw_prompt.trim().to_string();
+        if raw_prompt.is_empty() {
+            return;
+        }
+
+        // @file injection: resolve `@/some/path` or `@filename` references and
+        // prepend their contents as a context block before the user's message.
+        let prompt = Self::expand_file_references(&raw_prompt);
 
         self.prompt_input.update(cx, |input, cx| {
             input.set_value("", window, cx);
         });
-        self.launch_provider_request(provider, token, cx);
+        let _ = self.submit_user_prompt_text(raw_prompt, prompt, true, cx);
     }
 
     /// Push an empty streaming assistant bubble and fire off the provider request.
@@ -837,6 +1100,7 @@ impl AgentChatPanel {
             /// A tool finished executing; update the matching call's result in the UI.
             ToolCallResult {
                 id: String,
+                tool_name: String,
                 result_preview: String,
                 result_full: String,
                 is_error: bool,
@@ -1024,6 +1288,9 @@ impl AgentChatPanel {
                                 Some(path) => PathBuf::from(path),
                                 None => PathBuf::from("."),
                             };
+                            let provider_for_subagent = provider_for_task.clone();
+                            let token_for_subagent = token.clone();
+                            let default_subagent_model = current_request.model.clone();
                             let tool_context = agent_chat_tools::make_tool_context(
                                 workspace_root,
                                 None,
@@ -1113,6 +1380,109 @@ impl AgentChatPanel {
                                                 })
                                         }
                                     })),
+                                    subagent_executor: Some(Arc::new(move |req| {
+                                        let model_used = req
+                                            .model
+                                            .clone()
+                                            .filter(|m| !m.trim().is_empty())
+                                            .unwrap_or_else(|| default_subagent_model.clone());
+
+                                        let mut streamed_chunks = Vec::new();
+                                        let instructions = req.instructions.unwrap_or_default();
+                                        let child_messages = vec![
+                                            ChatMessage {
+                                                role: ChatRole::System,
+                                                content: "You are a focused subagent. Complete only the assigned task and return concrete findings with evidence.".to_string(),
+                                                tool_call_id: None,
+                                                tool_calls: vec![],
+                                            },
+                                            ChatMessage {
+                                                role: ChatRole::User,
+                                                content: format!(
+                                                    "Subagent ID: {}\nSubagent Name: {}\nTask: {}\nWorkspace: {}\nInstructions: {}\n\nReturn concise findings and include explicit evidence references.",
+                                                    req.subagent_id,
+                                                    req.name,
+                                                    req.task,
+                                                    req.workspace_root.display(),
+                                                    instructions,
+                                                ),
+                                                tool_call_id: None,
+                                                tool_calls: vec![],
+                                            },
+                                        ];
+
+                                        let child_request = ChatRequest {
+                                            model: model_used.clone(),
+                                            messages: child_messages.clone(),
+                                            enable_tool_calls: false,
+                                            tools: vec![],
+                                            temperature: Some(0.2),
+                                            top_p: Some(1.0),
+                                            max_tokens: Some(2048),
+                                        };
+
+                                        let mut on_sub_chunk = |chunk: String| {
+                                            streamed_chunks.push(chunk);
+                                        };
+
+                                        let response = provider_for_subagent
+                                            .chat_completion_streaming(
+                                                &token_for_subagent,
+                                                &child_request,
+                                                &mut on_sub_chunk,
+                                            )
+                                            .map_err(|err| {
+                                                format!(
+                                                    "Provider-backed subagent execution failed: {}",
+                                                    err
+                                                )
+                                            })?;
+
+                                        let assistant_message = response
+                                            .assistant_message
+                                            .clone()
+                                            .or_else(|| {
+                                                if streamed_chunks.is_empty() {
+                                                    None
+                                                } else {
+                                                    Some(streamed_chunks.join(""))
+                                                }
+                                            })
+                                            .unwrap_or_default();
+
+                                        let child_transcript = vec![
+                                            serde_json::json!({
+                                                "role": "system",
+                                                "content": child_messages
+                                                    .first()
+                                                    .map(|m| m.content.clone())
+                                                    .unwrap_or_default(),
+                                            }),
+                                            serde_json::json!({
+                                                "role": "user",
+                                                "content": child_messages
+                                                    .get(1)
+                                                    .map(|m| m.content.clone())
+                                                    .unwrap_or_default(),
+                                            }),
+                                            serde_json::json!({
+                                                "role": "assistant",
+                                                "content": assistant_message.clone(),
+                                            }),
+                                        ];
+
+                                        Ok(agent_chat_tools::SubagentLlmResponse {
+                                            provider_id: provider_for_subagent
+                                                .metadata()
+                                                .id
+                                                .to_string(),
+                                            model_used,
+                                            assistant_message,
+                                            streamed_chunks,
+                                            raw_response: response.raw_response,
+                                            child_transcript,
+                                        })
+                                    })),
                                 },
                             );
 
@@ -1138,6 +1508,7 @@ impl AgentChatPanel {
                                             Self::format_tool_result_preview(&name, &tool_result);
                                         let _ = tx.try_send(StreamEvent::ToolCallResult {
                                             id: id.clone(),
+                                            tool_name: name.clone(),
                                             result_preview,
                                             result_full: tool_result.clone(),
                                             is_error,
@@ -1402,13 +1773,14 @@ impl AgentChatPanel {
                                 cx.notify();
                             }
 
-                            StreamEvent::ToolCallResult { id, result_preview, result_full, is_error } => {
+                            StreamEvent::ToolCallResult { id, tool_name, result_preview, result_full, is_error } => {
                                 let done_ms = now_ms();
+                                let result_full_for_parse = result_full.clone();
                                 for item in panel.display_items.iter_mut().rev() {
                                     if let DisplayItem::ToolCallGroup { calls, finished_at_ms, .. } = item {
                                         if let Some(call) = calls.iter_mut().find(|c| c.id == id) {
                                             call.result_preview = Some(result_preview);
-                                            call.result_full = Some(result_full);
+                                            call.result_full = Some(result_full.clone());
                                             call.is_error = is_error;
                                             call.finished_at_ms = Some(done_ms);
                                         }
@@ -1419,6 +1791,37 @@ impl AgentChatPanel {
                                         break;
                                     }
                                 }
+
+                                if tool_name == "spawn_subagent" && !is_error {
+                                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&result_full_for_parse) {
+                                        let subagent_id = parsed
+                                            .get("subagent_id")
+                                            .and_then(|v| v.as_str())
+                                            .unwrap_or_default();
+                                        if !subagent_id.is_empty() {
+                                            let name = parsed
+                                                .get("name")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("Subagent");
+                                            let task = parsed
+                                                .get("task")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("Subagent task");
+                                            let created_at_ms = parsed
+                                                .get("created_at_ms")
+                                                .and_then(|v| v.as_u64())
+                                                .unwrap_or(done_ms);
+                                            panel.update_subagent_invocation_started(
+                                                subagent_id,
+                                                name,
+                                                task,
+                                                created_at_ms,
+                                                cx,
+                                            );
+                                        }
+                                    }
+                                }
+
                                 cx.notify();
                             }
 
@@ -1426,6 +1829,12 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel_tx = None;
+
+                                if panel.is_processing_subagent_event {
+                                    panel.complete_active_subagent_processing(true);
+                                    panel.is_processing_subagent_event = false;
+                                    panel.processing_subagent_id = None;
+                                }
 
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
                                     let is_empty = panel
@@ -1468,6 +1877,9 @@ impl AgentChatPanel {
                                 }
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
+                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
+                                    panel.maybe_start_next_subagent_processing(cx);
+                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }
@@ -1476,6 +1888,9 @@ impl AgentChatPanel {
                                 panel.is_request_in_flight = false;
                                 panel.streaming_message_ix = None;
                                 panel.cancel_tx = None;
+                                panel.complete_active_subagent_processing(false);
+                                panel.is_processing_subagent_event = false;
+                                panel.processing_subagent_id = None;
                                 tracing::error!("[agent_chat] error: {err}");
                                 let error_text = format!("Request failed: {err}");
                                 if let Some(dix) = panel.streaming_display_item_ix.take() {
@@ -1518,6 +1933,9 @@ impl AgentChatPanel {
                                 }
                                 panel.save_current_chat();
                                 panel.refresh_chat_history_list(cx);
+                                if panel.subagent_completion_mode == SubagentCompletionMode::Auto {
+                                    panel.maybe_start_next_subagent_processing(cx);
+                                }
                                 panel.scroll_messages_to_bottom();
                                 cx.notify();
                             }

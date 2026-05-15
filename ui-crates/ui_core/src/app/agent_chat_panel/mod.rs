@@ -37,7 +37,7 @@ use agent_provider_xai::XaiProvider;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
     cell::RefCell,
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     path::PathBuf,
     rc::Rc,
     sync::{Arc, RwLock},
@@ -58,6 +58,12 @@ use ui::{
     v_flex, v_virtual_list, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size,
     StyledExt, VirtualListScrollHandle,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SubagentCompletionMode {
+    Auto,
+    Manual,
+}
 
 pub struct AgentChatPanel {
     pub(crate) dock_area: Entity<DockArea>,
@@ -102,6 +108,14 @@ pub struct AgentChatPanel {
     pub(crate) display_item_heights: HashMap<usize, Pixels>,
     /// Sender half of the per-request cancel channel. `None` when idle.
     pub(crate) cancel_tx: Option<smol::channel::Sender<()>>,
+    /// FIFO queue of completed subagents waiting for main-agent processing.
+    pub(crate) pending_subagent_events: VecDeque<serde_json::Value>,
+    /// True while the main agent is actively processing one queued subagent event.
+    pub(crate) is_processing_subagent_event: bool,
+    /// Subagent ID currently under main-agent processing lock.
+    pub(crate) processing_subagent_id: Option<String>,
+    /// Whether subagent completions are auto-processed when chat is idle.
+    pub(crate) subagent_completion_mode: SubagentCompletionMode,
     /// Whether the chat should automatically scroll to new content.
     /// Disabled when the user explicitly scrolls up; re-enabled when they scroll
     /// back near the bottom or click the "jump to bottom" button.
@@ -415,6 +429,10 @@ impl AgentChatPanel {
             display_items: vec![],
             display_item_heights: HashMap::new(),
             cancel_tx: None,
+            pending_subagent_events: VecDeque::new(),
+            is_processing_subagent_event: false,
+            processing_subagent_id: None,
+            subagent_completion_mode: SubagentCompletionMode::Auto,
             auto_scroll: true,
             chat_viewport_height: px(0.0),
             _subscriptions: subscriptions,
@@ -604,6 +622,7 @@ impl Panel for AgentChatPanel {
 impl Render for AgentChatPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.maybe_reload_chats_from_disk(cx);
+        self.poll_subagent_completion_events(cx);
 
         // ── Auto-scroll safety net ─────────────────────────────────────────────
         // Scroll intent is detected via on_scroll_wheel on the container (below).
@@ -655,6 +674,30 @@ impl Render for AgentChatPanel {
         let model_label = model
             .map(|m| m.label.to_string())
             .unwrap_or_else(|| "Model".to_string());
+        let queued_subagent_count = self.pending_subagent_events.len();
+        let subagent_mode_is_manual = self.subagent_completion_mode == SubagentCompletionMode::Manual;
+        let subagent_status_text = if self.is_processing_subagent_event {
+            let active_id = self
+                .processing_subagent_id
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string());
+            format!(
+                "Processing subagent completion ({active_id}). {} waiting.",
+                queued_subagent_count
+            )
+        } else if queued_subagent_count > 0 {
+            format!(
+                "{} subagent completion(s) waiting ({})",
+                queued_subagent_count,
+                if subagent_mode_is_manual {
+                    "manual mode"
+                } else {
+                    "auto mode"
+                }
+            )
+        } else {
+            "No subagent completions waiting".to_string()
+        };
 
         let provider_popover =
             Popover::<SearchableList<ProviderDefinition>>::new("agent-chat-provider-popover")
@@ -1661,6 +1704,198 @@ impl Render for AgentChatPanel {
                                                     .into_any_element()
                                             }
 
+                                            DisplayItem::SubagentInvocation {
+                                                subagent_id: _,
+                                                name,
+                                                task,
+                                                steps,
+                                                is_expanded,
+                                                status,
+                                                started_at_ms,
+                                                finished_at_ms,
+                                            } => {
+                                                let name = name.clone();
+                                                let task = task.clone();
+                                                let steps = steps.clone();
+                                                let is_expanded = *is_expanded;
+                                                let status = *status;
+                                                let subagent_elapsed = Self::format_elapsed(*started_at_ms, *finished_at_ms, render_now_ms);
+                                                
+                                                let accent = match status {
+                                                    SubagentStepStatus::Error => cx.theme().danger,
+                                                    SubagentStepStatus::Success => cx.theme().success,
+                                                    SubagentStepStatus::Running => cx.theme().info,
+                                                    SubagentStepStatus::Pending => cx.theme().muted_foreground,
+                                                };
+                                                
+                                                let status_icon = match status {
+                                                    SubagentStepStatus::Error => IconName::CircleX,
+                                                    SubagentStepStatus::Success => IconName::CircleCheck,
+                                                    SubagentStepStatus::Running | SubagentStepStatus::Pending => IconName::Loader,
+                                                };
+
+                                                div()
+                                                    .relative()
+                                                    .w_full()
+                                                    .min_w_0()
+                                                    .px_3()
+                                                    .py_1()
+                                                    .child(
+                                                        canvas(
+                                                            move |bounds, _, cx| {
+                                                                panel.update(cx, |panel, cx| {
+                                                                    let measured = bounds.size.height;
+                                                                    if panel.display_item_heights.get(&ix).copied() != Some(measured) {
+                                                                        panel.display_item_heights.insert(ix, measured);
+                                                                        cx.notify();
+                                                                    }
+                                                                });
+                                                            },
+                                                            |_, _, _, _| {},
+                                                        )
+                                                        .absolute()
+                                                        .inset_0(),
+                                                    )
+                                                    .child(
+                                                        v_flex()
+                                                            .w_full()
+                                                            .gap_px()
+                                                            .rounded(px(6.0))
+                                                            .border_1()
+                                                            .border_color(accent.opacity(0.25))
+                                                            .bg(cx.theme().secondary)
+                                                            .overflow_hidden()
+                                                            .child(
+                                                                h_flex()
+                                                                    .id(("subagent-header", ix))
+                                                                    .w_full()
+                                                                    .px_3()
+                                                                    .py(px(6.0))
+                                                                    .gap_2()
+                                                                    .cursor_pointer()
+                                                                    .on_click(cx.listener(
+                                                                        move |this, _, _, cx| {
+                                                                            if let Some(
+                                                                                DisplayItem::SubagentInvocation {
+                                                                                    is_expanded,
+                                                                                    ..
+                                                                                },
+                                                                            ) = this
+                                                                                .display_items
+                                                                                .get_mut(ix)
+                                                                            {
+                                                                                *is_expanded = !*is_expanded;
+                                                                                this.display_item_heights.remove(&ix);
+                                                                            }
+                                                                            cx.notify();
+                                                                        },
+                                                                    ))
+                                                                    .child(
+                                                                        Icon::new(IconName::GitBranch)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        v_flex()
+                                                                            .flex_1()
+                                                                            .gap_px()
+                                                                            .child(
+                                                                                div()
+                                                                                    .text_xs()
+                                                                                    .font_semibold()
+                                                                                    .text_color(cx.theme().foreground)
+                                                                                    .child(format!("Subagent: {}", name)),
+                                                                            )
+                                                                            .child(
+                                                                                div()
+                                                                                    .text_xs()
+                                                                                    .text_color(cx.theme().muted_foreground)
+                                                                                    .child(task),
+                                                                            ),
+                                                                    )
+                                                                    .child(
+                                                                        div()
+                                                                            .text_xs()
+                                                                            .text_color(accent.opacity(0.7))
+                                                                            .font_family("JetBrains Mono")
+                                                                            .child(subagent_elapsed),
+                                                                    )
+                                                                    .child(
+                                                                        Icon::new(status_icon)
+                                                                            .size_3()
+                                                                            .text_color(accent),
+                                                                    )
+                                                                    .child(
+                                                                        Icon::new(if is_expanded {
+                                                                            IconName::ChevronUp
+                                                                        } else {
+                                                                            IconName::ChevronDown
+                                                                        })
+                                                                        .size_3()
+                                                                        .text_color(cx.theme().muted_foreground.opacity(0.6)),
+                                                                    ),
+                                                            )
+                                                            .when(is_expanded && !steps.is_empty(), |el| {
+                                                                el.child(
+                                                                    v_flex()
+                                                                        .w_full()
+                                                                        .gap_px()
+                                                                        .children(
+                                                                            steps.iter().map(|step| {
+                                                                                let step_accent = match step.status {
+                                                                                    SubagentStepStatus::Error => cx.theme().danger,
+                                                                                    SubagentStepStatus::Success => cx.theme().success,
+                                                                                    SubagentStepStatus::Running | SubagentStepStatus::Pending => cx.theme().info,
+                                                                                };
+                                                                                let step_icon = match step.status {
+                                                                                    SubagentStepStatus::Error => IconName::CircleX,
+                                                                                    SubagentStepStatus::Success => IconName::CircleCheck,
+                                                                                    SubagentStepStatus::Running => IconName::Loader,
+                                                                                    SubagentStepStatus::Pending => IconName::Circle,
+                                                                                };
+                                                                                
+                                                                                v_flex()
+                                                                                    .w_full()
+                                                                                    .px_3()
+                                                                                    .py_2()
+                                                                                    .gap_1()
+                                                                                    .border_t_1()
+                                                                                    .border_color(cx.theme().border)
+                                                                                    .child(
+                                                                                        h_flex()
+                                                                                            .gap_2()
+                                                                                            .items_center()
+                                                                                            .child(
+                                                                                                Icon::new(step_icon)
+                                                                                                    .size_2()
+                                                                                                    .text_color(step_accent),
+                                                                                            )
+                                                                                            .child(
+                                                                                                div()
+                                                                                                    .text_xs()
+                                                                                                    .font_semibold()
+                                                                                                    .text_color(cx.theme().foreground)
+                                                                                                    .child(step.description.clone()),
+                                                                                            ),
+                                                                                    )
+                                                                                    .when(!step.details.is_empty(), |el| {
+                                                                                        el.child(
+                                                                                            div()
+                                                                                                .text_xs()
+                                                                                                .font_family("JetBrains Mono")
+                                                                                                .text_color(cx.theme().muted_foreground.opacity(0.8))
+                                                                                                .whitespace_normal()
+                                                                                                .child(step.details.clone()),
+                                                                                        )
+                                                                                    })
+                                                                            }),
+                                                                        ),
+                                                                )
+                                                            }),
+                                                    )
+                                                    .into_any_element()
+                                            }
+
                                             DisplayItem::UserMessage {
                                                 content,
                                                 message_index,
@@ -2059,6 +2294,80 @@ impl Render for AgentChatPanel {
                     .border_t_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(if self.is_processing_subagent_event {
+                                    IconName::Loader
+                                } else if queued_subagent_count > 0 {
+                                    IconName::GitBranch
+                                } else {
+                                    IconName::CircleCheck
+                                })
+                                .size_3()
+                                .text_color(if self.is_processing_subagent_event {
+                                    cx.theme().info
+                                } else if queued_subagent_count > 0 {
+                                    cx.theme().warning
+                                } else {
+                                    cx.theme().success
+                                }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(subagent_status_text),
+                            )
+                            .child(
+                                div()
+                                    .flex_1(),
+                            )
+                            .child(
+                                Button::new("agent-chat-subagent-mode")
+                                    .xsmall()
+                                    .ghost()
+                                    .label(if subagent_mode_is_manual {
+                                        "Manual Queue"
+                                    } else {
+                                        "Auto Queue"
+                                    })
+                                    .tooltip("Toggle automatic processing of queued subagent completions")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.subagent_completion_mode = if this.subagent_completion_mode
+                                            == SubagentCompletionMode::Auto
+                                        {
+                                            SubagentCompletionMode::Manual
+                                        } else {
+                                            SubagentCompletionMode::Auto
+                                        };
+                                        if this.subagent_completion_mode
+                                            == SubagentCompletionMode::Auto
+                                        {
+                                            this.maybe_start_next_subagent_processing(cx);
+                                        }
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("agent-chat-subagent-process-next")
+                                    .xsmall()
+                                    .ghost()
+                                    .label("Process Next")
+                                    .tooltip("Process the next queued subagent completion now")
+                                    .disabled(
+                                        queued_subagent_count == 0
+                                            || self.is_request_in_flight
+                                            || self.is_processing_subagent_event,
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.process_next_subagent_completion_now(cx);
+                                    })),
+                            ),
+                    )
                     .child(
                         // Prompt input row
                         h_flex()

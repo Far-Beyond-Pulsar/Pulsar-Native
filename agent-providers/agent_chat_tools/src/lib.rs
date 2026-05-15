@@ -1,9 +1,15 @@
 use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
+    fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock, RwLock},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock, RwLock,
+    },
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use std::time::Instant;
 use tracing::debug;
@@ -14,6 +20,27 @@ use tool_registry_macros::tool;
 pub type OpenFileRequest = Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>;
 pub type QueryOpenEditorsRequest = Arc<dyn Fn() -> Result<Value, String> + Send + Sync>;
 pub type ActivateOpenEditorRequest = Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>;
+pub type SubagentExecutorRequest = Arc<dyn Fn(SubagentLlmRequest) -> Result<SubagentLlmResponse, String> + Send + Sync>;
+
+#[derive(Clone, Debug)]
+pub struct SubagentLlmRequest {
+    pub subagent_id: String,
+    pub name: String,
+    pub task: String,
+    pub model: Option<String>,
+    pub instructions: Option<String>,
+    pub workspace_root: PathBuf,
+}
+
+#[derive(Clone, Debug)]
+pub struct SubagentLlmResponse {
+    pub provider_id: String,
+    pub model_used: String,
+    pub assistant_message: String,
+    pub streamed_chunks: Vec<String>,
+    pub raw_response: Value,
+    pub child_transcript: Vec<Value>,
+}
 
 #[derive(Clone, Default)]
 pub struct PulsarToolExtras {
@@ -21,6 +48,7 @@ pub struct PulsarToolExtras {
     pub open_file_request: Option<OpenFileRequest>,
     pub query_open_editors: Option<QueryOpenEditorsRequest>,
     pub activate_open_editor_request: Option<ActivateOpenEditorRequest>,
+    pub subagent_executor: Option<SubagentExecutorRequest>,
 }
 
 const EXTRAS_KEY: &str = "pulsar_tool_extras";
@@ -33,6 +61,363 @@ struct RuntimeState {
 }
 
 static RUNTIME_STATE: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SubagentStatus {
+    Pending,
+    Running,
+    Success,
+    Error,
+    Cancelled,
+}
+
+impl SubagentStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            SubagentStatus::Pending => "pending",
+            SubagentStatus::Running => "running",
+            SubagentStatus::Success => "success",
+            SubagentStatus::Error => "error",
+            SubagentStatus::Cancelled => "cancelled",
+        }
+    }
+
+    fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            SubagentStatus::Success | SubagentStatus::Error | SubagentStatus::Cancelled
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+struct SubagentRecord {
+    id: String,
+    sequence: u64,
+    name: String,
+    task: String,
+    model: String,
+    instructions: String,
+    workspace_root: String,
+    status: SubagentStatus,
+    created_at_ms: u64,
+    started_at_ms: Option<u64>,
+    finished_at_ms: Option<u64>,
+    progress: f32,
+    cancellation_requested: bool,
+    result: Option<Value>,
+    error: Option<String>,
+    notified_to_main_agent: bool,
+    execution_log: Vec<Value>,
+}
+
+#[derive(Default)]
+struct SubagentStore {
+    records: HashMap<String, SubagentRecord>,
+    completion_queue: VecDeque<String>,
+}
+
+static SUBAGENT_STORE: OnceLock<Mutex<SubagentStore>> = OnceLock::new();
+static SUBAGENT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+
+fn subagent_store() -> &'static Mutex<SubagentStore> {
+    SUBAGENT_STORE.get_or_init(|| Mutex::new(SubagentStore::default()))
+}
+
+fn now_ms_u64() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn push_subagent_completion(store: &mut SubagentStore, id: &str) {
+    if !store.completion_queue.iter().any(|queued| queued == id) {
+        store.completion_queue.push_back(id.to_string());
+    }
+}
+
+fn summarize_workspace(workspace_root: &Path) -> Value {
+    let mut file_count = 0usize;
+    let mut dir_count = 0usize;
+    let mut sampled_paths = Vec::new();
+    let mut stack = vec![workspace_root.to_path_buf()];
+    let mut visited = 0usize;
+    const MAX_VISITS: usize = 1600;
+    const MAX_SAMPLES: usize = 24;
+
+    while let Some(path) = stack.pop() {
+        if visited >= MAX_VISITS {
+            break;
+        }
+        visited += 1;
+
+        let Ok(read_dir) = fs::read_dir(&path) else {
+            continue;
+        };
+
+        for entry in read_dir.flatten() {
+            let entry_path = entry.path();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+
+            if meta.is_dir() {
+                dir_count += 1;
+                if visited < MAX_VISITS {
+                    stack.push(entry_path.clone());
+                }
+            } else {
+                file_count += 1;
+            }
+
+            if sampled_paths.len() < MAX_SAMPLES {
+                sampled_paths.push(entry_path.display().to_string());
+            }
+        }
+    }
+
+    json!({
+        "workspace_root": workspace_root.display().to_string(),
+        "visited_entries": visited,
+        "file_count_estimate": file_count,
+        "dir_count_estimate": dir_count,
+        "sampled_paths": sampled_paths,
+        "scan_limited": visited >= MAX_VISITS,
+    })
+}
+
+fn launch_subagent_worker(
+    subagent_id: String,
+    workspace_root: PathBuf,
+    subagent_executor: Option<SubagentExecutorRequest>,
+) {
+    thread::spawn(move || {
+        let now = now_ms_u64();
+        let mut name_snapshot = String::new();
+        let mut task_snapshot = String::new();
+        let mut model_snapshot = String::new();
+        let mut instructions_snapshot = String::new();
+
+        if let Ok(mut guard) = subagent_store().lock() {
+            if let Some(record) = guard.records.get_mut(&subagent_id) {
+                record.status = SubagentStatus::Running;
+                record.started_at_ms = Some(now);
+                record.progress = 0.05;
+                name_snapshot = record.name.clone();
+                task_snapshot = record.task.clone();
+                model_snapshot = record.model.clone();
+                instructions_snapshot = record.instructions.clone();
+                record.execution_log.push(json!({
+                    "at_ms": now,
+                    "event": "worker_started",
+                    "subagent_id": subagent_id.clone(),
+                    "sequence": record.sequence,
+                }));
+            }
+        }
+
+        let checkpoints = [0.25_f32, 0.55_f32, 0.85_f32];
+        for progress in checkpoints {
+            thread::sleep(Duration::from_millis(350));
+
+            let mut should_exit = false;
+            if let Ok(mut guard) = subagent_store().lock() {
+                if let Some(record) = guard.records.get_mut(&subagent_id) {
+                    if record.cancellation_requested {
+                        record.status = SubagentStatus::Cancelled;
+                        record.progress = progress;
+                        record.finished_at_ms = Some(now_ms_u64());
+                        record.execution_log.push(json!({
+                            "at_ms": record.finished_at_ms,
+                            "event": "cancelled",
+                            "progress": progress,
+                        }));
+                        record.result = Some(json!({
+                            "status": "cancelled",
+                            "message": "Subagent execution cancelled before completion.",
+                            "execution_log": record.execution_log,
+                        }));
+                        push_subagent_completion(&mut guard, &subagent_id);
+                        should_exit = true;
+                    } else {
+                        record.progress = progress;
+                        record.execution_log.push(json!({
+                            "at_ms": now_ms_u64(),
+                            "event": "progress",
+                            "progress": progress,
+                        }));
+                    }
+                } else {
+                    should_exit = true;
+                }
+            } else {
+                should_exit = true;
+            }
+
+            if should_exit {
+                return;
+            }
+        }
+
+        // Dispatch the actual subagent task to a provider-backed executor when available.
+        let llm_result = if let Some(executor) = subagent_executor {
+            executor(SubagentLlmRequest {
+                subagent_id: subagent_id.clone(),
+                name: name_snapshot.clone(),
+                task: task_snapshot.clone(),
+                model: if model_snapshot.trim().is_empty() {
+                    None
+                } else {
+                    Some(model_snapshot.clone())
+                },
+                instructions: Some(instructions_snapshot.clone()),
+                workspace_root: workspace_root.clone(),
+            })
+        } else {
+            Err("Subagent executor unavailable in this context".to_string())
+        };
+
+        let finished_at = now_ms_u64();
+        if let Ok(mut guard) = subagent_store().lock() {
+            if let Some(record) = guard.records.get_mut(&subagent_id) {
+                if record.cancellation_requested {
+                    record.status = SubagentStatus::Cancelled;
+                    record.finished_at_ms = Some(finished_at);
+                    record.progress = 1.0;
+                    record.execution_log.push(json!({
+                        "at_ms": finished_at,
+                        "event": "cancelled_final",
+                    }));
+                    record.result = Some(json!({
+                        "status": "cancelled",
+                        "message": "Subagent execution cancelled.",
+                        "execution_log": record.execution_log,
+                    }));
+                } else {
+                    let workspace_summary = summarize_workspace(&workspace_root);
+                    record.execution_log.push(json!({
+                        "at_ms": finished_at,
+                        "event": "workspace_scan_complete",
+                        "file_count_estimate": workspace_summary
+                            .get("file_count_estimate")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                        "dir_count_estimate": workspace_summary
+                            .get("dir_count_estimate")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0),
+                    }));
+
+                    match llm_result {
+                        Ok(response) => {
+                            record.status = SubagentStatus::Success;
+                            record.finished_at_ms = Some(finished_at);
+                            record.progress = 1.0;
+                            record.execution_log.push(json!({
+                                "at_ms": finished_at,
+                                "event": "llm_completed",
+                                "provider_id": response.provider_id,
+                                "model_used": response.model_used,
+                                "chunk_count": response.streamed_chunks.len(),
+                            }));
+                            record.result = Some(json!({
+                                "summary": format!("Subagent '{}' completed task with provider execution.", record.name),
+                                "task": record.task,
+                                "model": response.model_used,
+                                "requested_model": if record.model.is_empty() {
+                                    Value::Null
+                                } else {
+                                    Value::String(record.model.clone())
+                                },
+                                "instructions": record.instructions,
+                                "finished_at_ms": finished_at,
+                                "assistant_message": response.assistant_message,
+                                "streamed_chunks": response.streamed_chunks,
+                                "child_transcript": response.child_transcript,
+                                "raw_response": response.raw_response,
+                                "worker_evidence": {
+                                    "executor": "provider_backed_subagent",
+                                    "sequence": record.sequence,
+                                    "workspace_root": record.workspace_root,
+                                    "provider_id": response.provider_id,
+                                    "model_used": response.model_used,
+                                    "scan": workspace_summary,
+                                },
+                                "execution_log": record.execution_log,
+                            }));
+                        }
+                        Err(err) => {
+                            record.status = SubagentStatus::Error;
+                            record.finished_at_ms = Some(finished_at);
+                            record.progress = 1.0;
+                            record.error = Some(err.clone());
+                            record.execution_log.push(json!({
+                                "at_ms": finished_at,
+                                "event": "llm_error",
+                                "error": err,
+                            }));
+                            record.result = Some(json!({
+                                "summary": format!("Subagent '{}' failed during provider execution.", record.name),
+                                "task": record.task,
+                                "model": if record.model.is_empty() {
+                                    Value::Null
+                                } else {
+                                    Value::String(record.model.clone())
+                                },
+                                "instructions": record.instructions,
+                                "finished_at_ms": finished_at,
+                                "worker_evidence": {
+                                    "executor": "provider_backed_subagent",
+                                    "sequence": record.sequence,
+                                    "workspace_root": record.workspace_root,
+                                    "scan": workspace_summary,
+                                },
+                                "error": record.error,
+                                "execution_log": record.execution_log,
+                            }));
+                        }
+                    }
+                }
+                push_subagent_completion(&mut guard, &subagent_id);
+            }
+        }
+    });
+}
+
+pub fn dequeue_subagent_completion_event() -> Option<Value> {
+    let Ok(mut guard) = subagent_store().lock() else {
+        return None;
+    };
+
+    let id = guard.completion_queue.pop_front()?;
+    let mut event = None;
+    if let Some(record) = guard.records.get_mut(&id) {
+        record.notified_to_main_agent = true;
+        event = Some(json!({
+            "subagent_id": record.id,
+            "sequence": record.sequence,
+            "name": record.name,
+            "task": record.task,
+            "status": record.status.as_str(),
+            "created_at_ms": record.created_at_ms,
+            "started_at_ms": record.started_at_ms,
+            "finished_at_ms": record.finished_at_ms,
+            "progress": record.progress,
+            "result_available": record.result.is_some(),
+            "error": record.error,
+            "execution_events": record.execution_log.len(),
+        }));
+    }
+    event
+}
+
+pub fn queued_subagent_completion_count() -> usize {
+    let Ok(guard) = subagent_store().lock() else {
+        return 0;
+    };
+    guard.completion_queue.len()
+}
 
 fn set_runtime_state(workspace_root: PathBuf, current_file: Option<PathBuf>, extras: PulsarToolExtras) {
     let state = RUNTIME_STATE.get_or_init(|| {
@@ -459,6 +844,232 @@ pub fn execute_plugin_tool(
     };
 
     call_plugin_tool(file_path, tool_name, args, plugin_id)
+}
+
+/// Spawn a new subagent to handle a specific task or analysis.
+/// Returns a subagent ID for tracking and retrieving results.
+#[tool(category = "subagent")]
+pub fn spawn_subagent(
+    name: String,
+    task: String,
+    model: Option<String>,
+    instructions: Option<String>,
+) -> anyhow::Result<Value> {
+    debug!("spawn_subagent start name={} task={} model={:?}", name, task, model);
+    let created_at_ms = now_ms_u64();
+    let sequence = SUBAGENT_SEQUENCE.fetch_add(1, Ordering::SeqCst);
+    let entropy = ((created_at_ms as u32).wrapping_mul(2654435761)) ^ (sequence as u32);
+    let subagent_id = format!("subagent-{created_at_ms}-{sequence}-{entropy:08x}");
+    let selected_model = model
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let selected_instructions = instructions.unwrap_or_default();
+    let workspace_root = runtime_workspace_root().unwrap_or_else(|_| PathBuf::from("."));
+    let subagent_executor = runtime_extras()
+        .ok()
+        .and_then(|extras| extras.subagent_executor);
+    let executor_ready = subagent_executor.is_some();
+
+    let record = SubagentRecord {
+        id: subagent_id.clone(),
+        sequence,
+        name: name.clone(),
+        task: task.clone(),
+        model: selected_model.clone().unwrap_or_default(),
+        instructions: selected_instructions.clone(),
+        workspace_root: workspace_root.display().to_string(),
+        status: SubagentStatus::Pending,
+        created_at_ms,
+        started_at_ms: None,
+        finished_at_ms: None,
+        progress: 0.0,
+        cancellation_requested: false,
+        result: None,
+        error: None,
+        notified_to_main_agent: false,
+        execution_log: vec![json!({
+            "at_ms": created_at_ms,
+            "event": "spawn_requested",
+            "sequence": sequence,
+            "workspace_root": workspace_root.display().to_string(),
+            "model": selected_model.clone(),
+        })],
+    };
+
+    {
+        let mut guard = subagent_store()
+            .lock()
+            .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+        guard.records.insert(subagent_id.clone(), record);
+    }
+
+    launch_subagent_worker(
+        subagent_id.clone(),
+        workspace_root.clone(),
+        subagent_executor,
+    );
+
+    debug!("spawn_subagent end subagent_id={}", subagent_id);
+
+    Ok(json!({
+        "ok": true,
+        "subagent_id": subagent_id,
+        "name": name,
+        "task": task,
+        "model": selected_model,
+        "instructions": selected_instructions,
+        "status": "spawned",
+        "created_at_ms": created_at_ms,
+        "sequence": sequence,
+        "workspace_root": workspace_root.display().to_string(),
+        "executor": if executor_ready {
+            "provider_backed_subagent"
+        } else {
+            "subagent_worker_thread"
+        },
+        "executor_ready": executor_ready,
+    }))
+}
+
+/// Query the status of running or completed subagents.
+/// Returns list of subagent IDs and their current status.
+#[tool(category = "subagent")]
+pub fn query_running_subagents() -> anyhow::Result<Value> {
+    debug!("query_running_subagents start");
+
+    let guard = subagent_store()
+        .lock()
+        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+
+    let mut running_count = 0usize;
+    let mut queued_count = 0usize;
+    let mut completed_count = 0usize;
+
+    let mut subagents = guard
+        .records
+        .values()
+        .map(|record| {
+            match record.status {
+                SubagentStatus::Running => running_count += 1,
+                SubagentStatus::Pending => queued_count += 1,
+                SubagentStatus::Success | SubagentStatus::Error | SubagentStatus::Cancelled => {
+                    completed_count += 1
+                }
+            }
+
+            json!({
+                "id": record.id,
+                "sequence": record.sequence,
+                "name": record.name,
+                "task": record.task,
+                "status": record.status.as_str(),
+                "progress": record.progress,
+                "created_at_ms": record.created_at_ms,
+                "started_at_ms": record.started_at_ms,
+                "finished_at_ms": record.finished_at_ms,
+                "result_available": record.result.is_some(),
+                "notified_to_main_agent": record.notified_to_main_agent,
+                "error": record.error,
+                "execution_events": record.execution_log.len(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    subagents.sort_by(|a, b| {
+        let a_seq = a.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0);
+        let b_seq = b.get("sequence").and_then(|v| v.as_u64()).unwrap_or(0);
+        a_seq.cmp(&b_seq)
+    });
+
+    debug!("query_running_subagents end");
+
+    Ok(json!({
+        "ok": true,
+        "count": subagents.len(),
+        "running": running_count,
+        "queued": queued_count,
+        "completed": completed_count,
+        "completion_queue_depth": guard.completion_queue.len(),
+        "subagents": subagents,
+    }))
+}
+
+/// Get the result from a completed subagent.
+/// The subagent ID should come from spawn_subagent or query_running_subagents.
+#[tool(category = "subagent")]
+pub fn get_subagent_result(subagent_id: String) -> anyhow::Result<Value> {
+    debug!("get_subagent_result start subagent_id={}", subagent_id);
+
+    let guard = subagent_store()
+        .lock()
+        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+    let Some(record) = guard.records.get(&subagent_id) else {
+        return Err(anyhow!("Subagent {} not found", subagent_id));
+    };
+
+    if !record.status.is_terminal() {
+        return Ok(json!({
+            "ok": true,
+            "subagent_id": record.id,
+            "status": record.status.as_str(),
+            "progress": record.progress,
+            "result": null,
+            "message": "Subagent still running. Wait for a completion notification or poll again.",
+        }));
+    }
+
+    debug!("get_subagent_result end subagent_id={}", subagent_id);
+
+    Ok(json!({
+        "ok": true,
+        "subagent_id": record.id,
+        "sequence": record.sequence,
+        "name": record.name,
+        "task": record.task,
+        "status": record.status.as_str(),
+        "created_at_ms": record.created_at_ms,
+        "started_at_ms": record.started_at_ms,
+        "finished_at_ms": record.finished_at_ms,
+        "result": record.result,
+        "error": record.error,
+        "execution_events": record.execution_log.len(),
+        "execution_log": record.execution_log,
+    }))
+}
+
+/// Cancel a running subagent by its ID.
+/// Returns success if the subagent was cancelled, or an error if not found/already complete.
+#[tool(category = "subagent")]
+pub fn cancel_subagent(subagent_id: String) -> anyhow::Result<Value> {
+    debug!("cancel_subagent start subagent_id={}", subagent_id);
+
+    let mut guard = subagent_store()
+        .lock()
+        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+    let Some(record) = guard.records.get_mut(&subagent_id) else {
+        return Err(anyhow!("Subagent {} not found", subagent_id));
+    };
+
+    if record.status.is_terminal() {
+        return Ok(json!({
+            "ok": true,
+            "subagent_id": subagent_id,
+            "status": record.status.as_str(),
+            "cancelled": false,
+            "message": "Subagent already reached a terminal state.",
+        }));
+    }
+
+    record.cancellation_requested = true;
+
+    debug!("cancel_subagent end subagent_id={}", subagent_id);
+
+    Ok(json!({
+        "ok": true,
+        "subagent_id": subagent_id,
+        "status": "cancellation_requested",
+        "cancelled": true,
+    }))
 }
 
 fn resolve_workspace_path(root: &Path, rel_or_abs: &str) -> anyhow::Result<PathBuf> {

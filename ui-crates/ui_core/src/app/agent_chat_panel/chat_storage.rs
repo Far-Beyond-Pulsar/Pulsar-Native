@@ -191,6 +191,25 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                     started_at_ms: *started_at_ms,
                     finished_at_ms: *finished_at_ms,
                 },
+                DisplayItem::SubagentInvocation {
+                    subagent_id,
+                    name,
+                    task,
+                    steps,
+                    started_at_ms,
+                    finished_at_ms,
+                    status,
+                    ..
+                } => DisplayItem::SubagentInvocation {
+                    subagent_id: subagent_id.clone(),
+                    name: name.clone(),
+                    task: task.clone(),
+                    steps: steps.clone(),
+                    is_expanded: false, // always collapsed on disk
+                    status: *status,
+                    started_at_ms: *started_at_ms,
+                    finished_at_ms: *finished_at_ms,
+                },
                 other => other.clone(),
             })
             .collect();
