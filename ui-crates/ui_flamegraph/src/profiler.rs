@@ -1,6 +1,7 @@
 //! Real-time profiler using instrumentation for cross-platform profiling
 
-use crate::trace_data::{TraceData, TraceFrame, TraceSpan};
+use crate::trace_data::{ThreadInfo, TraceData, TraceFrame, TraceSpan};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -9,6 +10,7 @@ use std::time::Duration;
 pub struct InstrumentationCollector {
     trace_data: Arc<TraceData>,
     running: Arc<parking_lot::RwLock<bool>>,
+    frame_time_running: Arc<parking_lot::RwLock<bool>>,
     update_interval_ms: u64,
 }
 
@@ -22,6 +24,7 @@ impl InstrumentationCollector {
         Self {
             trace_data,
             running: Arc::new(parking_lot::RwLock::new(false)),
+            frame_time_running: Arc::new(parking_lot::RwLock::new(false)),
             update_interval_ms,
         }
     }
@@ -39,6 +42,19 @@ impl InstrumentationCollector {
             "[PROFILER] Profiling enabled: {}",
             profiling::is_profiling_enabled()
         );
+
+        *self.frame_time_running.write() = true;
+
+        let frame_time_running = Arc::clone(&self.frame_time_running);
+        thread::spawn(move || {
+            while *frame_time_running.read() {
+                thread::sleep(Duration::from_millis(16));
+
+                if let Some(frame_time_ms) = sample_current_frame_time_ms() {
+                    profiling::record_frame_time(frame_time_ms);
+                }
+            }
+        });
 
         // Create a test span to verify the system works
         {
@@ -73,6 +89,7 @@ impl InstrumentationCollector {
     /// Stop collecting
     pub fn stop(&self) {
         *self.running.write() = false;
+        *self.frame_time_running.write() = false;
     }
 
     /// Check if collector is running
@@ -89,6 +106,7 @@ fn collector_loop(
 ) {
     tracing::trace!("[PROFILER] Starting instrumentation collector");
 
+    let mut accumulator = TraceAccumulator::from_frame(&trace_data.get_frame());
     let mut last_event_count = 0;
 
     while *running.read() {
@@ -115,7 +133,11 @@ fn collector_loop(
         );
 
         // Convert ONLY new events to TraceData format
-        if let Err(e) = convert_profile_events_to_trace(new_events, &trace_data) {
+        for event in new_events {
+            accumulator.apply_event(event);
+        }
+
+        if let Err(e) = accumulator.publish(&trace_data) {
             tracing::error!("[PROFILER] Failed to convert events: {}", e);
         }
     }
@@ -123,6 +145,91 @@ fn collector_loop(
     // NOTE: Don't disable profiling here!
     // Profiling is managed by the engine, not the collector
     tracing::trace!("[PROFILER] Instrumentation collector stopped");
+}
+
+fn sample_current_frame_time_ms() -> Option<f32> {
+    let engine_context = engine_state::EngineContext::global()?;
+
+    for window_id in engine_context.renderers.window_ids() {
+        let handle = engine_context.renderers.get(window_id)?;
+        let Some(renderer) = handle
+            .as_helio::<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>()
+        else {
+            continue;
+        };
+
+        if let Some(frame_time_ms) = sample_renderer_frame_time(renderer).filter(|ms| *ms > 0.0) {
+            return Some(frame_time_ms);
+        }
+    }
+
+    None
+}
+
+fn sample_renderer_frame_time(
+    renderer: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+) -> Option<f32> {
+    let engine = renderer.try_lock().ok()?;
+    engine.get_render_metrics().map(|metrics| metrics.frame_time_ms)
+}
+
+#[derive(Default)]
+struct TraceAccumulator {
+    spans: Vec<TraceSpan>,
+    thread_names: HashMap<u64, ThreadInfo>,
+    frame_times: Vec<f32>,
+}
+
+impl TraceAccumulator {
+    fn from_frame(frame: &TraceFrame) -> Self {
+        Self {
+            spans: frame.spans.clone(),
+            thread_names: frame.threads.clone(),
+            frame_times: frame.frame_times_ms.clone(),
+        }
+    }
+
+    fn apply_event(&mut self, event: &profiling::ProfileEvent) {
+        if event.name == "__FRAME_MARKER__" {
+            self.frame_times.push(event.duration_ns as f32 / 1_000_000.0);
+            return;
+        }
+
+        let thread_name = event
+            .thread_name
+            .clone()
+            .unwrap_or_else(|| format!("Thread {}", event.thread_id));
+
+        self.thread_names.insert(
+            event.thread_id,
+            ThreadInfo {
+                id: event.thread_id,
+                name: thread_name,
+            },
+        );
+
+        self.spans.push(TraceSpan {
+            name: event.name.clone(),
+            start_ns: event.start_ns,
+            duration_ns: event.duration_ns,
+            depth: event.depth,
+            thread_id: event.thread_id,
+            color_index: (self.spans.len() % 16) as u8,
+        });
+    }
+
+    fn publish(&self, trace_data: &TraceData) -> Result<(), Box<dyn std::error::Error>> {
+        // Build through with_data so min/max time and depth are recomputed from spans.
+        let thread_names: HashMap<u64, String> = self
+            .thread_names
+            .iter()
+            .map(|(id, info)| (*id, info.name.clone()))
+            .collect();
+        let mut frame = TraceFrame::with_data(self.spans.clone(), thread_names);
+        frame.frame_times_ms = self.frame_times.clone();
+        trace_data.set_frame(frame);
+        Ok(())
+    }
 }
 
 /// Convert profiling events to TraceData format and ADD them (don't replace!)

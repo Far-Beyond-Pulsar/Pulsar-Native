@@ -30,7 +30,8 @@ impl Schedule {
     /// Run all systems in insertion order.
     pub fn run(&mut self, world: &mut World, time: GameTime) {
         profiling::profile_scope!("Schedule::run");
-        for (_name, system) in &mut self.systems {
+        for (name, system) in &mut self.systems {
+            profiling::profile_scope!(format!("Schedule::System::{}", name));
             system(world, time);
         }
     }

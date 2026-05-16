@@ -3,7 +3,10 @@
 use crate::constants::*;
 use crate::lod_tree::LODTree;
 use crate::trace_data::TraceFrame;
+use crate::lod_tree::MergedSpan;
+use std::collections::HashMap;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// View state for pan, zoom, and interaction
 #[derive(Clone)]
@@ -78,13 +81,12 @@ impl Rect {
     }
 }
 
-use std::sync::Arc;
-
 /// Cache with hierarchical LOD tree - O(output) queries!
 /// Uses Arc - NO CLONING!
 pub struct SpanCache {
     pub thread_offsets: Arc<BTreeMap<u64, f32>>,
     pub lod_tree: Arc<LODTree>,
+    pub tile_cache: Arc<parking_lot::Mutex<SpanTileCache>>,
 }
 
 impl SpanCache {
@@ -96,7 +98,79 @@ impl SpanCache {
         Self {
             thread_offsets: Arc::new(thread_offsets),
             lod_tree: Arc::new(lod_tree),
+            tile_cache: Arc::new(parking_lot::Mutex::new(SpanTileCache::new())),
         }
+    }
+}
+
+pub const TILE_TIME_NS: u64 = 8_000_000;
+pub const TILE_ROW_HEIGHT: f32 = ROW_HEIGHT * 8.0;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+struct TileKey {
+    time_index: i64,
+    row_index: i32,
+    zoom_bucket: u64,
+}
+
+/// Cache of rendered span tiles keyed by world-space buckets.
+pub struct SpanTileCache {
+    tiles: HashMap<TileKey, Arc<Vec<MergedSpan>>>,
+}
+
+impl SpanTileCache {
+    pub fn new() -> Self {
+        Self {
+            tiles: HashMap::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.tiles.clear();
+    }
+
+    pub fn get_or_build_tile(
+        &mut self,
+        frame: &TraceFrame,
+        lod_tree: &LODTree,
+        time_index: i64,
+        row_index: i32,
+        zoom: f32,
+    ) -> Arc<Vec<MergedSpan>> {
+        let zoom_bucket = (zoom.max(0.0001) * 1024.0).round() as u64;
+        let key = TileKey {
+            time_index,
+            row_index,
+            zoom_bucket,
+        };
+
+        if let Some(cached) = self.tiles.get(&key) {
+            return Arc::clone(cached);
+        }
+
+        let tile_time_start = frame
+            .min_time_ns
+            .saturating_add((time_index.max(0) as u64).saturating_mul(TILE_TIME_NS));
+        let tile_time_end = frame
+            .min_time_ns
+            .saturating_add(((time_index.max(0) as u64) + 1).saturating_mul(TILE_TIME_NS))
+            .min(frame.min_time_ns + frame.duration_ns());
+
+        let tile_y_min = (row_index.max(0) as f32) * TILE_ROW_HEIGHT;
+        let tile_y_max = tile_y_min + TILE_ROW_HEIGHT;
+        let tile_width_px = TILE_TIME_NS as f32 * zoom.max(0.0001);
+
+        let spans = lod_tree.query_dynamic(
+            tile_time_start,
+            tile_time_end,
+            tile_y_min,
+            tile_y_max,
+            tile_width_px.max(1.0),
+        );
+
+        let spans = Arc::new(spans);
+        self.tiles.insert(key, Arc::clone(&spans));
+        spans
     }
 }
 

@@ -635,8 +635,9 @@ impl FlamegraphWindow {
 impl Render for FlamegraphWindow {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let is_profiling = self.is_profiling;
+        let frame = self.trace_data.get_frame();
         // Only show data when NOT profiling - during profiling, data is being collected but not displayed
-        let has_data = !is_profiling && !self.trace_data.get_frame().spans.is_empty();
+        let has_data = !is_profiling && !frame.spans.is_empty();
 
         // Initialize panels on first render with data (when profiling stops)
         if has_data && self.flamegraph_panel.is_none() {
@@ -646,6 +647,106 @@ impl Render for FlamegraphWindow {
         }
 
         let theme = cx.theme();
+        let summary_bar = if has_data || is_profiling {
+            Some(
+                div()
+                    .w_full()
+                    .px_4()
+                    .py_2()
+                    .gap_2()
+                    .flex()
+                    .items_center()
+                    .bg(theme.sidebar.opacity(0.9))
+                    .border_b_1()
+                    .border_color(theme.border.opacity(0.8))
+                    .shadow_sm()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_1p5()
+                            .px_2p5()
+                            .py_1()
+                            .rounded(px(6.0))
+                            .bg(if is_profiling {
+                                gpui::red().opacity(0.15)
+                            } else {
+                                theme.accent.opacity(0.12)
+                            })
+                            .border_1()
+                            .border_color(if is_profiling {
+                                gpui::red().opacity(0.25)
+                            } else {
+                                theme.accent.opacity(0.2)
+                            })
+                            .child(
+                                div()
+                                    .size(px(8.0))
+                                    .rounded_full()
+                                    .bg(if is_profiling { gpui::red() } else { theme.accent }),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(if is_profiling {
+                                        gpui::red()
+                                    } else {
+                                        theme.accent
+                                    })
+                                    .child(if is_profiling {
+                                        t!("Flamegraph.Recording").to_string()
+                                    } else {
+                                        "Session Ready".to_string()
+                                    }),
+                            ),
+                    )
+                    .child(self.summary_chip("Spans", format!("{}", frame.spans.len()), theme.foreground, &theme))
+                    .child(self.summary_chip("Threads", format!("{}", frame.threads.len()), theme.foreground, &theme))
+                    .child(self.summary_chip("Frames", format!("{}", frame.frame_times_ms.len()), theme.foreground, &theme))
+                    .child(self.summary_chip(
+                        "Duration",
+                        format!("{:.2}ms", frame.duration_ns() as f64 / 1_000_000.0),
+                        theme.foreground,
+                        &theme,
+                    ))
+                    .when(self.current_db_path.is_some(), |this| {
+                        this.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_1p5()
+                                .px_2p5()
+                                .py_1()
+                                .rounded(px(6.0))
+                                .bg(theme.accent.opacity(0.08))
+                                .border_1()
+                                .border_color(theme.accent.opacity(0.16))
+                                .child(
+                                    Icon::new(IconName::Database)
+                                        .size(px(12.0))
+                                        .text_color(theme.accent),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(theme.accent)
+                                        .font_weight(gpui::FontWeight::MEDIUM)
+                                        .child(
+                                            self.current_db_path
+                                                .as_ref()
+                                                .and_then(|p| p.file_name())
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("Unknown")
+                                                .to_string(),
+                                        ),
+                                ),
+                        )
+                    }),
+            )
+        } else {
+            None
+        };
 
         v_flex()
             .size_full()
@@ -675,67 +776,11 @@ impl Render for FlamegraphWindow {
                                             .child("• Instrumentation-Based"),
                                     ),
                             )
-                            .when(
-                                has_data && !is_profiling && self.current_db_path.is_some(),
-                                |this| {
-                                    this.child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_1p5()
-                                            .px_2p5()
-                                            .py_1()
-                                            .rounded(px(6.0))
-                                            .bg(theme.accent.opacity(0.1))
-                                            .border_1()
-                                            .border_color(theme.accent.opacity(0.2))
-                                            .child(
-                                                Icon::new(IconName::Database)
-                                                    .size(px(12.0))
-                                                    .text_color(theme.accent),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_size(px(11.0))
-                                                    .text_color(theme.accent)
-                                                    .font_weight(gpui::FontWeight::MEDIUM)
-                                                    .child(
-                                                        self.current_db_path
-                                                            .as_ref()
-                                                            .and_then(|p| p.file_name())
-                                                            .and_then(|n| n.to_str())
-                                                            .unwrap_or("Unknown")
-                                                            .to_string(),
-                                                    ),
-                                            ),
-                                    )
-                                },
-                            )
-                            .when(has_data && is_profiling, |this| {
-                                this.child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .px_3()
-                                        .py_1p5()
-                                        .rounded(px(6.0))
-                                        .bg(gpui::red().opacity(0.15))
-                                        .border_1()
-                                        .border_color(gpui::red().opacity(0.3))
-                                        .child(div().size(px(8.0)).rounded(px(4.0)).bg(gpui::red()))
-                                        .child(
-                                            div()
-                                                .text_size(px(12.0))
-                                                .text_color(gpui::red())
-                                                .font_weight(gpui::FontWeight::BOLD)
-                                                .child(t!("Flamegraph.Recording").to_string()),
-                                        ),
-                                )
-                            }),
+                            .child(div().flex_1())
                     ),
                 ),
             )
+            .when_some(summary_bar, |this, bar| this.child(bar))
             .child(
                 div()
                     .flex_1()
@@ -764,6 +809,40 @@ impl Render for FlamegraphWindow {
                                 ),
                         )
                     }),
+            )
+    }
+}
+
+impl FlamegraphWindow {
+    fn summary_chip(
+        &self,
+        label: &str,
+        value: String,
+        value_color: Hsla,
+        theme: &ui::theme::Theme,
+    ) -> impl IntoElement {
+        div()
+            .flex()
+            .items_center()
+            .gap_1p5()
+            .px_2p5()
+            .py_1()
+            .rounded(px(6.0))
+            .bg(theme.background.opacity(0.45))
+            .border_1()
+            .border_color(theme.border.opacity(0.5))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(label.to_string()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(value_color)
+                    .child(value),
             )
     }
 }

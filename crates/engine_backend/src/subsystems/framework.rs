@@ -295,6 +295,7 @@ impl SubsystemRegistry {
 
         for id in &self.init_order {
             if let Some(subsystem) = self.subsystems.get_mut(id) {
+                profiling::profile_scope!(format!("Subsystem::Frame::{}", id.as_str()));
                 subsystem.on_frame(delta_time);
             }
         }

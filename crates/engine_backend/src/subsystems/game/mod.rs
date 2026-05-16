@@ -236,10 +236,12 @@ impl GameState {
     }
 
     pub fn update(&mut self, delta_time: f32) {
+        profiling::profile_scope!("GameState::update");
         self.tick_count += 1;
         self.game_time += delta_time as f64;
 
         // Update all active objects
+        profiling::profile_scope!("GameState::objects");
         for object in &mut self.objects {
             object.update(delta_time);
         }

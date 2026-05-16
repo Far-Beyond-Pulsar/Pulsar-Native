@@ -75,6 +75,7 @@ impl Render for FlamegraphView {
         let frame = Arc::clone(frame);
         let thread_offsets = Arc::clone(&cache.thread_offsets);
         let lod_tree = Arc::clone(&cache.lod_tree);
+        let tile_cache = Arc::clone(&cache.tile_cache);
         let view_state = self.view_state.clone();
         let palette = get_palette();
         let theme = cx.theme().clone();
@@ -83,11 +84,13 @@ impl Render for FlamegraphView {
         let palette_for_canvas = palette.clone();
 
         let _tr_start = std::time::Instant::now();
+        let framerate_graph = render_framerate_graph(&frame, &view_state, cx);
         let timeline_ruler = render_timeline_ruler(&frame, &view_state, cx);
 
         let result = v_flex()
             .size_full()
             .bg(theme.background)
+            .child(framerate_graph)
             .child(timeline_ruler)
             .child(
                 div()
@@ -121,6 +124,7 @@ impl Render for FlamegraphView {
                             Arc::clone(&frame),
                             Arc::clone(&lod_tree),
                             Arc::clone(&thread_offsets),
+                            Arc::clone(&tile_cache),
                             view_state_for_canvas.clone(),
                             palette_for_canvas.clone(),
                         )
@@ -160,9 +164,9 @@ impl Render for FlamegraphView {
                             view.view_state.pan_y = view.view_state.drag_pan_start_y + delta_y;
                         } else {
                             // Detect hovered span
-                            // Mouse position is window-relative, need to account for timeline at top
-                            // Using hardcoded value to verify it's being used
-                            let canvas_offset_y = 125.0; // TIMELINE_HEIGHT
+                            // Mouse position is window-relative, need to account for the
+                            // frame graph and timeline above the canvas.
+                            let canvas_offset_y = GRAPH_HEIGHT + TIMELINE_HEIGHT;
                             let canvas_y = current_y - canvas_offset_y;
 
                             // Copy view_state values before borrowing
@@ -249,11 +253,6 @@ impl Render for FlamegraphView {
 
                         render_thread_labels(&frame, &thread_offsets, &view_state, cx)
                     })
-                    .child({
-                        let _ss_start = std::time::Instant::now();
-
-                        render_statistics_sidebar(&frame, cx)
-                    })
                     .children({
                         let _hp_start = std::time::Instant::now();
                         let popup = render_hover_popup(
@@ -264,46 +263,6 @@ impl Render for FlamegraphView {
                         );
                         popup
                     }),
-            )
-            .child(
-                // Status bar at bottom
-                div()
-                    .h(px(40.0))
-                    .w_full()
-                    .bg(theme.list_head)
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .flex()
-                    .items_center()
-                    .px_4()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.foreground)
-                            .child(format!("Spans: {}", frame.spans.len())),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(format!("Threads: {}", frame.threads.len())),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(format!(
-                                "Duration: {:.2}ms",
-                                frame.duration_ns() as f64 / 1_000_000.0
-                            )),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child(format!("Zoom: {:.1}x", view_state.zoom)),
-                    ),
             );
 
         result

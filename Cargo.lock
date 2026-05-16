@@ -13761,6 +13761,7 @@ dependencies = [
 name = "ui_flamegraph"
 version = "0.1.0"
 dependencies = [
+ "engine_backend",
  "engine_state",
  "gpui-ce",
  "parking_lot",

@@ -4,7 +4,7 @@ use crate::colors::get_palette;
 use crate::constants::*;
 use crate::coordinates::{time_to_x, visible_range};
 use crate::lod_tree::LODTree;
-use crate::state::ViewState;
+use crate::state::{SpanTileCache, ViewState, TILE_ROW_HEIGHT, TILE_TIME_NS};
 use crate::trace_data::TraceFrame;
 use gpui::*;
 use std::collections::BTreeMap;
@@ -15,6 +15,7 @@ pub fn render_flamegraph_canvas(
     frame: Arc<TraceFrame>,
     lod_tree: Arc<LODTree>,
     thread_offsets: Arc<BTreeMap<u64, f32>>,
+    tile_cache: Arc<parking_lot::Mutex<SpanTileCache>>,
     view_state: ViewState,
     palette: Vec<Hsla>,
 ) -> impl IntoElement {
@@ -108,10 +109,6 @@ pub fn render_flamegraph_canvas(
                 // Uses padding to prevent edge popping during pan/zoom
                 // ========================================================================
 
-                // LOD QUERY: Get pre-merged spans at appropriate detail level
-                // O(output) complexity - independent of total dataset size!
-                let _lod_start = std::time::Instant::now();
-
                 let vertical_min = -CULL_PADDING - view_state.pan_y;
                 let vertical_max = viewport_height + CULL_PADDING - view_state.pan_y;
 
@@ -126,84 +123,103 @@ pub fn render_flamegraph_canvas(
                     }
                 }
 
-                let merged_spans = lod_tree.query_dynamic(
-                    visible_time.start,
-                    visible_time.end,
-                    vertical_min,
-                    vertical_max,
-                    viewport_width - THREAD_LABEL_WIDTH,
-                );
+                let _paint_start = std::time::Instant::now();
+                let palette = get_palette();
+                let zoom = if view_state.zoom == 0.0 {
+                    let effective_width = viewport_width - THREAD_LABEL_WIDTH;
+                    effective_width / frame.duration_ns().max(1) as f32
+                } else {
+                    view_state.zoom
+                };
 
-                unsafe {
-                    if FRAME_COUNT.is_multiple_of(60) {
-                        tracing::trace!("[FLAMEGRAPH] LOD returned {} spans", merged_spans.len());
+                let time_start_index = visible_time
+                    .start
+                    .saturating_sub(frame.min_time_ns)
+                    / TILE_TIME_NS;
+                let time_end_index = visible_time
+                    .end
+                    .saturating_sub(frame.min_time_ns)
+                    / TILE_TIME_NS;
+                let row_start_index = (vertical_min.max(0.0) / TILE_ROW_HEIGHT).floor() as i32;
+                let row_end_index = (vertical_max.max(0.0) / TILE_ROW_HEIGHT).ceil() as i32;
+
+                let mut tile_cache = tile_cache.lock();
+                let mut total_cached_spans = 0usize;
+
+                for time_index in time_start_index as i64..=time_end_index as i64 {
+                    for row_index in row_start_index..=row_end_index {
+                        let merged_spans = tile_cache.get_or_build_tile(
+                            &frame,
+                            &lod_tree,
+                            time_index,
+                            row_index,
+                            zoom,
+                        );
+
+                        total_cached_spans += merged_spans.len();
+
+                        for merged_span in merged_spans.iter() {
+                            let x1 = time_to_x(merged_span.start_ns, &frame, viewport_width, &view_state);
+                            let x2 = time_to_x(merged_span.end_ns, &frame, viewport_width, &view_state);
+                            let width = x2 - x1;
+
+                            let rendered_width = if width < 1.0 {
+                                1.0
+                            } else if width < 3.0 {
+                                width
+                            } else {
+                                (width - PADDING * 2.0).max(MIN_SPAN_WIDTH)
+                            };
+
+                            let y = merged_span.y + view_state.pan_y;
+
+                            let base_color = palette[merged_span.color_index % palette.len()];
+                            let color = if merged_span.span_count > 1 {
+                                hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.85, 1.0)
+                            } else {
+                                base_color
+                            };
+
+                            let span_bounds = Bounds {
+                                origin: point(
+                                    bounds.origin.x + px(x1 + if width < 3.0 { 0.0 } else { PADDING }),
+                                    bounds.origin.y + px(y + PADDING)
+                                ),
+                                size: size(px(rendered_width), px(ROW_HEIGHT - PADDING * 2.0)),
+                            };
+
+                            window.paint_quad(fill(span_bounds, color));
+
+                            if rendered_width > 4.0 {
+                                let highlight_color = hsla(color.h, color.s * 0.7, (color.l * 1.15).min(0.95), 0.4);
+                                let top_border = Bounds {
+                                    origin: span_bounds.origin,
+                                    size: size(px(rendered_width), px(1.0)),
+                                };
+                                window.paint_quad(fill(top_border, highlight_color));
+
+                                let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
+                                let bottom_border = Bounds {
+                                    origin: point(span_bounds.origin.x, span_bounds.origin.y + span_bounds.size.height - px(1.0)),
+                                    size: size(px(rendered_width), px(1.0)),
+                                };
+                                window.paint_quad(fill(bottom_border, shadow_color));
+                            }
+
+                            if merged_span.span_count > 5 && width > 20.0 {
+                                let badge_bounds = Bounds {
+                                    origin: point(bounds.origin.x + px(x1 + width - 8.0), bounds.origin.y + px(y + PADDING)),
+                                    size: size(px(6.0), px(6.0)),
+                                };
+                                window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
+                            }
+                        }
                     }
                 }
 
-                // Paint pre-merged spans directly - NO additional merging needed!
-                let _paint_start = std::time::Instant::now();
-                let palette = get_palette();
-
-                for merged_span in merged_spans {
-                    let x1 = time_to_x(merged_span.start_ns, &frame, viewport_width, &view_state);
-                    let x2 = time_to_x(merged_span.end_ns, &frame, viewport_width, &view_state);
-                    let width = x2 - x1;
-
-                    // NEVER skip - always draw something, even if tiny
-                    // Minimum 1 pixel so spans don't disappear when zoomed out
-                    let rendered_width = if width < 1.0 {
-                        1.0  // Draw as 1px line when zoomed way out
-                    } else if width < 3.0 {
-                        width  // Draw actual width for small spans
-                    } else {
-                        (width - PADDING * 2.0).max(MIN_SPAN_WIDTH)  // Normal padding for larger spans
-                    };
-
-                    let y = merged_span.y + view_state.pan_y;
-
-                    let base_color = palette[merged_span.color_index % palette.len()];
-
-                    // Darken if multiple spans merged - visual feedback for LOD
-                    let color = if merged_span.span_count > 1 {
-                        hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.85, 1.0)
-                    } else {
-                        base_color
-                    };
-
-                    let span_bounds = Bounds {
-                        origin: point(
-                            bounds.origin.x + px(x1 + if width < 3.0 { 0.0 } else { PADDING }),
-                            bounds.origin.y + px(y + PADDING)
-                        ),
-                        size: size(px(rendered_width), px(ROW_HEIGHT - PADDING * 2.0)),
-                    };
-
-                    window.paint_quad(fill(span_bounds, color));
-
-                    // Add borders for larger spans only
-                    if rendered_width > 4.0 {
-                        let highlight_color = hsla(color.h, color.s * 0.7, (color.l * 1.15).min(0.95), 0.4);
-                        let top_border = Bounds {
-                            origin: span_bounds.origin,
-                            size: size(px(rendered_width), px(1.0)),
-                        };
-                        window.paint_quad(fill(top_border, highlight_color));
-
-                        let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
-                        let bottom_border = Bounds {
-                            origin: point(span_bounds.origin.x, span_bounds.origin.y + span_bounds.size.height - px(1.0)),
-                            size: size(px(rendered_width), px(1.0)),
-                        };
-                        window.paint_quad(fill(bottom_border, shadow_color));
-                    }
-
-                    // Badge for heavily merged spans
-                    if merged_span.span_count > 5 && width > 20.0 {
-                        let badge_bounds = Bounds {
-                            origin: point(bounds.origin.x + px(x1 + width - 8.0), bounds.origin.y + px(y + PADDING)),
-                            size: size(px(6.0), px(6.0)),
-                        };
-                        window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
+                unsafe {
+                    if FRAME_COUNT.is_multiple_of(60) {
+                        tracing::trace!("[FLAMEGRAPH] Tile cache painted {} spans", total_cached_spans);
                     }
                 }
             });
