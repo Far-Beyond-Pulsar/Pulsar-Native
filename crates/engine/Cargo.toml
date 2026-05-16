@@ -16,6 +16,8 @@ ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
 thiserror = "2.0"
 image = "0.25"  # For loading window icon
+wgpu.workspace = true
+rfd = "0.15"
 
 # Engine crates
 engine_backend.workspace = true
@@ -43,6 +45,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 tokio = { version = "1", features = ["full"] }
+futures = "0.3"
 chrono = { version = "0.4", features = ["serde"] }
 directories = "5"
 toml = "0.8"

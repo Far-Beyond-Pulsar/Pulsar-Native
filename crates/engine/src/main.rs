@@ -34,6 +34,7 @@
 
 // --- Global Allocator Setup ---
 use gpui::AppContext;
+use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 use ui_log_viewer::TrackingAllocator;
 
 #[global_allocator]
@@ -84,10 +85,88 @@ pub use engine_state::{
 
 use init::{task_ids::*, InitContext, InitGraph, InitTask};
 
+#[cfg(target_os = "windows")]
+#[unsafe(no_mangle)]
+pub static NvOptimusEnablement: u32 = 0x0000_0001;
+
+#[cfg(target_os = "windows")]
+#[unsafe(no_mangle)]
+pub static AmdPowerXpressRequestHighPerformance: u32 = 0x0000_0001;
+
+#[derive(Debug, Clone)]
+struct GpuPolicyProbe {
+    has_discrete_gpu: bool,
+    selected_gpu_name: Option<String>,
+}
+
+fn probe_gpu_policy() -> GpuPolicyProbe {
+    let instance = Instance::new(InstanceDescriptor {
+        backends: Backends::all(),
+        ..Default::default()
+    });
+
+    let adapters = futures::executor::block_on(instance.enumerate_adapters(Backends::all()));
+    let mut has_discrete_gpu = false;
+    let mut selected_gpu_name = None;
+
+    for adapter in adapters {
+        let info = adapter.get_info();
+        if info.device_type == DeviceType::DiscreteGpu {
+            has_discrete_gpu = true;
+            if selected_gpu_name.is_none() {
+                selected_gpu_name = Some(info.name);
+            }
+        }
+    }
+
+    GpuPolicyProbe {
+        has_discrete_gpu,
+        selected_gpu_name,
+    }
+}
+
+fn prompt_continue_without_discrete_gpu() -> bool {
+    let description = "No discrete GPU was detected.\n\nPulsar is configured to prefer dGPU for best performance.\n\nContinue anyway using the available GPU?";
+
+    let choice = rfd::MessageDialog::new()
+        .set_title("No Discrete GPU Detected")
+        .set_description(description)
+        .set_level(rfd::MessageLevel::Warning)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+
+    matches!(choice, rfd::MessageDialogResult::Yes)
+}
+
+fn enforce_discrete_gpu_policy_or_exit() {
+    let probe = probe_gpu_policy();
+
+    if probe.has_discrete_gpu {
+        std::env::set_var("WGPU_POWER_PREF", "high");
+
+        if let Some(adapter_name) = probe.selected_gpu_name {
+            std::env::set_var("WGPU_ADAPTER_NAME", adapter_name);
+        }
+
+        tracing::info!("Discrete GPU detected; forcing high-performance GPU preference");
+        return;
+    }
+
+    tracing::warn!("No discrete GPU detected; prompting user for continue/exit decision");
+    if !prompt_continue_without_discrete_gpu() {
+        tracing::error!("Startup aborted by user because no discrete GPU is available");
+        std::process::exit(1);
+    }
+
+    tracing::warn!("User chose to continue without a discrete GPU");
+}
+
 /// Main entry point for the Pulsar Engine binary.
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    enforce_discrete_gpu_policy_or_exit();
+
     macos_permissions::ensure_accessibility_permission_blocking();
 
     // Name the main thread FIRST
