@@ -14,6 +14,7 @@ const LABEL_MIN_WIDTH_PX: f32 = 64.0;
 const LABEL_FONT_SIZE_PX: f32 = 12.0;
 const LABEL_PADDING_X_PX: f32 = 4.0;
 const LABEL_AVG_CHAR_WIDTH_PX: f32 = 6.2;
+const SPAN_HEIGHT_SCALE: f32 = 0.8;
 
 fn truncate_label_to_width(label: &str, max_width_px: f32) -> Option<String> {
     if max_width_px <= 0.0 {
@@ -224,7 +225,7 @@ pub fn render_flamegraph_canvas(
                                     bounds.origin.x + px(x1 + if width < 3.0 { 0.0 } else { PADDING }),
                                     bounds.origin.y + px(y + PADDING)
                                 ),
-                                size: size(px(rendered_width), px(ROW_HEIGHT - PADDING)),
+                                size: size(px(rendered_width), px((ROW_HEIGHT - PADDING) * SPAN_HEIGHT_SCALE)),
                             };
 
                             window.paint_quad(fill(span_bounds, color));

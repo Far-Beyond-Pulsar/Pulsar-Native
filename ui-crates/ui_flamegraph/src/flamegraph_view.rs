@@ -14,6 +14,8 @@ use crate::constants::*;
 use crate::coordinates::time_to_x;
 use crate::state::{SpanCache, ViewState};
 
+const SPAN_HOVER_HEIGHT_SCALE: f32 = 0.8;
+
 pub struct FlamegraphView {
     trace_data: TraceData,
     view_state: ViewState,
@@ -378,7 +380,10 @@ impl Render for FlamegraphView {
                                         + (span.depth as f32 * ROW_HEIGHT)
                                         + view_state_copy.pan_y;
 
-                                    if local_y >= y && local_y <= y + (ROW_HEIGHT - PADDING) {
+                                    if local_y >= y
+                                        && local_y
+                                            <= y + ((ROW_HEIGHT - PADDING) * SPAN_HOVER_HEIGHT_SCALE)
+                                    {
                                         let x1 = time_to_x(
                                             span.start_ns,
                                             frame,
