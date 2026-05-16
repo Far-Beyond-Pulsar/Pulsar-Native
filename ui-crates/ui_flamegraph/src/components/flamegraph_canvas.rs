@@ -10,6 +10,39 @@ use gpui::*;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+const LABEL_MIN_WIDTH_PX: f32 = 64.0;
+const LABEL_FONT_SIZE_PX: f32 = 12.0;
+const LABEL_PADDING_X_PX: f32 = 4.0;
+const LABEL_AVG_CHAR_WIDTH_PX: f32 = 6.2;
+
+fn truncate_label_to_width(label: &str, max_width_px: f32) -> Option<String> {
+    if max_width_px <= 0.0 {
+        return None;
+    }
+
+    let max_chars = (max_width_px / LABEL_AVG_CHAR_WIDTH_PX).floor() as usize;
+    if max_chars < 4 {
+        return None;
+    }
+
+    let char_count = label.chars().count();
+    if char_count <= max_chars {
+        return Some(label.to_string());
+    }
+
+    let keep = max_chars.saturating_sub(3);
+    if keep == 0 {
+        return None;
+    }
+
+    let mut out = String::new();
+    for c in label.chars().take(keep) {
+        out.push(c);
+    }
+    out.push_str("...");
+    Some(out)
+}
+
 /// Render the main flamegraph canvas with all spans
 pub fn render_flamegraph_canvas(
     frame: Arc<TraceFrame>,
@@ -174,18 +207,24 @@ pub fn render_flamegraph_canvas(
                             let y = merged_span.y + view_state.pan_y;
 
                             let base_color = palette[merged_span.color_index % palette.len()];
-                            let color = if merged_span.span_count > 1 {
-                                hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.85, 1.0)
+                            let darker = if merged_span.span_count > 1 {
+                                hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.8, 1.0)
                             } else {
-                                base_color
+                                hsla(base_color.h, base_color.s, base_color.l * 0.9, 1.0)
                             };
+                            let color = hsla(
+                                darker.h,
+                                darker.s * 0.85,
+                                (darker.l + 0.2).min(0.92),
+                                1.0,
+                            );
 
                             let span_bounds = Bounds {
                                 origin: point(
                                     bounds.origin.x + px(x1 + if width < 3.0 { 0.0 } else { PADDING }),
                                     bounds.origin.y + px(y + PADDING)
                                 ),
-                                size: size(px(rendered_width), px(ROW_HEIGHT - PADDING * 2.0)),
+                                size: size(px(rendered_width), px(ROW_HEIGHT - PADDING)),
                             };
 
                             window.paint_quad(fill(span_bounds, color));
@@ -204,6 +243,34 @@ pub fn render_flamegraph_canvas(
                                     size: size(px(rendered_width), px(1.0)),
                                 };
                                 window.paint_quad(fill(bottom_border, shadow_color));
+                            }
+
+                            if rendered_width >= LABEL_MIN_WIDTH_PX {
+                                let available_label_width = rendered_width - (LABEL_PADDING_X_PX * 2.0);
+                                if let Some(text) = truncate_label_to_width(&merged_span.label, available_label_width) {
+                                    let text_run = TextRun {
+                                        len: text.len(),
+                                        font: window.text_style().font(),
+                                        color: hsla(0.0, 0.0, 0.0, 0.92),
+                                        background_color: None,
+                                        underline: None,
+                                        strikethrough: None,
+                                    };
+
+                                    let line = window
+                                        .text_system()
+                                        .shape_line(text.into(), px(LABEL_FONT_SIZE_PX), &[text_run], None);
+                                    let text_origin = point(
+                                        span_bounds.origin.x + px(LABEL_PADDING_X_PX),
+                                        span_bounds.origin.y + px(2.0),
+                                    );
+                                    let _ = line.paint(
+                                        text_origin,
+                                        px(LABEL_FONT_SIZE_PX),
+                                        window,
+                                        _cx,
+                                    );
+                                }
                             }
 
                             if merged_span.span_count > 5 && width > 20.0 {

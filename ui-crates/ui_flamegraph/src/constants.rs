@@ -1,6 +1,6 @@
 //! Layout and visual constants for the flamegraph viewer
 
-pub const ROW_HEIGHT: f32 = 20.0;
+pub const ROW_HEIGHT: f32 = 26.0;
 pub const MIN_SPAN_WIDTH: f32 = 2.0;
 pub const PADDING: f32 = 2.0;
 pub const GRAPH_HEIGHT: f32 = 100.0;

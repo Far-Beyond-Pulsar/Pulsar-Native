@@ -378,7 +378,7 @@ impl Render for FlamegraphView {
                                         + (span.depth as f32 * ROW_HEIGHT)
                                         + view_state_copy.pan_y;
 
-                                    if local_y >= y && local_y <= y + ROW_HEIGHT {
+                                    if local_y >= y && local_y <= y + (ROW_HEIGHT - PADDING) {
                                         let x1 = time_to_x(
                                             span.start_ns,
                                             frame,
