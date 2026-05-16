@@ -165,7 +165,7 @@ impl TabVariant {
     fn normal(&self, cx: &App) -> TabStyle {
         match self {
             TabVariant::Tab => TabStyle {
-                fg: cx.theme().tab_foreground.opacity(0.7), // Slightly dimmed when inactive
+                fg: cx.theme().tab_foreground.opacity(0.65), // Dimmer when inactive
                 bg: cx.theme().transparent,
                 borders: Edges {
                     top: px(1.),
@@ -178,27 +178,27 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().tab_foreground.opacity(0.7),
                 bg: cx.theme().transparent,
                 borders: Edges::all(px(1.)),
-                border_color: cx.theme().border,
+                border_color: cx.theme().border.opacity(0.5),
                 radius: px(99.),
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
-                fg: cx.theme().foreground,
+                fg: cx.theme().foreground.opacity(0.7),
                 bg: cx.theme().transparent,
                 radius: px(99.),
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().tab_foreground.opacity(0.7),
                 bg: cx.theme().transparent,
                 inner_radius: cx.theme().radius,
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().tab_foreground.opacity(0.7),
                 bg: cx.theme().transparent,
                 radius: px(0.),
                 inner_bg: cx.theme().transparent,
@@ -219,12 +219,12 @@ impl TabVariant {
                 fg: if selected {
                     cx.theme().tab_active_foreground
                 } else {
-                    cx.theme().tab_foreground
+                    cx.theme().tab_foreground.opacity(0.85) // Brighten on hover
                 },
                 bg: if selected {
                     cx.theme().tab_active
                 } else {
-                    cx.theme().tab_active.opacity(0.3) // Subtle preview of active state
+                    cx.theme().tab_active.opacity(0.2) // Subtle preview of active state
                 },
                 borders: Edges {
                     top: if selected { px(2.) } else { px(1.) },
@@ -235,47 +235,47 @@ impl TabVariant {
                 border_color: if selected {
                     cx.theme().border
                 } else {
-                    cx.theme().border.opacity(0.6)
+                    cx.theme().border.opacity(0.4)
                 },
                 radius: px(0.),
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
-                fg: cx.theme().secondary_foreground,
-                bg: cx.theme().secondary_hover,
+                fg: cx.theme().tab_foreground.opacity(0.9),
+                bg: cx.theme().secondary_hover.opacity(0.3),
                 borders: Edges::all(px(1.)),
-                border_color: cx.theme().border,
+                border_color: cx.theme().border.opacity(0.8),
                 radius: px(99.),
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
-                fg: cx.theme().secondary_foreground,
-                bg: cx.theme().secondary,
+                fg: cx.theme().tab_foreground,
+                bg: cx.theme().secondary.opacity(0.4),
                 radius: px(99.),
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().tab_foreground.opacity(0.9),
                 bg: cx.theme().transparent,
                 inner_bg: if selected {
                     cx.theme().background
                 } else {
-                    cx.theme().muted.opacity(0.3) // Hover effect
+                    cx.theme().muted.opacity(0.2) // Subtle hover effect
                 },
                 inner_radius: cx.theme().radius,
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
-                fg: cx.theme().tab_foreground,
+                fg: cx.theme().tab_foreground.opacity(0.9),
                 bg: cx.theme().transparent,
                 radius: px(0.),
-                inner_bg: cx.theme().muted.opacity(0.2), // Hover effect
+                inner_bg: cx.theme().muted.opacity(0.15), // Subtle hover effect
                 inner_radius: cx.theme().radius,
                 borders: Edges {
                     bottom: px(2.),
                     ..Default::default()
                 },
-                border_color: cx.theme().border.opacity(0.5),
+                border_color: cx.theme().border.opacity(0.4),
                 ..Default::default()
             },
         }
@@ -292,15 +292,15 @@ impl TabVariant {
                     right: px(1.),
                     bottom: px(0.), // NO BOTTOM BORDER - connects with content
                 },
-                border_color: cx.theme().border,
-                radius: px(0.), // We'll handle rounding manually for top-only
+                border_color: cx.theme().border.opacity(0.8),
+                radius: px(0.),
                 shadow: false,  // Remove shadow, use border emphasis instead
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
                 fg: cx.theme().primary,
                 bg: cx.theme().transparent,
-                borders: Edges::all(px(1.)),
+                borders: Edges::all(px(1.5)),
                 border_color: cx.theme().primary,
                 radius: px(99.),
                 ..Default::default()
@@ -335,10 +335,10 @@ impl TabVariant {
     fn disabled(&self, selected: bool, cx: &App) -> TabStyle {
         match self {
             TabVariant::Tab => TabStyle {
-                fg: cx.theme().muted_foreground,
+                fg: cx.theme().muted_foreground.opacity(0.5),
                 bg: cx.theme().transparent,
                 border_color: if selected {
-                    cx.theme().border
+                    cx.theme().border.opacity(0.3)
                 } else {
                     cx.theme().transparent
                 },
@@ -351,25 +351,17 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
-                fg: cx.theme().muted_foreground,
+                fg: cx.theme().muted_foreground.opacity(0.5),
                 bg: cx.theme().transparent,
                 borders: Edges::all(px(1.)),
-                border_color: if selected {
-                    cx.theme().primary
-                } else {
-                    cx.theme().border
-                },
+                border_color: cx.theme().border.opacity(0.3),
                 radius: px(99.),
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
-                fg: if selected {
-                    cx.theme().primary_foreground.opacity(0.5)
-                } else {
-                    cx.theme().muted_foreground
-                },
+                fg: cx.theme().muted_foreground.opacity(0.5),
                 bg: if selected {
-                    cx.theme().primary.opacity(0.5)
+                    cx.theme().primary.opacity(0.3)
                 } else {
                     cx.theme().transparent
                 },
@@ -377,10 +369,10 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Segmented => TabStyle {
-                fg: cx.theme().muted_foreground,
+                fg: cx.theme().muted_foreground.opacity(0.5),
                 bg: cx.theme().tab_bar,
                 inner_bg: if selected {
-                    cx.theme().background
+                    cx.theme().background.opacity(0.5)
                 } else {
                     cx.theme().transparent
                 },
@@ -388,11 +380,11 @@ impl TabVariant {
                 ..Default::default()
             },
             TabVariant::Underline => TabStyle {
-                fg: cx.theme().muted_foreground,
+                fg: cx.theme().muted_foreground.opacity(0.5),
                 bg: cx.theme().transparent,
                 radius: cx.theme().radius,
                 border_color: if selected {
-                    cx.theme().border
+                    cx.theme().border.opacity(0.3)
                 } else {
                     cx.theme().transparent
                 },
@@ -419,6 +411,7 @@ pub struct Tab {
     size: Size,
     pub(super) disabled: bool,
     pub(super) selected: bool,
+    pub(super) unsaved: bool,
     on_click: Option<Arc<dyn Fn(&ClickEvent, &mut Window, &mut App) + 'static>>,
 }
 
@@ -464,6 +457,7 @@ impl Default for Tab {
             children: Vec::new(),
             disabled: false,
             selected: false,
+            unsaved: false,
             prefix: None,
             suffix: None,
             variant: TabVariant::default(),
@@ -502,6 +496,12 @@ impl Tab {
     /// Set Tab Variant.
     pub fn with_variant(mut self, variant: TabVariant) -> Self {
         self.variant = variant;
+        self
+    }
+
+    /// Set the icon for the tab.
+    pub fn with_icon(mut self, icon: impl Into<Icon>) -> Self {
+        self.icon = Some(icon.into());
         self
     }
 
@@ -544,6 +544,12 @@ impl Tab {
     /// Set disabled state to the tab
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+
+    /// Set unsaved state to the tab (shows unsaved indicator)
+    pub fn unsaved(mut self, unsaved: bool) -> Self {
+        self.unsaved = unsaved;
         self
     }
 
@@ -679,24 +685,36 @@ impl RenderOnce for Tab {
                 .overflow_hidden()
                 .margins(inner_margins)
                 .flex_shrink_0()
-                .map(|this| match self.icon {
-                    Some(icon) => {
-                        this.w(inner_height * 1.25)
-                            .child(icon.map(|this| match self.size {
-                                Size::XSmall => this.size_2p5(),
-                                Size::Small => this.size_3p5(),
-                                Size::Large => this.size_4(),
-                                _ => this.size_4(),
-                            }))
-                    }
-                    None => this
-                        .paddings(inner_paddings)
-                        .map(|this| match self.label {
-                            Some(label) => this.child(label),
-                            None => this,
-                        })
-                        .children(self.children),
+                .paddings(inner_paddings)
+                .gap(match self.size {
+                    Size::XSmall => px(4.),
+                    Size::Small => px(6.),
+                    Size::Large => px(8.),
+                    _ => px(6.),
                 })
+                .when_some(self.icon, |this, icon| {
+                    this.child(icon.map(|this| match self.size {
+                        Size::XSmall => this.size_2p5(),
+                        Size::Small => this.size_3p5(),
+                        Size::Large => this.size_4(),
+                        _ => this.size_3p5(),
+                    }))
+                })
+                .when_some(self.label, |this, label| {
+                    this.child(label)
+                })
+                .when(self.unsaved, |this| {
+                    // Show unsaved indicator: a small dot with warning color
+                    this.child(
+                        div()
+                            .w_1p5()
+                            .h_1p5()
+                            .rounded_full()
+                            .bg(cx.theme().warning)
+                            .flex_shrink_0()
+                    )
+                })
+                .children(self.children)
                 .bg(tab_style.inner_bg)
                 .rounded(tab_style.inner_radius)
                 .when(tab_style.shadow, |this| this.shadow_xs())

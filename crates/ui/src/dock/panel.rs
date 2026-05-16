@@ -79,6 +79,20 @@ pub trait Panel: EventEmitter<PanelEvent> + Render + Focusable {
         None
     }
 
+    /// The icon for the tab of the panel, default is `None`.
+    ///
+    /// Used to display alongside the tab name for file-based editors.
+    fn tab_icon(&self, cx: &App) -> Option<crate::IconName> {
+        None
+    }
+
+    /// Whether this panel has unsaved changes, default is `false`.
+    ///
+    /// When true, the tab will display an unsaved indicator.
+    fn tab_unsaved(&self, cx: &App) -> bool {
+        false
+    }
+
     /// The file path associated with this panel (e.g. the file currently open in the editor).
     ///
     /// Used by AI tooling to know which file a panel is editing without relying on
@@ -192,6 +206,8 @@ pub trait PanelView: 'static + Send + Sync {
     fn panel_name(&self, cx: &App) -> &'static str;
     fn panel_id(&self, cx: &App) -> EntityId;
     fn tab_name(&self, cx: &App) -> Option<SharedString>;
+    fn tab_icon(&self, cx: &App) -> Option<crate::IconName>;
+    fn tab_unsaved(&self, cx: &App) -> bool;
     /// The file path currently open in this panel, if any.
     fn panel_file_path(&self, cx: &App) -> Option<std::path::PathBuf>;
     fn title(&self, window: &Window, cx: &App) -> AnyElement;
@@ -222,6 +238,14 @@ impl<T: Panel> PanelView for Entity<T> {
 
     fn tab_name(&self, cx: &App) -> Option<SharedString> {
         self.read(cx).tab_name(cx)
+    }
+
+    fn tab_icon(&self, cx: &App) -> Option<crate::IconName> {
+        self.read(cx).tab_icon(cx)
+    }
+
+    fn tab_unsaved(&self, cx: &App) -> bool {
+        self.read(cx).tab_unsaved(cx)
     }
 
     fn panel_file_path(&self, cx: &App) -> Option<std::path::PathBuf> {

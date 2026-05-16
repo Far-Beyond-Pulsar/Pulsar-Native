@@ -311,6 +311,10 @@ impl TabPanel {
                     let view_for_menu = view.clone();
 
                     let tab = Tab::empty()
+                        .when_some(panel.tab_icon(cx), |this, icon| {
+                            this.with_icon(icon)
+                        })
+                        .unsaved(panel.tab_unsaved(cx))
                         .map(|this| {
                             if let Some(tab_name) = panel.tab_name(cx) {
                                 this.child(tab_name)

@@ -748,6 +748,19 @@ impl PluginManager {
             .map(|ft| &ft.default_content)
     }
 
+    /// Get the file type definition for a file path.
+    ///
+    /// This looks up the file type ID from the path and returns the full FileTypeDefinition
+    /// which includes the icon and other metadata useful for UI display.
+    pub fn get_file_type_for_path(
+        &self,
+        path: &Path,
+    ) -> Option<&plugin_editor_api::FileTypeDefinition> {
+        self.file_type_registry
+            .get_file_type_for_path(path)
+            .and_then(|id| self.file_type_registry.get_file_type(&id))
+    }
+
     /// Create a new file of the given type.
     ///
     /// This will create the file structure on disk with default content.
