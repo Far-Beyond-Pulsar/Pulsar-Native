@@ -68,7 +68,15 @@ impl DraggableTabBar {
     pub fn remove_tab(&mut self, index: usize) {
         if index < self.tabs.len() {
             self.tabs.remove(index);
-            if self.selected_index >= self.tabs.len() && !self.tabs.is_empty() {
+            if self.tabs.is_empty() {
+                self.selected_index = 0;
+            } else if index < self.selected_index {
+                // Keep the same logical tab selected after left-side removal.
+                self.selected_index -= 1;
+            } else if index == self.selected_index {
+                // Closed the active tab: fallback to the previously selected neighbor.
+                self.selected_index = index.saturating_sub(1).min(self.tabs.len() - 1);
+            } else if self.selected_index >= self.tabs.len() {
                 self.selected_index = self.tabs.len() - 1;
             }
         }

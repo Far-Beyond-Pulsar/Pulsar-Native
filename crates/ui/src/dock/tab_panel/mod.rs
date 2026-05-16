@@ -200,7 +200,10 @@ impl TabPanel {
 
     /// Return current active_panel View
     pub fn active_panel(&self, cx: &App) -> Option<Arc<dyn PanelView>> {
-        let panel = self.panels.get(self.active_ix);
+        let panel = self
+            .panels
+            .get(self.active_ix)
+            .or_else(|| self.panels.last());
 
         if let Some(panel) = panel {
             if panel.visible(cx) {
@@ -224,7 +227,7 @@ impl TabPanel {
         if self.panels.is_empty() {
             None
         } else {
-            Some(self.active_ix)
+            Some(self.active_ix.min(self.panels.len() - 1))
         }
     }
 
@@ -428,9 +431,43 @@ impl TabPanel {
         cx: &mut Context<Self>,
     ) {
         let panel_view = panel.view();
-        self.panels.retain(|p| p.view() != panel_view);
+        let removed_ix = self.panels.iter().position(|p| p.view() == panel_view);
+        let Some(removed_ix) = removed_ix else {
+            return;
+        };
+
+        self.panels.remove(removed_ix);
+
+        if self.panels.is_empty() {
+            self.active_ix = 0;
+            return;
+        }
+
+        // Closing a tab before the active one shifts the active index left.
+        if removed_ix < self.active_ix {
+            self.active_ix -= 1;
+            return;
+        }
+
+        // If the active tab was closed, prefer the previously selected neighbor.
+        if removed_ix == self.active_ix {
+            let fallback_ix = removed_ix.saturating_sub(1).min(self.panels.len() - 1);
+            self.active_ix = fallback_ix;
+            self.focus_active_panel(window, cx);
+
+            for (ix, p) in self.panels.iter().enumerate() {
+                p.set_active(ix == self.active_ix, window, cx);
+            }
+
+            cx.emit(PanelEvent::TabChanged {
+                active_index: self.active_ix,
+            });
+            cx.notify();
+            return;
+        }
+
         if self.active_ix >= self.panels.len() {
-            self.set_active_tab(self.panels.len().saturating_sub(1), window, cx)
+            self.active_ix = self.panels.len() - 1;
         }
     }
 
