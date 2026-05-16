@@ -438,7 +438,7 @@ impl window_manager::PulsarWindow for LoadingScreen {
             window_min_size: None,
             app_icon,
             window_background: gpui::WindowBackgroundAppearance::Opaque,
-            always_transparent: true,
+            always_transparent: false,
             ..Default::default()
         }
     }

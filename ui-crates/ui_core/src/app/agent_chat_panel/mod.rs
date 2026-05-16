@@ -4,6 +4,7 @@ mod chat_storage;
 mod custom_provider_wizard;
 mod provider_catalog;
 mod provider_selection;
+mod prompt_ranking;
 mod streaming;
 pub mod types;
 

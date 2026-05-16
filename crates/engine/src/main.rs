@@ -429,7 +429,7 @@ fn make_window_options(
         window_min_size: min_size,
         app_icon,
         window_background: gpui::WindowBackgroundAppearance::Opaque,
-        always_transparent: true,
+        always_transparent: false,
         ..Default::default()
     }
 }

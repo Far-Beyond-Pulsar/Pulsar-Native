@@ -38,96 +38,6 @@ impl AgentChatPanel {
             .collect()
     }
 
-    /// Compact the message history to fit within `max_chars`.
-    ///
-    /// Returns `(compacted_messages, dropped_messages_opt)`.
-    /// `dropped_messages_opt` is `Some(dropped)` when messages were removed —
-    /// the caller should produce a summary of `dropped` and re-insert it as a
-    /// `System` message before calling the provider.
-    fn compact_provider_messages(
-        messages: Vec<ChatMessage>,
-        max_chars: usize,
-    ) -> (Vec<ChatMessage>, Option<Vec<ChatMessage>>) {
-        let total_chars: usize = messages.iter().map(|m| m.content.chars().count()).sum();
-        if total_chars <= max_chars {
-            return (messages, None);
-        }
-
-        let mut system_messages = Vec::new();
-        let mut dialog_messages = Vec::new();
-        for message in messages {
-            if message.role == ChatRole::System {
-                system_messages.push(message);
-            } else {
-                dialog_messages.push(message);
-            }
-        }
-
-        let system_chars: usize = system_messages
-            .iter()
-            .map(|m| m.content.chars().count())
-            .sum();
-
-        let kept_dialog_budget = max_chars
-            .saturating_sub(system_chars)
-            .saturating_sub(Self::COMPACTION_SUMMARY_CHAR_BUDGET)
-            .max(1_500);
-
-        let mut kept_dialog_reversed = Vec::new();
-        let mut kept_chars = 0usize;
-
-        // Walk backwards but never cut in the middle of a tool-call/result pair:
-        // if we include a Tool-role message we must also include the preceding
-        // Assistant message that spawned it.
-        let mut skip_until_assistant_with_calls = false;
-        for message in dialog_messages.iter().rev() {
-            let len = message.content.chars().count();
-            let fits = kept_dialog_reversed.is_empty() || kept_chars + len <= kept_dialog_budget;
-
-            if message.role == ChatRole::Tool {
-                // Include the tool result — we'll ensure its parent assistant follows.
-                skip_until_assistant_with_calls = true;
-                kept_chars += len;
-                kept_dialog_reversed.push(message.clone());
-            } else if message.role == ChatRole::Assistant && !message.tool_calls.is_empty() {
-                // This is the assistant message that owns the tool calls we kept.
-                skip_until_assistant_with_calls = false;
-                kept_chars += len;
-                kept_dialog_reversed.push(message.clone());
-            } else if skip_until_assistant_with_calls {
-                // Must keep this message to maintain the pair even if over budget.
-                kept_chars += len;
-                kept_dialog_reversed.push(message.clone());
-            } else if fits {
-                kept_chars += len;
-                kept_dialog_reversed.push(message.clone());
-            } else {
-                break;
-            }
-        }
-
-        kept_dialog_reversed.reverse();
-        let dropped_count = dialog_messages
-            .len()
-            .saturating_sub(kept_dialog_reversed.len());
-
-        if dropped_count == 0 {
-            let mut merged = system_messages;
-            merged.extend(kept_dialog_reversed);
-            return (merged, None);
-        }
-
-        let dropped: Vec<ChatMessage> = dialog_messages[..dropped_count].to_vec();
-
-        // Return the kept messages WITHOUT a summary placeholder — the caller
-        // is responsible for generating the summary (using compact_model if
-        // available) and inserting it before the kept dialog.
-        let mut compacted = system_messages;
-        compacted.extend(kept_dialog_reversed);
-
-        (compacted, Some(dropped))
-    }
-
     /// Call the provider with `compact_model` (or the current model) to produce
     /// a concise AI-generated summary of `dropped_messages`.
     /// Falls back to a heuristic snippet summary on any error.
@@ -1014,7 +924,11 @@ impl AgentChatPanel {
 
         let provider_messages_raw = self.build_provider_history_messages();
         let (mut provider_messages, dropped_opt) =
-            Self::compact_provider_messages(provider_messages_raw, history_budget);
+            super::prompt_ranking::compact_messages(
+                provider_messages_raw,
+                history_budget,
+                Self::COMPACTION_SUMMARY_CHAR_BUDGET,
+            );
 
         // If messages were dropped, call the compact model to produce a real summary.
         let initial_compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
@@ -1543,9 +1457,10 @@ impl AgentChatPanel {
                                 current_messages.iter().map(|m| m.content.len()).sum();
                             if total_chars > context_budget {
                                 let (mut compacted, dropped_opt) =
-                                    AgentChatPanel::compact_provider_messages(
+                                    super::prompt_ranking::compact_messages(
                                         std::mem::take(&mut current_messages),
                                         context_budget,
+                                        AgentChatPanel::COMPACTION_SUMMARY_CHAR_BUDGET,
                                     );
                                 if let Some(dropped) = dropped_opt {
                                     let summary = AgentChatPanel::ai_summarize_dropped(
