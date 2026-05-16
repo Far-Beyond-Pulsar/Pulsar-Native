@@ -1,6 +1,5 @@
 //! Hover popup component showing span details
 
-use crate::constants::STATS_SIDEBAR_WIDTH;
 use crate::state::ViewState;
 use crate::trace_data::TraceFrame;
 use gpui::*;
@@ -33,16 +32,14 @@ pub fn render_hover_popup(
     let mouse_x = view_state.mouse_x;
     let mouse_y = view_state.mouse_y;
 
-    // Position popup horizontally near the mouse cursor
-    let popup_x = if mouse_x + popup_width + 20.0 > viewport_width - STATS_SIDEBAR_WIDTH {
+    // Mouse coordinates are canvas-local, so position directly in this element's space.
+    let popup_x = if mouse_x + popup_width + 20.0 > viewport_width {
         (mouse_x - popup_width - 10.0).max(0.0)
     } else {
         mouse_x + 15.0
     };
 
-    // Position popup vertically - mouse_y is window-relative
-    // Need to subtract timeline height to get canvas-relative position
-    let popup_y = (mouse_y - 210.0 + 5.0).max(0.0);
+    let popup_y = (mouse_y + 5.0).max(0.0);
 
     let _render_start = std::time::Instant::now();
     let result = Some(
