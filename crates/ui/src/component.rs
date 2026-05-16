@@ -58,7 +58,7 @@ pub trait Component: Render + Sized + 'static {
             window_decorations: Some(gpui::WindowDecorations::Client),
             tabbing_identifier: None,
             app_icon: None,
-            always_transparent: false,
+            // always_transparent: false,
         };
 
         // Replace direct cx.open_window with window_manager::WindowManager::global().create_window
