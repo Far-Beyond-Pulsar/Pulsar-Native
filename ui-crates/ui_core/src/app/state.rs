@@ -69,7 +69,7 @@ pub struct AppState {
 
     // Project Switcher
     pub project_switcher_open: bool,
-    pub project_switcher_view: Option<Entity<crate::project_switcher::ProjectSwitcherDropdown>>,
+    pub project_switcher_view: Option<Entity<crate::project_switcher::ProjectSwitcherView>>,
 
     // Type picker tracking - commented out as ui_alias_editor has been migrated to plugins
     // pub active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
