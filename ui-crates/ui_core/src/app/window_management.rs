@@ -178,18 +178,45 @@ impl PulsarApp {
 
             let view_for_dismiss = view.clone();
             let window_handle = window.window_handle();
-            cx.subscribe(
+            cx.subscribe_in(
                 &view,
-                move |this, _, _: &gpui::DismissEvent, cx| {
+                window,
+                move |this, _, _: &gpui::DismissEvent, window, cx| {
                     let selected = view_for_dismiss
                         .update(cx, |palette, _| palette.delegate_mut().selected_project.take());
 
                     if let Some(selected) = selected {
                         let project_path = std::path::PathBuf::from(&selected.path);
+                        let originating_window_handle = window_handle.clone();
                         let on_complete: std::sync::Arc<
                             dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
-                        > = std::sync::Arc::new(|_path, _cx| {
-                            // The LoadingScreen transitions to the editor window.
+                        > = std::sync::Arc::new(move |path, cx| {
+                            let opts = gpui::WindowOptions {
+                                window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds {
+                                    origin: gpui::point(gpui::px(50.0), gpui::px(50.0)),
+                                    size: gpui::size(gpui::px(1600.0), gpui::px(900.0)),
+                                })),
+                                window_min_size: Some(gpui::Size {
+                                    width: gpui::px(800.0),
+                                    height: gpui::px(600.0),
+                                }),
+                                titlebar: None,
+                                kind: gpui::WindowKind::Normal,
+                                is_resizable: true,
+                                window_decorations: Some(gpui::WindowDecorations::Client),
+                                window_background: gpui::WindowBackgroundAppearance::Opaque,
+                                ..Default::default()
+                            };
+
+                            let _ = cx.open_window(opts, move |window, cx| {
+                                let app = cx.new(|cx| PulsarApp::new_with_project(path.clone(), window, cx));
+                                let root = cx.new(|cx| crate::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                                cx.new(|cx| ui::Root::new(root.into(), window, cx))
+                            });
+
+                            // Close the originating window only after the target editor opens.
+                            cx.update_window(originating_window_handle, |_, win, _| win.remove_window())
+                                .ok();
                         });
 
                         cx.defer({
@@ -203,13 +230,11 @@ impl PulsarApp {
                                 );
                             }
                         });
-
-                        cx.update_window(window_handle, |_, win, _| win.remove_window())
-                            .ok();
                     }
 
                     this.state.project_switcher_open = false;
                     this.state.project_switcher_view = None;
+                    this.state.focus_handle.focus(window);
                     cx.notify();
                 },
             )
