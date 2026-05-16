@@ -67,6 +67,10 @@ pub struct AppState {
     pub command_palette: Option<Entity<Palette>>,
     pub command_palette_view: Option<Entity<GenericPalette<PaletteViewDelegate>>>,
 
+    // Project Switcher
+    pub project_switcher_open: bool,
+    pub project_switcher_view: Option<Entity<crate::project_switcher::ProjectSwitcherDropdown>>,
+
     // Type picker tracking - commented out as ui_alias_editor has been migrated to plugins
     // pub active_type_picker_editor: Option<Entity<ui_alias_editor::AliasEditor>>,
 

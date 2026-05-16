@@ -305,6 +305,8 @@ impl PulsarApp {
                 command_palette_id: None,
                 command_palette: None,
                 command_palette_view: None,
+                project_switcher_open: false,
+                project_switcher_view: None,
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),

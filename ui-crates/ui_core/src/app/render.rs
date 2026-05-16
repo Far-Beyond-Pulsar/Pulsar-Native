@@ -434,9 +434,18 @@ impl PulsarApp {
                             .map(|btn| btn.into_any_element()),
                     )
                     .child(
-                        h_flex()
+                        div()
+                            .flex()
                             .items_center()
                             .gap_1p5()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.))
+                            .cursor_pointer()
+                            .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
+                            .on_mouse_down(MouseButton::Left, cx.listener(|app, _, window, cx| {
+                                app.toggle_project_switcher(window, cx);
+                            }))
                             .child(
                                 Icon::new(IconName::Folder)
                                     .size(px(14.))
@@ -652,6 +661,12 @@ impl Render for PulsarApp {
             None
         };
 
+        let project_switcher = if self.state.project_switcher_open {
+            self.state.project_switcher_view.clone()
+        } else {
+            None
+        };
+
         let drawer_open = self.state.drawer_open;
 
         v_flex()
@@ -763,6 +778,7 @@ impl Render for PulsarApp {
             )
             .child(self.render_footer(drawer_open, cx))
             .children(command_palette)
+            .children(project_switcher)
             .into_any_element()
     }
 }

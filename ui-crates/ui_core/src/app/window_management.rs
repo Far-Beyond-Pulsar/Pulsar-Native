@@ -164,4 +164,68 @@ impl PulsarApp {
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         FlamegraphWindow::open(cx);
     }
+
+    pub(super) fn toggle_project_switcher(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.state.project_switcher_open {
+            let view = cx.new(|cx| {
+                crate::project_switcher::ProjectSwitcherDropdown::new(
+                    self.state.project_path.clone(),
+                    window,
+                    cx,
+                )
+            });
+
+            // Subscribe to project selection
+            let window_handle = window.window_handle();
+            cx.subscribe(&view, move |this, _, event: &crate::project_switcher::ProjectSelected, cx| {
+                let project_path = std::path::PathBuf::from(&event.project.path);
+                
+                // Then open the new project via loading screen
+                // Create the callback that opens the editor window
+                let on_complete: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
+                    std::sync::Arc::new(|_path, _cx| {
+                        // The LoadingScreen will handle transitioning to the editor
+                    });
+
+                // Defer the loading screen window opening to avoid borrow conflicts
+                cx.defer({
+                    let path = project_path.clone();
+                    let callback = on_complete.clone();
+                    move |cx| {
+                        use ui_common::open_window::open_pulsar_window;
+                        open_pulsar_window::<ui_loading_screen::LoadingScreen>((path, callback), cx);
+                    }
+                });
+
+                // Close this window after deferring the new one
+                cx.update_window(window_handle, |_, win, _| {
+                    win.remove_window()
+                }).ok();
+            }).detach();
+
+            // Subscribe to dismiss
+            let view_clone = view.clone();
+            cx.subscribe(&view_clone, |this, _, _: &gpui::DismissEvent, cx| {
+                this.state.project_switcher_open = false;
+                cx.notify();
+            }).detach();
+
+            self.state.project_switcher_open = true;
+            self.state.project_switcher_view = Some(view.clone());
+
+            // Focus the dropdown entity
+            view.update(cx, |v, _cx| {
+                v.focus_handle.focus(window);
+            });
+        } else {
+            self.state.project_switcher_open = false;
+            self.state.project_switcher_view = None;
+        }
+
+        cx.notify();
+    }
 }
