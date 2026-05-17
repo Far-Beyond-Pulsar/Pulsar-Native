@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=05bb5ab56e8674aff6449edf8ed25cd54dc5a49d#05bb5ab56e8674aff6449edf8ed25cd54dc5a49d"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=0515e8e3ab3b1ab1f883cb929d80c34104bf20e2#0515e8e3ab3b1ab1f883cb929d80c34104bf20e2"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4386,7 +4386,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=2941eb77bdada0407b2982336c7f37ae9f50d86a#2941eb77bdada0407b2982336c7f37ae9f50d86a"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=0b555af11e80565429af9405ffd9d17fa832e3fe#0b555af11e80565429af9405ffd9d17fa832e3fe"
 dependencies = [
  "anyhow",
  "arboard",
@@ -10936,7 +10936,7 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=66d720c3edb0c84500d0b8c78d93760602fe3330#66d720c3edb0c84500d0b8c78d93760602fe3330"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=8190e6c13dbaf9a758ec6eb3a1070259afb70781#8190e6c13dbaf9a758ec6eb3a1070259afb70781"
 dependencies = [
  "anyhow",
  "engine_backend",
