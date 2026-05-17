@@ -3,6 +3,7 @@ mod invalid_panel;
 mod panel;
 mod stack_panel;
 mod state;
+pub mod tab_drag;
 pub mod tab_panel;
 mod tiles;
 
@@ -21,6 +22,10 @@ pub use dock::*;
 pub use panel::*;
 pub use stack_panel::*;
 pub use state::*;
+pub use tab_drag::{
+    deposit_panel_into_window, drag_screen_position, find_target_window, register_dock_window,
+    set_drag_screen_position, unregister_dock_window, DockWindowRegistry,
+};
 pub use tab_panel::*;
 pub use tiles::*;
 
@@ -528,6 +533,11 @@ impl DockArea {
 
         this.subscribe_panel(&stack_panel, window, cx);
 
+        // Register with the global window registry so cross-window drags work.
+        let weak_self = cx.entity().downgrade();
+        let window_handle = window.window_handle();
+        tab_drag::register_dock_window(window_handle, weak_self, channel, cx);
+
         this
     }
 
@@ -574,6 +584,30 @@ impl DockArea {
         self.subscribe_item(&item, window, cx);
         self.items = item;
         cx.notify();
+    }
+
+    /// Add `panel` to the centre TabPanel of this DockArea.
+    ///
+    /// Used by the cross-window drop system: when a tab is dragged from window A
+    /// and released over window B, we call this on window B's DockArea.
+    pub fn add_panel_to_center(
+        &mut self,
+        panel: Arc<dyn PanelView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match &self.items {
+            DockItem::Tabs { view, .. } => {
+                let view = view.clone();
+                view.update(cx, |tp, cx| tp.add_panel(panel, window, cx));
+            }
+            DockItem::Split { .. } => {
+                if let Some(tab_panel) = self.items.left_top_tab_panel(cx) {
+                    tab_panel.update(cx, |tp, cx| tp.add_panel(panel, window, cx));
+                }
+            }
+            _ => {}
+        }
     }
 
     pub fn set_left_dock(
@@ -950,8 +984,10 @@ impl DockArea {
                     },
                 ));
             }
-            DockItem::Tabs { .. } => {
-                // We subscribe to the tab panel event in StackPanel's insert_panel
+            DockItem::Tabs { view, .. } => {
+                // Root-level Tabs items aren't inside a StackPanel, so we subscribe directly
+                // here.  This is what makes the pop-out button work for centre dock items.
+                self.subscribe_panel(view, window, cx);
             }
             DockItem::Tiles { .. } => {
                 // We subscribe to the tab panel event in Tiles's [`add_item`](Tiles::add_item)
