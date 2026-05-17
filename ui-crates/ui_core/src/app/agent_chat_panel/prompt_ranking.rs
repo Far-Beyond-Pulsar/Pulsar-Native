@@ -201,8 +201,13 @@ pub(crate) fn compact_messages(
 
     let dialog_block_count = dialog_blocks.len();
     let last_index = dialog_block_count - 1;
+    // The first block that contains a user message is the original goal — protect it
+    // from compaction so the agent never loses track of what was asked.
+    let first_user_block = dialog_blocks.iter().position(|b| {
+        b.messages.iter().any(|m| m.role == ChatRole::User)
+    });
     for index in 0..dialog_block_count {
-        let is_mandatory = index == last_index;
+        let is_mandatory = index == last_index || Some(index) == first_user_block;
         let priority = {
             let block = &dialog_blocks[index];
             block_priority(block, index, dialog_block_count)

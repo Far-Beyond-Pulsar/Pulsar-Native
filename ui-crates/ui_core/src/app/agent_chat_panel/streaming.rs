@@ -784,15 +784,94 @@ impl AgentChatPanel {
 
         self.is_processing_subagent_event = true;
         self.processing_subagent_id = Some(subagent_id.to_string());
-        let internal_prompt = format!(
-            "Subagent completion event: id={subagent_id}, name={name}, status={status}. Retrieve details with get_subagent_result(subagent_id) and continue helping the user."
+
+        let result_preview = agent_chat_tools::get_subagent_result_preview(subagent_id);
+        let preview_block = match &result_preview {
+            Some(preview) => format!("\n\nFindings preview:\n{preview}"),
+            None => String::new(),
+        };
+        let detail_hint = if result_preview.is_some() {
+            format!(
+                "Call get_subagent_result(\"{subagent_id}\") for the full transcript and file references if needed. "
+            )
+        } else {
+            String::new()
+        };
+
+        let event_content = format!(
+            "Sub-agent '{name}' (id={subagent_id}) completed — status: {status}.{preview_block}\n\n\
+             Integrate these findings into the current work. \
+             {detail_hint}\
+             Update your task list with task_list_update if any tasks changed state."
         );
-        let launched =
-            self.submit_user_prompt_text(internal_prompt.clone(), internal_prompt, false, cx);
+
+        let launched = self.launch_internal_agent_event(event_content, cx);
         if !launched {
             self.is_processing_subagent_event = false;
             self.processing_subagent_id = None;
         }
+    }
+
+    /// Deliver an internal engine event to the model without using ChatRole::User.
+    ///
+    /// Injects a synthetic Assistant message (containing an implicit
+    /// `check_subagent_completions` tool call) followed by the event payload as a
+    /// ChatRole::Tool result. The model sees this as the outcome of a tool it called,
+    /// not as a human speaking — eliminating the role-confusion bug where the model
+    /// describes "what the user said" instead of acting on the event.
+    ///
+    /// This matches the pattern used by Claude Code: async sub-agent results arrive
+    /// as Tool role messages, never as User turns.
+    fn launch_internal_agent_event(
+        &mut self,
+        content: String,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let provider_id = self
+            .active_provider()
+            .map(|p| p.id)
+            .unwrap_or("unknown_provider");
+
+        if self.wip_providers.contains_key(provider_id) {
+            return false;
+        }
+
+        let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
+            return false;
+        };
+
+        let token = self.auth_token_for_provider(provider_id);
+        let availability = provider.availability(&ProcessEnvironment);
+        if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
+            return false;
+        }
+
+        // Unique call ID so compaction keeps this assistant→tool pair intact.
+        let call_id = format!("_internal_event_{}", now_ms());
+
+        // The assistant "called" check_subagent_completions — an empty-content
+        // assistant message with tool_calls is valid for all major providers.
+        self.messages.push(ChatMessage {
+            role: ChatRole::Assistant,
+            content: String::new(),
+            tool_call_id: None,
+            tool_calls: vec![ToolCall {
+                id: call_id.clone(),
+                name: "check_subagent_completions".to_string(),
+                arguments_json: serde_json::json!({}),
+            }],
+        });
+
+        // The tool result is the actual event payload the model should act on.
+        self.messages.push(ChatMessage {
+            role: ChatRole::Tool,
+            content,
+            tool_call_id: Some(call_id),
+            tool_calls: vec![],
+        });
+
+        self.launch_provider_request(provider, token, cx);
+        true
     }
 
     pub(super) fn process_next_subagent_completion_now(&mut self, cx: &mut Context<Self>) {
@@ -952,6 +1031,67 @@ impl AgentChatPanel {
             None
         };
 
+        // Inject live orchestration context — task manifest and active sub-agents.
+        // This survives compaction because it is rebuilt fresh on every request,
+        // so the agent is always oriented even after context shrinks.
+        {
+            let tasks = agent_chat_tools::get_task_manifest_snapshot();
+            let active_subs = agent_chat_tools::get_active_subagents_snapshot();
+            let mut parts: Vec<String> = Vec::new();
+
+            if !tasks.is_empty() {
+                let lines: Vec<String> = tasks
+                    .iter()
+                    .map(|t| {
+                        let status = t.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                        let title = t.get("title").and_then(|v| v.as_str()).unwrap_or("?");
+                        let notes = t.get("notes").and_then(|v| v.as_str()).unwrap_or("");
+                        if notes.is_empty() {
+                            format!("  [{status}] {title}")
+                        } else {
+                            format!("  [{status}] {title} — {notes}")
+                        }
+                    })
+                    .collect();
+                parts.push(format!("## Task List\n{}", lines.join("\n")));
+            }
+
+            if !active_subs.is_empty() {
+                let lines: Vec<String> = active_subs
+                    .iter()
+                    .map(|a| {
+                        let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("?");
+                        let status = a.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                        let id = a.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+                        let task = a.get("task").and_then(|v| v.as_str()).unwrap_or("");
+                        format!("  - {name} ({status}, id={id}): {task}")
+                    })
+                    .collect();
+                parts.push(format!("## Active Sub-Agents\n{}", lines.join("\n")));
+            }
+
+            if !parts.is_empty() {
+                let content = format!(
+                    "## Live Agent State\n_{note}_\n\n{body}",
+                    note = "Rebuilt each turn — always current",
+                    body = parts.join("\n\n"),
+                );
+                let insert_at = provider_messages
+                    .iter()
+                    .position(|m| m.role != ChatRole::System)
+                    .unwrap_or(provider_messages.len());
+                provider_messages.insert(
+                    insert_at,
+                    ChatMessage {
+                        role: ChatRole::System,
+                        content,
+                        tool_call_id: None,
+                        tool_calls: vec![],
+                    },
+                );
+            }
+        }
+
         // Validate and convert tool schemas
         let tools: Vec<agent_chat_core::ToolDefinition> = self
             .tool_registry
@@ -1031,6 +1171,7 @@ impl AgentChatPanel {
         let tx_for_finish = tx.clone();
         let provider_for_task = provider.clone();
         let tool_registry_for_task = self.tool_registry.clone();
+        let tool_registry_for_subagent = self.tool_registry.clone();
         let plugin_bridge_for_task = self.plugin_bridge.clone();
         let completion_sent = Arc::new(AtomicBool::new(false));
 
@@ -1294,96 +1435,192 @@ impl AgentChatPanel {
                                                 })
                                         }
                                     })),
-                                    subagent_executor: Some(Arc::new(move |req| {
+                                    subagent_executor: Some(Arc::new({
+                                        let registry = tool_registry_for_subagent.clone();
+                                        move |req: agent_chat_tools::SubagentLlmRequest| {
                                         let model_used = req
                                             .model
                                             .clone()
                                             .filter(|m| !m.trim().is_empty())
                                             .unwrap_or_else(|| default_subagent_model.clone());
 
-                                        let mut streamed_chunks = Vec::new();
                                         let instructions = req.instructions.unwrap_or_default();
-                                        let child_messages = vec![
+
+                                        // Build tool list for sub-agent, excluding UI-only and
+                                        // recursive tools so sub-agents stay focused and safe.
+                                        let sub_tools: Vec<agent_chat_core::ToolDefinition> = registry
+                                            .definitions()
+                                            .into_iter()
+                                            .filter(|def| {
+                                                !matches!(
+                                                    def.name.as_str(),
+                                                    "spawn_subagent"
+                                                        | "query_running_subagents"
+                                                        | "open_file_in_default_editor"
+                                                        | "activate_open_editor"
+                                                        | "query_open_editors"
+                                                )
+                                            })
+                                            .filter_map(|def| {
+                                                let params = def.parameters_schema;
+                                                if params.get("type").and_then(|v| v.as_str())
+                                                    != Some("object")
+                                                {
+                                                    return None;
+                                                }
+                                                Some(agent_chat_core::ToolDefinition {
+                                                    name: def.name,
+                                                    description: Some(def.description),
+                                                    parameters_json_schema: params,
+                                                })
+                                            })
+                                            .collect();
+
+                                        let enable_tools = !sub_tools.is_empty();
+
+                                        let sub_tool_context = agent_chat_tools::make_tool_context(
+                                            req.workspace_root.clone(),
+                                            None,
+                                            agent_chat_tools::PulsarToolExtras {
+                                                plugin_bridge: None,
+                                                open_file_request: None,
+                                                query_open_editors: None,
+                                                activate_open_editor_request: None,
+                                                subagent_executor: None,
+                                            },
+                                        );
+
+                                        let mut current_messages = vec![
                                             ChatMessage {
                                                 role: ChatRole::System,
-                                                content: "You are a focused subagent. Complete only the assigned task and return concrete findings with evidence.".to_string(),
+                                                content: format!(
+                                                    "You are a focused sub-agent. Complete the assigned task using available tools.\n\
+                                                     Workspace: {workspace}\n\
+                                                     Read files, search the codebase, gather concrete evidence.\n\
+                                                     Be specific: include file paths, line numbers, and direct quotes.\n\
+                                                     When you have sufficient findings, provide your final answer without calling more tools.",
+                                                    workspace = req.workspace_root.display(),
+                                                ),
                                                 tool_call_id: None,
                                                 tool_calls: vec![],
                                             },
                                             ChatMessage {
                                                 role: ChatRole::User,
                                                 content: format!(
-                                                    "Subagent ID: {}\nSubagent Name: {}\nTask: {}\nWorkspace: {}\nInstructions: {}\n\nReturn concise findings and include explicit evidence references.",
-                                                    req.subagent_id,
-                                                    req.name,
-                                                    req.task,
-                                                    req.workspace_root.display(),
-                                                    instructions,
+                                                    "Sub-agent: {name}\nTask: {task}\nInstructions: {instructions}",
+                                                    name = req.name,
+                                                    task = req.task,
+                                                    instructions = instructions,
                                                 ),
                                                 tool_call_id: None,
                                                 tool_calls: vec![],
                                             },
                                         ];
 
-                                        let child_request = ChatRequest {
-                                            model: model_used.clone(),
-                                            messages: child_messages.clone(),
-                                            enable_tool_calls: false,
-                                            tools: vec![],
-                                            temperature: Some(0.2),
-                                            top_p: Some(1.0),
-                                            max_tokens: Some(2048),
-                                        };
+                                        let mut all_chunks: Vec<String> = Vec::new();
+                                        let mut last_raw_response = serde_json::Value::Null;
+                                        const MAX_SUB_ITERATIONS: u32 = 8;
 
-                                        let mut on_sub_chunk = |chunk: String| {
-                                            streamed_chunks.push(chunk);
-                                        };
+                                        for _sub_iter in 0..MAX_SUB_ITERATIONS {
+                                            let sub_request = ChatRequest {
+                                                model: model_used.clone(),
+                                                messages: current_messages.clone(),
+                                                enable_tool_calls: enable_tools,
+                                                tools: sub_tools.clone(),
+                                                temperature: Some(0.2),
+                                                top_p: Some(1.0),
+                                                max_tokens: Some(4096),
+                                            };
 
-                                        let response = provider_for_subagent
-                                            .chat_completion_streaming(
-                                                &token_for_subagent,
-                                                &child_request,
-                                                &mut on_sub_chunk,
-                                            )
-                                            .map_err(|err| {
-                                                format!(
-                                                    "Provider-backed subagent execution failed: {}",
-                                                    err
+                                            let mut iter_chunks: Vec<String> = Vec::new();
+                                            let response = provider_for_subagent
+                                                .chat_completion_streaming(
+                                                    &token_for_subagent,
+                                                    &sub_request,
+                                                    &mut |chunk| iter_chunks.push(chunk),
                                                 )
-                                            })?;
+                                                .map_err(|e| format!("Sub-agent provider error: {e}"))?;
 
-                                        let assistant_message = response
-                                            .assistant_message
-                                            .clone()
-                                            .or_else(|| {
-                                                if streamed_chunks.is_empty() {
-                                                    None
-                                                } else {
-                                                    Some(streamed_chunks.join(""))
-                                                }
+                                            all_chunks.extend(iter_chunks.clone());
+                                            last_raw_response = response.raw_response.clone();
+
+                                            let assistant_text = response
+                                                .assistant_message
+                                                .clone()
+                                                .or_else(|| {
+                                                    if iter_chunks.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(iter_chunks.join(""))
+                                                    }
+                                                })
+                                                .unwrap_or_default();
+
+                                            if response.tool_calls.is_empty() {
+                                                current_messages.push(ChatMessage {
+                                                    role: ChatRole::Assistant,
+                                                    content: assistant_text,
+                                                    tool_call_id: None,
+                                                    tool_calls: vec![],
+                                                });
+                                                break;
+                                            }
+
+                                            // Assistant turn with tool calls
+                                            current_messages.push(ChatMessage {
+                                                role: ChatRole::Assistant,
+                                                content: assistant_text,
+                                                tool_call_id: None,
+                                                tool_calls: response.tool_calls.clone(),
+                                            });
+
+                                            // Execute tools sequentially (sub-agent context)
+                                            for call in &response.tool_calls {
+                                                let result = registry
+                                                    .execute(
+                                                        &call.name,
+                                                        call.arguments_json.clone(),
+                                                        &sub_tool_context,
+                                                    )
+                                                    .map(|v| v.to_string())
+                                                    .unwrap_or_else(|e| {
+                                                        format!("Tool error: {e}")
+                                                    });
+                                                current_messages.push(ChatMessage {
+                                                    role: ChatRole::Tool,
+                                                    content: result,
+                                                    tool_call_id: Some(call.id.clone()),
+                                                    tool_calls: vec![],
+                                                });
+                                            }
+                                        }
+
+                                        // Extract the final assistant response from the transcript
+                                        let assistant_message = current_messages
+                                            .iter()
+                                            .rev()
+                                            .find(|m| {
+                                                m.role == ChatRole::Assistant
+                                                    && !m.content.is_empty()
                                             })
+                                            .map(|m| m.content.clone())
                                             .unwrap_or_default();
 
-                                        let child_transcript = vec![
-                                            serde_json::json!({
-                                                "role": "system",
-                                                "content": child_messages
-                                                    .first()
-                                                    .map(|m| m.content.clone())
-                                                    .unwrap_or_default(),
-                                            }),
-                                            serde_json::json!({
-                                                "role": "user",
-                                                "content": child_messages
-                                                    .get(1)
-                                                    .map(|m| m.content.clone())
-                                                    .unwrap_or_default(),
-                                            }),
-                                            serde_json::json!({
-                                                "role": "assistant",
-                                                "content": assistant_message.clone(),
-                                            }),
-                                        ];
+                                        let child_transcript = current_messages
+                                            .iter()
+                                            .map(|m| {
+                                                let role = match m.role {
+                                                    ChatRole::System => "system",
+                                                    ChatRole::User => "user",
+                                                    ChatRole::Assistant => "assistant",
+                                                    ChatRole::Tool => "tool",
+                                                };
+                                                serde_json::json!({
+                                                    "role": role,
+                                                    "content": m.content,
+                                                })
+                                            })
+                                            .collect();
 
                                         Ok(agent_chat_tools::SubagentLlmResponse {
                                             provider_id: provider_for_subagent
@@ -1392,11 +1629,11 @@ impl AgentChatPanel {
                                                 .to_string(),
                                             model_used,
                                             assistant_message,
-                                            streamed_chunks,
-                                            raw_response: response.raw_response,
+                                            streamed_chunks: all_chunks,
+                                            raw_response: last_raw_response,
                                             child_transcript,
                                         })
-                                    })),
+                                    }})),
                                 },
                             );
 

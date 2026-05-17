@@ -95,6 +95,10 @@ Use your tools whenever they help answer the user's question.\n\
 Tool usage is displayed automatically in the UI — do not narrate or repeat tool call details in your text responses.\n\
     For file operations call query_open_editors first and use the exact file_path it returns.\n\
     Use cd to change the AI working directory, list_files to inspect directories, and tree for bounded recursive directory views.\n\n\
+## Task Tracking\n\
+Use task_list_read and task_list_update to maintain a task list for any multi-step work. \
+Read it at the start of complex tasks and update it as steps complete. \
+The list is injected into every turn so you stay oriented even after context compaction.\n\n\
 {tool_docs}\n\n\
 Plugin-provided tools are discovered dynamically via query_plugin_tools — call that first whenever you want to edit a file.\n\
 Plugin-provided tool execution should use call_plugin_tool with an explicit file_path and plugin_id for reliable, unambiguous routing."

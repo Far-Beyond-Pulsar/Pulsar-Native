@@ -1306,7 +1306,6 @@ impl AppTitleBar {
     }
 }
 
-// TODO: (From @tristanpoland) Near as I can tell this tracing::info! call is never executed. Look into this when debugging the titlebar
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Only rebuild menus if locale changed

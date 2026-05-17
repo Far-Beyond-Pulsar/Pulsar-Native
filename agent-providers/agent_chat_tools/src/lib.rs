@@ -120,6 +120,92 @@ struct SubagentStore {
 static SUBAGENT_STORE: OnceLock<Mutex<SubagentStore>> = OnceLock::new();
 static SUBAGENT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
+// ── Task Manifest ────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Default)]
+struct TaskEntry {
+    id: String,
+    title: String,
+    /// "pending" | "in_progress" | "done" | "blocked"
+    status: String,
+    notes: Option<String>,
+}
+
+#[derive(Default)]
+struct TaskManifest {
+    tasks: Vec<TaskEntry>,
+}
+
+static TASK_MANIFEST: OnceLock<Mutex<TaskManifest>> = OnceLock::new();
+
+fn task_manifest() -> &'static Mutex<TaskManifest> {
+    TASK_MANIFEST.get_or_init(|| Mutex::new(TaskManifest::default()))
+}
+
+/// Returns a JSON snapshot of current tasks for injection into system messages.
+pub fn get_task_manifest_snapshot() -> Vec<Value> {
+    let Ok(guard) = task_manifest().lock() else {
+        return vec![];
+    };
+    guard
+        .tasks
+        .iter()
+        .map(|t| {
+            json!({
+                "id": t.id,
+                "title": t.title,
+                "status": t.status,
+                "notes": t.notes,
+            })
+        })
+        .collect()
+}
+
+/// Clears the task manifest — call when starting a fresh chat.
+pub fn clear_task_manifest() {
+    if let Ok(mut guard) = task_manifest().lock() {
+        guard.tasks.clear();
+    }
+}
+
+/// Returns running/pending sub-agents for live context injection.
+pub fn get_active_subagents_snapshot() -> Vec<Value> {
+    let Ok(guard) = subagent_store().lock() else {
+        return vec![];
+    };
+    guard
+        .records
+        .values()
+        .filter(|r| !r.status.is_terminal())
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "name": r.name,
+                "task": r.task,
+                "status": r.status.as_str(),
+                "progress": r.progress,
+            })
+        })
+        .collect()
+}
+
+/// Returns the first ~800 chars of the sub-agent's final assistant message,
+/// or `None` if the result is not yet available.
+pub fn get_subagent_result_preview(subagent_id: &str) -> Option<String> {
+    let Ok(guard) = subagent_store().lock() else {
+        return None;
+    };
+    guard.records.get(subagent_id).and_then(|r| {
+        r.result.as_ref().and_then(|result| {
+            result
+                .get("assistant_message")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.chars().take(800).collect())
+        })
+    })
+}
+
 fn subagent_store() -> &'static Mutex<SubagentStore> {
     SUBAGENT_STORE.get_or_init(|| Mutex::new(SubagentStore::default()))
 }
@@ -486,6 +572,77 @@ pub fn build_default_registry() -> ToolRegistry {
 pub fn register_pulsar_tools(registry: &mut ToolRegistry) {
     registry.merge_plugin(&PluginToolRegistry::from_namespace(module_path!()));
 }
+
+// ── Task Manifest Tools ──────────────────────────────────────────────────────
+
+/// Read the current task list. Returns all planned, in-progress, and completed tasks.
+/// Use this to check your own progress and orient yourself after context compaction.
+#[tool(category = "pulsar")]
+pub fn task_list_read() -> anyhow::Result<Value> {
+    let tasks = get_task_manifest_snapshot();
+    Ok(json!({
+        "ok": true,
+        "count": tasks.len(),
+        "tasks": tasks,
+    }))
+}
+
+/// Replace the task list with a new set of tasks. Pass a JSON array where each
+/// element has: id (string), title (string),
+/// status ("pending"|"in_progress"|"done"|"blocked"), notes (optional string).
+/// The list is injected into every provider call so orientation is never lost.
+#[tool(category = "pulsar")]
+pub fn task_list_update(tasks: Value) -> anyhow::Result<Value> {
+    let arr = tasks
+        .as_array()
+        .ok_or_else(|| anyhow!("tasks must be a JSON array"))?;
+
+    let mut entries = Vec::new();
+    for (i, t) in arr.iter().enumerate() {
+        let id = t
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let title = t
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if title.is_empty() {
+            continue;
+        }
+        let status = t
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("pending")
+            .to_string();
+        let notes = t
+            .get("notes")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let final_id = if id.is_empty() {
+            format!("task-{}", i + 1)
+        } else {
+            id
+        };
+        entries.push(TaskEntry {
+            id: final_id,
+            title,
+            status,
+            notes,
+        });
+    }
+
+    let count = entries.len();
+    if let Ok(mut guard) = task_manifest().lock() {
+        guard.tasks = entries;
+    }
+
+    Ok(json!({ "ok": true, "count": count }))
+}
+
+// ── Editor / File Tools ──────────────────────────────────────────────────────
 
 /// Open a file in its default editor tab. Call this before plugin edit tools so edits happen in editor state, not direct file access.
 #[tool(category = "pulsar")]
