@@ -24,6 +24,7 @@ use crate::level_editor::scene_database::{
     LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
 use engine_backend::scene::SceneDb;
+use plugin_manager;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
 pub struct LevelEditorPanel {
@@ -1050,6 +1051,26 @@ impl Panel for LevelEditorPanel {
 
     fn panel_file_path(&self, _cx: &App) -> Option<std::path::PathBuf> {
         self.shared_state.read().current_scene.clone()
+    }
+
+    fn tab_icon(&self, _cx: &App) -> Option<ui::IconName> {
+        let state = self.shared_state.read();
+        let file_path = state.current_scene.as_ref()?;
+
+        // Get the file type icon from the plugin manager registry
+        if let Some(plugin_mgr) = plugin_manager::global() {
+            if let Ok(plugin_mgr_guard) = plugin_mgr.read() {
+                if let Some(file_type_def) = plugin_mgr_guard.get_file_type_for_path(file_path) {
+                    return Some(file_type_def.icon.clone());
+                }
+            }
+        }
+
+        None
+    }
+
+    fn tab_unsaved(&self, _cx: &App) -> bool {
+        self.shared_state.read().has_unsaved_changes
     }
 }
 

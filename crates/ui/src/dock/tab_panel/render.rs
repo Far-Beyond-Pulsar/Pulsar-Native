@@ -397,7 +397,7 @@ impl TabPanel {
                                     .ghost()
                                     .xsmall()
                                     .tooltip("Move to New Window")
-                                    .on_click(cx.listener(move |tab_panel, _, window, cx| {
+                                    .on_click(cx.listener(move |_tab_panel, _, window, cx| {
                                         let panel_to_move = panel.clone();
                                         let dock_area = dock.clone();
                                         let mouse_pos = window.mouse_position();
@@ -409,17 +409,13 @@ impl TabPanel {
                                         tracing::trace!("[TAB_PANEL] Dock area: {:?}", dock_area);
 
                                         tracing::trace!("[TAB_PANEL] Emitting PanelEvent::MoveToNewWindow with source info");
+                                        // Emit event and let DockArea handle detachment to avoid timing issues
                                         cx.emit(PanelEvent::MoveToNewWindow {
                                             panel: panel_to_move.clone(),
                                             position: mouse_pos,
                                             source_tab_panel: cx.entity().downgrade(),
                                             source_index: panel_index,
                                         });
-
-                                        tracing::trace!("[TAB_PANEL] Detaching panel from current tab panel");
-                                        tab_panel.detach_panel(panel_to_move, window, cx);
-                                        tab_panel.remove_self_if_empty(window, cx);
-                                        tracing::trace!("[TAB_PANEL] Panel detached");
                                     }))
                             )
                         }).when(!is_level_editor, |this| {

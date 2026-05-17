@@ -11,6 +11,7 @@ ui.workspace = true
 
 # UI crates
 ui_common.workspace = true
+plugin_manager = { path = "../../crates/plugin_manager" }
 ui_types_common.workspace = true
 window_manager.workspace = true
 plugin_editor_api.workspace = true

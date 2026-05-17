@@ -1013,7 +1013,37 @@ impl DockArea {
                             tab_index: Some(*source_index),
                         };
 
-                        Self::create_popout_window(panel.clone(), *position, Some(source), cx);
+                        // Detach first, then create the popout window. Rendering the same panel
+                        // in two tab trees at once can fail in practice.
+                        let popout_panel = panel.clone();
+                        let popout_position = *position;
+                        let popout_source = source.clone();
+
+                        if let Some(source_panel) = source_tab_panel.upgrade() {
+                            let panel_to_detach = panel.clone();
+                            window.defer(cx, move |window, cx| {
+                                _ = source_panel.update(cx, |view, cx| {
+                                    tracing::trace!("[DOCK_AREA] Detaching panel from source before popout creation");
+                                    view.detach_panel(panel_to_detach.clone(), window, cx);
+                                    view.remove_self_if_empty(window, cx);
+                                });
+
+                                Self::create_popout_window(
+                                    popout_panel.clone(),
+                                    popout_position,
+                                    Some(popout_source.clone()),
+                                    cx,
+                                );
+                            });
+                        } else {
+                            tracing::warn!("[DOCK_AREA] Source tab panel missing during popout; creating detached window directly");
+                            Self::create_popout_window(
+                                popout_panel,
+                                popout_position,
+                                Some(popout_source),
+                                cx,
+                            );
+                        }
                     }
                     PanelEvent::TabChanged { active_index: _ } => {
                         // Do nothing for TabChanged

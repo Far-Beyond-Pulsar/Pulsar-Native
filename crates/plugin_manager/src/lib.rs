@@ -60,6 +60,117 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use ui::dock::PanelView;
 
+struct FileTypeDecoratedPanelView {
+    inner: Arc<dyn PanelView>,
+    file_path: PathBuf,
+    icon: Option<ui::IconName>,
+}
+
+impl PanelView for FileTypeDecoratedPanelView {
+    fn panel_name(&self, cx: &gpui::App) -> &'static str {
+        self.inner.panel_name(cx)
+    }
+
+    fn panel_id(&self, cx: &gpui::App) -> gpui::EntityId {
+        self.inner.panel_id(cx)
+    }
+
+    fn tab_name(&self, cx: &gpui::App) -> Option<gpui::SharedString> {
+        self.inner.tab_name(cx)
+    }
+
+    fn tab_icon(&self, cx: &gpui::App) -> Option<ui::IconName> {
+        self.inner.tab_icon(cx).or_else(|| self.icon.clone())
+    }
+
+    fn tab_unsaved(&self, cx: &gpui::App) -> bool {
+        self.inner.tab_unsaved(cx)
+    }
+
+    fn panel_file_path(&self, cx: &gpui::App) -> Option<PathBuf> {
+        self.inner.panel_file_path(cx).or_else(|| {
+            if self.file_path.as_os_str().is_empty() {
+                None
+            } else {
+                Some(self.file_path.clone())
+            }
+        })
+    }
+
+    fn title(&self, window: &gpui::Window, cx: &gpui::App) -> gpui::AnyElement {
+        self.inner.title(window, cx)
+    }
+
+    fn title_suffix(
+        &self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        self.inner.title_suffix(window, cx)
+    }
+
+    fn title_style(&self, cx: &gpui::App) -> Option<ui::dock::TitleStyle> {
+        self.inner.title_style(cx)
+    }
+
+    fn closable(&self, cx: &gpui::App) -> bool {
+        self.inner.closable(cx)
+    }
+
+    fn zoomable(&self, cx: &gpui::App) -> Option<ui::dock::PanelControl> {
+        self.inner.zoomable(cx)
+    }
+
+    fn visible(&self, cx: &gpui::App) -> bool {
+        self.inner.visible(cx)
+    }
+
+    fn set_active(&self, active: bool, window: &mut gpui::Window, cx: &mut gpui::App) {
+        self.inner.set_active(active, window, cx)
+    }
+
+    fn set_zoomed(&self, zoomed: bool, window: &mut gpui::Window, cx: &mut gpui::App) {
+        self.inner.set_zoomed(zoomed, window, cx)
+    }
+
+    fn popup_menu(
+        &self,
+        menu: ui::popup_menu::PopupMenu,
+        window: &gpui::Window,
+        cx: &gpui::App,
+    ) -> ui::popup_menu::PopupMenu {
+        self.inner.popup_menu(menu, window, cx)
+    }
+
+    fn toolbar_buttons(
+        &self,
+        window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> Option<Vec<ui::button::Button>> {
+        self.inner.toolbar_buttons(window, cx)
+    }
+
+    fn view(&self) -> gpui::AnyView {
+        self.inner.view()
+    }
+
+    fn focus_handle(&self, cx: &gpui::App) -> gpui::FocusHandle {
+        self.inner.focus_handle(cx)
+    }
+
+    fn dump(&self, cx: &gpui::App) -> ui::dock::PanelState {
+        self.inner.dump(cx)
+    }
+
+    fn inner_padding(&self, cx: &gpui::App) -> bool {
+        self.inner.inner_padding(cx)
+    }
+
+    fn discord_icon_key(&self, cx: &gpui::App) -> &'static str {
+        self.inner.discord_icon_key(cx)
+    }
+}
+
 pub mod builtin;
 mod permanent_library;
 mod registry;
@@ -181,6 +292,24 @@ unsafe impl Send for PluginManager {}
 unsafe impl Sync for PluginManager {}
 
 impl PluginManager {
+    fn decorate_editor_panel_for_path(
+        &self,
+        panel: Arc<dyn PanelView>,
+        file_path: &Path,
+    ) -> Arc<dyn PanelView> {
+        let icon = self.get_file_type_for_path(file_path).map(|ft| ft.icon.clone());
+
+        if icon.is_none() && file_path.as_os_str().is_empty() {
+            panel
+        } else {
+            Arc::new(FileTypeDecoratedPanelView {
+                inner: panel,
+                file_path: file_path.to_path_buf(),
+                icon,
+            })
+        }
+    }
+
     /// Create a new plugin manager.
     pub fn new() -> Self {
         Self {
@@ -672,6 +801,7 @@ impl PluginManager {
                     window,
                     cx,
                 )
+                .map(|panel| self.decorate_editor_panel_for_path(panel, file_path))
                 .map_err(|e| PluginManagerError::PluginError {
                     plugin_id,
                     error: e,
@@ -696,6 +826,8 @@ impl PluginManager {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginManagerError> {
+        let file_path_for_decoration = file_path.clone();
+
         let plugin =
             self.plugins
                 .get_mut(plugin_id)
@@ -735,6 +867,7 @@ impl PluginManager {
         plugin
             .plugin
             .create_editor(editor_id.clone(), file_path, window, cx)
+            .map(|panel| self.decorate_editor_panel_for_path(panel, &file_path_for_decoration))
             .map_err(|e| PluginManagerError::PluginError {
                 plugin_id: plugin_id.clone(),
                 error: e,
