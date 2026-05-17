@@ -3,11 +3,11 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use gpui::{
-    div, prelude::FluentBuilder, px, relative, rems, size, App, AppContext, Bounds, Context,
-    Corner, DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement as _, IntoElement, ParentElement, Pixels, Point, ReadGlobal, Render,
-    ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, UpdateGlobal,
-    WeakEntity, Window, WindowBounds, WindowKind, WindowOptions,
+    div, prelude::FluentBuilder, px, relative, rems, size, App, AnyWindowHandle, AppContext,
+    Bounds, Context, Corner, DismissEvent, Div, DragMoveEvent, Empty, Entity, EventEmitter,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, ParentElement, Pixels, Point,
+    ReadGlobal, Render, ScrollHandle, SharedString, StatefulInteractiveElement, StyleRefinement,
+    Styled, UpdateGlobal, WeakEntity, Window, WindowBounds, WindowKind, WindowOptions,
 };
 use rust_i18n::t;
 
@@ -153,6 +153,14 @@ pub struct TabPanel {
     pub(crate) channel: DockChannel,
     /// Track if we're in a valid same-channel drag (set by drag_over predicate)
     pub(crate) in_valid_drag: bool,
+    /// Last known drag position in the coordinate space used by WindowBounds.
+    /// Updated on every drag-move event; consumed by on_drop for window placement.
+    pub(crate) last_drag_screen_pos: Option<Point<Pixels>>,
+    /// True once we have fired a live-extraction window for this drag gesture.
+    pub(crate) extraction_in_flight: bool,
+    /// Handle of the extracted floating window, set inside the creation defer.
+    /// None means extraction was requested but the defer hasn't run yet.
+    pub(crate) extracted_window: Option<AnyWindowHandle>,
 }
 
 impl TabPanel {
@@ -179,6 +187,9 @@ impl TabPanel {
             dragging_outside_window: false,
             channel,
             in_valid_drag: false,
+            last_drag_screen_pos: None,
+            extraction_in_flight: false,
+            extracted_window: None,
         }
     }
 

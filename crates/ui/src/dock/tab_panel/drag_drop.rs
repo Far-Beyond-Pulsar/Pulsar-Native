@@ -1,134 +1,195 @@
 use super::*;
+use crate::dock::tab_drag;
 
 impl TabPanel {
-    /// Check if the drag position is outside the window bounds
+    // ─────────────────────────────────────────────────────────────────────
+    // Coordinate helpers
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// `window.mouse_position()` is **window-local** logical pixels (0 = left edge
+    /// of content area).  To place a new OS window we need **screen** logical pixels.
+    /// This adds the window's outer origin, queried from winit directly.
+    fn mouse_to_screen(local: Point<Pixels>, window: &Window) -> Point<Pixels> {
+        let mut screen = local;
+        window.with_winit_window(|w| {
+            let scale = w.scale_factor() as f32;
+            if let Ok(origin) = w.outer_position() {
+                screen = Point {
+                    x: px(origin.x as f32 / scale) + local.x,
+                    y: px(origin.y as f32 / scale) + local.y,
+                };
+            }
+        });
+        screen
+    }
+
+    /// Content-area size in logical pixels from winit (never mixed with outer origin).
+    fn content_size(window: &Window) -> gpui::Size<Pixels> {
+        let mut sz = window.bounds().size;
+        window.with_winit_window(|w| {
+            let scale = w.scale_factor() as f32;
+            let s = w.inner_size();
+            sz = gpui::Size {
+                width:  px(s.width  as f32 / scale),
+                height: px(s.height as f32 / scale),
+            };
+        });
+        sz
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Outside-window detection
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Returns true when the mouse cursor (in window-local logical pixels) is
+    /// outside the content area.  Uses winit's `inner_size` directly — no
+    /// coordinate-system mixing, no fudge margin.
     pub(crate) fn check_drag_outside_window(
         &mut self,
-        position: Point<Pixels>,
+        mouse_local: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> bool {
-        let window_bounds = window.bounds();
+        let sz = Self::content_size(window);
+        let outside = mouse_local.x < px(0.0)
+            || mouse_local.x > sz.width
+            || mouse_local.y < px(0.0)
+            || mouse_local.y > sz.height;
 
-        // Add a small margin (20px) to make it easier to trigger
-        let margin = px(20.0);
-        let is_outside = position.x < window_bounds.left() - margin
-            || position.x > window_bounds.right() + margin
-            || position.y < window_bounds.top() - margin
-            || position.y > window_bounds.bottom() + margin;
-
-        if is_outside != self.dragging_outside_window {
-            self.dragging_outside_window = is_outside;
+        if outside != self.dragging_outside_window {
+            self.dragging_outside_window = outside;
             cx.notify();
         }
-
-        is_outside
+        outside
     }
 
-    /// Create a simple new window with just the dragged panel
+    // ─────────────────────────────────────────────────────────────────────
+    // Live extraction
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Called the first frame the drag cursor crosses outside the source window.
     ///
-    /// NOTE: This creates a minimal window container. The panel itself maintains its
-    /// references to shared services (like rust analyzer) from the main window,
-    /// so there's no duplication of services.
+    /// 1. Detaches the panel.
+    /// 2. Creates a new floating window positioned under the cursor in screen coords.
+    /// 3. Stores the handle so `move_extracted_window` can reposition it every frame.
     ///
-    /// The window is positioned so the tab bar appears directly under the cursor,
-    /// giving the impression that the tab "follows" the mouse during the drag.
-    pub(crate) fn create_window_with_panel(
-        panel: Arc<dyn PanelView>,
-        position: Point<Pixels>,
-        _dock_area: WeakEntity<DockArea>,
-        cx: &mut App,
-    ) {
-        let window_size = size(px(800.), px(600.));
-
-        // Approximate height of title bar in the new window
-        let title_bar_height = px(36.0);
-
-        // Position window so the cursor is over the tab area (just below title bar)
-        let window_bounds = Bounds::new(
-            Point {
-                x: position.x - px(100.0),
-                y: position.y - title_bar_height - px(4.0),
-            },
-            window_size,
-        );
-
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
-            window_min_size: Some(gpui::Size {
-                width: px(400.),
-                height: px(300.),
-            }),
-            kind: WindowKind::Normal,
-            window_decorations: Some(gpui::WindowDecorations::Client),
-            ..Default::default()
-        };
-
-        let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                WindowRequest::DetachedPanel,
-                window_options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    use crate::Root;
-
-                    let new_dock_area =
-                        cx.new(|cx| DockArea::new("detached-dock", Some(1), window, cx));
-                    let weak_new_dock = new_dock_area.downgrade();
-
-                    let new_tab_panel = cx.new(|cx| {
-                        let channel = weak_new_dock
-                            .upgrade()
-                            .map(|d| d.read(cx).channel)
-                            .unwrap_or_default();
-                        let mut tab_panel =
-                            Self::new(None, weak_new_dock.clone(), channel, window, cx);
-                        tab_panel.closable = true;
-                        tab_panel
-                    });
-
-                    new_tab_panel.update(cx, |view: &mut TabPanel, cx: &mut Context<TabPanel>| {
-                        view.add_panel(panel.clone(), window, cx);
-                    });
-
-                    new_dock_area.update(cx, |dock: &mut DockArea, cx: &mut Context<DockArea>| {
-                        let dock_item = DockItem::Tabs {
-                            view: new_tab_panel.clone(),
-                            active_ix: 0,
-                            items: vec![panel.clone()],
-                        };
-                        dock.set_center(dock_item, window, cx);
-                    });
-
-                    cx.new(|cx| Root::new(new_dock_area.into(), window, cx))
-                },
-                cx,
-            )
-        });
-    }
-
-    /// Calculate the split direction based on the current mouse position
-    pub(crate) fn on_panel_drag_move(
+    /// `extraction_in_flight` is set synchronously before the defer so other
+    /// TabPanel entities that receive the same on_drag_move don't fire again.
+    pub(crate) fn begin_live_extraction(
         &mut self,
-        drag: &DragMoveEvent<DragPanel>,
+        drag: &DragPanel,
+        mouse_local: Point<Pixels>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Only process if we're in a valid same-channel drag
+        self.extraction_in_flight = true;
+
+        // Convert now while we still have `window`.
+        let screen_pos = Self::mouse_to_screen(mouse_local, window);
+
+        let panel       = drag.panel.clone();
+        let channel     = self.channel;
+        let source_self = cx.entity().clone();
+        let source_tab  = drag.tab_panel.clone();
+        let is_same_tab = drag.tab_panel == cx.entity();
+        let n_panels    = self.panels.len();
+        let in_tiles    = self.in_tiles;
+
+        window.defer(cx, move |window, cx| {
+            if is_same_tab {
+                let _ = source_self.update(cx, |v, cx| v.detach_panel(panel.clone(), window, cx));
+            } else {
+                let _ = source_tab.update(cx, |v, cx| {
+                    v.detach_panel(panel.clone(), window, cx);
+                    v.remove_self_if_empty(window, cx);
+                });
+            }
+
+            let should_close_source = n_panels == 1 && !in_tiles;
+            let new_handle =
+                TabPanel::create_window_with_panel_returning_handle(panel, screen_pos, channel, cx);
+
+            if let Some(handle) = new_handle {
+                let _ = source_self.update(cx, |v, _| v.extracted_window = Some(handle));
+            }
+
+            if should_close_source {
+                window.remove_window();
+            } else {
+                let _ = source_self.update(cx, |_, cx| cx.emit(PanelEvent::LayoutChanged));
+            }
+        });
+    }
+
+    /// Reposition the extracted floating window so its tab bar stays under the cursor.
+    /// Called every drag-move frame while `extraction_in_flight` is true.
+    pub(crate) fn move_extracted_window(
+        &self,
+        mouse_local: Point<Pixels>,
+        window: &Window,
+        cx: &mut App,
+    ) {
+        if let Some(handle) = self.extracted_window {
+            let screen = Self::mouse_to_screen(mouse_local, window);
+            let tab_bar_h = px(36.0);
+            let target = Point {
+                x: screen.x - px(120.0),
+                y: screen.y - tab_bar_h / 2.0,
+            };
+            let _ = cx.update_window(handle, |_, win, _| {
+                win.set_window_position(target);
+            });
+        }
+    }
+
+    /// Re-entry: close the extracted window and return the panel to this TabPanel.
+    pub(crate) fn cancel_live_extraction(
+        &mut self,
+        panel: Arc<dyn PanelView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.extraction_in_flight = false;
+        self.dragging_outside_window = false;
+
+        if let Some(handle) = self.extracted_window.take() {
+            let self_entity = cx.entity().clone();
+            window.defer(cx, move |window, cx| {
+                let _ = cx.update_window(handle, |_, win, _| win.remove_window());
+                let _ = self_entity.update(cx, |v, cx| {
+                    v.add_panel(panel, window, cx);
+                    cx.emit(PanelEvent::LayoutChanged);
+                });
+            });
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Split-direction logic
+    // ─────────────────────────────────────────────────────────────────────
+
+    pub(crate) fn on_panel_drag_move(
+        &mut self,
+        event: &DragMoveEvent<DragPanel>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if !self.in_valid_drag {
             return;
         }
 
-        let bounds = drag.bounds;
-        let position = drag.event.position;
+        let mouse_local = window.mouse_position();
+        let position    = event.event.position; // element-relative, for split calc only
+        let bounds      = event.bounds;
 
-        // Check if dragging outside window bounds for window extraction
-        if self.check_drag_outside_window(position, window, cx) {
+        self.last_drag_screen_pos = Some(mouse_local);
+        tab_drag::set_drag_screen_position(mouse_local, cx);
+
+        if self.check_drag_outside_window(mouse_local, window, cx) {
             self.will_split_placement = None;
             return;
         }
 
-        // Check the mouse position to determine the split direction
         if position.x < bounds.left() + bounds.size.width * 0.35 {
             self.will_split_placement = Some(Placement::Left);
         } else if position.x > bounds.left() + bounds.size.width * 0.65 {
@@ -138,15 +199,84 @@ impl TabPanel {
         } else if position.y > bounds.top() + bounds.size.height * 0.65 {
             self.will_split_placement = Some(Placement::Bottom);
         } else {
-            // center to merge into the current tab
             self.will_split_placement = None;
         }
-        cx.notify()
+        cx.notify();
     }
 
-    /// Handle the drop event when dragging a panel
-    ///
-    /// - `active` - When true, the panel will be active after the drop
+    // ─────────────────────────────────────────────────────────────────────
+    // Window creation
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Create a floating window; return its handle.
+    /// `screen_pos` must be in logical screen coordinates.
+    pub(crate) fn create_window_with_panel_returning_handle(
+        panel: Arc<dyn PanelView>,
+        screen_pos: Point<Pixels>,
+        source_channel: DockChannel,
+        cx: &mut App,
+    ) -> Option<AnyWindowHandle> {
+        use crate::Root;
+
+        let tab_bar_h = px(36.0);
+        let opts = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                Point {
+                    x: screen_pos.x - px(120.0),
+                    y: screen_pos.y - tab_bar_h / 2.0,
+                },
+                size(px(800.), px(600.)),
+            ))),
+            titlebar: None,
+            window_min_size: Some(gpui::Size { width: px(400.), height: px(300.) }),
+            kind: WindowKind::Normal,
+            window_decorations: Some(gpui::WindowDecorations::Client),
+            ..Default::default()
+        };
+
+        window_manager::WindowManager::update_global(cx, |wm, cx| {
+            wm.create_window(
+                WindowRequest::DetachedPanel,
+                opts,
+                move |window: &mut gpui::Window, cx: &mut gpui::App| {
+                    let dock = cx.new(|cx| {
+                        DockArea::new_with_channel("detached-dock", Some(1), source_channel, window, cx)
+                    });
+                    let weak = dock.downgrade();
+                    let tp = cx.new(|cx| {
+                        let mut t = Self::new(None, weak.clone(), source_channel, window, cx);
+                        t.closable = true;
+                        t
+                    });
+                    tp.update(cx, |t, cx| t.add_panel(panel.clone(), window, cx));
+                    dock.update(cx, |d, cx| {
+                        d.set_center(
+                            DockItem::Tabs { view: tp.clone(), active_ix: 0, items: vec![panel.clone()] },
+                            window, cx,
+                        );
+                    });
+                    cx.new(|cx| Root::new(dock.into(), window, cx))
+                },
+                cx,
+            )
+        })
+        .ok()
+        .map(|(_, h)| h)
+    }
+
+    pub(crate) fn create_window_with_panel(
+        panel: Arc<dyn PanelView>,
+        screen_pos: Point<Pixels>,
+        source_channel: DockChannel,
+        cx: &mut App,
+    ) {
+        Self::create_window_with_panel_returning_handle(panel, screen_pos, source_channel, cx);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Drop handler
+    // ─────────────────────────────────────────────────────────────────────
+
     pub(crate) fn on_drop(
         &mut self,
         drag: &DragPanel,
@@ -155,112 +285,81 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        tracing::debug!(
-            "DROP: Panel being dropped on channel {:?}, drag from channel {:?}",
-            self.channel,
-            drag.channel
-        );
+        tracing::debug!("DROP: self_ch={:?} drag_ch={:?}", self.channel, drag.channel);
 
-        // Reset drag state
         self.in_valid_drag = false;
 
-        // Verify that the drag is from the same channel
         if drag.channel != self.channel {
-            tracing::debug!(
-                "DROP: Rejected - drag from different channel (cross-channel drops not allowed)"
-            );
             return;
         }
 
-        // Clone all needed data BEFORE any entity access to avoid borrow conflicts
-        let panel = drag.panel.clone();
-        let is_same_tab = drag.tab_panel == cx.entity();
-        let will_split = self.will_split_placement;
-        let dragging_outside = self.dragging_outside_window;
-        let drag_start_position = drag.drag_start_position;
-        let source_panel = drag.tab_panel.clone();
+        let panel        = drag.panel.clone();
+        let is_same_tab  = drag.tab_panel == cx.entity();
+        let will_split   = self.will_split_placement;
+        let was_outside  = self.dragging_outside_window;
+        let extracted    = self.extraction_in_flight;
+        let source_tab   = drag.tab_panel.clone();
         let source_index = drag.source_index;
-        let dock_area = self.dock_area.clone();
-        let target_entity = cx.entity().clone();
+        let channel      = self.channel;
+        let target       = cx.entity().clone();
         let panels_count = self.panels.len();
-        let in_tiles = self.in_tiles;
-        tracing::debug!(
-            "DROP: is_same_tab={}, ix={:?}, will_split={:?}",
-            is_same_tab,
-            ix,
-            will_split
-        );
+        let in_tiles     = self.in_tiles;
+
+        // Convert last-known local mouse pos to screen for window placement.
+        let screen_pos = self.last_drag_screen_pos
+            .map(|local| Self::mouse_to_screen(local, window))
+            .or(drag.drag_start_position)
+            .unwrap_or_default();
+
+        self.last_drag_screen_pos    = None;
+        self.dragging_outside_window = false;
+        self.will_split_placement    = None;
+        self.extraction_in_flight    = false;
+        self.extracted_window        = None;
 
         window.defer(cx, move |window, cx| {
-            // Check if we should create a new window (dragged outside bounds)
-            if dragging_outside {
-                if let Some(start_pos) = drag_start_position {
-                    let panel_to_extract = panel.clone();
-
-                    // Detach the panel from the source
-                    if is_same_tab {
-                        _ = target_entity.update(cx, |view, cx| {
-                            view.detach_panel(panel_to_extract.clone(), window, cx);
-                        });
-                    } else {
-                        _ = source_panel.update(cx, |view, cx| {
-                            view.detach_panel(panel_to_extract.clone(), window, cx);
-                            view.remove_self_if_empty(window, cx);
-                        });
-                    }
-
-                    let should_close_window = panels_count == 1 && !in_tiles;
-
-                    window.defer(cx, move |window, cx| {
-                        if should_close_window {
-                            window.remove_window();
-                        }
-
-                        TabPanel::create_window_with_panel(
-                            panel_to_extract,
-                            start_pos,
-                            dock_area,
-                            cx,
-                        );
-                    });
-
-                    _ = target_entity.update(cx, |view, cx| {
-                        view.dragging_outside_window = false;
-                        cx.emit(PanelEvent::LayoutChanged);
-                    });
-                    return;
-                }
+            // Live extraction already created the window.
+            if extracted {
+                let _ = target.update(cx, |_, cx| cx.emit(PanelEvent::LayoutChanged));
+                return;
             }
 
-            // Handle reordering within the same tab panel
+            // Outside but extraction never fired (very fast flick).
+            if was_outside {
+                if is_same_tab {
+                    let _ = target.update(cx, |v, cx| v.detach_panel(panel.clone(), window, cx));
+                } else {
+                    let _ = source_tab.update(cx, |v, cx| {
+                        v.detach_panel(panel.clone(), window, cx);
+                        v.remove_self_if_empty(window, cx);
+                    });
+                }
+
+                let close_src = panels_count == 1 && !in_tiles;
+                window.defer(cx, move |window, cx| {
+                    if close_src { window.remove_window(); }
+                    let src_win = window.window_handle();
+                    if let Some(t) = tab_drag::find_target_window(screen_pos, src_win, channel, cx) {
+                        tab_drag::deposit_panel_into_window(panel, &t, cx);
+                    } else {
+                        TabPanel::create_window_with_panel(panel, screen_pos, channel, cx);
+                    }
+                });
+                let _ = target.update(cx, |_, cx| cx.emit(PanelEvent::LayoutChanged));
+                return;
+            }
+
+            // Reorder within same TabPanel.
             if is_same_tab && ix.is_some() && will_split.is_none() {
-                let target_ix = ix.unwrap();
-
-                _ = target_entity.update(cx, |view, cx| {
-                    // Only reorder if different positions
-                    if source_index != target_ix {
-                        // Remove panel from old position
-                        let panel = view.panels.remove(source_index);
-
-                        // Calculate new insert position
-                        let insert_ix = if target_ix > source_index {
-                            target_ix - 1
-                        } else {
-                            target_ix
-                        };
-
-                        // Insert at new position
-                        view.panels.insert(insert_ix, panel);
-
-                        // Update active index if needed
-                        if view.active_ix == source_index {
-                            view.active_ix = insert_ix;
-                        } else if source_index < view.active_ix && insert_ix >= view.active_ix {
-                            view.active_ix -= 1;
-                        } else if source_index > view.active_ix && insert_ix <= view.active_ix {
-                            view.active_ix += 1;
-                        }
-
+                let tgt = ix.unwrap();
+                let _ = target.update(cx, |v, cx| {
+                    if source_index != tgt {
+                        let p   = v.panels.remove(source_index);
+                        let ins = if tgt > source_index { tgt - 1 } else { tgt };
+                        v.panels.insert(ins, p);
+                        if v.active_ix == source_index       { v.active_ix = ins; }
+                        else if source_index < v.active_ix && ins >= v.active_ix { v.active_ix -= 1; }
+                        else if source_index > v.active_ix && ins <= v.active_ix { v.active_ix += 1; }
                         cx.emit(PanelEvent::LayoutChanged);
                         cx.notify();
                     }
@@ -268,49 +367,29 @@ impl TabPanel {
                 return;
             }
 
-            // If target is same tab, not splitting, and no specific index, do nothing.
-            if is_same_tab && ix.is_none() && will_split.is_none() {
-                return;
-            }
+            if is_same_tab && ix.is_none() && will_split.is_none() { return; }
 
-            // Detach from source (if different tab panel)
             if !is_same_tab {
-                _ = source_panel.update(cx, |view, cx| {
-                    view.detach_panel(panel.clone(), window, cx);
-                    view.remove_self_if_empty(window, cx);
+                let _ = source_tab.update(cx, |v, cx| {
+                    v.detach_panel(panel.clone(), window, cx);
+                    v.remove_self_if_empty(window, cx);
                 });
             }
 
-            // Insert into target (and detach if same tab, all in one update)
-            tracing::debug!("DROP: Inserting panel into target, will_split={:?}, is_same_tab={}", will_split, is_same_tab);
-            _ = target_entity.update(cx, |view, cx| {
+            let _ = target.update(cx, |v, cx| {
                 if let Some(placement) = will_split {
-                    tracing::debug!("DROP: Splitting with placement {:?}", placement);
                     if is_same_tab {
-                        tracing::debug!("DROP: Splitting from same tab - split_panel will handle panel management");
-                        view.split_panel(panel.clone(), placement, None, window, cx);
-                        view.detach_panel(panel.clone(), window, cx);
+                        v.split_panel(panel.clone(), placement, None, window, cx);
+                        v.detach_panel(panel.clone(), window, cx);
                     } else {
-                        tracing::debug!("DROP: Splitting from different tab");
-                        view.split_panel(panel.clone(), placement, None, window, cx);
+                        v.split_panel(panel.clone(), placement, None, window, cx);
                     }
                 } else {
-                    if is_same_tab {
-                        tracing::debug!("DROP: Not splitting, detaching from same tab first");
-                        view.detach_panel(panel.clone(), window, cx);
-                    }
-
-                    if let Some(ix) = ix {
-                        tracing::debug!("DROP: Inserting at index {}", ix);
-                        view.insert_panel_at(panel.clone(), ix, window, cx)
-                    } else {
-                        tracing::debug!("DROP: Adding panel with active={}", active);
-                        view.add_panel_with_active(panel.clone(), active, window, cx)
-                    }
+                    if is_same_tab { v.detach_panel(panel.clone(), window, cx); }
+                    if let Some(i) = ix { v.insert_panel_at(panel.clone(), i, window, cx); }
+                    else                { v.add_panel_with_active(panel.clone(), active, window, cx); }
                 }
-
-                tracing::debug!("DROP: Drop complete, checking if empty");
-                view.remove_self_if_empty(window, cx);
+                v.remove_self_if_empty(window, cx);
                 cx.emit(PanelEvent::LayoutChanged);
             });
         });
