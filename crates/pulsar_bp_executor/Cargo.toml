@@ -6,7 +6,7 @@ description = "Native dylib-backed Blueprint executor — zero-enum, direct fn-p
 
 [dependencies]
 libloading = "0.8"
-pbgc       = { path = "../../../../GitHub/PBGC" }
+pbgc       = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c" }
 
 [dev-dependencies]
 graphy           = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }

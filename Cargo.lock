@@ -8355,18 +8355,6 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-dependencies = [
- "graphy",
- "pulsar_std",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "pbgc"
-version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5ad02cdf9baed974665f8774ad670bf6fbbf84b8#5ad02cdf9baed974665f8774ad670bf6fbbf84b8"
 dependencies = [
  "graphy",
@@ -8381,6 +8369,19 @@ dependencies = [
 name = "pbgc"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=925107465da13f323b41513d00431703b4219296#925107465da13f323b41513d00431703b4219296"
+dependencies = [
+ "graphy",
+ "pulsar_std",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "pbgc"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c#ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c"
 dependencies = [
  "graphy",
  "pulsar_std",
@@ -9300,7 +9301,7 @@ version = "0.1.0"
 dependencies = [
  "graphy",
  "libloading",
- "pbgc 0.1.0",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c)",
  "pulsar_std_bundle",
  "serde_json",
 ]
@@ -9488,7 +9489,7 @@ name = "pulsar_std_bundle"
 version = "0.1.0"
 dependencies = [
  "graphy",
- "pbgc 0.1.0",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c)",
  "pulsar_bp_executor",
  "pulsar_std",
  "serde_json",
