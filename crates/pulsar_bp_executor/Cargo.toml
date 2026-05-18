@@ -9,7 +9,7 @@ description = "Native dylib-backed Blueprint executor — zero-enum, zero-conver
 libloading = "0.8"
 
 [dev-dependencies]
-pbgc         = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "b085ec7" }
+pbgc         = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "3605b51" }
 graphy       = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
 pulsar_wasm_bundle = { path = "../pulsar_wasm_bundle" }
 serde_json   = "1.0"

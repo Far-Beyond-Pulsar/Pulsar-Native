@@ -1,0 +1,420 @@
+/// Tests for every dispatchable pulsar_std node that goes beyond basic add/multiply.
+/// Each test builds a real Blueprint graph, compiles it to bytecode, runs it through
+/// the native dylib dispatch, and asserts the correct answer via assert_eq_* nodes.
+/// The executor resolves every fn pointer by name from the embedded dylib — no
+/// manual dispatch table, no type annotations in the test itself.
+use graphy::{
+    Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
+    PinType, Position, PropertyValue,
+};
+use pbgc::compile_graph_to_bytecode;
+use pulsar_bp_executor::BpExecutor;
+use pulsar_wasm_bundle::extract_to_tempfile;
+
+// ── Shared executor ───────────────────────────────────────────────────────────
+
+fn exec() -> (BpExecutor, pulsar_wasm_bundle::TempLib) {
+    let tmp = extract_to_tempfile().unwrap();
+    let e   = BpExecutor::load(&tmp.path).unwrap();
+    (e, tmp)
+}
+
+fn run(e: &BpExecutor, g: &GraphDescription) {
+    let progs = compile_graph_to_bytecode(g).expect("compile");
+    for p in &progs {
+        let d = e.resolve_dispatch(&p.node_types)
+            .unwrap_or_else(|err| panic!("resolve: {}", err));
+        pbgc::vm::run(p, &d).unwrap_or_else(|err| panic!("run: {}", err));
+    }
+}
+
+// ── Node builders ─────────────────────────────────────────────────────────────
+
+fn begin() -> NodeInstance {
+    let mut n = NodeInstance::new("begin", "begin_play", Position::default());
+    n.outputs.push(PinInstance::new("be", Pin::new("be", "Body", DataType::Execution, PinType::Output)));
+    n
+}
+
+fn pure_f64(id: &str, node_type: &str, param_names: &[&str], consts: &[f64]) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    for (i, &name) in param_names.iter().enumerate() {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(&pid, Pin::new(&pid, name.to_string(), DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+        if let Some(&v) = consts.get(i) {
+            n.properties.insert(pid, PropertyValue::Number(v));
+        }
+    }
+    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Output)));
+    n
+}
+
+
+fn pure_i64(id: &str, node_type: &str, param_names: &[&str], consts: &[f64]) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    for (i, &name) in param_names.iter().enumerate() {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(&pid, Pin::new(&pid, name.to_string(), DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
+        if let Some(&v) = consts.get(i) {
+            n.properties.insert(pid, PropertyValue::Number(v));
+        }
+    }
+    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Output)));
+    n
+}
+
+fn pure_bool_out(id: &str, node_type: &str, param_names: &[(&str,&str)], consts: &[f64]) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    for (i, &(name, ty)) in param_names.iter().enumerate() {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(&pid, Pin::new(&pid, name.to_string(), DataType::Typed(graphy::TypeInfo::new(ty)), PinType::Input)));
+        if let Some(&v) = consts.get(i) {
+            n.properties.insert(pid, PropertyValue::Number(v));
+        }
+    }
+    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Output)));
+    n
+}
+
+fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "assert_eq_int", Position::default());
+    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "actual", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_x"), Pin::new(&format!("{id}_x"), "expected", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
+    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n.properties.insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+    n
+}
+
+fn assert_eq_float(id: &str, expected: f64, eps: f64) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "assert_eq_float", Position::default());
+    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "actual", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_x"), Pin::new(&format!("{id}_x"), "expected", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_ep"), Pin::new(&format!("{id}_ep"), "epsilon", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n.properties.insert(format!("{id}_x"), PropertyValue::Number(expected));
+    n.properties.insert(format!("{id}_ep"), PropertyValue::Number(eps));
+    n
+}
+
+fn assert_true(id: &str) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "assert_true", Position::default());
+    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_c"), Pin::new(&format!("{id}_c"), "condition", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Input)));
+    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n
+}
+
+fn assert_false(id: &str) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "assert_false", Position::default());
+    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_c"), Pin::new(&format!("{id}_c"), "condition", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Input)));
+    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n
+}
+
+fn e(f: &str, fp: &str, t: &str, tp: &str) -> Connection {
+    Connection::new(f, fp, t, tp, ConnectionType::Execution)
+}
+fn d(f: &str, fp: &str, t: &str, tp: &str) -> Connection {
+    Connection::new(f, fp, t, tp, ConnectionType::Data)
+}
+
+// wire: pure_node_result → assert exec chain
+fn simple_f64_check(node_type: &str, params: &[&str], consts: &[f64], expected: f64, eps: f64) -> GraphDescription {
+    let mut g = GraphDescription::new(node_type);
+    g.add_node(begin());
+    g.add_node(pure_f64("n", node_type, params, consts));
+    g.add_node(assert_eq_float("chk", expected, eps));
+    g.add_connection(e("begin", "be", "chk", "chk_e"));
+    g.add_connection(d("n", "n_r", "chk", "chk_a"));
+    g
+}
+
+fn simple_i64_check(node_type: &str, params: &[&str], consts: &[f64], expected: i64) -> GraphDescription {
+    let mut g = GraphDescription::new(node_type);
+    g.add_node(begin());
+    g.add_node(pure_i64("n", node_type, params, consts));
+    g.add_node(assert_eq_int("chk", expected));
+    g.add_connection(e("begin", "be", "chk", "chk_e"));
+    g.add_connection(d("n", "n_r", "chk", "chk_a"));
+    g
+}
+
+// ── Trig — real pulsar_std sin/cos/tan ────────────────────────────────────────
+
+#[test] fn test_sin_0_is_0()           { let (e,_) = exec(); run(&e, &simple_f64_check("sin",  &["angle"], &[0.0], 0.0, 1e-9)); }
+#[test] fn test_sin_pi_over_2_is_1()   { let (e,_) = exec(); run(&e, &simple_f64_check("sin",  &["angle"], &[std::f64::consts::FRAC_PI_2], 1.0, 1e-9)); }
+#[test] fn test_cos_0_is_1()           { let (e,_) = exec(); run(&e, &simple_f64_check("cos",  &["angle"], &[0.0], 1.0, 1e-9)); }
+#[test] fn test_cos_pi_is_minus_1()    { let (e,_) = exec(); run(&e, &simple_f64_check("cos",  &["angle"], &[std::f64::consts::PI], -1.0, 1e-9)); }
+#[test] fn test_tan_0_is_0()           { let (e,_) = exec(); run(&e, &simple_f64_check("tan",  &["angle"], &[0.0], 0.0, 1e-9)); }
+
+
+// ── Angle conversion ──────────────────────────────────────────────────────────
+
+#[test] fn test_degrees_to_radians_180_is_pi() {
+    let (e,_) = exec();
+    run(&e, &simple_f64_check("degrees_to_radians", &["degrees"], &[180.0], std::f64::consts::PI, 1e-9));
+}
+#[test] fn test_radians_to_degrees_pi_is_180() {
+    let (e,_) = exec();
+    run(&e, &simple_f64_check("radians_to_degrees", &["radians"], &[std::f64::consts::PI], 180.0, 1e-9));
+}
+#[test] fn test_roundtrip_degrees_radians() {
+    // degrees_to_radians(radians_to_degrees(pi)) == pi
+    let (exec, _) = exec();
+    let mut g = GraphDescription::new("roundtrip");
+    g.add_node(begin());
+    g.add_node(pure_f64("r2d", "radians_to_degrees", &["radians"], &[std::f64::consts::PI]));
+    g.add_node(pure_f64("d2r", "degrees_to_radians", &["degrees"], &[]));
+    g.add_node(assert_eq_float("chk", std::f64::consts::PI, 1e-9));
+    g.add_connection(d("r2d","r2d_r","d2r","d2r_degrees"));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("d2r","d2r_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+// ── Rounding ──────────────────────────────────────────────────────────────────
+
+#[test] fn test_ceil_3_2_is_4()   { let (e,_) = exec(); run(&e, &simple_f64_check("ceil",  &["value"], &[3.2],  4.0, 1e-9)); }
+#[test] fn test_ceil_neg_2_7()    { let (e,_) = exec(); run(&e, &simple_f64_check("ceil",  &["value"], &[-2.7],-2.0, 1e-9)); }
+#[test] fn test_floor_3_9_is_3()  { let (e,_) = exec(); run(&e, &simple_f64_check("floor", &["value"], &[3.9],  3.0, 1e-9)); }
+#[test] fn test_floor_neg_2_1()   { let (e,_) = exec(); run(&e, &simple_f64_check("floor", &["value"], &[-2.1],-3.0, 1e-9)); }
+#[test] fn test_round_3_5_is_4()  { let (e,_) = exec(); run(&e, &simple_f64_check("round", &["value"], &[3.5],  4.0, 1e-9)); }
+#[test] fn test_round_neg_0_5()   { let (e,_) = exec(); run(&e, &simple_f64_check("round", &["value"], &[-0.5], -1.0,1e-9)); }
+
+// ── abs / sign ────────────────────────────────────────────────────────────────
+
+#[test] fn test_abs_negative()    { let (e,_) = exec(); run(&e, &simple_f64_check("abs",  &["value"], &[-7.5],  7.5,  1e-9)); }
+#[test] fn test_abs_positive()    { let (e,_) = exec(); run(&e, &simple_f64_check("abs",  &["value"], &[3.14],  3.14, 1e-9)); }
+#[test] fn test_sign_positive()   { let (e,_) = exec(); run(&e, &simple_f64_check("sign", &["value"], &[99.9],  1.0,  1e-9)); }
+#[test] fn test_sign_negative()   { let (e,_) = exec(); run(&e, &simple_f64_check("sign", &["value"], &[-0.01],-1.0,  1e-9)); }
+
+// ── sqrt / power ──────────────────────────────────────────────────────────────
+
+#[test] fn test_sqrt_9_is_3()     { let (e,_) = exec(); run(&e, &simple_f64_check("sqrt",  &["value"],    &[9.0],  3.0,  1e-9)); }
+#[test] fn test_sqrt_2()          { let (e,_) = exec(); run(&e, &simple_f64_check("sqrt",  &["value"],    &[2.0],  2f64.sqrt(), 1e-12)); }
+#[test] fn test_power_2_cubed()   { let (e,_) = exec(); run(&e, &simple_f64_check("power", &["base","exponent"], &[2.0,3.0], 8.0, 1e-9)); }
+#[test] fn test_power_identity()  { let (e,_) = exec(); run(&e, &simple_f64_check("power", &["base","exponent"], &[42.0,1.0],42.0,1e-9)); }
+#[test] fn test_power_zero_exp()  { let (e,_) = exec(); run(&e, &simple_f64_check("power", &["base","exponent"], &[99.0,0.0], 1.0, 1e-9)); }
+#[test] fn test_sqrt_of_power_2() {
+    // sqrt(x²) == x for x > 0
+    let (exec, _) = exec();
+    let x = 7.0f64;
+    let mut g = GraphDescription::new("sqrt_pow");
+    g.add_node(begin());
+    g.add_node(pure_f64("p","power",&["base","exponent"],&[x,2.0]));
+    g.add_node(pure_f64("s","sqrt", &["value"],          &[]));
+    g.add_node(assert_eq_float("chk", x, 1e-9));
+    g.add_connection(d("p","p_r","s","s_value"));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("s","s_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+// ── min / max ─────────────────────────────────────────────────────────────────
+
+#[test] fn test_min_3_5_is_3()  { let (e,_) = exec(); run(&e, &simple_f64_check("min",&["a","b"],&[3.0,5.0], 3.0,1e-9)); }
+#[test] fn test_max_3_5_is_5()  { let (e,_) = exec(); run(&e, &simple_f64_check("max",&["a","b"],&[3.0,5.0], 5.0,1e-9)); }
+#[test] fn test_min_equal_vals() { let (e,_) = exec(); run(&e, &simple_f64_check("min",&["a","b"],&[7.0,7.0], 7.0,1e-9)); }
+
+// ── clamp ─────────────────────────────────────────────────────────────────────
+
+#[test] fn test_clamp_in_range()  { let (e,_) = exec(); run(&e, &simple_f64_check("clamp",&["value","min","max"],&[5.0,0.0,10.0],5.0,1e-9)); }
+#[test] fn test_clamp_below()     { let (e,_) = exec(); run(&e, &simple_f64_check("clamp",&["value","min","max"],&[-3.0,0.0,10.0],0.0,1e-9)); }
+#[test] fn test_clamp_above()     { let (e,_) = exec(); run(&e, &simple_f64_check("clamp",&["value","min","max"],&[15.0,0.0,10.0],10.0,1e-9)); }
+
+// ── f32 nodes — smoothstep, clamp_to_range, map_range ─────────────────────────
+// These use f32 params; dispatch shim reads as f32::from_bits(slot as u32)
+
+
+#[test]
+fn test_smoothstep_midpoint() {
+    // smoothstep(0.0, 1.0, 0.5) = 0.5  (by definition)
+    let (exec, _) = exec();
+    let mut g = GraphDescription::new("smoothstep");
+    g.add_node(begin());
+
+    let mut n = NodeInstance::new("n", "smoothstep", Position::default());
+    for name in &["edge0","edge1","x"] {
+        let pid = format!("n_{name}");
+        n.inputs.push(PinInstance::new(&pid, Pin::new(&pid, name.to_string(), DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input)));
+    }
+    n.outputs.push(PinInstance::new("n_r", Pin::new("n_r","result",DataType::Typed(graphy::TypeInfo::new("f32")),PinType::Output)));
+    n.properties.insert("n_edge0".to_string(), PropertyValue::Number(0.0));
+    n.properties.insert("n_edge1".to_string(), PropertyValue::Number(1.0));
+    n.properties.insert("n_x".to_string(),     PropertyValue::Number(0.5));
+    g.add_node(n);
+
+    // The f32 result is stored as f32::to_bits() as u64.
+    // Verify it by checking the raw i64 bits equal 0.5f32.to_bits() as i64.
+    let expected_bits = 0.5f32.to_bits() as i64;
+    g.add_node(assert_eq_int("chk", expected_bits));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("n","n_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+#[test]
+fn test_clamp_to_range_below_min() {
+    // clamp_to_range(-5.0, 0.0, 10.0) = 0.0
+    let (exec, _) = exec();
+    let mut g = GraphDescription::new("clamp_to_range");
+    g.add_node(begin());
+    let mut n = NodeInstance::new("n","clamp_to_range",Position::default());
+    for name in &["value","min","max"] {
+        let pid = format!("n_{name}");
+        n.inputs.push(PinInstance::new(&pid,Pin::new(&pid,(*name).to_string(),DataType::Typed(graphy::TypeInfo::new("f32")),PinType::Input)));
+    }
+    n.outputs.push(PinInstance::new("n_r",Pin::new("n_r","result",DataType::Typed(graphy::TypeInfo::new("f32")),PinType::Output)));
+    n.properties.insert("n_value".to_string(),PropertyValue::Number(-5.0));
+    n.properties.insert("n_min".to_string(),  PropertyValue::Number(0.0));
+    n.properties.insert("n_max".to_string(),  PropertyValue::Number(10.0));
+    g.add_node(n);
+    let expected_bits = 0.0f32.to_bits() as i64;
+    g.add_node(assert_eq_int("chk", expected_bits));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("n","n_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+// ── Bitwise operations ────────────────────────────────────────────────────────
+
+#[test] fn test_bitwise_and()     { let (e,_) = exec(); run(&e, &simple_i64_check("bitwise_and",&["a","b"],&[12.0,10.0], 8)); }
+#[test] fn test_bitwise_or()      { let (e,_) = exec(); run(&e, &simple_i64_check("bitwise_or", &["a","b"],&[12.0,10.0],14)); }
+#[test] fn test_bitwise_xor()     { let (e,_) = exec(); run(&e, &simple_i64_check("bitwise_xor",&["a","b"],&[12.0,10.0],6)); }
+#[test] fn test_bitwise_not_zero(){ let (e,_) = exec(); run(&e, &simple_i64_check("bitwise_not",&["value"],  &[0.0],           -1));   }
+#[test] fn test_bit_shift_left()  { let (e,_) = exec(); run(&e, &simple_i64_check("bit_shift_left",&["value","bits"],&[1.0,3.0],  8));   }
+#[test] fn test_bit_shift_right() { let (e,_) = exec(); run(&e, &simple_i64_check("bit_shift_right",&["value","bits"],&[8.0,2.0], 2));   }
+#[test] fn test_count_bits()      { let (e,_) = exec(); run(&e, &simple_i64_check("count_bits",&["value"],  &[183.0],  6));   }
+#[test] fn test_get_bit_set()     { let (e,_) = exec(); run(&e, &simple_i64_check("get_bit",   &["value","bit_index"],&[10.0,1.0],1));  }
+#[test] fn test_get_bit_clear()   { let (e,_) = exec(); run(&e, &simple_i64_check("get_bit",   &["value","bit_index"],&[10.0,0.0],0));  }
+#[test] fn test_set_bit()         { let (e,_) = exec(); run(&e, &simple_i64_check("set_bit",   &["value","bit_index"],&[8.0,0.0],9)); }
+#[test] fn test_clear_bit()       { let (e,_) = exec(); run(&e, &simple_i64_check("clear_bit", &["value","bit_index"],&[15.0,0.0],14)); }
+#[test] fn test_toggle_bit_on()   { let (e,_) = exec(); run(&e, &simple_i64_check("toggle_bit",&["value","bit_index"],&[10.0,0.0],11)); }
+#[test] fn test_toggle_bit_off()  { let (e,_) = exec(); run(&e, &simple_i64_check("toggle_bit",&["value","bit_index"],&[11.0,0.0],10)); }
+
+// ── Logic / boolean ───────────────────────────────────────────────────────────
+
+fn bool_check(node_type: &str, params: &[(&str,&str)], consts: &[f64], expect_true: bool) -> GraphDescription {
+    let mut g = GraphDescription::new(node_type);
+    g.add_node(begin());
+    g.add_node(pure_bool_out("n", node_type, params, consts));
+    let assert_node = if expect_true { assert_true("chk") } else { assert_false("chk") };
+    g.add_node(assert_node);
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("n","n_r","chk","chk_c"));
+    g
+}
+
+#[test] fn test_and_tt()         { let (e,_)=exec(); run(&e, &bool_check("and",         &[("a","bool"),("b","bool")],&[1.0,1.0],true)); }
+#[test] fn test_and_tf()         { let (e,_)=exec(); run(&e, &bool_check("and",         &[("a","bool"),("b","bool")],&[1.0,0.0],false)); }
+#[test] fn test_or_ff()          { let (e,_)=exec(); run(&e, &bool_check("or",          &[("a","bool"),("b","bool")],&[0.0,0.0],false)); }
+#[test] fn test_or_tf()          { let (e,_)=exec(); run(&e, &bool_check("or",          &[("a","bool"),("b","bool")],&[1.0,0.0],true)); }
+#[test] fn test_not_false()      { let (e,_)=exec(); run(&e, &bool_check("not",         &[("value","bool")],         &[0.0],    true)); }
+#[test] fn test_not_true()       { let (e,_)=exec(); run(&e, &bool_check("not",         &[("value","bool")],         &[1.0],    false)); }
+#[test] fn test_xor_tt()         { let (e,_)=exec(); run(&e, &bool_check("xor",         &[("a","bool"),("b","bool")],&[1.0,1.0],false)); }
+#[test] fn test_xor_tf()         { let (e,_)=exec(); run(&e, &bool_check("xor",         &[("a","bool"),("b","bool")],&[1.0,0.0],true)); }
+#[test] fn test_equals_same()    { let (e,_)=exec(); run(&e, &bool_check("equals",      &[("a","i64"),("b","i64")],  &[7.0,7.0],true)); }
+#[test] fn test_equals_diff()    { let (e,_)=exec(); run(&e, &bool_check("equals",      &[("a","i64"),("b","i64")],  &[7.0,8.0],false)); }
+#[test] fn test_not_equals()     { let (e,_)=exec(); run(&e, &bool_check("not_equals",  &[("a","i64"),("b","i64")],  &[3.0,4.0],true)); }
+#[test] fn test_greater_equal_eq(){let (e,_)=exec(); run(&e, &bool_check("greater_equal",&[("a","i64"),("b","i64")], &[5.0,5.0],true)); }
+#[test] fn test_greater_equal_gt(){let (e,_)=exec(); run(&e, &bool_check("greater_equal",&[("a","i64"),("b","i64")], &[6.0,5.0],true)); }
+#[test] fn test_less_equal_eq()  { let (e,_)=exec(); run(&e, &bool_check("less_equal",  &[("a","i64"),("b","i64")], &[5.0,5.0],true)); }
+#[test] fn test_is_between()     { let (e,_)=exec(); run(&e, &bool_check("is_between",  &[("value","f64"),("a","f64"),("b","f64")],&[5.0,0.0,10.0],true)); }
+#[test] fn test_is_between_out() { let (e,_)=exec(); run(&e, &bool_check("is_between",  &[("value","f64"),("a","f64"),("b","f64")],&[15.0,0.0,10.0],false)); }
+#[test] fn test_nearly_equal()   { let (e,_)=exec(); run(&e, &bool_check("nearly_equal",&[("a","f64"),("b","f64"),("tolerance","f64")],&[1.0,1.0001,0.001],true)); }
+#[test] fn test_nearly_not_equal(){ let (e,_)=exec(); run(&e, &bool_check("nearly_equal",&[("a","f64"),("b","f64"),("tolerance","f64")],&[1.0,2.0,0.001],false)); }
+
+// ── select_bool / select_number ───────────────────────────────────────────────
+
+#[test] fn test_select_number_true() {
+    // select_number(true, 10.0, 20.0) == 10.0
+    let (exec, _) = exec();
+    let mut g = GraphDescription::new("select");
+    g.add_node(begin());
+    let mut n = NodeInstance::new("n","select_number",Position::default());
+    n.inputs.push(PinInstance::new("n_cond",Pin::new("n_cond","condition",DataType::Typed(graphy::TypeInfo::new("bool")),PinType::Input)));
+    n.inputs.push(PinInstance::new("n_a",   Pin::new("n_a",   "a",       DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.inputs.push(PinInstance::new("n_b",   Pin::new("n_b",   "b",       DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.outputs.push(PinInstance::new("n_r",  Pin::new("n_r",   "result",  DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Output)));
+    n.properties.insert("n_cond".to_string(), PropertyValue::Number(1.0));
+    n.properties.insert("n_a".to_string(),    PropertyValue::Number(10.0));
+    n.properties.insert("n_b".to_string(),    PropertyValue::Number(20.0));
+    g.add_node(n);
+    g.add_node(assert_eq_float("chk",10.0,1e-9));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("n","n_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+#[test] fn test_select_number_false() {
+    // select_number(false, 10.0, 20.0) == 20.0
+    let (exec, _) = exec();
+    let mut g = GraphDescription::new("select_false");
+    g.add_node(begin());
+    let mut n = NodeInstance::new("n","select_number",Position::default());
+    n.inputs.push(PinInstance::new("n_cond",Pin::new("n_cond","condition",DataType::Typed(graphy::TypeInfo::new("bool")),PinType::Input)));
+    n.inputs.push(PinInstance::new("n_a",   Pin::new("n_a",   "a",       DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.inputs.push(PinInstance::new("n_b",   Pin::new("n_b",   "b",       DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
+    n.outputs.push(PinInstance::new("n_r",  Pin::new("n_r",   "result",  DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Output)));
+    n.properties.insert("n_cond".to_string(), PropertyValue::Number(0.0));
+    n.properties.insert("n_a".to_string(),    PropertyValue::Number(10.0));
+    n.properties.insert("n_b".to_string(),    PropertyValue::Number(20.0));
+    g.add_node(n);
+    g.add_node(assert_eq_float("chk",20.0,1e-9));
+    g.add_connection(e("begin","be","chk","chk_e"));
+    g.add_connection(d("n","n_r","chk","chk_a"));
+    run(&exec, &g);
+}
+
+// ── Statistics ────────────────────────────────────────────────────────────────
+
+#[test] fn test_mean_4_6_is_5()      { let (e,_)=exec(); run(&e,&simple_f64_check("mean",     &["a","b"],      &[4.0,6.0],    5.0,1e-9)); }
+#[test] fn test_mean_symmetric()     { let (e,_)=exec(); run(&e,&simple_f64_check("mean",     &["a","b"],      &[3.0,3.0],    3.0,1e-9)); }
+#[test] fn test_median_1_3_2_is_2()  { let (e,_)=exec(); run(&e,&simple_f64_check("median",   &["a","b","c"],  &[1.0,3.0,2.0],2.0,1e-9)); }
+#[test] fn test_range_3_to_7_is_4()  { let (e,_)=exec(); run(&e,&simple_f64_check("range",    &["a","b"],      &[3.0,7.0],    4.0,1e-9)); }
+#[test] fn test_range_symmetric()    { let (e,_)=exec(); run(&e,&simple_f64_check("range",    &["a","b"],      &[7.0,3.0],    4.0,1e-9)); }
+#[test] fn test_normalize_midpoint() { let (e,_)=exec(); run(&e,&simple_f64_check("normalize",&["value","min","max"],&[5.0,0.0,10.0],0.5,1e-9)); }
+#[test] fn test_normalize_at_min()   { let (e,_)=exec(); run(&e,&simple_f64_check("normalize",&["value","min","max"],&[0.0,0.0,10.0],0.0,1e-9)); }
+#[test] fn test_normalize_at_max()   { let (e,_)=exec(); run(&e,&simple_f64_check("normalize",&["value","min","max"],&[10.0,0.0,10.0],1.0,1e-9)); }
+#[test] fn test_percentage_50_of_200(){ let (e,_)=exec(); run(&e,&simple_f64_check("percentage",&["value","total"],&[100.0,200.0],50.0,1e-9)); }
+#[test] fn test_from_percentage()    { let (e,_)=exec(); run(&e,&simple_f64_check("from_percentage",&["percentage","total"],&[50.0,200.0],100.0,1e-9)); }
+#[test] fn test_ratio_half()         { let (e,_)=exec(); run(&e,&simple_f64_check("ratio",    &["a","b"],      &[1.0,2.0],    0.5,1e-9)); }
+#[test] fn test_proportion_clamped() { let (e,_)=exec(); run(&e,&simple_f64_check("proportion",&["part","whole"],&[3.0,10.0],   0.3,1e-9)); }
+
+// ── Network / port nodes ──────────────────────────────────────────────────────
+
+#[test] fn test_http_port_is_80()  { let (e,_)=exec(); run(&e,&simple_i64_check("http_port",  &[],&[],80));  }
+#[test] fn test_https_port_is_443(){ let (e,_)=exec(); run(&e,&simple_i64_check("https_port", &[],&[],443)); }
+#[test] fn test_ssh_port_is_22()   { let (e,_)=exec(); run(&e,&simple_i64_check("ssh_port",   &[],&[],22));  }
+#[test] fn test_ftp_port_is_21()   { let (e,_)=exec(); run(&e,&simple_i64_check("ftp_port",   &[],&[],21));  }
+#[test] fn test_dns_port_is_53()   { let (e,_)=exec(); run(&e,&simple_i64_check("dns_port",   &[],&[],53));  }
+#[test] fn test_validate_port_80_is_valid() {
+    let (exec,_) = exec();
+    run(&exec, &bool_check("validate_port",&[("port","i64")],&[80.0],true));
+}
+#[test] fn test_validate_port_0_is_invalid() {
+    let (exec,_) = exec();
+    run(&exec, &bool_check("validate_port",&[("port","i64")],&[0.0],false));
+}
+#[test] fn test_is_well_known_port_80() {
+    let (exec,_) = exec();
+    run(&exec, &bool_check("is_well_known_port",&[("port","i64")],&[80.0],true));
+}
+#[test] fn test_is_dynamic_port_40000() {
+    let (exec,_) = exec();
+    run(&exec, &bool_check("is_dynamic_port",&[("port","i64")],&[50000.0],true));
+}
+
+// ── Modulo / division edge cases ──────────────────────────────────────────────
+
+#[test] fn test_modulo_10_mod_3_is_1()   { let (e,_)=exec(); run(&e,&simple_i64_check("modulo",&["a","b"],&[10.0,3.0],1)); }
+#[test] fn test_divide_by_zero_is_zero() { let (e,_)=exec(); run(&e,&simple_i64_check("divide",&["a","b"],&[42.0,0.0],0)); }
+
+// ── lerp / angle_difference ───────────────────────────────────────────────────
+
+#[test] fn test_lerp_quarter()       { let (e,_)=exec(); run(&e,&simple_f64_check("lerp",&["a","b","t"],&[0.0,100.0,0.25],25.0,1e-9)); }
+#[test] fn test_lerp_three_quarters(){ let (e,_)=exec(); run(&e,&simple_f64_check("lerp",&["a","b","t"],&[0.0,100.0,0.75],75.0,1e-9)); }
+#[test] fn test_angle_difference_zero(){ let (e,_)=exec(); run(&e,&simple_f64_check("angle_difference",&["angle1","angle2"],&[1.0,1.0],0.0,1e-9)); }
