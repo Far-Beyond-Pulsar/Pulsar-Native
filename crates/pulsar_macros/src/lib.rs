@@ -297,33 +297,78 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! { &[#(#imports),*] }
     };
 
-    // Generate the registration const
+    // wasm_safe: false → macro emits #[cfg(not(target_arch = "wasm32"))] around the fn
+    let wasm_safe = !args_str.contains("wasm_safe : false") && !args_str.contains("wasm_safe:false");
+
     let registry_ident = syn::Ident::new(
         &format!("__BLUEPRINT_NODE__{}", fn_name_str.to_uppercase()),
         fn_name.span(),
     );
-
     let node_type_ident = syn::Ident::new(node_type_str, fn_name.span());
 
-    let expanded = quote! {
-        #[allow(dead_code)]
-        #input
+    // WASM export wrapper — emitted under cfg(wasm32) for WASM-ABI-compatible signatures
+    let wasm_export = if wasm_safe {
+        generate_wasm_export(&input, fn_name, &fn_name_str)
+    } else {
+        quote! {}
+    };
 
-        #[::linkme::distributed_slice(crate::BLUEPRINT_REGISTRY)]
-        #[linkme(crate = ::linkme)]
-        static #registry_ident: crate::NodeMetadata = crate::NodeMetadata {
-            name: #fn_name_str,
-            node_type: crate::NodeTypes::#node_type_ident,
-            params: &[#(#params),*],
-            return_type: #return_type,
-            exec_inputs: #exec_inputs,
-            exec_outputs: #exec_outputs_array,
-            function_source: #fn_source,
-            documentation: #docs_array,
-            category: #category_str,
-            color: #color_opt,
-            imports: #imports_array,
-        };
+    // For wasm_safe: false nodes, wrap the entire definition in a native-only cfg
+    let fn_definition = if wasm_safe {
+        quote! { #[allow(dead_code)] #input }
+    } else {
+        quote! {
+            #[cfg(not(target_arch = "wasm32"))]
+            #[allow(dead_code)]
+            #input
+        }
+    };
+
+    // linkme registration is native-only (linkme uses linker sections unsupported on wasm32)
+    let registry_registration = if wasm_safe {
+        quote! {
+            #[cfg(feature = "native")]
+            #[::linkme::distributed_slice(crate::registry::native_registry::BLUEPRINT_REGISTRY)]
+            #[linkme(crate = ::linkme)]
+            static #registry_ident: crate::NodeMetadata = crate::NodeMetadata {
+                name: #fn_name_str,
+                node_type: crate::NodeTypes::#node_type_ident,
+                params: &[#(#params),*],
+                return_type: #return_type,
+                exec_inputs: #exec_inputs,
+                exec_outputs: #exec_outputs_array,
+                function_source: #fn_source,
+                documentation: #docs_array,
+                category: #category_str,
+                color: #color_opt,
+                imports: #imports_array,
+            };
+        }
+    } else {
+        quote! {
+            #[cfg(all(not(target_arch = "wasm32"), feature = "native"))]
+            #[::linkme::distributed_slice(crate::registry::native_registry::BLUEPRINT_REGISTRY)]
+            #[linkme(crate = ::linkme)]
+            static #registry_ident: crate::NodeMetadata = crate::NodeMetadata {
+                name: #fn_name_str,
+                node_type: crate::NodeTypes::#node_type_ident,
+                params: &[#(#params),*],
+                return_type: #return_type,
+                exec_inputs: #exec_inputs,
+                exec_outputs: #exec_outputs_array,
+                function_source: #fn_source,
+                documentation: #docs_array,
+                category: #category_str,
+                color: #color_opt,
+                imports: #imports_array,
+            };
+        }
+    };
+
+    let expanded = quote! {
+        #fn_definition
+        #registry_registration
+        #wasm_export
     };
 
     TokenStream::from(expanded)
@@ -600,7 +645,8 @@ pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
         #[allow(dead_code)]
         #input
 
-        #[::linkme::distributed_slice(crate::TYPE_CONSTRUCTOR_REGISTRY)]
+        #[cfg(feature = "native")]
+        #[::linkme::distributed_slice(crate::registry::native_type_registry::TYPE_CONSTRUCTOR_REGISTRY)]
         #[linkme(crate = ::linkme)]
         static #registry_ident: crate::TypeConstructorMetadata = crate::TypeConstructorMetadata {
             name: #constructor_name,
@@ -612,6 +658,150 @@ pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     TokenStream::from(expanded)
+}
+
+// ── WASM export generation ────────────────────────────────────────────────────
+
+/// Map a Rust type string to its WASM ABI equivalent.
+/// Returns `None` for types that cannot be passed through the C ABI to WASM.
+fn rust_type_to_wasm(ty: &str) -> Option<&'static str> {
+    match ty.trim() {
+        "i64" | "u64" => Some("i64"),
+        "i32" | "u32" | "i16" | "u16" | "i8" | "u8" | "usize" | "isize" => Some("i32"),
+        "f64" => Some("f64"),
+        "f32" => Some("f32"),
+        "bool" => Some("i32"), // bool → i32 (0/1)
+        _ => None,
+    }
+}
+
+/// Generate the conversion expression from a WASM i32 back to `bool`.
+fn wasm_to_rust_param(param_name: &str, rust_ty: &str) -> String {
+    match rust_ty.trim() {
+        "bool" => format!("({} != 0)", param_name),
+        "i8" | "i16" | "i32" => format!("({} as {})", param_name, rust_ty),
+        "u8" | "u16" | "u32" | "usize" | "isize" => format!("({} as {})", param_name, rust_ty),
+        _ => param_name.to_string(),
+    }
+}
+
+/// Generate the conversion from the Rust return value to its WASM type.
+fn rust_ret_to_wasm(expr: &str, rust_ty: &str) -> String {
+    match rust_ty.trim() {
+        "bool" => format!("({} as i32)", expr),
+        "i8" | "i16" | "u8" | "u16" | "u32" | "usize" | "isize" => {
+            format!("({} as i64)", expr)
+        }
+        _ => expr.to_string(),
+    }
+}
+
+/// Emit a `#[cfg(target_arch = "wasm32")] #[no_mangle] pub extern "C"` wrapper
+/// for the given blueprint function if all its parameter types and return type are
+/// WASM-ABI compatible. Returns an empty token stream for functions with complex types.
+fn generate_wasm_export(
+    func: &ItemFn,
+    fn_name: &proc_macro2::Ident,
+    fn_name_str: &str,
+) -> proc_macro2::TokenStream {
+    // Collect (param_name, rust_type_str) for all typed params
+    let mut param_info: Vec<(String, String)> = Vec::new();
+    for arg in &func.sig.inputs {
+        if let FnArg::Typed(pat_type) = arg {
+            if let Pat::Ident(ident) = &*pat_type.pat {
+                let name = ident.ident.to_string();
+                let ty_str = quote::quote!(#pat_type.ty).to_string();
+                // Re-extract the type cleanly
+                let ty = &*pat_type.ty;
+                let ty_str = quote::quote!(#ty).to_string();
+                param_info.push((name, ty_str));
+            }
+        }
+    }
+
+    // Determine return type
+    let ret_rust_ty = match &func.sig.output {
+        ReturnType::Default => None,
+        ReturnType::Type(_, ty) => Some(quote::quote!(#ty).to_string()),
+    };
+
+    // Check all params are WASM-compatible
+    for (_, ty) in &param_info {
+        if rust_type_to_wasm(ty).is_none() {
+            return quote! {}; // skip — complex type
+        }
+    }
+
+    // Check return type
+    if let Some(ret_ty) = &ret_rust_ty {
+        if rust_type_to_wasm(ret_ty).is_none() {
+            return quote! {};
+        }
+    }
+
+    // Build WASM param list: (name: wasm_type, ...)
+    let wasm_params: Vec<proc_macro2::TokenStream> = param_info
+        .iter()
+        .map(|(name, rust_ty)| {
+            let wasm_ty = rust_type_to_wasm(rust_ty).unwrap();
+            let ident = proc_macro2::Ident::new(name, proc_macro2::Span::call_site());
+            let wasm_ty_ident = proc_macro2::Ident::new(wasm_ty, proc_macro2::Span::call_site());
+            quote! { #ident: #wasm_ty_ident }
+        })
+        .collect();
+
+    // Build call arguments with type conversions
+    let call_args: Vec<proc_macro2::TokenStream> = param_info
+        .iter()
+        .map(|(name, rust_ty)| {
+            let expr_str = wasm_to_rust_param(name, rust_ty);
+            expr_str.parse::<proc_macro2::TokenStream>().unwrap_or_else(|_| {
+                let ident = proc_macro2::Ident::new(name, proc_macro2::Span::call_site());
+                quote! { #ident }
+            })
+        })
+        .collect();
+
+    let export_name = format!("bp_{}", fn_name_str);
+
+    // All wasm exports live in a private submodule so they don't collide with the
+    // original function definition in the same namespace.
+    let mod_name_str = format!("__wasm_export_{}", fn_name_str);
+    let mod_ident = proc_macro2::Ident::new(&mod_name_str, proc_macro2::Span::call_site());
+
+    match &ret_rust_ty {
+        None => {
+            quote! {
+                #[cfg(target_arch = "wasm32")]
+                mod #mod_ident {
+                    #[no_mangle]
+                    pub unsafe extern "C" fn #fn_name(#(#wasm_params),*) {
+                        super::#fn_name(#(#call_args),*);
+                    }
+                }
+            }
+        }
+        Some(ret_ty) => {
+            let wasm_ret = rust_type_to_wasm(ret_ty).unwrap();
+            let wasm_ret_ident =
+                proc_macro2::Ident::new(wasm_ret, proc_macro2::Span::call_site());
+            let call_expr = quote! { super::#fn_name(#(#call_args),*) };
+            let call_str = quote! { #call_expr }.to_string();
+            let ret_expr = rust_ret_to_wasm(&call_str, ret_ty)
+                .parse::<proc_macro2::TokenStream>()
+                .unwrap_or(call_expr.clone());
+
+            quote! {
+                #[cfg(target_arch = "wasm32")]
+                mod #mod_ident {
+                    #[no_mangle]
+                    pub unsafe extern "C" fn #fn_name(#(#wasm_params),*) -> #wasm_ret_ident {
+                        #ret_expr
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Extract a number value from an attribute string like `params: 1`

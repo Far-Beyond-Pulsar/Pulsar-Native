@@ -3,9 +3,28 @@ name = "pulsar_std"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+# rlib for normal use; cdylib when building the WASM module
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["native"]
+# native: enables threading-dependent nodes, Lua scripting, and the linkme registry
+native = ["dep:rlua", "dep:linkme"]
+# wasm: strips native-only modules and the linkme registry
+wasm = []
+
 [dependencies]
 pulsar_macros = { path = "../pulsar_macros" }
-linkme = "0.3"
-rand = "0.9.2"
-rlua = "0.20" 
+linkme = { version = "0.3", optional = true }
 tracing = "0.1.41"
+
+# rand: needs getrandom/js on wasm32 to compile
+rand = { version = "0.9.2", features = [] }
+
+# rlua is native-only (links to liblua, uses pthreads)
+rlua = { version = "0.20", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# rand 0.9 uses getrandom 0.3; wasm_js enables WASM random number generation
+getrandom = { version = "0.3", features = ["wasm_js"] }

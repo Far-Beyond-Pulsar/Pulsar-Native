@@ -43,7 +43,11 @@ pub enum NodeTypes {
 
 pub mod engine;
 pub use engine::*;
+
+// experimental contains Lua scripting and other native-only nodes
+#[cfg(feature = "native")]
 pub mod experimental;
+#[cfg(feature = "native")]
 pub use experimental::*;
 
 // This is how engine detects Your nodes, enter your node folder name (it must have an mod.rs)

@@ -8379,6 +8379,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbgc"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC.git?rev=cc3c662#cc3c66203751a9568cb9d933157788115f75896a"
+dependencies = [
+ "graphy",
+ "pulsar_std",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "pem"
 version = "3.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9453,11 +9466,22 @@ dependencies = [
 name = "pulsar_std"
 version = "0.1.0"
 dependencies = [
+ "getrandom 0.3.4",
  "linkme",
  "pulsar_macros",
  "rand 0.9.4",
  "rlua",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_wasm_bundle"
+version = "0.1.0"
+dependencies = [
+ "graphy",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC.git?rev=cc3c662)",
+ "pulsar_std",
+ "serde_json",
 ]
 
 [[package]]
