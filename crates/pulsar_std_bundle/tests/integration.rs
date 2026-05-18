@@ -123,9 +123,11 @@ fn test_lib_extracts_to_temp_and_loads() {
     let exec = BpExecutor::load(&tmp.path).expect("load");
     // Prepare a trivial program to confirm the lib is functional
     let mut prog = BpProgram::new("test");
-    prog.slot_count = 2;
+    prog.arena_size = 24;
     prog.instructions.push(pbgc::Instruction::Call {
-        fn_ptr: 0, node_type: "add".to_string(), inputs: vec![0, 1], output: Some(0),
+        fn_ptr: 0, node_type: "add".to_string(),
+        input_offsets: vec![0, 8], output_offset: 16, has_output: true,
+        type_slot_offsets: vec![],
     });
     prog.instructions.push(pbgc::Instruction::Return);
     exec.prepare(&mut prog).expect("add must be prepareable");
@@ -189,9 +191,9 @@ fn test_serde_roundtrip_and_execution() {
 
     let programs = compile_graph_to_bytecode(&g).unwrap();
     let json = serde_json::to_string(&programs[0]).unwrap();
-    let restored: BpProgram = serde_json::from_str(&json).unwrap();
-    assert_eq!(programs[0].slot_count, restored.slot_count);
-    run_program(&exec, &restored);
+    let mut restored: BpProgram = serde_json::from_str(&json).unwrap();
+    assert_eq!(programs[0].arena_size, restored.arena_size);
+    run_program(&exec, &mut restored);
     println!("[info] serialized bytecode: {} bytes JSON", json.len());
 }
 
@@ -213,8 +215,8 @@ fn test_timing_branch_graph_10k_runs() {
     g.add_connection(Connection::new("br", "br_t", "chk", "chk_e", ConnectionType::Execution));
     g.add_connection(Connection::new("a", "a_r", "chk", "chk_a", ConnectionType::Data));
 
-    let programs = time("branch graph → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
-    println!("  instructions: {}, slots: {}", programs[0].instructions.len(), programs[0].slot_count);
+    let mut programs = time("branch graph → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
+    println!("  instructions: {}, arena: {} bytes", programs[0].instructions.len(), programs[0].arena_size);
 
     exec.prepare(&mut programs[0]).unwrap();
 
@@ -255,8 +257,8 @@ fn test_timing_100_node_chain() {
     let (exec, _tmp) = executor();
     let g = make_deep_graph(100);
 
-    let progs = time("100-node chain → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
-    println!("  instructions: {}, slots: {}", progs[0].instructions.len(), progs[0].slot_count);
+    let mut progs = time("100-node chain → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
+    println!("  instructions: {}, arena: {} bytes", progs[0].instructions.len(), progs[0].arena_size);
 
     exec.prepare(&mut progs[0]).unwrap();
     time("100-node chain → VM execute (1×)", || pbgc::vm::run(&progs[0]).unwrap());
@@ -278,8 +280,8 @@ fn test_timing_500k_node_stress() {
     let g = time("build 500k-node graph", || make_deep_graph(500_000));
     println!("  nodes: {}, connections: {}", g.nodes.len(), g.connections.len());
 
-    let progs = time("500k-node → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
-    println!("  instructions: {}, slots: {}", progs[0].instructions.len(), progs[0].slot_count);
+    let mut progs = time("500k-node → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
+    println!("  instructions: {}, arena: {} bytes", progs[0].instructions.len(), progs[0].arena_size);
 
     exec.prepare(&mut progs[0]).unwrap();
     time("500k-node → VM execute (1×)", || pbgc::vm::run(&progs[0]).unwrap());

@@ -59,6 +59,29 @@ pub fn assert_ne_int(actual: i64, expected: i64) {
     }
 }
 
+/// Assert that two f32 values are approximately equal within an epsilon.
+/// Panics if |actual - expected| >= epsilon.
+///
+/// # Inputs
+/// - `actual`: The computed f32 value
+/// - `expected`: The expected f32 value
+/// - `epsilon`: Maximum allowed difference (e.g. 0.0001)
+///
+/// # Assert Equal F32
+/// Fails the blueprint if the f32 values differ by more than epsilon.
+#[blueprint(type: NodeTypes::fn_, category: "Testing", color: "#E74C3C")]
+pub fn assert_eq_f32(actual: f32, expected: f32, epsilon: f32) {
+    if (actual - expected).abs() >= epsilon {
+        panic!(
+            "Blueprint assert_eq_f32 failed: actual={} expected={} diff={} epsilon={}",
+            actual,
+            expected,
+            (actual - expected).abs(),
+            epsilon
+        );
+    }
+}
+
 /// Assert that two floats are approximately equal within an epsilon.
 /// Panics if |actual - expected| >= epsilon.
 ///

@@ -184,9 +184,20 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     // Extract parameters — bake size_of/align_of at compile time using the actual type token.
-    // For generic functions the types contain unbound type params (e.g. Vec<T>) which are not
-    // in scope in a `static` item, so fall back to 0/8 for those.
+    // For generic functions: substitute each unbound type parameter with `()` before computing
+    // size_of/align_of.  This means:
+    //   • bare T       → size_of::<()>()  = 0  (signal: resolve this slot via graph traversal)
+    //   • Vec<T>       → size_of::<Vec<()>>() = 24  (wrapper size, fixed regardless of T)
+    //   • Arc<T>       → size_of::<Arc<()>>() = 8
+    // No lookup table needed — the Rust compiler evaluates everything at compile time.
     let is_generic = !input.sig.generics.params.is_empty();
+    // Collect unbound type-parameter names (e.g. "T", "U") so we can substitute them.
+    let generic_param_names: std::collections::HashSet<String> = input.sig.generics.params.iter()
+        .filter_map(|p| {
+            if let syn::GenericParam::Type(tp) = p { Some(tp.ident.to_string()) } else { None }
+        })
+        .collect();
+
     let params: Vec<_> = input
         .sig
         .inputs
@@ -198,7 +209,11 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
                     let ty = &*pat_type.ty;
                     let param_type = quote!(#ty).to_string();
                     let (size_expr, align_expr) = if is_generic {
-                        (quote! { 0usize }, quote! { 8usize })
+                        let subst = substitute_generics_with_unit(ty, &generic_param_names);
+                        (
+                            quote! { ::std::mem::size_of::<#subst>() },
+                            quote! { ::std::mem::align_of::<#subst>() },
+                        )
                     } else {
                         (
                             quote! { ::std::mem::size_of::<#ty>() },
@@ -222,7 +237,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // Extract return type and bake size_of/align_of for the return type at compile time.
     // For void (Default or "()") return: size=0, align=1.
     // For "!" (never/diverging) return: also treated as void.
-    // For generic functions: size=0, align=8 (types not in scope in a static item).
+    // For generic functions: substitute T→() to get the wrapper size.
     let (return_type, return_size, return_align) = match &input.sig.output {
         ReturnType::Default => (
             quote! { None },
@@ -235,7 +250,12 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             if ty_trimmed == "()" || ty_trimmed == "!" {
                 (quote! { None }, quote! { 0usize }, quote! { 1usize })
             } else if is_generic {
-                (quote! { Some(#ty_str) }, quote! { 0usize }, quote! { 8usize })
+                let subst = substitute_generics_with_unit(ty, &generic_param_names);
+                (
+                    quote! { Some(#ty_str) },
+                    quote! { ::std::mem::size_of::<#subst>() },
+                    quote! { ::std::mem::align_of::<#subst>() },
+                )
             } else {
                 (
                     quote! { Some(#ty_str) },
@@ -679,14 +699,378 @@ pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
     TokenStream::from(expanded)
 }
 
+// ── Generic type-param substitution ──────────────────────────────────────────
+//
+// Replace every unbound type parameter (e.g. `T`) in a `syn::Type` with `()`.
+// Used so the `#[blueprint]` macro can call `size_of::<SubstitutedType>()` in
+// a const context to record the *wrapper* size at compile time:
+//
+//   Vec<T>  →  Vec<()>   →  size_of = 24  (wrapper size, T-independent)
+//   T       →  ()        →  size_of = 0   (signal: resolve via graph traversal)
+//
+// No lookup table, no hardcoded constants — the Rust compiler does the work.
+
+fn substitute_generics_with_unit(
+    ty:     &syn::Type,
+    params: &std::collections::HashSet<String>,
+) -> syn::Type {
+    use syn::{GenericArgument, PathArguments, Type};
+    match ty {
+        Type::Path(type_path) => {
+            // Bare generic parameter with no arguments (e.g. just `T`)?
+            if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
+                let seg = &type_path.path.segments[0];
+                if matches!(seg.arguments, PathArguments::None)
+                    && params.contains(&seg.ident.to_string())
+                {
+                    return syn::parse_quote!(());
+                }
+            }
+            // Recurse into angle-bracketed generic arguments (e.g. `Vec<T>`).
+            let mut new_tp = type_path.clone();
+            for seg in new_tp.path.segments.iter_mut() {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    let mut new_args = syn::punctuated::Punctuated::new();
+                    for arg in ab.args.iter() {
+                        let new_arg = if let GenericArgument::Type(inner) = arg {
+                            GenericArgument::Type(
+                                substitute_generics_with_unit(inner, params)
+                            )
+                        } else {
+                            arg.clone()
+                        };
+                        new_args.push(new_arg);
+                    }
+                    ab.args = new_args;
+                }
+            }
+            Type::Path(new_tp)
+        }
+        Type::Tuple(tup) => {
+            let mut new_tup = tup.clone();
+            let mut new_elems = syn::punctuated::Punctuated::new();
+            for elem in tup.elems.iter() {
+                new_elems.push(substitute_generics_with_unit(elem, params));
+            }
+            new_tup.elems = new_elems;
+            Type::Tuple(new_tup)
+        }
+        // References and other compound types: recurse where possible, else clone.
+        Type::Reference(r) => {
+            let mut new_r = r.clone();
+            new_r.elem = Box::new(substitute_generics_with_unit(&r.elem, params));
+            Type::Reference(new_r)
+        }
+        other => other.clone(),
+    }
+}
+
+// ── Concrete-type substitution for generic shim codegen ──────────────────────
+//
+// Replace every occurrence of a named generic type parameter in a `syn::Type`
+// with a caller-supplied concrete type.  Used to generate the typed arms of the
+// size-dispatch shim for generic functions.
+
+fn substitute_generics_with_concrete_type(
+    ty:       &syn::Type,
+    type_map: &std::collections::HashMap<String, syn::Type>,
+) -> syn::Type {
+    use syn::{GenericArgument, PathArguments, Type};
+    match ty {
+        Type::Path(type_path) => {
+            if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
+                let seg = &type_path.path.segments[0];
+                if matches!(seg.arguments, PathArguments::None) {
+                    if let Some(concrete) = type_map.get(&seg.ident.to_string()) {
+                        return concrete.clone();
+                    }
+                }
+            }
+            let mut new_tp = type_path.clone();
+            for seg in new_tp.path.segments.iter_mut() {
+                if let PathArguments::AngleBracketed(ref mut ab) = seg.arguments {
+                    let mut new_args = syn::punctuated::Punctuated::new();
+                    for arg in ab.args.iter() {
+                        let new_arg = if let GenericArgument::Type(inner) = arg {
+                            GenericArgument::Type(
+                                substitute_generics_with_concrete_type(inner, type_map)
+                            )
+                        } else {
+                            arg.clone()
+                        };
+                        new_args.push(new_arg);
+                    }
+                    ab.args = new_args;
+                }
+            }
+            Type::Path(new_tp)
+        }
+        Type::Tuple(tup) => {
+            let mut new_tup = tup.clone();
+            let mut new_elems = syn::punctuated::Punctuated::new();
+            for elem in tup.elems.iter() {
+                new_elems.push(substitute_generics_with_concrete_type(elem, type_map));
+            }
+            new_tup.elems = new_elems;
+            Type::Tuple(new_tup)
+        }
+        Type::Reference(r) => {
+            let mut new_r = r.clone();
+            new_r.elem = Box::new(substitute_generics_with_concrete_type(&r.elem, type_map));
+            Type::Reference(new_r)
+        }
+        other => other.clone(),
+    }
+}
+
+/// Returns true iff `ty` is a bare generic type-parameter name with no arguments
+/// (e.g. `T`, `U`).
+fn is_bare_generic_param(
+    ty:           &syn::Type,
+    param_names:  &std::collections::HashSet<String>,
+) -> bool {
+    use syn::{PathArguments, Type};
+    if let Type::Path(tp) = ty {
+        if tp.qself.is_none() && tp.path.segments.len() == 1 {
+            let seg = &tp.path.segments[0];
+            return matches!(seg.arguments, PathArguments::None)
+                && param_names.contains(&seg.ident.to_string());
+        }
+    }
+    false
+}
+
+// ── Generic type-erased shim (size-dispatch) ──────────────────────────────────
+//
+// For a generic function with exactly ONE type parameter T that carries no
+// "semantic" bounds (PartialEq, Ord, Hash, Clone, …), the macro emits ONE
+// `__bp_dispatch_<name>` symbol that dispatches on `type_slots[0].size` at
+// runtime.  Each arm substitutes T → `[u8; N]` and calls the original function
+// through a concrete monomorphization.  This avoids per-type-name symbols while
+// remaining correct for purely structural operations (Vec<T> push/pop/len/…).
+//
+// If the function has no bare-T parameters (all sizes compile-time known, e.g.
+// `fn array_len<T>(v: Vec<T>) -> usize`), we use T=() for every call: Vec<()>
+// shares the same header layout as Vec<T> for any T, so structural queries are
+// always correct.
+
+fn generate_generic_dispatch_shim(
+    func:        &ItemFn,
+    fn_name:     &proc_macro2::Ident,
+    fn_name_str: &str,
+) -> proc_macro2::TokenStream {
+    // ── Guard: exactly one type param, no semantic bounds ─────────────────────
+    let type_params: Vec<&syn::TypeParam> = func.sig.generics.params.iter()
+        .filter_map(|p| if let syn::GenericParam::Type(tp) = p { Some(tp) } else { None })
+        .collect();
+
+    if type_params.len() != 1 {
+        return quote! {};
+    }
+    let tp = type_params[0];
+
+    // Reject bounds that require T's methods (comparison, hashing, formatting…).
+    // We allow Sized / Send / Sync because they are auto-traits with no vtable.
+    let has_semantic_bounds = tp.bounds.iter().any(|b| {
+        if let syn::TypeParamBound::Trait(tb) = b {
+            let name = tb.path.segments.last()
+                .map(|s| s.ident.to_string())
+                .unwrap_or_default();
+            !matches!(name.as_str(), "Sized" | "Send" | "Sync")
+        } else {
+            false // lifetime bounds are fine
+        }
+    });
+    if has_semantic_bounds {
+        return quote! {};
+    }
+
+    let generic_param_name = tp.ident.to_string();
+    let mut param_names_set = std::collections::HashSet::new();
+    param_names_set.insert(generic_param_name.clone());
+
+    // Collect typed params: (arg_index, ident, original_type).
+    let mut params: Vec<(usize, proc_macro2::Ident, syn::Type)> = Vec::new();
+    for (i, arg) in func.sig.inputs.iter().enumerate() {
+        if let FnArg::Typed(pt) = arg {
+            if let Pat::Ident(pi) = &*pt.pat {
+                params.push((i, pi.ident.clone(), (*pt.ty).clone()));
+            }
+        }
+    }
+
+    let shim_ident = proc_macro2::Ident::new(
+        &format!("__bp_dispatch_{}", fn_name_str),
+        fn_name.span(),
+    );
+
+    // ── Check whether any param / return type is a bare T ─────────────────────
+    let has_bare_param = params.iter()
+        .any(|(_, _, ty)| is_bare_generic_param(ty, &param_names_set));
+    let has_bare_return = match &func.sig.output {
+        ReturnType::Type(_, ty) => is_bare_generic_param(ty, &param_names_set),
+        ReturnType::Default      => false,
+    };
+
+    // ── No bare T anywhere: use T=() for everything ────────────────────────────
+    if !has_bare_param && !has_bare_return {
+        let unit_map = {
+            let unit_ty: syn::Type = syn::parse_quote!(());
+            let mut m = std::collections::HashMap::new();
+            m.insert(generic_param_name.clone(), unit_ty);
+            m
+        };
+
+        let mut let_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
+        let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
+        for (arg_idx, _, orig_ty) in &params {
+            let arg_var = proc_macro2::Ident::new(
+                &format!("__a{}", arg_idx),
+                proc_macro2::Span::call_site(),
+            );
+            let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
+            let concrete_ty = substitute_generics_with_concrete_type(orig_ty, &unit_map);
+            let_stmts.push(quote! {
+                let #arg_var = ::std::ptr::read(*args.add(#idx_lit) as *const #concrete_ty);
+            });
+            call_args.push(quote! { #arg_var });
+        }
+
+        let call_expr = quote! { #fn_name(#(#call_args),*) };
+        let write_stmt = match &func.sig.output {
+            ReturnType::Default => quote! { #call_expr; },
+            ReturnType::Type(_, ret_ty) => {
+                let ty_s = quote!(#ret_ty).to_string();
+                if ty_s.trim() == "()" || ty_s.trim() == "!" {
+                    quote! { #call_expr; }
+                } else {
+                    let concrete_ret = substitute_generics_with_concrete_type(ret_ty, &unit_map);
+                    quote! {
+                        let __r = #call_expr;
+                        ::std::ptr::write(ret as *mut #concrete_ret, __r);
+                    }
+                }
+            }
+        };
+
+        return quote! {
+            #[cfg(not(target_arch = "wasm32"))]
+            #[no_mangle]
+            pub unsafe extern "C" fn #shim_ident(
+                args:        *const *const u8,
+                ret:         *mut u8,
+                _type_slots: *const u8,  // not needed — no bare T params
+            ) {
+                #(#let_stmts)*
+                #write_stmt
+            }
+        };
+    }
+
+    // ── Has bare T: generate size-dispatch on type_slots[0].size ──────────────
+    //
+    // Arm sizes cover all common blueprint element types.
+    // Each arm substitutes T → [u8; N] (or () for N=0) and calls the original
+    // function with those concrete types.  Because [u8; N] has the same size and
+    // alignment as any N-byte T, structural operations (push, pop, etc.) produce
+    // identical machine code.
+
+    let dispatch_sizes: &[(&str, &str)] = &[
+        ("0",  "()"),
+        ("1",  "[u8; 1]"),
+        ("2",  "[u8; 2]"),
+        ("4",  "[u8; 4]"),
+        ("8",  "[u8; 8]"),
+        ("12", "[u8; 12]"),
+        ("16", "[u8; 16]"),
+        ("24", "[u8; 24]"),
+        ("32", "[u8; 32]"),
+    ];
+
+    let mut match_arms: Vec<proc_macro2::TokenStream> = Vec::new();
+
+    for &(size_str, ty_str) in dispatch_sizes {
+        let concrete_ty: syn::Type = syn::parse_str(ty_str)
+            .unwrap_or_else(|_| panic!("internal: bad type str '{}'", ty_str));
+        let size_lit: proc_macro2::TokenStream = size_str.parse()
+            .expect("bad size literal");
+
+        let mut type_map = std::collections::HashMap::new();
+        type_map.insert(generic_param_name.clone(), concrete_ty.clone());
+
+        let mut let_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
+        let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
+
+        for (arg_idx, _, orig_ty) in &params {
+            let arg_var = proc_macro2::Ident::new(
+                &format!("__a{}", arg_idx),
+                proc_macro2::Span::call_site(),
+            );
+            let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
+            let concrete_arg_ty = substitute_generics_with_concrete_type(orig_ty, &type_map);
+
+            let_stmts.push(quote! {
+                let #arg_var = ::std::ptr::read(*args.add(#idx_lit) as *const #concrete_arg_ty);
+            });
+            call_args.push(quote! { #arg_var });
+        }
+
+        let call_expr = quote! { #fn_name(#(#call_args),*) };
+        let write_stmt = match &func.sig.output {
+            ReturnType::Default => quote! { #call_expr; },
+            ReturnType::Type(_, ret_ty) => {
+                let ty_s = quote!(#ret_ty).to_string();
+                if ty_s.trim() == "()" || ty_s.trim() == "!" {
+                    quote! { #call_expr; }
+                } else {
+                    let concrete_ret = substitute_generics_with_concrete_type(ret_ty, &type_map);
+                    quote! {
+                        let __r = #call_expr;
+                        ::std::ptr::write(ret as *mut #concrete_ret, __r);
+                    }
+                }
+            }
+        };
+
+        match_arms.push(quote! {
+            #size_lit => { #(#let_stmts)* #write_stmt }
+        });
+    }
+
+    let panic_msg = format!(
+        "__bp_dispatch_{}: unsupported T size {{}} align {{}}",
+        fn_name_str
+    );
+    match_arms.push(quote! {
+        __n => panic!(#panic_msg, __ts0.size, __ts0.align),
+    });
+
+    quote! {
+        #[cfg(not(target_arch = "wasm32"))]
+        #[no_mangle]
+        pub unsafe extern "C" fn #shim_ident(
+            args:       *const *const u8,
+            ret:        *mut u8,
+            type_slots: *const crate::TypeSlot,
+        ) {
+            let __ts0 = *type_slots.add(0);
+            match __ts0.size {
+                #(#match_arms)*
+            }
+        }
+    }
+}
+
 // ── Native dispatch symbol generation ────────────────────────────────────────
 //
 // Each `#[blueprint]` function gets a `__bp_dispatch_<name>` symbol (native only).
 //
-// ABI:  unsafe extern "C" fn(args: *const *const u8, ret: *mut u8)
-//   - args[i]: pointer into the byte arena at the i-th input's arena offset
-//   - ret:     pointer into the byte arena at the output's arena offset
-//              (null / ignored for void-returning functions)
+// ABI:  unsafe extern "C" fn(args: *const *const u8, ret: *mut u8, type_slots: *const TypeSlot)
+//   - args[i]:     pointer into the byte arena at the i-th input's arena offset
+//   - ret:         pointer into the byte arena at the output's arena offset
+//                  (null / ignored for void-returning functions)
+//   - type_slots:  array of TypeSlot values resolved at graph-compile time, one
+//                  per generic type parameter T.  Concrete functions ignore this.
 //
 // The symbol reads each argument directly from the arena via ptr::read,
 // calls the actual function, and writes the result back via ptr::write.
@@ -697,9 +1081,9 @@ fn generate_dispatch_shim(
     fn_name: &proc_macro2::Ident,
     fn_name_str: &str,
 ) -> proc_macro2::TokenStream {
-    // Skip generic functions — no concrete type to dispatch
+    // Generic functions — route to the type-erased size-dispatch shim generator.
     if !func.sig.generics.params.is_empty() {
-        return quote! {};
+        return generate_generic_dispatch_shim(func, fn_name, fn_name_str);
     }
 
     // Collect (ident, syn::Type) for all typed params
@@ -747,7 +1131,11 @@ fn generate_dispatch_shim(
     quote! {
         #[cfg(not(target_arch = "wasm32"))]
         #[no_mangle]
-        pub unsafe extern "C" fn #shim_ident(args: *const *const u8, ret: *mut u8) {
+        pub unsafe extern "C" fn #shim_ident(
+            args:        *const *const u8,
+            ret:         *mut u8,
+            _type_slots: *const u8,  // TypeSlot array — ignored by concrete functions
+        ) {
             #body
         }
     }

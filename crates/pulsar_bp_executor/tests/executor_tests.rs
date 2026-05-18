@@ -151,10 +151,11 @@ fn test_dylib_loads_and_prepares() {
     let (exec, _tmp) = executor();
     // Prepare a trivial program to confirm the lib and symbol resolution work
     let mut prog = pbgc::BpProgram::new("test");
-    prog.slot_count = 2;
+    prog.arena_size = 24;
     prog.instructions.push(pbgc::Instruction::Call {
         fn_ptr: 0, node_type: "add".to_string(),
-        inputs: vec![0, 1], output: Some(0),
+        input_offsets: vec![0, 8], output_offset: 16, has_output: true,
+        type_slot_offsets: vec![],
     });
     prog.instructions.push(pbgc::Instruction::Return);
     exec.prepare(&mut prog).expect("add must be prepareable");
@@ -171,10 +172,12 @@ fn test_dylib_prepares_all_math_nodes() {
                  "abs","sqrt","power","lerp","clamp","min","max",
                  "ceil","floor","round","greater_than","less_than"];
     let mut prog = pbgc::BpProgram::new("test");
-    prog.slot_count = 4;
+    prog.arena_size = 32;
     for name in &nodes {
         prog.instructions.push(pbgc::Instruction::Call {
-            fn_ptr: 0, node_type: name.to_string(), inputs: vec![0,1], output: Some(2),
+            fn_ptr: 0, node_type: name.to_string(),
+            input_offsets: vec![0, 8], output_offset: 16, has_output: true,
+            type_slot_offsets: vec![],
         });
     }
     prog.instructions.push(pbgc::Instruction::Return);
@@ -190,10 +193,11 @@ fn test_dylib_prepares_all_math_nodes() {
 fn test_missing_symbol_returns_error() {
     let (exec, _tmp) = executor();
     let mut prog = pbgc::BpProgram::new("test");
-    prog.slot_count = 1;
+    prog.arena_size = 8;
     prog.instructions.push(pbgc::Instruction::Call {
         fn_ptr: 0, node_type: "this_node_does_not_exist".to_string(),
-        inputs: vec![], output: None,
+        input_offsets: vec![], output_offset: 0, has_output: false,
+        type_slot_offsets: vec![],
     });
     prog.instructions.push(pbgc::Instruction::Return);
     let result = exec.prepare(&mut prog);

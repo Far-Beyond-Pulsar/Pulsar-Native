@@ -97,6 +97,18 @@ fn assert_eq_float(id: &str, expected: f64, eps: f64) -> NodeInstance {
     n
 }
 
+fn assert_eq_f32(id: &str, expected: f32, eps: f32) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "assert_eq_f32", Position::default());
+    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "actual", DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_x"), Pin::new(&format!("{id}_x"), "expected", DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input)));
+    n.inputs.push(PinInstance::new(&format!("{id}_ep"), Pin::new(&format!("{id}_ep"), "epsilon", DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input)));
+    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n.properties.insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+    n.properties.insert(format!("{id}_ep"), PropertyValue::Number(eps as f64));
+    n
+}
+
 fn assert_true(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_true", Position::default());
     n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
@@ -246,10 +258,7 @@ fn test_smoothstep_midpoint() {
     n.properties.insert("n_x".to_string(),     PropertyValue::Number(0.5));
     g.add_node(n);
 
-    // The f32 result is stored as f32::to_bits() as u64.
-    // Verify it by checking the raw i64 bits equal 0.5f32.to_bits() as i64.
-    let expected_bits = 0.5f32.to_bits() as i64;
-    g.add_node(assert_eq_int("chk", expected_bits));
+    g.add_node(assert_eq_f32("chk", 0.5f32, 1e-6));
     g.add_connection(e("begin","be","chk","chk_e"));
     g.add_connection(d("n","n_r","chk","chk_a"));
     run(&exec, &g);
@@ -271,8 +280,7 @@ fn test_clamp_to_range_below_min() {
     n.properties.insert("n_min".to_string(),  PropertyValue::Number(0.0));
     n.properties.insert("n_max".to_string(),  PropertyValue::Number(10.0));
     g.add_node(n);
-    let expected_bits = 0.0f32.to_bits() as i64;
-    g.add_node(assert_eq_int("chk", expected_bits));
+    g.add_node(assert_eq_f32("chk", 0.0f32, 1e-6));
     g.add_connection(e("begin","be","chk","chk_e"));
     g.add_connection(d("n","n_r","chk","chk_a"));
     run(&exec, &g);
