@@ -1,4 +1,4 @@
-/// Integration tests for pulsar_wasm_bundle — native cdylib edition.
+/// Integration tests for pulsar_std_bundle — native cdylib edition.
 ///
 /// Verifies that the embedded native dylib:
 ///   1. Contains valid bytes (non-empty)
