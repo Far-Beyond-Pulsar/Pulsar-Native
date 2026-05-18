@@ -67,84 +67,35 @@ fn test_wasm_bytes_not_stub() {
 struct NativeStdDispatch;
 
 impl NodeDispatch for NativeStdDispatch {
-    fn call(&self, node_type: &str, inputs: &[BpValue]) -> Result<Vec<BpValue>, VmError> {
+    fn call(&self, node_type: &str, inputs: &[BpValue], output: &mut Option<BpValue>) -> Result<(), VmError> {
         match node_type {
-            // Math
-            "add" => {
-                let a = inputs[0].as_i64().unwrap_or(0);
-                let b = inputs[1].as_i64().unwrap_or(0);
-                Ok(vec![BpValue::Int(a + b)])
+            "add"      => { *output = Some(BpValue::Int(inputs[0].as_i64().unwrap_or(0) + inputs[1].as_i64().unwrap_or(0))); }
+            "subtract" => { *output = Some(BpValue::Int(inputs[0].as_i64().unwrap_or(0) - inputs[1].as_i64().unwrap_or(0))); }
+            "multiply" => { *output = Some(BpValue::Int(inputs[0].as_i64().unwrap_or(0) * inputs[1].as_i64().unwrap_or(0))); }
+            "divide"   => {
+                let (a, b) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(1));
+                *output = Some(BpValue::Int(if b == 0 { 0 } else { a / b }));
             }
-            "subtract" => {
-                let a = inputs[0].as_i64().unwrap_or(0);
-                let b = inputs[1].as_i64().unwrap_or(0);
-                Ok(vec![BpValue::Int(a - b)])
-            }
-            "multiply" => {
-                let a = inputs[0].as_i64().unwrap_or(0);
-                let b = inputs[1].as_i64().unwrap_or(0);
-                Ok(vec![BpValue::Int(a * b)])
-            }
-            "divide" => {
-                let a = inputs[0].as_i64().unwrap_or(0);
-                let b = inputs[1].as_i64().unwrap_or(1);
-                Ok(vec![BpValue::Int(if b == 0 { 0 } else { a / b })])
-            }
-            "abs" => {
-                let v = inputs[0].as_f64().unwrap_or(0.0);
-                Ok(vec![BpValue::Float(v.abs())])
-            }
+            "abs"   => { *output = Some(BpValue::Float(inputs[0].as_f64().unwrap_or(0.0).abs())); }
+            "sqrt"  => { *output = Some(BpValue::Float(inputs[0].as_f64().unwrap_or(0.0).sqrt())); }
+            "power" => { *output = Some(BpValue::Float(inputs[0].as_f64().unwrap_or(0.0).powf(inputs[1].as_f64().unwrap_or(1.0)))); }
             "lerp" => {
-                let a = inputs[0].as_f64().unwrap_or(0.0);
-                let b = inputs[1].as_f64().unwrap_or(0.0);
-                let t = inputs[2].as_f64().unwrap_or(0.0);
-                Ok(vec![BpValue::Float(a + (b - a) * t)])
+                let (a, b, t) = (inputs[0].as_f64().unwrap_or(0.0), inputs[1].as_f64().unwrap_or(0.0), inputs[2].as_f64().unwrap_or(0.0));
+                *output = Some(BpValue::Float(a + (b - a) * t));
             }
             "clamp" => {
-                let v = inputs[0].as_f64().unwrap_or(0.0);
-                let lo = inputs[1].as_f64().unwrap_or(0.0);
-                let hi = inputs[2].as_f64().unwrap_or(1.0);
-                Ok(vec![BpValue::Float(v.clamp(lo, hi))])
+                let (v, lo, hi) = (inputs[0].as_f64().unwrap_or(0.0), inputs[1].as_f64().unwrap_or(0.0), inputs[2].as_f64().unwrap_or(1.0));
+                *output = Some(BpValue::Float(v.clamp(lo, hi)));
             }
-            "power" => {
-                let base = inputs[0].as_f64().unwrap_or(0.0);
-                let exp = inputs[1].as_f64().unwrap_or(1.0);
-                Ok(vec![BpValue::Float(base.powf(exp))])
-            }
-            "sqrt" => {
-                let v = inputs[0].as_f64().unwrap_or(0.0);
-                Ok(vec![BpValue::Float(v.sqrt())])
-            }
-            // Logic
-            "greater_than" => {
-                let a = inputs[0].as_f64().unwrap_or(0.0);
-                let b = inputs[1].as_f64().unwrap_or(0.0);
-                Ok(vec![BpValue::Bool(a > b)])
-            }
-            "less_than" => {
-                let a = inputs[0].as_f64().unwrap_or(0.0);
-                let b = inputs[1].as_f64().unwrap_or(0.0);
-                Ok(vec![BpValue::Bool(a < b)])
-            }
-            "not" => {
-                let v = inputs[0].as_bool();
-                Ok(vec![BpValue::Bool(!v)])
-            }
-            "and" => {
-                let a = inputs[0].as_bool();
-                let b = inputs[1].as_bool();
-                Ok(vec![BpValue::Bool(a && b)])
-            }
-            "or" => {
-                let a = inputs[0].as_bool();
-                let b = inputs[1].as_bool();
-                Ok(vec![BpValue::Bool(a || b)])
-            }
-            // Flow side-effecting
-            "print_string" => Ok(vec![]),
-            "branch" | "sequence" => Ok(vec![]), // handled structurally by the VM
-            other => Err(VmError::UnknownNode(other.to_string())),
+            "greater_than" => { *output = Some(BpValue::Bool(inputs[0].as_f64().unwrap_or(0.0) > inputs[1].as_f64().unwrap_or(0.0))); }
+            "less_than"    => { *output = Some(BpValue::Bool(inputs[0].as_f64().unwrap_or(0.0) < inputs[1].as_f64().unwrap_or(0.0))); }
+            "not" => { *output = Some(BpValue::Bool(!inputs[0].as_bool())); }
+            "and" => { *output = Some(BpValue::Bool(inputs[0].as_bool() && inputs[1].as_bool())); }
+            "or"  => { *output = Some(BpValue::Bool(inputs[0].as_bool() || inputs[1].as_bool())); }
+            "print_string" | "branch" | "sequence" => {}
+            other => return Err(VmError::UnknownNode(other.to_string())),
         }
+        Ok(())
     }
 }
 
