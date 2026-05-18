@@ -869,14 +869,22 @@ fn generate_generic_dispatch_shim(
     }
     let tp = type_params[0];
 
-    // Reject bounds that require T's methods (comparison, hashing, formatting…).
-    // We allow Sized / Send / Sync because they are auto-traits with no vtable.
+    // Reject bounds that require T's methods that [u8; N] doesn't implement
+    // (formatting, hashing, user-defined traits, etc.).
+    // We allow:
+    //   - auto-traits with no vtable: Sized, Send, Sync
+    //   - derivable primitive traits that [u8; N] implements for all N:
+    //     Clone, Copy, PartialEq, Eq, PartialOrd, Ord
     let has_semantic_bounds = tp.bounds.iter().any(|b| {
         if let syn::TypeParamBound::Trait(tb) = b {
             let name = tb.path.segments.last()
                 .map(|s| s.ident.to_string())
                 .unwrap_or_default();
-            !matches!(name.as_str(), "Sized" | "Send" | "Sync")
+            !matches!(name.as_str(),
+                "Sized" | "Send" | "Sync" |
+                "Clone" | "Copy" |
+                "PartialEq" | "Eq" | "PartialOrd" | "Ord"
+            )
         } else {
             false // lifetime bounds are fine
         }
