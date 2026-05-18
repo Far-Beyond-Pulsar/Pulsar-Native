@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.2.6"
+version = "0.2.7"
 
 [[bin]]
 name = "pulsar_engine"
@@ -14,7 +14,7 @@ anyhow.workspace = true
 gpui-ce.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
-thiserror = "2.07
+thiserror = "2.0"
 image = "0.25"  # For loading window icon
 wgpu.workspace = true
 rfd = "0.15"
