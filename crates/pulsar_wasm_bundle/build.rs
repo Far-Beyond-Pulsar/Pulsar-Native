@@ -1,125 +1,92 @@
 /// Build script for pulsar_wasm_bundle.
 ///
-/// Compiles `pulsar_std` for `wasm32-unknown-unknown --features wasm` using cargo,
-/// then writes the resulting `.wasm` bytes to `$OUT_DIR/pulsar_std.wasm` so that
-/// `src/lib.rs` can embed them with `include_bytes!`.
-///
-/// To skip the WASM build (e.g. in CI without wasm32 toolchain), set the env var:
-///   PULSAR_SKIP_WASM_BUILD=1
-///
-/// The build will emit:
-///   cargo:rustc-env=PULSAR_STD_WASM_PATH=<path>
-/// so callers can also use `env!("PULSAR_STD_WASM_PATH")` at compile time.
+/// Compiles `pulsar_std` as a native cdylib and embeds the bytes.
+/// Uses an isolated CARGO_TARGET_DIR so the subprocess never contends
+/// the parent cargo's file lock.
 
 use std::path::PathBuf;
 use std::process::Command;
+use std::{collections::hash_map::DefaultHasher, hash::{Hash, Hasher}};
 
 fn main() {
-    // Re-run if pulsar_std changes
     println!("cargo:rerun-if-changed=../pulsar_std/src");
     println!("cargo:rerun-if-changed=../pulsar_std/Cargo.toml");
-    println!("cargo:rerun-if-env-changed=PULSAR_SKIP_WASM_BUILD");
+    println!("cargo:rerun-if-env-changed=PULSAR_SKIP_NATIVE_BUILD");
 
-    if std::env::var("PULSAR_SKIP_WASM_BUILD").is_ok() {
-        write_stub_wasm();
+    let ext    = std::env::consts::DLL_EXTENSION;
+    let prefix = if cfg!(target_os = "windows") { "" } else { "lib" };
+    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
+    let dest    = out_dir.join(format!("pulsar_std_native.{}", ext));
+
+    println!("cargo:rustc-env=PULSAR_STD_LIB_EXT={}", ext);
+
+    if std::env::var("PULSAR_SKIP_NATIVE_BUILD").is_ok() {
+        std::fs::write(&dest, b"").unwrap();
+        println!("cargo:rustc-env=PULSAR_STD_LIB_PATH={}", dest.display());
+        println!("cargo:warning=Skipping native build (PULSAR_SKIP_NATIVE_BUILD set)");
         return;
     }
 
-    // Ensure wasm32-unknown-unknown toolchain is available
-    let rustup_check = Command::new("rustup")
-        .args(["target", "list", "--installed"])
-        .output();
-
-    let has_wasm32 = match rustup_check {
-        Ok(out) => String::from_utf8_lossy(&out.stdout).contains("wasm32-unknown-unknown"),
-        Err(_) => false,
-    };
-
-    if !has_wasm32 {
-        eprintln!(
-            "cargo:warning=wasm32-unknown-unknown target not installed. \
-             Run `rustup target add wasm32-unknown-unknown` to enable WASM builds. \
-             Using stub WASM module."
-        );
-        write_stub_wasm();
-        return;
-    }
-
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let pulsar_std_manifest = PathBuf::from(&manifest_dir)
-        .parent()
-        .unwrap()
+        .parent().unwrap()
         .join("pulsar_std")
         .join("Cargo.toml");
 
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let wasm_path = out_dir.join("pulsar_std.wasm");
+    // Build into an isolated target dir outside the workspace target tree.
+    // This avoids file-lock contention with the parent cargo invocation.
+    let mut hasher = DefaultHasher::new();
+    out_dir.hash(&mut hasher);
+    let isolated_target = std::env::temp_dir()
+        .join(format!("pulsar_std_cdylib_target_{}", hasher.finish()));
+    std::fs::create_dir_all(&isolated_target).ok();
 
-    // Build pulsar_std as a cdylib for wasm32
-    let status = Command::new("cargo")
-        .args([
-            "build",
-            "--manifest-path",
-            pulsar_std_manifest.to_str().unwrap(),
-            "--target",
-            "wasm32-unknown-unknown",
-            "--features",
-            "wasm",
-            "--release",
-            // Disable default features so `native` feature (rlua etc.) is excluded
-            "--no-default-features",
-        ])
-        .status()
-        .expect("failed to invoke cargo for wasm32 build");
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+
+    let mut cmd = Command::new(&cargo);
+    cmd.args([
+        "build",
+        "--manifest-path",
+        pulsar_std_manifest.to_str().unwrap(),
+        "--features",
+        "native",
+        "--no-default-features",
+    ])
+    .env("CARGO_TARGET_DIR", &isolated_target)
+        // Avoid inheriting Cargo's jobserver env from the parent build.
+        // Child cargo gets its own scheduler and won't block waiting on parent tokens.
+    .env_remove("CARGO_MAKEFLAGS")
+    .env_remove("MAKEFLAGS")
+    .env_remove("MFLAGS")
+    .env_remove("NUM_JOBS");
+
+    let built_profile_dir = if profile == "release" {
+        cmd.arg("--release");
+        "release".to_string()
+    } else if profile == "debug" {
+        "debug".to_string()
+    } else {
+        cmd.args(["--profile", &profile]);
+        profile.clone()
+    };
+
+    let status = cmd.status().expect("failed to invoke cargo");
 
     if !status.success() {
-        panic!("pulsar_std wasm32 build failed — see cargo output above");
+        panic!("pulsar_std native build failed");
     }
 
-    // Locate the output .wasm file.
-    // cargo places it under the workspace target directory, not OUT_DIR.
-    let workspace_root = PathBuf::from(&manifest_dir)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
+    let built = isolated_target
+        .join(&built_profile_dir)
+        .join(format!("{}pulsar_std.{}", prefix, ext));
 
-    let built_wasm = workspace_root
-        .join("target")
-        .join("wasm32-unknown-unknown")
-        .join("release")
-        .join("pulsar_std.wasm");
-
-    if !built_wasm.exists() {
-        panic!(
-            "Expected compiled WASM at {} but it was not found",
-            built_wasm.display()
-        );
+    if !built.exists() {
+        panic!("Expected dylib at {} — not found", built.display());
     }
 
-    // Copy to OUT_DIR where include_bytes! can reach it
-    std::fs::copy(&built_wasm, &wasm_path).expect("failed to copy wasm artifact");
-
-    println!("cargo:rustc-env=PULSAR_STD_WASM_PATH={}", wasm_path.display());
-    println!(
-        "cargo:warning=pulsar_std.wasm built ({} bytes)",
-        std::fs::metadata(&wasm_path).map(|m| m.len()).unwrap_or(0)
-    );
-}
-
-/// Write a minimal valid WASM module as a stub when the real build is skipped.
-/// This keeps the crate compilable without the wasm32 toolchain installed.
-fn write_stub_wasm() {
-    let out_dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let wasm_path = out_dir.join("pulsar_std.wasm");
-
-    // Minimal wasm binary: magic + version + empty module
-    let stub: &[u8] = &[
-        0x00, 0x61, 0x73, 0x6d, // \0asm
-        0x01, 0x00, 0x00, 0x00, // version 1
-    ];
-    std::fs::write(&wasm_path, stub).expect("failed to write stub wasm");
-    println!("cargo:rustc-env=PULSAR_STD_WASM_PATH={}", wasm_path.display());
-    println!("cargo:warning=Using stub (empty) pulsar_std.wasm — set up wasm32 toolchain for real builds");
+    std::fs::copy(&built, &dest).expect("copy dylib");
+    let bytes = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+    println!("cargo:rustc-env=PULSAR_STD_LIB_PATH={}", dest.display());
+    println!("cargo:warning=pulsar_std native lib: {} bytes ({})", bytes, ext);
 }

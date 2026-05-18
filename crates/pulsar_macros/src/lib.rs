@@ -313,6 +313,14 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    // Native dispatch shim — __bp_dispatch_<name>, always on non-wasm32 builds.
+    // The pulsar_bp_executor loads these symbols from the native cdylib by name.
+    let dispatch_shim = if wasm_safe {
+        generate_dispatch_shim(&input, fn_name, &fn_name_str)
+    } else {
+        quote! {}
+    };
+
     // For wasm_safe: false nodes, wrap the entire definition in a native-only cfg
     let fn_definition = if wasm_safe {
         quote! { #[allow(dead_code)] #input }
@@ -369,6 +377,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         #fn_definition
         #registry_registration
         #wasm_export
+        #dispatch_shim
     };
 
     TokenStream::from(expanded)
@@ -800,6 +809,120 @@ fn generate_wasm_export(
                     }
                 }
             }
+        }
+    }
+}
+
+// ── Native dispatch shim generation ──────────────────────────────────────────
+//
+// Each `#[blueprint]` function with a numeric/bool signature gets a
+// `__bp_dispatch_<name>` symbol emitted alongside it (native builds only).
+//
+// ABI:  unsafe extern "C" fn(inputs: *const u64, output: *mut u64)
+//   - inputs:  contiguous u64 slot values, one per parameter
+//   - output:  pointer to a single u64 for the return value (ignored for void)
+//
+// The shim reads each parameter as its real Rust type from raw u64 bits,
+// calls the actual function, and writes the result back as raw bits.
+// The executor's hot loop passes slot pointers directly — zero conversion.
+
+fn dispatch_read(ty: &str, idx: usize) -> proc_macro2::TokenStream {
+    let i = proc_macro2::Literal::usize_unsuffixed(idx);
+    match ty.trim() {
+        "f64"            => quote! { f64::from_bits(*inputs.add(#i)) },
+        "f32"            => quote! { f32::from_bits(*inputs.add(#i) as u32) },
+        "bool"           => quote! { *inputs.add(#i) != 0 },
+        "i64"            => quote! { *inputs.add(#i) as i64 },
+        "u64"            => quote! { *inputs.add(#i) },
+        "i32"            => quote! { *inputs.add(#i) as i32 },
+        "u32"            => quote! { *inputs.add(#i) as u32 },
+        "i16"            => quote! { *inputs.add(#i) as i16 },
+        "u16"            => quote! { *inputs.add(#i) as u16 },
+        "i8"             => quote! { *inputs.add(#i) as i8 },
+        "u8"             => quote! { *inputs.add(#i) as u8 },
+        "isize"          => quote! { *inputs.add(#i) as isize },
+        "usize"          => quote! { *inputs.add(#i) as usize },
+        _                => return quote! {}, // unsupported — caller must skip
+    }
+}
+
+fn dispatch_write(ty: &str, result: proc_macro2::TokenStream) -> proc_macro2::TokenStream {
+    match ty.trim() {
+        "f64"   => quote! { *output = (#result).to_bits(); },
+        "f32"   => quote! { *output = (#result).to_bits() as u64; },
+        "bool"  => quote! { *output = (#result) as u64; },
+        "i64"   => quote! { *output = (#result) as u64; },
+        "u64"   => quote! { *output = #result; },
+        "i32"   => quote! { *output = (#result) as u32 as u64; },
+        "u32"   => quote! { *output = (#result) as u64; },
+        "i16"   => quote! { *output = (#result) as u16 as u64; },
+        "u16"   => quote! { *output = (#result) as u64; },
+        "i8"    => quote! { *output = (#result) as u8 as u64; },
+        "u8"    => quote! { *output = (#result) as u64; },
+        "isize" => quote! { *output = (#result) as u64; },
+        "usize" => quote! { *output = (#result) as u64; },
+        "()"    => quote! { let _ = #result; },
+        _       => return quote! {},
+    }
+}
+
+fn is_dispatch_compatible(ty: &str) -> bool {
+    matches!(ty.trim(),
+        "i8"|"i16"|"i32"|"i64"|"u8"|"u16"|"u32"|"u64"
+        |"f32"|"f64"|"bool"|"isize"|"usize"
+    )
+}
+
+fn generate_dispatch_shim(
+    func: &ItemFn,
+    fn_name: &proc_macro2::Ident,
+    fn_name_str: &str,
+) -> proc_macro2::TokenStream {
+    // Collect (ident, type_str) for all typed params
+    let mut params: Vec<(proc_macro2::Ident, String)> = Vec::new();
+    for arg in &func.sig.inputs {
+        if let FnArg::Typed(pt) = arg {
+            if let Pat::Ident(ident) = &*pt.pat {
+                let ty_str = { let ty = &*pt.ty; quote::quote!(#ty).to_string() };
+                params.push((ident.ident.clone(), ty_str));
+            }
+        }
+    }
+
+    // Check all params are dispatchable
+    for (_, ty) in &params {
+        if !is_dispatch_compatible(ty) {
+            return quote! {}; // skip — complex type
+        }
+    }
+
+    // Return type
+    let ret_ty_str = match &func.sig.output {
+        ReturnType::Default => "()".to_string(),
+        ReturnType::Type(_, ty) => quote::quote!(#ty).to_string(),
+    };
+    if ret_ty_str != "()" && !is_dispatch_compatible(&ret_ty_str) {
+        return quote! {};
+    }
+
+    // Build read expressions
+    let reads: Vec<proc_macro2::TokenStream> = params.iter().enumerate()
+        .map(|(i, (_, ty))| dispatch_read(ty, i))
+        .collect();
+    let param_idents: Vec<&proc_macro2::Ident> = params.iter().map(|(id, _)| id).collect();
+
+    let call_expr = quote! { #fn_name(#(#reads),*) };
+
+    let write_expr = dispatch_write(&ret_ty_str, call_expr);
+
+    let shim_name_str = format!("__bp_dispatch_{}", fn_name_str);
+    let shim_ident = proc_macro2::Ident::new(&shim_name_str, fn_name.span());
+
+    quote! {
+        #[cfg(not(target_arch = "wasm32"))]
+        #[no_mangle]
+        pub unsafe extern "C" fn #shim_ident(inputs: *const u64, output: *mut u64) {
+            #write_expr
         }
     }
 }
