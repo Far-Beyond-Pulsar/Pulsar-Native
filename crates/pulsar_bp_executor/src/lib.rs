@@ -56,14 +56,26 @@ impl BpExecutor {
     ///
     /// After this call `pbgc::vm::run(&program)` needs no dispatch table.
     /// Call once per program after loading or deserializing.
+    ///
+    /// # Safety
+    ///
+    /// The raw function pointers written into `program` are valid only while
+    /// this `BpExecutor` (and the `TempLib` that backs it) remains alive.
+    /// Dropping the executor — or the `TempLib` it was loaded from — before
+    /// calling `pbgc::vm::run(&program)` results in dangling pointers and
+    /// undefined behaviour. Keep the executor alive at least until the program
+    /// finishes executing.
     pub fn prepare(&self, program: &mut pbgc::BpProgram) -> Result<(), ExecutorError> {
         use pbgc::Instruction;
         for instr in &mut program.instructions {
             if let Instruction::Call { fn_ptr, node_type, .. } = instr {
-                let sym_name = format!("__bp_dispatch_{}\0", node_type);
+                // Build a NUL-terminated key for libloading, but keep a clean
+                // copy without the NUL for use in error messages.
+                let display_name = format!("__bp_dispatch_{}", node_type);
+                let lookup_key   = format!("{}\0", display_name);
                 let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
-                    self._lib.get(sym_name.as_bytes())
-                        .map_err(|_| ExecutorError::MissingSymbol(sym_name.clone()))?
+                    self._lib.get(lookup_key.as_bytes())
+                        .map_err(|_| ExecutorError::MissingSymbol(display_name))?
                 };
                 *fn_ptr = *ptr as usize as u64;
             }
