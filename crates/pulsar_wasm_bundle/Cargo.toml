@@ -8,7 +8,7 @@ build = "build.rs"
 [dependencies]
 
 [dev-dependencies]
-pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "a276c8b" }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "898d177" }
 graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
 pulsar_std = { path = "../pulsar_std" }
 serde_json = "1.0"

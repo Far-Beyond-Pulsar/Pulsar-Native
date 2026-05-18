@@ -93,6 +93,52 @@ impl NodeDispatch for NativeStdDispatch {
             "and" => { *output = Some(BpValue::Bool(inputs[0].as_bool() && inputs[1].as_bool())); }
             "or"  => { *output = Some(BpValue::Bool(inputs[0].as_bool() || inputs[1].as_bool())); }
             "print_string" | "branch" | "sequence" => {}
+            "assert_true" => {
+                if !inputs[0].as_bool() {
+                    return Err(VmError::AssertionFailed("assert_true: condition was false".into()));
+                }
+            }
+            "assert_false" => {
+                if inputs[0].as_bool() {
+                    return Err(VmError::AssertionFailed("assert_false: condition was true".into()));
+                }
+            }
+            "assert_eq_int" => {
+                let (a, b) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(0));
+                if a != b {
+                    return Err(VmError::AssertionFailed(format!("assert_eq_int: {} != {}", a, b)));
+                }
+            }
+            "assert_ne_int" => {
+                let (a, b) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(0));
+                if a == b {
+                    return Err(VmError::AssertionFailed(format!("assert_ne_int: both == {}", a)));
+                }
+            }
+            "assert_eq_float" => {
+                let (a, b, e) = (inputs[0].as_f64().unwrap_or(0.0), inputs[1].as_f64().unwrap_or(0.0), inputs[2].as_f64().unwrap_or(1e-9));
+                if (a - b).abs() >= e {
+                    return Err(VmError::AssertionFailed(format!("assert_eq_float: |{} - {}| >= eps {}", a, b, e)));
+                }
+            }
+            "assert_gt_int" => {
+                let (a, b) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(0));
+                if a <= b {
+                    return Err(VmError::AssertionFailed(format!("assert_gt_int: {} not > {}", a, b)));
+                }
+            }
+            "assert_lt_int" => {
+                let (a, b) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(0));
+                if a >= b {
+                    return Err(VmError::AssertionFailed(format!("assert_lt_int: {} not < {}", a, b)));
+                }
+            }
+            "assert_in_range_int" => {
+                let (v, lo, hi) = (inputs[0].as_i64().unwrap_or(0), inputs[1].as_i64().unwrap_or(0), inputs[2].as_i64().unwrap_or(0));
+                if v < lo || v > hi {
+                    return Err(VmError::AssertionFailed(format!("assert_in_range_int: {} not in [{}, {}]", v, lo, hi)));
+                }
+            }
             other => return Err(VmError::UnknownNode(other.to_string())),
         }
         Ok(())
