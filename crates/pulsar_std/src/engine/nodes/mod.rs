@@ -38,6 +38,10 @@ pub use url::*;
 pub mod atomic;
 pub use atomic::*;
 
+// Testing / assertion nodes — always available, wasm-safe (panic = wasm trap)
+pub mod testing;
+pub use testing::*;
+
 // Native-only modules: threads, OS, filesystem, network
 #[cfg(not(target_arch = "wasm32"))]
 pub mod debug;
