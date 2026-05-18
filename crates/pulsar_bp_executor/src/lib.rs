@@ -78,11 +78,11 @@ impl BpExecutor {
         node_types: &[String],
     ) -> Result<Vec<DispatchFn>, ExecutorError> {
         node_types.iter().map(|name| {
-            // Symbol name: __bp_dispatch_add\0
-            let sym = format!("__bp_dispatch_{}\0", name);
+            let symbol_name = format!("__bp_dispatch_{}", name);
+            let lookup_symbol = format!("{}\0", symbol_name);
             let func: libloading::Symbol<DispatchFn> = unsafe {
-                self._lib.get(sym.as_bytes())
-                    .map_err(|_| ExecutorError::MissingSymbol(sym.clone()))?
+                self._lib.get(lookup_symbol.as_bytes())
+                    .map_err(|_| ExecutorError::MissingSymbol(symbol_name.clone()))?
             };
             Ok(*func)
         }).collect()
