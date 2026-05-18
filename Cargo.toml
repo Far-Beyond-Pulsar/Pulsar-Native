@@ -4,7 +4,6 @@ members = [
     "agent-providers/*",
     "ui-crates/*",
 ]
-exclude = ["crates/pulsar_wasm_bundle"]
 
 default-members = ["crates/engine"]
 resolver = "2"
