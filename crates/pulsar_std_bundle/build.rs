@@ -1,4 +1,4 @@
-/// Build script for pulsar_wasm_bundle.
+/// Build script for pulsar_std_bundle.
 ///
 /// Compiles `pulsar_std` as a native cdylib and embeds the bytes.
 /// Uses an isolated CARGO_TARGET_DIR so the subprocess never contends

@@ -18,15 +18,39 @@ pub const PULSAR_STD_LIB_BYTES: &[u8] = include_bytes!(env!("PULSAR_STD_LIB_PATH
 /// Platform file extension of the embedded library (`"dylib"`, `"so"`, or `"dll"`).
 pub const PULSAR_STD_LIB_EXT: &str = env!("PULSAR_STD_LIB_EXT");
 
+static TEMP_LIB_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Write the embedded library bytes to a temp file and return an RAII guard.
 ///
 /// Keep the returned `TempLib` alive for the lifetime of any
 /// `libloading::Library` loaded from it — dropping it deletes the temp file.
 pub fn extract_to_tempfile() -> std::io::Result<TempLib> {
     use std::io::Write;
-    let path = std::env::temp_dir()
-        .join(format!("pulsar_std_bp.{}", PULSAR_STD_LIB_EXT));
-    std::fs::File::create(&path)?.write_all(PULSAR_STD_LIB_BYTES)?;
+    use std::sync::atomic::Ordering;
+
+    let mut path = std::env::temp_dir();
+    let pid = std::process::id();
+
+    let file = loop {
+        let suffix = TEMP_LIB_COUNTER.fetch_add(1, Ordering::Relaxed);
+        path.push(format!("pulsar_std_bp_{pid}_{suffix}.{}", PULSAR_STD_LIB_EXT));
+
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(file) => break file,
+            Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+                path.pop();
+            }
+            Err(err) => return Err(err),
+        }
+    };
+
+    let mut file = file;
+    file.write_all(PULSAR_STD_LIB_BYTES)?;
+    file.flush()?;
     Ok(TempLib { path })
 }
 

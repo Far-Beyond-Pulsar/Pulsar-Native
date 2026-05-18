@@ -2,14 +2,13 @@
 name = "pulsar_bp_executor"
 version = "0.1.0"
 edition = "2021"
-description = "Native dylib-backed Blueprint executor — zero-enum, zero-conversion dispatch"
+description = "Native dylib-backed Blueprint executor — zero-enum, direct fn-ptr dispatch"
 
 [dependencies]
-# Load __bp_dispatch_* symbols from the native pulsar_std cdylib at runtime
 libloading = "0.8"
+pbgc       = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "43bde6cc285bc87757e8f6f125f9ff496c030bc4" }
 
 [dev-dependencies]
-pbgc         = { git = "https://github.com/Far-Beyond-Pulsar/PBGC.git", rev = "3605b51" }
-graphy       = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
-pulsar_std_bundle  = { path = "../pulsar_std_bundle" }
-serde_json   = "1.0"
+graphy           = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
+pulsar_std_bundle = { path = "../pulsar_std_bundle" }
+serde_json       = "1.0"

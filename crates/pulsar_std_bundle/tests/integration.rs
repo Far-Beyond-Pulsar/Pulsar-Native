@@ -1,4 +1,4 @@
-/// Integration tests for pulsar_wasm_bundle — native cdylib edition.
+/// Integration tests for pulsar_std_bundle — native cdylib edition.
 ///
 /// Verifies that the embedded native dylib:
 ///   1. Contains valid bytes (non-empty)
@@ -12,7 +12,7 @@ use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
     PinType, Position, PropertyValue,
 };
-use pbgc::{compile_graph, compile_graph_to_bytecode, BpProgram, DispatchFn};
+use pbgc::{compile_graph, compile_graph_to_bytecode, BpProgram};
 use pulsar_bp_executor::BpExecutor;
 use pulsar_std_bundle::{extract_to_tempfile, PULSAR_STD_LIB_BYTES, PULSAR_STD_LIB_EXT};
 
@@ -24,14 +24,14 @@ fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     (exec, tmp)
 }
 
-fn run_program(exec: &BpExecutor, prog: &BpProgram) {
-    let dispatch = exec.resolve_dispatch(&prog.node_types).expect("resolve dispatch");
-    pbgc::vm::run(prog, &dispatch).expect("vm run");
+fn run_program(exec: &BpExecutor, prog: &mut BpProgram) {
+    exec.prepare(prog).expect("prepare");
+    pbgc::vm::run(prog).expect("vm run");
 }
 
 fn compile_and_run(exec: &BpExecutor, g: &GraphDescription) {
-    let progs = compile_graph_to_bytecode(g).expect("compile");
-    for p in &progs { run_program(exec, p); }
+    let mut progs = compile_graph_to_bytecode(g).expect("compile");
+    for p in &mut progs { run_program(exec, p); }
 }
 
 fn time<T>(label: &str, f: impl FnOnce() -> T) -> T {
@@ -121,8 +121,14 @@ fn test_lib_extracts_to_temp_and_loads() {
     let tmp = extract_to_tempfile().expect("extract");
     assert!(tmp.path.exists(), "temp file must exist");
     let exec = BpExecutor::load(&tmp.path).expect("load");
-    // Resolve a known symbol to confirm the lib is functional
-    exec.resolve_dispatch(&["add".to_string()]).expect("add must be exported");
+    // Prepare a trivial program to confirm the lib is functional
+    let mut prog = BpProgram::new("test");
+    prog.slot_count = 2;
+    prog.instructions.push(pbgc::Instruction::Call {
+        fn_ptr: 0, node_type: "add".to_string(), inputs: vec![0, 1], output: Some(0),
+    });
+    prog.instructions.push(pbgc::Instruction::Return);
+    exec.prepare(&mut prog).expect("add must be prepareable");
 }
 
 // ── Correctness via embedded native lib ──────────────────────────────────────
@@ -210,12 +216,12 @@ fn test_timing_branch_graph_10k_runs() {
     let programs = time("branch graph → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
     println!("  instructions: {}, slots: {}", programs[0].instructions.len(), programs[0].slot_count);
 
-    let dispatch = exec.resolve_dispatch(&programs[0].node_types).unwrap();
+    exec.prepare(&mut programs[0]).unwrap();
 
-    time("branch graph → VM execute (1×)", || pbgc::vm::run(&programs[0], &dispatch).unwrap());
+    time("branch graph → VM execute (1×)", || pbgc::vm::run(&programs[0]).unwrap());
 
     let t = Instant::now();
-    for _ in 0..10_000 { pbgc::vm::run(&programs[0], &dispatch).unwrap(); }
+    for _ in 0..10_000 { pbgc::vm::run(&programs[0]).unwrap(); }
     let elapsed = t.elapsed();
     println!("[timing] {:45} {:>10.3} ms total  ({:.2} µs/run)",
         "branch graph → VM execute (10,000×)",
@@ -252,11 +258,11 @@ fn test_timing_100_node_chain() {
     let progs = time("100-node chain → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
     println!("  instructions: {}, slots: {}", progs[0].instructions.len(), progs[0].slot_count);
 
-    let dispatch = exec.resolve_dispatch(&progs[0].node_types).unwrap();
-    time("100-node chain → VM execute (1×)", || pbgc::vm::run(&progs[0], &dispatch).unwrap());
+    exec.prepare(&mut progs[0]).unwrap();
+    time("100-node chain → VM execute (1×)", || pbgc::vm::run(&progs[0]).unwrap());
 
     let t = Instant::now();
-    for _ in 0..1_000 { pbgc::vm::run(&progs[0], &dispatch).unwrap(); }
+    for _ in 0..1_000 { pbgc::vm::run(&progs[0]).unwrap(); }
     let elapsed = t.elapsed();
     println!("[timing] {:45} {:>10.3} ms total  ({:.2} µs/run)",
         "100-node chain → VM execute (1,000×)",
@@ -275,6 +281,6 @@ fn test_timing_500k_node_stress() {
     let progs = time("500k-node → bytecode compile", || compile_graph_to_bytecode(&g).unwrap());
     println!("  instructions: {}, slots: {}", progs[0].instructions.len(), progs[0].slot_count);
 
-    let dispatch = exec.resolve_dispatch(&progs[0].node_types).unwrap();
-    time("500k-node → VM execute (1×)", || pbgc::vm::run(&progs[0], &dispatch).unwrap());
+    exec.prepare(&mut progs[0]).unwrap();
+    time("500k-node → VM execute (1×)", || pbgc::vm::run(&progs[0]).unwrap());
 }

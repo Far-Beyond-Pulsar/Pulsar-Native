@@ -20,11 +20,10 @@ fn exec() -> (BpExecutor, pulsar_std_bundle::TempLib) {
 }
 
 fn run(e: &BpExecutor, g: &GraphDescription) {
-    let progs = compile_graph_to_bytecode(g).expect("compile");
-    for p in &progs {
-        let d = e.resolve_dispatch(&p.node_types)
-            .unwrap_or_else(|err| panic!("resolve: {}", err));
-        pbgc::vm::run(p, &d).unwrap_or_else(|err| panic!("run: {}", err));
+    let mut progs = compile_graph_to_bytecode(g).expect("compile");
+    for p in &mut progs {
+        e.prepare(p).unwrap_or_else(|err| panic!("prepare: {}", err));
+        pbgc::vm::run(p).unwrap_or_else(|err| panic!("run: {}", err));
     }
 }
 

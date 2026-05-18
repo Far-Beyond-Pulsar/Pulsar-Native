@@ -29,16 +29,14 @@ fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     (exec, tmp)
 }
 
-fn run_program(exec: &BpExecutor, prog: &BpProgram) {
-    let dispatch = exec.resolve_dispatch(&prog.node_types)
-        .unwrap_or_else(|e| panic!("resolve_dispatch failed: {}", e));
-    pbgc::vm::run(prog, &dispatch)
-        .unwrap_or_else(|e| panic!("vm::run failed: {}", e));
+fn run_program(exec: &BpExecutor, prog: &mut pbgc::BpProgram) {
+    exec.prepare(prog).unwrap_or_else(|e| panic!("prepare failed: {}", e));
+    pbgc::vm::run(prog).unwrap_or_else(|e| panic!("vm::run failed: {}", e));
 }
 
 fn compile_and_run(exec: &BpExecutor, graph: &GraphDescription) {
-    let programs = compile_graph_to_bytecode(graph).expect("compile failed");
-    for prog in &programs { run_program(exec, prog); }
+    let mut programs = compile_graph_to_bytecode(graph).expect("compile failed");
+    for prog in &mut programs { run_program(exec, prog); }
 }
 
 // ── Graph builders ────────────────────────────────────────────────────────────
@@ -150,31 +148,56 @@ fn data_conn(f: &str, fp: &str, t: &str, tp: &str) -> Connection {
 // ── Dylib sanity ──────────────────────────────────────────────────────────────
 
 #[test]
-fn test_dylib_loads_and_resolves_add() {
+fn test_dylib_loads_and_prepares() {
     let (exec, _tmp) = executor();
-    // Resolve a known symbol — should succeed
-    let dispatch = exec.resolve_dispatch(&["add".to_string()]).expect("resolve add");
-    assert_eq!(dispatch.len(), 1);
+    // Prepare a trivial program to confirm the lib and symbol resolution work
+    let mut prog = pbgc::BpProgram::new("test");
+    prog.slot_count = 2;
+    prog.instructions.push(pbgc::Instruction::Call {
+        fn_ptr: 0, node_type: "add".to_string(),
+        inputs: vec![0, 1], output: Some(0),
+    });
+    prog.instructions.push(pbgc::Instruction::Return);
+    exec.prepare(&mut prog).expect("add must be prepareable");
+    // fn_ptr should now be non-zero
+    if let pbgc::Instruction::Call { fn_ptr, .. } = &prog.instructions[0] {
+        assert_ne!(*fn_ptr, 0, "fn_ptr must be resolved");
+    }
 }
 
 #[test]
-fn test_dylib_resolves_all_math_nodes() {
+fn test_dylib_prepares_all_math_nodes() {
     let (exec, _tmp) = executor();
-    let nodes = vec![
-        "add", "subtract", "multiply", "divide", "modulo",
-        "abs", "sqrt", "power", "lerp", "clamp",
-        "min", "max", "ceil", "floor", "round",
-        "greater_than", "less_than",
-    ];
-    let strs: Vec<String> = nodes.iter().map(|s| s.to_string()).collect();
-    let dispatch = exec.resolve_dispatch(&strs).expect("resolve all math");
-    assert_eq!(dispatch.len(), nodes.len());
+    let nodes = ["add","subtract","multiply","divide","modulo",
+                 "abs","sqrt","power","lerp","clamp","min","max",
+                 "ceil","floor","round","greater_than","less_than"];
+    let mut prog = pbgc::BpProgram::new("test");
+    prog.slot_count = 4;
+    for name in &nodes {
+        prog.instructions.push(pbgc::Instruction::Call {
+            fn_ptr: 0, node_type: name.to_string(), inputs: vec![0,1], output: Some(2),
+        });
+    }
+    prog.instructions.push(pbgc::Instruction::Return);
+    exec.prepare(&mut prog).expect("all math nodes must have dispatch symbols");
+    for instr in &prog.instructions {
+        if let pbgc::Instruction::Call { fn_ptr, node_type, .. } = instr {
+            assert_ne!(*fn_ptr, 0, "{} fn_ptr must be non-zero", node_type);
+        }
+    }
 }
 
 #[test]
 fn test_missing_symbol_returns_error() {
     let (exec, _tmp) = executor();
-    let result = exec.resolve_dispatch(&["this_node_does_not_exist".to_string()]);
+    let mut prog = pbgc::BpProgram::new("test");
+    prog.slot_count = 1;
+    prog.instructions.push(pbgc::Instruction::Call {
+        fn_ptr: 0, node_type: "this_node_does_not_exist".to_string(),
+        inputs: vec![], output: None,
+    });
+    prog.instructions.push(pbgc::Instruction::Return);
+    let result = exec.prepare(&mut prog);
     assert!(result.is_err(), "expected error for unknown node");
 }
 
@@ -354,12 +377,12 @@ fn test_timing_10k_executions_branch_graph() {
     g.add_connection(exec_conn("br", "br_t", "chk", "chk_e"));
     g.add_connection(data_conn("a", "a_r", "chk", "chk_a"));
 
-    let programs = compile_graph_to_bytecode(&g).unwrap();
-    let dispatch = exec.resolve_dispatch(&programs[0].node_types).unwrap();
+    let mut programs = compile_graph_to_bytecode(&g).unwrap();
+    exec.prepare(&mut programs[0]).unwrap();
 
     let t = Instant::now();
     for _ in 0..10_000 {
-        pbgc::vm::run(&programs[0], &dispatch).unwrap();
+        pbgc::vm::run(&programs[0]).unwrap();
     }
     let elapsed = t.elapsed();
     println!(
@@ -390,14 +413,14 @@ fn test_timing_compile_vs_execute() {
     g.add_connection(data_conn("gt", "gt_r", "br", "br_c"));
 
     let t_compile = Instant::now();
-    let programs = compile_graph_to_bytecode(&g).unwrap();
+    let mut programs = compile_graph_to_bytecode(&g).unwrap();
     let compile_time = t_compile.elapsed();
 
-    let dispatch = exec.resolve_dispatch(&programs[0].node_types).unwrap();
+    exec.prepare(&mut programs[0]).unwrap();
 
     let t_exec = Instant::now();
     for _ in 0..1_000 {
-        pbgc::vm::run(&programs[0], &dispatch).unwrap();
+        pbgc::vm::run(&programs[0]).unwrap();
     }
     let exec_time = t_exec.elapsed();
 
@@ -421,8 +444,8 @@ fn test_serde_roundtrip_executes_correctly_via_real_dylib() {
 
     let programs = compile_graph_to_bytecode(&g).unwrap();
     let json = serde_json::to_string(&programs[0]).unwrap();
-    let restored: pbgc::BpProgram = serde_json::from_str(&json).unwrap();
+    let mut restored: pbgc::BpProgram = serde_json::from_str(&json).unwrap();
 
-    let dispatch = exec.resolve_dispatch(&restored.node_types).unwrap();
-    pbgc::vm::run(&restored, &dispatch).unwrap();
+    exec.prepare(&mut restored).unwrap();
+    pbgc::vm::run(&restored).unwrap();
 }
