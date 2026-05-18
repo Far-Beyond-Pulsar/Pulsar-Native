@@ -41,7 +41,7 @@ pub use atomic::*;
 pub mod testing;
 pub use testing::*;
 
-// OS/threading-dependent modules — excluded from cdylib builds by native_only attribute
+// OS/threading-dependent and environment/system integration modules
 pub mod debug;
 pub use debug::*;
 

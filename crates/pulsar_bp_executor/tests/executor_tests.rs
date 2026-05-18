@@ -10,7 +10,6 @@
 /// The `__bp_dispatch_*` shims inside `libpulsar_std` perform all type casting.
 /// These tests are calling the actual compiled pulsar_std math functions.
 
-use std::path::Path;
 use std::time::Instant;
 
 use graphy::{
