@@ -9,11 +9,11 @@ use graphy::{
 };
 use pbgc::compile_graph_to_bytecode;
 use pulsar_bp_executor::BpExecutor;
-use pulsar_wasm_bundle::extract_to_tempfile;
+use pulsar_std_bundle::extract_to_tempfile;
 
 // ── Shared executor ───────────────────────────────────────────────────────────
 
-fn exec() -> (BpExecutor, pulsar_wasm_bundle::TempLib) {
+fn exec() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().unwrap();
     let e   = BpExecutor::load(&tmp.path).unwrap();
     (e, tmp)

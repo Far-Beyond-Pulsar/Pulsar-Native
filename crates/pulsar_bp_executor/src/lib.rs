@@ -56,7 +56,7 @@ impl BpExecutor {
     ///
     /// ```rust,no_run
     /// use pulsar_bp_executor::BpExecutor;
-    /// use pulsar_wasm_bundle::extract_to_tempfile;
+    /// use pulsar_std_bundle::extract_to_tempfile;
     ///
     /// let tmp = extract_to_tempfile().unwrap();
     /// let executor = BpExecutor::load(&tmp.path).unwrap();

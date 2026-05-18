@@ -2,7 +2,7 @@
 //!
 //! Automatic registration system for blueprint nodes using compile-time collection.
 //! On native targets, uses linkme distributed_slice for zero-cost compile-time registration.
-//! On wasm32, the registry is not used — the WASM exports are the interface.
+//! When building as a cdylib, the registry is not used — __bp_dispatch_* symbols are the interface.
 
 use crate::NodeTypes;
 

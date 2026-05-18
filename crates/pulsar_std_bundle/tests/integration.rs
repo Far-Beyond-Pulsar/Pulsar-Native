@@ -14,11 +14,11 @@ use graphy::{
 };
 use pbgc::{compile_graph, compile_graph_to_bytecode, BpProgram, DispatchFn};
 use pulsar_bp_executor::BpExecutor;
-use pulsar_wasm_bundle::{extract_to_tempfile, PULSAR_STD_LIB_BYTES, PULSAR_STD_LIB_EXT};
+use pulsar_std_bundle::{extract_to_tempfile, PULSAR_STD_LIB_BYTES, PULSAR_STD_LIB_EXT};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn executor() -> (BpExecutor, pulsar_wasm_bundle::TempLib) {
+fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().expect("extract native lib");
     let exec = BpExecutor::load(&tmp.path).expect("load native lib");
     (exec, tmp)

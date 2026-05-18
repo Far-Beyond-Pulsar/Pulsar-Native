@@ -19,11 +19,11 @@ use graphy::{
 };
 use pbgc::{compile_graph_to_bytecode, BpProgram};
 use pulsar_bp_executor::BpExecutor;
-use pulsar_wasm_bundle::extract_to_tempfile;
+use pulsar_std_bundle::extract_to_tempfile;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn executor() -> (BpExecutor, pulsar_wasm_bundle::TempLib) {
+fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().expect("extract dylib");
     let exec = BpExecutor::load(&tmp.path).expect("load dylib");
     (exec, tmp)
