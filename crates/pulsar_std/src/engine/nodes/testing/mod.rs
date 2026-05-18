@@ -123,3 +123,67 @@ pub fn assert_in_range_int(actual: i64, lo: i64, hi: i64) {
         );
     }
 }
+
+// =============================================================================
+// Complex-type stress nodes
+//
+// These nodes use concrete, non-generic types that are large, non-trivially
+// laid out, and heap-allocated — the hardest cases for the arena dispatcher.
+// =============================================================================
+
+/// Produces a concrete `Vec<(i128, i64, bool)>` with three known elements:
+///   [0] = (i128::MAX,   -1,   true )
+///   [1] = (0,            0,   false)
+///   [2] = (42,         999,   true )
+///
+/// # Make Mixed Vec
+/// Creates a Vec of (i128, i64, bool) tuples for stress-testing the dispatcher.
+#[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
+pub fn make_mixed_vec() -> Vec<(i128, i64, bool)> {
+    vec![
+        (i128::MAX, -1i64,  true),
+        (0i128,      0i64,  false),
+        (42i128,   999i64,  true),
+    ]
+}
+
+/// Consumes a `Vec<(i128, i64, bool)>` and returns true iff it contains exactly
+/// the three elements produced by `make_mixed_vec`.
+///
+/// Panics-on-assertion-failure path lets the test runner detect bugs without
+/// any special error-propagation plumbing.
+///
+/// # Mixed Vec Check
+/// Verifies the contents of a Vec<(i128, i64, bool)> against known values.
+#[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
+pub fn mixed_vec_check(v: Vec<(i128, i64, bool)>) -> bool {
+    v.len() == 3
+        && v[0] == (i128::MAX, -1i64,  true)
+        && v[1] == (0i128,      0i64,  false)
+        && v[2] == (42i128,   999i64,  true)
+}
+
+/// Consumes a `Vec<(i128, i64, bool)>` and returns its length as i64.
+///
+/// # Mixed Vec Len
+/// Returns the length of a Vec<(i128, i64, bool)>.
+#[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
+pub fn mixed_vec_len(v: Vec<(i128, i64, bool)>) -> i64 {
+    v.len() as i64
+}
+
+/// Consumes a `Vec<(i128, i64, bool)>` and sums: each i128 as i64 (wrapping)
+/// + each i64 + each bool (1 if true).  Returns the combined sum as i64.
+/// Tests that the dispatcher correctly threads an 8-element struct through the
+/// arena byte-by-byte.
+///
+/// # Mixed Vec Sum
+/// Computes a checksum of all fields in a Vec<(i128, i64, bool)>.
+#[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
+pub fn mixed_vec_sum(v: Vec<(i128, i64, bool)>) -> i64 {
+    v.iter().fold(0i64, |acc, &(a, b, c)| {
+        acc.wrapping_add(a as i64)
+           .wrapping_add(b)
+           .wrapping_add(c as i64)
+    })
+}

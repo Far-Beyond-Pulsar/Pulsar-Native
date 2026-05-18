@@ -417,3 +417,254 @@ fn bool_check(node_type: &str, params: &[(&str,&str)], consts: &[f64], expect_tr
 #[test] fn test_lerp_quarter()       { let (e,_)=exec(); run(&e,&simple_f64_check("lerp",&["a","b","t"],&[0.0,100.0,0.25],25.0,1e-9)); }
 #[test] fn test_lerp_three_quarters(){ let (e,_)=exec(); run(&e,&simple_f64_check("lerp",&["a","b","t"],&[0.0,100.0,0.75],75.0,1e-9)); }
 #[test] fn test_angle_difference_zero(){ let (e,_)=exec(); run(&e,&simple_f64_check("angle_difference",&["angle1","angle2"],&[1.0,1.0],0.0,1e-9)); }
+
+// ── Color — complex concrete return type (f32, f32, f32, f32) ────────────────
+//
+// These tests exercise the arena's ability to store and forward 16-byte Copy
+// tuples through dispatch.  No generics, no heap allocation — just
+// `ptr::write(ret, (f32,f32,f32,f32))` round-tripping through raw bytes.
+
+fn color_node(id: &str, node_type: &str, r: f32, g: f32, b: f32, a: f32) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    for (name, val) in [("r", r), ("g", g), ("b", b), ("a", a)] {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(
+            &pid,
+            Pin::new(&pid, name, DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input),
+        ));
+        n.properties.insert(pid, PropertyValue::Number(val as f64));
+    }
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(&format!("{id}_r"), "result",
+            DataType::Typed(graphy::TypeInfo::new("(f32, f32, f32, f32)")), PinType::Output),
+    ));
+    n
+}
+
+fn color_lerp_node(id: &str, t: f32) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "color_lerp", Position::default());
+    for name in ["a", "b"] {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(
+            &pid,
+            Pin::new(&pid, name, DataType::Typed(graphy::TypeInfo::new("(f32, f32, f32, f32)")), PinType::Input),
+        ));
+    }
+    let tp = format!("{id}_t");
+    n.inputs.push(PinInstance::new(
+        &tp, Pin::new(&tp, "t", DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input),
+    ));
+    n.properties.insert(tp, PropertyValue::Number(t as f64));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(&format!("{id}_r"), "result",
+            DataType::Typed(graphy::TypeInfo::new("(f32, f32, f32, f32)")), PinType::Output),
+    ));
+    n
+}
+
+fn color_eq_node(id: &str, eps: f32) -> NodeInstance {
+    let mut n = NodeInstance::new(id, "color_eq_approx", Position::default());
+    for name in ["a", "b"] {
+        let pid = format!("{id}_{name}");
+        n.inputs.push(PinInstance::new(
+            &pid,
+            Pin::new(&pid, name, DataType::Typed(graphy::TypeInfo::new("(f32, f32, f32, f32)")), PinType::Input),
+        ));
+    }
+    let ep = format!("{id}_epsilon");
+    n.inputs.push(PinInstance::new(
+        &ep, Pin::new(&ep, "epsilon", DataType::Typed(graphy::TypeInfo::new("f32")), PinType::Input),
+    ));
+    n.properties.insert(ep, PropertyValue::Number(eps as f64));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Output),
+    ));
+    n
+}
+
+/// color_new with 4 f32 constants → (f32,f32,f32,f32) tuple stored in arena.
+/// Routes through color_eq_approx back to assert_true — proves a 16-byte Copy
+/// tuple survives a write→read cycle through the byte arena.
+#[test]
+fn test_color_new_tuple_roundtrip() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("color_new_roundtrip");
+    g.add_node(begin());
+    g.add_node(color_node("actual",   "color_new", 1.0, 0.5, 0.25, 0.75));
+    g.add_node(color_node("expected", "color_new", 1.0, 0.5, 0.25, 0.75));
+    g.add_node(color_eq_node("eq", 1e-6));
+    g.add_node(assert_true("chk"));
+    g.add_connection(d("actual",   "actual_r",   "eq",  "eq_a"));
+    g.add_connection(d("expected", "expected_r", "eq",  "eq_b"));
+    g.add_connection(e("begin", "be",  "chk", "chk_e"));
+    g.add_connection(d("eq",    "eq_r","chk", "chk_c"));
+    run(&ex, &g);
+}
+
+/// color_lerp(red, blue, t=0.5) == (0.5, 0.0, 0.5, 1.0).
+/// Exercises TWO tuple inputs being read from separate arena offsets.
+#[test]
+fn test_color_lerp_midpoint_red_blue() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("color_lerp_mid");
+    g.add_node(begin());
+    g.add_node(color_node("red",  "color_new", 1.0, 0.0, 0.0, 1.0));
+    g.add_node(color_node("blue", "color_new", 0.0, 0.0, 1.0, 1.0));
+    g.add_node(color_lerp_node("mid", 0.5));
+    g.add_node(color_node("exp", "color_new", 0.5, 0.0, 0.5, 1.0));
+    g.add_node(color_eq_node("eq", 1e-5));
+    g.add_node(assert_true("chk"));
+    g.add_connection(d("red",  "red_r",  "mid", "mid_a"));
+    g.add_connection(d("blue", "blue_r", "mid", "mid_b"));
+    g.add_connection(d("mid",  "mid_r",  "eq",  "eq_a"));
+    g.add_connection(d("exp",  "exp_r",  "eq",  "eq_b"));
+    g.add_connection(e("begin", "be",  "chk", "chk_e"));
+    g.add_connection(d("eq",    "eq_r","chk", "chk_c"));
+    run(&ex, &g);
+}
+
+/// color_lerp(a, b, t=0.0) == a  (identity at t=0)
+#[test]
+fn test_color_lerp_at_zero_is_first_color() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("color_lerp_t0");
+    g.add_node(begin());
+    g.add_node(color_node("a",   "color_new", 0.8, 0.2, 0.4, 0.9));
+    g.add_node(color_node("b",   "color_new", 0.0, 1.0, 0.5, 0.1));
+    g.add_node(color_lerp_node("res", 0.0));
+    g.add_node(color_node("exp", "color_new", 0.8, 0.2, 0.4, 0.9));
+    g.add_node(color_eq_node("eq", 1e-5));
+    g.add_node(assert_true("chk"));
+    g.add_connection(d("a",   "a_r",   "res", "res_a"));
+    g.add_connection(d("b",   "b_r",   "res", "res_b"));
+    g.add_connection(d("res", "res_r", "eq",  "eq_a"));
+    g.add_connection(d("exp", "exp_r", "eq",  "eq_b"));
+    g.add_connection(e("begin", "be",  "chk", "chk_e"));
+    g.add_connection(d("eq",    "eq_r","chk", "chk_c"));
+    run(&ex, &g);
+}
+
+/// color_lerp(a, b, t=1.0) == b  (identity at t=1)
+#[test]
+fn test_color_lerp_at_one_is_second_color() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("color_lerp_t1");
+    g.add_node(begin());
+    g.add_node(color_node("a",   "color_new", 0.2, 0.4, 0.6, 0.8));
+    g.add_node(color_node("b",   "color_new", 0.9, 0.7, 0.3, 0.1));
+    g.add_node(color_lerp_node("res", 1.0));
+    g.add_node(color_node("exp", "color_new", 0.9, 0.7, 0.3, 0.1));
+    g.add_node(color_eq_node("eq", 1e-5));
+    g.add_node(assert_true("chk"));
+    g.add_connection(d("a",   "a_r",   "res", "res_a"));
+    g.add_connection(d("b",   "b_r",   "res", "res_b"));
+    g.add_connection(d("res", "res_r", "eq",  "eq_a"));
+    g.add_connection(d("exp", "exp_r", "eq",  "eq_b"));
+    g.add_connection(e("begin", "be",  "chk", "chk_e"));
+    g.add_connection(d("eq",    "eq_r","chk", "chk_c"));
+    run(&ex, &g);
+}
+
+// ── Mixed-type Vec — non-Copy heap-allocated complex return types ─────────────
+//
+// Vec<(i128, i64, bool)>: 24-byte fat pointer on the stack / in the arena,
+// heap body with 32-byte elements (i128@align8 + i64 + bool + padding).
+//
+// Each graph has exactly ONE consumer of each Vec slot — the ptr::read in
+// the dispatch shim gives that consumer full ownership; the arena copy goes
+// dangling after the consumer drops it, but is never read again.
+
+fn pure_no_input(id: &str, node_type: &str, out_ty: &str) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(&format!("{id}_r"), "result",
+            DataType::Typed(graphy::TypeInfo::new(out_ty)), PinType::Output),
+    ));
+    n
+}
+
+fn pure_one_input(id: &str, node_type: &str, param: &str, in_ty: &str, out_ty: &str) -> NodeInstance {
+    let mut n = NodeInstance::new(id, node_type, Position::default());
+    let pid = format!("{id}_{param}");
+    n.inputs.push(PinInstance::new(
+        &pid,
+        Pin::new(&pid, param, DataType::Typed(graphy::TypeInfo::new(in_ty)), PinType::Input),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(&format!("{id}_r"), "result",
+            DataType::Typed(graphy::TypeInfo::new(out_ty)), PinType::Output),
+    ));
+    n
+}
+
+const MIXED_VEC_TY: &str = "Vec < (i128, i64, bool) >";
+
+/// make_mixed_vec() → mixed_vec_check() → assert_true
+/// Exercises: heap Vec produced, single ptr::read consumer, bool returned.
+#[test]
+fn test_mixed_vec_contents_are_correct() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("mixed_vec_check");
+    g.add_node(begin());
+    g.add_node(pure_no_input("src", "make_mixed_vec", MIXED_VEC_TY));
+    g.add_node(pure_one_input("chk", "mixed_vec_check", "v", MIXED_VEC_TY, "bool"));
+    g.add_node(assert_true("ok"));
+    g.add_connection(d("src", "src_r", "chk", "chk_v"));
+    g.add_connection(e("begin", "be",  "ok",  "ok_e"));
+    g.add_connection(d("chk",  "chk_r","ok",  "ok_c"));
+    run(&ex, &g);
+}
+
+/// make_mixed_vec() → mixed_vec_len() → assert_eq_int(3)
+/// Exercises: heap allocation round-trips through arena; length is 3.
+#[test]
+fn test_mixed_vec_length_is_3() {
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("mixed_vec_len");
+    g.add_node(begin());
+    g.add_node(pure_no_input("src", "make_mixed_vec", MIXED_VEC_TY));
+    g.add_node(pure_one_input("len", "mixed_vec_len", "v", MIXED_VEC_TY, "i64"));
+    g.add_node(assert_eq_int("ok", 3));
+    g.add_connection(d("src", "src_r", "len", "len_v"));
+    g.add_connection(e("begin", "be",  "ok",  "ok_e"));
+    g.add_connection(d("len",  "len_r","ok",  "ok_a"));
+    run(&ex, &g);
+}
+
+/// make_mixed_vec() → mixed_vec_sum()
+/// sum = (i128::MAX as i64 wrapping) + (-1) + (1)   [row 0]
+///      + 0 + 0 + 0                                  [row 1]
+///      + 42 + 999 + 1                               [row 2]
+/// = i64::MAX.wrapping_add(-1).wrapping_add(1) + 0 + 1042
+/// = i64::MAX.wrapping_add(1).wrapping_add(1042)
+/// = i64::MIN.wrapping_add(1042)
+/// Exercises: 32-byte struct layout (i128 + i64 + bool + padding) survives
+/// the heap→dispatch→sum path intact.
+#[test]
+fn test_mixed_vec_sum_matches_expected() {
+    let expected = {
+        let rows: &[(i128, i64, bool)] = &[
+            (i128::MAX, -1i64,  true),
+            (0i128,      0i64,  false),
+            (42i128,   999i64,  true),
+        ];
+        rows.iter().fold(0i64, |acc, &(a, b, c)| {
+            acc.wrapping_add(a as i64).wrapping_add(b).wrapping_add(c as i64)
+        })
+    };
+    let (ex, _) = exec();
+    let mut g = GraphDescription::new("mixed_vec_sum");
+    g.add_node(begin());
+    g.add_node(pure_no_input("src", "make_mixed_vec", MIXED_VEC_TY));
+    g.add_node(pure_one_input("sum", "mixed_vec_sum", "v", MIXED_VEC_TY, "i64"));
+    g.add_node(assert_eq_int("ok", expected));
+    g.add_connection(d("src", "src_r", "sum", "sum_v"));
+    g.add_connection(e("begin", "be",  "ok",  "ok_e"));
+    g.add_connection(d("sum",  "sum_r","ok",  "ok_a"));
+    run(&ex, &g);
+}

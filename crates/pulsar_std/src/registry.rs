@@ -6,11 +6,15 @@
 
 use crate::NodeTypes;
 
-/// Parameter metadata
+/// Parameter metadata — sizes baked in at compile time by the `#[blueprint]` macro.
 #[derive(Debug, Clone)]
 pub struct NodeParameter {
     pub name: &'static str,
     pub ty: &'static str,
+    /// `std::mem::size_of::<T>()` for this parameter's type, set by the macro.
+    pub size: usize,
+    /// `std::mem::align_of::<T>()` for this parameter's type, set by the macro.
+    pub align: usize,
 }
 
 /// Import statement metadata for a blueprint node
@@ -27,6 +31,10 @@ pub struct NodeMetadata {
     pub node_type: NodeTypes,
     pub params: &'static [NodeParameter],
     pub return_type: Option<&'static str>,
+    /// `std::mem::size_of::<ReturnType>()`, set by the `#[blueprint]` macro. 0 for void.
+    pub return_size: usize,
+    /// `std::mem::align_of::<ReturnType>()`, set by the `#[blueprint]` macro. 1 for void.
+    pub return_align: usize,
     pub exec_inputs: &'static [&'static str],
     pub exec_outputs: &'static [&'static str],
     pub function_source: &'static str,
