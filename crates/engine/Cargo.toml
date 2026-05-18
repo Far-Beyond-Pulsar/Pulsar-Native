@@ -14,7 +14,7 @@ anyhow.workspace = true
 gpui-ce.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages"] }
 winit.workspace = true
-thiserror = "2.0"
+thiserror = "2.07
 image = "0.25"  # For loading window icon
 wgpu.workspace = true
 rfd = "0.15"
