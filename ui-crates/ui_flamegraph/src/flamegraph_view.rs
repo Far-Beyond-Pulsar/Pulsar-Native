@@ -224,20 +224,23 @@ impl Render for FlamegraphView {
                                     }
                                 }),
                             )
-                            .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
-                                if !view.view_state.graph_dragging {
-                                    return;
-                                }
+                            .on_mouse_move(cx.listener(
+                                |view, event: &MouseMoveEvent, _window, cx| {
+                                    if !view.view_state.graph_dragging {
+                                        return;
+                                    }
 
-                                let window_x: f32 = event.position.x.into();
-                                let local_x = window_x - *view.graph_origin_x.read().unwrap();
-                                let frame = view.trace_data.get_frame();
+                                    let window_x: f32 = event.position.x.into();
+                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
+                                    let frame = view.trace_data.get_frame();
 
-                                if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x) {
-                                    view.view_state.crop_end_time_ns = Some(time_ns);
-                                    cx.notify();
-                                }
-                            }))
+                                    if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x)
+                                    {
+                                        view.view_state.crop_end_time_ns = Some(time_ns);
+                                        cx.notify();
+                                    }
+                                },
+                            ))
                             .on_mouse_up(
                                 MouseButton::Left,
                                 cx.listener(|view, event: &MouseUpEvent, _window, cx| {
@@ -382,7 +385,8 @@ impl Render for FlamegraphView {
 
                                     if local_y >= y
                                         && local_y
-                                            <= y + ((ROW_HEIGHT - PADDING) * SPAN_HOVER_HEIGHT_SCALE)
+                                            <= y + ((ROW_HEIGHT - PADDING)
+                                                * SPAN_HOVER_HEIGHT_SCALE)
                                     {
                                         let x1 = time_to_x(
                                             span.start_ns,

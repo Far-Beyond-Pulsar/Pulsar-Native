@@ -170,7 +170,9 @@ fn sample_renderer_frame_time(
     renderer: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
 ) -> Option<f32> {
     let engine = renderer.try_lock().ok()?;
-    engine.get_render_metrics().map(|metrics| metrics.frame_time_ms)
+    engine
+        .get_render_metrics()
+        .map(|metrics| metrics.frame_time_ms)
 }
 
 #[derive(Default)]
@@ -191,7 +193,8 @@ impl TraceAccumulator {
 
     fn apply_event(&mut self, event: &profiling::ProfileEvent) {
         if event.name == "__FRAME_MARKER__" {
-            self.frame_times.push(event.duration_ns as f32 / 1_000_000.0);
+            self.frame_times
+                .push(event.duration_ns as f32 / 1_000_000.0);
             return;
         }
 

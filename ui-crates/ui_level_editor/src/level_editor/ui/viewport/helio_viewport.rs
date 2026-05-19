@@ -154,6 +154,7 @@ impl HelioViewport {
                     parent: None,
                     children: vec![],
                     components: vec![],
+                props: Default::default(),
                     scene_path: path.display().to_string(),
                 };
 

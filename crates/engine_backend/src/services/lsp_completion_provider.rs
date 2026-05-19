@@ -48,14 +48,11 @@ impl GlobalRustAnalyzerCompletionProvider {
     }
 
     fn ensure_document_open_with_ra(&self, text: &ropey::Rope, cx: &mut App) {
-
-
         let content = text.to_string();
         let path = self.file_path.clone();
         let sent = self.did_open_sent.clone();
 
         let result = self.analyzer.update(cx, move |analyzer, _| {
-
             match analyzer.did_open_file(&path, &content, "rust") {
                 Ok(()) => {
                     tracing::debug!("[LSP SYNC] didOpen succeeded for {:?}", path.file_name());
@@ -478,7 +475,10 @@ impl ui::input::HoverProvider for GlobalRustAnalyzerCompletionProvider {
         tracing::debug!("[LSP HOVER] URI being used: {}", uri);
         tracing::debug!(
             "[LSP HOVER] sending textDocument/hover uri={} line={} char={} word={:?}",
-            uri, position.line, position.character, word
+            uri,
+            position.line,
+            position.character,
+            word
         );
 
         // Prepare the request parameters

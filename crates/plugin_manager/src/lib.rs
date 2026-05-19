@@ -297,7 +297,9 @@ impl PluginManager {
         panel: Arc<dyn PanelView>,
         file_path: &Path,
     ) -> Arc<dyn PanelView> {
-        let icon = self.get_file_type_for_path(file_path).map(|ft| ft.icon.clone());
+        let icon = self
+            .get_file_type_for_path(file_path)
+            .map(|ft| ft.icon.clone());
 
         if icon.is_none() && file_path.as_os_str().is_empty() {
             panel
@@ -611,7 +613,11 @@ impl PluginManager {
 
     /// Build a snapshot bridge containing AI tools exposed by all loaded plugins.
     pub fn build_tool_bridge(&self) -> PluginToolBridge {
-        tracing::debug!(plugin_count = self.plugins.len(), builtin_count = self.builtin_registry.providers().len(), "build_tool_bridge start");
+        tracing::debug!(
+            plugin_count = self.plugins.len(),
+            builtin_count = self.builtin_registry.providers().len(),
+            "build_tool_bridge start"
+        );
         let mut bridge = PluginToolBridge::new();
         for (plugin_id, loaded_plugin) in &self.plugins {
             bridge.discover_plugin_tools(plugin_id.clone(), loaded_plugin.plugin);
@@ -621,7 +627,10 @@ impl PluginManager {
             bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.clone());
         }
 
-        tracing::debug!(tool_count = bridge.tool_names().len(), "build_tool_bridge end");
+        tracing::debug!(
+            tool_count = bridge.tool_names().len(),
+            "build_tool_bridge end"
+        );
         bridge
     }
 

@@ -203,9 +203,9 @@ pub(crate) fn compact_messages(
     let last_index = dialog_block_count - 1;
     // The first block that contains a user message is the original goal — protect it
     // from compaction so the agent never loses track of what was asked.
-    let first_user_block = dialog_blocks.iter().position(|b| {
-        b.messages.iter().any(|m| m.role == ChatRole::User)
-    });
+    let first_user_block = dialog_blocks
+        .iter()
+        .position(|b| b.messages.iter().any(|m| m.role == ChatRole::User));
     for index in 0..dialog_block_count {
         let is_mandatory = index == last_index || Some(index) == first_user_block;
         let priority = {
@@ -308,8 +308,14 @@ mod tests {
 
         let (compacted, dropped) = compact_messages(messages, 160, 40);
         assert!(dropped.is_some());
-        assert!(compacted.iter().any(|m| m.content.contains("current request")));
-        assert!(compacted.iter().any(|m| m.content.contains("subagent result")));
-        assert!(!compacted.iter().any(|m| m.content.contains("old user question")));
+        assert!(compacted
+            .iter()
+            .any(|m| m.content.contains("current request")));
+        assert!(compacted
+            .iter()
+            .any(|m| m.content.contains("subagent result")));
+        assert!(!compacted
+            .iter()
+            .any(|m| m.content.contains("old user question")));
     }
 }

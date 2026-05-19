@@ -33,7 +33,10 @@ pub fn extract_to_tempfile() -> std::io::Result<TempLib> {
 
     let file = loop {
         let suffix = TEMP_LIB_COUNTER.fetch_add(1, Ordering::Relaxed);
-        path.push(format!("pulsar_std_bp_{pid}_{suffix}.{}", PULSAR_STD_LIB_EXT));
+        path.push(format!(
+            "pulsar_std_bp_{pid}_{suffix}.{}",
+            PULSAR_STD_LIB_EXT
+        ));
 
         match std::fs::OpenOptions::new()
             .write(true)
@@ -60,5 +63,7 @@ pub struct TempLib {
 }
 
 impl Drop for TempLib {
-    fn drop(&mut self) { let _ = std::fs::remove_file(&self.path); }
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
 }

@@ -27,12 +27,10 @@ pub use registry::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeSlot {
     /// `std::mem::size_of::<T>()` resolved at graph-compile time.
-    pub size:  usize,
+    pub size: usize,
     /// `std::mem::align_of::<T>()` resolved at graph-compile time.
     pub align: usize,
 }
-
-
 
 // Re-export macros
 pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output};

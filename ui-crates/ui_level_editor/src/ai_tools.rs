@@ -584,7 +584,8 @@ pub fn ai_tools() -> Vec<AiToolDefinition> {
         .definitions()
         .into_iter()
         .map(|def| {
-            let mut ai_def = AiToolDefinition::new(def.name, def.description, def.parameters_schema);
+            let mut ai_def =
+                AiToolDefinition::new(def.name, def.description, def.parameters_schema);
             if let Some(category) = def.category {
                 ai_def = ai_def.with_category(category);
             }
@@ -799,6 +800,7 @@ fn execute_ai_tool_impl(
                 parent: parent_id.clone(),
                 children: vec![],
                 components: vec![],
+                props: Default::default(),
                 scene_path,
             };
             object.transform.position =
@@ -892,6 +894,7 @@ fn execute_ai_tool_impl(
                     parent: parent_id.clone(),
                     children: vec![],
                     components: vec![],
+                props: Default::default(),
                     scene_path: state
                         .current_scene
                         .as_ref()

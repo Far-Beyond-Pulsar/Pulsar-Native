@@ -343,7 +343,9 @@ impl IntroScreen {
 
         tracing::debug!(
             "🎬 [next_page] called: page={}/{}, phase={:?}",
-            current_page, total_pages, phase
+            current_page,
+            total_pages,
+            phase
         );
 
         if matches!(phase, IntroPhase::FadeOut | IntroPhase::Complete) {

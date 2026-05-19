@@ -64,61 +64,69 @@ impl Render for PulsarRoot {
                         .update(cx, |app, cx| app.open_documentation(window, cx));
                 }),
             )
-            .on_action(cx.listener(|_: &mut PulsarRoot, _: &DevSaveAsDefaultLevel, window, cx| {
-                window.push_notification(
-                    Notification::info("Dev")
-                        .message("Use \"Save as Default\" in the level editor toolbar."),
-                    cx,
-                );
-            }))
-            .on_action(cx.listener(|_: &mut PulsarRoot, _: &DevOpenWorkspaceRoot, window, cx| {
-                if let Some(path) = engine_state::EngineContext::global()
-                    .and_then(|ctx| ctx.dev.read().source_path.clone())
-                {
-                    #[cfg(target_os = "macos")]
-                    let _ = std::process::Command::new("open").arg(&path).spawn();
-                    #[cfg(target_os = "windows")]
-                    let _ = std::process::Command::new("explorer").arg(&path).spawn();
-                    #[cfg(target_os = "linux")]
-                    let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+            .on_action(cx.listener(
+                |_: &mut PulsarRoot, _: &DevSaveAsDefaultLevel, window, cx| {
                     window.push_notification(
                         Notification::info("Dev")
-                            .message(format!("Opening {}", path.display())),
+                            .message("Use \"Save as Default\" in the level editor toolbar."),
                         cx,
                     );
-                }
-            }))
-            .on_action(cx.listener(|_: &mut PulsarRoot, _: &DevShowBuildInfo, window, cx| {
-                let info = engine_state::EngineContext::global()
-                    .map(|ctx| {
-                        let dev = ctx.dev.read();
-                        format!(
-                            "Source build: {}\nWorkspace root: {}",
-                            dev.is_source_build,
-                            dev.source_path
-                                .as_ref()
-                                .map(|p| p.display().to_string())
-                                .unwrap_or_else(|| "N/A".into()),
-                        )
-                    })
-                    .unwrap_or_else(|| "Engine context unavailable".into());
-                window.push_notification(
-                    Notification::info("Build Info").message(info),
-                    cx,
-                );
-            }))
-            .on_action(cx.listener(|_: &mut PulsarRoot, _: &DevReloadAssets, window, cx| {
-                window.push_notification(
-                    Notification::info("Dev").message("Asset reload not yet implemented."),
-                    cx,
-                );
-            }))
-            .on_action(cx.listener(|_: &mut PulsarRoot, _: &DevInspectEngineState, window, cx| {
-                window.push_notification(
-                    Notification::info("Dev").message("Engine state inspector not yet implemented."),
-                    cx,
-                );
-            }))
+                },
+            ))
+            .on_action(
+                cx.listener(|_: &mut PulsarRoot, _: &DevOpenWorkspaceRoot, window, cx| {
+                    if let Some(path) = engine_state::EngineContext::global()
+                        .and_then(|ctx| ctx.dev.read().source_path.clone())
+                    {
+                        #[cfg(target_os = "macos")]
+                        let _ = std::process::Command::new("open").arg(&path).spawn();
+                        #[cfg(target_os = "windows")]
+                        let _ = std::process::Command::new("explorer").arg(&path).spawn();
+                        #[cfg(target_os = "linux")]
+                        let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+                        window.push_notification(
+                            Notification::info("Dev")
+                                .message(format!("Opening {}", path.display())),
+                            cx,
+                        );
+                    }
+                }),
+            )
+            .on_action(
+                cx.listener(|_: &mut PulsarRoot, _: &DevShowBuildInfo, window, cx| {
+                    let info = engine_state::EngineContext::global()
+                        .map(|ctx| {
+                            let dev = ctx.dev.read();
+                            format!(
+                                "Source build: {}\nWorkspace root: {}",
+                                dev.is_source_build,
+                                dev.source_path
+                                    .as_ref()
+                                    .map(|p| p.display().to_string())
+                                    .unwrap_or_else(|| "N/A".into()),
+                            )
+                        })
+                        .unwrap_or_else(|| "Engine context unavailable".into());
+                    window.push_notification(Notification::info("Build Info").message(info), cx);
+                }),
+            )
+            .on_action(
+                cx.listener(|_: &mut PulsarRoot, _: &DevReloadAssets, window, cx| {
+                    window.push_notification(
+                        Notification::info("Dev").message("Asset reload not yet implemented."),
+                        cx,
+                    );
+                }),
+            )
+            .on_action(cx.listener(
+                |_: &mut PulsarRoot, _: &DevInspectEngineState, window, cx| {
+                    window.push_notification(
+                        Notification::info("Dev")
+                            .message("Engine state inspector not yet implemented."),
+                        cx,
+                    );
+                },
+            ))
             .child(
                 v_flex()
                     .size_full()

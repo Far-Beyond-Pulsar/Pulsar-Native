@@ -1,8 +1,8 @@
 use agent_chat_tools::ToolRegistry;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    div, px, AnyWindowHandle, App, AppContext, Context, Corner, Entity, EventEmitter,
-    FocusHandle, Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
+    div, px, AnyWindowHandle, App, AppContext, Context, Corner, Entity, EventEmitter, FocusHandle,
+    Focusable, InteractiveElement, IntoElement, ParentElement, Render, ScrollHandle,
     StatefulInteractiveElement, Styled, Subscription, Window,
 };
 use serde_json::{json, Number, Value};
@@ -631,7 +631,9 @@ impl ManualToolPanel {
             agent_chat_tools::PulsarToolExtras {
                 plugin_bridge,
                 open_file_request: None,
-                query_open_editors: Some(Arc::new(|| Ok(crate::app::open_editors::snapshot_json()))),
+                query_open_editors: Some(Arc::new(
+                    || Ok(crate::app::open_editors::snapshot_json()),
+                )),
                 activate_open_editor_request: None,
                 subagent_executor: None,
             },

@@ -2,10 +2,10 @@
 
 use crate::constants::*;
 use crate::lod_tree::LODTree;
-use crate::trace_data::TraceFrame;
 use crate::lod_tree::MergedSpan;
-use std::collections::HashMap;
+use crate::trace_data::TraceFrame;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// View state for pan, zoom, and interaction

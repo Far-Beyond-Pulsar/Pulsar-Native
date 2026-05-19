@@ -13,7 +13,8 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::debug;
 
-type ToolExecFn = Arc<dyn Fn(&Path, serde_json::Value) -> Result<serde_json::Value, PluginError> + Send + Sync>;
+type ToolExecFn =
+    Arc<dyn Fn(&Path, serde_json::Value) -> Result<serde_json::Value, PluginError> + Send + Sync>;
 
 /// Represents a tool available from a specific plugin
 #[derive(Clone)]

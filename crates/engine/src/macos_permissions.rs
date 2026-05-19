@@ -25,7 +25,9 @@ fn ax_is_process_trusted(_prompt: bool) -> bool {
             );
             false
         } else {
-            tracing::error!("[PERMISSIONS] AXUIElementCreateApplication succeeded - trust confirmed");
+            tracing::error!(
+                "[PERMISSIONS] AXUIElementCreateApplication succeeded - trust confirmed"
+            );
             core_foundation_sys::base::CFRelease(app_ref.cast());
             true
         }

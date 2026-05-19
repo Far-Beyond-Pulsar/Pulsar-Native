@@ -148,11 +148,7 @@ pub fn color_lerp(
 /// # Color Eq Approx
 /// Returns true if two colors are equal within epsilon.
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
-pub fn color_eq_approx(
-    a: (f32, f32, f32, f32),
-    b: (f32, f32, f32, f32),
-    epsilon: f32,
-) -> bool {
+pub fn color_eq_approx(a: (f32, f32, f32, f32), b: (f32, f32, f32, f32), epsilon: f32) -> bool {
     let (r1, g1, b1, a1) = a;
     let (r2, g2, b2, a2) = b;
     (r1 - r2).abs() <= epsilon
@@ -160,4 +156,3 @@ pub fn color_eq_approx(
         && (b1 - b2).abs() <= epsilon
         && (a1 - a2).abs() <= epsilon
 }
-

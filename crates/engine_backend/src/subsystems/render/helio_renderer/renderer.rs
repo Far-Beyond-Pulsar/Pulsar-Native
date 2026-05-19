@@ -7,8 +7,8 @@ use std::time::Instant;
 
 use helio::{
     Camera, EditorState, GizmoMode, GpuLight, GpuMaterial, GroupMask, LightId, LightType,
-    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex,
-    Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex, Renderer,
+    RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 use helio_asset_compat::ConvertedScene;
 
@@ -650,9 +650,25 @@ impl HelioRenderer {
     /// Insert or update a single SceneDb object into the Helio scene.
     /// Returns true if Helio was actually mutated (false = not initialized yet).
     pub fn scene_add_or_update(&mut self, snap: &SceneObjectSnapshot) -> bool {
-        // Lights are handled separately from meshes.
-        if let ObjectType::Light(lt) = snap.object_type {
-            return self.scene_add_or_update_light(snap, lt);
+        if let ObjectType::Light(_) = snap.object_type {
+            let inner = match &mut self.inner {
+                Some(i) => i,
+                None => return false,
+            };
+            let gpu_light = Self::gpu_light_from_snap(snap);
+            if let Some(&light_id) = inner.light_map.get(&snap.id) {
+                let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
+                return true;
+            } else if let Some(light_id) = inner
+                .renderer
+                .scene_mut()
+                .insert_actor(SceneActor::light(gpu_light))
+                .as_light()
+            {
+                inner.light_map.insert(snap.id.clone(), light_id);
+                return true;
+            }
+            return false;
         }
         let ObjectType::Mesh(mt) = snap.object_type else {
             return false;
@@ -722,44 +738,37 @@ impl HelioRenderer {
 
     /// Build a `GpuLight` from a SceneObjectSnapshot.
     /// Convention: scale=[r,g,b], rotation=[intensity, range, 0].
-    fn gpu_light_from_snap(snap: &SceneObjectSnapshot, lt: crate::scene::LightType) -> GpuLight {
-        let r = snap.scale[0].max(0.0);
-        let g = snap.scale[1].max(0.0);
-        let b = snap.scale[2].max(0.0);
-        let intensity = if snap.rotation[0] == 0.0 { 7.0 } else { snap.rotation[0] };
-        let range = if snap.rotation[1] == 0.0 { 100.0 } else { snap.rotation[1] };
+    /// Build a `GpuLight` from a snapshot, reading properties from `props`.
+    fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
+        let p = |k: &str, d: f32| {
+            snap.props
+                .get(k)
+                .and_then(|v| v.as_f64())
+                .map(|v| v as f32)
+                .unwrap_or(d)
+        };
+        let lt = match snap.object_type {
+            ObjectType::Light(lt) => lt,
+            _ => crate::scene::LightType::Point,
+        };
         GpuLight {
-            position_range: [snap.position[0], snap.position[1], snap.position[2], range],
+            position_range: [
+                snap.position[0],
+                snap.position[1],
+                snap.position[2],
+                p("range", 100.0),
+            ],
             direction_outer: [0.0, 0.0, 0.0, 0.0],
-            color_intensity: [r, g, b, intensity],
+            color_intensity: [
+                p("color_r", 1.0),
+                p("color_g", 1.0),
+                p("color_b", 1.0),
+                p("intensity", 7.0),
+            ],
             shadow_index: u32::MAX,
             light_type: lt as u32,
             inner_angle: 0.0,
             _pad: 0,
-        }
-    }
-
-    fn scene_add_or_update_light(&mut self, snap: &SceneObjectSnapshot, lt: crate::scene::LightType) -> bool {
-        let inner = match &mut self.inner {
-            Some(i) => i,
-            None => return false,
-        };
-        let gpu_light = Self::gpu_light_from_snap(snap, lt);
-        if let Some(&light_id) = inner.light_map.get(&snap.id) {
-            let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
-            true
-        } else {
-            if let Some(light_id) = inner
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::light(gpu_light))
-                .as_light()
-            {
-                inner.light_map.insert(snap.id.clone(), light_id);
-                true
-            } else {
-                false
-            }
         }
     }
 
@@ -1047,7 +1056,9 @@ impl HelioRenderer {
 
         // Lights and meshes are driven exclusively through SceneDb via sync_scene()
         // so that the hierarchy panel and the renderer always show the same state.
-        tracing::info!("[HELIO SCENE] Scene population complete (sky only; all objects driven by SceneDb)");
+        tracing::info!(
+            "[HELIO SCENE] Scene population complete (sky only; all objects driven by SceneDb)"
+        );
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
@@ -1063,126 +1074,107 @@ impl HelioRenderer {
             None
         };
 
-        // Build the set of SceneDb IDs that should be visible in the renderer
-        // this frame (mesh objects that are currently visible).
-        let mut live_ids = std::collections::HashSet::with_capacity(snapshots.len());
+        let mut live_mesh_ids = std::collections::HashSet::with_capacity(snapshots.len());
+        let mut live_light_ids = std::collections::HashSet::with_capacity(snapshots.len());
 
-        // ── Light sync ────────────────────────────────────────────────────────
-        let mut live_light_ids = std::collections::HashSet::new();
         for snap in &snapshots {
-            if let ObjectType::Light(lt) = snap.object_type {
-                if !snap.visible { continue; }
-                live_light_ids.insert(snap.id.clone());
-                let gpu_light = Self::gpu_light_from_snap(snap, lt);
-                if let Some(&light_id) = inner.light_map.get(&snap.id) {
-                    let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
-                } else if let Some(light_id) = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::light(gpu_light))
-                    .as_light()
-                {
-                    inner.light_map.insert(snap.id.clone(), light_id);
+            if !snap.visible {
+                continue;
+            }
+
+            match snap.object_type {
+                ObjectType::Light(_) => {
+                    live_light_ids.insert(snap.id.clone());
+                    let gpu_light = Self::gpu_light_from_snap(snap);
+                    if let Some(&light_id) = inner.light_map.get(&snap.id) {
+                        let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
+                    } else if let Some(light_id) = inner
+                        .renderer
+                        .scene_mut()
+                        .insert_actor(SceneActor::light(gpu_light))
+                        .as_light()
+                    {
+                        inner.light_map.insert(snap.id.clone(), light_id);
+                    }
                 }
+                ObjectType::Mesh(mt) => {
+                    live_mesh_ids.insert(snap.id.clone());
+                    let key = MeshKey::from(mt);
+                    if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
+                        let skip = dragged_obj_id.map_or(false, |did| did == obj_id);
+                        if !skip {
+                            let _ = inner
+                                .renderer
+                                .scene_mut()
+                                .update_object_transform(obj_id, build_transform(snap));
+                        }
+                    } else {
+                        let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
+                        let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
+                            let upload = mesh_for_key(key);
+                            let mid = inner
+                                .renderer
+                                .scene_mut()
+                                .insert_actor(SceneActor::mesh(upload.clone()))
+                                .as_mesh()
+                                .expect("mesh insert");
+                            let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
+                            let matid = inner.renderer.scene_mut().insert_material(mat);
+                            (mid, matid)
+                        });
+                        if is_new_mesh_type {
+                            let upload = mesh_for_key(key);
+                            inner.scene_picker.register_mesh(mesh_id, &upload);
+                        }
+                        let transform = build_transform(snap);
+                        let radius = Vec3::from_array(snap.scale).length() * 0.5;
+                        let pos = transform.w_axis.truncate();
+                        if let Some(obj_id) = inner
+                            .renderer
+                            .scene_mut()
+                            .insert_actor(SceneActor::object(ObjectDescriptor {
+                                mesh: mesh_id,
+                                material: mat_id,
+                                transform,
+                                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                                flags: 0,
+                                groups: GroupMask::NONE,
+                                movability: Some(Movability::Movable),
+                            }))
+                            .as_object()
+                        {
+                            inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
+                            picker_dirty = true;
+                        }
+                    }
+                }
+                _ => {} // Camera, Folder, etc. — future types handled here
             }
         }
-        // Remove stale lights.
+
         let stale_lights: Vec<(String, LightId)> = inner
             .light_map
             .iter()
             .filter(|(id, _)| !live_light_ids.contains(*id))
             .map(|(id, &lid)| (id.clone(), lid))
             .collect();
-        for (scene_id, light_id) in stale_lights {
-            let _ = inner.renderer.scene_mut().remove_light(light_id);
-            inner.light_map.remove(&scene_id);
+        for (sid, lid) in stale_lights {
+            let _ = inner.renderer.scene_mut().remove_light(lid);
+            inner.light_map.remove(&sid);
         }
 
-        // ── Mesh sync ─────────────────────────────────────────────────────────
-        for snap in &snapshots {
-            let key = match snap.object_type {
-                ObjectType::Mesh(mt) => MeshKey::from(mt),
-                _ => continue,
-            };
-            if !snap.visible {
-                continue;
-            }
-
-            live_ids.insert(snap.id.clone());
-
-            if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
-                // Skip transform update while the gizmo is dragging this object —
-                // the transform is owned by Helio until the drag ends.
-                let skip = dragged_obj_id.map_or(false, |did| did == obj_id);
-                if !skip {
-                    let _ = inner
-                        .renderer
-                        .scene_mut()
-                        .update_object_transform(obj_id, build_transform(snap));
-                }
-            } else {
-                // Insert new object — track whether this is a fresh mesh type so
-                // we can register it with the scene picker afterward.
-                let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
-                let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
-                    let upload = mesh_for_key(key);
-                    let mid = inner
-                        .renderer
-                        .scene_mut()
-                        .insert_actor(SceneActor::mesh(upload.clone()))
-                        .as_mesh()
-                        .expect("mesh insert");
-                    let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                    let matid = inner.renderer.scene_mut().insert_material(mat);
-                    (mid, matid)
-                });
-
-                // Register the mesh with the picker the first time it is seen.
-                if is_new_mesh_type {
-                    let upload = mesh_for_key(key);
-                    inner.scene_picker.register_mesh(mesh_id, &upload);
-                }
-
-                let transform = build_transform(snap);
-                let radius = Vec3::from_array(snap.scale).length() * 0.5;
-                let pos = transform.w_axis.truncate();
-
-                if let Some(obj_id) = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: mesh_id,
-                        material: mat_id,
-                        transform,
-                        bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable),
-                    }))
-                    .as_object()
-                {
-                    inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
-                    picker_dirty = true;
-                }
-            }
-        }
-
-        // Remove Helio objects whose SceneDb entry was deleted or made invisible.
-        // Collect removals first to avoid borrowing object_map while mutating it.
-        let stale_ids: Vec<(String, ObjectId)> = inner
+        let stale_meshes: Vec<(String, ObjectId)> = inner
             .object_map
             .iter()
-            .filter(|(scene_id, _)| !live_ids.contains(*scene_id))
-            .map(|(scene_id, &(obj_id, _))| (scene_id.clone(), obj_id))
+            .filter(|(id, _)| !live_mesh_ids.contains(*id))
+            .map(|(id, &(oid, _))| (id.clone(), oid))
             .collect();
-
-        for (scene_id, obj_id) in stale_ids {
-            let _ = inner.renderer.scene_mut().remove_object(obj_id);
-            inner.object_map.remove(&scene_id);
+        for (sid, oid) in stale_meshes {
+            let _ = inner.renderer.scene_mut().remove_object(oid);
+            inner.object_map.remove(&sid);
             picker_dirty = true;
         }
 
-        // Rebuild the BVH once per sync if any objects were added or removed.
         if picker_dirty {
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
         }

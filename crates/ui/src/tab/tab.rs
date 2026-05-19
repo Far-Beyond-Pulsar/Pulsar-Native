@@ -294,7 +294,7 @@ impl TabVariant {
                 },
                 border_color: cx.theme().border.opacity(0.8),
                 radius: px(0.),
-                shadow: false,  // Remove shadow, use border emphasis instead
+                shadow: false, // Remove shadow, use border emphasis instead
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
@@ -700,9 +700,7 @@ impl RenderOnce for Tab {
                         _ => this.size_3p5(),
                     }))
                 })
-                .when_some(self.label, |this, label| {
-                    this.child(label)
-                })
+                .when_some(self.label, |this, label| this.child(label))
                 .when(self.unsaved, |this| {
                     // Show unsaved indicator: a small dot with warning color
                     this.child(
@@ -711,7 +709,7 @@ impl RenderOnce for Tab {
                             .h_1p5()
                             .rounded_full()
                             .bg(cx.theme().warning)
-                            .flex_shrink_0()
+                            .flex_shrink_0(),
                     )
                 })
                 .children(self.children)

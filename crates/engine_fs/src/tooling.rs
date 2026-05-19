@@ -193,7 +193,10 @@ fn resolve_path(path: Option<&str>) -> Result<PathBuf> {
         if provided.is_absolute() || virtual_fs::is_cloud_path(&provided) {
             provided
         } else if virtual_fs::is_cloud_path(&cwd) {
-            PathBuf::from(virtual_fs::cloud_join(&virtual_fs::normalize_path(&cwd), raw))
+            PathBuf::from(virtual_fs::cloud_join(
+                &virtual_fs::normalize_path(&cwd),
+                raw,
+            ))
         } else {
             cwd.join(provided)
         }
@@ -251,7 +254,11 @@ fn collect_entries(
 
     if recursive {
         for manifest in virtual_fs::manifest(root)? {
-            let depth = manifest.path.split('/').filter(|part| !part.is_empty()).count();
+            let depth = manifest
+                .path
+                .split('/')
+                .filter(|part| !part.is_empty())
+                .count();
             if depth > max_depth {
                 continue;
             }
@@ -289,7 +296,10 @@ fn collect_entries(
     } else {
         for entry in virtual_fs::list_dir(root)? {
             let full_path = if virtual_fs::is_cloud_path(root) {
-                PathBuf::from(virtual_fs::cloud_join(&virtual_fs::normalize_path(root), &entry.name))
+                PathBuf::from(virtual_fs::cloud_join(
+                    &virtual_fs::normalize_path(root),
+                    &entry.name,
+                ))
             } else {
                 root.join(&entry.name)
             };
@@ -429,7 +439,12 @@ pub fn tree(
         .iter()
         .map(|entry| {
             let indent = "  ".repeat(entry.depth.saturating_sub(1));
-            format!("{}{}{}", indent, if entry.is_dir { "- " } else { "* " }, entry.path)
+            format!(
+                "{}{}{}",
+                indent,
+                if entry.is_dir { "- " } else { "* " },
+                entry.path
+            )
         })
         .collect::<Vec<_>>();
 

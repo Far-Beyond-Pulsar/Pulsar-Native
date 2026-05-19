@@ -679,12 +679,11 @@ impl Render for FlamegraphWindow {
                             } else {
                                 theme.accent.opacity(0.2)
                             })
-                            .child(
-                                div()
-                                    .size(px(8.0))
-                                    .rounded_full()
-                                    .bg(if is_profiling { gpui::red() } else { theme.accent }),
-                            )
+                            .child(div().size(px(8.0)).rounded_full().bg(if is_profiling {
+                                gpui::red()
+                            } else {
+                                theme.accent
+                            }))
                             .child(
                                 div()
                                     .text_xs()
@@ -701,9 +700,24 @@ impl Render for FlamegraphWindow {
                                     }),
                             ),
                     )
-                    .child(self.summary_chip("Spans", format!("{}", frame.spans.len()), theme.foreground, &theme))
-                    .child(self.summary_chip("Threads", format!("{}", frame.threads.len()), theme.foreground, &theme))
-                    .child(self.summary_chip("Frames", format!("{}", frame.frame_times_ms.len()), theme.foreground, &theme))
+                    .child(self.summary_chip(
+                        "Spans",
+                        format!("{}", frame.spans.len()),
+                        theme.foreground,
+                        &theme,
+                    ))
+                    .child(self.summary_chip(
+                        "Threads",
+                        format!("{}", frame.threads.len()),
+                        theme.foreground,
+                        &theme,
+                    ))
+                    .child(self.summary_chip(
+                        "Frames",
+                        format!("{}", frame.frame_times_ms.len()),
+                        theme.foreground,
+                        &theme,
+                    ))
                     .child(self.summary_chip(
                         "Duration",
                         format!("{:.2}ms", frame.duration_ns() as f64 / 1_000_000.0),
@@ -776,7 +790,7 @@ impl Render for FlamegraphWindow {
                                             .child("• Instrumentation-Based"),
                                     ),
                             )
-                            .child(div().flex_1())
+                            .child(div().flex_1()),
                     ),
                 ),
             )

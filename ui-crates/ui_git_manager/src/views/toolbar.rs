@@ -40,10 +40,24 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .rounded(radius)
         .justify_center()
         .text_xs()
-        .font_weight(if is_changes { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .font_weight(if is_changes {
+            FontWeight::SEMIBOLD
+        } else {
+            FontWeight::NORMAL
+        })
         .text_color(if is_changes { tab_active_fg } else { tab_fg })
-        .bg(if is_changes { tab_active } else { transparent_black() })
-        .hover(move |s| if is_changes { s } else { s.bg(muted.opacity(0.6)) })
+        .bg(if is_changes {
+            tab_active
+        } else {
+            transparent_black()
+        })
+        .hover(move |s| {
+            if is_changes {
+                s
+            } else {
+                s.bg(muted.opacity(0.6))
+            }
+        })
         .cursor_pointer()
         .on_mouse_down(
             MouseButton::Left,
@@ -59,10 +73,24 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .rounded(radius)
         .justify_center()
         .text_xs()
-        .font_weight(if is_history { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .font_weight(if is_history {
+            FontWeight::SEMIBOLD
+        } else {
+            FontWeight::NORMAL
+        })
         .text_color(if is_history { tab_active_fg } else { tab_fg })
-        .bg(if is_history { tab_active } else { transparent_black() })
-        .hover(move |s| if is_history { s } else { s.bg(muted.opacity(0.6)) })
+        .bg(if is_history {
+            tab_active
+        } else {
+            transparent_black()
+        })
+        .hover(move |s| {
+            if is_history {
+                s
+            } else {
+                s.bg(muted.opacity(0.6))
+            }
+        })
         .cursor_pointer()
         .on_mouse_down(
             MouseButton::Left,
@@ -78,10 +106,24 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .rounded(radius)
         .justify_center()
         .text_xs()
-        .font_weight(if is_branches { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+        .font_weight(if is_branches {
+            FontWeight::SEMIBOLD
+        } else {
+            FontWeight::NORMAL
+        })
         .text_color(if is_branches { tab_active_fg } else { tab_fg })
-        .bg(if is_branches { tab_active } else { transparent_black() })
-        .hover(move |s| if is_branches { s } else { s.bg(muted.opacity(0.6)) })
+        .bg(if is_branches {
+            tab_active
+        } else {
+            transparent_black()
+        })
+        .hover(move |s| {
+            if is_branches {
+                s
+            } else {
+                s.bg(muted.opacity(0.6))
+            }
+        })
         .cursor_pointer()
         .on_mouse_down(
             MouseButton::Left,
@@ -111,7 +153,11 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .border_color(border)
         .items_center()
         .overflow_hidden()
-        .child(Icon::new(IconName::GitBranch).size(px(11.)).text_color(primary))
+        .child(
+            Icon::new(IconName::GitBranch)
+                .size(px(11.))
+                .text_color(primary),
+        )
         .child(
             div()
                 .flex_1()
@@ -232,7 +278,11 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                     h_flex()
                         .gap_1()
                         .items_center()
-                        .child(Icon::new(IconName::TriangleAlert).size(px(12.)).text_color(warning))
+                        .child(
+                            Icon::new(IconName::TriangleAlert)
+                                .size(px(12.))
+                                .text_color(warning),
+                        )
                         .child(
                             div()
                                 .text_xs()
@@ -278,7 +328,11 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
                 .bg(danger.opacity(0.1))
                 .border_1()
                 .border_color(danger.opacity(0.25))
-                .child(Icon::new(IconName::CircleX).size(px(12.)).text_color(danger))
+                .child(
+                    Icon::new(IconName::CircleX)
+                        .size(px(12.))
+                        .text_color(danger),
+                )
                 .child(
                     div()
                         .flex_1()

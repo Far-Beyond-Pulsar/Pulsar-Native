@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
 use serde_json::{json, Value};
+use std::time::Instant;
 use std::{
     collections::{HashMap, VecDeque},
     fs,
@@ -11,7 +12,6 @@ use std::{
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use std::time::Instant;
 use tracing::debug;
 
 pub use tool_registry::{ChatTool, PluginToolRegistry, ToolContext, ToolRegistry};
@@ -20,7 +20,8 @@ use tool_registry_macros::tool;
 pub type OpenFileRequest = Arc<dyn Fn(PathBuf) -> Result<(), String> + Send + Sync>;
 pub type QueryOpenEditorsRequest = Arc<dyn Fn() -> Result<Value, String> + Send + Sync>;
 pub type ActivateOpenEditorRequest = Arc<dyn Fn(usize) -> Result<(), String> + Send + Sync>;
-pub type SubagentExecutorRequest = Arc<dyn Fn(SubagentLlmRequest) -> Result<SubagentLlmResponse, String> + Send + Sync>;
+pub type SubagentExecutorRequest =
+    Arc<dyn Fn(SubagentLlmRequest) -> Result<SubagentLlmResponse, String> + Send + Sync>;
 
 #[derive(Clone, Debug)]
 pub struct SubagentLlmRequest {
@@ -505,7 +506,11 @@ pub fn queued_subagent_completion_count() -> usize {
     guard.completion_queue.len()
 }
 
-fn set_runtime_state(workspace_root: PathBuf, current_file: Option<PathBuf>, extras: PulsarToolExtras) {
+fn set_runtime_state(
+    workspace_root: PathBuf,
+    current_file: Option<PathBuf>,
+    extras: PulsarToolExtras,
+) {
     let state = RUNTIME_STATE.get_or_init(|| {
         Mutex::new(RuntimeState {
             workspace_root: workspace_root.clone(),
@@ -674,7 +679,8 @@ pub fn query_open_editors() -> anyhow::Result<Value> {
 /// Switch focus to an already-open editor by its index returned from query_open_editors.
 #[tool(category = "pulsar")]
 pub fn activate_open_editor(index: i64) -> anyhow::Result<Value> {
-    let index = usize::try_from(index).map_err(|_| anyhow!("activate_open_editor.index must be >= 0"))?;
+    let index =
+        usize::try_from(index).map_err(|_| anyhow!("activate_open_editor.index must be >= 0"))?;
 
     let callback = runtime_extras()?
         .activate_open_editor_request
@@ -691,8 +697,8 @@ pub fn activate_open_editor(index: i64) -> anyhow::Result<Value> {
 /// List all file types registered by installed plugins/editors.
 #[tool(category = "pulsar")]
 pub fn query_available_file_types() -> anyhow::Result<Value> {
-    let manager_lock = plugin_manager::global()
-        .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
@@ -723,8 +729,8 @@ pub fn query_file_editors(file_path: String) -> anyhow::Result<Value> {
     let root = runtime_workspace_root()?;
     let full = resolve_workspace_path(&root, &file_path)?;
 
-    let manager_lock = plugin_manager::global()
-        .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
@@ -783,8 +789,8 @@ pub fn query_plugin_tools(file_path: Option<String>) -> anyhow::Result<Value> {
     let full = resolve_workspace_path_soft(&root, &file_path_raw)?;
     let file_path_str = full.display().to_string();
 
-    let manager_lock = plugin_manager::global()
-        .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
@@ -844,7 +850,10 @@ pub fn query_plugin_tools(file_path: Option<String>) -> anyhow::Result<Value> {
 
 /// List AI tools provided by a specific plugin, optionally scoped to a file.
 #[tool(category = "pulsar")]
-pub fn query_tools_for_plugin(plugin_id: String, file_path: Option<String>) -> anyhow::Result<Value> {
+pub fn query_tools_for_plugin(
+    plugin_id: String,
+    file_path: Option<String>,
+) -> anyhow::Result<Value> {
     let full = if let Some(file_path) = file_path {
         let root = runtime_workspace_root()?;
         Some(resolve_workspace_path_soft(&root, &file_path)?)
@@ -852,8 +861,8 @@ pub fn query_tools_for_plugin(plugin_id: String, file_path: Option<String>) -> a
         None
     };
 
-    let manager_lock = plugin_manager::global()
-        .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
@@ -895,8 +904,8 @@ fn execute_plugin_tool_inner(
 ) -> anyhow::Result<Value> {
     let started_at = Instant::now();
     debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool start");
-    let manager_lock = plugin_manager::global()
-        .ok_or_else(|| anyhow!("Global plugin manager not available"))?;
+    let manager_lock =
+        plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
     let manager = manager_lock
         .read()
         .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
@@ -914,7 +923,13 @@ fn execute_plugin_tool_inner(
                     && tool.definition.name == tool_name
             })
             .map(|tool| tool.plugin_id)
-            .ok_or_else(|| anyhow!("Tool '{}' not found for plugin id '{}'", tool_name, explicit_plugin_id))?
+            .ok_or_else(|| {
+                anyhow!(
+                    "Tool '{}' not found for plugin id '{}'",
+                    tool_name,
+                    explicit_plugin_id
+                )
+            })?
     } else {
         let matches = bridge
             .all_tools()
@@ -1012,7 +1027,10 @@ pub fn spawn_subagent(
     model: Option<String>,
     instructions: Option<String>,
 ) -> anyhow::Result<Value> {
-    debug!("spawn_subagent start name={} task={} model={:?}", name, task, model);
+    debug!(
+        "spawn_subagent start name={} task={} model={:?}",
+        name, task, model
+    );
     let created_at_ms = now_ms_u64();
     let sequence = SUBAGENT_SEQUENCE.fetch_add(1, Ordering::SeqCst);
     let entropy = ((created_at_ms as u32).wrapping_mul(2654435761)) ^ (sequence as u32);

@@ -214,7 +214,9 @@ impl ContextMenuDelegate {
             let ft = item.filter_text.as_deref().unwrap_or("<none>");
             tracing::debug!(
                 "[FILTER]   item[{}] label={:?} filter_text={:?}",
-                i, item.label, ft
+                i,
+                item.label,
+                ft
             );
         }
         if self.items.len() > 5 {
@@ -231,7 +233,9 @@ impl ContextMenuDelegate {
                 if ix < 5 {
                     tracing::debug!(
                         "[FILTER]   score item[{}] ({:?}) = {:?}",
-                        ix, item.label, score
+                        ix,
+                        item.label,
+                        score
                     );
                 }
                 score.map(|s| (ix, s))

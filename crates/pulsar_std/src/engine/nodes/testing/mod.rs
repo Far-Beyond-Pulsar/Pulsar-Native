@@ -164,9 +164,9 @@ pub fn assert_in_range_int(actual: i64, lo: i64, hi: i64) {
 #[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
 pub fn make_mixed_vec() -> Vec<(i128, i64, bool)> {
     vec![
-        (i128::MAX, -1i64,  true),
-        (0i128,      0i64,  false),
-        (42i128,   999i64,  true),
+        (i128::MAX, -1i64, true),
+        (0i128, 0i64, false),
+        (42i128, 999i64, true),
     ]
 }
 
@@ -181,9 +181,9 @@ pub fn make_mixed_vec() -> Vec<(i128, i64, bool)> {
 #[blueprint(type: NodeTypes::pure, category: "Testing", color: "#E74C3C")]
 pub fn mixed_vec_check(v: Vec<(i128, i64, bool)>) -> bool {
     v.len() == 3
-        && v[0] == (i128::MAX, -1i64,  true)
-        && v[1] == (0i128,      0i64,  false)
-        && v[2] == (42i128,   999i64,  true)
+        && v[0] == (i128::MAX, -1i64, true)
+        && v[1] == (0i128, 0i64, false)
+        && v[2] == (42i128, 999i64, true)
 }
 
 /// Consumes a `Vec<(i128, i64, bool)>` and returns its length as i64.
@@ -206,7 +206,7 @@ pub fn mixed_vec_len(v: Vec<(i128, i64, bool)>) -> i64 {
 pub fn mixed_vec_sum(v: Vec<(i128, i64, bool)>) -> i64 {
     v.iter().fold(0i64, |acc, &(a, b, c)| {
         acc.wrapping_add(a as i64)
-           .wrapping_add(b)
-           .wrapping_add(c as i64)
+            .wrapping_add(b)
+            .wrapping_add(c as i64)
     })
 }

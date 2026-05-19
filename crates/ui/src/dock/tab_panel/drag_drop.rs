@@ -30,7 +30,7 @@ impl TabPanel {
             let scale = w.scale_factor() as f32;
             let s = w.inner_size();
             sz = gpui::Size {
-                width:  px(s.width  as f32 / scale),
+                width: px(s.width as f32 / scale),
                 height: px(s.height as f32 / scale),
             };
         });
@@ -87,13 +87,13 @@ impl TabPanel {
         // Convert now while we still have `window`.
         let screen_pos = Self::mouse_to_screen(mouse_local, window);
 
-        let panel       = drag.panel.clone();
-        let channel     = self.channel;
+        let panel = drag.panel.clone();
+        let channel = self.channel;
         let source_self = cx.entity().clone();
-        let source_tab  = drag.tab_panel.clone();
+        let source_tab = drag.tab_panel.clone();
         let is_same_tab = drag.tab_panel == cx.entity();
-        let n_panels    = self.panels.len();
-        let in_tiles    = self.in_tiles;
+        let n_panels = self.panels.len();
+        let in_tiles = self.in_tiles;
 
         window.defer(cx, move |window, cx| {
             if is_same_tab {
@@ -179,8 +179,8 @@ impl TabPanel {
         }
 
         let mouse_local = window.mouse_position();
-        let position    = event.event.position; // element-relative, for split calc only
-        let bounds      = event.bounds;
+        let position = event.event.position; // element-relative, for split calc only
+        let bounds = event.bounds;
 
         self.last_drag_screen_pos = Some(mouse_local);
         tab_drag::set_drag_screen_position(mouse_local, cx);
@@ -228,7 +228,10 @@ impl TabPanel {
                 size(px(800.), px(600.)),
             ))),
             titlebar: None,
-            window_min_size: Some(gpui::Size { width: px(400.), height: px(300.) }),
+            window_min_size: Some(gpui::Size {
+                width: px(400.),
+                height: px(300.),
+            }),
             kind: WindowKind::Normal,
             window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
@@ -240,7 +243,13 @@ impl TabPanel {
                 opts,
                 move |window: &mut gpui::Window, cx: &mut gpui::App| {
                     let dock = cx.new(|cx| {
-                        DockArea::new_with_channel("detached-dock", Some(1), source_channel, window, cx)
+                        DockArea::new_with_channel(
+                            "detached-dock",
+                            Some(1),
+                            source_channel,
+                            window,
+                            cx,
+                        )
                     });
                     let weak = dock.downgrade();
                     let tp = cx.new(|cx| {
@@ -251,8 +260,13 @@ impl TabPanel {
                     tp.update(cx, |t, cx| t.add_panel(panel.clone(), window, cx));
                     dock.update(cx, |d, cx| {
                         d.set_center(
-                            DockItem::Tabs { view: tp.clone(), active_ix: 0, items: vec![panel.clone()] },
-                            window, cx,
+                            DockItem::Tabs {
+                                view: tp.clone(),
+                                active_ix: 0,
+                                items: vec![panel.clone()],
+                            },
+                            window,
+                            cx,
                         );
                     });
                     cx.new(|cx| Root::new(dock.into(), window, cx))
@@ -285,7 +299,11 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        tracing::debug!("DROP: self_ch={:?} drag_ch={:?}", self.channel, drag.channel);
+        tracing::debug!(
+            "DROP: self_ch={:?} drag_ch={:?}",
+            self.channel,
+            drag.channel
+        );
 
         self.in_valid_drag = false;
 
@@ -293,29 +311,30 @@ impl TabPanel {
             return;
         }
 
-        let panel        = drag.panel.clone();
-        let is_same_tab  = drag.tab_panel == cx.entity();
-        let will_split   = self.will_split_placement;
-        let was_outside  = self.dragging_outside_window;
-        let extracted    = self.extraction_in_flight;
-        let source_tab   = drag.tab_panel.clone();
+        let panel = drag.panel.clone();
+        let is_same_tab = drag.tab_panel == cx.entity();
+        let will_split = self.will_split_placement;
+        let was_outside = self.dragging_outside_window;
+        let extracted = self.extraction_in_flight;
+        let source_tab = drag.tab_panel.clone();
         let source_index = drag.source_index;
-        let channel      = self.channel;
-        let target       = cx.entity().clone();
+        let channel = self.channel;
+        let target = cx.entity().clone();
         let panels_count = self.panels.len();
-        let in_tiles     = self.in_tiles;
+        let in_tiles = self.in_tiles;
 
         // Convert last-known local mouse pos to screen for window placement.
-        let screen_pos = self.last_drag_screen_pos
+        let screen_pos = self
+            .last_drag_screen_pos
             .map(|local| Self::mouse_to_screen(local, window))
             .or(drag.drag_start_position)
             .unwrap_or_default();
 
-        self.last_drag_screen_pos    = None;
+        self.last_drag_screen_pos = None;
         self.dragging_outside_window = false;
-        self.will_split_placement    = None;
-        self.extraction_in_flight    = false;
-        self.extracted_window        = None;
+        self.will_split_placement = None;
+        self.extraction_in_flight = false;
+        self.extracted_window = None;
 
         window.defer(cx, move |window, cx| {
             // Live extraction already created the window.
@@ -337,9 +356,12 @@ impl TabPanel {
 
                 let close_src = panels_count == 1 && !in_tiles;
                 window.defer(cx, move |window, cx| {
-                    if close_src { window.remove_window(); }
+                    if close_src {
+                        window.remove_window();
+                    }
                     let src_win = window.window_handle();
-                    if let Some(t) = tab_drag::find_target_window(screen_pos, src_win, channel, cx) {
+                    if let Some(t) = tab_drag::find_target_window(screen_pos, src_win, channel, cx)
+                    {
                         tab_drag::deposit_panel_into_window(panel, &t, cx);
                     } else {
                         TabPanel::create_window_with_panel(panel, screen_pos, channel, cx);
@@ -354,12 +376,16 @@ impl TabPanel {
                 let tgt = ix.unwrap();
                 let _ = target.update(cx, |v, cx| {
                     if source_index != tgt {
-                        let p   = v.panels.remove(source_index);
+                        let p = v.panels.remove(source_index);
                         let ins = if tgt > source_index { tgt - 1 } else { tgt };
                         v.panels.insert(ins, p);
-                        if v.active_ix == source_index       { v.active_ix = ins; }
-                        else if source_index < v.active_ix && ins >= v.active_ix { v.active_ix -= 1; }
-                        else if source_index > v.active_ix && ins <= v.active_ix { v.active_ix += 1; }
+                        if v.active_ix == source_index {
+                            v.active_ix = ins;
+                        } else if source_index < v.active_ix && ins >= v.active_ix {
+                            v.active_ix -= 1;
+                        } else if source_index > v.active_ix && ins <= v.active_ix {
+                            v.active_ix += 1;
+                        }
                         cx.emit(PanelEvent::LayoutChanged);
                         cx.notify();
                     }
@@ -367,7 +393,9 @@ impl TabPanel {
                 return;
             }
 
-            if is_same_tab && ix.is_none() && will_split.is_none() { return; }
+            if is_same_tab && ix.is_none() && will_split.is_none() {
+                return;
+            }
 
             if !is_same_tab {
                 let _ = source_tab.update(cx, |v, cx| {
@@ -385,9 +413,14 @@ impl TabPanel {
                         v.split_panel(panel.clone(), placement, None, window, cx);
                     }
                 } else {
-                    if is_same_tab { v.detach_panel(panel.clone(), window, cx); }
-                    if let Some(i) = ix { v.insert_panel_at(panel.clone(), i, window, cx); }
-                    else                { v.add_panel_with_active(panel.clone(), active, window, cx); }
+                    if is_same_tab {
+                        v.detach_panel(panel.clone(), window, cx);
+                    }
+                    if let Some(i) = ix {
+                        v.insert_panel_at(panel.clone(), i, window, cx);
+                    } else {
+                        v.add_panel_with_active(panel.clone(), active, window, cx);
+                    }
                 }
                 v.remove_self_if_empty(window, cx);
                 cx.emit(PanelEvent::LayoutChanged);

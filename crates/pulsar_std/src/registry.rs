@@ -147,9 +147,7 @@ pub fn get_all_type_constructors() -> &'static [TypeConstructorMetadata] {
 }
 
 #[cfg(feature = "native")]
-pub fn get_type_constructors_by_category(
-    category: &str,
-) -> Vec<&'static TypeConstructorMetadata> {
+pub fn get_type_constructors_by_category(category: &str) -> Vec<&'static TypeConstructorMetadata> {
     native_type_registry::TYPE_CONSTRUCTOR_REGISTRY
         .iter()
         .filter(|tc| tc.category == category)
@@ -157,9 +155,7 @@ pub fn get_type_constructors_by_category(
 }
 
 #[cfg(not(feature = "native"))]
-pub fn get_type_constructors_by_category(
-    _category: &str,
-) -> Vec<&'static TypeConstructorMetadata> {
+pub fn get_type_constructors_by_category(_category: &str) -> Vec<&'static TypeConstructorMetadata> {
     vec![]
 }
 

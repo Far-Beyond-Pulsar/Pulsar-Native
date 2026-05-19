@@ -498,6 +498,7 @@ mod tests {
                 locked: false,
                 components: Vec::new(),
                 scene_path: String::new(),
+                props: Default::default(),
             },
             None,
         );

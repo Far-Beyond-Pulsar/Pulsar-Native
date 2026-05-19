@@ -5,7 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, notification::Notification, ActiveTheme, ContextModal as _,
+    h_flex,
+    notification::Notification,
+    ActiveTheme, ContextModal as _,
 };
 
 mod actions;

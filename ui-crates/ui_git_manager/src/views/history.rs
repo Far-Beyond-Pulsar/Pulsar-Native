@@ -3,7 +3,7 @@
 use super::toolbar::render_toolbar;
 use crate::GitManager;
 use gpui::{prelude::FluentBuilder as _, *};
-use ui::{ActiveTheme as _, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex, Icon, IconName};
+use ui::{ActiveTheme as _, Icon, IconName, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex};
 
 /// Deterministic hue from author name for avatar color.
 fn author_hue(name: &str) -> f32 {
@@ -170,7 +170,11 @@ pub fn render_history_view(
                 .items_center()
                 .justify_center()
                 .gap_2()
-                .child(Icon::new(IconName::GitCommit).size(px(28.)).text_color(muted_fg))
+                .child(
+                    Icon::new(IconName::GitCommit)
+                        .size(px(28.))
+                        .text_color(muted_fg),
+                )
                 .child(div().text_xs().text_color(muted_fg).child("No commits yet")),
         );
     }
@@ -185,4 +189,3 @@ pub fn render_history_view(
                 .child(commit_list.scrollable(ScrollbarAxis::Vertical)),
         )
 }
-

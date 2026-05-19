@@ -9,7 +9,6 @@
 ///
 /// The `__bp_dispatch_*` shims inside `libpulsar_std` perform all type casting.
 /// These tests are calling the actual compiled pulsar_std math functions.
-
 use std::time::Instant;
 
 use graphy::{
@@ -29,111 +28,409 @@ fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
 }
 
 fn run_program(exec: &BpExecutor, prog: &mut pbgc::BpProgram) {
-    exec.prepare(prog).unwrap_or_else(|e| panic!("prepare failed: {}", e));
+    exec.prepare(prog)
+        .unwrap_or_else(|e| panic!("prepare failed: {}", e));
     pbgc::vm::run(prog).unwrap_or_else(|e| panic!("vm::run failed: {}", e));
 }
 
 fn compile_and_run(exec: &BpExecutor, graph: &GraphDescription) {
     let mut programs = compile_graph_to_bytecode(graph).expect("compile failed");
-    for prog in &mut programs { run_program(exec, prog); }
+    for prog in &mut programs {
+        run_program(exec, prog);
+    }
 }
 
 // ── Graph builders ────────────────────────────────────────────────────────────
 
 fn begin(pin: &str) -> NodeInstance {
     let mut n = NodeInstance::new("begin", "begin_play", Position { x: 0.0, y: 0.0 });
-    n.outputs.push(PinInstance::new(pin, Pin::new(pin, "Body", DataType::Execution, PinType::Output)));
+    n.outputs.push(PinInstance::new(
+        pin,
+        Pin::new(pin, "Body", DataType::Execution, PinType::Output),
+    ));
     n
 }
 
 fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     let mut n = NodeInstance::new(id, "add", Position { x: 100.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "a", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_b"), Pin::new(&format!("{id}_b"), "b", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Output)));
-    if let Some(v) = a { n.properties.insert(format!("{id}_a"), PropertyValue::Number(v)); }
-    if let Some(v) = b { n.properties.insert(format!("{id}_b"), PropertyValue::Number(v)); }
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "a",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_b"),
+        Pin::new(
+            &format!("{id}_b"),
+            "b",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(
+            &format!("{id}_r"),
+            "result",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Output,
+        ),
+    ));
+    if let Some(v) = a {
+        n.properties
+            .insert(format!("{id}_a"), PropertyValue::Number(v));
+    }
+    if let Some(v) = b {
+        n.properties
+            .insert(format!("{id}_b"), PropertyValue::Number(v));
+    }
     n
 }
 
 fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     let mut n = NodeInstance::new(id, "multiply", Position { x: 100.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "a", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_b"), Pin::new(&format!("{id}_b"), "b", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Output)));
-    if let Some(v) = a { n.properties.insert(format!("{id}_a"), PropertyValue::Number(v)); }
-    if let Some(v) = b { n.properties.insert(format!("{id}_b"), PropertyValue::Number(v)); }
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "a",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_b"),
+        Pin::new(
+            &format!("{id}_b"),
+            "b",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(
+            &format!("{id}_r"),
+            "result",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Output,
+        ),
+    ));
+    if let Some(v) = a {
+        n.properties
+            .insert(format!("{id}_a"), PropertyValue::Number(v));
+    }
+    if let Some(v) = b {
+        n.properties
+            .insert(format!("{id}_b"), PropertyValue::Number(v));
+    }
     n
 }
 
 fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     let mut n = NodeInstance::new(id, "subtract", Position { x: 100.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "a", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_b"), Pin::new(&format!("{id}_b"), "b", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Output)));
-    if let Some(v) = a { n.properties.insert(format!("{id}_a"), PropertyValue::Number(v)); }
-    if let Some(v) = b { n.properties.insert(format!("{id}_b"), PropertyValue::Number(v)); }
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "a",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_b"),
+        Pin::new(
+            &format!("{id}_b"),
+            "b",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(
+            &format!("{id}_r"),
+            "result",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Output,
+        ),
+    ));
+    if let Some(v) = a {
+        n.properties
+            .insert(format!("{id}_a"), PropertyValue::Number(v));
+    }
+    if let Some(v) = b {
+        n.properties
+            .insert(format!("{id}_b"), PropertyValue::Number(v));
+    }
     n
 }
 
 fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeInstance {
     let mut n = NodeInstance::new(id, "lerp", Position { x: 100.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "a", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_b"), Pin::new(&format!("{id}_b"), "b", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_t"), Pin::new(&format!("{id}_t"), "t", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Output)));
-    if let Some(v) = a { n.properties.insert(format!("{id}_a"), PropertyValue::Number(v)); }
-    if let Some(v) = b { n.properties.insert(format!("{id}_b"), PropertyValue::Number(v)); }
-    if let Some(v) = t { n.properties.insert(format!("{id}_t"), PropertyValue::Number(v)); }
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "a",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_b"),
+        Pin::new(
+            &format!("{id}_b"),
+            "b",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_t"),
+        Pin::new(
+            &format!("{id}_t"),
+            "t",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(
+            &format!("{id}_r"),
+            "result",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Output,
+        ),
+    ));
+    if let Some(v) = a {
+        n.properties
+            .insert(format!("{id}_a"), PropertyValue::Number(v));
+    }
+    if let Some(v) = b {
+        n.properties
+            .insert(format!("{id}_b"), PropertyValue::Number(v));
+    }
+    if let Some(v) = t {
+        n.properties
+            .insert(format!("{id}_t"), PropertyValue::Number(v));
+    }
     n
 }
 
 fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     let mut n = NodeInstance::new(id, "greater_than", Position { x: 200.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "a", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_b"), Pin::new(&format!("{id}_b"), "b", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_r"), Pin::new(&format!("{id}_r"), "result", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Output)));
-    if let Some(v) = a { n.properties.insert(format!("{id}_a"), PropertyValue::Number(v)); }
-    if let Some(v) = b { n.properties.insert(format!("{id}_b"), PropertyValue::Number(v)); }
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "a",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_b"),
+        Pin::new(
+            &format!("{id}_b"),
+            "b",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_r"),
+        Pin::new(
+            &format!("{id}_r"),
+            "result",
+            DataType::Typed(graphy::TypeInfo::new("bool")),
+            PinType::Output,
+        ),
+    ));
+    if let Some(v) = a {
+        n.properties
+            .insert(format!("{id}_a"), PropertyValue::Number(v));
+    }
+    if let Some(v) = b {
+        n.properties
+            .insert(format!("{id}_b"), PropertyValue::Number(v));
+    }
     n
 }
 
 fn branch(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "branch", Position { x: 300.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_c"), Pin::new(&format!("{id}_c"), "condition", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_t"), Pin::new(&format!("{id}_t"), "True", DataType::Execution, PinType::Output)));
-    n.outputs.push(PinInstance::new(&format!("{id}_f"), Pin::new(&format!("{id}_f"), "False", DataType::Execution, PinType::Output)));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_e"),
+        Pin::new(
+            &format!("{id}_e"),
+            "exec",
+            DataType::Execution,
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_c"),
+        Pin::new(
+            &format!("{id}_c"),
+            "condition",
+            DataType::Typed(graphy::TypeInfo::new("bool")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_t"),
+        Pin::new(
+            &format!("{id}_t"),
+            "True",
+            DataType::Execution,
+            PinType::Output,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_f"),
+        Pin::new(
+            &format!("{id}_f"),
+            "False",
+            DataType::Execution,
+            PinType::Output,
+        ),
+    ));
     n
 }
 
 fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_int", Position { x: 400.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "actual", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_x"), Pin::new(&format!("{id}_x"), "expected", DataType::Typed(graphy::TypeInfo::new("i64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
-    n.properties.insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_e"),
+        Pin::new(
+            &format!("{id}_e"),
+            "exec",
+            DataType::Execution,
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "actual",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_x"),
+        Pin::new(
+            &format!("{id}_x"),
+            "expected",
+            DataType::Typed(graphy::TypeInfo::new("i64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_o"),
+        Pin::new(
+            &format!("{id}_o"),
+            "exec",
+            DataType::Execution,
+            PinType::Output,
+        ),
+    ));
+    n.properties
+        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
     n
 }
 
 fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_eq_float", Position { x: 400.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_a"), Pin::new(&format!("{id}_a"), "actual", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_x"), Pin::new(&format!("{id}_x"), "expected", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_ep"), Pin::new(&format!("{id}_ep"), "epsilon", DataType::Typed(graphy::TypeInfo::new("f64")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
-    n.properties.insert(format!("{id}_x"), PropertyValue::Number(expected));
-    n.properties.insert(format!("{id}_ep"), PropertyValue::Number(epsilon));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_e"),
+        Pin::new(
+            &format!("{id}_e"),
+            "exec",
+            DataType::Execution,
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_a"),
+        Pin::new(
+            &format!("{id}_a"),
+            "actual",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_x"),
+        Pin::new(
+            &format!("{id}_x"),
+            "expected",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_ep"),
+        Pin::new(
+            &format!("{id}_ep"),
+            "epsilon",
+            DataType::Typed(graphy::TypeInfo::new("f64")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_o"),
+        Pin::new(
+            &format!("{id}_o"),
+            "exec",
+            DataType::Execution,
+            PinType::Output,
+        ),
+    ));
+    n.properties
+        .insert(format!("{id}_x"), PropertyValue::Number(expected));
+    n.properties
+        .insert(format!("{id}_ep"), PropertyValue::Number(epsilon));
     n
 }
 
 fn assert_true(id: &str) -> NodeInstance {
     let mut n = NodeInstance::new(id, "assert_true", Position { x: 400.0, y: 0.0 });
-    n.inputs.push(PinInstance::new(&format!("{id}_e"), Pin::new(&format!("{id}_e"), "exec", DataType::Execution, PinType::Input)));
-    n.inputs.push(PinInstance::new(&format!("{id}_c"), Pin::new(&format!("{id}_c"), "condition", DataType::Typed(graphy::TypeInfo::new("bool")), PinType::Input)));
-    n.outputs.push(PinInstance::new(&format!("{id}_o"), Pin::new(&format!("{id}_o"), "exec", DataType::Execution, PinType::Output)));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_e"),
+        Pin::new(
+            &format!("{id}_e"),
+            "exec",
+            DataType::Execution,
+            PinType::Input,
+        ),
+    ));
+    n.inputs.push(PinInstance::new(
+        &format!("{id}_c"),
+        Pin::new(
+            &format!("{id}_c"),
+            "condition",
+            DataType::Typed(graphy::TypeInfo::new("bool")),
+            PinType::Input,
+        ),
+    ));
+    n.outputs.push(PinInstance::new(
+        &format!("{id}_o"),
+        Pin::new(
+            &format!("{id}_o"),
+            "exec",
+            DataType::Execution,
+            PinType::Output,
+        ),
+    ));
     n
 }
 
@@ -153,8 +450,11 @@ fn test_dylib_loads_and_prepares() {
     let mut prog = pbgc::BpProgram::new("test");
     prog.arena_size = 24;
     prog.instructions.push(pbgc::Instruction::Call {
-        fn_ptr: 0, node_type: "add".to_string(),
-        input_offsets: vec![0, 8], output_offset: 16, has_output: true,
+        fn_ptr: 0,
+        node_type: "add".to_string(),
+        input_offsets: vec![0, 8],
+        output_offset: 16,
+        has_output: true,
         type_slot_offsets: vec![],
     });
     prog.instructions.push(pbgc::Instruction::Return);
@@ -168,22 +468,45 @@ fn test_dylib_loads_and_prepares() {
 #[test]
 fn test_dylib_prepares_all_math_nodes() {
     let (exec, _tmp) = executor();
-    let nodes = ["add","subtract","multiply","divide","modulo",
-                 "abs","sqrt","power","lerp","clamp","min","max",
-                 "ceil","floor","round","greater_than","less_than"];
+    let nodes = [
+        "add",
+        "subtract",
+        "multiply",
+        "divide",
+        "modulo",
+        "abs",
+        "sqrt",
+        "power",
+        "lerp",
+        "clamp",
+        "min",
+        "max",
+        "ceil",
+        "floor",
+        "round",
+        "greater_than",
+        "less_than",
+    ];
     let mut prog = pbgc::BpProgram::new("test");
     prog.arena_size = 32;
     for name in &nodes {
         prog.instructions.push(pbgc::Instruction::Call {
-            fn_ptr: 0, node_type: name.to_string(),
-            input_offsets: vec![0, 8], output_offset: 16, has_output: true,
+            fn_ptr: 0,
+            node_type: name.to_string(),
+            input_offsets: vec![0, 8],
+            output_offset: 16,
+            has_output: true,
             type_slot_offsets: vec![],
         });
     }
     prog.instructions.push(pbgc::Instruction::Return);
-    exec.prepare(&mut prog).expect("all math nodes must have dispatch symbols");
+    exec.prepare(&mut prog)
+        .expect("all math nodes must have dispatch symbols");
     for instr in &prog.instructions {
-        if let pbgc::Instruction::Call { fn_ptr, node_type, .. } = instr {
+        if let pbgc::Instruction::Call {
+            fn_ptr, node_type, ..
+        } = instr
+        {
             assert_ne!(*fn_ptr, 0, "{} fn_ptr must be non-zero", node_type);
         }
     }
@@ -195,8 +518,11 @@ fn test_missing_symbol_returns_error() {
     let mut prog = pbgc::BpProgram::new("test");
     prog.arena_size = 8;
     prog.instructions.push(pbgc::Instruction::Call {
-        fn_ptr: 0, node_type: "this_node_does_not_exist".to_string(),
-        input_offsets: vec![], output_offset: 0, has_output: false,
+        fn_ptr: 0,
+        node_type: "this_node_does_not_exist".to_string(),
+        input_offsets: vec![],
+        output_offset: 0,
+        has_output: false,
         type_slot_offsets: vec![],
     });
     prog.instructions.push(pbgc::Instruction::Return);
@@ -285,7 +611,12 @@ fn test_real_add_chain_50_nodes_result_50() {
         g.add_node(add_i64(&id, ca, Some(1.0)));
         if i > 0 {
             let prev = format!("a{}", i - 1);
-            g.add_connection(data_conn(&prev, &format!("{prev}_r"), &id, &format!("{id}_a")));
+            g.add_connection(data_conn(
+                &prev,
+                &format!("{prev}_r"),
+                &id,
+                &format!("{id}_a"),
+            ));
         }
     }
     g.add_node(assert_eq_int("chk", 50));
@@ -390,7 +721,8 @@ fn test_timing_10k_executions_branch_graph() {
     let elapsed = t.elapsed();
     println!(
         "[timing] 10,000 × branch graph (native dispatch): {:?}  ({:.2} µs/run)",
-        elapsed, elapsed.as_micros() as f64 / 10_000.0
+        elapsed,
+        elapsed.as_micros() as f64 / 10_000.0
     );
     assert!(elapsed.as_secs() < 10, "took too long: {:?}", elapsed);
 }
@@ -406,7 +738,12 @@ fn test_timing_compile_vs_execute() {
         g.add_node(add_i64(&id, ca, Some(1.0)));
         if i > 0 {
             let prev = format!("a{}", i - 1);
-            g.add_connection(data_conn(&prev, &format!("{prev}_r"), &id, &format!("{id}_a")));
+            g.add_connection(data_conn(
+                &prev,
+                &format!("{prev}_r"),
+                &id,
+                &format!("{id}_a"),
+            ));
         }
     }
     g.add_node(gt_f64("gt", None, Some(0.0)));
@@ -429,7 +766,9 @@ fn test_timing_compile_vs_execute() {
 
     println!(
         "[timing] 20-node: compile={:?}  execute×1000={:?} ({:.2}µs/run)",
-        compile_time, exec_time, exec_time.as_micros() as f64 / 1000.0
+        compile_time,
+        exec_time,
+        exec_time.as_micros() as f64 / 1000.0
     );
 }
 

@@ -165,11 +165,7 @@ impl PulsarApp {
         FlamegraphWindow::open(cx);
     }
 
-    pub(super) fn toggle_project_switcher(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    pub(super) fn toggle_project_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.project_switcher_open {
             use ui_common::command_palette::GenericPalette;
 
@@ -182,8 +178,9 @@ impl PulsarApp {
                 &view,
                 window,
                 move |this, _, _: &gpui::DismissEvent, window, cx| {
-                    let selected = view_for_dismiss
-                        .update(cx, |palette, _| palette.delegate_mut().selected_project.take());
+                    let selected = view_for_dismiss.update(cx, |palette, _| {
+                        palette.delegate_mut().selected_project.take()
+                    });
 
                     if let Some(selected) = selected {
                         let project_path = std::path::PathBuf::from(&selected.path);
@@ -209,14 +206,20 @@ impl PulsarApp {
                             };
 
                             let _ = cx.open_window(opts, move |window, cx| {
-                                let app = cx.new(|cx| PulsarApp::new_with_project(path.clone(), window, cx));
-                                let root = cx.new(|cx| crate::PulsarRoot::new("Pulsar Engine", app, window, cx));
+                                let app = cx.new(|cx| {
+                                    PulsarApp::new_with_project(path.clone(), window, cx)
+                                });
+                                let root = cx.new(|cx| {
+                                    crate::PulsarRoot::new("Pulsar Engine", app, window, cx)
+                                });
                                 cx.new(|cx| ui::Root::new(root.into(), window, cx))
                             });
 
                             // Close the originating window only after the target editor opens.
-                            cx.update_window(originating_window_handle, |_, win, _| win.remove_window())
-                                .ok();
+                            cx.update_window(originating_window_handle, |_, win, _| {
+                                win.remove_window()
+                            })
+                            .ok();
                         });
 
                         cx.defer({

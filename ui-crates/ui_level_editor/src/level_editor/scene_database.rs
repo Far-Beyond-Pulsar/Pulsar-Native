@@ -63,6 +63,10 @@ pub struct SceneObjectData {
     pub children: Vec<ObjectId>,
     pub components: Vec<Component>,
     pub scene_path: String,
+    /// Type-specific properties that round-trip through the level file.
+    /// Lights: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
+    #[serde(default)]
+    pub props: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl SceneObjectData {
@@ -82,6 +86,7 @@ impl SceneObjectData {
             children: snap.children,
             components: snap.components,
             scene_path: snap.scene_path,
+            props: snap.props,
         }
     }
 
@@ -99,6 +104,7 @@ impl SceneObjectData {
             children: self.children,
             components: self.components,
             scene_path: self.scene_path,
+            props: self.props,
         }
     }
 }
@@ -170,7 +176,6 @@ impl SceneDatabase {
             }
         }
     }
-
 
     // ── Object CRUD ───────────────────────────────────────────────────────
 
@@ -377,6 +382,7 @@ impl SceneDatabase {
             children: vec![],
             components: vec![],
             scene_path: String::new(),
+            props: Default::default(),
         };
         self.add_object(obj, parent)
     }

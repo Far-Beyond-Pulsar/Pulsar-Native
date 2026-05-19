@@ -247,15 +247,17 @@ impl TabPanel {
                             .on_drag_move(cx.listener(
                                 |this, event: &DragMoveEvent<DragPanel>, window, cx| {
                                     let source_id = event.drag(cx).tab_panel.entity_id();
-                                    let my_id     = cx.entity_id();
-                                    let mouse     = window.mouse_position();
+                                    let my_id = cx.entity_id();
+                                    let mouse = window.mouse_position();
                                     this.last_drag_screen_pos = Some(mouse);
                                     tab_drag::set_drag_screen_position(mouse, cx);
                                     let was_outside = this.dragging_outside_window;
-                                    let is_outside  = this.check_drag_outside_window(mouse, window, cx);
+                                    let is_outside =
+                                        this.check_drag_outside_window(mouse, window, cx);
 
                                     if source_id == my_id {
-                                        if is_outside && !was_outside && !this.extraction_in_flight {
+                                        if is_outside && !was_outside && !this.extraction_in_flight
+                                        {
                                             let drag = event.drag(cx).clone();
                                             this.begin_live_extraction(&drag, mouse, window, cx);
                                         } else if is_outside && this.extraction_in_flight {
@@ -747,27 +749,33 @@ impl Render for TabPanel {
             .size_full()
             // Outer drag-move: handles live extraction (bounds exit) and re-entry
             // cancellation for the source TabPanel across ALL drag positions.
-            .on_drag_move(cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
-                if event.drag(cx).channel != this.channel { return; }
-                let source_id = event.drag(cx).tab_panel.entity_id();
-                if source_id != cx.entity_id() { return; }
+            .on_drag_move(
+                cx.listener(|this, event: &DragMoveEvent<DragPanel>, window, cx| {
+                    if event.drag(cx).channel != this.channel {
+                        return;
+                    }
+                    let source_id = event.drag(cx).tab_panel.entity_id();
+                    if source_id != cx.entity_id() {
+                        return;
+                    }
 
-                let mouse      = window.mouse_position();
-                this.last_drag_screen_pos = Some(mouse);
-                tab_drag::set_drag_screen_position(mouse, cx);
-                let was_outside = this.dragging_outside_window;
-                let is_outside  = this.check_drag_outside_window(mouse, window, cx);
+                    let mouse = window.mouse_position();
+                    this.last_drag_screen_pos = Some(mouse);
+                    tab_drag::set_drag_screen_position(mouse, cx);
+                    let was_outside = this.dragging_outside_window;
+                    let is_outside = this.check_drag_outside_window(mouse, window, cx);
 
-                if is_outside && !was_outside && !this.extraction_in_flight {
-                    let drag = event.drag(cx).clone();
-                    this.begin_live_extraction(&drag, mouse, window, cx);
-                } else if is_outside && this.extraction_in_flight {
-                    this.move_extracted_window(mouse, window, cx);
-                } else if !is_outside && this.extraction_in_flight {
-                    let panel = event.drag(cx).panel.clone();
-                    this.cancel_live_extraction(panel, window, cx);
-                }
-            }))
+                    if is_outside && !was_outside && !this.extraction_in_flight {
+                        let drag = event.drag(cx).clone();
+                        this.begin_live_extraction(&drag, mouse, window, cx);
+                    } else if is_outside && this.extraction_in_flight {
+                        this.move_extracted_window(mouse, window, cx);
+                    } else if !is_outside && this.extraction_in_flight {
+                        let panel = event.drag(cx).panel.clone();
+                        this.cancel_live_extraction(panel, window, cx);
+                    }
+                }),
+            )
             // NO BACKGROUND - allow transparency for viewports
             .child(self.render_title_bar(&state, window, cx))
             .child(self.render_active_panel(&state, window, cx))

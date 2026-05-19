@@ -27,7 +27,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Main Camera"
+      "scene_path": "Main Camera",
+      "props": {}
     },
     {
       "id": "object_2",
@@ -42,13 +43,13 @@
           -6.0
         ],
         "rotation": [
-          7.0,
-          100.0,
+          0.0,
+          0.0,
           0.0
         ],
         "scale": [
-          0.2,
-          0.45,
+          1.0,
+          1.0,
           1.0
         ]
       },
@@ -57,7 +58,14 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Blue Light"
+      "scene_path": "Blue Light",
+      "props": {
+        "color_r": 0.2,
+        "color_g": 0.45,
+        "color_b": 1.0,
+        "intensity": 7.0,
+        "range": 100.0
+      }
     },
     {
       "id": "object_3",
@@ -72,14 +80,14 @@
           -6.0
         ],
         "rotation": [
-          7.0,
-          100.0,
+          0.0,
+          0.0,
           0.0
         ],
         "scale": [
           1.0,
-          0.22,
-          0.2
+          1.0,
+          1.0
         ]
       },
       "visible": true,
@@ -87,7 +95,14 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Red Light"
+      "scene_path": "Red Light",
+      "props": {
+        "color_r": 1.0,
+        "color_g": 0.22,
+        "color_b": 0.2,
+        "intensity": 7.0,
+        "range": 100.0
+      }
     },
     {
       "id": "object_4",
@@ -117,7 +132,14 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Yellowish Light"
+      "scene_path": "Yellowish Light",
+      "props": {
+        "color_r": 1.0,
+        "color_g": 1.0,
+        "color_b": 1.0,
+        "intensity": 7.0,
+        "range": 100.0
+      }
     },
     {
       "id": "object_5",
@@ -147,7 +169,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Ground"
+      "scene_path": "Ground",
+      "props": {}
     },
     {
       "id": "object_6",
@@ -177,7 +200,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Podium Base"
+      "scene_path": "Podium Base",
+      "props": {}
     },
     {
       "id": "object_7",
@@ -207,7 +231,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Podium Mid"
+      "scene_path": "Podium Mid",
+      "props": {}
     },
     {
       "id": "object_8",
@@ -237,7 +262,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Hero Sphere"
+      "scene_path": "Hero Sphere",
+      "props": {}
     },
     {
       "id": "object_9",
@@ -267,7 +293,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Column L1"
+      "scene_path": "Column L1",
+      "props": {}
     },
     {
       "id": "object_10",
@@ -297,7 +324,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Column L2"
+      "scene_path": "Column L2",
+      "props": {}
     },
     {
       "id": "object_11",
@@ -327,7 +355,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Lintel L"
+      "scene_path": "Lintel L",
+      "props": {}
     },
     {
       "id": "object_12",
@@ -357,7 +386,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Tower Base"
+      "scene_path": "Tower Base",
+      "props": {}
     },
     {
       "id": "object_13",
@@ -387,7 +417,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Tower Mid"
+      "scene_path": "Tower Mid",
+      "props": {}
     },
     {
       "id": "object_14",
@@ -417,7 +448,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Tower Top"
+      "scene_path": "Tower Top",
+      "props": {}
     },
     {
       "id": "object_15",
@@ -447,7 +479,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Rock A"
+      "scene_path": "Rock A",
+      "props": {}
     },
     {
       "id": "object_16",
@@ -477,7 +510,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Rock B"
+      "scene_path": "Rock B",
+      "props": {}
     },
     {
       "id": "object_17",
@@ -507,7 +541,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Ramp"
+      "scene_path": "Ramp",
+      "props": {}
     },
     {
       "id": "object_18",
@@ -537,7 +572,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Bridge Deck"
+      "scene_path": "Bridge Deck",
+      "props": {}
     },
     {
       "id": "object_19",
@@ -567,7 +603,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Bridge Pillar L"
+      "scene_path": "Bridge Pillar L",
+      "props": {}
     },
     {
       "id": "object_20",
@@ -597,7 +634,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Bridge Pillar R"
+      "scene_path": "Bridge Pillar R",
+      "props": {}
     },
     {
       "id": "object_21",
@@ -627,7 +665,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Float Orb A"
+      "scene_path": "Float Orb A",
+      "props": {}
     },
     {
       "id": "object_22",
@@ -657,7 +696,8 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Float Orb B"
+      "scene_path": "Float Orb B",
+      "props": {}
     }
   ],
   "metadata": {

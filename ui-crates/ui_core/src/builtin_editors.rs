@@ -396,6 +396,5 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
 
-
     tracing::info!("Built-in editor registration complete");
 }

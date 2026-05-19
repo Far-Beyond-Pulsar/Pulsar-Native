@@ -300,6 +300,12 @@ pub struct SceneObjectSnapshot {
     pub visible: bool,
     pub locked: bool,
     pub components: Vec<Component>,
+    /// Arbitrary type-specific properties that round-trip through the level file.
+    ///
+    /// Lights store: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
+    /// Any future object type can extend this without schema changes.
+    #[serde(default)]
+    pub props: HashMap<String, serde_json::Value>,
 }
 
 // ─── Live object entry ───────────────────────────────────────────────────────
@@ -330,6 +336,8 @@ pub struct SceneEntryMeta {
     /// Canonical path, e.g. "Geometry/Spheres/Blue Sphere".  Kept in sync by SceneDb.
     pub scene_path: String,
     pub components: Vec<Component>,
+    /// Type-specific properties — see `SceneObjectSnapshot::props`.
+    pub props: HashMap<String, serde_json::Value>,
 }
 
 impl SceneEntry {
@@ -359,6 +367,7 @@ impl SceneEntry {
                 parent: snap.parent.clone(),
                 scene_path: snap.scene_path.clone(),
                 components: snap.components.clone(),
+                props: snap.props.clone(),
             }),
         }
     }
@@ -467,7 +476,13 @@ impl SceneEntry {
             visible: self.is_visible(),
             locked: self.is_locked(),
             components: meta.components.clone(),
+            props: meta.props.clone(),
         }
+    }
+
+    /// Overwrite the stored props (used by the properties panel to persist light color etc.).
+    pub fn set_props(&self, props: HashMap<String, serde_json::Value>) {
+        self.meta.write().props = props;
     }
 }
 
@@ -763,6 +778,17 @@ impl SceneDb {
     pub fn set_locked(&self, id: &str, v: bool) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             e.set_locked(v);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Overwrite the props map for an object.  Used by the properties panel to
+    /// persist type-specific data (light color, intensity, range, etc.).
+    pub fn set_props(&self, id: &str, props: HashMap<String, serde_json::Value>) -> bool {
+        if let Some(e) = self.inner.objects.get(id) {
+            e.set_props(props);
             true
         } else {
             false

@@ -67,7 +67,9 @@ pub fn create_entry_component(
         cx.subscribe(
             &intro_screen,
             move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-                tracing::debug!("✅ [OOBE subscriber] IntroComplete received — opening entry screen");
+                tracing::debug!(
+                    "✅ [OOBE subscriber] IntroComplete received — opening entry screen"
+                );
                 mark_intro_seen();
 
                 let on_proj2 = on_proj_oobe.clone();

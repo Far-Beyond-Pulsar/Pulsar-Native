@@ -249,7 +249,11 @@ impl LmStudioProvider {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().unwrap_or_default();
-            return Err(anyhow!("LM Studio models API returned {}: {}", status, body));
+            return Err(anyhow!(
+                "LM Studio models API returned {}: {}",
+                status,
+                body
+            ));
         }
 
         let raw: Value = response

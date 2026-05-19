@@ -93,7 +93,11 @@ impl PendingAuthOp {
 #[derive(Clone)]
 pub enum ChangesRow {
     /// Section header: title, file count, is_staged
-    Header { title: String, count: usize, is_staged: bool },
+    Header {
+        title: String,
+        count: usize,
+        is_staged: bool,
+    },
     /// A file entry
     File { change: FileChange, is_staged: bool },
 }
@@ -291,7 +295,10 @@ impl GitManager {
                 is_staged: true,
             });
             for f in staged {
-                rows.push(ChangesRow::File { change: f, is_staged: true });
+                rows.push(ChangesRow::File {
+                    change: f,
+                    is_staged: true,
+                });
             }
         }
         if !unstaged_all.is_empty() {
@@ -301,7 +308,10 @@ impl GitManager {
                 is_staged: false,
             });
             for f in unstaged_all {
-                rows.push(ChangesRow::File { change: f, is_staged: false });
+                rows.push(ChangesRow::File {
+                    change: f,
+                    is_staged: false,
+                });
             }
         }
         self.changes_rows = rows;
@@ -310,11 +320,7 @@ impl GitManager {
     /// Ensure the GitHub avatar for a commit author is loaded.
     /// Uses the commit email to derive a GitHub username; falls back gracefully.
     /// Safe to call every render — it's a no-op if the entry is already cached or in-flight.
-    pub(crate) fn ensure_avatar_loaded(
-        &mut self,
-        email: &str,
-        cx: &mut Context<Self>,
-    ) {
+    pub(crate) fn ensure_avatar_loaded(&mut self, email: &str, cx: &mut Context<Self>) {
         if self.avatar_cache.contains_key(email) {
             return;
         }

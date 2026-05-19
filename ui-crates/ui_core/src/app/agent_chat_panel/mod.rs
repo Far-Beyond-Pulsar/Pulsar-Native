@@ -2,9 +2,9 @@ mod auth;
 mod chat_history;
 mod chat_storage;
 mod custom_provider_wizard;
+mod prompt_ranking;
 mod provider_catalog;
 mod provider_selection;
-mod prompt_ranking;
 mod streaming;
 pub mod types;
 
@@ -676,7 +676,8 @@ impl Render for AgentChatPanel {
             .map(|m| m.label.to_string())
             .unwrap_or_else(|| "Model".to_string());
         let queued_subagent_count = self.pending_subagent_events.len();
-        let subagent_mode_is_manual = self.subagent_completion_mode == SubagentCompletionMode::Manual;
+        let subagent_mode_is_manual =
+            self.subagent_completion_mode == SubagentCompletionMode::Manual;
         let subagent_status_text = if self.is_processing_subagent_event {
             let active_id = self
                 .processing_subagent_id

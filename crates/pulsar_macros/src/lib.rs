@@ -192,9 +192,17 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // No lookup table needed — the Rust compiler evaluates everything at compile time.
     let is_generic = !input.sig.generics.params.is_empty();
     // Collect unbound type-parameter names (e.g. "T", "U") so we can substitute them.
-    let generic_param_names: std::collections::HashSet<String> = input.sig.generics.params.iter()
+    let generic_param_names: std::collections::HashSet<String> = input
+        .sig
+        .generics
+        .params
+        .iter()
         .filter_map(|p| {
-            if let syn::GenericParam::Type(tp) = p { Some(tp.ident.to_string()) } else { None }
+            if let syn::GenericParam::Type(tp) = p {
+                Some(tp.ident.to_string())
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -239,11 +247,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // For "!" (never/diverging) return: also treated as void.
     // For generic functions: substitute T→() to get the wrapper size.
     let (return_type, return_size, return_align) = match &input.sig.output {
-        ReturnType::Default => (
-            quote! { None },
-            quote! { 0usize },
-            quote! { 1usize },
-        ),
+        ReturnType::Default => (quote! { None }, quote! { 0usize }, quote! { 1usize }),
         ReturnType::Type(_, ty) => {
             let ty_str = quote!(#ty).to_string();
             let ty_trimmed = ty_str.trim();
@@ -350,7 +354,8 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
 
     // native_only: true (via wasm_safe: false) — node uses OS/threading APIs unavailable
     // in a cdylib context; wrap definition to exclude from those builds.
-    let native_only = args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false");
+    let native_only =
+        args_str.contains("wasm_safe : false") || args_str.contains("wasm_safe:false");
 
     let registry_ident = syn::Ident::new(
         &format!("__BLUEPRINT_NODE__{}", fn_name_str.to_uppercase()),
@@ -711,7 +716,7 @@ pub fn blueprint_type(args: TokenStream, input: TokenStream) -> TokenStream {
 // No lookup table, no hardcoded constants — the Rust compiler does the work.
 
 fn substitute_generics_with_unit(
-    ty:     &syn::Type,
+    ty: &syn::Type,
     params: &std::collections::HashSet<String>,
 ) -> syn::Type {
     use syn::{GenericArgument, PathArguments, Type};
@@ -733,9 +738,7 @@ fn substitute_generics_with_unit(
                     let mut new_args = syn::punctuated::Punctuated::new();
                     for arg in ab.args.iter() {
                         let new_arg = if let GenericArgument::Type(inner) = arg {
-                            GenericArgument::Type(
-                                substitute_generics_with_unit(inner, params)
-                            )
+                            GenericArgument::Type(substitute_generics_with_unit(inner, params))
                         } else {
                             arg.clone()
                         };
@@ -772,7 +775,7 @@ fn substitute_generics_with_unit(
 // size-dispatch shim for generic functions.
 
 fn substitute_generics_with_concrete_type(
-    ty:       &syn::Type,
+    ty: &syn::Type,
     type_map: &std::collections::HashMap<String, syn::Type>,
 ) -> syn::Type {
     use syn::{GenericArgument, PathArguments, Type};
@@ -792,9 +795,9 @@ fn substitute_generics_with_concrete_type(
                     let mut new_args = syn::punctuated::Punctuated::new();
                     for arg in ab.args.iter() {
                         let new_arg = if let GenericArgument::Type(inner) = arg {
-                            GenericArgument::Type(
-                                substitute_generics_with_concrete_type(inner, type_map)
-                            )
+                            GenericArgument::Type(substitute_generics_with_concrete_type(
+                                inner, type_map,
+                            ))
                         } else {
                             arg.clone()
                         };
@@ -825,10 +828,7 @@ fn substitute_generics_with_concrete_type(
 
 /// Returns true iff `ty` is a bare generic type-parameter name with no arguments
 /// (e.g. `T`, `U`).
-fn is_bare_generic_param(
-    ty:           &syn::Type,
-    param_names:  &std::collections::HashSet<String>,
-) -> bool {
+fn is_bare_generic_param(ty: &syn::Type, param_names: &std::collections::HashSet<String>) -> bool {
     use syn::{PathArguments, Type};
     if let Type::Path(tp) = ty {
         if tp.qself.is_none() && tp.path.segments.len() == 1 {
@@ -855,13 +855,23 @@ fn is_bare_generic_param(
 // always correct.
 
 fn generate_generic_dispatch_shim(
-    func:        &ItemFn,
-    fn_name:     &proc_macro2::Ident,
+    func: &ItemFn,
+    fn_name: &proc_macro2::Ident,
     fn_name_str: &str,
 ) -> proc_macro2::TokenStream {
     // ── Guard: exactly one type param, no semantic bounds ─────────────────────
-    let type_params: Vec<&syn::TypeParam> = func.sig.generics.params.iter()
-        .filter_map(|p| if let syn::GenericParam::Type(tp) = p { Some(tp) } else { None })
+    let type_params: Vec<&syn::TypeParam> = func
+        .sig
+        .generics
+        .params
+        .iter()
+        .filter_map(|p| {
+            if let syn::GenericParam::Type(tp) = p {
+                Some(tp)
+            } else {
+                None
+            }
+        })
         .collect();
 
     if type_params.len() != 1 {
@@ -877,13 +887,23 @@ fn generate_generic_dispatch_shim(
     //     Clone, Copy, PartialEq, Eq, PartialOrd, Ord
     let has_semantic_bounds = tp.bounds.iter().any(|b| {
         if let syn::TypeParamBound::Trait(tb) = b {
-            let name = tb.path.segments.last()
+            let name = tb
+                .path
+                .segments
+                .last()
                 .map(|s| s.ident.to_string())
                 .unwrap_or_default();
-            !matches!(name.as_str(),
-                "Sized" | "Send" | "Sync" |
-                "Clone" | "Copy" |
-                "PartialEq" | "Eq" | "PartialOrd" | "Ord"
+            !matches!(
+                name.as_str(),
+                "Sized"
+                    | "Send"
+                    | "Sync"
+                    | "Clone"
+                    | "Copy"
+                    | "PartialEq"
+                    | "Eq"
+                    | "PartialOrd"
+                    | "Ord"
             )
         } else {
             false // lifetime bounds are fine
@@ -907,17 +927,16 @@ fn generate_generic_dispatch_shim(
         }
     }
 
-    let shim_ident = proc_macro2::Ident::new(
-        &format!("__bp_dispatch_{}", fn_name_str),
-        fn_name.span(),
-    );
+    let shim_ident =
+        proc_macro2::Ident::new(&format!("__bp_dispatch_{}", fn_name_str), fn_name.span());
 
     // ── Check whether any param / return type is a bare T ─────────────────────
-    let has_bare_param = params.iter()
+    let has_bare_param = params
+        .iter()
         .any(|(_, _, ty)| is_bare_generic_param(ty, &param_names_set));
     let has_bare_return = match &func.sig.output {
         ReturnType::Type(_, ty) => is_bare_generic_param(ty, &param_names_set),
-        ReturnType::Default      => false,
+        ReturnType::Default => false,
     };
 
     // ── No bare T anywhere: use T=() for everything ────────────────────────────
@@ -932,10 +951,8 @@ fn generate_generic_dispatch_shim(
         let mut let_stmts: Vec<proc_macro2::TokenStream> = Vec::new();
         let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
         for (arg_idx, _, orig_ty) in &params {
-            let arg_var = proc_macro2::Ident::new(
-                &format!("__a{}", arg_idx),
-                proc_macro2::Span::call_site(),
-            );
+            let arg_var =
+                proc_macro2::Ident::new(&format!("__a{}", arg_idx), proc_macro2::Span::call_site());
             let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
             let concrete_ty = substitute_generics_with_concrete_type(orig_ty, &unit_map);
             let_stmts.push(quote! {
@@ -984,11 +1001,11 @@ fn generate_generic_dispatch_shim(
     // identical machine code.
 
     let dispatch_sizes: &[(&str, &str)] = &[
-        ("0",  "()"),
-        ("1",  "[u8; 1]"),
-        ("2",  "[u8; 2]"),
-        ("4",  "[u8; 4]"),
-        ("8",  "[u8; 8]"),
+        ("0", "()"),
+        ("1", "[u8; 1]"),
+        ("2", "[u8; 2]"),
+        ("4", "[u8; 4]"),
+        ("8", "[u8; 8]"),
         ("12", "[u8; 12]"),
         ("16", "[u8; 16]"),
         ("24", "[u8; 24]"),
@@ -1000,8 +1017,7 @@ fn generate_generic_dispatch_shim(
     for &(size_str, ty_str) in dispatch_sizes {
         let concrete_ty: syn::Type = syn::parse_str(ty_str)
             .unwrap_or_else(|_| panic!("internal: bad type str '{}'", ty_str));
-        let size_lit: proc_macro2::TokenStream = size_str.parse()
-            .expect("bad size literal");
+        let size_lit: proc_macro2::TokenStream = size_str.parse().expect("bad size literal");
 
         let mut type_map = std::collections::HashMap::new();
         type_map.insert(generic_param_name.clone(), concrete_ty.clone());
@@ -1010,10 +1026,8 @@ fn generate_generic_dispatch_shim(
         let mut call_args: Vec<proc_macro2::TokenStream> = Vec::new();
 
         for (arg_idx, _, orig_ty) in &params {
-            let arg_var = proc_macro2::Ident::new(
-                &format!("__a{}", arg_idx),
-                proc_macro2::Span::call_site(),
-            );
+            let arg_var =
+                proc_macro2::Ident::new(&format!("__a{}", arg_idx), proc_macro2::Span::call_site());
             let idx_lit = proc_macro2::Literal::usize_unsuffixed(*arg_idx);
             let concrete_arg_ty = substitute_generics_with_concrete_type(orig_ty, &type_map);
 
@@ -1105,7 +1119,9 @@ fn generate_dispatch_shim(
     }
 
     // Build ptr::read expressions — one per argument
-    let reads: Vec<proc_macro2::TokenStream> = params.iter().enumerate()
+    let reads: Vec<proc_macro2::TokenStream> = params
+        .iter()
+        .enumerate()
         .map(|(i, (_, ty))| {
             let idx = proc_macro2::Literal::usize_unsuffixed(i);
             quote! { ::std::ptr::read(*args.add(#idx) as *const #ty) }
@@ -1131,10 +1147,8 @@ fn generate_dispatch_shim(
         }
     };
 
-    let shim_ident = proc_macro2::Ident::new(
-        &format!("__bp_dispatch_{}", fn_name_str),
-        fn_name.span(),
-    );
+    let shim_ident =
+        proc_macro2::Ident::new(&format!("__bp_dispatch_{}", fn_name_str), fn_name.span());
 
     quote! {
         #[cfg(not(target_arch = "wasm32"))]

@@ -437,9 +437,7 @@ impl AgentChatPanel {
                 }
             }
             DisplayItem::SubagentInvocation {
-                steps,
-                is_expanded,
-                ..
+                steps, is_expanded, ..
             } => {
                 if *is_expanded {
                     // Header + each step estimated at ~60px + detail content
@@ -622,7 +620,8 @@ impl AgentChatPanel {
         let step = SubagentStepDisplay {
             id: format!("{subagent_id}:start"),
             description: "Spawned and running".to_string(),
-            details: "Subagent execution started. Completion will be queued when ready.".to_string(),
+            details: "Subagent execution started. Completion will be queued when ready."
+                .to_string(),
             status: SubagentStepStatus::Running,
             started_at_ms: created_at_ms,
             finished_at_ms: None,
@@ -716,7 +715,10 @@ impl AgentChatPanel {
                 name, queue_depth_after_enqueue
             )
         } else {
-            format!("Subagent '{}' finished and is waiting for main-agent processing.", name)
+            format!(
+                "Subagent '{}' finished and is waiting for main-agent processing.",
+                name
+            )
         };
 
         let assistant_ix = self.messages.len();
@@ -822,11 +824,7 @@ impl AgentChatPanel {
     ///
     /// This matches the pattern used by Claude Code: async sub-agent results arrive
     /// as Tool role messages, never as User turns.
-    fn launch_internal_agent_event(
-        &mut self,
-        content: String,
-        cx: &mut Context<Self>,
-    ) -> bool {
+    fn launch_internal_agent_event(&mut self, content: String, cx: &mut Context<Self>) -> bool {
         let provider_id = self
             .active_provider()
             .map(|p| p.id)
@@ -904,7 +902,8 @@ impl AgentChatPanel {
                             last.details = if success {
                                 "Main agent processed this completion.".to_string()
                             } else {
-                                "Main agent processing failed; completion remains visible.".to_string()
+                                "Main agent processing failed; completion remains visible."
+                                    .to_string()
                             };
                             last.finished_at_ms = Some(now_ms());
                         }
@@ -1002,12 +1001,11 @@ impl AgentChatPanel {
             .to_string();
 
         let provider_messages_raw = self.build_provider_history_messages();
-        let (mut provider_messages, dropped_opt) =
-            super::prompt_ranking::compact_messages(
-                provider_messages_raw,
-                history_budget,
-                Self::COMPACTION_SUMMARY_CHAR_BUDGET,
-            );
+        let (mut provider_messages, dropped_opt) = super::prompt_ranking::compact_messages(
+            provider_messages_raw,
+            history_budget,
+            Self::COMPACTION_SUMMARY_CHAR_BUDGET,
+        );
 
         // If messages were dropped, call the compact model to produce a real summary.
         let initial_compaction_summary: Option<String> = if let Some(dropped) = dropped_opt {
@@ -1354,7 +1352,8 @@ impl AgentChatPanel {
                                     open_file_request: Some(Arc::new({
                                         let tx_for_open = tx_for_chunks.clone();
                                         move |path: PathBuf| {
-                                            let waiter = Arc::new((Mutex::new(None), Condvar::new()));
+                                            let waiter =
+                                                Arc::new((Mutex::new(None), Condvar::new()));
 
                                             tx_for_open
                                                 .try_send(StreamEvent::OpenFile(path, waiter.clone()))
@@ -1375,11 +1374,10 @@ impl AgentChatPanel {
                                                 })?;
                                             }
 
-                                            guard
-                                                .take()
-                                                .unwrap_or_else(|| {
-                                                    Err("OpenFile waiter signaled without a result".to_string())
-                                                })
+                                            guard.take().unwrap_or_else(|| {
+                                                Err("OpenFile waiter signaled without a result"
+                                                    .to_string())
+                                            })
                                         }
                                     })),
                                     query_open_editors: Some(Arc::new(|| {
@@ -1392,7 +1390,8 @@ impl AgentChatPanel {
                                             let open_count = before
                                                 .get("open_count")
                                                 .and_then(|v| v.as_u64())
-                                                .unwrap_or(0) as usize;
+                                                .unwrap_or(0)
+                                                as usize;
                                             if index >= open_count {
                                                 let active_before = before
                                                     .get("active_index")
@@ -1404,7 +1403,8 @@ impl AgentChatPanel {
                                                 ));
                                             }
 
-                                            let waiter = Arc::new((Mutex::new(None), Condvar::new()));
+                                            let waiter =
+                                                Arc::new((Mutex::new(None), Condvar::new()));
 
                                             tx_for_activate
                                                 .try_send(StreamEvent::ActivateOpenEditor(
@@ -1420,11 +1420,13 @@ impl AgentChatPanel {
 
                                             let (lock, cvar) = &*waiter;
                                             let mut guard = lock.lock().map_err(|_| {
-                                                "ActivateOpenEditor waiter mutex poisoned".to_string()
+                                                "ActivateOpenEditor waiter mutex poisoned"
+                                                    .to_string()
                                             })?;
                                             while guard.is_none() {
                                                 guard = cvar.wait(guard).map_err(|_| {
-                                                    "ActivateOpenEditor waiter mutex poisoned".to_string()
+                                                    "ActivateOpenEditor waiter mutex poisoned"
+                                                        .to_string()
                                                 })?;
                                             }
 
@@ -1438,59 +1440,63 @@ impl AgentChatPanel {
                                     subagent_executor: Some(Arc::new({
                                         let registry = tool_registry_for_subagent.clone();
                                         move |req: agent_chat_tools::SubagentLlmRequest| {
-                                        let model_used = req
-                                            .model
-                                            .clone()
-                                            .filter(|m| !m.trim().is_empty())
-                                            .unwrap_or_else(|| default_subagent_model.clone());
+                                            let model_used = req
+                                                .model
+                                                .clone()
+                                                .filter(|m| !m.trim().is_empty())
+                                                .unwrap_or_else(|| default_subagent_model.clone());
 
-                                        let instructions = req.instructions.unwrap_or_default();
+                                            let instructions = req.instructions.unwrap_or_default();
 
-                                        // Build tool list for sub-agent, excluding UI-only and
-                                        // recursive tools so sub-agents stay focused and safe.
-                                        let sub_tools: Vec<agent_chat_core::ToolDefinition> = registry
-                                            .definitions()
-                                            .into_iter()
-                                            .filter(|def| {
-                                                !matches!(
-                                                    def.name.as_str(),
-                                                    "spawn_subagent"
-                                                        | "query_running_subagents"
-                                                        | "open_file_in_default_editor"
-                                                        | "activate_open_editor"
-                                                        | "query_open_editors"
-                                                )
-                                            })
-                                            .filter_map(|def| {
-                                                let params = def.parameters_schema;
-                                                if params.get("type").and_then(|v| v.as_str())
-                                                    != Some("object")
-                                                {
-                                                    return None;
-                                                }
-                                                Some(agent_chat_core::ToolDefinition {
-                                                    name: def.name,
-                                                    description: Some(def.description),
-                                                    parameters_json_schema: params,
-                                                })
-                                            })
-                                            .collect();
+                                            // Build tool list for sub-agent, excluding UI-only and
+                                            // recursive tools so sub-agents stay focused and safe.
+                                            let sub_tools: Vec<agent_chat_core::ToolDefinition> =
+                                                registry
+                                                    .definitions()
+                                                    .into_iter()
+                                                    .filter(|def| {
+                                                        !matches!(
+                                                            def.name.as_str(),
+                                                            "spawn_subagent"
+                                                                | "query_running_subagents"
+                                                                | "open_file_in_default_editor"
+                                                                | "activate_open_editor"
+                                                                | "query_open_editors"
+                                                        )
+                                                    })
+                                                    .filter_map(|def| {
+                                                        let params = def.parameters_schema;
+                                                        if params
+                                                            .get("type")
+                                                            .and_then(|v| v.as_str())
+                                                            != Some("object")
+                                                        {
+                                                            return None;
+                                                        }
+                                                        Some(agent_chat_core::ToolDefinition {
+                                                            name: def.name,
+                                                            description: Some(def.description),
+                                                            parameters_json_schema: params,
+                                                        })
+                                                    })
+                                                    .collect();
 
-                                        let enable_tools = !sub_tools.is_empty();
+                                            let enable_tools = !sub_tools.is_empty();
 
-                                        let sub_tool_context = agent_chat_tools::make_tool_context(
-                                            req.workspace_root.clone(),
-                                            None,
-                                            agent_chat_tools::PulsarToolExtras {
-                                                plugin_bridge: None,
-                                                open_file_request: None,
-                                                query_open_editors: None,
-                                                activate_open_editor_request: None,
-                                                subagent_executor: None,
-                                            },
-                                        );
+                                            let sub_tool_context =
+                                                agent_chat_tools::make_tool_context(
+                                                    req.workspace_root.clone(),
+                                                    None,
+                                                    agent_chat_tools::PulsarToolExtras {
+                                                        plugin_bridge: None,
+                                                        open_file_request: None,
+                                                        query_open_editors: None,
+                                                        activate_open_editor_request: None,
+                                                        subagent_executor: None,
+                                                    },
+                                                );
 
-                                        let mut current_messages = vec![
+                                            let mut current_messages = vec![
                                             ChatMessage {
                                                 role: ChatRole::System,
                                                 content: format!(
@@ -1517,123 +1523,126 @@ impl AgentChatPanel {
                                             },
                                         ];
 
-                                        let mut all_chunks: Vec<String> = Vec::new();
-                                        let mut last_raw_response = serde_json::Value::Null;
-                                        const MAX_SUB_ITERATIONS: u32 = 8;
+                                            let mut all_chunks: Vec<String> = Vec::new();
+                                            let mut last_raw_response = serde_json::Value::Null;
+                                            const MAX_SUB_ITERATIONS: u32 = 8;
 
-                                        for _sub_iter in 0..MAX_SUB_ITERATIONS {
-                                            let sub_request = ChatRequest {
-                                                model: model_used.clone(),
-                                                messages: current_messages.clone(),
-                                                enable_tool_calls: enable_tools,
-                                                tools: sub_tools.clone(),
-                                                temperature: Some(0.2),
-                                                top_p: Some(1.0),
-                                                max_tokens: Some(4096),
-                                            };
+                                            for _sub_iter in 0..MAX_SUB_ITERATIONS {
+                                                let sub_request = ChatRequest {
+                                                    model: model_used.clone(),
+                                                    messages: current_messages.clone(),
+                                                    enable_tool_calls: enable_tools,
+                                                    tools: sub_tools.clone(),
+                                                    temperature: Some(0.2),
+                                                    top_p: Some(1.0),
+                                                    max_tokens: Some(4096),
+                                                };
 
-                                            let mut iter_chunks: Vec<String> = Vec::new();
-                                            let response = provider_for_subagent
-                                                .chat_completion_streaming(
-                                                    &token_for_subagent,
-                                                    &sub_request,
-                                                    &mut |chunk| iter_chunks.push(chunk),
-                                                )
-                                                .map_err(|e| format!("Sub-agent provider error: {e}"))?;
+                                                let mut iter_chunks: Vec<String> = Vec::new();
+                                                let response = provider_for_subagent
+                                                    .chat_completion_streaming(
+                                                        &token_for_subagent,
+                                                        &sub_request,
+                                                        &mut |chunk| iter_chunks.push(chunk),
+                                                    )
+                                                    .map_err(|e| {
+                                                        format!("Sub-agent provider error: {e}")
+                                                    })?;
 
-                                            all_chunks.extend(iter_chunks.clone());
-                                            last_raw_response = response.raw_response.clone();
+                                                all_chunks.extend(iter_chunks.clone());
+                                                last_raw_response = response.raw_response.clone();
 
-                                            let assistant_text = response
-                                                .assistant_message
-                                                .clone()
-                                                .or_else(|| {
-                                                    if iter_chunks.is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(iter_chunks.join(""))
-                                                    }
-                                                })
-                                                .unwrap_or_default();
+                                                let assistant_text = response
+                                                    .assistant_message
+                                                    .clone()
+                                                    .or_else(|| {
+                                                        if iter_chunks.is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some(iter_chunks.join(""))
+                                                        }
+                                                    })
+                                                    .unwrap_or_default();
 
-                                            if response.tool_calls.is_empty() {
+                                                if response.tool_calls.is_empty() {
+                                                    current_messages.push(ChatMessage {
+                                                        role: ChatRole::Assistant,
+                                                        content: assistant_text,
+                                                        tool_call_id: None,
+                                                        tool_calls: vec![],
+                                                    });
+                                                    break;
+                                                }
+
+                                                // Assistant turn with tool calls
                                                 current_messages.push(ChatMessage {
                                                     role: ChatRole::Assistant,
                                                     content: assistant_text,
                                                     tool_call_id: None,
-                                                    tool_calls: vec![],
+                                                    tool_calls: response.tool_calls.clone(),
                                                 });
-                                                break;
-                                            }
 
-                                            // Assistant turn with tool calls
-                                            current_messages.push(ChatMessage {
-                                                role: ChatRole::Assistant,
-                                                content: assistant_text,
-                                                tool_call_id: None,
-                                                tool_calls: response.tool_calls.clone(),
-                                            });
-
-                                            // Execute tools sequentially (sub-agent context)
-                                            for call in &response.tool_calls {
-                                                let result = registry
-                                                    .execute(
-                                                        &call.name,
-                                                        call.arguments_json.clone(),
-                                                        &sub_tool_context,
-                                                    )
-                                                    .map(|v| v.to_string())
-                                                    .unwrap_or_else(|e| {
-                                                        format!("Tool error: {e}")
+                                                // Execute tools sequentially (sub-agent context)
+                                                for call in &response.tool_calls {
+                                                    let result = registry
+                                                        .execute(
+                                                            &call.name,
+                                                            call.arguments_json.clone(),
+                                                            &sub_tool_context,
+                                                        )
+                                                        .map(|v| v.to_string())
+                                                        .unwrap_or_else(|e| {
+                                                            format!("Tool error: {e}")
+                                                        });
+                                                    current_messages.push(ChatMessage {
+                                                        role: ChatRole::Tool,
+                                                        content: result,
+                                                        tool_call_id: Some(call.id.clone()),
+                                                        tool_calls: vec![],
                                                     });
-                                                current_messages.push(ChatMessage {
-                                                    role: ChatRole::Tool,
-                                                    content: result,
-                                                    tool_call_id: Some(call.id.clone()),
-                                                    tool_calls: vec![],
-                                                });
+                                                }
                                             }
-                                        }
 
-                                        // Extract the final assistant response from the transcript
-                                        let assistant_message = current_messages
-                                            .iter()
-                                            .rev()
-                                            .find(|m| {
-                                                m.role == ChatRole::Assistant
-                                                    && !m.content.is_empty()
-                                            })
-                                            .map(|m| m.content.clone())
-                                            .unwrap_or_default();
-
-                                        let child_transcript = current_messages
-                                            .iter()
-                                            .map(|m| {
-                                                let role = match m.role {
-                                                    ChatRole::System => "system",
-                                                    ChatRole::User => "user",
-                                                    ChatRole::Assistant => "assistant",
-                                                    ChatRole::Tool => "tool",
-                                                };
-                                                serde_json::json!({
-                                                    "role": role,
-                                                    "content": m.content,
+                                            // Extract the final assistant response from the transcript
+                                            let assistant_message = current_messages
+                                                .iter()
+                                                .rev()
+                                                .find(|m| {
+                                                    m.role == ChatRole::Assistant
+                                                        && !m.content.is_empty()
                                                 })
-                                            })
-                                            .collect();
+                                                .map(|m| m.content.clone())
+                                                .unwrap_or_default();
 
-                                        Ok(agent_chat_tools::SubagentLlmResponse {
-                                            provider_id: provider_for_subagent
-                                                .metadata()
-                                                .id
-                                                .to_string(),
-                                            model_used,
-                                            assistant_message,
-                                            streamed_chunks: all_chunks,
-                                            raw_response: last_raw_response,
-                                            child_transcript,
-                                        })
-                                    }})),
+                                            let child_transcript = current_messages
+                                                .iter()
+                                                .map(|m| {
+                                                    let role = match m.role {
+                                                        ChatRole::System => "system",
+                                                        ChatRole::User => "user",
+                                                        ChatRole::Assistant => "assistant",
+                                                        ChatRole::Tool => "tool",
+                                                    };
+                                                    serde_json::json!({
+                                                        "role": role,
+                                                        "content": m.content,
+                                                    })
+                                                })
+                                                .collect();
+
+                                            Ok(agent_chat_tools::SubagentLlmResponse {
+                                                provider_id: provider_for_subagent
+                                                    .metadata()
+                                                    .id
+                                                    .to_string(),
+                                                model_used,
+                                                assistant_message,
+                                                streamed_chunks: all_chunks,
+                                                raw_response: last_raw_response,
+                                                child_transcript,
+                                            })
+                                        }
+                                    })),
                                 },
                             );
 

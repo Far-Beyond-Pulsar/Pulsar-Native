@@ -4,7 +4,6 @@
 /// loaded library and patches the address directly into `Instruction::Call::fn_ptr`
 /// inside the program. After that, `pbgc::vm::run(&program)` executes with zero
 /// table lookups — each Call is one `transmute` + one direct function call.
-
 pub use libloading;
 
 // ── Error ─────────────────────────────────────────────────────────────────────
@@ -18,14 +17,16 @@ pub enum ExecutorError {
 impl std::fmt::Display for ExecutorError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ExecutorError::Dylib(e)         => write!(f, "dylib error: {}", e),
+            ExecutorError::Dylib(e) => write!(f, "dylib error: {}", e),
             ExecutorError::MissingSymbol(s) => write!(f, "missing symbol: {}", s),
         }
     }
 }
 impl std::error::Error for ExecutorError {}
 impl From<libloading::Error> for ExecutorError {
-    fn from(e: libloading::Error) -> Self { ExecutorError::Dylib(e) }
+    fn from(e: libloading::Error) -> Self {
+        ExecutorError::Dylib(e)
+    }
 }
 
 // ── BpExecutor ────────────────────────────────────────────────────────────────
@@ -68,13 +69,17 @@ impl BpExecutor {
     pub fn prepare(&self, program: &mut pbgc::BpProgram) -> Result<(), ExecutorError> {
         use pbgc::Instruction;
         for instr in &mut program.instructions {
-            if let Instruction::Call { fn_ptr, node_type, .. } = instr {
+            if let Instruction::Call {
+                fn_ptr, node_type, ..
+            } = instr
+            {
                 // Build a NUL-terminated key for libloading, but keep a clean
                 // copy without the NUL for use in error messages.
                 let display_name = format!("__bp_dispatch_{}", node_type);
-                let lookup_key   = format!("{}\0", display_name);
+                let lookup_key = format!("{}\0", display_name);
                 let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
-                    self._lib.get(lookup_key.as_bytes())
+                    self._lib
+                        .get(lookup_key.as_bytes())
                         .map_err(|_| ExecutorError::MissingSymbol(display_name))?
                 };
                 *fn_ptr = *ptr as usize as u64;

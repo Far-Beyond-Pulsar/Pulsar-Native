@@ -705,10 +705,7 @@ pub enum DiffRow {
         line_num_str: String,
     },
     /// A collapsed-region button row.
-    Collapse {
-        region_idx: usize,
-        count: usize,
-    },
+    Collapse { region_idx: usize, count: usize },
 }
 
 /// Flatten a `DiffResult` + expanded-region set into a flat `Vec<DiffRow>` that the

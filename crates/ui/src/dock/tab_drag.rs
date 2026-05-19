@@ -14,7 +14,7 @@
 
 use std::sync::Arc;
 
-use gpui::{App, AppContext as _, AnyWindowHandle, Bounds, Global, Pixels, Point};
+use gpui::{AnyWindowHandle, App, AppContext as _, Bounds, Global, Pixels, Point};
 
 use super::{DockArea, DockChannel, PanelView};
 
@@ -38,7 +38,9 @@ impl Global for DockWindowRegistry {}
 
 fn ensure_registry(cx: &mut App) {
     if !cx.has_global::<DockWindowRegistry>() {
-        cx.set_global(DockWindowRegistry { windows: Vec::new() });
+        cx.set_global(DockWindowRegistry {
+            windows: Vec::new(),
+        });
     }
 }
 
@@ -52,8 +54,13 @@ pub fn register_dock_window(
     ensure_registry(cx);
     let reg = cx.global_mut::<DockWindowRegistry>();
     // Clean up dead entries and avoid duplicate registrations.
-    reg.windows.retain(|e| e.dock_area.upgrade().is_some() && e.window_handle != window_handle);
-    reg.windows.push(DockWindowEntry { window_handle, dock_area, channel });
+    reg.windows
+        .retain(|e| e.dock_area.upgrade().is_some() && e.window_handle != window_handle);
+    reg.windows.push(DockWindowEntry {
+        window_handle,
+        dock_area,
+        channel,
+    });
 }
 
 /// Remove the entry for a window (call when the window / DockArea closes).

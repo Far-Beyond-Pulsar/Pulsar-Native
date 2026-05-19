@@ -92,7 +92,11 @@ fn render_branch_section(
         } else {
             FontWeight::NORMAL
         };
-        let bg = if is_current { list_active } else { transparent_black() };
+        let bg = if is_current {
+            list_active
+        } else {
+            transparent_black()
+        };
         let icon_color = if is_current { primary } else { muted_fg };
 
         // Display name: for remote branches, dim the remote prefix
@@ -107,7 +111,9 @@ fn render_branch_section(
             }
         };
         let remote_prefix: Option<String> = if branch.is_remote {
-            branch_name.find('/').map(|i| format!("{}/", &branch_name[..i]))
+            branch_name
+                .find('/')
+                .map(|i| format!("{}/", &branch_name[..i]))
         } else {
             None
         };
@@ -165,11 +171,7 @@ fn render_branch_section(
                     .bg(primary.opacity(0.15))
                     .border_1()
                     .border_color(primary.opacity(0.4))
-                    .child(
-                        Icon::new(IconName::Check)
-                            .size(px(10.))
-                            .text_color(primary),
-                    )
+                    .child(Icon::new(IconName::Check).size(px(10.)).text_color(primary))
                     .child(
                         div()
                             .text_size(px(10.))
@@ -203,4 +205,3 @@ fn render_branch_section(
 
     v_flex().gap_1().child(header).child(list)
 }
-

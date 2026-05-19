@@ -443,9 +443,12 @@ impl PulsarApp {
                             .rounded(px(4.))
                             .cursor_pointer()
                             .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
-                            .on_mouse_down(MouseButton::Left, cx.listener(|app, _, window, cx| {
-                                app.toggle_project_switcher(window, cx);
-                            }))
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|app, _, window, cx| {
+                                    app.toggle_project_switcher(window, cx);
+                                }),
+                            )
                             .child(
                                 Icon::new(IconName::Folder)
                                     .size(px(14.))

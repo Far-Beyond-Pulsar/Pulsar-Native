@@ -34,8 +34,8 @@
 
 // --- Global Allocator Setup ---
 use gpui::AppContext;
-use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 use ui_log_viewer::TrackingAllocator;
+use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
@@ -346,8 +346,7 @@ fn main() {
                 // seed new projects without depending on the engine crate directly.
                 if let Some(file) = Assets::get("default.level") {
                     tracing::info!("Embedded default.level found ({} bytes)", file.data.len());
-                    *engine_context.default_level_bytes.write() =
-                        Some(file.data.into_owned());
+                    *engine_context.default_level_bytes.write() = Some(file.data.into_owned());
                 } else {
                     tracing::debug!("No embedded default.level — new projects start empty");
                 }

@@ -227,6 +227,7 @@ impl HierarchyPanel {
                                     children: vec![],
                                     components: vec![],
                                     scene_path: String::new(),
+                                    props: Default::default(),
                                 },
                                 parent_id: None,
                             },
