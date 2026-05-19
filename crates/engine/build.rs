@@ -12,4 +12,8 @@ fn main() {
     }
 
     eprintln!("cargo:rerun-if-changed=../../assets/images/logo_sqrkl_mac.ico");
+
+    // Force a rebuild whenever the embedded default level changes so rust-embed
+    // always bakes the latest version into the binary.
+    println!("cargo:rerun-if-changed=../../assets/default.level");
 }
