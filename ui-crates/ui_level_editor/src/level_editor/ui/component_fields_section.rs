@@ -3,7 +3,10 @@
 use gpui::{prelude::*, *};
 use std::collections::HashMap;
 use std::sync::Arc;
-use ui::{h_flex, v_flex, ActiveTheme};
+use ui::{
+    color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState},
+    h_flex, v_flex, ActiveTheme,
+};
 
 use crate::level_editor::scene_database::SceneDatabase;
 use engine_backend::scene::ComponentFieldMetadata;
@@ -18,6 +21,8 @@ pub struct ComponentFieldsSection {
     object_id: String,
     scene_db: SceneDatabase,
     custom_renderers: HashMap<String, CustomFieldRenderer>,
+    /// One color-picker state per color field, keyed by field name.
+    color_pickers: HashMap<&'static str, Entity<ColorPickerState>>,
 }
 
 impl ComponentFieldsSection {
@@ -33,6 +38,7 @@ impl ComponentFieldsSection {
             object_id,
             scene_db,
             custom_renderers: HashMap::new(),
+            color_pickers: HashMap::new(),
         }
     }
 
@@ -57,7 +63,7 @@ impl ComponentFieldsSection {
 }
 
 impl Render for ComponentFieldsSection {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let obj = self.scene_db.get_object(&self.object_id);
         let (variant_name, field_metadata) = obj
             .as_ref()
@@ -67,6 +73,11 @@ impl Render for ComponentFieldsSection {
                     .map(|c| (c.variant_name(), c.get_field_metadata()))
             })
             .unwrap_or(("Component", vec![]));
+
+        let fields: Vec<AnyElement> = field_metadata
+            .iter()
+            .map(|field_meta| self.render_field(field_meta, window, cx))
+            .collect();
 
         v_flex()
             .w_full()
@@ -80,16 +91,17 @@ impl Render for ComponentFieldsSection {
                         .child(variant_name),
                 ),
             )
-            .children(
-                field_metadata
-                    .iter()
-                    .map(|field_meta| self.render_field(field_meta, cx)),
-            )
+            .children(fields)
     }
 }
 
 impl ComponentFieldsSection {
-    fn render_field(&self, field_meta: &ComponentFieldMetadata, cx: &Context<Self>) -> AnyElement {
+    fn render_field(
+        &mut self,
+        field_meta: &ComponentFieldMetadata,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         match field_meta {
             ComponentFieldMetadata::F32 { name, value } => {
                 self.render_f32_field(name, **value, cx).into_any_element()
@@ -100,15 +112,10 @@ impl ComponentFieldsSection {
             ComponentFieldMetadata::String { name, value } => {
                 self.render_string_field(name, value, cx).into_any_element()
             }
-            ComponentFieldMetadata::Color { name, value } => self
-                .render_color_field(name, **value, cx)
-                .into_any_element(),
-            ComponentFieldMetadata::Custom {
-                name,
-                type_name,
-                ui_key,
-                value_ptr,
-            } => self
+            ComponentFieldMetadata::Color { name, value } => {
+                self.render_color_field(name, **value, window, cx).into_any_element()
+            }
+            ComponentFieldMetadata::Custom { name, type_name, ui_key, value_ptr } => self
                 .render_custom_field(name, type_name, ui_key, *value_ptr, cx)
                 .into_any_element(),
             _ => div().into_any_element(),
@@ -238,60 +245,46 @@ impl ComponentFieldsSection {
     }
 
     fn render_color_field(
-        &self,
+        &mut self,
         label: &'static str,
         value: [f32; 4],
-        cx: &Context<Self>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let labels = ["R", "G", "B", "A"];
-        let colors = [
-            Hsla {
-                h: 0.0,
-                s: 0.8,
-                l: 0.5,
-                a: 1.0,
-            },
-            Hsla {
-                h: 0.33,
-                s: 0.8,
-                l: 0.4,
-                a: 1.0,
-            },
-            Hsla {
-                h: 0.61,
-                s: 0.8,
-                l: 0.55,
-                a: 1.0,
-            },
-            Hsla {
-                h: 0.0,
-                s: 0.0,
-                l: 0.6,
-                a: 1.0,
-            },
-        ];
-
-        let fields: Vec<_> = (0..4)
-            .map(|i| {
-                h_flex()
-                    .flex_1()
-                    .h_7()
-                    .items_center()
-                    .rounded(px(4.0))
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .px_2()
-                    .gap_1()
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(colors[i])
-                            .child(labels[i]),
-                    )
-                    .child(div().flex_1().text_sm().child(format!("{:.2}", value[i])))
+        // Get or create the ColorPickerState for this field.
+        let picker_state = self
+            .color_pickers
+            .entry(label)
+            .or_insert_with(|| {
+                cx.new(|cx| {
+                    let mut state = ColorPickerState::new(window, cx);
+                    // Seed the picker with the current component color.
+                    let hsla = rgba_to_hsla(value);
+                    state.set_value(hsla, window, cx);
+                    state
+                })
             })
-            .collect();
+            .clone();
+
+        // Subscribe to color changes and write them back to the component.
+        let scene_db = self.scene_db.clone();
+        let object_id = self.object_id.clone();
+        let component_index = self.component_index;
+        cx.subscribe_in(&picker_state, window, move |_this, _picker, ev, _w, _cx| {
+            if let ColorPickerEvent::Change(Some(hsla)) = ev {
+                let rgba = hsla_to_rgba(*hsla);
+                let mut obj = match scene_db.get_object(&object_id) {
+                    Some(o) => o,
+                    None => return,
+                };
+                if let Some(engine_backend::scene::Component::Light { color, .. }) =
+                    obj.components.get_mut(component_index)
+                {
+                    *color = rgba;
+                    scene_db.update_object(obj);
+                }
+            }
+        }).detach();
 
         v_flex()
             .w_full()
@@ -302,6 +295,46 @@ impl ComponentFieldsSection {
                     .text_color(cx.theme().muted_foreground)
                     .child(label),
             )
-            .child(h_flex().w_full().gap_2().children(fields))
+            .child(ColorPicker::new(&picker_state).label(label))
     }
+}
+
+/// Convert linear [r, g, b, a] (0..1) to `Hsla`.
+fn rgba_to_hsla([r, g, b, a]: [f32; 4]) -> Hsla {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    let s = if max == min {
+        0.0
+    } else if l < 0.5 {
+        (max - min) / (max + min)
+    } else {
+        (max - min) / (2.0 - max - min)
+    };
+    let h = if max == min {
+        0.0
+    } else if max == r {
+        ((g - b) / (max - min)).rem_euclid(6.0) / 6.0
+    } else if max == g {
+        ((b - r) / (max - min) + 2.0) / 6.0
+    } else {
+        ((r - g) / (max - min) + 4.0) / 6.0
+    };
+    Hsla { h, s, l, a }
+}
+
+/// Convert `Hsla` back to linear [r, g, b, a] (0..1).
+fn hsla_to_rgba(Hsla { h, s, l, a }: Hsla) -> [f32; 4] {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h * 6.0).rem_euclid(2.0) - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r1, g1, b1) = match (h * 6.0) as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
+    [r1 + m, g1 + m, b1 + m, a]
 }

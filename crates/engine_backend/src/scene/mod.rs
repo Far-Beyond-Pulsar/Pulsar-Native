@@ -107,6 +107,13 @@ pub enum Component {
         mass: f32,
         kinematic: bool,
     },
+    /// All light-type scene objects carry exactly one of these.
+    /// The renderer reads from this component; `props` is not used for lights.
+    Light {
+        color: [f32; 4],
+        intensity: f32,
+        range: f32,
+    },
 }
 
 impl Component {
@@ -144,14 +151,13 @@ impl Component {
                 // TODO: Handle nested enums like ColliderShape
             ],
             Component::RigidBody { mass, kinematic } => vec![
-                ComponentFieldMetadata::F32 {
-                    name: "mass",
-                    value: mass,
-                },
-                ComponentFieldMetadata::Bool {
-                    name: "kinematic",
-                    value: kinematic,
-                },
+                ComponentFieldMetadata::F32 { name: "mass", value: mass },
+                ComponentFieldMetadata::Bool { name: "kinematic", value: kinematic },
+            ],
+            Component::Light { color, intensity, range } => vec![
+                ComponentFieldMetadata::Color { name: "color", value: color },
+                ComponentFieldMetadata::F32 { name: "intensity", value: intensity },
+                ComponentFieldMetadata::F32 { name: "range", value: range },
             ],
         }
     }
@@ -162,6 +168,8 @@ impl Component {
             (Component::Material { metallic, .. }, "metallic") => Some(*metallic),
             (Component::Material { roughness, .. }, "roughness") => Some(*roughness),
             (Component::RigidBody { mass, .. }, "mass") => Some(*mass),
+            (Component::Light { intensity, .. }, "intensity") => Some(*intensity),
+            (Component::Light { range, .. }, "range") => Some(*range),
             _ => None,
         }
     }
@@ -171,7 +179,18 @@ impl Component {
             (Component::Material { metallic, .. }, "metallic") => *metallic = value,
             (Component::Material { roughness, .. }, "roughness") => *roughness = value,
             (Component::RigidBody { mass, .. }, "mass") => *mass = value,
+            (Component::Light { intensity, .. }, "intensity") => *intensity = value,
+            (Component::Light { range, .. }, "range") => *range = value,
             _ => {}
+        }
+    }
+
+    /// Extract light parameters. Returns `None` if this is not a `Light` component.
+    pub fn as_light(&self) -> Option<([f32; 4], f32, f32)> {
+        if let Component::Light { color, intensity, range } = self {
+            Some((*color, *intensity, *range))
+        } else {
+            None
         }
     }
 
@@ -225,6 +244,7 @@ impl Component {
             Component::Script { .. } => "Script",
             Component::Collider { .. } => "Collider",
             Component::RigidBody { .. } => "RigidBody",
+            Component::Light { .. } => "Light",
         }
     }
 }

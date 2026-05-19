@@ -57,15 +57,22 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [],
+      "components": [
+        {
+          "Light": {
+            "color": [
+              0.2,
+              0.45,
+              1.0,
+              1.0
+            ],
+            "intensity": 7.0,
+            "range": 100.0
+          }
+        }
+      ],
       "scene_path": "Blue Light",
-      "props": {
-        "color_r": 0.2,
-        "color_g": 0.45,
-        "color_b": 1.0,
-        "intensity": 7.0,
-        "range": 100.0
-      }
+      "props": {}
     },
     {
       "id": "object_3",
@@ -94,15 +101,22 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [],
+      "components": [
+        {
+          "Light": {
+            "color": [
+              1.0,
+              0.22,
+              0.2,
+              1.0
+            ],
+            "intensity": 7.0,
+            "range": 100.0
+          }
+        }
+      ],
       "scene_path": "Red Light",
-      "props": {
-        "color_r": 1.0,
-        "color_g": 0.22,
-        "color_b": 0.2,
-        "intensity": 7.0,
-        "range": 100.0
-      }
+      "props": {}
     },
     {
       "id": "object_4",
@@ -131,15 +145,22 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [],
+      "components": [
+        {
+          "Light": {
+            "color": [
+              1.0,
+              0.9,
+              0.2,
+              1.0
+            ],
+            "intensity": 6.0,
+            "range": 100.0
+          }
+        }
+      ],
       "scene_path": "Yellowish Light",
-      "props": {
-        "color_r": 1.0,
-        "color_g": 1.0,
-        "color_b": 1.0,
-        "intensity": 7.0,
-        "range": 100.0
-      }
+      "props": {}
     },
     {
       "id": "object_5",

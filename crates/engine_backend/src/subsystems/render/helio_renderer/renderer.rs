@@ -845,40 +845,51 @@ impl HelioRenderer {
     pub fn handle_left_release(&mut self) {
         let Some(inner) = &mut self.inner else { return };
 
-        // Capture the selected object before ending the drag so we can read its transform.
-        let dragged_object: Option<helio::ObjectId> = if inner.editor_state.is_dragging() {
-            inner.editor_state.selected_object()
+        // Capture the selected actor before ending the drag so we can read its final state.
+        let dragged_actor = if inner.editor_state.is_dragging() {
+            inner.editor_state.selected()
         } else {
             None
         };
 
         inner.editor_state.end_drag();
 
-        // Write the final gizmo transform back to the SceneDb.
-        if let Some(obj_id) = dragged_object {
-            if let Ok(mat) = inner.renderer.scene().get_object_transform(obj_id) {
-                // Decompose Mat4 → (translation, rotation_euler_yxz_degrees, scale).
-                let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
-                let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
-                let pos = [pos_v.x, pos_v.y, pos_v.z];
-                let rot = [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()];
-                let scale = [scale_v.x, scale_v.y, scale_v.z];
-
-                // Find the SceneDb id for this Helio ObjectId.
-                if let Some(scene_id) = inner
-                    .object_map
-                    .iter()
-                    .find(|(_, &(oid, _))| oid == obj_id)
-                    .map(|(id, _)| id.clone())
-                {
-                    self.scene_db.apply_transform(&scene_id, pos, rot, scale);
-                    tracing::debug!(
-                        "[HELIO] Wrote gizmo transform back to SceneDb: {} pos={:?} rot={:?}",
-                        scene_id,
-                        pos,
-                        rot
-                    );
+        // Write the final gizmo position back to SceneDb for whichever actor type was dragged.
+        if let Some(actor) = dragged_actor {
+            use helio::SceneActorId;
+            match actor {
+                SceneActorId::Object(obj_id) => {
+                    if let Ok(mat) = inner.renderer.scene().get_object_transform(obj_id) {
+                        let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
+                        let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
+                        if let Some(scene_id) = inner
+                            .object_map.iter()
+                            .find(|(_, &(oid, _))| oid == obj_id)
+                            .map(|(id, _)| id.clone())
+                        {
+                            self.scene_db.apply_transform(
+                                &scene_id,
+                                [pos_v.x, pos_v.y, pos_v.z],
+                                [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()],
+                                [scale_v.x, scale_v.y, scale_v.z],
+                            );
+                        }
+                    }
                 }
+                SceneActorId::Light(light_id) => {
+                    if let Some(gpu_light) = inner.renderer.scene().get_light(light_id) {
+                        let pos = [
+                            gpu_light.position_range[0],
+                            gpu_light.position_range[1],
+                            gpu_light.position_range[2],
+                        ];
+                        if let Some(scene_id) = inner.light_id_to_scene.get(&light_id).cloned() {
+                            // Lights have no meaningful rotation or scale — preserve existing values.
+                            self.scene_db.apply_transform(&scene_id, pos, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -907,15 +918,19 @@ impl HelioRenderer {
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
-        /// Build a GpuLight from a SceneObjectSnapshot, reading all light
-        /// properties from `props`. Defaults: white (1,1,1), intensity 7, range 100.
+        /// Build a GpuLight from the `Light` component attached to the snapshot.
+        /// Falls back to white/default values if no Light component is present.
         fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
-            let p = |k: &str, d: f32| snap.props.get(k).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(d);
+            let (color, intensity, range) = snap
+                .components
+                .iter()
+                .find_map(|c| c.as_light())
+                .unwrap_or(([1.0, 1.0, 1.0, 1.0], 7.0, 100.0));
             let lt = match snap.object_type { ObjectType::Light(lt) => lt, _ => crate::scene::LightType::Point };
             GpuLight {
-                position_range: [snap.position[0], snap.position[1], snap.position[2], p("range", 100.0)],
+                position_range: [snap.position[0], snap.position[1], snap.position[2], range],
                 direction_outer: [0.0, 0.0, 0.0, 0.0],
-                color_intensity: [p("color_r", 1.0), p("color_g", 1.0), p("color_b", 1.0), p("intensity", 7.0)],
+                color_intensity: [color[0], color[1], color[2], intensity],  // color[3] (alpha) unused
                 shadow_index: u32::MAX,
                 light_type: lt as u32,
                 inner_angle: 0.0,
@@ -931,6 +946,17 @@ impl HelioRenderer {
         } else {
             None
         };
+        // When a light is being dragged Helio owns its position — don't overwrite it.
+        let dragged_light_id: Option<LightId> = if gizmo_dragging {
+            use helio::SceneActorId;
+            if let Some(SceneActorId::Light(lid)) = inner.editor_state.selected() {
+                Some(lid)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let mut live_mesh_ids = std::collections::HashSet::with_capacity(snapshots.len());
         let mut live_light_ids = std::collections::HashSet::with_capacity(snapshots.len());
@@ -943,7 +969,8 @@ impl HelioRenderer {
                     live_light_ids.insert(snap.id.clone());
                     let gpu_light = gpu_light_from_snap(snap);
                     if let Some(&light_id) = inner.light_map.get(&snap.id) {
-                        // Always push updated position/color to Helio.
+                        // Skip if this light is being dragged — Helio owns the position.
+                        if Some(light_id) == dragged_light_id { continue; }
                         let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
                     } else if let Some(light_id) = inner.renderer.scene_mut()
                         .insert_actor(SceneActor::light(gpu_light)).as_light()

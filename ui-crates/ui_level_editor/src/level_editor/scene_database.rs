@@ -499,7 +499,19 @@ impl SceneDatabase {
         }
         self.clear();
         // Objects are stored in DFS order so parents are always inserted first.
-        for obj in level_file.objects {
+        for mut obj in level_file.objects {
+            // Ensure light objects always carry a Light component so the
+            // properties panel and renderer have well-defined data to read.
+            if let ObjectType::Light(_) = obj.object_type {
+                let has_light_comp = obj.components.iter().any(|c| matches!(c, Component::Light { .. }));
+                if !has_light_comp {
+                    obj.components.push(Component::Light {
+                        color: [1.0, 1.0, 1.0, 1.0],
+                        intensity: 7.0,
+                        range: 100.0,
+                    });
+                }
+            }
             let parent = obj.parent.clone();
             self.add_object(obj, parent);
         }
