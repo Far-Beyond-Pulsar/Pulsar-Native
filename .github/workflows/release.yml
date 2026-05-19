@@ -22,6 +22,24 @@ env:
   # Generate example binaries for each platform (set to 'true' to enable)
   BUILD_EXAMPLES: "false"
 
+  # Send a Discord notification when a release is published (set to 'false' to disable)
+  DISCORD_NOTIFY: "true"
+
+  # Discord embed color for release announcements (integer; 0x57F287 = green)
+  DISCORD_EMBED_COLOR: "5762695"
+
+  # Username shown on the Discord webhook message
+  DISCORD_USERNAME: "Pulsar Bot"
+
+  # Avatar URL for the Discord webhook bot (leave empty to use the webhook's default avatar)
+  DISCORD_AVATAR_URL: "https://raw.githubusercontent.com/Far-Beyond-Pulsar/Pulsar-Native/refs/heads/main/assets/images/logo_sqrkl.png"
+
+  # Footer icon URL for the Discord embed (leave empty to omit)
+  DISCORD_FOOTER_ICON_URL: "https://raw.githubusercontent.com/Far-Beyond-Pulsar/Pulsar-Native/refs/heads/main/assets/images/logo_sqrkl.png"
+
+  # Thumbnail URL shown in the top-right of the Discord embed (leave empty to omit)
+  DISCORD_THUMBNAIL_URL: "https://raw.githubusercontent.com/Far-Beyond-Pulsar/Pulsar-Native/refs/heads/main/assets/images/logo_sqrkl.png"
+
 on:
   push:
     branches:
@@ -1044,3 +1062,20 @@ jobs:
             --repo "$REPO" \
             --notes-file release-notes-final.md \
             --draft=false
+
+      - name: Notify Discord
+        if: env.DISCORD_NOTIFY == 'true'
+        uses: tsickert/discord-webhook@v7.0.0
+        with:
+          webhook-url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          username: ${{ env.DISCORD_USERNAME }}
+          embed-title: "Pulsar Native v${{ needs.check-version.outputs.version }} Released"
+          embed-url: "${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.check-version.outputs.version }}"
+          embed-description: |
+            A new release of **Pulsar Native** is now available.
+            [View release notes](${{ github.server_url }}/${{ github.repository }}/releases/tag/v${{ needs.check-version.outputs.version }})
+          embed-color: ${{ env.DISCORD_EMBED_COLOR }}
+          embed-footer-text: "${{ github.repository }} • ${{ github.sha }}"
+          embed-footer-icon-url: ${{ env.DISCORD_FOOTER_ICON_URL }}
+          embed-thumbnail-url: ${{ env.DISCORD_THUMBNAIL_URL }}
+          avatar-url: ${{ env.DISCORD_AVATAR_URL }}
