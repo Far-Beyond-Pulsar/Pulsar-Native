@@ -179,6 +179,11 @@ pub struct EngineContext {
     /// Developer / source-build context.  Populated during engine init.
     pub dev: Arc<RwLock<DevContext>>,
 
+    /// Bytes of the embedded `assets/default.level` file, set during init.
+    /// `None` if the asset was not compiled into the binary (e.g. no file exists yet).
+    /// Used by the level editor to seed new projects with the engine's default scene.
+    pub default_level_bytes: Arc<RwLock<Option<Vec<u8>>>>,
+
     /// Monotonically increasing window ID counter (no cross-thread ordering
     /// needed — uniqueness is all that matters for IDs).
     next_id: Arc<AtomicU64>,
@@ -208,6 +213,7 @@ impl EngineContext {
             type_database: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             dev: Arc::new(RwLock::new(DevContext::default())),
+            default_level_bytes: Arc::new(RwLock::new(None)),
             next_id: Arc::new(AtomicU64::new(1)),
 
             window_manager: Arc::new(RwLock::new(None)),

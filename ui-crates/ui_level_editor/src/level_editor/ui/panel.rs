@@ -113,10 +113,30 @@ impl LevelEditorPanel {
                 }
             }
         } else {
-            // File does not exist — write the current default scene to disk, then set the path.
-            match scene_db.save_to_file(&default_path) {
+            // File does not exist — seed from the embedded default.level if available,
+            // otherwise save the current in-memory (empty) scene to disk.
+            let embedded = engine_state::EngineContext::global()
+                .and_then(|ctx| ctx.default_level_bytes.read().clone());
+
+            let seed_result = if let Some(bytes) = embedded {
+                // Write the embedded bytes directly — preserves whatever the developer
+                // designed as the default scene via "Save as Default Level".
+                std::fs::write(&default_path, &bytes)
+                    .map_err(|e| format!("Failed to write embedded default level: {e}"))
+            } else {
+                // No embedded asset yet — persist the current empty scene so the
+                // path is stable for future saves.
+                scene_db.save_to_file(&default_path)
+            };
+
+            match seed_result {
                 Ok(_) => {
-                    tracing::info!("Created default level file at {:?}", default_path);
+                    // Load back what we just wrote so the editor shows the correct scene.
+                    scene_db.clear();
+                    match scene_db.load_from_file(&default_path) {
+                        Ok(_) => tracing::info!("Default level seeded at {:?}", default_path),
+                        Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
+                    }
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
@@ -125,7 +145,7 @@ impl LevelEditorPanel {
                     }
                 }
                 Err(e) => {
-                    tracing::warn!("Could not write default level to {:?}: {e}", default_path);
+                    tracing::warn!("Could not create default level at {:?}: {e}", default_path);
                 }
             }
         }

@@ -341,6 +341,17 @@ fn main() {
                     tracing::debug!("Running from installed/distributed binary");
                 }
                 *engine_context.dev.write() = dev;
+
+                // Stash the embedded default level bytes so the level editor can
+                // seed new projects without depending on the engine crate directly.
+                if let Some(file) = Assets::get("default.level") {
+                    tracing::info!("Embedded default.level found ({} bytes)", file.data.len());
+                    *engine_context.default_level_bytes.write() =
+                        Some(file.data.into_owned());
+                } else {
+                    tracing::debug!("No embedded default.level — new projects start empty");
+                }
+
                 Ok(())
             }),
         ))

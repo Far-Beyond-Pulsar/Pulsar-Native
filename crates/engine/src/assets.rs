@@ -40,6 +40,7 @@ use std::borrow::Cow;
 #[include = "icons/**/*.svg"]
 #[include = "fonts/**/*.ttf"]
 #[include = "images/**/*.png"]
+#[include = "default.level"]
 pub struct Assets;
 
 impl AssetSource for Assets {
