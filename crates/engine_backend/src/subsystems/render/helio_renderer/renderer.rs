@@ -6,9 +6,9 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use helio::{
-    Camera, EditorState, GizmoMode, GpuLight, GpuMaterial, GroupMask, LightType, MaterialId,
-    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex, Renderer,
-    RendererConfig, SceneActor, ScenePicker, SkyActor,
+    Camera, EditorState, GizmoMode, GpuLight, GpuMaterial, GroupMask, LightId, LightType,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex,
+    Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 use helio_asset_compat::ConvertedScene;
 
@@ -227,6 +227,8 @@ struct HelioInner {
     queue: Arc<wgpu::Queue>,
     /// SceneDb id → (helio ObjectId, mesh used)
     object_map: HashMap<String, (ObjectId, MeshId)>,
+    /// SceneDb id → helio LightId
+    light_map: HashMap<String, LightId>,
     /// MeshKey → (MeshId, MaterialId) shared across all objects of that type
     mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
     /// Helio editor state for gizmo management
@@ -295,6 +297,7 @@ impl HelioRenderer {
                 device: device_arc,
                 queue: queue_arc,
                 object_map: HashMap::new(),
+                light_map: HashMap::new(),
                 mesh_cache: HashMap::new(),
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
@@ -647,6 +650,10 @@ impl HelioRenderer {
     /// Insert or update a single SceneDb object into the Helio scene.
     /// Returns true if Helio was actually mutated (false = not initialized yet).
     pub fn scene_add_or_update(&mut self, snap: &SceneObjectSnapshot) -> bool {
+        // Lights are handled separately from meshes.
+        if let ObjectType::Light(lt) = snap.object_type {
+            return self.scene_add_or_update_light(snap, lt);
+        }
         let ObjectType::Mesh(mt) = snap.object_type else {
             return false;
         };
@@ -713,6 +720,49 @@ impl HelioRenderer {
         false
     }
 
+    /// Build a `GpuLight` from a SceneObjectSnapshot.
+    /// Convention: scale=[r,g,b], rotation=[intensity, range, 0].
+    fn gpu_light_from_snap(snap: &SceneObjectSnapshot, lt: crate::scene::LightType) -> GpuLight {
+        let r = snap.scale[0].max(0.0);
+        let g = snap.scale[1].max(0.0);
+        let b = snap.scale[2].max(0.0);
+        let intensity = if snap.rotation[0] == 0.0 { 7.0 } else { snap.rotation[0] };
+        let range = if snap.rotation[1] == 0.0 { 100.0 } else { snap.rotation[1] };
+        GpuLight {
+            position_range: [snap.position[0], snap.position[1], snap.position[2], range],
+            direction_outer: [0.0, 0.0, 0.0, 0.0],
+            color_intensity: [r, g, b, intensity],
+            shadow_index: u32::MAX,
+            light_type: lt as u32,
+            inner_angle: 0.0,
+            _pad: 0,
+        }
+    }
+
+    fn scene_add_or_update_light(&mut self, snap: &SceneObjectSnapshot, lt: crate::scene::LightType) -> bool {
+        let inner = match &mut self.inner {
+            Some(i) => i,
+            None => return false,
+        };
+        let gpu_light = Self::gpu_light_from_snap(snap, lt);
+        if let Some(&light_id) = inner.light_map.get(&snap.id) {
+            let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
+            true
+        } else {
+            if let Some(light_id) = inner
+                .renderer
+                .scene_mut()
+                .insert_actor(SceneActor::light(gpu_light))
+                .as_light()
+            {
+                inner.light_map.insert(snap.id.clone(), light_id);
+                true
+            } else {
+                false
+            }
+        }
+    }
+
     /// Remove a single SceneDb object from the Helio scene by its SceneDb ID.
     /// Returns true if the object was found and removed.
     pub fn scene_remove(&mut self, scene_db_id: &str) -> bool {
@@ -720,6 +770,11 @@ impl HelioRenderer {
             Some(i) => i,
             None => return false,
         };
+        // Try light first, then mesh.
+        if let Some(light_id) = inner.light_map.remove(scene_db_id) {
+            let _ = inner.renderer.scene_mut().remove_light(light_id);
+            return true;
+        }
         if let Some((obj_id, _)) = inner.object_map.remove(scene_db_id) {
             let _ = inner.renderer.scene_mut().remove_object(obj_id);
             inner.scene_picker.rebuild_instances(inner.renderer.scene());
@@ -990,53 +1045,9 @@ impl HelioRenderer {
         ));
         tracing::info!("[HELIO SCENE] Added sky");
 
-        // Three spaced point lights: blue, red, and yellow.
-        inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::light(GpuLight {
-                position_range: [-8.0, 6.0, -6.0, 100.0],
-                direction_outer: [0.0, 0.0, 0.0, 0.0],
-                color_intensity: [0.2, 0.45, 1.0, 7.0],
-                shadow_index: u32::MAX,
-                light_type: LightType::Point as u32,
-                inner_angle: 0.0,
-                _pad: 0,
-            }));
-        tracing::info!("[HELIO SCENE] Added blue point light");
-
-        inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::light(GpuLight {
-                position_range: [8.0, 6.0, -6.0, 100.0],
-                direction_outer: [0.0, 0.0, 0.0, 0.0],
-                color_intensity: [1.0, 0.22, 0.2, 7.0],
-                shadow_index: u32::MAX,
-                light_type: LightType::Point as u32,
-                inner_angle: 0.0,
-                _pad: 0,
-            }));
-        tracing::info!("[HELIO SCENE] Added red point light");
-
-        inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::light(GpuLight {
-                position_range: [0.0, 7.0, 8.0, 100.0],
-                direction_outer: [0.0, 0.0, 0.0, 0.0],
-                color_intensity: [1.0, 0.9, 0.2, 6.0],
-                shadow_index: u32::MAX,
-                light_type: LightType::Point as u32,
-                inner_angle: 0.0,
-                _pad: 0,
-            }));
-        tracing::info!("[HELIO SCENE] Added yellow point light");
-
-        // Mesh objects (ground, cubes, etc.) are driven exclusively through SceneDb
-        // via sync_scene() so that the hierarchy panel and the renderer always show
-        // the same state.  Nothing is hardcoded here.
-        tracing::info!("[HELIO SCENE] Scene population complete (sky + 3 colored point lights; meshes driven by SceneDb)");
+        // Lights and meshes are driven exclusively through SceneDb via sync_scene()
+        // so that the hierarchy panel and the renderer always show the same state.
+        tracing::info!("[HELIO SCENE] Scene population complete (sky only; all objects driven by SceneDb)");
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
@@ -1056,6 +1067,38 @@ impl HelioRenderer {
         // this frame (mesh objects that are currently visible).
         let mut live_ids = std::collections::HashSet::with_capacity(snapshots.len());
 
+        // ── Light sync ────────────────────────────────────────────────────────
+        let mut live_light_ids = std::collections::HashSet::new();
+        for snap in &snapshots {
+            if let ObjectType::Light(lt) = snap.object_type {
+                if !snap.visible { continue; }
+                live_light_ids.insert(snap.id.clone());
+                let gpu_light = Self::gpu_light_from_snap(snap, lt);
+                if let Some(&light_id) = inner.light_map.get(&snap.id) {
+                    let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
+                } else if let Some(light_id) = inner
+                    .renderer
+                    .scene_mut()
+                    .insert_actor(SceneActor::light(gpu_light))
+                    .as_light()
+                {
+                    inner.light_map.insert(snap.id.clone(), light_id);
+                }
+            }
+        }
+        // Remove stale lights.
+        let stale_lights: Vec<(String, LightId)> = inner
+            .light_map
+            .iter()
+            .filter(|(id, _)| !live_light_ids.contains(*id))
+            .map(|(id, &lid)| (id.clone(), lid))
+            .collect();
+        for (scene_id, light_id) in stale_lights {
+            let _ = inner.renderer.scene_mut().remove_light(light_id);
+            inner.light_map.remove(&scene_id);
+        }
+
+        // ── Mesh sync ─────────────────────────────────────────────────────────
         for snap in &snapshots {
             let key = match snap.object_type {
                 ObjectType::Mesh(mt) => MeshKey::from(mt),
