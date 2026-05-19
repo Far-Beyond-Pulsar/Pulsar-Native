@@ -235,27 +235,6 @@ impl GpuRenderer {
         }
     }
 
-    // ── Unified scene-mutation API ────────────────────────────────────────────
-    // Called by SceneDatabase so that every write (user action, AI tool, drop)
-    // immediately updates Helio without waiting for the next sync_scene() pass.
-
-    /// Add or update a single object in the Helio scene from a SceneDb snapshot.
-    /// No-op (returns false) if Helio is not yet initialized.
-    pub fn scene_add_or_update(&mut self, snap: &crate::scene::SceneObjectSnapshot) -> bool {
-        self.helio_renderer
-            .as_mut()
-            .map(|r| r.scene_add_or_update(snap))
-            .unwrap_or(false)
-    }
-
-    /// Remove a single object from the Helio scene by its SceneDb string ID.
-    pub fn scene_remove(&mut self, scene_db_id: &str) -> bool {
-        self.helio_renderer
-            .as_mut()
-            .map(|r| r.scene_remove(scene_db_id))
-            .unwrap_or(false)
-    }
-
     /// Insert a loaded scene object into the Helio renderer.
     ///
     /// This method takes a `ConvertedScene` from helio-asset-compat and inserts

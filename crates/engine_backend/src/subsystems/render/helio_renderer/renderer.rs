@@ -225,11 +225,15 @@ struct HelioInner {
     renderer: Renderer,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    /// SceneDb id → (helio ObjectId, mesh used)
+    /// SceneDb id → (helio ObjectId, MeshId) — mesh objects only.
     object_map: HashMap<String, (ObjectId, MeshId)>,
-    /// SceneDb id → helio LightId
+    /// SceneDb id → helio LightId — lights only, for illumination.
+    /// Helio renders its own billboard for each light; this map lets us
+    /// reverse-lookup SceneDb IDs from the actor the user clicks.
     light_map: HashMap<String, LightId>,
-    /// MeshKey → (MeshId, MaterialId) shared across all objects of that type
+    /// LightId → SceneDb id reverse index (built alongside light_map).
+    light_id_to_scene: HashMap<LightId, String>,
+    /// MeshKey → (MeshId, MaterialId) shared across objects of that shape.
     mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
     /// Helio editor state for gizmo management
     editor_state: EditorState,
@@ -298,6 +302,7 @@ impl HelioRenderer {
                 queue: queue_arc,
                 object_map: HashMap::new(),
                 light_map: HashMap::new(),
+                light_id_to_scene: HashMap::new(),
                 mesh_cache: HashMap::new(),
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
@@ -647,152 +652,6 @@ impl HelioRenderer {
     // If Helio isn't initialized yet (first frame) the operation returns false
     // and sync_scene() will pick it up on the first ready frame.
 
-    /// Insert or update a single SceneDb object into the Helio scene.
-    /// Returns true if Helio was actually mutated (false = not initialized yet).
-    pub fn scene_add_or_update(&mut self, snap: &SceneObjectSnapshot) -> bool {
-        if let ObjectType::Light(_) = snap.object_type {
-            let inner = match &mut self.inner {
-                Some(i) => i,
-                None => return false,
-            };
-            let gpu_light = Self::gpu_light_from_snap(snap);
-            if let Some(&light_id) = inner.light_map.get(&snap.id) {
-                let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
-                return true;
-            } else if let Some(light_id) = inner
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::light(gpu_light))
-                .as_light()
-            {
-                inner.light_map.insert(snap.id.clone(), light_id);
-                return true;
-            }
-            return false;
-        }
-        let ObjectType::Mesh(mt) = snap.object_type else {
-            return false;
-        };
-        if !snap.visible {
-            return false;
-        }
-
-        let inner = match &mut self.inner {
-            Some(i) => i,
-            None => return false,
-        };
-
-        let key = MeshKey::from(mt);
-
-        if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
-            let _ = inner
-                .renderer
-                .scene_mut()
-                .update_object_transform(obj_id, build_transform(snap));
-            return true;
-        }
-
-        let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
-        let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
-            let upload = mesh_for_key(key);
-            let mid = inner
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::mesh(upload.clone()))
-                .as_mesh()
-                .expect("mesh insert");
-            let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-            let matid = inner.renderer.scene_mut().insert_material(mat);
-            (mid, matid)
-        });
-
-        if is_new_mesh_type {
-            let upload = mesh_for_key(key);
-            inner.scene_picker.register_mesh(mesh_id, &upload);
-        }
-
-        let transform = build_transform(snap);
-        let radius = Vec3::from_array(snap.scale).length() * 0.5;
-        let pos = transform.w_axis.truncate();
-
-        if let Some(obj_id) = inner
-            .renderer
-            .scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh: mesh_id,
-                material: mat_id,
-                transform,
-                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                flags: 0,
-                groups: GroupMask::NONE,
-                movability: Some(Movability::Movable),
-            }))
-            .as_object()
-        {
-            inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
-            inner.scene_picker.rebuild_instances(inner.renderer.scene());
-            return true;
-        }
-        false
-    }
-
-    /// Build a `GpuLight` from a SceneObjectSnapshot.
-    /// Convention: scale=[r,g,b], rotation=[intensity, range, 0].
-    /// Build a `GpuLight` from a snapshot, reading properties from `props`.
-    fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
-        let p = |k: &str, d: f32| {
-            snap.props
-                .get(k)
-                .and_then(|v| v.as_f64())
-                .map(|v| v as f32)
-                .unwrap_or(d)
-        };
-        let lt = match snap.object_type {
-            ObjectType::Light(lt) => lt,
-            _ => crate::scene::LightType::Point,
-        };
-        GpuLight {
-            position_range: [
-                snap.position[0],
-                snap.position[1],
-                snap.position[2],
-                p("range", 100.0),
-            ],
-            direction_outer: [0.0, 0.0, 0.0, 0.0],
-            color_intensity: [
-                p("color_r", 1.0),
-                p("color_g", 1.0),
-                p("color_b", 1.0),
-                p("intensity", 7.0),
-            ],
-            shadow_index: u32::MAX,
-            light_type: lt as u32,
-            inner_angle: 0.0,
-            _pad: 0,
-        }
-    }
-
-    /// Remove a single SceneDb object from the Helio scene by its SceneDb ID.
-    /// Returns true if the object was found and removed.
-    pub fn scene_remove(&mut self, scene_db_id: &str) -> bool {
-        let inner = match &mut self.inner {
-            Some(i) => i,
-            None => return false,
-        };
-        // Try light first, then mesh.
-        if let Some(light_id) = inner.light_map.remove(scene_db_id) {
-            let _ = inner.renderer.scene_mut().remove_light(light_id);
-            return true;
-        }
-        if let Some((obj_id, _)) = inner.object_map.remove(scene_db_id) {
-            let _ = inner.renderer.scene_mut().remove_object(obj_id);
-            inner.scene_picker.rebuild_instances(inner.renderer.scene());
-            true
-        } else {
-            false
-        }
-    }
-
     /// Set the gizmo mode (Translate, Rotate, Scale).
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
         if let Some(inner) = &mut self.inner {
@@ -809,47 +668,31 @@ impl HelioRenderer {
     /// Get the SceneDb ID of the currently selected object.
     pub fn get_selected_scene_db_id(&self) -> Option<String> {
         use helio::SceneActorId;
-        let selected = self.inner.as_ref()?.editor_state.selected()?;
-
-        // Extract ObjectId from SceneActorId
-        let helio_obj_id = match selected {
-            SceneActorId::Object(obj_id) => obj_id,
-            _ => return None, // Not an object (maybe a light or camera)
-        };
-
-        // Reverse lookup in object_map
-        for (scene_db_id, (obj_id, _)) in &self.inner.as_ref()?.object_map {
-            if *obj_id == helio_obj_id {
-                return Some(scene_db_id.clone());
-            }
+        let inner = self.inner.as_ref()?;
+        let selected = inner.editor_state.selected()?;
+        match selected {
+            SceneActorId::Object(obj_id) => inner
+                .object_map
+                .iter()
+                .find(|(_, (oid, _))| *oid == obj_id)
+                .map(|(id, _)| id.clone()),
+            SceneActorId::Light(light_id) => inner.light_id_to_scene.get(&light_id).cloned(),
+            _ => None,
         }
-        None
     }
 
-    /// Select an object by its SceneDb ID.
-    /// Returns true if the object was found and selected, false otherwise.
+    /// Select an object or light by its SceneDb ID.
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
         use helio::SceneActorId;
-        let Some(inner) = &mut self.inner else {
-            return false;
-        };
+        let Some(inner) = &mut self.inner else { return false };
 
-        // Look up the Helio ObjectId from the scene_db_id
-        if let Some((helio_obj_id, _)) = inner.object_map.get(scene_db_id) {
-            inner
-                .editor_state
-                .select(SceneActorId::Object(*helio_obj_id));
-            tracing::info!(
-                "[HELIO] Selected object by SceneDb ID: {} -> {:?}",
-                scene_db_id,
-                helio_obj_id
-            );
+        if let Some((obj_id, _)) = inner.object_map.get(scene_db_id) {
+            inner.editor_state.select(SceneActorId::Object(*obj_id));
+            true
+        } else if let Some(&light_id) = inner.light_map.get(scene_db_id) {
+            inner.editor_state.select(SceneActorId::Light(light_id));
             true
         } else {
-            tracing::warn!(
-                "[HELIO] Failed to select object by SceneDb ID: {} (not found in object_map)",
-                scene_db_id
-            );
             false
         }
     }
@@ -937,31 +780,33 @@ impl HelioRenderer {
                     .scene_picker
                     .cast_ray(inner.renderer.scene(), ray_o, ray_d)
                 {
-                    // Extract Helio ObjectId from SceneActorId
-                    if let SceneActorId::Object(helio_obj_id) = hit.actor_id {
-                        // Look up SceneDb ID from object_map
-                        if let Some((scene_db_id, _)) = inner
-                            .object_map
-                            .iter()
-                            .find(|(_, (obj_id, _))| *obj_id == helio_obj_id)
-                            .map(|(id, ids)| (id.clone(), ids))
-                        {
-                            // Found object - select it atomically
-                            Some(Some(scene_db_id))
-                        } else {
-                            // Object not in map (shouldn't happen), just select in Helio
+                    match hit.actor_id {
+                        SceneActorId::Object(helio_obj_id) => {
+                            if let Some(scene_db_id) = inner
+                                .object_map
+                                .iter()
+                                .find(|(_, (oid, _))| *oid == helio_obj_id)
+                                .map(|(id, _)| id.clone())
+                            {
+                                Some(Some(scene_db_id))
+                            } else {
+                                inner.editor_state.select(hit.actor_id);
+                                None
+                            }
+                        }
+                        SceneActorId::Light(light_id) => {
+                            // Light billboard clicked — resolve to SceneDb ID.
+                            if let Some(scene_db_id) = inner.light_id_to_scene.get(&light_id).cloned() {
+                                Some(Some(scene_db_id))
+                            } else {
+                                inner.editor_state.select(hit.actor_id);
+                                None
+                            }
+                        }
+                        _ => {
                             inner.editor_state.select(hit.actor_id);
-                            tracing::warn!(
-                                "[VIEWPORT] Selected object not in object_map: {:?}",
-                                helio_obj_id
-                            );
                             None
                         }
-                    } else {
-                        // Not an object (light, camera, etc.) - just select in Helio
-                        inner.editor_state.select(hit.actor_id);
-                        tracing::info!("[VIEWPORT] Selected non-object actor: {:?}", hit.actor_id);
-                        None
                     }
                 } else {
                     // No hit - deselect
@@ -1062,11 +907,24 @@ impl HelioRenderer {
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
+        /// Build a GpuLight from a SceneObjectSnapshot, reading all light
+        /// properties from `props`. Defaults: white (1,1,1), intensity 7, range 100.
+        fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
+            let p = |k: &str, d: f32| snap.props.get(k).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(d);
+            let lt = match snap.object_type { ObjectType::Light(lt) => lt, _ => crate::scene::LightType::Point };
+            GpuLight {
+                position_range: [snap.position[0], snap.position[1], snap.position[2], p("range", 100.0)],
+                direction_outer: [0.0, 0.0, 0.0, 0.0],
+                color_intensity: [p("color_r", 1.0), p("color_g", 1.0), p("color_b", 1.0), p("intensity", 7.0)],
+                shadow_index: u32::MAX,
+                light_type: lt as u32,
+                inner_angle: 0.0,
+                _pad: 0,
+            }
+        }
         let snapshots = scene_db.get_all_snapshots();
         let mut picker_dirty = false;
 
-        // While a gizmo drag is active the selected object's transform is owned
-        // by Helio — don't overwrite it from the SceneDb this frame.
         let gizmo_dragging = inner.editor_state.is_dragging();
         let dragged_obj_id: Option<ObjectId> = if gizmo_dragging {
             inner.editor_state.selected_object()
@@ -1078,23 +936,20 @@ impl HelioRenderer {
         let mut live_light_ids = std::collections::HashSet::with_capacity(snapshots.len());
 
         for snap in &snapshots {
-            if !snap.visible {
-                continue;
-            }
+            if !snap.visible { continue; }
 
             match snap.object_type {
                 ObjectType::Light(_) => {
                     live_light_ids.insert(snap.id.clone());
-                    let gpu_light = Self::gpu_light_from_snap(snap);
+                    let gpu_light = gpu_light_from_snap(snap);
                     if let Some(&light_id) = inner.light_map.get(&snap.id) {
+                        // Always push updated position/color to Helio.
                         let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
-                    } else if let Some(light_id) = inner
-                        .renderer
-                        .scene_mut()
-                        .insert_actor(SceneActor::light(gpu_light))
-                        .as_light()
+                    } else if let Some(light_id) = inner.renderer.scene_mut()
+                        .insert_actor(SceneActor::light(gpu_light)).as_light()
                     {
                         inner.light_map.insert(snap.id.clone(), light_id);
+                        inner.light_id_to_scene.insert(light_id, snap.id.clone());
                     }
                 }
                 ObjectType::Mesh(mt) => {
@@ -1103,76 +958,56 @@ impl HelioRenderer {
                     if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
                         let skip = dragged_obj_id.map_or(false, |did| did == obj_id);
                         if !skip {
-                            let _ = inner
-                                .renderer
-                                .scene_mut()
+                            let _ = inner.renderer.scene_mut()
                                 .update_object_transform(obj_id, build_transform(snap));
                         }
                     } else {
-                        let is_new_mesh_type = !inner.mesh_cache.contains_key(&key);
+                        let is_new = !inner.mesh_cache.contains_key(&key);
                         let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
                             let upload = mesh_for_key(key);
-                            let mid = inner
-                                .renderer
-                                .scene_mut()
-                                .insert_actor(SceneActor::mesh(upload.clone()))
-                                .as_mesh()
-                                .expect("mesh insert");
+                            let mid = inner.renderer.scene_mut()
+                                .insert_actor(SceneActor::mesh(upload.clone())).as_mesh().expect("mesh");
                             let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
                             let matid = inner.renderer.scene_mut().insert_material(mat);
                             (mid, matid)
                         });
-                        if is_new_mesh_type {
-                            let upload = mesh_for_key(key);
-                            inner.scene_picker.register_mesh(mesh_id, &upload);
-                        }
+                        if is_new { inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(key)); }
                         let transform = build_transform(snap);
                         let radius = Vec3::from_array(snap.scale).length() * 0.5;
                         let pos = transform.w_axis.truncate();
-                        if let Some(obj_id) = inner
-                            .renderer
-                            .scene_mut()
+                        if let Some(obj_id) = inner.renderer.scene_mut()
                             .insert_actor(SceneActor::object(ObjectDescriptor {
-                                mesh: mesh_id,
-                                material: mat_id,
-                                transform,
+                                mesh: mesh_id, material: mat_id, transform,
                                 bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                                flags: 0,
-                                groups: GroupMask::NONE,
+                                flags: 0, groups: GroupMask::NONE,
                                 movability: Some(Movability::Movable),
-                            }))
-                            .as_object()
+                            })).as_object()
                         {
                             inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
                             picker_dirty = true;
                         }
                     }
                 }
-                _ => {} // Camera, Folder, etc. — future types handled here
+                _ => {}
             }
         }
 
-        let stale_lights: Vec<(String, LightId)> = inner
-            .light_map
-            .iter()
-            .filter(|(id, _)| !live_light_ids.contains(*id))
-            .map(|(id, &lid)| (id.clone(), lid))
-            .collect();
-        for (sid, lid) in stale_lights {
-            let _ = inner.renderer.scene_mut().remove_light(lid);
-            inner.light_map.remove(&sid);
-        }
-
-        let stale_meshes: Vec<(String, ObjectId)> = inner
-            .object_map
-            .iter()
+        // Stale removal.
+        let stale_meshes: Vec<(String, ObjectId)> = inner.object_map.iter()
             .filter(|(id, _)| !live_mesh_ids.contains(*id))
-            .map(|(id, &(oid, _))| (id.clone(), oid))
-            .collect();
+            .map(|(id, &(oid, _))| (id.clone(), oid)).collect();
         for (sid, oid) in stale_meshes {
             let _ = inner.renderer.scene_mut().remove_object(oid);
             inner.object_map.remove(&sid);
             picker_dirty = true;
+        }
+        let stale_lights: Vec<(String, LightId)> = inner.light_map.iter()
+            .filter(|(id, _)| !live_light_ids.contains(*id))
+            .map(|(id, &lid)| (id.clone(), lid)).collect();
+        for (sid, lid) in stale_lights {
+            let _ = inner.renderer.scene_mut().remove_light(lid);
+            inner.light_id_to_scene.remove(&lid);
+            inner.light_map.remove(&sid);
         }
 
         if picker_dirty {

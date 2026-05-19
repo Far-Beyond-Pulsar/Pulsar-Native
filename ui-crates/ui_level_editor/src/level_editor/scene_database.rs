@@ -5,12 +5,11 @@
 //! layer for the reflection-based component system.
 
 use engine_backend::scene::SceneObjectSnapshot;
-use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 // ── Public re-exports for UI layer compatibility ───────────────────────────
 
@@ -111,27 +110,19 @@ impl SceneObjectData {
 
 // ── Production Scene Database ──────────────────────────────────────────────
 
-/// Production-ready scene database — single write path for scene mutations.
+/// Production-ready scene database — the single source of truth for all scene state.
 ///
-/// Wraps `SceneDb` (the concurrency-safe object store used by the renderer)
+/// Wraps `SceneDb` (the concurrency-safe object store shared with the renderer)
 /// and `SceneMetadataDb` for the reflection-based component system.
 ///
-/// When a `GpuRenderer` is attached via `set_renderer()`, every mutation
-/// (add / remove / update) is immediately applied to **both** `SceneDb` and
-/// the Helio renderer.  This keeps the two stores permanently in sync instead
-/// of relying on the frame-rate `sync_scene()` reconciliation pass.
-///
-/// All UI panels AND AI tools interact exclusively through `SceneDatabase`;
-/// they never touch `SceneDb` or the Helio renderer directly.
+/// Helio is reconciled exclusively by `sync_scene()` on every render frame.
+/// All UI panels and AI tools interact through `SceneDatabase` only.
 #[derive(Clone)]
 pub struct SceneDatabase {
     /// Primary store: lock-free atomic transforms + hierarchy.
     scene_db: Arc<SceneDb>,
-    /// Reflection-based component store (new system).
+    /// Reflection-based component store.
     metadata_db: Arc<SceneMetadataDb>,
-    /// Write-through target: immediately mirrors mutations to Helio.
-    /// Set once after both `SceneDatabase` and `GpuRenderer` are constructed.
-    renderer: Option<Arc<Mutex<GpuRenderer>>>,
 }
 
 impl SceneDatabase {
@@ -139,94 +130,45 @@ impl SceneDatabase {
         Self {
             scene_db: Arc::new(SceneDb::new()),
             metadata_db: Arc::new(SceneMetadataDb::new()),
-            renderer: None,
         }
     }
 
-    /// Attach the GPU renderer so all future mutations are immediately mirrored
-    /// to Helio.  Call this once after both are created (see `LevelEditorPanel`).
-    pub fn set_renderer(&mut self, renderer: Arc<Mutex<GpuRenderer>>) {
-        self.renderer = Some(renderer);
-    }
-
-    /// Create using a caller-supplied `SceneDb` that is shared with the renderer.
-    /// The database starts **empty** — callers are responsible for loading content.
+    /// Create using a caller-supplied `SceneDb` Arc that is shared with the renderer.
     pub fn with_shared_db(scene_db: Arc<SceneDb>) -> Self {
         Self {
             scene_db,
             metadata_db: Arc::new(SceneMetadataDb::new()),
-            renderer: None,
-        }
-    }
-
-    /// Write an object snapshot to the Helio renderer immediately, if attached.
-    fn helio_add_or_update(&self, snap: &SceneObjectSnapshot) {
-        if let Some(ref r) = self.renderer {
-            if let Ok(mut gpu) = r.try_lock() {
-                gpu.scene_add_or_update(snap);
-            }
-        }
-    }
-
-    /// Remove an object from the Helio renderer immediately, if attached.
-    fn helio_remove(&self, id: &str) {
-        if let Some(ref r) = self.renderer {
-            if let Ok(mut gpu) = r.try_lock() {
-                gpu.scene_remove(id);
-            }
         }
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
+    //
+    // SceneDb is the single source of truth. sync_scene() in the renderer
+    // reconciles Helio state every frame — no immediate write-through needed.
 
     /// Add an object. Returns the assigned `ObjectId`.
-    ///
-    /// Writes to `SceneDb` first (canonical ID assignment), then immediately
-    /// mirrors to Helio if a renderer is attached.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
-        let snap = obj.into_snapshot();
-        let id = self.scene_db.add_object(snap.clone(), parent);
-        // Helio needs the ID-filled snapshot; re-fetch it after insertion.
-        if let Some(snap_with_id) = self.scene_db.get_object(&id) {
-            self.helio_add_or_update(&snap_with_id);
-        }
-        id
+        self.scene_db.add_object(obj.into_snapshot(), parent)
     }
 
     /// Remove an object and all of its descendants. Returns `true` if found.
-    ///
-    /// Removes from Helio first (while the mapping is still valid), then from
-    /// `SceneDb` so that `sync_scene()` doesn't re-insert it next frame.
     pub fn remove_object(&self, id: &ObjectId) -> bool {
-        self.helio_remove(id);
         self.scene_db.remove_object(id)
     }
 
-    /// Write updated data back to an existing object.
-    ///
-    /// Synchronises the atomic renderer transforms as well as all cold data
-    /// (name, visibility, locked, components), then mirrors to Helio.
-    /// Returns `true` on success.
+    /// Write updated transform, name, visibility, and component data back to an existing object.
     pub fn update_object(&self, obj: SceneObjectData) -> bool {
         let id = obj.id.clone();
         if self.scene_db.get_entry(&id).is_none() {
             return false;
         }
-        self.scene_db.apply_transform(
-            &id,
-            obj.transform.position,
-            obj.transform.rotation,
-            obj.transform.scale,
-        );
+        self.scene_db.apply_transform(&id, obj.transform.position, obj.transform.rotation, obj.transform.scale);
         self.scene_db.set_name(&id, obj.name);
         self.scene_db.set_visible(&id, obj.visible);
         self.scene_db.set_locked(&id, obj.locked);
         if let Some(entry) = self.scene_db.get_entry(&id) {
             entry.meta.write().components = obj.components;
-        }
-        // Mirror the updated snapshot to Helio.
-        if let Some(snap) = self.scene_db.get_object(&id) {
-            self.helio_add_or_update(&snap);
+            entry.meta.write().props = obj.props;
         }
         true
     }

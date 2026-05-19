@@ -243,7 +243,6 @@ impl LevelEditorPanel {
 
         // Attach the GPU renderer to SceneDatabase so every add/remove/update
         // immediately writes to BOTH SceneDb AND Helio (unified write path).
-        state.scene_database.set_renderer(gpu_engine.clone());
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
 
