@@ -1000,8 +1000,18 @@ impl LevelEditorPanel {
         {
             let state = self.shared_state.read();
             state.scene_database.clear();
-            // Re-populate defaults into the same shared SceneDb.
-            state.scene_database.populate_default_scene_pub();
+
+            // Load from the embedded default.level if available, otherwise start empty.
+            if let Some(bytes) = engine_state::EngineContext::global()
+                .and_then(|ctx| ctx.default_level_bytes.read().clone())
+            {
+                let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
+                if std::fs::write(&tmp, &bytes).is_ok() {
+                    if let Err(e) = state.scene_database.load_from_file(&tmp) {
+                        tracing::warn!("New scene: could not load embedded default.level: {e}");
+                    }
+                }
+            }
         }
         self.notify_sub_panels(cx);
         {

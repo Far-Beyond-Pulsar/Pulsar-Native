@@ -225,8 +225,7 @@ pub use crate::level_editor::scene_database::{SceneObjectData as SceneObject, Tr
 
 impl Default for LevelEditorState {
     fn default() -> Self {
-        // Create scene database with default objects matching Helio renderer
-        let scene_database = SceneDatabase::with_default_scene();
+        let scene_database = SceneDatabase::new();
 
         Self {
             scene_database,
@@ -287,9 +286,9 @@ impl LevelEditorState {
     }
 
     /// Create a `LevelEditorState` that shares the given `SceneDb` Arc with the renderer.
-    /// The default scene objects are populated into the shared database.
+    /// The database starts empty; `ensure_default_level_file` populates it from disk.
     pub fn new_with_scene_db(scene_db: Arc<SceneDb>) -> Self {
-        let scene_database = SceneDatabase::with_default_scene_on(scene_db);
+        let scene_database = SceneDatabase::with_shared_db(scene_db);
         Self {
             scene_database,
             ..Self::default()

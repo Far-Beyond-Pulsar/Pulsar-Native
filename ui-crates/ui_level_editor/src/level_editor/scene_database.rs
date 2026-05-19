@@ -143,24 +143,14 @@ impl SceneDatabase {
         self.renderer = Some(renderer);
     }
 
-    /// Create with the default demo scene objects.
-    pub fn with_default_scene() -> Self {
-        let this = Self::new();
-        this.populate_default_scene();
-        this
-    }
-
     /// Create using a caller-supplied `SceneDb` that is shared with the renderer.
-    ///
-    /// Populates the default demo scene into the provided database.
-    pub fn with_default_scene_on(scene_db: Arc<SceneDb>) -> Self {
-        let this = Self {
+    /// The database starts **empty** — callers are responsible for loading content.
+    pub fn with_shared_db(scene_db: Arc<SceneDb>) -> Self {
+        Self {
             scene_db,
             metadata_db: Arc::new(SceneMetadataDb::new()),
             renderer: None,
-        };
-        this.populate_default_scene();
-        this
+        }
     }
 
     /// Write an object snapshot to the Helio renderer immediately, if attached.
@@ -181,300 +171,6 @@ impl SceneDatabase {
         }
     }
 
-    fn mk(name: &str, object_type: ObjectType, parent: Option<ObjectId>) -> SceneObjectData {
-        SceneObjectData {
-            id: String::new(),
-            name: name.to_string(),
-            object_type,
-            transform: Transform::default(),
-            visible: true,
-            locked: false,
-            parent,
-            children: vec![],
-            components: vec![],
-            scene_path: String::new(),
-        }
-    }
-
-    fn mk_at(
-        name: &str,
-        object_type: ObjectType,
-        position: [f32; 3],
-        rotation: [f32; 3],
-        scale: [f32; 3],
-    ) -> SceneObjectData {
-        let mut obj = Self::mk(name, object_type, None);
-        obj.transform.position = position;
-        obj.transform.rotation = rotation;
-        obj.transform.scale = scale;
-        obj
-    }
-
-    fn populate_default_scene(&self) {
-        self.populate_default_scene_pub();
-    }
-
-    /// Public entry-point for in-place scene reset (called by `on_new_scene`).
-    ///
-    /// Populates an interesting starter scene whose objects are picked up by
-    /// `sync_scene` (the renderer only draws `ObjectType::Mesh` objects, so
-    /// Camera and Light are metadata-only until full Helio light/camera support
-    /// is wired up).  The shared `Arc<SceneDb>` means every change here is
-    /// immediately visible to the renderer.
-    pub fn populate_default_scene_pub(&self) {
-        // ── Camera ────────────────────────────────────────────────────────
-        let mut cam = Self::mk("Main Camera", ObjectType::Camera, None);
-        cam.transform.position = [0.0, 6.0, 14.0];
-        cam.transform.rotation = [-18.0, 0.0, 0.0];
-        self.add_object(cam, None);
-
-        // ── Lighting ──────────────────────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Blue Light",
-                ObjectType::Light(LightType::Point),
-                [-8.0, 6.0, -6.0],
-                [0.0, 0.0, 0.0],
-                [1.0, 1.0, 1.0],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Red Light",
-                ObjectType::Light(LightType::Point),
-                [8.0, 6.0, -6.0],
-                [0.0, 0.0, 0.0],
-                [1.0, 1.0, 1.0],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Yellow Light",
-                ObjectType::Light(LightType::Point),
-                [0.0, 7.0, 8.0],
-                [0.0, 0.0, 0.0],
-                [1.0, 1.0, 1.0],
-            ),
-            None,
-        );
-
-        // ── Ground ───────────────────────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Ground",
-                ObjectType::Mesh(MeshType::Plane),
-                [0.0, 0.0, 0.0],
-                [0.0, 0.0, 0.0],
-                [3.0, 1.0, 3.0], // 30 × 30 unit floor
-            ),
-            None,
-        );
-
-        // ── Centre composition ────────────────────────────────────────────
-        // Stepped podium: three stacked cubes of decreasing size
-        self.add_object(
-            Self::mk_at(
-                "Podium Base",
-                ObjectType::Mesh(MeshType::Cube),
-                [0.0, 0.15, 0.0],
-                [0.0, 0.0, 0.0],
-                [3.0, 0.3, 3.0],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Podium Mid",
-                ObjectType::Mesh(MeshType::Cube),
-                [0.0, 0.5, 0.0],
-                [0.0, 0.0, 0.0],
-                [2.0, 0.2, 2.0],
-            ),
-            None,
-        );
-
-        // Hero sphere on top of the podium
-        self.add_object(
-            Self::mk_at(
-                "Hero Sphere",
-                ObjectType::Mesh(MeshType::Sphere),
-                [0.0, 1.5, 0.0],
-                [0.0, 0.0, 0.0],
-                [1.0, 1.0, 1.0],
-            ),
-            None,
-        );
-
-        // ── Left wing — arch of cubes ─────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Column L1",
-                ObjectType::Mesh(MeshType::Cylinder),
-                [-4.0, 1.5, -2.0],
-                [0.0, 0.0, 0.0],
-                [0.4, 3.0, 0.4],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Column L2",
-                ObjectType::Mesh(MeshType::Cylinder),
-                [-4.0, 1.5, 2.0],
-                [0.0, 0.0, 0.0],
-                [0.4, 3.0, 0.4],
-            ),
-            None,
-        );
-
-        // Lintel across the two left columns
-        self.add_object(
-            Self::mk_at(
-                "Lintel L",
-                ObjectType::Mesh(MeshType::Cube),
-                [-4.0, 3.2, 0.0],
-                [0.0, 0.0, 0.0],
-                [0.6, 0.4, 4.8],
-            ),
-            None,
-        );
-
-        // ── Right wing — stepped tower ────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Tower Base",
-                ObjectType::Mesh(MeshType::Cube),
-                [4.5, 0.75, 0.0],
-                [0.0, 20.0, 0.0],
-                [1.5, 1.5, 1.5],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Tower Mid",
-                ObjectType::Mesh(MeshType::Cube),
-                [4.5, 2.25, 0.0],
-                [0.0, 35.0, 0.0],
-                [1.1, 1.5, 1.1],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Tower Top",
-                ObjectType::Mesh(MeshType::Cube),
-                [4.5, 3.5, 0.0],
-                [0.0, 50.0, 0.0],
-                [0.7, 0.7, 0.7],
-            ),
-            None,
-        );
-
-        // ── Scattered detail props ────────────────────────────────────────
-        self.add_object(
-            Self::mk_at(
-                "Rock A",
-                ObjectType::Mesh(MeshType::Sphere),
-                [-2.0, 0.3, 4.0],
-                [15.0, 30.0, 0.0],
-                [0.6, 0.5, 0.7],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Rock B",
-                ObjectType::Mesh(MeshType::Sphere),
-                [2.5, 0.25, 4.5],
-                [0.0, 60.0, 20.0],
-                [0.45, 0.4, 0.55],
-            ),
-            None,
-        );
-
-        // Ramp (tilted plane)
-        self.add_object(
-            Self::mk_at(
-                "Ramp",
-                ObjectType::Mesh(MeshType::Plane),
-                [-1.0, 0.6, -4.5],
-                [-25.0, 15.0, 0.0],
-                [1.0, 1.0, 1.5],
-            ),
-            None,
-        );
-
-        // Elevated bridge segment crossing the center line
-        self.add_object(
-            Self::mk_at(
-                "Bridge Deck",
-                ObjectType::Mesh(MeshType::Cube),
-                [0.0, 1.8, -6.0],
-                [0.0, 0.0, 0.0],
-                [4.5, 0.25, 1.0],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Bridge Pillar L",
-                ObjectType::Mesh(MeshType::Cylinder),
-                [-2.0, 0.9, -6.0],
-                [0.0, 0.0, 0.0],
-                [0.3, 1.8, 0.3],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Bridge Pillar R",
-                ObjectType::Mesh(MeshType::Cylinder),
-                [2.0, 0.9, -6.0],
-                [0.0, 0.0, 0.0],
-                [0.3, 1.8, 0.3],
-            ),
-            None,
-        );
-
-        // Floating accents to add silhouette variation
-        self.add_object(
-            Self::mk_at(
-                "Float Orb A",
-                ObjectType::Mesh(MeshType::Sphere),
-                [-6.0, 3.8, 3.0],
-                [0.0, 0.0, 0.0],
-                [0.45, 0.45, 0.45],
-            ),
-            None,
-        );
-
-        self.add_object(
-            Self::mk_at(
-                "Float Orb B",
-                ObjectType::Mesh(MeshType::Sphere),
-                [6.0, 4.2, 2.5],
-                [0.0, 0.0, 0.0],
-                [0.55, 0.55, 0.55],
-            ),
-            None,
-        );
-
-        tracing::info!(
-            "Default scene populated: three-point color lights + podium composition + bridge + tower + floating accents"
-        );
-    }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
 
@@ -670,7 +366,19 @@ impl SceneDatabase {
     // ── Folder helper ──────────────────────────────────────────────────────
 
     pub fn add_folder(&self, name: &str, parent: Option<ObjectId>) -> ObjectId {
-        self.add_object(Self::mk(name, ObjectType::Folder, parent.clone()), parent)
+        let obj = SceneObjectData {
+            id: String::new(),
+            name: name.to_string(),
+            object_type: ObjectType::Folder,
+            transform: Transform::default(),
+            visible: true,
+            locked: false,
+            parent: parent.clone(),
+            children: vec![],
+            components: vec![],
+            scene_path: String::new(),
+        };
+        self.add_object(obj, parent)
     }
 
     // ── Reflection component system ────────────────────────────────────────
