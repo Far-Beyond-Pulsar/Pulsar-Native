@@ -1184,7 +1184,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.12.1",
+ "itertools 0.10.5",
  "lazy_static",
  "lazycell",
  "log",
@@ -1207,7 +1207,7 @@ dependencies = [
  "bitflags 2.11.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "regex",
@@ -1333,7 +1333,7 @@ name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
  "graphy",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=925107465da13f323b41513d00431703b4219296)",
+ "pbgc",
  "pulsar_graph",
  "serde_json",
  "tracing",
@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=0515e8e3ab3b1ab1f883cb929d80c34104bf20e2#0515e8e3ab3b1ab1f883cb929d80c34104bf20e2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=e5ac9cd6ef687e8164d4dfd6783aa6dd549b0d77#e5ac9cd6ef687e8164d4dfd6783aa6dd549b0d77"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1353,9 +1353,11 @@ dependencies = [
  "gpui-ce",
  "graphy",
  "log",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5ad02cdf9baed974665f8774ad670bf6fbbf84b8)",
+ "pbgc",
  "plugin_editor_api",
+ "pulsar_bp_executor 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=cbce0f68d7da7ba24f583d609a206e0e364cba63)",
  "pulsar_std",
+ "pulsar_std_bundle 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=cbce0f68d7da7ba24f583d609a206e0e364cba63)",
  "schemars",
  "serde",
  "serde_json",
@@ -4360,7 +4362,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.18",
- "windows 0.62.2",
+ "windows 0.54.0",
 ]
 
 [[package]]
@@ -8355,33 +8357,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5ad02cdf9baed974665f8774ad670bf6fbbf84b8#5ad02cdf9baed974665f8774ad670bf6fbbf84b8"
-dependencies = [
- "graphy",
- "pulsar_std",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "pbgc"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=925107465da13f323b41513d00431703b4219296#925107465da13f323b41513d00431703b4219296"
-dependencies = [
- "graphy",
- "pulsar_std",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "pbgc"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c#ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=4ef8298edc447d88f6f84cece340fe508f17a906#4ef8298edc447d88f6f84cece340fe508f17a906"
 dependencies = [
  "graphy",
  "pulsar_std",
@@ -9130,7 +9106,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be769465445e8c1474e9c5dac2018218498557af32d9ed057325ec9a41ae81bf"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "once_cell",
@@ -9150,7 +9126,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a56d757972c98b346a9b766e3f02746cde6dd1cd1d1d563472929fdd74bec4d"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -9301,9 +9277,18 @@ version = "0.1.0"
 dependencies = [
  "graphy",
  "libloading",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c)",
- "pulsar_std_bundle",
+ "pbgc",
+ "pulsar_std_bundle 0.1.0",
  "serde_json",
+]
+
+[[package]]
+name = "pulsar_bp_executor"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=cbce0f68d7da7ba24f583d609a206e0e364cba63#cbce0f68d7da7ba24f583d609a206e0e364cba63"
+dependencies = [
+ "libloading",
+ "pbgc",
 ]
 
 [[package]]
@@ -9489,11 +9474,16 @@ name = "pulsar_std_bundle"
 version = "0.1.0"
 dependencies = [
  "graphy",
- "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=ec3c37d8ff9a3ea2ca0cc23cba0ae22d1911526c)",
- "pulsar_bp_executor",
+ "pbgc",
+ "pulsar_bp_executor 0.1.0",
  "pulsar_std",
  "serde_json",
 ]
+
+[[package]]
+name = "pulsar_std_bundle"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=cbce0f68d7da7ba24f583d609a206e0e364cba63#cbce0f68d7da7ba24f583d609a206e0e364cba63"
 
 [[package]]
 name = "pxfm"
