@@ -3,7 +3,7 @@
 //! Manages ambient sounds and UI audio for the intro experience
 //! Uses rodio for audio playback with embedded MP3 file
 
-use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink};
+use rodio::{Decoder, DeviceSinkBuilder, MixerDeviceSink, Player};
 use std::io::Cursor;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -14,9 +14,8 @@ const INTRO_AUDIO: &[u8] = include_bytes!("../../../../assets/sound/intro.mp3");
 
 /// Audio state that must live on the audio thread
 struct AudioState {
-    _stream: OutputStream,
-    stream_handle: OutputStreamHandle,
-    ambient_sink: Option<Sink>,
+    device_sink: MixerDeviceSink,
+    ambient_player: Option<Player>,
 }
 
 /// Audio manager for intro sounds
@@ -65,14 +64,13 @@ impl IntroAudio {
                 tracing::debug!("🔊 [OOBE] Audio thread starting...");
 
                 // Try to create audio output with a timeout approach
-                // OutputStream::try_default() can hang on some systems
-                let audio_state = match OutputStream::try_default() {
-                    Ok((stream, handle)) => {
+                // opening a default device sink can hang on some systems
+                let audio_state = match DeviceSinkBuilder::open_default_sink() {
+                    Ok(device_sink) => {
                         tracing::debug!("🔊 [OOBE] Audio output initialized successfully");
                         Some(AudioState {
-                            _stream: stream,
-                            stream_handle: handle,
-                            ambient_sink: None,
+                            device_sink,
+                            ambient_player: None,
                         })
                     }
                     Err(e) => {
@@ -91,17 +89,11 @@ impl IntroAudio {
                                 let cursor = Cursor::new(INTRO_AUDIO);
                                 match Decoder::new(cursor) {
                                     Ok(source) => {
-                                        match Sink::try_new(&s.stream_handle) {
-                                            Ok(sink) => {
-                                                sink.set_volume(0.5);
-                                                sink.append(source);
-                                                tracing::debug!("🔊 [OOBE] Playing intro audio (embedded MP3, {} bytes)", INTRO_AUDIO.len());
-                                                s.ambient_sink = Some(sink);
-                                            }
-                                            Err(e) => {
-                                                tracing::warn!("🔇 [OOBE] Could not create audio sink: {}", e);
-                                            }
-                                        }
+                                        let player = Player::connect_new(s.device_sink.mixer());
+                                        player.set_volume(0.5);
+                                        player.append(source);
+                                        tracing::debug!("🔊 [OOBE] Playing intro audio (embedded MP3, {} bytes)", INTRO_AUDIO.len());
+                                        s.ambient_player = Some(player);
                                     }
                                     Err(e) => {
                                         tracing::warn!("🔇 [OOBE] Could not decode audio: {}", e);
@@ -111,24 +103,24 @@ impl IntroAudio {
                         }
                         AudioCommand::StopAll => {
                             if let Some(ref mut s) = state {
-                                if let Some(sink) = s.ambient_sink.take() {
-                                    sink.stop();
+                                if let Some(player) = s.ambient_player.take() {
+                                    player.stop();
                                 }
                                 tracing::debug!("🔊 [OOBE] Stopped all sounds");
                             }
                         }
                         AudioCommand::SetVolume(vol) => {
                             if let Some(ref s) = state {
-                                if let Some(ref sink) = s.ambient_sink {
-                                    sink.set_volume(vol);
+                                if let Some(ref player) = s.ambient_player {
+                                    player.set_volume(vol);
                                 }
                             }
                         }
                         AudioCommand::Shutdown => {
                             tracing::debug!("🔊 [OOBE] Audio thread shutting down");
                             if let Some(ref mut s) = state {
-                                if let Some(sink) = s.ambient_sink.take() {
-                                    sink.stop();
+                                if let Some(player) = s.ambient_player.take() {
+                                    player.stop();
                                 }
                             }
                             break;
