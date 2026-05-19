@@ -418,10 +418,10 @@ pub fn log_error(message: String) {
 ///
 /// # Notes
 /// Use only for debugging or enforcing critical invariants. Panics will terminate execution.
-/// # Assert True
+/// # Assert True (with message)
 /// Asserts that a condition is true; panics with message if false.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
-pub fn assert_true(condition: bool, message: String) {
+pub fn assert_true_msg(condition: bool, message: String) {
     if !condition {
         panic!("Assertion failed: {}", message);
     }

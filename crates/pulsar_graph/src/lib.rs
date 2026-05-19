@@ -381,71 +381,39 @@ pub enum PinType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DataType {
     Execution,
-    Typed(TypeInfo),
-    Any, // Typeless - matches with any type (used for reroute nodes)
-    // Legacy types for backward compatibility
-    String,
-    Number,
-    Boolean,
-    Vector2,
-    Vector3,
-    Color,
-    Object,
-    Array(Box<DataType>),
+    Data(TypeInfo),
 }
 
 impl DataType {
     /// Create a DataType from a type string
     pub fn from_type_str(type_str: &str) -> Self {
-        match type_str {
-            "execution" => DataType::Execution,
-            // Parse as TypeInfo for proper type system support
-            _ => DataType::Typed(TypeInfo::parse(type_str)),
+        let type_str = type_str.trim();
+
+        if type_str.eq_ignore_ascii_case("execution") || type_str == "()" {
+            return DataType::Execution;
         }
+
+        DataType::Data(TypeInfo::parse(&canonicalize_legacy_type_str(type_str)))
     }
 
     /// Get the TypeInfo for this DataType (if applicable)
     pub fn type_info(&self) -> Option<&TypeInfo> {
         match self {
-            DataType::Typed(type_info) => Some(type_info),
+            DataType::Data(type_info) => Some(type_info),
             _ => None,
         }
     }
 
     /// Get the Rust type string representation for tooltip display
     pub fn rust_type_string(&self) -> String {
-        match self {
-            DataType::Execution => "()".to_string(), // Execution flow has no data type
-            DataType::Typed(type_info) => type_info.to_string(),
-            DataType::Any => "Any".to_string(), // Typeless reroute node
-            DataType::String => "String".to_string(),
-            DataType::Number => "f64".to_string(),
-            DataType::Boolean => "bool".to_string(),
-            DataType::Vector2 => "(f32, f32)".to_string(),
-            DataType::Vector3 => "(f32, f32, f32)".to_string(),
-            DataType::Color => "(f32, f32, f32, f32)".to_string(),
-            DataType::Object => "dyn Any".to_string(),
-            DataType::Array(inner) => format!("Vec<{}>", inner.rust_type_string()),
-        }
+        self.to_string()
     }
 
     /// Check if this DataType is compatible with another
     pub fn is_compatible_with(&self, other: &DataType) -> bool {
         match (self, other) {
-            // Any type is compatible with everything (for typeless reroute nodes)
-            (DataType::Any, _) | (_, DataType::Any) => true,
             (DataType::Execution, DataType::Execution) => true,
-            (DataType::Typed(a), DataType::Typed(b)) => a.is_compatible_with(b),
-            // Legacy compatibility
-            (DataType::String, DataType::String) => true,
-            (DataType::Number, DataType::Number) => true,
-            (DataType::Boolean, DataType::Boolean) => true,
-            (DataType::Vector2, DataType::Vector2) => true,
-            (DataType::Vector3, DataType::Vector3) => true,
-            (DataType::Color, DataType::Color) => true,
-            (DataType::Object, DataType::Object) => true,
-            // Array compatibility
-            (DataType::Array(a), DataType::Array(b)) => a.is_compatible_with(b),
+            (DataType::Data(a), DataType::Data(b)) => a.is_compatible_with(b),
             _ => false,
         }
     }
@@ -463,105 +431,14 @@ impl DataType {
                 icon: PinIcon::Triangle,
                 is_rainbow: false,
             },
-            DataType::Typed(type_info) => type_info.generate_pin_style(),
-            DataType::Any => PinStyle {
-                color: PinColor {
-                    r: 0.5,
-                    g: 0.5,
-                    b: 0.5,
-                    a: 1.0,
-                }, // Gray for typeless
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            // Legacy types
-            DataType::String => PinStyle {
-                color: PinColor {
-                    r: 0.0,
-                    g: 1.0,
-                    b: 0.0,
-                    a: 1.0,
-                }, // Green
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            DataType::Number => PinStyle {
-                color: PinColor {
-                    r: 0.0,
-                    g: 0.0,
-                    b: 1.0,
-                    a: 1.0,
-                }, // Blue
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            DataType::Boolean => PinStyle {
-                color: PinColor {
-                    r: 1.0,
-                    g: 1.0,
-                    b: 0.0,
-                    a: 1.0,
-                }, // Yellow
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            DataType::Vector2 | DataType::Vector3 => PinStyle {
-                color: PinColor {
-                    r: 1.0,
-                    g: 0.0,
-                    b: 1.0,
-                    a: 1.0,
-                }, // Magenta
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            DataType::Color => PinStyle {
-                color: PinColor {
-                    r: 0.5,
-                    g: 0.5,
-                    b: 0.5,
-                    a: 1.0,
-                }, // Gray
-                icon: PinIcon::Circle,
-                is_rainbow: false,
-            },
-            DataType::Object => PinStyle {
-                color: PinColor {
-                    r: 0.8,
-                    g: 0.4,
-                    b: 0.2,
-                    a: 1.0,
-                }, // Brown
-                icon: PinIcon::Hexagon,
-                is_rainbow: false,
-            },
-            DataType::Array(_) => PinStyle {
-                color: PinColor {
-                    r: 0.0,
-                    g: 0.8,
-                    b: 0.8,
-                    a: 1.0,
-                }, // Cyan
-                icon: PinIcon::Square,
-                is_rainbow: false,
-            },
+            DataType::Data(type_info) => type_info.generate_pin_style(),
         }
     }
 }
 
 impl PartialEq<&str> for DataType {
     fn eq(&self, other: &&str) -> bool {
-        matches!(
-            (self, *other),
-            (DataType::Execution, "execution")
-                | (DataType::String, "string")
-                | (DataType::Number, "number")
-                | (DataType::Boolean, "boolean")
-                | (DataType::Vector2, "vector2")
-                | (DataType::Vector3, "vector3")
-                | (DataType::Color, "color")
-                | (DataType::Object, "object")
-        )
+        self.to_string() == *other
     }
 }
 
@@ -569,18 +446,27 @@ impl std::fmt::Display for DataType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DataType::Execution => write!(f, "execution"),
-            DataType::Typed(type_info) => write!(f, "{}", type_info),
-            DataType::Any => write!(f, "any"),
-            // Legacy types
-            DataType::String => write!(f, "string"),
-            DataType::Number => write!(f, "number"),
-            DataType::Boolean => write!(f, "boolean"),
-            DataType::Vector2 => write!(f, "vector2"),
-            DataType::Vector3 => write!(f, "vector3"),
-            DataType::Color => write!(f, "color"),
-            DataType::Object => write!(f, "object"),
-            DataType::Array(inner) => write!(f, "array<{}>", inner),
+            DataType::Data(type_info) => write!(f, "{}", type_info),
         }
+    }
+}
+
+fn canonicalize_legacy_type_str(type_str: &str) -> String {
+    let trimmed = type_str.trim();
+    match trimmed {
+        "any" | "Any" => "?".to_string(),
+        "string" | "String" => "String".to_string(),
+        "number" | "Number" => "f64".to_string(),
+        "boolean" | "Boolean" => "bool".to_string(),
+        "vector2" | "Vector2" => "(f32, f32)".to_string(),
+        "vector3" | "Vector3" => "(f32, f32, f32)".to_string(),
+        "color" | "Color" => "(f32, f32, f32, f32)".to_string(),
+        "object" | "Object" => "dyn Any".to_string(),
+        _ if trimmed.starts_with("array<") && trimmed.ends_with('>') => {
+            let inner = &trimmed[6..trimmed.len() - 1];
+            format!("Vec<{}>", canonicalize_legacy_type_str(inner))
+        }
+        _ => trimmed.to_string(),
     }
 }
 

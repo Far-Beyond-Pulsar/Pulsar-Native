@@ -608,7 +608,7 @@ pub fn do_n(n: i64, reset: bool) {
 /// # Delay
 /// Pauses execution for a specified duration in milliseconds.
 /// WARNING: Blocks the current thread during the delay.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", wasm_safe: false)]
 pub fn delay(milliseconds: i64) {
     std::thread::sleep(std::time::Duration::from_millis(milliseconds as u64));
 }
@@ -637,7 +637,7 @@ pub fn delay(milliseconds: i64) {
 /// # Retriggerable Delay
 /// Delay that resets if triggered again before completion.
 /// Useful for debouncing or waiting for a period of inactivity.
-#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0")]
+#[blueprint(type: NodeTypes::control_flow, category: "Flow", color: "#BD10E0", wasm_safe: false)]
 pub fn retriggerable_delay(delay_ms: i64) {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};

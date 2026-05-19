@@ -137,3 +137,27 @@ pub fn color_lerp(
         a1 + (a2 - a1) * t,
     )
 }
+
+// =============================================================================
+// Color Assertions
+// =============================================================================
+
+/// Returns true if two colors are approximately equal within epsilon.
+///
+/// Compares each RGBA component independently.
+/// # Color Eq Approx
+/// Returns true if two colors are equal within epsilon.
+#[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
+pub fn color_eq_approx(
+    a: (f32, f32, f32, f32),
+    b: (f32, f32, f32, f32),
+    epsilon: f32,
+) -> bool {
+    let (r1, g1, b1, a1) = a;
+    let (r2, g2, b2, a2) = b;
+    (r1 - r2).abs() <= epsilon
+        && (g1 - g2).abs() <= epsilon
+        && (b1 - b2).abs() <= epsilon
+        && (a1 - a2).abs() <= epsilon
+}
+

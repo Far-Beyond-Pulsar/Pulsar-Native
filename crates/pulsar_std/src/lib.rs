@@ -12,6 +12,28 @@ pub mod registry;
 pub mod type_constructors;
 pub use registry::*;
 
+// ── Runtime type descriptor ───────────────────────────────────────────────────
+//
+// `TypeSlot` carries the size and alignment of a generic type parameter `T`
+// resolved at graph-compile time.  Every dispatch function receives a pointer
+// to an array of these as its third argument; concrete (non-generic) functions
+// simply ignore it.
+
+/// ABI-stable runtime descriptor for a single type parameter.
+///
+/// Stored inside the byte arena (via `Instruction::InitTypeSlot`) and passed
+/// as the third argument to every `__bp_dispatch_*` symbol.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypeSlot {
+    /// `std::mem::size_of::<T>()` resolved at graph-compile time.
+    pub size:  usize,
+    /// `std::mem::align_of::<T>()` resolved at graph-compile time.
+    pub align: usize,
+}
+
+
+
 // Re-export macros
 pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output};
 
@@ -43,7 +65,11 @@ pub enum NodeTypes {
 
 pub mod engine;
 pub use engine::*;
+
+// experimental contains Lua scripting and other native-only nodes
+#[cfg(feature = "native")]
 pub mod experimental;
+#[cfg(feature = "native")]
 pub use experimental::*;
 
 // This is how engine detects Your nodes, enter your node folder name (it must have an mod.rs)

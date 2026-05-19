@@ -3,9 +3,21 @@ name = "pulsar_std"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+# rlib for normal dependency use; cdylib when pulsar_std_bundle's build.rs compiles
+# it as a native shared library to embed in the executor bundle.
+crate-type = ["rlib", "cdylib"]
+
+[features]
+default = ["native"]
+# native: full stdlib including threading, Lua scripting, and the linkme registry
+native = ["dep:rlua", "dep:linkme"]
+
 [dependencies]
 pulsar_macros = { path = "../pulsar_macros" }
-linkme = "0.3"
-rand = "0.9.2"
-rlua = "0.20" 
-tracing = "0.1.41"
+linkme         = { version = "0.3", optional = true }
+tracing        = "0.1.41"
+rand           = { version = "0.9.2", features = [] }
+
+# rlua is native-only (links to liblua, uses pthreads)
+rlua = { version = "0.20", optional = true }
