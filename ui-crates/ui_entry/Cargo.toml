@@ -41,7 +41,7 @@ smol = "2"
 tracing.workspace = true
 
 # Audio
-rodio = { version = "0.19", default-features = false, features = ["mp3"] }
+rodio = { version = "0.22.2", default-features = false, features = ["mp3", "playback"] }
 
 [target.'cfg(windows)'.dependencies]
 runas = "1.2"
