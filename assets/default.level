@@ -91,7 +91,7 @@
     },
     {
       "id": "object_4",
-      "name": "Yellow Light",
+      "name": "Yellowish Light",
       "object_type": {
         "Light": "Point"
       },
@@ -117,7 +117,7 @@
       "parent": null,
       "children": [],
       "components": [],
-      "scene_path": "Yellow Light"
+      "scene_path": "Yellowish Light"
     },
     {
       "id": "object_5",
@@ -307,12 +307,12 @@
       },
       "transform": {
         "position": [
-          -4.0,
+          -3.9024816,
           3.2,
           0.0
         ],
         "rotation": [
-          0.0,
+          -0.0,
           0.0,
           0.0
         ],
@@ -398,11 +398,11 @@
       "transform": {
         "position": [
           4.5,
-          3.5,
+          3.048923,
           0.0
         ],
         "rotation": [
-          0.0,
+          -0.0,
           50.0,
           0.0
         ],
@@ -487,19 +487,19 @@
       },
       "transform": {
         "position": [
-          -1.0,
-          0.6,
-          -4.5
+          -0.41486567,
+          3.4127965,
+          -2.3162496
         ],
         "rotation": [
-          -25.0,
-          15.0,
-          0.0
+          0.2511894,
+          15.000006,
+          -9.404941e-7
         ],
         "scale": [
           1.0,
-          1.0,
-          1.5
+          0.99999994,
+          1.5000001
         ]
       },
       "visible": true,
@@ -661,8 +661,8 @@
     }
   ],
   "metadata": {
-    "created": "2026-05-19T19:18:06.205730+00:00",
-    "modified": "2026-05-19T19:18:06.205730+00:00",
+    "created": "2026-05-19T19:45:28.777810+00:00",
+    "modified": "2026-05-19T19:45:28.777810+00:00",
     "editor_version": "0.1.0"
   }
 }
