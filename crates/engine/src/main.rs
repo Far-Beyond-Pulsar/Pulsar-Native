@@ -320,12 +320,38 @@ fn main() {
         ))
         .unwrap();
 
-    // Task 8: Set Global (depends on engine context)
+    // Task 7b: Dev Detection (depends on engine context, before set_global)
+    graph
+        .add_task(InitTask::new(
+            DEV_DETECT,
+            "Dev/Source Detection",
+            vec![ENGINE_CONTEXT],
+            Box::new(|ctx| {
+                let engine_context = ctx.engine_context.as_ref().ok_or_else(|| {
+                    init::InitError::MissingContext("Engine context not initialized")
+                })?;
+
+                let dev = engine_state::DevContext::detect();
+                if dev.is_source_build {
+                    tracing::info!(
+                        "Source build detected — workspace root: {:?}",
+                        dev.source_path
+                    );
+                } else {
+                    tracing::debug!("Running from installed/distributed binary");
+                }
+                *engine_context.dev.write() = dev;
+                Ok(())
+            }),
+        ))
+        .unwrap();
+
+    // Task 8: Set Global (depends on dev detection)
     graph
         .add_task(InitTask::new(
             SET_GLOBAL,
             "Set Global Context",
-            vec![ENGINE_CONTEXT],
+            vec![DEV_DETECT],
             Box::new(|ctx| {
                 let engine_context = ctx.engine_context.as_ref().ok_or_else(|| {
                     init::InitError::MissingContext("Engine context not initialized")

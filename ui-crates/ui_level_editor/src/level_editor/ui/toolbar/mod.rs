@@ -1,10 +1,11 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme,
+    h_flex, notification::Notification, ActiveTheme, ContextModal as _,
 };
 
 mod actions;
@@ -92,6 +93,10 @@ impl ToolbarPanel {
             .child(BuildCoreButton::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
             .child(self.render_save_button(state_arc.clone()))
+            .when(Self::is_source_build(), |el| {
+                el.child(self.render_separator(cx))
+                    .child(self.render_save_as_default_button(state_arc.clone()))
+            })
             .child(self.render_separator(cx))
             .child(self.render_profiling_button(state, state_arc.clone(), cx))
     }
@@ -148,6 +153,72 @@ impl ToolbarPanel {
                     }
                     Err(e) => {
                         tracing::error!("Save failed: {e}");
+                    }
+                }
+            })
+    }
+
+    fn is_source_build() -> bool {
+        engine_state::EngineContext::global()
+            .map(|ctx| ctx.dev.read().is_source_build)
+            .unwrap_or(false)
+    }
+
+    fn render_save_as_default_button(
+        &self,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    ) -> impl IntoElement {
+        let state_clone = state_arc.clone();
+        Button::new("save_as_default_level")
+            .label("Save as Default")
+            .icon(ui::IconName::Star)
+            .tooltip("Save this scene as the engine's built-in default level (source builds only)")
+            .on_click(move |_, window, cx| {
+                // Resolve the target path: <workspace_root>/assets/default.level
+                let target_path = engine_state::EngineContext::global()
+                    .and_then(|ctx| ctx.dev.read().source_path.clone())
+                    .map(|root| root.join("assets").join("default.level"));
+
+                let Some(path) = target_path else {
+                    window.push_notification(
+                        ui::notification::Notification::error("Save as Default Level")
+                            .message("Cannot determine workspace root — is this a source build?"),
+                        cx,
+                    );
+                    return;
+                };
+
+                if let Some(parent) = path.parent() {
+                    if let Err(e) = std::fs::create_dir_all(parent) {
+                        window.push_notification(
+                            ui::notification::Notification::error("Save as Default Level")
+                                .message(format!("Could not create assets directory: {e}")),
+                            cx,
+                        );
+                        return;
+                    }
+                }
+
+                let save_result = {
+                    let state = state_clone.read();
+                    state.scene_database.save_to_file(&path)
+                };
+
+                match save_result {
+                    Ok(_) => {
+                        tracing::info!("Default level saved to {:?}", path);
+                        window.push_notification(
+                            ui::notification::Notification::success("Save as Default Level")
+                                .message(format!("Saved to {}", path.display())),
+                            cx,
+                        );
+                    }
+                    Err(e) => {
+                        window.push_notification(
+                            ui::notification::Notification::error("Save as Default Level")
+                                .message(format!("Save failed: {e}")),
+                            cx,
+                        );
                     }
                 }
             })

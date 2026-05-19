@@ -23,3 +23,12 @@ pub struct SetTargetPlatform(pub TargetPlatform);
 #[derive(Action, Clone, PartialEq, Default)]
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct BuildCore;
+
+/// Save the current scene as the engine's built-in default level.
+///
+/// Only available in source builds (binary lives in `target/{debug,release}/`).
+/// Writes to `<workspace_root>/assets/default.level` so the next compile bakes
+/// the scene as the level the engine opens when it cannot find a project.
+#[derive(Action, Clone, PartialEq, Default)]
+#[action(namespace = level_editor_toolbar, no_json)]
+pub struct SaveAsDefaultLevel;

@@ -13597,6 +13597,7 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_state",
  "gpui-ce",
  "parking_lot",
  "rust-i18n",

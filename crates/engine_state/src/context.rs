@@ -38,6 +38,60 @@ impl WindowContext {
     }
 }
 
+/// Context populated at startup describing whether the engine is running from a
+/// source build (i.e. directly out of `target/{debug,release}/`).
+///
+/// When `is_source_build` is true, `source_path` holds the workspace root (the
+/// directory that contains the `target/` folder).  UI subsystems can gate
+/// developer-only features on this field.
+#[derive(Clone, Debug, Default)]
+pub struct DevContext {
+    /// True when the binary lives inside a `target/{debug,release}/` tree.
+    pub is_source_build: bool,
+    /// Absolute path to the workspace root (parent of `target/`).
+    /// `None` when `is_source_build` is false.
+    pub source_path: Option<PathBuf>,
+}
+
+impl DevContext {
+    /// Detect whether the current executable was launched from a Cargo output
+    /// directory and, if so, return the inferred workspace root.
+    pub fn detect() -> Self {
+        let Ok(exe) = std::env::current_exe() else {
+            return Self::default();
+        };
+
+        // Expected layout: <workspace>/target/<profile>/binary
+        let profile_dir = match exe.parent() {
+            Some(p) => p,
+            None => return Self::default(),
+        };
+        let target_dir = match profile_dir.parent() {
+            Some(p) => p,
+            None => return Self::default(),
+        };
+
+        let profile_name = profile_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let target_name = target_dir
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+
+        if (profile_name == "debug" || profile_name == "release") && target_name == "target" {
+            let source_path = target_dir.parent().map(|p| p.to_path_buf());
+            Self {
+                is_source_build: true,
+                source_path,
+            }
+        } else {
+            Self::default()
+        }
+    }
+}
+
 /// Context for the currently open project
 #[derive(Clone, Debug)]
 pub struct ProjectContext {
@@ -122,6 +176,9 @@ pub struct EngineContext {
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
 
+    /// Developer / source-build context.  Populated during engine init.
+    pub dev: Arc<RwLock<DevContext>>,
+
     /// Monotonically increasing window ID counter (no cross-thread ordering
     /// needed — uniqueness is all that matters for IDs).
     next_id: Arc<AtomicU64>,
@@ -150,6 +207,7 @@ impl EngineContext {
             multiuser: Arc::new(RwLock::new(None)),
             type_database: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
+            dev: Arc::new(RwLock::new(DevContext::default())),
             next_id: Arc::new(AtomicU64::new(1)),
 
             window_manager: Arc::new(RwLock::new(None)),

@@ -55,7 +55,7 @@ pub use discord::DiscordPresence;
 pub use multiuser::{MultiuserContext, MultiuserStatus};
 
 // Re-export typed systems as primary API
-pub use context::{EngineContext, LaunchContext, ProjectContext, WindowContext};
+pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
 pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 
 // Re-export settings system (PulsarConfig surface)

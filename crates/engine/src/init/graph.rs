@@ -77,6 +77,7 @@ pub mod task_ids {
     pub const URI_HANDLING:     TaskId = TaskId::new("uri_handling");
     pub const ENGINE_CONTEXT:   TaskId = TaskId::new("engine_context");
     pub const URI_REGISTRATION: TaskId = TaskId::new("uri_registration");
+    pub const DEV_DETECT:       TaskId = TaskId::new("dev_detect");
 }
 
 /// Errors that can occur during initialization

@@ -15,3 +15,4 @@ anyhow.workspace = true
 rust-i18n.workspace = true
 tracing.workspace = true
 parking_lot = "0.12"
+engine_state.workspace = true

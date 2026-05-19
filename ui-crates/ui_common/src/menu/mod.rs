@@ -328,6 +328,12 @@ actions!(
         ReportIssue,
         ViewLogs,
         ReleaseNotes,
+        // Developer menu (source builds only)
+        DevSaveAsDefaultLevel,
+        DevReloadAssets,
+        DevInspectEngineState,
+        DevShowBuildInfo,
+        DevOpenWorkspaceRoot,
     ]
 );
 
@@ -1345,6 +1351,59 @@ impl Render for AppTitleBar {
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(self.child.clone()(window, cx))
                     .child(self.theme_switcher.clone())
+                    .when(
+                        engine_state::EngineContext::global()
+                            .map(|ctx| ctx.dev.read().is_source_build)
+                            .unwrap_or(false),
+                        |el| {
+                            let source_path = engine_state::EngineContext::global()
+                                .and_then(|ctx| ctx.dev.read().source_path.clone());
+                            let source_path_label = source_path
+                                .as_ref()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_else(|| "unknown".into());
+                            el.child(
+                                Button::new("dev-menu")
+                                    .label("Dev")
+                                    .icon(IconName::Bug)
+                                    .small()
+                                    .ghost()
+                                    .tooltip("Developer options (source build)")
+                                    .popup_menu(move |menu, _, _| {
+                                        menu.label("Source Build")
+                                            .separator()
+                                            .menu_with_icon(
+                                                "Save as Default Level",
+                                                IconName::Star,
+                                                Box::new(DevSaveAsDefaultLevel),
+                                            )
+                                            .menu_with_icon(
+                                                "Reload Assets",
+                                                IconName::Activity,
+                                                Box::new(DevReloadAssets),
+                                            )
+                                            .separator()
+                                            .menu_with_icon(
+                                                "Inspect Engine State",
+                                                IconName::Search,
+                                                Box::new(DevInspectEngineState),
+                                            )
+                                            .menu_with_icon(
+                                                "Show Build Info",
+                                                IconName::Info,
+                                                Box::new(DevShowBuildInfo),
+                                            )
+                                            .separator()
+                                            .label(source_path_label.clone())
+                                            .menu_with_icon(
+                                                "Open Workspace Root",
+                                                IconName::Folder,
+                                                Box::new(DevOpenWorkspaceRoot),
+                                            )
+                                    }),
+                            )
+                        },
+                    )
                     .child(
                         Button::new("theme-mode")
                             .map(|this| {
