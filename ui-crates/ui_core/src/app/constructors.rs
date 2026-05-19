@@ -99,6 +99,13 @@ impl PulsarApp {
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
 
+        // Propagate project path into EngineContext BEFORE constructing the level editor
+        // so that ensure_default_level_file() can resolve the project root correctly.
+        if let Some(ref path) = project_path {
+            engine_state::set_project_path(path.to_string_lossy().into_owned());
+            tracing::info!("Set engine project path to {:?}", path);
+        }
+
         // Create center dock item with level editor tab if requested
         let center_dock_item = if create_level_editor {
             let level_editor = if let Some(wid) = window_id {
@@ -158,12 +165,6 @@ impl PulsarApp {
 
         // Store project_path before moving it
         let has_project = project_path.is_some();
-
-        // Propagate project path into EngineContext so all subsystems can read it.
-        if let Some(ref path) = project_path {
-            engine_state::set_project_path(path.to_string_lossy().into_owned());
-            tracing::info!("Set engine project path to {:?}", path);
-        }
 
         // Create drawers
         let file_manager_drawer =
