@@ -27,7 +27,7 @@ pulsar_physics.workspace = true
 profiling.workspace = true
 
 # Helio renderer and asset loading
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6320b6cec9419097c4500c86574499492a0a94d0" }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "45b62f9576c50bb636a9c6d0a5b6a2626e733f1f" }
 glam.workspace = true
 
 # Standard dependencies

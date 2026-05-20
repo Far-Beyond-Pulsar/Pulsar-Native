@@ -157,12 +157,14 @@ fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
 
 // ── Per-mesh-type cache ───────────────────────────────────────────────────────
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum MeshKey {
     Cube,
     Sphere,
     Plane,
     Cylinder,
+    /// Arbitrary file path — loaded via helio_asset_compat.
+    File(String),
 }
 
 impl From<MeshType> for MeshKey {
@@ -175,26 +177,57 @@ impl From<MeshType> for MeshKey {
     }
 }
 
-fn mesh_for_key(key: MeshKey) -> MeshUpload {
+fn mesh_for_key(key: &MeshKey) -> MeshUpload {
     match key {
         MeshKey::Cube | MeshKey::Cylinder => box_mesh([0.5, 0.5, 0.5]),
         MeshKey::Sphere => sphere_mesh(0.5),
         MeshKey::Plane => plane_mesh(5.0),
+        MeshKey::File(path) => load_fbx_mesh(path),
     }
 }
 
+/// Resolve a `mesh_asset` prop value to a MeshKey.
+/// Any path that points to a real file becomes `MeshKey::File`;
+/// otherwise we leave it as `None` so the caller falls back to the object type default.
 fn mesh_key_from_asset_path(path: &str) -> Option<MeshKey> {
-    let file_name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
-    if file_name.contains("sphere") {
-        Some(MeshKey::Sphere)
-    } else if file_name.contains("cyl") {
-        Some(MeshKey::Cylinder)
-    } else if file_name.contains("plane") {
-        Some(MeshKey::Plane)
-    } else if file_name.contains("cube") || file_name.contains("box") {
-        Some(MeshKey::Cube)
+    if path.is_empty() {
+        return None;
+    }
+    let abs = if std::path::Path::new(path).is_absolute() {
+        std::path::PathBuf::from(path)
+    } else if let Some(root) = engine_state::get_project_path() {
+        std::path::PathBuf::from(root).join(path)
+    } else {
+        std::path::PathBuf::from(path)
+    };
+    if abs.exists() {
+        Some(MeshKey::File(abs.to_string_lossy().into_owned()))
     } else {
         None
+    }
+}
+
+/// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
+/// Falls back to a unit cube on error.
+fn load_fbx_mesh(path: &str) -> MeshUpload {
+    let cfg = helio_asset_compat::LoadConfig {
+        flip_uv_y: true,
+        merge_meshes: true,
+        import_scale: glam::Vec3::ONE,
+    };
+    match helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg) {
+        Ok(scene) => {
+            if let Some(mesh) = scene.meshes.into_iter().next() {
+                MeshUpload { vertices: mesh.vertices, indices: mesh.indices }
+            } else {
+                tracing::warn!("load_fbx_mesh: no meshes in {:?}, using fallback cube", path);
+                box_mesh([0.5, 0.5, 0.5])
+            }
+        }
+        Err(e) => {
+            tracing::error!("load_fbx_mesh: failed to load {:?}: {}", path, e);
+            box_mesh([0.5, 0.5, 0.5])
+        }
     }
 }
 
@@ -248,7 +281,7 @@ struct HelioInner {
     light_map: HashMap<String, LightId>,
     /// LightId → SceneDb id reverse index (built alongside light_map).
     light_id_to_scene: HashMap<LightId, String>,
-    /// MeshKey → (MeshId, MaterialId) shared across objects of that shape.
+    /// MeshKey → (MeshId, MaterialId) shared across objects of that shape/file.
     mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
     /// Helio editor state for gizmo management
     editor_state: EditorState,
@@ -1025,8 +1058,8 @@ impl HelioRenderer {
                         .unwrap_or_else(|| MeshKey::from(mt));
 
                     let is_new = !inner.mesh_cache.contains_key(&key);
-                    let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
-                        let upload = mesh_for_key(key);
+                    let (mesh_id, mat_id) = *inner.mesh_cache.entry(key.clone()).or_insert_with(|| {
+                        let upload = mesh_for_key(&key);
                         let mid = inner
                             .renderer
                             .scene_mut()
@@ -1038,7 +1071,7 @@ impl HelioRenderer {
                         (mid, matid)
                     });
                     if is_new {
-                        inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(key));
+                        inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(&key));
                     }
 
                     let transform = build_transform(snap);
