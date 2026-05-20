@@ -57,15 +57,22 @@ impl MeshAssetPicker {
     ) -> Self {
         let selected_path = selected_path.into();
         let mut assets = BTreeSet::new();
+        
+        tracing::debug!("[MeshAssetPicker::new] builtins.len() = {}", builtins.len());
         for builtin in builtins {
-            assets.insert(normalize_asset_path(&builtin));
+            let normalized = normalize_asset_path(&builtin);
+            tracing::debug!("[MeshAssetPicker::new] adding builtin: {} -> {}", builtin, normalized);
+            assets.insert(normalized);
         }
 
         if let Some(root) = project_root {
             for path in query_assets(&root, &queries) {
+                tracing::debug!("[MeshAssetPicker::new] adding queried asset: {}", path);
                 assets.insert(path);
             }
         }
+
+        tracing::debug!("[MeshAssetPicker::new] total assets collected: {}", assets.len());
 
         let items = assets
             .into_iter()
@@ -112,6 +119,8 @@ impl Render for MeshAssetPicker {
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     let mut out = BTreeSet::new();
     let assets_root = project_root.join("assets");
+    
+    tracing::debug!("[query_assets] project_root={:?}, assets_root={:?}", project_root, assets_root);
 
     let extension_queries = queries
         .iter()
@@ -121,21 +130,32 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
         })
         .collect::<Vec<_>>();
 
+    tracing::debug!("[query_assets] extension_queries={:?}", extension_queries);
+
     if !extension_queries.is_empty() {
-        if let Ok(entries) = engine_fs::virtual_fs::manifest(&assets_root) {
-            for entry in entries {
-                if entry.is_dir {
-                    continue;
-                }
-                if let Some(ext) = Path::new(&entry.path)
-                    .extension()
-                    .and_then(|v| v.to_str())
-                    .map(|v| v.to_ascii_lowercase())
-                {
-                    if extension_queries.iter().any(|e| e == &ext) {
-                        out.insert(normalize_asset_path(format!("assets/{}", entry.path)));
+        match engine_fs::virtual_fs::manifest(&assets_root) {
+            Ok(entries) => {
+                tracing::debug!("[query_assets] manifest found {} entries", entries.len());
+                for entry in entries {
+                    if entry.is_dir {
+                        continue;
+                    }
+                    if let Some(ext) = Path::new(&entry.path)
+                        .extension()
+                        .and_then(|v| v.to_str())
+                        .map(|v| v.to_ascii_lowercase())
+                    {
+                        tracing::debug!("[query_assets] checking file: {} with ext: {}", entry.path, ext);
+                        if extension_queries.iter().any(|e| e == &ext) {
+                            let final_path = normalize_asset_path(format!("assets/{}", entry.path));
+                            tracing::debug!("[query_assets] matched: {}", final_path);
+                            out.insert(final_path);
+                        }
                     }
                 }
+            }
+            Err(e) => {
+                tracing::warn!("[query_assets] manifest error: {:?}", e);
             }
         }
     }

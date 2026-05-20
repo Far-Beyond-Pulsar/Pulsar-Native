@@ -308,7 +308,10 @@ impl ObjectTypeFieldsSection {
             "meshes/primitives/SM_Cylinder.fbx".to_string(),
             "meshes/primitives/SM_Plane.fbx".to_string(),
         ];
-        let project_root = std::env::current_dir().ok();
+        
+        let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
+        tracing::debug!("[ensure_mesh_asset_picker] project_root = {:?}", project_root);
+        tracing::debug!("[ensure_mesh_asset_picker] builtins = {:?}", builtins);
         let queries = vec![AssetQuery::extension("fbx"), AssetQuery::file_type("fbx")];
         let picker = cx.new(|cx| {
             MeshAssetPicker::new(current.to_string(), builtins, project_root, queries, window, cx)
