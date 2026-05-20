@@ -15,6 +15,8 @@ serde_json = "1.0"
 notify = "8.2.0"
 walkdir = "2.5"
 profiling = { path = "../profiling" }
+image = { workspace = true }
+helio-snapshot = { workspace = true }
 parking_lot = "0.12"
 urlencoding = { workspace = true }
 ureq = { version = "2.10", features = ["json"] }

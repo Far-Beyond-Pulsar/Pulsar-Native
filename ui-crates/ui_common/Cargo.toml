@@ -15,6 +15,9 @@ anyhow.workspace = true
 rust-i18n.workspace = true
 tracing.workspace = true
 parking_lot = "0.12"
+image.workspace = true
+smallvec.workspace = true
+smol = { workspace = true }
 engine_state.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true

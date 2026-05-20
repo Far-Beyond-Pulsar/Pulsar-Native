@@ -21,6 +21,11 @@ pub use searchable_list::{
     SearchableList, SearchableListEvent, SearchableListItemAction, SearchableListItemState,
 };
 
+mod asset_searchable_list;
+pub use asset_searchable_list::{
+    AssetListItemAction, AssetListItemState, AssetSearchableList, AssetSearchableListEvent,
+};
+
 #[derive(Clone)]
 pub enum ListEvent {
     /// Single click or move to selected row.

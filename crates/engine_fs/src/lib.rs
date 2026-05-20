@@ -28,6 +28,7 @@ pub mod operations;
 pub mod providers;
 mod scanner;
 pub mod templates;
+pub mod thumbnails;
 pub mod tooling;
 pub mod virtual_fs;
 pub mod watchers;

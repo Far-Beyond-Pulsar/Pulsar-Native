@@ -1,17 +1,20 @@
 use gpui::{prelude::*, *};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use ui::{
-    dropdown::{SearchableList, SearchableListEvent},
-    IconName,
-};
+use std::sync::Arc;
+use ui::dropdown::{AssetSearchableList, AssetSearchableListEvent};
 
 #[derive(Debug, Clone, Copy)]
 pub struct AssetPickedEvent;
 
 #[derive(Clone)]
 struct AssetItem {
+    /// Filename component shown as the primary title (e.g. "SM_Cube.fbx").
+    display_name: String,
+    /// Full relative asset path shown as the secondary description.
     path: String,
+    /// Rendered thumbnail — `None` while loading or unavailable.
+    thumbnail: Option<Arc<gpui::RenderImage>>,
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +34,18 @@ impl AssetQuery {
 }
 
 pub struct MeshAssetPicker {
-    searchable_list: Entity<SearchableList<AssetItem>>,
+    searchable_list: Entity<AssetSearchableList<AssetItem>>,
+    /// Source-of-truth item list — thumbnails are written here as they load.
+    items: Vec<AssetItem>,
+    /// Tracks which paths have already had a thumbnail task spawned so we don't double-spawn.
+    thumbnail_requested: std::collections::HashSet<String>,
+    /// Project root — used to resolve relative project asset paths.
+    project_root: Option<PathBuf>,
+    /// Engine assets root — used to resolve relative builtin paths (e.g. "meshes/primitives/SM_Cube.fbx").
+    engine_assets_root: PathBuf,
+    /// Root passed to engine_fs thumbnail cache. For project assets this is the
+    /// project root; for engine builtins it falls back to cwd (alongside `assets/`).
+    thumbnail_cache_root: PathBuf,
     selected_path: String,
     _subscriptions: Vec<Subscription>,
 }
@@ -57,45 +71,66 @@ impl MeshAssetPicker {
         let selected_path = selected_path.into();
         let mut assets = BTreeSet::new();
 
-        println!("[MeshAssetPicker::new] builtins.len() = {}", builtins.len());
         for builtin in builtins {
-            let normalized = normalize_asset_path(&builtin);
-            println!(
-                "[MeshAssetPicker::new] adding builtin: {} -> {}",
-                builtin, normalized
-            );
-            assets.insert(normalized);
+            assets.insert(normalize_asset_path(&builtin));
         }
 
-        if let Some(root) = project_root {
-            for path in query_assets(&root, &queries) {
-                println!("[MeshAssetPicker::new] adding queried asset: {}", path);
+        if let Some(root) = project_root.as_ref() {
+            for path in query_assets(root, &queries) {
                 assets.insert(path);
             }
         }
 
-        println!(
-            "[MeshAssetPicker::new] total assets collected: {}",
-            assets.len()
-        );
-
-        let items = assets
+        let items: Vec<AssetItem> = assets
             .into_iter()
-            .map(|path| AssetItem { path })
-            .collect::<Vec<_>>();
+            .map(|path| {
+                let display_name = Path::new(&path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| path.clone());
+                AssetItem { display_name, path, thumbnail: None }
+            })
+            .collect();
+
+        // Engine assets root: current working directory + "assets" (where builtins live).
+        let engine_assets_root = std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join("assets");
+
+        // Thumbnail cache root: project root if available, else cwd.
+        let thumbnail_cache_root = project_root
+            .clone()
+            .unwrap_or_else(|| engine_assets_root.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")));
 
         let searchable_list = cx.new(|cx| {
-            SearchableList::new(window, cx, items, |item| item.path.clone())
-                .with_empty_text("No matching assets")
-                .with_max_width(px(360.0))
-                .with_max_height(px(420.0))
-                .with_icon_getter(|_| IconName::Code)
+            AssetSearchableList::new(
+                window,
+                cx,
+                items.clone(),
+                |item| item.display_name.clone(),
+                |item| item.path.clone(),
+            )
+            .with_image_getter(|item| {
+                item.thumbnail
+                    .clone()
+                    .map(ImageSource::Render)
+                    .unwrap_or_else(|| {
+                        // Transparent 1×1 placeholder while thumbnail loads.
+                        let frame = gpui::Frame::new(image::RgbaImage::new(1, 1));
+                        ImageSource::Render(Arc::new(gpui::RenderImage::new(
+                            smallvec::smallvec![frame],
+                        )))
+                    })
+            })
+            .with_empty_text("No matching assets")
+            .with_max_width(px(360.0))
+            .with_max_height(px(420.0))
         });
 
         let subscriptions = vec![cx.subscribe(
             &searchable_list,
-            |this, _, event: &SearchableListEvent<AssetItem>, cx| {
-                if let SearchableListEvent::Select(item) = event {
+            |this, _, event: &AssetSearchableListEvent<AssetItem>, cx| {
+                if let AssetSearchableListEvent::Select(item) = event {
                     this.selected_path = item.path.clone();
                     cx.emit(AssetPickedEvent);
                     cx.emit(DismissEvent);
@@ -103,15 +138,101 @@ impl MeshAssetPicker {
             },
         )];
 
-        Self {
+        let mut picker = Self {
             searchable_list,
+            items,
+            thumbnail_requested: std::collections::HashSet::new(),
+            project_root,
+            engine_assets_root,
+            thumbnail_cache_root,
             selected_path,
             _subscriptions: subscriptions,
+        };
+
+        // Kick off thumbnail generation for all items immediately.
+        let paths: Vec<String> = picker.items.iter().map(|i| i.path.clone()).collect();
+        for path in paths {
+            picker.ensure_thumbnail(path, cx);
         }
+
+        picker
     }
 
     pub fn selected_path(&self) -> &str {
         &self.selected_path
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Thumbnail loading
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Resolves a relative asset path to an absolute filesystem path.
+    /// Tries: as-is (if already absolute) → project_root/path → engine_assets_root/path.
+    fn resolve_path(&self, relative: &str) -> Option<PathBuf> {
+        let p = Path::new(relative);
+        if p.is_absolute() && p.exists() {
+            return Some(p.to_path_buf());
+        }
+        if let Some(root) = &self.project_root {
+            let candidate = root.join(relative);
+            if candidate.exists() {
+                return Some(candidate);
+            }
+        }
+        let candidate = self.engine_assets_root.join(relative);
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        None
+    }
+
+    /// Spawn a background thumbnail task for `path` if not already in flight.
+    fn ensure_thumbnail(&mut self, path: String, cx: &mut Context<Self>) {
+        if self.thumbnail_requested.contains(&path) {
+            return;
+        }
+        self.thumbnail_requested.insert(path.clone());
+
+        let Some(abs_path) = self.resolve_path(&path) else {
+            // Path can't be resolved yet — skip silently.
+            return;
+        };
+
+        let cache_root = self.thumbnail_cache_root.clone();
+        let (tx, rx) = smol::channel::bounded::<Option<image::RgbaImage>>(1);
+
+        std::thread::spawn(move || {
+            // Ask engine_fs for a cached-or-generated thumbnail PNG path.
+            let result = engine_fs::thumbnails::get_or_generate_thumbnail(&abs_path, &cache_root)
+                .and_then(|png_path| image::open(&png_path).ok().map(|i| i.into_rgba8()));
+            smol::block_on(tx.send(result)).ok();
+        });
+
+        let path_key = path.clone();
+        cx.spawn(async move |this, cx| {
+            let Ok(maybe_rgba) = rx.recv().await else { return };
+            let Some(rgba) = maybe_rgba else { return };
+
+            let render_image = Arc::new(gpui::RenderImage::new(
+                smallvec::smallvec![image::Frame::new(rgba)],
+            ));
+
+            cx.update(|cx| {
+                this.update(cx, |picker, cx| {
+                    if let Some(item) = picker.items.iter_mut().find(|i| i.path == path_key) {
+                        item.thumbnail = Some(render_image);
+                    }
+                    let updated = picker.items.clone();
+                    picker.searchable_list.update(cx, |list, cx| {
+                        list.set_items(updated, cx);
+                    });
+                    cx.notify();
+                })
+                .ok();
+            })
+            .ok();
+        })
+        .detach();
     }
 }
 
@@ -124,8 +245,6 @@ impl Render for MeshAssetPicker {
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     let mut out = BTreeSet::new();
 
-    println!("[query_assets] project_root={:?}", project_root);
-
     let extension_queries = queries
         .iter()
         .filter_map(|q| match q {
@@ -134,20 +253,10 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
         })
         .collect::<Vec<_>>();
 
-    println!("[query_assets] extension_queries={:?}", extension_queries);
-
     for ext in &extension_queries {
-        let found = engine_fs::virtual_fs::find_by_extension(project_root, ext);
-        println!(
-            "[query_assets] find_by_extension({}) returned {} files",
-            ext,
-            found.len()
-        );
-        for path in found {
+        for path in engine_fs::virtual_fs::find_by_extension(project_root, ext) {
             if let Ok(rel) = path.strip_prefix(project_root) {
-                let normalized = normalize_asset_path(rel.to_string_lossy());
-                println!("[query_assets] ✓ {}", normalized);
-                out.insert(normalized);
+                out.insert(normalize_asset_path(rel.to_string_lossy()));
             }
         }
     }
@@ -158,3 +267,5 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
 fn normalize_asset_path(path: impl AsRef<str>) -> String {
     path.as_ref().replace('\\', "/")
 }
+
+

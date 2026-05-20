@@ -318,12 +318,6 @@ impl ObjectTypeFieldsSection {
         ];
 
         let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
-        println!(
-            "[ensure_mesh_asset_picker] project_root = {:?}",
-            project_root
-        );
-        println!("[ensure_mesh_asset_picker] builtins = {:?}", builtins);
-        // Use only extension filtering for now; skip file_type filtering
         let queries = vec![AssetQuery::extension("fbx")];
         let picker = cx.new(|cx| {
             MeshAssetPicker::new(
