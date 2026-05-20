@@ -108,3 +108,28 @@ pub fn metadata(path: &Path) -> Result<FsMetadata> {
 pub fn manifest(path: &Path) -> Result<Vec<ManifestEntry>> {
     global().read().manifest(path)
 }
+
+/// Return paths of all files under `root` whose extension matches `ext`
+/// (case-insensitive, without leading dot). Paths are relative to `root`.
+pub fn find_by_extension(root: &Path, ext: &str) -> Vec<std::path::PathBuf> {
+    let ext_lower = ext.trim_start_matches('.').to_ascii_lowercase();
+    match global().read().manifest(root) {
+        Ok(entries) => entries
+            .into_iter()
+            .filter(|e| !e.is_dir)
+            .filter(|e| {
+                std::path::Path::new(&e.path)
+                    .extension()
+                    .and_then(|x| x.to_str())
+                    .map(|x| x.to_ascii_lowercase())
+                    .as_deref()
+                    == Some(ext_lower.as_str())
+            })
+            .map(|e| root.join(e.path))
+            .collect(),
+        Err(e) => {
+            tracing::warn!("find_by_extension: manifest error for {:?}: {}", root, e);
+            vec![]
+        }
+    }
+}

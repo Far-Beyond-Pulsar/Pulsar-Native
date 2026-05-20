@@ -1,5 +1,4 @@
 use gpui::{prelude::*, *};
-use plugin_editor_api::FileTypeId;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use ui::{
@@ -58,21 +57,21 @@ impl MeshAssetPicker {
         let selected_path = selected_path.into();
         let mut assets = BTreeSet::new();
         
-        tracing::debug!("[MeshAssetPicker::new] builtins.len() = {}", builtins.len());
+        println!("[MeshAssetPicker::new] builtins.len() = {}", builtins.len());
         for builtin in builtins {
             let normalized = normalize_asset_path(&builtin);
-            tracing::debug!("[MeshAssetPicker::new] adding builtin: {} -> {}", builtin, normalized);
+            println!("[MeshAssetPicker::new] adding builtin: {} -> {}", builtin, normalized);
             assets.insert(normalized);
         }
 
         if let Some(root) = project_root {
             for path in query_assets(&root, &queries) {
-                tracing::debug!("[MeshAssetPicker::new] adding queried asset: {}", path);
+                println!("[MeshAssetPicker::new] adding queried asset: {}", path);
                 assets.insert(path);
             }
         }
 
-        tracing::debug!("[MeshAssetPicker::new] total assets collected: {}", assets.len());
+        println!("[MeshAssetPicker::new] total assets collected: {}", assets.len());
 
         let items = assets
             .into_iter()
@@ -118,10 +117,8 @@ impl Render for MeshAssetPicker {
 
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     let mut out = BTreeSet::new();
-    let assets_root = project_root.join("assets");
-    
-    tracing::debug!("[query_assets] project_root={:?}", project_root);
-    tracing::debug!("[query_assets] assets_root={:?}", assets_root);
+
+    println!("[query_assets] project_root={:?}", project_root);
 
     let extension_queries = queries
         .iter()
@@ -131,54 +128,16 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
         })
         .collect::<Vec<_>>();
 
-    tracing::debug!("[query_assets] extension_queries={:?}", extension_queries);
+    println!("[query_assets] extension_queries={:?}", extension_queries);
 
-    if !extension_queries.is_empty() {
-        match engine_fs::virtual_fs::manifest(&assets_root) {
-            Ok(entries) => {
-                tracing::debug!("[query_assets] manifest found {} entries in assets_root", entries.len());
-                for entry in entries {
-                    if entry.is_dir {
-                        continue;
-                    }
-                    if let Some(ext) = Path::new(&entry.path)
-                        .extension()
-                        .and_then(|v| v.to_str())
-                        .map(|v| v.to_ascii_lowercase())
-                    {
-                        if extension_queries.iter().any(|e| e == &ext) {
-                            let final_path = normalize_asset_path(format!("assets/{}", entry.path));
-                            tracing::debug!("[query_assets] ✓ matched fbx file: {} (size: {})", final_path, entry.size);
-                            out.insert(final_path);
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                tracing::warn!("[query_assets] manifest error for {}: {:?}", assets_root.display(), e);
-            }
-        }
-    }
-
-    let type_queries = queries
-        .iter()
-        .filter_map(|q| match q {
-            AssetQuery::FileType(id) => Some(id.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    if !type_queries.is_empty() {
-        if let Ok(fs) = engine_fs::EngineFs::new(project_root.to_path_buf()) {
-            for type_id in type_queries {
-                let id = FileTypeId::new(type_id);
-                for info in fs.type_database().get_by_file_type(&id) {
-                    if let Some(path) = info.file_path {
-                        if let Ok(rel) = path.strip_prefix(project_root) {
-                            out.insert(normalize_asset_path(rel.to_string_lossy()));
-                        }
-                    }
-                }
+    for ext in &extension_queries {
+        let found = engine_fs::virtual_fs::find_by_extension(project_root, ext);
+        println!("[query_assets] find_by_extension({}) returned {} files", ext, found.len());
+        for path in found {
+            if let Ok(rel) = path.strip_prefix(project_root) {
+                let normalized = normalize_asset_path(rel.to_string_lossy());
+                println!("[query_assets] ✓ {}", normalized);
+                out.insert(normalized);
             }
         }
     }
