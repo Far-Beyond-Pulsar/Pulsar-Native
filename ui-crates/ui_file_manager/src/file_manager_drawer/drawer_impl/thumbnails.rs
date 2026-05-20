@@ -36,10 +36,9 @@ impl FileManagerDrawer {
 
         let abs_path = path.to_path_buf();
         let cache_root = self.thumbnail_cache_root.clone();
-        let (tx, rx) = smol::channel::bounded::<Option<image::RgbaImage>>(1);
+        let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<image::RgbaImage>>>(1);
 
-        engine_fs::thumbnails::service().request(abs_path.clone(), cache_root, move |thumb_path| {
-            let rgba = thumb_path.and_then(|p| image::open(&p).ok().map(|i| i.into_rgba8()));
+        engine_fs::thumbnails::service().request(abs_path.clone(), cache_root, move |rgba| {
             smol::block_on(tx.send(rgba)).ok();
         });
 
@@ -50,7 +49,7 @@ impl FileManagerDrawer {
 
             let render_image = maybe_rgba.map(|rgba| {
                 std::sync::Arc::new(gpui::RenderImage::new(
-                    smallvec::smallvec![image::Frame::new(rgba)],
+                    smallvec::smallvec![image::Frame::new((*rgba).clone().into())],
                 ))
             });
 

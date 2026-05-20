@@ -203,21 +203,18 @@ impl MeshAssetPicker {
         };
 
         let cache_root = self.thumbnail_cache_root.clone();
-        let (tx, rx) = smol::channel::bounded::<Option<image::RgbaImage>>(1);
+        let (tx, rx) = smol::channel::bounded::<Option<Arc<image::RgbaImage>>>(1);
 
-        engine_fs::thumbnails::service().request(abs_path, cache_root, move |thumb_path| {
-            let rgba = thumb_path
-                .and_then(|p| image::open(&p).ok().map(|i| i.into_rgba8()));
+        engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
             smol::block_on(tx.send(rgba)).ok();
         });
 
         let path_key = path.clone();
         cx.spawn(async move |this, cx| {
-            let Ok(maybe_rgba) = rx.recv().await else { return };
-            let Some(rgba) = maybe_rgba else { return };
+            let Ok(Some(rgba)) = rx.recv().await else { return };
 
             let render_image = Arc::new(gpui::RenderImage::new(
-                smallvec::smallvec![image::Frame::new(rgba)],
+                smallvec::smallvec![image::Frame::new((*rgba).clone().into())],
             ));
 
             cx.update(|cx| {
