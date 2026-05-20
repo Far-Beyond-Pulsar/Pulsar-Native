@@ -129,7 +129,7 @@ impl MeshAssetPicker {
             },
         )];
 
-        let mut picker = Self {
+        Self {
             searchable_list,
             items,
             thumbnail_requested: std::collections::HashSet::new(),
@@ -138,15 +138,7 @@ impl MeshAssetPicker {
             thumbnail_cache_root,
             selected_path,
             _subscriptions: subscriptions,
-        };
-
-        // Kick off thumbnail generation for all items immediately.
-        let paths: Vec<String> = picker.items.iter().map(|i| i.path.clone()).collect();
-        for path in paths {
-            picker.ensure_thumbnail(path, cx);
         }
-
-        picker
     }
 
     pub fn selected_path(&self) -> &str {
@@ -237,7 +229,14 @@ impl MeshAssetPicker {
 }
 
 impl Render for MeshAssetPicker {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Mirror the file drawer: request thumbnails for each item as it becomes
+        // visible (i.e. when the picker is open and rendered). The
+        // thumbnail_requested set makes repeated render passes no-ops.
+        let paths: Vec<String> = self.items.iter().map(|i| i.path.clone()).collect();
+        for path in paths {
+            self.ensure_thumbnail(path, cx);
+        }
         self.searchable_list.clone()
     }
 }
