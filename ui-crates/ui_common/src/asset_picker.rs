@@ -116,7 +116,7 @@ impl MeshAssetPicker {
                     .map(ImageSource::Render)
                     .unwrap_or_else(|| {
                         // Transparent 1×1 placeholder while thumbnail loads.
-                        let frame = gpui::Frame::new(image::RgbaImage::new(1, 1));
+                        let frame = image::Frame::new(image::RgbaImage::new(1, 1));
                         ImageSource::Render(Arc::new(gpui::RenderImage::new(
                             smallvec::smallvec![frame],
                         )))
