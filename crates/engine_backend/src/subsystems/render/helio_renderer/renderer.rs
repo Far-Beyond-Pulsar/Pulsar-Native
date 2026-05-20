@@ -177,14 +177,14 @@ impl From<MeshType> for MeshKey {
     }
 }
 
- fn mesh_for_key(key: &MeshKey) -> Result<MeshUpload, String> {
-     match key {
-         MeshKey::Cube | MeshKey::Cylinder => Ok(box_mesh([0.5, 0.5, 0.5])),
-         MeshKey::Sphere => Ok(sphere_mesh(0.5)),
-         MeshKey::Plane => Ok(plane_mesh(5.0)),
-         MeshKey::File(path) => load_fbx_mesh(path),
-     }
- }
+fn mesh_for_key(key: &MeshKey) -> Result<MeshUpload, String> {
+    match key {
+        MeshKey::Cube | MeshKey::Cylinder => Ok(box_mesh([0.5, 0.5, 0.5])),
+        MeshKey::Sphere => Ok(sphere_mesh(0.5)),
+        MeshKey::Plane => Ok(plane_mesh(5.0)),
+        MeshKey::File(path) => load_fbx_mesh(path),
+    }
+}
 
 /// Resolve a `mesh_asset` prop value to a MeshKey.
 /// Any path that points to a real file becomes `MeshKey::File`;
@@ -207,23 +207,26 @@ fn mesh_key_from_asset_path(path: &str) -> Option<MeshKey> {
     }
 }
 
- /// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
- /// Returns an error string if loading fails — the caller decides how to handle it.
- fn load_fbx_mesh(path: &str) -> Result<MeshUpload, String> {
-     let cfg = helio_asset_compat::LoadConfig {
-         flip_uv_y: true,
-         merge_meshes: false,
-         import_scale: glam::Vec3::ONE,
-     };
-     let scene = helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg)
-         .map_err(|e| format!("Failed to load mesh asset \"{}\": {}", path, e))?;
-     scene
-         .meshes
-         .into_iter()
-         .next()
-         .map(|mesh| MeshUpload { vertices: mesh.vertices, indices: mesh.indices })
-         .ok_or_else(|| format!("Mesh asset \"{}\" contains no geometry", path))
- }
+/// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
+/// Returns an error string if loading fails — the caller decides how to handle it.
+fn load_fbx_mesh(path: &str) -> Result<MeshUpload, String> {
+    let cfg = helio_asset_compat::LoadConfig {
+        flip_uv_y: true,
+        merge_meshes: false,
+        import_scale: glam::Vec3::ONE,
+    };
+    let scene = helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg)
+        .map_err(|e| format!("Failed to load mesh asset \"{}\": {}", path, e))?;
+    scene
+        .meshes
+        .into_iter()
+        .next()
+        .map(|mesh| MeshUpload {
+            vertices: mesh.vertices,
+            indices: mesh.indices,
+        })
+        .ok_or_else(|| format!("Mesh asset \"{}\" contains no geometry", path))
+}
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -973,7 +976,11 @@ impl HelioRenderer {
         );
     }
 
-    fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
+    fn sync_scene(
+        scene_db: &crate::scene::SceneDb,
+        inner: &mut HelioInner,
+        error_queue: &Arc<Mutex<Vec<String>>>,
+    ) {
         /// Build a GpuLight from reflection-merged snapshot props.
         /// Falls back to white/default values if props are missing.
         fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {

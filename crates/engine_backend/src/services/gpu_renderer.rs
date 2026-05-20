@@ -143,7 +143,6 @@ impl GpuRenderer {
             .unwrap_or_default()
     }
 
-
     /// Camera input handle for the viewport input thread.
     pub fn camera_input(
         &self,
