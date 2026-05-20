@@ -120,7 +120,8 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     let mut out = BTreeSet::new();
     let assets_root = project_root.join("assets");
     
-    tracing::debug!("[query_assets] project_root={:?}, assets_root={:?}", project_root, assets_root);
+    tracing::debug!("[query_assets] project_root={:?}", project_root);
+    tracing::debug!("[query_assets] assets_root={:?}", assets_root);
 
     let extension_queries = queries
         .iter()
@@ -135,7 +136,7 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
     if !extension_queries.is_empty() {
         match engine_fs::virtual_fs::manifest(&assets_root) {
             Ok(entries) => {
-                tracing::debug!("[query_assets] manifest found {} entries", entries.len());
+                tracing::debug!("[query_assets] manifest found {} entries in assets_root", entries.len());
                 for entry in entries {
                     if entry.is_dir {
                         continue;
@@ -145,17 +146,16 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
                         .and_then(|v| v.to_str())
                         .map(|v| v.to_ascii_lowercase())
                     {
-                        tracing::debug!("[query_assets] checking file: {} with ext: {}", entry.path, ext);
                         if extension_queries.iter().any(|e| e == &ext) {
                             let final_path = normalize_asset_path(format!("assets/{}", entry.path));
-                            tracing::debug!("[query_assets] matched: {}", final_path);
+                            tracing::debug!("[query_assets] ✓ matched fbx file: {} (size: {})", final_path, entry.size);
                             out.insert(final_path);
                         }
                     }
                 }
             }
             Err(e) => {
-                tracing::warn!("[query_assets] manifest error: {:?}", e);
+                tracing::warn!("[query_assets] manifest error for {}: {:?}", assets_root.display(), e);
             }
         }
     }
