@@ -86,7 +86,7 @@ impl ToolbarPanel {
             .child(FeatureToggles::render(
                 state,
                 state_arc.clone(),
-                gpu_engine,
+                gpu_engine.clone(),
                 cx,
             ))
             .child(div().flex_1())
@@ -94,10 +94,10 @@ impl ToolbarPanel {
             .child(self.render_separator(cx))
             .child(BuildCoreButton::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-            .child(self.render_save_button(state_arc.clone()))
+                .child(self.render_save_button(state_arc.clone(), gpu_engine.clone()))
             .when(Self::is_source_build(), |el| {
                 el.child(self.render_separator(cx))
-                    .child(self.render_save_as_default_button(state_arc.clone()))
+                    .child(self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()))
             })
             .child(self.render_separator(cx))
             .child(self.render_profiling_button(state, state_arc.clone(), cx))
@@ -115,6 +115,7 @@ impl ToolbarPanel {
     fn render_save_button(
         &self,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) -> impl IntoElement {
         let state_clone = state_arc.clone();
         Button::new("toolbar_save_scene")
@@ -144,7 +145,18 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    state.scene_database.save_to_file(&path)
+                    let editor_camera = gpu_engine
+                        .lock()
+                        .ok()
+                        .and_then(|engine| engine.editor_camera_state())
+                        .map(|camera| crate::level_editor::scene_database::LevelEditorCameraState {
+                            position: camera.position,
+                            yaw: camera.yaw,
+                            pitch: camera.pitch,
+                        });
+                    state
+                        .scene_database
+                        .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
                 match save_result {
@@ -169,6 +181,7 @@ impl ToolbarPanel {
     fn render_save_as_default_button(
         &self,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) -> impl IntoElement {
         let state_clone = state_arc.clone();
         Button::new("save_as_default_level")
@@ -203,7 +216,18 @@ impl ToolbarPanel {
 
                 let save_result = {
                     let state = state_clone.read();
-                    state.scene_database.save_to_file(&path)
+                    let editor_camera = gpu_engine
+                        .lock()
+                        .ok()
+                        .and_then(|engine| engine.editor_camera_state())
+                        .map(|camera| crate::level_editor::scene_database::LevelEditorCameraState {
+                            position: camera.position,
+                            yaw: camera.yaw,
+                            pitch: camera.pitch,
+                        });
+                    state
+                        .scene_database
+                        .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
                 match save_result {
