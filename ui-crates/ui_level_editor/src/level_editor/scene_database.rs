@@ -11,6 +11,7 @@ use pulsar_reflection::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
@@ -503,10 +504,15 @@ impl SceneDatabase {
                 .map_err(|e| format!("Failed to create directory: {e}"))?;
         }
         let objects = self.get_all_objects();
+        let components = objects
+            .iter()
+            .map(|obj| (obj.id.clone(), self.get_components(&obj.id)))
+            .collect::<HashMap<_, _>>();
         let now = chrono::Utc::now().to_rfc3339();
         let level_file = LevelFile {
             version: "2.0".into(),
             objects,
+            components,
             metadata: LevelMetadata {
                 created: now.clone(),
                 modified: now,
@@ -533,10 +539,27 @@ impl SceneDatabase {
         }
         self.clear();
         // Objects are stored in DFS order so parents are always inserted first.
+        let has_persisted_components = !level_file.components.is_empty();
         for obj in level_file.objects {
             let parent = obj.parent.clone();
             self.add_object(obj, parent);
         }
+
+        // When present, persisted components are authoritative and replace defaults.
+        if has_persisted_components {
+            for (object_id, components) in level_file.components {
+                while !self.get_components(&object_id).is_empty() {
+                    self.remove_component(&object_id, 0);
+                }
+
+                for component in components {
+                    self.add_component(&object_id, component.class_name, component.data);
+                }
+
+                self.sync_registered_component_props_to_scene_db(&object_id);
+            }
+        }
+
         tracing::info!(
             "Scene loaded from: {} (version: {})",
             path.as_ref().display(),
@@ -654,6 +677,9 @@ impl Default for SceneDatabase {
 pub struct LevelFile {
     pub version: String,
     pub objects: Vec<SceneObjectData>,
+    /// Reflection component instances keyed by object id.
+    #[serde(default)]
+    pub components: HashMap<ObjectId, Vec<ComponentInstance>>,
     pub metadata: LevelMetadata,
 }
 
