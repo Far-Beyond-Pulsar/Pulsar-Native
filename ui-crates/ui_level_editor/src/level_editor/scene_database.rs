@@ -611,6 +611,16 @@ impl SceneDatabase {
         object_type: ObjectType,
         metadata_db: &SceneMetadataDb,
     ) {
+        fn default_mesh_asset(mesh_type: MeshType) -> &'static str {
+            match mesh_type {
+                MeshType::Cube => "meshes/primitives/SM_Cube.fbx",
+                MeshType::Sphere => "meshes/primitives/SM_Sphere.fbx",
+                MeshType::Cylinder => "meshes/primitives/SM_Cylinder.fbx",
+                MeshType::Plane => "meshes/primitives/SM_Plane.fbx",
+                MeshType::Custom => "meshes/primitives/SM_Cube.fbx",
+            }
+        }
+
         let has_component = |class_name: &str| {
             metadata_db
                 .get_components(&object_id.to_string())
@@ -628,6 +638,18 @@ impl SceneDatabase {
                     "range": 100.0
                 }),
             );
+        }
+
+        if let ObjectType::Mesh(mesh_type) = object_type {
+            if !has_component("StaticMeshComponent") {
+                metadata_db.add_component(
+                    &object_id.to_string(),
+                    "StaticMeshComponent".to_string(),
+                    serde_json::json!({
+                        "mesh_asset": default_mesh_asset(mesh_type)
+                    }),
+                );
+            }
         }
 
         if matches!(object_type, ObjectType::Mesh(_)) && !has_component("MaterialOverride") {

@@ -24,6 +24,7 @@ pub fn set_locale(locale: &str) {
 }
 
 pub mod command_palette;
+pub mod asset_picker;
 pub mod file_utils;
 pub mod generic_window;
 pub mod helpers;
@@ -34,6 +35,7 @@ pub mod shared;
 pub mod shared_state;
 
 pub use open_window::open_pulsar_window;
+pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 pub use shared_state::SharedState;
 

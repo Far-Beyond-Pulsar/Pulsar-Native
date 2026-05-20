@@ -100,14 +100,14 @@ impl F32BoundField {
             window,
             move |this, _state, event: &NumberInputEvent, window, cx| {
                 match event {
-                    NumberInputEvent::Step(action) => {
+                    NumberInputEvent::Step { action, fine } => {
                         this.input.update(cx, |state, cx| {
                             let text = state.text().to_string();
                             if let Ok(mut value) = this.binding.from_string(&text) {
-                                // Increment or decrement by 0.1
+                                let step = if *fine { 0.1 } else { 1.0 };
                                 match action {
-                                    StepAction::Increment => value += 0.1,
-                                    StepAction::Decrement => value -= 0.1,
+                                    StepAction::Increment => value += step,
+                                    StepAction::Decrement => value -= step,
                                 }
 
                                 if this.binding.validate(&value).is_ok() {

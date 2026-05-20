@@ -13599,9 +13599,11 @@ name = "ui_common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "engine_fs",
  "engine_state",
  "gpui-ce",
  "parking_lot",
+ "plugin_editor_api",
  "rust-i18n",
  "serde",
  "serde_json",

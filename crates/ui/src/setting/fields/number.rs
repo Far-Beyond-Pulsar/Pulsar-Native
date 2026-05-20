@@ -78,13 +78,18 @@ impl SettingFieldRender for NumberField {
                     let _subscriptions = vec![
                         cx.subscribe_in(&input, window, {
                             move |_, input, event: &NumberInputEvent, window, cx| match event {
-                                NumberInputEvent::Step(action) => input.update(cx, |input, cx| {
+                                NumberInputEvent::Step { action, fine } => input.update(cx, |input, cx| {
                                     let value = input.value();
                                     if let Ok(value) = value.parse::<f64>() {
-                                        let new_value = if *action == StepAction::Increment {
-                                            value + num_options.step
+                                        let step = if *fine {
+                                            num_options.step * 0.1
                                         } else {
-                                            value - num_options.step
+                                            num_options.step
+                                        };
+                                        let new_value = if *action == StepAction::Increment {
+                                            value + step
+                                        } else {
+                                            value - step
                                         };
                                         input.set_value(
                                             SharedString::from(new_value.to_string()),

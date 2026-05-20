@@ -60,14 +60,32 @@ impl NumberInput {
     }
 
     pub fn increment(state: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+        Self::increment_with_fine(state, false, window, cx);
+    }
+
+    pub fn increment_with_fine(
+        state: &Entity<InputState>,
+        fine: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         state.update(cx, |state, cx| {
-            state.on_action_increment(&Increment, window, cx);
+            state.on_number_input_step(StepAction::Increment, fine, window, cx);
         })
     }
 
     pub fn decrement(state: &Entity<InputState>, window: &mut Window, cx: &mut App) {
+        Self::decrement_with_fine(state, false, window, cx);
+    }
+
+    pub fn decrement_with_fine(
+        state: &Entity<InputState>,
+        fine: bool,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         state.update(cx, |state, cx| {
-            state.on_action_decrement(&Decrement, window, cx);
+            state.on_number_input_step(StepAction::Decrement, fine, window, cx);
         })
     }
 
@@ -103,19 +121,25 @@ impl Styled for NumberInput {
 
 impl InputState {
     fn on_action_increment(&mut self, _: &Increment, window: &mut Window, cx: &mut Context<Self>) {
-        self.on_number_input_step(StepAction::Increment, window, cx);
+        self.on_number_input_step(StepAction::Increment, false, window, cx);
     }
 
     fn on_action_decrement(&mut self, _: &Decrement, window: &mut Window, cx: &mut Context<Self>) {
-        self.on_number_input_step(StepAction::Decrement, window, cx);
+        self.on_number_input_step(StepAction::Decrement, false, window, cx);
     }
 
-    fn on_number_input_step(&mut self, action: StepAction, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_number_input_step(
+        &mut self,
+        action: StepAction,
+        fine: bool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.disabled {
             return;
         }
 
-        cx.emit(NumberInputEvent::Step(action));
+        cx.emit(NumberInputEvent::Step { action, fine });
     }
 }
 
@@ -125,7 +149,7 @@ pub enum StepAction {
     Increment,
 }
 pub enum NumberInputEvent {
-    Step(StepAction),
+    Step { action: StepAction, fine: bool },
 }
 impl EventEmitter<NumberInputEvent> for InputState {}
 
@@ -173,8 +197,8 @@ impl RenderOnce for NumberInput {
                     .disabled(self.disabled)
                     .on_click({
                         let state = self.state.clone();
-                        move |_, window, cx| {
-                            Self::decrement(&state, window, cx);
+                        move |event, window, cx| {
+                            Self::decrement_with_fine(&state, event.modifiers().shift, window, cx);
                         }
                     }),
             )
@@ -197,8 +221,8 @@ impl RenderOnce for NumberInput {
                     .disabled(self.disabled)
                     .on_click({
                         let state = self.state.clone();
-                        move |_, window, cx| {
-                            Self::increment(&state, window, cx);
+                        move |event, window, cx| {
+                            Self::increment_with_fine(&state, event.modifiers().shift, window, cx);
                         }
                     }),
             )

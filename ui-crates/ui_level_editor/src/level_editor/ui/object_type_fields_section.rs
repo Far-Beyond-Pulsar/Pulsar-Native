@@ -3,9 +3,10 @@ use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 use ui::button::ButtonVariants as _;
 use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
-use ui::input::{InputEvent, InputState, NumberInput};
+use ui::input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction};
 use ui::menu::PopupMenuItem;
 use ui::popover::Popover;
 use ui::switch::Switch;
@@ -29,6 +30,8 @@ pub struct ObjectTypeFieldsSection {
     color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
     /// Number input state per (class_name, prop_name) for numeric properties.
     numeric_inputs: HashMap<(String, String), Entity<InputState>>,
+    /// Mesh asset picker state per (class_name, prop_name) for mesh path fields.
+    mesh_asset_pickers: HashMap<(String, String), Entity<MeshAssetPicker>>,
 }
 
 impl ObjectTypeFieldsSection {
@@ -64,6 +67,7 @@ impl ObjectTypeFieldsSection {
             state_arc,
             color_pickers: HashMap::new(),
             numeric_inputs: HashMap::new(),
+            mesh_asset_pickers: HashMap::new(),
         }
     }
 
@@ -169,23 +173,12 @@ impl ObjectTypeFieldsSection {
             .update_component(&self.object_id, idx, Value::Object(map));
     }
 
-    fn nudge_numeric(&self, class_name: &str, prop_name: &str, current: f32, step: f32, sign: f32) {
-        self.write_property(
-            class_name,
-            prop_name,
-            PropertyValue::F32(current + step * sign),
-        );
-    }
-
-    fn nudge_i32(&self, class_name: &str, prop_name: &str, current: i32, sign: i32) {
-        self.write_property(class_name, prop_name, PropertyValue::I32(current + sign));
-    }
-
     fn ensure_f32_input(
         &mut self,
         class_name: &str,
         prop_name: &str,
         current: f32,
+        step: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -210,6 +203,30 @@ impl ObjectTypeFieldsSection {
                 }
             }
         })
+        .detach();
+
+        let cls = class_name.to_string();
+        let prop = prop_name.to_string();
+        cx.subscribe_in(
+            &input,
+            window,
+            move |this, state, ev: &NumberInputEvent, window, cx| {
+                let NumberInputEvent::Step { action, fine } = ev;
+                state.update(cx, |input, cx| {
+                    let text = input.text().to_string();
+                    if let Ok(mut value) = text.parse::<f32>() {
+                        let step_size = if *fine { step * 0.1 } else { step };
+                        match action {
+                            StepAction::Increment => value += step_size,
+                            StepAction::Decrement => value -= step_size,
+                        }
+                        this.write_property(&cls, &prop, PropertyValue::F32(value));
+                        input.set_value(&format!("{value:.3}"), window, cx);
+                        cx.notify();
+                    }
+                });
+            },
+        )
         .detach();
 
         self.numeric_inputs.insert(key, input);
@@ -246,7 +263,70 @@ impl ObjectTypeFieldsSection {
         })
         .detach();
 
+        let cls = class_name.to_string();
+        let prop = prop_name.to_string();
+        cx.subscribe_in(
+            &input,
+            window,
+            move |this, state, ev: &NumberInputEvent, window, cx| {
+                let NumberInputEvent::Step { action, .. } = ev;
+                state.update(cx, |input, cx| {
+                    let text = input.text().to_string();
+                    if let Ok(mut value) = text.parse::<i32>() {
+                        match action {
+                            StepAction::Increment => value += 1,
+                            StepAction::Decrement => value -= 1,
+                        }
+                        this.write_property(&cls, &prop, PropertyValue::I32(value));
+                        input.set_value(value.to_string(), window, cx);
+                        cx.notify();
+                    }
+                });
+            },
+        )
+        .detach();
+
         self.numeric_inputs.insert(key, input);
+    }
+
+    fn ensure_mesh_asset_picker(
+        &mut self,
+        class_name: &str,
+        prop_name: &str,
+        current: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (class_name.to_string(), prop_name.to_string());
+        if self.mesh_asset_pickers.contains_key(&key) {
+            return;
+        }
+
+        let builtins = vec![
+            "meshes/primitives/SM_Cube.fbx".to_string(),
+            "meshes/primitives/SM_Sphere.fbx".to_string(),
+            "meshes/primitives/SM_Cylinder.fbx".to_string(),
+            "meshes/primitives/SM_Plane.fbx".to_string(),
+        ];
+        let project_root = std::env::current_dir().ok();
+        let queries = vec![AssetQuery::extension("fbx"), AssetQuery::file_type("fbx")];
+        let picker = cx.new(|cx| {
+            MeshAssetPicker::new(current.to_string(), builtins, project_root, queries, window, cx)
+        });
+
+        let cls = class_name.to_string();
+        let prop = prop_name.to_string();
+        cx.subscribe(
+            &picker,
+            move |this, picker, _event: &AssetPickedEvent, cx| {
+                let selected = picker.read(cx).selected_path().to_string();
+                this.write_property(&cls, &prop, PropertyValue::String(selected));
+                cx.notify();
+            },
+        )
+        .detach();
+
+        self.mesh_asset_pickers.insert(key, picker);
     }
 
     fn color_fallback_rgba(&self, class_name: &str, prop_name: &str) -> [f32; 4] {
@@ -286,11 +366,6 @@ impl ObjectTypeFieldsSection {
     ) -> AnyElement {
         match (property_type, value) {
             (PropertyType::F32 { .. }, PropertyValue::F32(v)) => {
-                let current = *v;
-                let class_dec = class_name.to_string();
-                let prop_dec = prop_name.to_string();
-                let class_inc = class_name.to_string();
-                let prop_inc = prop_name.to_string();
                 let input_key = (class_name.to_string(), prop_name.to_string());
                 let input_opt = self.numeric_inputs.get(&input_key).cloned();
 
@@ -309,24 +384,6 @@ impl ObjectTypeFieldsSection {
                         h_flex()
                             .items_center()
                             .gap_2()
-                            .child(
-                                ui::button::Button::new(format!(
-                                    "dec-{}-{}",
-                                    class_name, prop_name
-                                ))
-                                .icon(IconName::Minus)
-                                .xsmall()
-                                .ghost()
-                                .on_click(cx.listener(
-                                    move |this, event: &ClickEvent, _window, cx| {
-                                        let step = if event.modifiers().shift { 0.1 } else { 1.0 };
-                                        this.nudge_numeric(
-                                            &class_dec, &prop_dec, current, step, -1.0,
-                                        );
-                                        cx.notify();
-                                    },
-                                )),
-                            )
                             .child(
                                 if let Some(input) = input_opt {
                                     NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
@@ -337,34 +394,11 @@ impl ObjectTypeFieldsSection {
                                         .child(format!("{:.3}", v))
                                         .into_any_element()
                                 },
-                            )
-                            .child(
-                                ui::button::Button::new(format!(
-                                    "inc-{}-{}",
-                                    class_name, prop_name
-                                ))
-                                .icon(IconName::Plus)
-                                .xsmall()
-                                .ghost()
-                                .on_click(cx.listener(
-                                    move |this, event: &ClickEvent, _window, cx| {
-                                        let step = if event.modifiers().shift { 0.1 } else { 1.0 };
-                                        this.nudge_numeric(
-                                            &class_inc, &prop_inc, current, step, 1.0,
-                                        );
-                                        cx.notify();
-                                    },
-                                )),
                             ),
                     )
                     .into_any_element()
             }
             (PropertyType::I32 { .. }, PropertyValue::I32(v)) => {
-                let current = *v;
-                let class_dec = class_name.to_string();
-                let prop_dec = prop_name.to_string();
-                let class_inc = class_name.to_string();
-                let prop_inc = prop_name.to_string();
                 let input_key = (class_name.to_string(), prop_name.to_string());
                 let input_opt = self.numeric_inputs.get(&input_key).cloned();
 
@@ -384,21 +418,6 @@ impl ObjectTypeFieldsSection {
                             .items_center()
                             .gap_2()
                             .child(
-                                ui::button::Button::new(format!(
-                                    "dec-{}-{}",
-                                    class_name, prop_name
-                                ))
-                                .icon(IconName::Minus)
-                                .xsmall()
-                                .ghost()
-                                .on_click(cx.listener(
-                                    move |this, _event, _window, cx| {
-                                        this.nudge_i32(&class_dec, &prop_dec, current, -1);
-                                        cx.notify();
-                                    },
-                                )),
-                            )
-                            .child(
                                 if let Some(input) = input_opt {
                                     NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
                                 } else {
@@ -408,21 +427,6 @@ impl ObjectTypeFieldsSection {
                                         .child(v.to_string())
                                         .into_any_element()
                                 },
-                            )
-                            .child(
-                                ui::button::Button::new(format!(
-                                    "inc-{}-{}",
-                                    class_name, prop_name
-                                ))
-                                .icon(IconName::Plus)
-                                .xsmall()
-                                .ghost()
-                                .on_click(cx.listener(
-                                    move |this, _event, _window, cx| {
-                                        this.nudge_i32(&class_inc, &prop_inc, current, 1);
-                                        cx.notify();
-                                    },
-                                )),
                             ),
                     )
                     .into_any_element()
@@ -565,24 +569,84 @@ impl ObjectTypeFieldsSection {
                         .into_any_element()
                 }
             }
-            (PropertyType::String { .. }, PropertyValue::String(v)) => h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(v.clone()),
-                )
-                .into_any_element(),
+            (PropertyType::String { .. }, PropertyValue::String(v)) => {
+                if prop_name == "mesh_asset" {
+                    let key = (class_name.to_string(), prop_name.to_string());
+                    if let Some(picker) = self.mesh_asset_pickers.get(&key).cloned() {
+                        let display = if v.is_empty() {
+                            "Select mesh asset".to_string()
+                        } else {
+                            v.clone()
+                        };
+                        let pop = Popover::<MeshAssetPicker>::new(format!(
+                            "mesh-asset-picker-{}-{}",
+                            class_name, prop_name
+                        ))
+                        .anchor(Corner::BottomRight)
+                        .trigger(
+                            ui::button::Button::new(format!("mesh-asset-btn-{}-{}", class_name, prop_name))
+                                .label(display)
+                                .xsmall()
+                                .ghost()
+                                .dropdown_caret(true),
+                        )
+                        .content(move |_window, _cx| picker.clone())
+                        .into_any_element();
+
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(display_name.to_string()),
+                            )
+                            .child(pop)
+                            .into_any_element()
+                    } else {
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(display_name.to_string()),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(v.clone()),
+                            )
+                            .into_any_element()
+                    }
+                } else {
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().foreground)
+                                .child(v.clone()),
+                        )
+                        .into_any_element()
+                }
+            }
             (PropertyType::Color, PropertyValue::Color(_)) => {
                 let key = (class_name.to_string(), prop_name.to_string());
                 if let Some(picker_state) = self.color_pickers.get(&key) {
@@ -815,11 +879,23 @@ impl Render for ObjectTypeFieldsSection {
                         self.read_property(class_name, prop.name, &prop.property_type, &default);
 
                     match (&prop.property_type, &current) {
-                        (PropertyType::F32 { .. }, PropertyValue::F32(v)) => {
-                            self.ensure_f32_input(class_name, prop.name, *v, window, cx);
+                        (PropertyType::F32 { step, .. }, PropertyValue::F32(v)) => {
+                            self.ensure_f32_input(
+                                class_name,
+                                prop.name,
+                                *v,
+                                step.unwrap_or(1.0),
+                                window,
+                                cx,
+                            );
                         }
                         (PropertyType::I32 { .. }, PropertyValue::I32(v)) => {
                             self.ensure_i32_input(class_name, prop.name, *v, window, cx);
+                        }
+                        (PropertyType::String { .. }, PropertyValue::String(v))
+                            if prop.name == "mesh_asset" =>
+                        {
+                            self.ensure_mesh_asset_picker(class_name, prop.name, v, window, cx);
                         }
                         _ => {}
                     }

@@ -183,6 +183,21 @@ fn mesh_for_key(key: MeshKey) -> MeshUpload {
     }
 }
 
+fn mesh_key_from_asset_path(path: &str) -> Option<MeshKey> {
+    let file_name = path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase();
+    if file_name.contains("sphere") {
+        Some(MeshKey::Sphere)
+    } else if file_name.contains("cyl") {
+        Some(MeshKey::Cylinder)
+    } else if file_name.contains("plane") {
+        Some(MeshKey::Plane)
+    } else if file_name.contains("cube") || file_name.contains("box") {
+        Some(MeshKey::Cube)
+    } else {
+        None
+    }
+}
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
@@ -1002,38 +1017,78 @@ impl HelioRenderer {
                 }
                 ObjectType::Mesh(mt) => {
                     live_mesh_ids.insert(snap.id.clone());
-                    let key = MeshKey::from(mt);
-                    if let Some(&(obj_id, _)) = inner.object_map.get(&snap.id) {
+                    let key = snap
+                        .props
+                        .get("mesh_asset")
+                        .and_then(|v| v.as_str())
+                        .and_then(mesh_key_from_asset_path)
+                        .unwrap_or_else(|| MeshKey::from(mt));
+
+                    let is_new = !inner.mesh_cache.contains_key(&key);
+                    let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
+                        let upload = mesh_for_key(key);
+                        let mid = inner
+                            .renderer
+                            .scene_mut()
+                            .insert_actor(SceneActor::mesh(upload.clone()))
+                            .as_mesh()
+                            .expect("mesh");
+                        let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
+                        let matid = inner.renderer.scene_mut().insert_material(mat);
+                        (mid, matid)
+                    });
+                    if is_new {
+                        inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(key));
+                    }
+
+                    let transform = build_transform(snap);
+                    let radius = Vec3::from_array(snap.scale).length() * 0.5;
+                    let pos = transform.w_axis.truncate();
+                    let existing = inner.object_map.get(&snap.id).copied();
+
+                    if let Some((obj_id, existing_mesh_id)) = existing {
                         let skip = dragged_obj_id.map_or(false, |did| did == obj_id);
-                        if !skip {
-                            let _ = inner.renderer.scene_mut()
-                                .update_object_transform(obj_id, build_transform(snap));
+                        if existing_mesh_id != mesh_id {
+                            let _ = inner.renderer.scene_mut().remove_object(obj_id);
+                            if let Some(new_obj_id) = inner
+                                .renderer
+                                .scene_mut()
+                                .insert_actor(SceneActor::object(ObjectDescriptor {
+                                    mesh: mesh_id,
+                                    material: mat_id,
+                                    transform,
+                                    bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                                    flags: 0,
+                                    groups: GroupMask::NONE,
+                                    movability: Some(Movability::Movable),
+                                }))
+                                .as_object()
+                            {
+                                inner.object_map.insert(snap.id.clone(), (new_obj_id, mesh_id));
+                                picker_dirty = true;
+                            }
+                        } else if !skip {
+                            let _ = inner
+                                .renderer
+                                .scene_mut()
+                                .update_object_transform(obj_id, transform);
                         }
-                    } else {
-                        let is_new = !inner.mesh_cache.contains_key(&key);
-                        let (mesh_id, mat_id) = *inner.mesh_cache.entry(key).or_insert_with(|| {
-                            let upload = mesh_for_key(key);
-                            let mid = inner.renderer.scene_mut()
-                                .insert_actor(SceneActor::mesh(upload.clone())).as_mesh().expect("mesh");
-                            let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                            let matid = inner.renderer.scene_mut().insert_material(mat);
-                            (mid, matid)
-                        });
-                        if is_new { inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(key)); }
-                        let transform = build_transform(snap);
-                        let radius = Vec3::from_array(snap.scale).length() * 0.5;
-                        let pos = transform.w_axis.truncate();
-                        if let Some(obj_id) = inner.renderer.scene_mut()
-                            .insert_actor(SceneActor::object(ObjectDescriptor {
-                                mesh: mesh_id, material: mat_id, transform,
-                                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                                flags: 0, groups: GroupMask::NONE,
-                                movability: Some(Movability::Movable),
-                            })).as_object()
-                        {
-                            inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
-                            picker_dirty = true;
-                        }
+                    } else if let Some(obj_id) = inner
+                        .renderer
+                        .scene_mut()
+                        .insert_actor(SceneActor::object(ObjectDescriptor {
+                            mesh: mesh_id,
+                            material: mat_id,
+                            transform,
+                            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                            flags: 0,
+                            groups: GroupMask::NONE,
+                            movability: Some(Movability::Movable),
+                        }))
+                        .as_object()
+                    {
+                        inner.object_map.insert(snap.id.clone(), (obj_id, mesh_id));
+                        picker_dirty = true;
                     }
                 }
                 _ => {}
