@@ -1,8 +1,8 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    add_object_dialog::AddObjectDialog, ComponentFieldsSection, HierarchyPanel, LevelEditorState,
-    ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection, ViewportPanel,
+    add_object_dialog::AddObjectDialog, HierarchyPanel, LevelEditorState, ObjectHeaderSection,
+    ObjectTypeFieldsSection, PropertiesPanel, TransformSection, ViewportPanel,
     WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
@@ -182,7 +182,6 @@ pub struct PropertiesPanelWrapper {
     object_header_section: Option<Entity<ObjectHeaderSection>>,
     transform_section: Option<Entity<TransformSection>>,
     object_type_fields_section: Option<Entity<ObjectTypeFieldsSection>>,
-    component_sections: Vec<Entity<ComponentFieldsSection>>,
     current_object_id: Option<String>,
     // DEPRECATED: Old manual property editing (will be removed)
     editing_property: Option<String>,
@@ -221,7 +220,6 @@ impl PropertiesPanelWrapper {
             object_header_section: None,
             transform_section: None,
             object_type_fields_section: None,
-            component_sections: Vec::new(),
             current_object_id: None,
             editing_property: None,
             property_input,
@@ -347,30 +345,12 @@ impl Render for PropertiesPanelWrapper {
                     )
                 }));
 
-                // Component sections - create one for each component
-                self.component_sections.clear();
-                if let Some(obj) = scene_db.get_object(&object_id_clone) {
-                    for (index, _component) in obj.components.iter().enumerate() {
-                        let section = cx.new(|cx| {
-                            ComponentFieldsSection::new(
-                                index,
-                                object_id_clone.clone(),
-                                scene_db.clone(),
-                                window,
-                                cx,
-                            )
-                        });
-                        self.component_sections.push(section);
-                    }
-                }
-
                 self.current_object_id = Some(object_id.clone());
             } else {
                 // No selection - clear all sections
                 self.object_header_section = None;
                 self.transform_section = None;
                 self.object_type_fields_section = None;
-                self.component_sections.clear();
                 self.current_object_id = None;
             }
         }
@@ -393,7 +373,6 @@ impl Render for PropertiesPanelWrapper {
                 &self.object_header_section,
                 &self.transform_section,
                 &self.object_type_fields_section,
-                &self.component_sections,
                 window,
                 cx,
             ))

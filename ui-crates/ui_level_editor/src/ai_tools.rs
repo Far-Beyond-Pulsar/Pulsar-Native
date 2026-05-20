@@ -799,7 +799,6 @@ fn execute_ai_tool_impl(
                     .unwrap_or(false),
                 parent: parent_id.clone(),
                 children: vec![],
-                components: vec![],
                 props: Default::default(),
                 scene_path,
             };
@@ -893,8 +892,7 @@ fn execute_ai_tool_impl(
                         .unwrap_or(false),
                     parent: parent_id.clone(),
                     children: vec![],
-                    components: vec![],
-                props: Default::default(),
+                    props: Default::default(),
                     scene_path: state
                         .current_scene
                         .as_ref()

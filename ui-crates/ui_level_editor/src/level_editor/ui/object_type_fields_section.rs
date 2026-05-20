@@ -1,8 +1,10 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
+use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use ui::popover::Popover;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
@@ -20,6 +22,8 @@ pub struct ObjectTypeFieldsSection {
     add_component_dialog: Entity<AddComponentDialog>,
     /// Shared state for expand/collapse tracking
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    /// ColorPickerState per (class_name, prop_name) for Color-typed properties.
+    color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
 }
 
 impl ObjectTypeFieldsSection {
@@ -53,6 +57,7 @@ impl ObjectTypeFieldsSection {
             selected_component: None,
             add_component_dialog,
             state_arc,
+            color_pickers: HashMap::new(),
         }
     }
 
@@ -168,6 +173,32 @@ impl ObjectTypeFieldsSection {
 
     fn nudge_i32(&self, class_name: &str, prop_name: &str, current: i32, sign: i32) {
         self.write_property(class_name, prop_name, PropertyValue::I32(current + sign));
+    }
+
+    fn color_fallback_rgba(&self, class_name: &str, prop_name: &str) -> [f32; 4] {
+        let components = self.scene_db.get_components(&self.object_id);
+        components
+            .iter()
+            .find(|c| c.class_name == class_name)
+            .and_then(|component| component.data.get(prop_name))
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                if arr.len() == 4 {
+                    Some([
+                        arr[0].as_f64().unwrap_or(1.0) as f32,
+                        arr[1].as_f64().unwrap_or(1.0) as f32,
+                        arr[2].as_f64().unwrap_or(1.0) as f32,
+                        arr[3].as_f64().unwrap_or(1.0) as f32,
+                    ])
+                } else {
+                    None
+                }
+            })
+            .unwrap_or([1.0, 1.0, 1.0, 1.0])
+    }
+
+    fn is_color_field_name(prop_name: &str) -> bool {
+        prop_name == "color" || prop_name == "base_color"
     }
 
     fn render_property_row(
@@ -339,6 +370,43 @@ impl ObjectTypeFieldsSection {
                     )
                     .into_any_element()
             }
+            (_, PropertyValue::String(v))
+                if v == "unsupported" && Self::is_color_field_name(prop_name) =>
+            {
+                let key = (class_name.to_string(), prop_name.to_string());
+                if let Some(picker_state) = self.color_pickers.get(&key) {
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(ColorPicker::new(picker_state).label(display_name.to_string()))
+                        .into_any_element()
+                } else {
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Color field unavailable"),
+                        )
+                        .into_any_element()
+                }
+            }
             (PropertyType::String { .. }, PropertyValue::String(v)) => h_flex()
                 .w_full()
                 .justify_between()
@@ -357,6 +425,25 @@ impl ObjectTypeFieldsSection {
                         .child(v.clone()),
                 )
                 .into_any_element(),
+            (PropertyType::Color, PropertyValue::Color(_)) => {
+                let key = (class_name.to_string(), prop_name.to_string());
+                if let Some(picker_state) = self.color_pickers.get(&key) {
+                    v_flex()
+                        .w_full()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(ColorPicker::new(picker_state).label(display_name.to_string()))
+                        .into_any_element()
+                } else {
+                    // Picker not yet created (pre-pass missed it) — show value as fallback.
+                    div().text_sm().child(format!("{:?}", value)).into_any_element()
+                }
+            }
             _ => h_flex()
                 .w_full()
                 .justify_between()
@@ -377,6 +464,23 @@ impl ObjectTypeFieldsSection {
                 .into_any_element(),
         }
     }
+}
+
+fn rgba_to_hsla([r, g, b, a]: [f32; 4]) -> Hsla {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    let l = (max + min) / 2.0;
+    let s = if max == min { 0.0 } else if l < 0.5 { (max - min) / (max + min) } else { (max - min) / (2.0 - max - min) };
+    let h = if max == min { 0.0 } else if max == r { ((g - b) / (max - min)).rem_euclid(6.0) / 6.0 } else if max == g { ((b - r) / (max - min) + 2.0) / 6.0 } else { ((r - g) / (max - min) + 4.0) / 6.0 };
+    Hsla { h, s, l, a }
+}
+
+fn hsla_to_rgba(Hsla { h, s, l, a }: Hsla) -> [f32; 4] {
+    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
+    let x = c * (1.0 - ((h * 6.0).rem_euclid(2.0) - 1.0).abs());
+    let m = l - c / 2.0;
+    let (r1, g1, b1) = match (h * 6.0) as u32 { 0 => (c, x, 0.0), 1 => (x, c, 0.0), 2 => (0.0, c, x), 3 => (0.0, x, c), 4 => (x, 0.0, c), _ => (c, 0.0, x) };
+    [r1 + m, g1 + m, b1 + m, a]
 }
 
 impl Render for ObjectTypeFieldsSection {
@@ -541,6 +645,47 @@ impl Render for ObjectTypeFieldsSection {
         let component_panel = component_hierarchy
             .render(&state, self.state_arc.clone(), add_popover, cx)
             .into_any_element();
+
+        // ── Pre-populate ColorPickerState for any Color-typed properties ───
+        for component in &attached {
+            let class_name = component.class_name.as_str();
+            if let Some(mut instance) = REGISTRY.create_instance(class_name) {
+                for prop in instance.get_properties() {
+                    let default = (prop.getter)(instance.as_ref());
+                    let should_create_picker = matches!(prop.property_type, PropertyType::Color)
+                        || (matches!(&default, PropertyValue::String(s) if s == "unsupported")
+                            && Self::is_color_field_name(prop.name));
+
+                    if should_create_picker {
+                        let key = (class_name.to_string(), prop.name.to_string());
+                        if !self.color_pickers.contains_key(&key) {
+                            let current = self.read_property(class_name, prop.name, &prop.property_type, &default);
+                            let rgba = if let PropertyValue::Color(c) = current {
+                                c
+                            } else {
+                                self.color_fallback_rgba(class_name, prop.name)
+                            };
+                            let scene_db = self.scene_db.clone();
+                            let object_id = self.object_id.clone();
+                            let cn = class_name.to_string();
+                            let pn = prop.name.to_string();
+                            let state = cx.new(|cx| {
+                                let mut s = ColorPickerState::new(window, cx);
+                                s.set_value(rgba_to_hsla(rgba), window, cx);
+                                s
+                            });
+                            cx.subscribe_in(&state, window, move |_this, _picker, ev, _w, _cx| {
+                                if let ColorPickerEvent::Change(Some(hsla)) = ev {
+                                    let json_val = { let [r,g,b,a] = hsla_to_rgba(*hsla); serde_json::json!([r,g,b,a]) };
+                                    scene_db.update_component_property(&object_id, &cn, &pn, json_val);
+                                }
+                            }).detach();
+                            self.color_pickers.insert(key, state);
+                        }
+                    }
+                }
+            }
+        }
 
         // ── Property sections for every attached component ─────────────────
         let component_sections = attached

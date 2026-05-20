@@ -9379,6 +9379,7 @@ dependencies = [
  "inventory",
  "once_cell",
  "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -9389,6 +9390,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "serde",
+ "serde_json",
  "tracing",
 ]
 

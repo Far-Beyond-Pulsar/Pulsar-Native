@@ -41,8 +41,10 @@ pub trait FieldBinding: 'static + Send + Sync {
 
 /// Binding for a single f32 field
 pub struct F32FieldBinding {
-    getter: Arc<dyn Fn(&SceneObjectData) -> f32 + Send + Sync>,
-    setter: Arc<dyn Fn(&mut SceneObjectData, f32) + Send + Sync>,
+    getter: Option<Arc<dyn Fn(&SceneObjectData) -> f32 + Send + Sync>>,
+    setter: Option<Arc<dyn Fn(&mut SceneObjectData, f32) + Send + Sync>>,
+    getter_db: Option<Arc<dyn Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync>>,
+    setter_db: Option<Arc<dyn Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync>>,
 }
 
 impl F32FieldBinding {
@@ -52,8 +54,23 @@ impl F32FieldBinding {
         S: Fn(&mut SceneObjectData, f32) + Send + Sync + 'static,
     {
         Self {
-            getter: Arc::new(getter),
-            setter: Arc::new(setter),
+            getter: Some(Arc::new(getter)),
+            setter: Some(Arc::new(setter)),
+            getter_db: None,
+            setter_db: None,
+        }
+    }
+
+    pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync + 'static,
+        S: Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync + 'static,
+    {
+        Self {
+            getter: None,
+            setter: None,
+            getter_db: Some(Arc::new(getter)),
+            setter_db: Some(Arc::new(setter)),
         }
     }
 }
@@ -62,16 +79,26 @@ impl FieldBinding for F32FieldBinding {
     type Value = f32;
 
     fn get(&self, object_id: &ObjectId, db: &SceneDatabase) -> Option<f32> {
-        db.get_object(object_id).map(|obj| (self.getter)(&obj))
+        if let Some(getter_db) = &self.getter_db {
+            return getter_db(object_id, db);
+        }
+
+        let getter = self.getter.as_ref()?;
+        db.get_object(object_id).map(|obj| getter(&obj))
     }
 
     fn set(&self, object_id: &ObjectId, value: f32, db: &SceneDatabase) -> bool {
-        if let Some(mut obj) = db.get_object(object_id) {
-            (self.setter)(&mut obj, value);
-            db.update_object(obj) // Automatically records to undo/redo
-        } else {
-            false
+        if let Some(setter_db) = &self.setter_db {
+            return setter_db(object_id, value, db);
         }
+
+        if let Some(mut obj) = db.get_object(object_id) {
+            if let Some(setter) = &self.setter {
+                setter(&mut obj, value);
+                return db.update_object(obj); // Automatically records to undo/redo
+            }
+        }
+        false
     }
 
     fn to_string(&self, value: &f32) -> String {
@@ -496,7 +523,6 @@ mod tests {
                 children: Vec::new(),
                 visible: true,
                 locked: false,
-                components: Vec::new(),
                 scene_path: String::new(),
                 props: Default::default(),
             },

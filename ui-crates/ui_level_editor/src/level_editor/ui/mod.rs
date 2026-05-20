@@ -2,7 +2,6 @@ mod actions;
 pub mod add_component_dialog;
 pub mod add_object_dialog;
 mod bound_field;
-mod component_fields_section;
 mod component_hierarchy;
 mod field_bindings;
 mod hierarchical_list;
@@ -20,7 +19,6 @@ mod viewport;
 mod world_settings;
 mod world_settings_replicated;
 
-pub use component_fields_section::ComponentFieldsSection;
 pub use component_hierarchy::ComponentHierarchyPanel;
 pub use hierarchy::HierarchyPanel;
 pub use object_header_section::ObjectHeaderSection;

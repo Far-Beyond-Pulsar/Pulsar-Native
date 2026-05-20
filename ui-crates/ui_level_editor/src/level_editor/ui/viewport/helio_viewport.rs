@@ -153,8 +153,7 @@ impl HelioViewport {
                     locked: false,
                     parent: None,
                     children: vec![],
-                    components: vec![],
-                props: Default::default(),
+                    props: Default::default(),
                     scene_path: path.display().to_string(),
                 };
 

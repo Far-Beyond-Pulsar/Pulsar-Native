@@ -89,218 +89,6 @@ pub enum FieldTypeInfo {
     Other(&'static str),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum Component {
-    Material {
-        id: String,
-        color: [f32; 4],
-        metallic: f32,
-        roughness: f32,
-    },
-    Script {
-        path: String,
-    },
-    Collider {
-        shape: ColliderShape,
-    },
-    RigidBody {
-        mass: f32,
-        kinematic: bool,
-    },
-    /// All light-type scene objects carry exactly one of these.
-    /// The renderer reads from this component; `props` is not used for lights.
-    Light {
-        color: [f32; 4],
-        intensity: f32,
-        range: f32,
-    },
-}
-
-impl Component {
-    /// Get field metadata for this component variant
-    pub fn get_field_metadata(&self) -> Vec<ComponentFieldMetadata<'_>> {
-        match self {
-            Component::Material {
-                id,
-                color,
-                metallic,
-                roughness,
-            } => vec![
-                ComponentFieldMetadata::String {
-                    name: "id",
-                    value: id,
-                },
-                ComponentFieldMetadata::Color {
-                    name: "color",
-                    value: color,
-                },
-                ComponentFieldMetadata::F32 {
-                    name: "metallic",
-                    value: metallic,
-                },
-                ComponentFieldMetadata::F32 {
-                    name: "roughness",
-                    value: roughness,
-                },
-            ],
-            Component::Script { path } => vec![ComponentFieldMetadata::String {
-                name: "path",
-                value: path,
-            }],
-            Component::Collider { shape: _ } => vec![
-                // TODO: Handle nested enums like ColliderShape
-            ],
-            Component::RigidBody { mass, kinematic } => vec![
-                ComponentFieldMetadata::F32 { name: "mass", value: mass },
-                ComponentFieldMetadata::Bool { name: "kinematic", value: kinematic },
-            ],
-            Component::Light { color, intensity, range } => vec![
-                ComponentFieldMetadata::Color { name: "color", value: color },
-                ComponentFieldMetadata::F32 { name: "intensity", value: intensity },
-                ComponentFieldMetadata::F32 { name: "range", value: range },
-            ],
-        }
-    }
-
-    /// Get a field value by name and type
-    pub fn get_field_f32(&self, field_name: &str) -> Option<f32> {
-        match (self, field_name) {
-            (Component::Material { metallic, .. }, "metallic") => Some(*metallic),
-            (Component::Material { roughness, .. }, "roughness") => Some(*roughness),
-            (Component::RigidBody { mass, .. }, "mass") => Some(*mass),
-            (Component::Light { intensity, .. }, "intensity") => Some(*intensity),
-            (Component::Light { range, .. }, "range") => Some(*range),
-            _ => None,
-        }
-    }
-
-    pub fn set_field_f32(&mut self, field_name: &str, value: f32) {
-        match (self, field_name) {
-            (Component::Material { metallic, .. }, "metallic") => *metallic = value,
-            (Component::Material { roughness, .. }, "roughness") => *roughness = value,
-            (Component::RigidBody { mass, .. }, "mass") => *mass = value,
-            (Component::Light { intensity, .. }, "intensity") => *intensity = value,
-            (Component::Light { range, .. }, "range") => *range = value,
-            _ => {}
-        }
-    }
-
-    /// Extract light parameters. Returns `None` if this is not a `Light` component.
-    pub fn as_light(&self) -> Option<([f32; 4], f32, f32)> {
-        if let Component::Light { color, intensity, range } = self {
-            Some((*color, *intensity, *range))
-        } else {
-            None
-        }
-    }
-
-    pub fn get_field_bool(&self, field_name: &str) -> Option<bool> {
-        match (self, field_name) {
-            (Component::RigidBody { kinematic, .. }, "kinematic") => Some(*kinematic),
-            _ => None,
-        }
-    }
-
-    pub fn set_field_bool(&mut self, field_name: &str, value: bool) {
-        match (self, field_name) {
-            (Component::RigidBody { kinematic, .. }, "kinematic") => *kinematic = value,
-            _ => {}
-        }
-    }
-
-    pub fn get_field_string(&self, field_name: &str) -> Option<String> {
-        match (self, field_name) {
-            (Component::Material { id, .. }, "id") => Some(id.clone()),
-            (Component::Script { path }, "path") => Some(path.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn set_field_string(&mut self, field_name: &str, value: String) {
-        match (self, field_name) {
-            (Component::Material { id, .. }, "id") => *id = value,
-            (Component::Script { path }, "path") => *path = value,
-            _ => {}
-        }
-    }
-
-    pub fn get_field_color_component(&self, field_name: &str, index: usize) -> Option<f32> {
-        match (self, field_name) {
-            (Component::Material { color, .. }, "color") if index < 4 => Some(color[index]),
-            _ => None,
-        }
-    }
-
-    pub fn set_field_color_component(&mut self, field_name: &str, index: usize, value: f32) {
-        match (self, field_name) {
-            (Component::Material { color, .. }, "color") if index < 4 => color[index] = value,
-            _ => {}
-        }
-    }
-
-    pub fn variant_name(&self) -> &'static str {
-        match self {
-            Component::Material { .. } => "Material",
-            Component::Script { .. } => "Script",
-            Component::Collider { .. } => "Collider",
-            Component::RigidBody { .. } => "RigidBody",
-            Component::Light { .. } => "Light",
-        }
-    }
-}
-
-/// Metadata for a component field - describes type and provides a reference
-pub enum ComponentFieldMetadata<'a> {
-    F32 {
-        name: &'static str,
-        value: &'a f32,
-    },
-    Bool {
-        name: &'static str,
-        value: &'a bool,
-    },
-    String {
-        name: &'static str,
-        value: &'a String,
-    },
-    Vec3 {
-        name: &'static str,
-        value: &'a [f32; 3],
-    },
-    Color {
-        name: &'static str,
-        value: &'a [f32; 4],
-    },
-    /// Custom field type - requires special rendering in UI layer
-    /// The ui_key is used to look up the custom renderer
-    Custom {
-        name: &'static str,
-        type_name: &'static str,
-        ui_key: &'static str,
-        value_ptr: *const (), // Type-erased pointer to the value
-    },
-}
-
-impl<'a> ComponentFieldMetadata<'a> {
-    pub fn name(&self) -> &'static str {
-        match self {
-            ComponentFieldMetadata::F32 { name, .. } => name,
-            ComponentFieldMetadata::Bool { name, .. } => name,
-            ComponentFieldMetadata::String { name, .. } => name,
-            ComponentFieldMetadata::Vec3 { name, .. } => name,
-            ComponentFieldMetadata::Color { name, .. } => name,
-            ComponentFieldMetadata::Custom { name, .. } => name,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum ColliderShape {
-    Box { size: [f32; 3] },
-    Sphere { radius: f32 },
-    Capsule { radius: f32, height: f32 },
-}
-
 /// A point-in-time snapshot of an object — used by the UI for display, undo/redo, and serialization.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SceneObjectSnapshot {
@@ -319,7 +107,6 @@ pub struct SceneObjectSnapshot {
     pub children: Vec<ObjectId>,
     pub visible: bool,
     pub locked: bool,
-    pub components: Vec<Component>,
     /// Arbitrary type-specific properties that round-trip through the level file.
     ///
     /// Lights store: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
@@ -355,7 +142,6 @@ pub struct SceneEntryMeta {
     pub parent: Option<ObjectId>,
     /// Canonical path, e.g. "Geometry/Spheres/Blue Sphere".  Kept in sync by SceneDb.
     pub scene_path: String,
-    pub components: Vec<Component>,
     /// Type-specific properties — see `SceneObjectSnapshot::props`.
     pub props: HashMap<String, serde_json::Value>,
 }
@@ -386,7 +172,6 @@ impl SceneEntry {
                 name: snap.name.clone(),
                 parent: snap.parent.clone(),
                 scene_path: snap.scene_path.clone(),
-                components: snap.components.clone(),
                 props: snap.props.clone(),
             }),
         }
@@ -495,14 +280,8 @@ impl SceneEntry {
             children: vec![],
             visible: self.is_visible(),
             locked: self.is_locked(),
-            components: meta.components.clone(),
             props: meta.props.clone(),
         }
-    }
-
-    /// Overwrite the stored props (used by the properties panel to persist light color etc.).
-    pub fn set_props(&self, props: HashMap<String, serde_json::Value>) {
-        self.meta.write().props = props;
     }
 }
 
@@ -798,17 +577,6 @@ impl SceneDb {
     pub fn set_locked(&self, id: &str, v: bool) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             e.set_locked(v);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Overwrite the props map for an object.  Used by the properties panel to
-    /// persist type-specific data (light color, intensity, range, etc.).
-    pub fn set_props(&self, id: &str, props: HashMap<String, serde_json::Value>) -> bool {
-        if let Some(e) = self.inner.objects.get(id) {
-            e.set_props(props);
             true
         } else {
             false

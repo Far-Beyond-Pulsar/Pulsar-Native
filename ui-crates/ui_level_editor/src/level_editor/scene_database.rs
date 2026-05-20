@@ -6,14 +6,18 @@
 
 use engine_backend::scene::SceneObjectSnapshot;
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
+use pulsar_reflection::{
+    PropertyValue, REGISTRY, apply_scene_props_for_class, registered_scene_props_classes,
+};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
 // ── Public re-exports for UI layer compatibility ───────────────────────────
 
-pub use engine_backend::scene::{Component, LightType, MeshType, ObjectId, ObjectType, SceneDb};
+pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType, SceneDb};
 
 // ── Transform ─────────────────────────────────────────────────────────────
 
@@ -60,7 +64,6 @@ pub struct SceneObjectData {
     pub parent: Option<ObjectId>,
     /// Direct children (populated by `SceneDb` on read, ignored on write).
     pub children: Vec<ObjectId>,
-    pub components: Vec<Component>,
     pub scene_path: String,
     /// Type-specific properties that round-trip through the level file.
     /// Lights: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
@@ -83,7 +86,6 @@ impl SceneObjectData {
             locked: snap.locked,
             parent: snap.parent,
             children: snap.children,
-            components: snap.components,
             scene_path: snap.scene_path,
             props: snap.props,
         }
@@ -101,7 +103,6 @@ impl SceneObjectData {
             locked: self.locked,
             parent: self.parent,
             children: self.children,
-            components: self.components,
             scene_path: self.scene_path,
             props: self.props,
         }
@@ -148,7 +149,11 @@ impl SceneDatabase {
 
     /// Add an object. Returns the assigned `ObjectId`.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
-        self.scene_db.add_object(obj.into_snapshot(), parent)
+        let object_type = obj.object_type;
+        let object_id = self.scene_db.add_object(obj.into_snapshot(), parent);
+        Self::ensure_default_components(&object_id, object_type, &self.metadata_db);
+        self.sync_registered_component_props_to_scene_db(&object_id);
+        object_id
     }
 
     /// Remove an object and all of its descendants. Returns `true` if found.
@@ -167,7 +172,6 @@ impl SceneDatabase {
         self.scene_db.set_visible(&id, obj.visible);
         self.scene_db.set_locked(&id, obj.locked);
         if let Some(entry) = self.scene_db.get_entry(&id) {
-            entry.meta.write().components = obj.components;
             entry.meta.write().props = obj.props;
         }
         true
@@ -187,6 +191,25 @@ impl SceneDatabase {
             .metadata_db
             .components()
             .update_component(object_id, component_index, data);
+        self.sync_registered_component_props_to_scene_db(object_id);
+    }
+
+    /// Update a single property inside a reflection-based component by class name and property name.
+    pub fn update_component_property(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        prop_name: &str,
+        new_value: serde_json::Value,
+    ) {
+        let components = self.get_components(object_id);
+        if let Some((idx, comp)) = components.iter().enumerate().find(|(_, c)| c.class_name == class_name) {
+            let mut data = comp.data.clone();
+            if let Some(obj) = data.as_object_mut() {
+                obj.insert(prop_name.to_string(), new_value);
+            }
+            self.update_component(object_id, idx, data);
+        }
     }
 
     /// Clear the entire scene.
@@ -210,7 +233,11 @@ impl SceneDatabase {
         self.scene_db
             .get_all_snapshots()
             .into_iter()
-            .map(SceneObjectData::from_snapshot)
+            .map(|mut snap| {
+                let object_id = snap.id.clone();
+                Self::merge_component_props(&object_id, &mut snap, &self.metadata_db);
+                SceneObjectData::from_snapshot(snap)
+            })
             .collect()
     }
 
@@ -225,9 +252,11 @@ impl SceneDatabase {
 
     /// Single object by ID, `None` if not found.
     pub fn get_object(&self, id: &ObjectId) -> Option<SceneObjectData> {
-        self.scene_db
-            .get_object(id)
-            .map(SceneObjectData::from_snapshot)
+        self.scene_db.get_object(id).map(|mut snap| {
+            let object_id = snap.id.clone();
+            Self::merge_component_props(&object_id, &mut snap, &self.metadata_db);
+            SceneObjectData::from_snapshot(snap)
+        })
     }
 
     /// Direct children of `id`.
@@ -322,7 +351,6 @@ impl SceneDatabase {
             locked: false,
             parent: parent.clone(),
             children: vec![],
-            components: vec![],
             scene_path: String::new(),
             props: Default::default(),
         };
@@ -338,11 +366,13 @@ impl SceneDatabase {
         data: serde_json::Value,
     ) {
         self.metadata_db.add_component(object_id, class_name, data);
+        self.sync_registered_component_props_to_scene_db(object_id);
     }
 
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
         self.metadata_db
             .remove_component(object_id, component_index);
+        self.sync_registered_component_props_to_scene_db(object_id);
     }
 
     pub fn reorder_component(
@@ -375,6 +405,8 @@ impl SceneDatabase {
                 component.data.clone(),
             );
         }
+
+        self.sync_registered_component_props_to_scene_db(object_id);
     }
 
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
@@ -458,6 +490,8 @@ impl SceneDatabase {
                 component.data.clone(),
             );
         }
+
+        self.sync_registered_component_props_to_scene_db(object_id);
     }
 
     // ── Persistence ────────────────────────────────────────────────────────
@@ -499,19 +533,7 @@ impl SceneDatabase {
         }
         self.clear();
         // Objects are stored in DFS order so parents are always inserted first.
-        for mut obj in level_file.objects {
-            // Ensure light objects always carry a Light component so the
-            // properties panel and renderer have well-defined data to read.
-            if let ObjectType::Light(_) = obj.object_type {
-                let has_light_comp = obj.components.iter().any(|c| matches!(c, Component::Light { .. }));
-                if !has_light_comp {
-                    obj.components.push(Component::Light {
-                        color: [1.0, 1.0, 1.0, 1.0],
-                        intensity: 7.0,
-                        range: 100.0,
-                    });
-                }
-            }
+        for obj in level_file.objects {
             let parent = obj.parent.clone();
             self.add_object(obj, parent);
         }
@@ -521,6 +543,101 @@ impl SceneDatabase {
             level_file.version
         );
         Ok(())
+    }
+
+    fn merge_component_props(
+        object_id: &str,
+        snap: &mut SceneObjectSnapshot,
+        metadata_db: &SceneMetadataDb,
+    ) {
+        let components = metadata_db.get_components(&object_id.to_string());
+        for component in components {
+            if apply_scene_props_for_class(
+                &component.class_name,
+                &mut snap.props,
+                Some(&component.data),
+            ) {
+                continue;
+            }
+
+            if let Value::Object(map) = component.data {
+                for (k, v) in map {
+                    snap.props.insert(k, v);
+                }
+            }
+        }
+    }
+
+    fn sync_registered_component_props_to_scene_db(&self, object_id: &str) {
+        let components = self.metadata_db.get_components(&object_id.to_string());
+
+        if let Some(entry) = self.scene_db.get_entry(object_id) {
+            let mut meta = entry.meta.write();
+            for class_name in registered_scene_props_classes() {
+                let data = components
+                    .iter()
+                    .find(|c| c.class_name == class_name)
+                    .map(|c| &c.data);
+                apply_scene_props_for_class(class_name, &mut meta.props, data);
+            }
+        }
+    }
+
+    fn ensure_default_components(
+        object_id: &str,
+        object_type: ObjectType,
+        metadata_db: &SceneMetadataDb,
+    ) {
+        let has_component = |class_name: &str| {
+            metadata_db
+                .get_components(&object_id.to_string())
+                .iter()
+                .any(|c| c.class_name == class_name)
+        };
+
+        if matches!(object_type, ObjectType::Light(_)) && !has_component("LightComponent") {
+            metadata_db.add_component(
+                &object_id.to_string(),
+                "LightComponent".to_string(),
+                serde_json::json!({
+                    "color": [1.0, 1.0, 1.0, 1.0],
+                    "intensity": 7.0,
+                    "range": 100.0
+                }),
+            );
+        }
+
+        if matches!(object_type, ObjectType::Mesh(_)) && !has_component("MaterialOverride") {
+            if let Some(mut instance) = REGISTRY.create_instance("MaterialOverride") {
+                let props = instance.get_properties();
+                let mut map = serde_json::Map::new();
+                for prop in &props {
+                    let v = (prop.getter)(instance.as_ref());
+                    map.insert(prop.name.to_string(), property_value_to_json(&v));
+                }
+                metadata_db.add_component(
+                    &object_id.to_string(),
+                    "MaterialOverride".to_string(),
+                    Value::Object(map),
+                );
+            }
+        }
+    }
+}
+
+fn property_value_to_json(value: &PropertyValue) -> Value {
+    match value {
+        PropertyValue::F32(v) => Value::from(*v),
+        PropertyValue::I32(v) => Value::from(*v),
+        PropertyValue::Bool(v) => Value::from(*v),
+        PropertyValue::String(v) => Value::from(v.clone()),
+        PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
+        PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
+        PropertyValue::EnumVariant(v) => Value::from(*v as u64),
+        PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json).collect()),
+        PropertyValue::Component { class_name, .. } => {
+            serde_json::json!({"class_name": class_name})
+        }
     }
 }
 

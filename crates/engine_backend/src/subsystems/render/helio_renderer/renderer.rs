@@ -918,14 +918,35 @@ impl HelioRenderer {
     }
 
     fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
-        /// Build a GpuLight from the `Light` component attached to the snapshot.
-        /// Falls back to white/default values if no Light component is present.
+        /// Build a GpuLight from reflection-merged snapshot props.
+        /// Falls back to white/default values if props are missing.
         fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
-            let (color, intensity, range) = snap
-                .components
-                .iter()
-                .find_map(|c| c.as_light())
-                .unwrap_or(([1.0, 1.0, 1.0, 1.0], 7.0, 100.0));
+            let p = |k: &str, d: f32| {
+                snap.props
+                    .get(k)
+                    .and_then(|v| v.as_f64())
+                    .map(|v| v as f32)
+                    .unwrap_or(d)
+            };
+            let color = snap
+                .props
+                .get("color")
+                .and_then(|v| v.as_array())
+                .and_then(|a| {
+                    if a.len() >= 4 {
+                        Some([
+                            a[0].as_f64().unwrap_or(1.0) as f32,
+                            a[1].as_f64().unwrap_or(1.0) as f32,
+                            a[2].as_f64().unwrap_or(1.0) as f32,
+                            a[3].as_f64().unwrap_or(1.0) as f32,
+                        ])
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+            let intensity = p("intensity", 7.0);
+            let range = p("range", 100.0);
             let lt = match snap.object_type { ObjectType::Light(lt) => lt, _ => crate::scene::LightType::Point };
             GpuLight {
                 position_range: [snap.position[0], snap.position[1], snap.position[2], range],

@@ -57,20 +57,7 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [
-        {
-          "Light": {
-            "color": [
-              0.2,
-              0.45,
-              1.0,
-              1.0
-            ],
-            "intensity": 7.0,
-            "range": 100.0
-          }
-        }
-      ],
+      "components": [],
       "scene_path": "Blue Light",
       "props": {}
     },
@@ -101,20 +88,7 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [
-        {
-          "Light": {
-            "color": [
-              1.0,
-              0.22,
-              0.2,
-              1.0
-            ],
-            "intensity": 7.0,
-            "range": 100.0
-          }
-        }
-      ],
+      "components": [],
       "scene_path": "Red Light",
       "props": {}
     },
@@ -145,20 +119,7 @@
       "locked": false,
       "parent": null,
       "children": [],
-      "components": [
-        {
-          "Light": {
-            "color": [
-              1.0,
-              0.9,
-              0.2,
-              1.0
-            ],
-            "intensity": 6.0,
-            "range": 100.0
-          }
-        }
-      ],
+      "components": [],
       "scene_path": "Yellowish Light",
       "props": {}
     },

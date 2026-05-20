@@ -4,10 +4,11 @@
 //! color (RGBA), metallic, and roughness values.
 
 use gpui::{prelude::*, *};
+use serde_json::Value;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
 use super::bound_field::F32BoundField;
-use crate::level_editor::scene_database::{Component, SceneDatabase};
+use crate::level_editor::scene_database::SceneDatabase;
 
 /// Material section for editing material component properties
 pub struct MaterialSection {
@@ -26,6 +27,60 @@ pub struct MaterialSection {
 }
 
 impl MaterialSection {
+    fn get_material_data(scene_db: &SceneDatabase, object_id: &str) -> Option<Value> {
+        scene_db
+            .get_components(&object_id.to_string())
+            .into_iter()
+            .find(|c| c.class_name == "MaterialOverride")
+            .map(|c| c.data)
+    }
+
+    fn get_color_channel(scene_db: &SceneDatabase, object_id: &str, index: usize) -> Option<f32> {
+        let data = Self::get_material_data(scene_db, object_id)?;
+        let color = data.get("color")?.as_array()?;
+        color.get(index)?.as_f64().map(|v| v as f32)
+    }
+
+    fn set_color_channel(scene_db: &SceneDatabase, object_id: &str, index: usize, value: f32) -> bool {
+        let mut color = [1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32];
+        if let Some(data) = Self::get_material_data(scene_db, object_id) {
+            if let Some(existing) = data.get("color").and_then(|v| v.as_array()) {
+                for (i, c) in color.iter_mut().enumerate() {
+                    if let Some(v) = existing.get(i).and_then(|v| v.as_f64()) {
+                        *c = v as f32;
+                    }
+                }
+            }
+        }
+        if index < color.len() {
+            color[index] = value;
+        }
+        scene_db.update_component_property(
+            &object_id.to_string(),
+            "MaterialOverride",
+            "color",
+            serde_json::json!([color[0], color[1], color[2], color[3]]),
+        );
+        true
+    }
+
+    fn get_scalar(scene_db: &SceneDatabase, object_id: &str, key: &str) -> Option<f32> {
+        Self::get_material_data(scene_db, object_id)?
+            .get(key)
+            .and_then(|v| v.as_f64())
+            .map(|v| v as f32)
+    }
+
+    fn set_scalar(scene_db: &SceneDatabase, object_id: &str, key: &str, value: f32) -> bool {
+        scene_db.update_component_property(
+            &object_id.to_string(),
+            "MaterialOverride",
+            key,
+            Value::from(value),
+        );
+        true
+    }
+
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
@@ -34,36 +89,12 @@ impl MaterialSection {
     ) -> Self {
         use super::field_bindings::F32FieldBinding;
 
-        // Helper to find material component
-        let find_material = |obj: &crate::level_editor::scene_database::SceneObjectData| {
-            obj.components.iter().find_map(|comp| {
-                if let Component::Material {
-                    color,
-                    metallic,
-                    roughness,
-                    ..
-                } = comp
-                {
-                    Some((*color, *metallic, *roughness))
-                } else {
-                    None
-                }
-            })
-        };
-
         // Color R
         let color_r = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(c, _, _)| c[0]).unwrap_or(1.0),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { color, .. } = comp {
-                                color[0] = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_color_channel(db, id, 0).or(Some(1.0)),
+                    |id, val, db| Self::set_color_channel(db, id, 0, val),
                 ),
                 "R",
                 object_id.clone(),
@@ -76,16 +107,9 @@ impl MaterialSection {
         // Color G
         let color_g = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(c, _, _)| c[1]).unwrap_or(1.0),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { color, .. } = comp {
-                                color[1] = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_color_channel(db, id, 1).or(Some(1.0)),
+                    |id, val, db| Self::set_color_channel(db, id, 1, val),
                 ),
                 "G",
                 object_id.clone(),
@@ -98,16 +122,9 @@ impl MaterialSection {
         // Color B
         let color_b = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(c, _, _)| c[2]).unwrap_or(1.0),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { color, .. } = comp {
-                                color[2] = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_color_channel(db, id, 2).or(Some(1.0)),
+                    |id, val, db| Self::set_color_channel(db, id, 2, val),
                 ),
                 "B",
                 object_id.clone(),
@@ -120,16 +137,9 @@ impl MaterialSection {
         // Color A
         let color_a = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(c, _, _)| c[3]).unwrap_or(1.0),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { color, .. } = comp {
-                                color[3] = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_color_channel(db, id, 3).or(Some(1.0)),
+                    |id, val, db| Self::set_color_channel(db, id, 3, val),
                 ),
                 "A",
                 object_id.clone(),
@@ -142,16 +152,9 @@ impl MaterialSection {
         // Metallic
         let metallic = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(_, m, _)| m).unwrap_or(0.0),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { metallic, .. } = comp {
-                                *metallic = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_scalar(db, id, "metallic").or(Some(0.0)),
+                    |id, val, db| Self::set_scalar(db, id, "metallic", val),
                 ),
                 "Metallic",
                 object_id.clone(),
@@ -164,16 +167,9 @@ impl MaterialSection {
         // Roughness
         let roughness = cx.new(|cx| {
             F32BoundField::new(
-                F32FieldBinding::new(
-                    move |obj| find_material(obj).map(|(_, _, r)| r).unwrap_or(0.5),
-                    |obj, val| {
-                        for comp in &mut obj.components {
-                            if let Component::Material { roughness, .. } = comp {
-                                *roughness = val;
-                                break;
-                            }
-                        }
-                    },
+                F32FieldBinding::new_with_db(
+                    |id, db| Self::get_scalar(db, id, "roughness").or(Some(0.5)),
+                    |id, val, db| Self::set_scalar(db, id, "roughness", val),
                 ),
                 "Roughness",
                 object_id.clone(),

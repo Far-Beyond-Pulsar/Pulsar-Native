@@ -23,7 +23,9 @@
 pub mod registry;
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::any::Any;
+use std::collections::HashMap;
 use std::fmt;
 
 // Re-export for convenience
@@ -31,6 +33,56 @@ pub use registry::{EngineClassRegistration, EngineClassRegistry, REGISTRY};
 
 // Re-export inventory for derive macro
 pub use inventory;
+
+/// Trait for component-owned projection of reflection data into scene snapshot props.
+///
+/// This keeps per-component prop mapping logic modular and out of central systems.
+pub trait ScenePropsProjector {
+    /// Reflection class name this projector handles.
+    const CLASS_NAME: &'static str;
+
+    /// Apply component-derived props to the scene-level props map.
+    ///
+    /// `component_data == None` should clear or reset any props managed by this
+    /// projector so stale values do not linger.
+    fn apply_scene_props(
+        props: &mut HashMap<String, Value>,
+        component_data: Option<&Value>,
+    );
+}
+
+/// Inventory registration entry for scene props projectors.
+pub struct ScenePropsApplierRegistration {
+    pub class_name: &'static str,
+    pub apply: fn(&mut HashMap<String, Value>, Option<&Value>),
+}
+
+inventory::collect!(ScenePropsApplierRegistration);
+
+/// Apply registered scene-props logic for one component class.
+///
+/// Returns true if a registered applier handled this class.
+pub fn apply_scene_props_for_class(
+    class_name: &str,
+    props: &mut HashMap<String, Value>,
+    component_data: Option<&Value>,
+) -> bool {
+    for registration in inventory::iter::<ScenePropsApplierRegistration> {
+        if registration.class_name == class_name {
+            (registration.apply)(props, component_data);
+            return true;
+        }
+    }
+    false
+}
+
+/// Return all registered scene-props applier class names.
+pub fn registered_scene_props_classes() -> Vec<&'static str> {
+    inventory::iter::<ScenePropsApplierRegistration>
+        .into_iter()
+        .map(|r| r.class_name)
+        .collect()
+}
 
 /// Core trait for all engine classes (components, actors, etc.)
 ///

@@ -32,7 +32,6 @@ impl PropertiesPanel {
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
         object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,
-        component_sections: &Vec<Entity<super::ComponentFieldsSection>>,
         window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
@@ -59,11 +58,6 @@ impl PropertiesPanel {
 
                         // Reflection-backed object type properties — always present.
                         if let Some(ref section) = object_type_fields_section {
-                            flex = flex.child(section.clone());
-                        }
-
-                        // Render component sections dynamically
-                        for section in component_sections {
                             flex = flex.child(section.clone());
                         }
 
@@ -364,8 +358,10 @@ impl PropertiesPanel {
 
         let content = match object.object_type {
             ObjectType::Camera => Self::render_camera_settings(cx).into_any_element(),
-            ObjectType::Light(_) => Self::render_light_settings(cx).into_any_element(),
             ObjectType::Mesh(_) => Self::render_mesh_settings(cx).into_any_element(),
+            // Lights have no separate settings section — all light properties
+            // (color, intensity, range) live on the Component::Light component
+            // and are edited through the components panel below.
             _ => v_flex()
                 .items_center()
                 .py_4()
@@ -388,24 +384,6 @@ impl PropertiesPanel {
             .child(Self::render_property_row("Near Clip", "0.1", "m", cx))
             .child(Self::render_property_row("Far Clip", "1000", "m", cx))
             .child(Self::render_dropdown_row("Projection", "Perspective", cx))
-    }
-
-    fn render_light_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
-        v_flex()
-            .gap_3()
-            .child(Self::render_property_row("Intensity", "1.0", "", cx))
-            .child(Self::render_color_row(
-                "Color",
-                Hsla {
-                    h: 45.0,
-                    s: 0.9,
-                    l: 0.6,
-                    a: 1.0,
-                },
-                cx,
-            ))
-            .child(Self::render_dropdown_row("Shadow Mode", "Soft Shadows", cx))
-            .child(Self::render_property_row("Shadow Bias", "0.001", "", cx))
     }
 
     fn render_mesh_settings(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
