@@ -869,6 +869,10 @@ impl Render for ObjectTypeFieldsSection {
             .into_any_element();
         drop(state);
 
+        // Rebuild mesh pickers from latest engine_fs state so newly added mesh
+        // files appear without restarting the editor.
+        self.mesh_asset_pickers.clear();
+
         // ── Pre-populate ColorPickerState for any Color-typed properties ───
         for component in &attached {
             let class_name = component.class_name.as_str();

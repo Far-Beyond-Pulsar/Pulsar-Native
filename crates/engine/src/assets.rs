@@ -8,6 +8,7 @@
 //! - **Icons**: SVG files in `assets/icons/**/*.svg`
 //! - **Fonts**: TrueType fonts in `assets/fonts/**/*.ttf`
 //! - **Images**: PNG files in `assets/images/**/*.png`
+//! - **Meshes**: All files in `assets/meshes/**`
 //!
 //! ## Usage
 //!
@@ -40,6 +41,7 @@ use std::borrow::Cow;
 #[include = "icons/**/*.svg"]
 #[include = "fonts/**/*.ttf"]
 #[include = "images/**/*.png"]
+#[include = "meshes/**"]
 #[include = "default.level"]
 pub struct Assets;
 
