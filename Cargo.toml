@@ -110,7 +110,7 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio = { path = "../Helio/crates/helio" }
+helio = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "45b62f9576c50bb636a9c6d0a5b6a2626e733f1f" }
 glam           = { version = "0.29", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
