@@ -555,16 +555,18 @@ impl ObjectTypeFieldsSection {
             {
                 let key = (class_name.to_string(), prop_name.to_string());
                 if let Some(picker_state) = self.color_pickers.get(&key) {
-                    v_flex()
+                    h_flex()
                         .w_full()
-                        .gap_1()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(cx.theme().muted_foreground)
                                 .child(display_name.to_string()),
                         )
-                        .child(ColorPicker::new(picker_state).label(display_name.to_string()))
+                        .child(ColorPicker::new(picker_state).anchor(Corner::BottomRight))
                         .into_any_element()
                 } else {
                     h_flex()
@@ -706,16 +708,18 @@ impl ObjectTypeFieldsSection {
             (PropertyType::Color, PropertyValue::Color(_)) => {
                 let key = (class_name.to_string(), prop_name.to_string());
                 if let Some(picker_state) = self.color_pickers.get(&key) {
-                    v_flex()
+                    h_flex()
                         .w_full()
-                        .gap_1()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
                         .child(
                             div()
                                 .text_sm()
                                 .text_color(cx.theme().muted_foreground)
                                 .child(display_name.to_string()),
                         )
-                        .child(ColorPicker::new(picker_state).label(display_name.to_string()))
+                        .child(ColorPicker::new(picker_state).anchor(Corner::BottomRight))
                         .into_any_element()
                 } else {
                     // Picker not yet created (pre-pass missed it) — show value as fallback.
