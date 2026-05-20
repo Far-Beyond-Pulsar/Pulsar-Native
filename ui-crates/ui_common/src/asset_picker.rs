@@ -111,16 +111,7 @@ impl MeshAssetPicker {
                 |item| item.path.clone(),
             )
             .with_image_getter(|item| {
-                item.thumbnail
-                    .clone()
-                    .map(ImageSource::Render)
-                    .unwrap_or_else(|| {
-                        // Transparent 1×1 placeholder while thumbnail loads.
-                        let frame = image::Frame::new(image::RgbaImage::new(1, 1));
-                        ImageSource::Render(Arc::new(gpui::RenderImage::new(
-                            smallvec::smallvec![frame],
-                        )))
-                    })
+                item.thumbnail.clone().map(ImageSource::Render)
             })
             .with_empty_text("No matching assets")
             .with_max_width(px(360.0))
@@ -201,11 +192,10 @@ impl MeshAssetPicker {
         let cache_root = self.thumbnail_cache_root.clone();
         let (tx, rx) = smol::channel::bounded::<Option<image::RgbaImage>>(1);
 
-        std::thread::spawn(move || {
-            // Ask engine_fs for a cached-or-generated thumbnail PNG path.
-            let result = engine_fs::thumbnails::get_or_generate_thumbnail(&abs_path, &cache_root)
-                .and_then(|png_path| image::open(&png_path).ok().map(|i| i.into_rgba8()));
-            smol::block_on(tx.send(result)).ok();
+        engine_fs::thumbnails::service().request(abs_path, cache_root, move |thumb_path| {
+            let rgba = thumb_path
+                .and_then(|p| image::open(&p).ok().map(|i| i.into_rgba8()));
+            smol::block_on(tx.send(rgba)).ok();
         });
 
         let path_key = path.clone();

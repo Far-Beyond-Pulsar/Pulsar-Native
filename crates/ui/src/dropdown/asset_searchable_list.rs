@@ -53,7 +53,7 @@ pub struct AssetSearchableList<T: Clone + 'static> {
     items: Vec<T>,
     format_title: Rc<dyn Fn(&T) -> String>,
     format_description: Rc<dyn Fn(&T) -> String>,
-    image_for: Option<Rc<dyn Fn(&T) -> ImageSource>>,
+    image_for: Option<Rc<dyn Fn(&T) -> Option<ImageSource>>>,
     item_state: Rc<dyn Fn(&T) -> AssetListItemState>,
     item_actions: Option<Rc<dyn Fn(&T) -> Vec<AssetListItemAction>>>,
     empty_text: SharedString,
@@ -102,7 +102,7 @@ impl<T: Clone + 'static> AssetSearchableList<T> {
     }
 
     /// Provide an image source for each item. If not set, a placeholder icon is shown.
-    pub fn with_image_getter(mut self, image_for: impl Fn(&T) -> ImageSource + 'static) -> Self {
+    pub fn with_image_getter(mut self, image_for: impl Fn(&T) -> Option<ImageSource> + 'static) -> Self {
         self.image_for = Some(Rc::new(image_for));
         self
     }
@@ -241,7 +241,7 @@ impl<T: Clone + 'static> Render for AssetSearchableList<T> {
                                 let title = (self.format_title)(&item);
                                 let description = (self.format_description)(&item);
                                 let image_source =
-                                    self.image_for.as_ref().map(|f| f(&item));
+                                    self.image_for.as_ref().and_then(|f| f(&item));
                                 let actions = self
                                     .item_actions
                                     .as_ref()

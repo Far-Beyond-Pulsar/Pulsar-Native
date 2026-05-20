@@ -71,6 +71,10 @@ pub struct FileManagerDrawer {
     // Virtual scroll handles for grid and list views
     grid_scroll_handle: VirtualListScrollHandle,
     list_scroll_handle: VirtualListScrollHandle,
+
+    // Thumbnail cache: None = queued/unsupported, Some(img) = ready
+    thumbnails: std::collections::HashMap<std::path::PathBuf, Option<std::sync::Arc<gpui::RenderImage>>>,
+    thumbnail_cache_root: std::path::PathBuf,
 }
 
 // ============================================================================
@@ -88,6 +92,7 @@ include!("drawer_impl/item_management.rs");
 include!("drawer_impl/event_handlers.rs");
 include!("drawer_impl/rename_operations.rs");
 include!("drawer_impl/drag_drop_handlers.rs");
+include!("drawer_impl/thumbnails.rs");
 
 // ── Path helpers ────────────────────────────────────────────────────────────
 

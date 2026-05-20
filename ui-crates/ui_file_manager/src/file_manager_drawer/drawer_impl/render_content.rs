@@ -110,6 +110,12 @@ impl FileManagerDrawer {
         let is_class = item.is_class();
         let is_folder = item.is_folder;
 
+        // Queue thumbnail and read the cached result (if ready).
+        if !is_folder {
+            self.ensure_thumbnail(&item.path, cx);
+        }
+        let thumb = self.thumbnails.get(&item.path).and_then(|t| t.clone());
+
         let drag_paths = if is_selected {
             self.selected_items.iter().cloned().collect()
         } else {
@@ -238,7 +244,18 @@ impl FileManagerDrawer {
                             .items_center()
                             .justify_center()
                             .shadow_sm()
-                            .child(Icon::new(icon).size(px(24.0)).text_color(icon_color)),
+                            .overflow_hidden()
+                            .map(|el| match thumb {
+                                Some(render_img) => el.child(
+                                    img(gpui::ImageSource::Render(render_img))
+                                        .w(px(48.0))
+                                        .h(px(48.0))
+                                        .object_fit(gpui::ObjectFit::Cover),
+                                ),
+                                None => el.child(
+                                    Icon::new(icon).size(px(24.0)).text_color(icon_color),
+                                ),
+                            }),
                     )
                     .child(if is_renaming {
                         div()

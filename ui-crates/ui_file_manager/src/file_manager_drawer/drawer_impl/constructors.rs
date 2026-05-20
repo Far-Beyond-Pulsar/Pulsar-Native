@@ -45,7 +45,7 @@ impl FileManagerDrawer {
         Self {
             folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
             project_path: project_path.clone(),
-            selected_folder: project_path,
+            selected_folder: project_path.clone(),
             selected_items: HashSet::new(),
             operations,
             fs_metadata,
@@ -69,6 +69,11 @@ impl FileManagerDrawer {
             registered_file_types: Vec::new(), // Will be populated from plugin manager
             grid_scroll_handle: VirtualListScrollHandle::new(),
             list_scroll_handle: VirtualListScrollHandle::new(),
+            thumbnails: std::collections::HashMap::new(),
+            thumbnail_cache_root: project_path
+                .as_deref()
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
         }
     }
 
