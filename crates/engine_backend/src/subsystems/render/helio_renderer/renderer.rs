@@ -23,6 +23,13 @@ pub enum RendererCommand {
     ToggleFeature(String),
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct EditorCameraState {
+    pub position: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+}
+
 // ── Mesh Generation ──────────────────────────────────────────────────────────
 
 fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
@@ -310,6 +317,32 @@ impl HelioRenderer {
             gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
             last_frame: Instant::now(),
             frame_count: 0,
+        }
+    }
+
+    pub fn editor_camera_state(&self) -> EditorCameraState {
+        EditorCameraState {
+            position: self.cam_pos.to_array(),
+            yaw: self.cam_yaw,
+            pitch: self.cam_pitch,
+        }
+    }
+
+    pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
+        self.cam_pos = Vec3::from_array(state.position);
+        self.cam_yaw = state.yaw;
+        self.cam_pitch = state.pitch;
+        self.cam_local_velocity = Vec3::ZERO;
+
+        if let Ok(mut input) = self.camera_input.lock() {
+            input.forward = 0.0;
+            input.right = 0.0;
+            input.up = 0.0;
+            input.mouse_delta_x = 0.0;
+            input.mouse_delta_y = 0.0;
+            input.pan_delta_x = 0.0;
+            input.pan_delta_y = 0.0;
+            input.zoom_delta = 0.0;
         }
     }
 

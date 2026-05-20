@@ -5,7 +5,7 @@
 //! WgpuSurface is available.
 
 use crate::scene::SceneDb;
-use crate::subsystems::render::{HelioRenderer, RenderMetrics};
+use crate::subsystems::render::{EditorCameraState, HelioRenderer, RenderMetrics};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -148,6 +148,16 @@ impl GpuRenderer {
         &self,
     ) -> Option<std::sync::Arc<std::sync::Mutex<crate::subsystems::render::CameraInput>>> {
         self.helio_renderer.as_ref().map(|r| r.camera_input.clone())
+    }
+
+    pub fn editor_camera_state(&self) -> Option<EditorCameraState> {
+        self.helio_renderer.as_ref().map(|r| r.editor_camera_state())
+    }
+
+    pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
+        if let Some(r) = self.helio_renderer.as_mut() {
+            r.set_editor_camera_state(state);
+        }
     }
 
     /// Queue a new Helio gizmo mode for the next render frame.

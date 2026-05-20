@@ -21,9 +21,10 @@ use super::actions::*;
 use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
-    LightType, MeshType, ObjectType, SceneObjectData, Transform,
+    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
 use engine_backend::scene::SceneDb;
+use engine_backend::subsystems::render::EditorCameraState;
 use plugin_manager;
 
 /// Main Level Editor Panel - Orchestrates all sub-components
@@ -99,8 +100,9 @@ impl LevelEditorPanel {
         if default_path.exists() {
             // File already on disk — load it into the shared scene db.
             scene_db.clear();
-            match scene_db.load_from_file(&default_path) {
-                Ok(_) => {
+            match scene_db.load_from_file_with_editor_camera(&default_path) {
+                Ok(editor_camera) => {
+                    self.apply_editor_camera_state(editor_camera.as_ref());
                     let mut w = self.shared_state.write();
                     w.current_scene = Some(default_path);
                     w.has_unsaved_changes = false;
@@ -126,15 +128,21 @@ impl LevelEditorPanel {
             } else {
                 // No embedded asset yet — persist the current empty scene so the
                 // path is stable for future saves.
-                scene_db.save_to_file(&default_path)
+                scene_db.save_to_file_with_editor_camera(
+                    &default_path,
+                    self.current_editor_camera_state(),
+                )
             };
 
             match seed_result {
                 Ok(_) => {
                     // Load back what we just wrote so the editor shows the correct scene.
                     scene_db.clear();
-                    match scene_db.load_from_file(&default_path) {
-                        Ok(_) => tracing::info!("Default level seeded at {:?}", default_path),
+                    match scene_db.load_from_file_with_editor_camera(&default_path) {
+                        Ok(editor_camera) => {
+                            self.apply_editor_camera_state(editor_camera.as_ref());
+                            tracing::info!("Default level seeded at {:?}", default_path)
+                        }
                         Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
                     }
                     let mut w = self.shared_state.write();
@@ -165,7 +173,8 @@ impl LevelEditorPanel {
         // Clear the default scene that was just populated, then load from file.
         let scene_db = { panel.shared_state.read().scene_database.clone() };
         scene_db.clear();
-        scene_db.load_from_file(&path)?;
+        let editor_camera = scene_db.load_from_file_with_editor_camera(&path)?;
+        panel.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = panel.shared_state.write();
             state.current_scene = Some(path);
@@ -516,6 +525,32 @@ impl LevelEditorPanel {
         if let Ok(mut engine) = self.gpu_engine.lock() {
             engine.set_scene_gizmo_type(scene_type);
             engine.queue_gizmo_mode(helio_mode);
+        }
+    }
+
+    fn current_editor_camera_state(&self) -> Option<LevelEditorCameraState> {
+        self.gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.editor_camera_state())
+            .map(|camera| LevelEditorCameraState {
+                position: camera.position,
+                yaw: camera.yaw,
+                pitch: camera.pitch,
+            })
+    }
+
+    fn apply_editor_camera_state(&mut self, camera: Option<&LevelEditorCameraState>) {
+        let Some(camera) = camera else {
+            return;
+        };
+
+        if let Ok(mut engine) = self.gpu_engine.lock() {
+            engine.set_editor_camera_state(EditorCameraState {
+                position: camera.position,
+                yaw: camera.yaw,
+                pitch: camera.pitch,
+            });
         }
     }
 
@@ -899,7 +934,7 @@ impl LevelEditorPanel {
         };
 
         if let Some(path) = path_opt {
-            match scene_db.save_to_file(&path) {
+            match scene_db.save_to_file_with_editor_camera(&path, self.current_editor_camera_state()) {
                 Ok(_) => {
                     self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
@@ -912,16 +947,17 @@ impl LevelEditorPanel {
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
         let scene_db = { state_arc.read().scene_database.clone() };
+        let editor_camera = self.current_editor_camera_state();
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
             .add_filter("Level file", &["level", "json"])
             .set_file_name("untitled.level");
-        cx.spawn(async move |this, cx| {
+        cx.spawn(async move |_this, cx| {
             if let Some(handle) = dialog.save_file().await {
                 let path = handle.path().to_path_buf();
-                let result = scene_db.save_to_file(&path);
+                let result = scene_db.save_to_file_with_editor_camera(&path, editor_camera);
                 cx.update(|cx| {
-                    this.update(cx, |_, cx| {
+                    _this.update(cx, |_, cx| {
                         match result {
                             Ok(_) => {
                                 let previous = state_arc.write().current_scene.clone();
@@ -963,11 +999,12 @@ impl LevelEditorPanel {
             if let Some(handle) = dialog.pick_file().await {
                 let path = handle.path().to_path_buf();
                 // Load into the existing shared SceneDb (renderer keeps its Arc).
-                let result = scene_db.load_from_file(&path);
+                let result = scene_db.load_from_file_with_editor_camera(&path);
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         match result {
-                            Ok(_) => {
+                            Ok(editor_camera) => {
+                                this.apply_editor_camera_state(editor_camera.as_ref());
                                 let mut state = state_arc.write();
                                 if let Some(prev) = state.current_scene.clone() {
                                     ai_sessions::unregister_open_scene(&prev);
@@ -996,22 +1033,23 @@ impl LevelEditorPanel {
     fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
-        {
-            let state = self.shared_state.read();
-            state.scene_database.clear();
+        let scene_db = { self.shared_state.read().scene_database.clone() };
+        let mut editor_camera = None;
+        scene_db.clear();
 
-            // Load from the embedded default.level if available, otherwise start empty.
-            if let Some(bytes) = engine_state::EngineContext::global()
-                .and_then(|ctx| ctx.default_level_bytes.read().clone())
-            {
-                let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
-                if std::fs::write(&tmp, &bytes).is_ok() {
-                    if let Err(e) = state.scene_database.load_from_file(&tmp) {
-                        tracing::warn!("New scene: could not load embedded default.level: {e}");
-                    }
+        // Load from the embedded default.level if available, otherwise start empty.
+        if let Some(bytes) = engine_state::EngineContext::global()
+            .and_then(|ctx| ctx.default_level_bytes.read().clone())
+        {
+            let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
+            if std::fs::write(&tmp, &bytes).is_ok() {
+                match scene_db.load_from_file_with_editor_camera(&tmp) {
+                    Ok(loaded_camera) => editor_camera = loaded_camera,
+                    Err(e) => tracing::warn!("New scene: could not load embedded default.level: {e}"),
                 }
             }
         }
+        self.apply_editor_camera_state(editor_camera.as_ref());
         self.notify_sub_panels(cx);
         {
             let mut state = self.shared_state.write();

@@ -4,7 +4,9 @@ pub mod handle_utils;
 pub mod helio_renderer;
 
 pub use handle_utils::{handle_to_usize, usize_to_handle};
-pub use helio_renderer::{CameraInput, GpuProfilerData, HelioRenderer, RenderMetrics};
+pub use helio_renderer::{
+    CameraInput, EditorCameraState, GpuProfilerData, HelioRenderer, RenderMetrics,
+};
 // pub use native_texture::{NativeTextureHandle, SharedTextureInfo, TextureFormat};
 
 // Stub for compatibility

@@ -508,6 +508,15 @@ impl SceneDatabase {
 
     /// Serialize the scene to a JSON level file.
     pub fn save_to_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        self.save_to_file_with_editor_camera(path, None)
+    }
+
+    /// Serialize the scene to a JSON level file, optionally persisting editor camera state.
+    pub fn save_to_file_with_editor_camera<P: AsRef<Path>>(
+        &self,
+        path: P,
+        editor_camera: Option<LevelEditorCameraState>,
+    ) -> Result<(), String> {
         if let Some(parent_dir) = path.as_ref().parent() {
             fs::create_dir_all(parent_dir)
                 .map_err(|e| format!("Failed to create directory: {e}"))?;
@@ -518,8 +527,16 @@ impl SceneDatabase {
             .map(|obj| (obj.id.clone(), self.get_components(&obj.id)))
             .collect::<HashMap<_, _>>();
         let now = chrono::Utc::now().to_rfc3339();
+        let preserved_editor = if editor_camera.is_none() {
+            fs::read_to_string(path.as_ref())
+                .ok()
+                .and_then(|json| serde_json::from_str::<LevelFile>(&json).ok())
+                .and_then(|file| file.editor)
+        } else {
+            None
+        };
         let level_file = LevelFile {
-            version: "2.0".into(),
+            version: "2.1".into(),
             objects,
             components,
             metadata: LevelMetadata {
@@ -527,6 +544,11 @@ impl SceneDatabase {
                 modified: now,
                 editor_version: env!("CARGO_PKG_VERSION").into(),
             },
+            editor: editor_camera
+                .map(|camera| LevelEditorFileState {
+                    camera: Some(camera),
+                })
+                .or(preserved_editor),
         };
         let json = serde_json::to_string_pretty(&level_file)
             .map_err(|e| format!("Failed to serialize: {e}"))?;
@@ -537,6 +559,14 @@ impl SceneDatabase {
 
     /// Load a scene from a JSON level file (replaces the current scene).
     pub fn load_from_file<P: AsRef<Path>>(&self, path: P) -> Result<(), String> {
+        self.load_from_file_with_editor_camera(path).map(|_| ())
+    }
+
+    /// Load a scene from a JSON level file and return any persisted editor camera state.
+    pub fn load_from_file_with_editor_camera<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<Option<LevelEditorCameraState>, String> {
         let json = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
         let level_file: LevelFile =
             serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
@@ -574,7 +604,7 @@ impl SceneDatabase {
             path.as_ref().display(),
             level_file.version
         );
-        Ok(())
+        Ok(level_file.editor.and_then(|editor| editor.camera))
     }
 
     fn merge_component_props(
@@ -703,7 +733,7 @@ impl Default for SceneDatabase {
 
 // ── Level File Format ──────────────────────────────────────────────────────
 
-/// JSON level file (version 2.0).
+/// JSON level file (version 2.x).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct LevelFile {
     pub version: String,
@@ -712,6 +742,8 @@ pub struct LevelFile {
     #[serde(default)]
     pub components: HashMap<ObjectId, Vec<ComponentInstance>>,
     pub metadata: LevelMetadata,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub editor: Option<LevelEditorFileState>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -719,4 +751,17 @@ pub struct LevelMetadata {
     pub created: String,
     pub modified: String,
     pub editor_version: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LevelEditorFileState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub camera: Option<LevelEditorCameraState>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LevelEditorCameraState {
+    pub position: [f32; 3],
+    pub yaw: f32,
+    pub pitch: f32,
 }
