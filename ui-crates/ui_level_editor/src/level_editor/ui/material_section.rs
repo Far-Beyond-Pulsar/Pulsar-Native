@@ -41,7 +41,12 @@ impl MaterialSection {
         color.get(index)?.as_f64().map(|v| v as f32)
     }
 
-    fn set_color_channel(scene_db: &SceneDatabase, object_id: &str, index: usize, value: f32) -> bool {
+    fn set_color_channel(
+        scene_db: &SceneDatabase,
+        object_id: &str,
+        index: usize,
+        value: f32,
+    ) -> bool {
         let mut color = [1.0_f32, 1.0_f32, 1.0_f32, 1.0_f32];
         if let Some(data) = Self::get_material_data(scene_db, object_id) {
             if let Some(existing) = data.get("color").and_then(|v| v.as_array()) {

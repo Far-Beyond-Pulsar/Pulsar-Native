@@ -177,14 +177,14 @@ impl From<MeshType> for MeshKey {
     }
 }
 
-fn mesh_for_key(key: &MeshKey) -> MeshUpload {
-    match key {
-        MeshKey::Cube | MeshKey::Cylinder => box_mesh([0.5, 0.5, 0.5]),
-        MeshKey::Sphere => sphere_mesh(0.5),
-        MeshKey::Plane => plane_mesh(5.0),
-        MeshKey::File(path) => load_fbx_mesh(path),
-    }
-}
+ fn mesh_for_key(key: &MeshKey) -> Result<MeshUpload, String> {
+     match key {
+         MeshKey::Cube | MeshKey::Cylinder => Ok(box_mesh([0.5, 0.5, 0.5])),
+         MeshKey::Sphere => Ok(sphere_mesh(0.5)),
+         MeshKey::Plane => Ok(plane_mesh(5.0)),
+         MeshKey::File(path) => load_fbx_mesh(path),
+     }
+ }
 
 /// Resolve a `mesh_asset` prop value to a MeshKey.
 /// Any path that points to a real file becomes `MeshKey::File`;
@@ -207,29 +207,23 @@ fn mesh_key_from_asset_path(path: &str) -> Option<MeshKey> {
     }
 }
 
-/// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
-/// Falls back to a unit cube on error.
-fn load_fbx_mesh(path: &str) -> MeshUpload {
-    let cfg = helio_asset_compat::LoadConfig {
-        flip_uv_y: true,
-        merge_meshes: true,
-        import_scale: glam::Vec3::ONE,
-    };
-    match helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg) {
-        Ok(scene) => {
-            if let Some(mesh) = scene.meshes.into_iter().next() {
-                MeshUpload { vertices: mesh.vertices, indices: mesh.indices }
-            } else {
-                tracing::warn!("load_fbx_mesh: no meshes in {:?}, using fallback cube", path);
-                box_mesh([0.5, 0.5, 0.5])
-            }
-        }
-        Err(e) => {
-            tracing::error!("load_fbx_mesh: failed to load {:?}: {}", path, e);
-            box_mesh([0.5, 0.5, 0.5])
-        }
-    }
-}
+ /// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
+ /// Returns an error string if loading fails — the caller decides how to handle it.
+ fn load_fbx_mesh(path: &str) -> Result<MeshUpload, String> {
+     let cfg = helio_asset_compat::LoadConfig {
+         flip_uv_y: true,
+         merge_meshes: false,
+         import_scale: glam::Vec3::ONE,
+     };
+     let scene = helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg)
+         .map_err(|e| format!("Failed to load mesh asset \"{}\": {}", path, e))?;
+     scene
+         .meshes
+         .into_iter()
+         .next()
+         .map(|mesh| MeshUpload { vertices: mesh.vertices, indices: mesh.indices })
+         .ok_or_else(|| format!("Mesh asset \"{}\" contains no geometry", path))
+ }
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -252,6 +246,9 @@ pub struct HelioRenderer {
     pub pending_deselect: Arc<AtomicBool>,
 
     // ── Renderer State ──
+    /// Error messages from mesh loading failures, drained by the UI viewport for notifications.
+    pub pending_errors: Arc<Mutex<Vec<String>>>,
+
     inner: Option<HelioInner>,
 
     // ── Camera State ──
@@ -300,6 +297,7 @@ impl HelioRenderer {
             pending_gizmo_mode: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
             inner: None,
+            pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
             cam_yaw: -0.5,                      // Look left a bit
             cam_pitch: -0.3,                    // Look down to see objects
@@ -389,7 +387,7 @@ impl HelioRenderer {
             }
         }
 
-        Self::sync_scene(&self.scene_db, inner);
+        Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
 
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
@@ -732,7 +730,9 @@ impl HelioRenderer {
     /// Select an object or light by its SceneDb ID.
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
         use helio::SceneActorId;
-        let Some(inner) = &mut self.inner else { return false };
+        let Some(inner) = &mut self.inner else {
+            return false;
+        };
 
         if let Some((obj_id, _)) = inner.object_map.get(scene_db_id) {
             inner.editor_state.select(SceneActorId::Object(*obj_id));
@@ -844,7 +844,9 @@ impl HelioRenderer {
                         }
                         SceneActorId::Light(light_id) => {
                             // Light billboard clicked — resolve to SceneDb ID.
-                            if let Some(scene_db_id) = inner.light_id_to_scene.get(&light_id).cloned() {
+                            if let Some(scene_db_id) =
+                                inner.light_id_to_scene.get(&light_id).cloned()
+                            {
                                 Some(Some(scene_db_id))
                             } else {
                                 inner.editor_state.select(hit.actor_id);
@@ -911,7 +913,8 @@ impl HelioRenderer {
                         let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
                         let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
                         if let Some(scene_id) = inner
-                            .object_map.iter()
+                            .object_map
+                            .iter()
                             .find(|(_, &(oid, _))| oid == obj_id)
                             .map(|(id, _)| id.clone())
                         {
@@ -933,7 +936,12 @@ impl HelioRenderer {
                         ];
                         if let Some(scene_id) = inner.light_id_to_scene.get(&light_id).cloned() {
                             // Lights have no meaningful rotation or scale — preserve existing values.
-                            self.scene_db.apply_transform(&scene_id, pos, [0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+                            self.scene_db.apply_transform(
+                                &scene_id,
+                                pos,
+                                [0.0, 0.0, 0.0],
+                                [1.0, 1.0, 1.0],
+                            );
                         }
                     }
                 }
@@ -965,7 +973,7 @@ impl HelioRenderer {
         );
     }
 
-    fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner) {
+    fn sync_scene(scene_db: &crate::scene::SceneDb, inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
         /// Build a GpuLight from reflection-merged snapshot props.
         /// Falls back to white/default values if props are missing.
         fn gpu_light_from_snap(snap: &SceneObjectSnapshot) -> GpuLight {
@@ -995,11 +1003,14 @@ impl HelioRenderer {
                 .unwrap_or([1.0, 1.0, 1.0, 1.0]);
             let intensity = p("intensity", 7.0);
             let range = p("range", 100.0);
-            let lt = match snap.object_type { ObjectType::Light(lt) => lt, _ => crate::scene::LightType::Point };
+            let lt = match snap.object_type {
+                ObjectType::Light(lt) => lt,
+                _ => crate::scene::LightType::Point,
+            };
             GpuLight {
                 position_range: [snap.position[0], snap.position[1], snap.position[2], range],
                 direction_outer: [0.0, 0.0, 0.0, 0.0],
-                color_intensity: [color[0], color[1], color[2], intensity],  // color[3] (alpha) unused
+                color_intensity: [color[0], color[1], color[2], intensity], // color[3] (alpha) unused
                 shadow_index: u32::MAX,
                 light_type: lt as u32,
                 inner_angle: 0.0,
@@ -1031,7 +1042,9 @@ impl HelioRenderer {
         let mut live_light_ids = std::collections::HashSet::with_capacity(snapshots.len());
 
         for snap in &snapshots {
-            if !snap.visible { continue; }
+            if !snap.visible {
+                continue;
+            }
 
             match snap.object_type {
                 ObjectType::Light(_) => {
@@ -1039,10 +1052,15 @@ impl HelioRenderer {
                     let gpu_light = gpu_light_from_snap(snap);
                     if let Some(&light_id) = inner.light_map.get(&snap.id) {
                         // Skip if this light is being dragged — Helio owns the position.
-                        if Some(light_id) == dragged_light_id { continue; }
+                        if Some(light_id) == dragged_light_id {
+                            continue;
+                        }
                         let _ = inner.renderer.scene_mut().update_light(light_id, gpu_light);
-                    } else if let Some(light_id) = inner.renderer.scene_mut()
-                        .insert_actor(SceneActor::light(gpu_light)).as_light()
+                    } else if let Some(light_id) = inner
+                        .renderer
+                        .scene_mut()
+                        .insert_actor(SceneActor::light(gpu_light))
+                        .as_light()
                     {
                         inner.light_map.insert(snap.id.clone(), light_id);
                         inner.light_id_to_scene.insert(light_id, snap.id.clone());
@@ -1057,22 +1075,30 @@ impl HelioRenderer {
                         .and_then(mesh_key_from_asset_path)
                         .unwrap_or_else(|| MeshKey::from(mt));
 
-                    let is_new = !inner.mesh_cache.contains_key(&key);
-                    let (mesh_id, mat_id) = *inner.mesh_cache.entry(key.clone()).or_insert_with(|| {
-                        let upload = mesh_for_key(&key);
-                        let mid = inner
-                            .renderer
-                            .scene_mut()
-                            .insert_actor(SceneActor::mesh(upload.clone()))
-                            .as_mesh()
-                            .expect("mesh");
-                        let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                        let matid = inner.renderer.scene_mut().insert_material(mat);
-                        (mid, matid)
-                    });
-                    if is_new {
-                        inner.scene_picker.register_mesh(mesh_id, &mesh_for_key(&key));
+                    if !inner.mesh_cache.contains_key(&key) {
+                        match mesh_for_key(&key) {
+                            Ok(upload) => {
+                                let mid = inner
+                                    .renderer
+                                    .scene_mut()
+                                    .insert_actor(SceneActor::mesh(upload.clone()))
+                                    .as_mesh()
+                                    .expect("mesh");
+                                let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
+                                let matid = inner.renderer.scene_mut().insert_material(mat);
+                                inner.scene_picker.register_mesh(mid, &upload);
+                                inner.mesh_cache.insert(key.clone(), (mid, matid));
+                            }
+                            Err(e) => {
+                                tracing::error!("{}", e);
+                                if let Ok(mut eq) = error_queue.lock() {
+                                    eq.push(e);
+                                }
+                                continue;
+                            }
+                        }
                     }
+                    let (mesh_id, mat_id) = inner.mesh_cache[&key];
 
                     let transform = build_transform(snap);
                     let radius = Vec3::from_array(snap.scale).length() * 0.5;
@@ -1097,7 +1123,9 @@ impl HelioRenderer {
                                 }))
                                 .as_object()
                             {
-                                inner.object_map.insert(snap.id.clone(), (new_obj_id, mesh_id));
+                                inner
+                                    .object_map
+                                    .insert(snap.id.clone(), (new_obj_id, mesh_id));
                                 picker_dirty = true;
                             }
                         } else if !skip {
@@ -1129,17 +1157,23 @@ impl HelioRenderer {
         }
 
         // Stale removal.
-        let stale_meshes: Vec<(String, ObjectId)> = inner.object_map.iter()
+        let stale_meshes: Vec<(String, ObjectId)> = inner
+            .object_map
+            .iter()
             .filter(|(id, _)| !live_mesh_ids.contains(*id))
-            .map(|(id, &(oid, _))| (id.clone(), oid)).collect();
+            .map(|(id, &(oid, _))| (id.clone(), oid))
+            .collect();
         for (sid, oid) in stale_meshes {
             let _ = inner.renderer.scene_mut().remove_object(oid);
             inner.object_map.remove(&sid);
             picker_dirty = true;
         }
-        let stale_lights: Vec<(String, LightId)> = inner.light_map.iter()
+        let stale_lights: Vec<(String, LightId)> = inner
+            .light_map
+            .iter()
             .filter(|(id, _)| !live_light_ids.contains(*id))
-            .map(|(id, &lid)| (id.clone(), lid)).collect();
+            .map(|(id, &lid)| (id.clone(), lid))
+            .collect();
         for (sid, lid) in stale_lights {
             let _ = inner.renderer.scene_mut().remove_light(lid);
             inner.light_id_to_scene.remove(&lid);

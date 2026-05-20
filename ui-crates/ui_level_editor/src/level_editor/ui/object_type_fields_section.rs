@@ -3,7 +3,6 @@ use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
-use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 use ui::button::ButtonVariants as _;
 use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use ui::input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction};
@@ -11,6 +10,7 @@ use ui::menu::PopupMenuItem;
 use ui::popover::Popover;
 use ui::switch::Switch;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::add_component_dialog::AddComponentDialog;
 use super::state::LevelEditorState;
@@ -194,15 +194,19 @@ impl ObjectTypeFieldsSection {
 
         let cls = class_name.to_string();
         let prop = prop_name.to_string();
-        cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, _window, cx| {
-            if matches!(ev, InputEvent::Change | InputEvent::Blur) {
-                let text = state.read(cx).text().to_string();
-                if let Ok(v) = text.parse::<f32>() {
-                    this.write_property(&cls, &prop, PropertyValue::F32(v));
-                    cx.notify();
+        cx.subscribe_in(
+            &input,
+            window,
+            move |this, state, ev: &InputEvent, _window, cx| {
+                if matches!(ev, InputEvent::Change | InputEvent::Blur) {
+                    let text = state.read(cx).text().to_string();
+                    if let Ok(v) = text.parse::<f32>() {
+                        this.write_property(&cls, &prop, PropertyValue::F32(v));
+                        cx.notify();
+                    }
                 }
-            }
-        })
+            },
+        )
         .detach();
 
         let cls = class_name.to_string();
@@ -252,15 +256,19 @@ impl ObjectTypeFieldsSection {
 
         let cls = class_name.to_string();
         let prop = prop_name.to_string();
-        cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, _window, cx| {
-            if matches!(ev, InputEvent::Change | InputEvent::Blur) {
-                let text = state.read(cx).text().to_string();
-                if let Ok(v) = text.parse::<i32>() {
-                    this.write_property(&cls, &prop, PropertyValue::I32(v));
-                    cx.notify();
+        cx.subscribe_in(
+            &input,
+            window,
+            move |this, state, ev: &InputEvent, _window, cx| {
+                if matches!(ev, InputEvent::Change | InputEvent::Blur) {
+                    let text = state.read(cx).text().to_string();
+                    if let Ok(v) = text.parse::<i32>() {
+                        this.write_property(&cls, &prop, PropertyValue::I32(v));
+                        cx.notify();
+                    }
                 }
-            }
-        })
+            },
+        )
         .detach();
 
         let cls = class_name.to_string();
@@ -308,14 +316,24 @@ impl ObjectTypeFieldsSection {
             "meshes/primitives/SM_Cylinder.fbx".to_string(),
             "meshes/primitives/SM_Plane.fbx".to_string(),
         ];
-        
+
         let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
-        println!("[ensure_mesh_asset_picker] project_root = {:?}", project_root);
+        println!(
+            "[ensure_mesh_asset_picker] project_root = {:?}",
+            project_root
+        );
         println!("[ensure_mesh_asset_picker] builtins = {:?}", builtins);
         // Use only extension filtering for now; skip file_type filtering
         let queries = vec![AssetQuery::extension("fbx")];
         let picker = cx.new(|cx| {
-            MeshAssetPicker::new(current.to_string(), builtins, project_root, queries, window, cx)
+            MeshAssetPicker::new(
+                current.to_string(),
+                builtins,
+                project_root,
+                queries,
+                window,
+                cx,
+            )
         });
 
         let cls = class_name.to_string();
@@ -388,17 +406,18 @@ impl ObjectTypeFieldsSection {
                         h_flex()
                             .items_center()
                             .gap_2()
-                            .child(
-                                if let Some(input) = input_opt {
-                                    NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
-                                } else {
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().foreground)
-                                        .child(format!("{:.3}", v))
-                                        .into_any_element()
-                                },
-                            ),
+                            .child(if let Some(input) = input_opt {
+                                NumberInput::new(&input)
+                                    .xsmall()
+                                    .w(px(92.0))
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("{:.3}", v))
+                                    .into_any_element()
+                            }),
                     )
                     .into_any_element()
             }
@@ -421,17 +440,18 @@ impl ObjectTypeFieldsSection {
                         h_flex()
                             .items_center()
                             .gap_2()
-                            .child(
-                                if let Some(input) = input_opt {
-                                    NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
-                                } else {
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().foreground)
-                                        .child(v.to_string())
-                                        .into_any_element()
-                                },
-                            ),
+                            .child(if let Some(input) = input_opt {
+                                NumberInput::new(&input)
+                                    .xsmall()
+                                    .w(px(92.0))
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(v.to_string())
+                                    .into_any_element()
+                            }),
                     )
                     .into_any_element()
             }
@@ -505,11 +525,10 @@ impl ObjectTypeFieldsSection {
                             .xsmall()
                             .ghost()
                             .dropdown_caret(true)
-                            .dropdown_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
-                                options
-                                    .iter()
-                                    .enumerate()
-                                    .fold(menu, |menu, (ix, option)| {
+                            .dropdown_menu_with_anchor(
+                                Corner::BottomRight,
+                                move |menu, _window, _cx| {
+                                    options.iter().enumerate().fold(menu, |menu, (ix, option)| {
                                         let scene_db = scene_db.clone();
                                         let object_id = object_id.clone();
                                         let class_enum = class_enum.clone();
@@ -532,7 +551,8 @@ impl ObjectTypeFieldsSection {
                                                 }),
                                         )
                                     })
-                            }),
+                                },
+                            ),
                     )
                     .into_any_element()
             }
@@ -588,11 +608,14 @@ impl ObjectTypeFieldsSection {
                         ))
                         .anchor(Corner::BottomRight)
                         .trigger(
-                            ui::button::Button::new(format!("mesh-asset-btn-{}-{}", class_name, prop_name))
-                                .label(display)
-                                .xsmall()
-                                .ghost()
-                                .dropdown_caret(true),
+                            ui::button::Button::new(format!(
+                                "mesh-asset-btn-{}-{}",
+                                class_name, prop_name
+                            ))
+                            .label(display)
+                            .xsmall()
+                            .ghost()
+                            .dropdown_caret(true),
                         )
                         .content(move |_window, _cx| picker.clone())
                         .into_any_element();
@@ -667,7 +690,10 @@ impl ObjectTypeFieldsSection {
                         .into_any_element()
                 } else {
                     // Picker not yet created (pre-pass missed it) — show value as fallback.
-                    div().text_sm().child(format!("{:?}", value)).into_any_element()
+                    div()
+                        .text_sm()
+                        .child(format!("{:?}", value))
+                        .into_any_element()
                 }
             }
             _ => h_flex()
@@ -696,8 +722,22 @@ fn rgba_to_hsla([r, g, b, a]: [f32; 4]) -> Hsla {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);
     let l = (max + min) / 2.0;
-    let s = if max == min { 0.0 } else if l < 0.5 { (max - min) / (max + min) } else { (max - min) / (2.0 - max - min) };
-    let h = if max == min { 0.0 } else if max == r { ((g - b) / (max - min)).rem_euclid(6.0) / 6.0 } else if max == g { ((b - r) / (max - min) + 2.0) / 6.0 } else { ((r - g) / (max - min) + 4.0) / 6.0 };
+    let s = if max == min {
+        0.0
+    } else if l < 0.5 {
+        (max - min) / (max + min)
+    } else {
+        (max - min) / (2.0 - max - min)
+    };
+    let h = if max == min {
+        0.0
+    } else if max == r {
+        ((g - b) / (max - min)).rem_euclid(6.0) / 6.0
+    } else if max == g {
+        ((b - r) / (max - min) + 2.0) / 6.0
+    } else {
+        ((r - g) / (max - min) + 4.0) / 6.0
+    };
     Hsla { h, s, l, a }
 }
 
@@ -705,7 +745,14 @@ fn hsla_to_rgba(Hsla { h, s, l, a }: Hsla) -> [f32; 4] {
     let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
     let x = c * (1.0 - ((h * 6.0).rem_euclid(2.0) - 1.0).abs());
     let m = l - c / 2.0;
-    let (r1, g1, b1) = match (h * 6.0) as u32 { 0 => (c, x, 0.0), 1 => (x, c, 0.0), 2 => (0.0, c, x), 3 => (0.0, x, c), 4 => (x, 0.0, c), _ => (c, 0.0, x) };
+    let (r1, g1, b1) = match (h * 6.0) as u32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        _ => (c, 0.0, x),
+    };
     [r1 + m, g1 + m, b1 + m, a]
 }
 
@@ -927,10 +974,15 @@ impl Render for ObjectTypeFieldsSection {
                             });
                             cx.subscribe_in(&state, window, move |_this, _picker, ev, _w, _cx| {
                                 if let ColorPickerEvent::Change(Some(hsla)) = ev {
-                                    let json_val = { let [r,g,b,a] = hsla_to_rgba(*hsla); serde_json::json!([r,g,b,a]) };
-                                    scene_db.update_component_property(&object_id, &cn, &pn, json_val);
+                                    let json_val = {
+                                        let [r, g, b, a] = hsla_to_rgba(*hsla);
+                                        serde_json::json!([r, g, b, a])
+                                    };
+                                    scene_db
+                                        .update_component_property(&object_id, &cn, &pn, json_val);
                                 }
-                            }).detach();
+                            })
+                            .detach();
                             self.color_pickers.insert(key, state);
                         }
                     }

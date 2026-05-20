@@ -45,10 +45,7 @@ pub trait ScenePropsProjector {
     ///
     /// `component_data == None` should clear or reset any props managed by this
     /// projector so stale values do not linger.
-    fn apply_scene_props(
-        props: &mut HashMap<String, Value>,
-        component_data: Option<&Value>,
-    );
+    fn apply_scene_props(props: &mut HashMap<String, Value>, component_data: Option<&Value>);
 }
 
 /// Inventory registration entry for scene props projectors.

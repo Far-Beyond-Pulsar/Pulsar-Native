@@ -236,6 +236,12 @@ impl Render for HelioViewport {
                             h,
                             surface.format(),
                         );
+                        for err in engine.drain_pending_errors() {
+                            window.push_notification(
+                                Notification::error("Mesh Load Failed").message(err),
+                                cx,
+                            );
+                        }
                     }
                     drop(view);
                     surface.swap_buffers();

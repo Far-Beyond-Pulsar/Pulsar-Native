@@ -56,11 +56,14 @@ impl MeshAssetPicker {
     ) -> Self {
         let selected_path = selected_path.into();
         let mut assets = BTreeSet::new();
-        
+
         println!("[MeshAssetPicker::new] builtins.len() = {}", builtins.len());
         for builtin in builtins {
             let normalized = normalize_asset_path(&builtin);
-            println!("[MeshAssetPicker::new] adding builtin: {} -> {}", builtin, normalized);
+            println!(
+                "[MeshAssetPicker::new] adding builtin: {} -> {}",
+                builtin, normalized
+            );
             assets.insert(normalized);
         }
 
@@ -71,7 +74,10 @@ impl MeshAssetPicker {
             }
         }
 
-        println!("[MeshAssetPicker::new] total assets collected: {}", assets.len());
+        println!(
+            "[MeshAssetPicker::new] total assets collected: {}",
+            assets.len()
+        );
 
         let items = assets
             .into_iter()
@@ -132,7 +138,11 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
 
     for ext in &extension_queries {
         let found = engine_fs::virtual_fs::find_by_extension(project_root, ext);
-        println!("[query_assets] find_by_extension({}) returned {} files", ext, found.len());
+        println!(
+            "[query_assets] find_by_extension({}) returned {} files",
+            ext,
+            found.len()
+        );
         for path in found {
             if let Ok(rel) = path.strip_prefix(project_root) {
                 let normalized = normalize_asset_path(rel.to_string_lossy());

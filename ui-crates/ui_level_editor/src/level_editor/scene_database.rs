@@ -7,7 +7,7 @@
 use engine_backend::scene::SceneObjectSnapshot;
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use pulsar_reflection::{
-    PropertyValue, REGISTRY, apply_scene_props_for_class, registered_scene_props_classes,
+    apply_scene_props_for_class, registered_scene_props_classes, PropertyValue, REGISTRY,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -168,7 +168,12 @@ impl SceneDatabase {
         if self.scene_db.get_entry(&id).is_none() {
             return false;
         }
-        self.scene_db.apply_transform(&id, obj.transform.position, obj.transform.rotation, obj.transform.scale);
+        self.scene_db.apply_transform(
+            &id,
+            obj.transform.position,
+            obj.transform.rotation,
+            obj.transform.scale,
+        );
         self.scene_db.set_name(&id, obj.name);
         self.scene_db.set_visible(&id, obj.visible);
         self.scene_db.set_locked(&id, obj.locked);
@@ -204,7 +209,11 @@ impl SceneDatabase {
         new_value: serde_json::Value,
     ) {
         let components = self.get_components(object_id);
-        if let Some((idx, comp)) = components.iter().enumerate().find(|(_, c)| c.class_name == class_name) {
+        if let Some((idx, comp)) = components
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.class_name == class_name)
+        {
             let mut data = comp.data.clone();
             if let Some(obj) = data.as_object_mut() {
                 obj.insert(prop_name.to_string(), new_value);

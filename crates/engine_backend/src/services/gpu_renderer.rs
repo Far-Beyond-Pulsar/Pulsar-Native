@@ -133,6 +133,17 @@ impl GpuRenderer {
 
     // ── Gizmo and selection API ───────────────────────────────────────────────
 
+    /// Drain all pending mesh-load error messages accumulated since the last call.
+    /// Returns the drained messages so the UI can display notifications.
+    pub fn drain_pending_errors(&self) -> Vec<String> {
+        self.helio_renderer
+            .as_ref()
+            .and_then(|r| r.pending_errors.lock().ok())
+            .map(|mut v| std::mem::take(&mut *v))
+            .unwrap_or_default()
+    }
+
+
     /// Camera input handle for the viewport input thread.
     pub fn camera_input(
         &self,

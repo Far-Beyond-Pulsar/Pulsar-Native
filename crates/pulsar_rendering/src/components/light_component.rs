@@ -136,12 +136,7 @@ impl LightComponent {
         let mut out = HashMap::new();
         out.insert(
             "color".to_string(),
-            serde_json::json!([
-                self.color[0],
-                self.color[1],
-                self.color[2],
-                self.color[3]
-            ]),
+            serde_json::json!([self.color[0], self.color[1], self.color[2], self.color[3]]),
         );
         out.insert("intensity".to_string(), Value::from(self.intensity));
         out.insert("range".to_string(), Value::from(self.range));
