@@ -123,13 +123,17 @@ impl MeshAssetPicker {
             |this, _, event: &AssetSearchableListEvent<AssetItem>, cx| {
                 if let AssetSearchableListEvent::Select(item) = event {
                     this.selected_path = item.path.clone();
+                    // Pre-warm thumbnail for the newly selected asset so the
+                    // trigger field updates immediately on next render.
+                    let path = item.path.clone();
+                    this.ensure_thumbnail(path, cx);
                     cx.emit(AssetPickedEvent);
                     cx.emit(DismissEvent);
                 }
             },
         )];
 
-        Self {
+        let mut picker = Self {
             searchable_list,
             items,
             thumbnail_requested: std::collections::HashSet::new(),
@@ -138,7 +142,16 @@ impl MeshAssetPicker {
             thumbnail_cache_root,
             selected_path,
             _subscriptions: subscriptions,
+        };
+
+        // Pre-warm the thumbnail for the currently selected asset so the
+        // trigger field shows the image without needing to open the dropdown.
+        let sel = picker.selected_path.clone();
+        if !sel.is_empty() {
+            picker.ensure_thumbnail(sel, cx);
         }
+
+        picker
     }
 
     pub fn selected_path(&self) -> &str {
