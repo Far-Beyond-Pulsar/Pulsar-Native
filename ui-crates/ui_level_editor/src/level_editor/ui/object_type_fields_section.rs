@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
+use ui::input::{InputEvent, InputState, NumberInput};
 use ui::popover::Popover;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
@@ -24,6 +25,8 @@ pub struct ObjectTypeFieldsSection {
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     /// ColorPickerState per (class_name, prop_name) for Color-typed properties.
     color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
+    /// Number input state per (class_name, prop_name) for numeric properties.
+    numeric_inputs: HashMap<(String, String), Entity<InputState>>,
 }
 
 impl ObjectTypeFieldsSection {
@@ -58,6 +61,7 @@ impl ObjectTypeFieldsSection {
             add_component_dialog,
             state_arc,
             color_pickers: HashMap::new(),
+            numeric_inputs: HashMap::new(),
         }
     }
 
@@ -175,6 +179,74 @@ impl ObjectTypeFieldsSection {
         self.write_property(class_name, prop_name, PropertyValue::I32(current + sign));
     }
 
+    fn ensure_f32_input(
+        &mut self,
+        class_name: &str,
+        prop_name: &str,
+        current: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (class_name.to_string(), prop_name.to_string());
+        if self.numeric_inputs.contains_key(&key) {
+            return;
+        }
+
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |state, cx| {
+            state.set_value(&format!("{:.3}", current), window, cx);
+        });
+
+        let cls = class_name.to_string();
+        let prop = prop_name.to_string();
+        cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, _window, cx| {
+            if matches!(ev, InputEvent::Change | InputEvent::Blur) {
+                let text = state.read(cx).text().to_string();
+                if let Ok(v) = text.parse::<f32>() {
+                    this.write_property(&cls, &prop, PropertyValue::F32(v));
+                    cx.notify();
+                }
+            }
+        })
+        .detach();
+
+        self.numeric_inputs.insert(key, input);
+    }
+
+    fn ensure_i32_input(
+        &mut self,
+        class_name: &str,
+        prop_name: &str,
+        current: i32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (class_name.to_string(), prop_name.to_string());
+        if self.numeric_inputs.contains_key(&key) {
+            return;
+        }
+
+        let input = cx.new(|cx| InputState::new(window, cx));
+        input.update(cx, |state, cx| {
+            state.set_value(&current.to_string(), window, cx);
+        });
+
+        let cls = class_name.to_string();
+        let prop = prop_name.to_string();
+        cx.subscribe_in(&input, window, move |this, state, ev: &InputEvent, _window, cx| {
+            if matches!(ev, InputEvent::Change | InputEvent::Blur) {
+                let text = state.read(cx).text().to_string();
+                if let Ok(v) = text.parse::<i32>() {
+                    this.write_property(&cls, &prop, PropertyValue::I32(v));
+                    cx.notify();
+                }
+            }
+        })
+        .detach();
+
+        self.numeric_inputs.insert(key, input);
+    }
+
     fn color_fallback_rgba(&self, class_name: &str, prop_name: &str) -> [f32; 4] {
         let components = self.scene_db.get_components(&self.object_id);
         components
@@ -211,13 +283,14 @@ impl ObjectTypeFieldsSection {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         match (property_type, value) {
-            (PropertyType::F32 { step, .. }, PropertyValue::F32(v)) => {
-                let step = step.unwrap_or(0.1);
+            (PropertyType::F32 { .. }, PropertyValue::F32(v)) => {
                 let current = *v;
                 let class_dec = class_name.to_string();
                 let prop_dec = prop_name.to_string();
                 let class_inc = class_name.to_string();
                 let prop_inc = prop_name.to_string();
+                let input_key = (class_name.to_string(), prop_name.to_string());
+                let input_opt = self.numeric_inputs.get(&input_key).cloned();
 
                 h_flex()
                     .w_full()
@@ -243,7 +316,8 @@ impl ObjectTypeFieldsSection {
                                 .xsmall()
                                 .ghost()
                                 .on_click(cx.listener(
-                                    move |this, _event, _window, cx| {
+                                    move |this, event: &ClickEvent, _window, cx| {
+                                        let step = if event.modifiers().shift { 0.1 } else { 1.0 };
                                         this.nudge_numeric(
                                             &class_dec, &prop_dec, current, step, -1.0,
                                         );
@@ -252,10 +326,15 @@ impl ObjectTypeFieldsSection {
                                 )),
                             )
                             .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("{:.3}", v)),
+                                if let Some(input) = input_opt {
+                                    NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
+                                } else {
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(format!("{:.3}", v))
+                                        .into_any_element()
+                                },
                             )
                             .child(
                                 ui::button::Button::new(format!(
@@ -266,7 +345,8 @@ impl ObjectTypeFieldsSection {
                                 .xsmall()
                                 .ghost()
                                 .on_click(cx.listener(
-                                    move |this, _event, _window, cx| {
+                                    move |this, event: &ClickEvent, _window, cx| {
+                                        let step = if event.modifiers().shift { 0.1 } else { 1.0 };
                                         this.nudge_numeric(
                                             &class_inc, &prop_inc, current, step, 1.0,
                                         );
@@ -283,6 +363,8 @@ impl ObjectTypeFieldsSection {
                 let prop_dec = prop_name.to_string();
                 let class_inc = class_name.to_string();
                 let prop_inc = prop_name.to_string();
+                let input_key = (class_name.to_string(), prop_name.to_string());
+                let input_opt = self.numeric_inputs.get(&input_key).cloned();
 
                 h_flex()
                     .w_full()
@@ -315,10 +397,15 @@ impl ObjectTypeFieldsSection {
                                 )),
                             )
                             .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(v.to_string()),
+                                if let Some(input) = input_opt {
+                                    NumberInput::new(&input).xsmall().w(px(92.0)).into_any_element()
+                                } else {
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().foreground)
+                                        .child(v.to_string())
+                                        .into_any_element()
+                                },
                             )
                             .child(
                                 ui::button::Button::new(format!(
@@ -645,6 +732,7 @@ impl Render for ObjectTypeFieldsSection {
         let component_panel = component_hierarchy
             .render(&state, self.state_arc.clone(), add_popover, cx)
             .into_any_element();
+        drop(state);
 
         // ── Pre-populate ColorPickerState for any Color-typed properties ───
         for component in &attached {
@@ -652,6 +740,19 @@ impl Render for ObjectTypeFieldsSection {
             if let Some(mut instance) = REGISTRY.create_instance(class_name) {
                 for prop in instance.get_properties() {
                     let default = (prop.getter)(instance.as_ref());
+                    let current =
+                        self.read_property(class_name, prop.name, &prop.property_type, &default);
+
+                    match (&prop.property_type, &current) {
+                        (PropertyType::F32 { .. }, PropertyValue::F32(v)) => {
+                            self.ensure_f32_input(class_name, prop.name, *v, window, cx);
+                        }
+                        (PropertyType::I32 { .. }, PropertyValue::I32(v)) => {
+                            self.ensure_i32_input(class_name, prop.name, *v, window, cx);
+                        }
+                        _ => {}
+                    }
+
                     let should_create_picker = matches!(prop.property_type, PropertyType::Color)
                         || (matches!(&default, PropertyValue::String(s) if s == "unsupported")
                             && Self::is_color_field_name(prop.name));
@@ -659,7 +760,6 @@ impl Render for ObjectTypeFieldsSection {
                     if should_create_picker {
                         let key = (class_name.to_string(), prop.name.to_string());
                         if !self.color_pickers.contains_key(&key) {
-                            let current = self.read_property(class_name, prop.name, &prop.property_type, &default);
                             let rgba = if let PropertyValue::Color(c) = current {
                                 c
                             } else {
