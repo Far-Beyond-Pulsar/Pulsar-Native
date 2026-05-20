@@ -6,7 +6,9 @@ use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use ui::input::{InputEvent, InputState, NumberInput};
+use ui::menu::PopupMenuItem;
 use ui::popover::Popover;
+use ui::switch::Switch;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 use super::add_component_dialog::AddComponentDialog;
@@ -428,7 +430,9 @@ impl ObjectTypeFieldsSection {
             (PropertyType::Bool, PropertyValue::Bool(v)) => {
                 let class_toggle = class_name.to_string();
                 let prop_toggle = prop_name.to_string();
-                let next = !*v;
+                let scene_db = self.scene_db.clone();
+                let object_id = self.object_id.clone();
+                let view = cx.entity().downgrade();
 
                 h_flex()
                     .w_full()
@@ -442,18 +446,85 @@ impl ObjectTypeFieldsSection {
                             .child(display_name.to_string()),
                     )
                     .child(
-                        ui::button::Button::new(format!("toggle-{}-{}", class_name, prop_name))
-                            .label(if *v { "On" } else { "Off" })
-                            .xsmall()
-                            .ghost()
-                            .on_click(cx.listener(move |this, _event, _window, cx| {
-                                this.write_property(
+                        Switch::new(format!("toggle-{}-{}", class_name, prop_name))
+                            .checked(*v)
+                            .small()
+                            .on_click(move |checked, _window, cx| {
+                                scene_db.update_component_property(
+                                    &object_id,
                                     &class_toggle,
                                     &prop_toggle,
-                                    PropertyValue::Bool(next),
+                                    Value::from(*checked),
                                 );
-                                cx.notify();
-                            })),
+                                if let Some(entity) = view.upgrade() {
+                                    entity.update(cx, |_this, cx| cx.notify());
+                                }
+                            }),
+                    )
+                    .into_any_element()
+            }
+            (PropertyType::Enum { variants }, PropertyValue::EnumVariant(current_ix)) => {
+                let selected_ix = (*current_ix).min(variants.len().saturating_sub(1));
+                let label = variants
+                    .get(selected_ix)
+                    .map(|v| (*v).to_string())
+                    .unwrap_or_else(|| "Select".to_string());
+                let options = variants
+                    .iter()
+                    .map(|v| (*v).to_string())
+                    .collect::<Vec<_>>();
+
+                let scene_db = self.scene_db.clone();
+                let object_id = self.object_id.clone();
+                let class_enum = class_name.to_string();
+                let prop_enum = prop_name.to_string();
+                let view = cx.entity().downgrade();
+
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(display_name.to_string()),
+                    )
+                    .child(
+                        ui::button::Button::new(format!("enum-{}-{}", class_name, prop_name))
+                            .label(label)
+                            .xsmall()
+                            .ghost()
+                            .dropdown_caret(true)
+                            .dropdown_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+                                options
+                                    .iter()
+                                    .enumerate()
+                                    .fold(menu, |menu, (ix, option)| {
+                                        let scene_db = scene_db.clone();
+                                        let object_id = object_id.clone();
+                                        let class_enum = class_enum.clone();
+                                        let prop_enum = prop_enum.clone();
+                                        let view = view.clone();
+
+                                        menu.item(
+                                            PopupMenuItem::new(option.clone())
+                                                .checked(ix == selected_ix)
+                                                .on_click(move |_event, _window, cx| {
+                                                    scene_db.update_component_property(
+                                                        &object_id,
+                                                        &class_enum,
+                                                        &prop_enum,
+                                                        Value::from(ix as u64),
+                                                    );
+                                                    if let Some(entity) = view.upgrade() {
+                                                        entity.update(cx, |_this, cx| cx.notify());
+                                                    }
+                                                }),
+                                        )
+                                    })
+                            }),
                     )
                     .into_any_element()
             }
