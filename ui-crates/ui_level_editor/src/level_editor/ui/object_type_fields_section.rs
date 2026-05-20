@@ -592,10 +592,19 @@ impl ObjectTypeFieldsSection {
                     let key = (class_name.to_string(), prop_name.to_string());
                     if let Some(picker) = self.mesh_asset_pickers.get(&key).cloned() {
                         let display = if v.is_empty() {
-                            "Select mesh asset".to_string()
+                            "Select mesh asset…".to_string()
                         } else {
-                            v.clone()
+                            // Show just the filename, not the full path.
+                            std::path::Path::new(&v)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(&v)
+                                .to_string()
                         };
+
+                        // Read cached thumbnail for the currently selected path.
+                        let thumb = picker.read(cx).thumbnail_for_path(&v);
+
                         let pop = Popover::<MeshAssetPicker>::new(format!(
                             "mesh-asset-picker-{}-{}",
                             class_name, prop_name
@@ -607,25 +616,51 @@ impl ObjectTypeFieldsSection {
                                 class_name, prop_name
                             ))
                             .label(display)
-                            .xsmall()
+                            .small()
                             .ghost()
                             .dropdown_caret(true),
                         )
                         .content(move |_window, _cx| picker.clone())
                         .into_any_element();
 
+                        // Outer row: prop label on the left, [dropdown + thumb] on the right.
                         h_flex()
                             .w_full()
                             .justify_between()
                             .items_center()
                             .gap_2()
+                            .py_1()
                             .child(
                                 div()
                                     .text_sm()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(display_name.to_string()),
                             )
-                            .child(pop)
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_2()
+                                    .child(pop)
+                                    .map(|el| match thumb {
+                                        Some(render_img) => el.child(
+                                            div()
+                                                .w(px(40.0))
+                                                .h(px(40.0))
+                                                .rounded(px(4.0))
+                                                .overflow_hidden()
+                                                .border_1()
+                                                .border_color(cx.theme().border)
+                                                .flex_shrink_0()
+                                                .child(
+                                                    gpui::img(gpui::ImageSource::Render(render_img))
+                                                        .w(px(40.0))
+                                                        .h(px(40.0))
+                                                        .object_fit(gpui::ObjectFit::Cover),
+                                                ),
+                                        ),
+                                        None => el,
+                                    }),
+                            )
                             .into_any_element()
                     } else {
                         h_flex()

@@ -154,6 +154,19 @@ impl MeshAssetPicker {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Public accessors
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Return the cached thumbnail for `path` if one has already been loaded.
+    /// Returns `None` while still loading or for unsupported file types.
+    pub fn thumbnail_for_path(&self, path: &str) -> Option<Arc<gpui::RenderImage>> {
+        self.items
+            .iter()
+            .find(|item| item.path == path)
+            .and_then(|item| item.thumbnail.clone())
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Thumbnail loading
     // ─────────────────────────────────────────────────────────────────────────
 
