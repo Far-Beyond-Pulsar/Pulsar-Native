@@ -56,7 +56,7 @@ pub use ui::OpenSettings;
 
 // --- External and engine imports ---
 use crate::settings::EngineSettings;
-use file_association_manager::{AssociationRequest, FileAssociationManager};
+use file_association_manager::{AssociationError, AssociationRequest, FileAssociationManager};
 
 // --- Internal modules ---
 
@@ -171,6 +171,26 @@ fn enforce_discrete_gpu_policy_or_exit() {
 fn maybe_prompt_project_file_association() {
     let manager = match FileAssociationManager::system() {
         Ok(manager) => manager,
+        Err(AssociationError::ToolMissing(tool)) => {
+            tracing::warn!(
+                "File association tooling is missing on this machine: {}",
+                tool
+            );
+
+            let message = if cfg!(target_os = "macos") && tool == "duti" {
+                "Pulsar could not check or set project file associations because 'duti' is not installed.\n\nInstall it with:\n  brew install duti\n\nThen relaunch Pulsar to enable one-click association for Pulsar.toml."
+            } else {
+                "Pulsar could not check or set project file associations because a required tool is missing.\n\nInstall the required association tool and relaunch Pulsar."
+            };
+
+            let _ = rfd::MessageDialog::new()
+                .set_title("Pulsar Project Association")
+                .set_description(message)
+                .set_level(rfd::MessageLevel::Warning)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+            return;
+        }
         Err(err) => {
             tracing::debug!("Skipping file association check: {}", err);
             return;
