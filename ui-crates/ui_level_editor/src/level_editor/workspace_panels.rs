@@ -1,9 +1,8 @@
 //! Workspace panels for Level Editor
 
 use super::ui::{
-    add_object_dialog::AddObjectDialog, HierarchyPanel, LevelEditorState, ObjectHeaderSection,
-    ObjectTypeFieldsSection, PropertiesPanel, TransformSection, ViewportPanel,
-    WorldSettingsReplicated,
+    HierarchyPanel, LevelEditorState, ObjectHeaderSection, ObjectTypeFieldsSection,
+    PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
@@ -16,7 +15,6 @@ use ui::{
     button::{Button, ButtonVariants as _},
     dock::{Panel, PanelEvent},
     input::InputState,
-    popover::Popover,
     v_flex, ActiveTheme, IconName, Sizable,
 };
 
@@ -71,6 +69,7 @@ ui_common::panel_boilerplate!(WorldSettingsPanel);
 
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let self_entity_id = cx.entity().entity_id();
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         v_flex()
@@ -98,7 +97,6 @@ pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
-    add_dialog: Entity<AddObjectDialog>,
     last_scene_revision: u64,
 }
 
@@ -108,14 +106,10 @@ impl HierarchyPanelWrapper {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let state_for_dialog = state.clone();
-        let add_dialog = cx.new(|cx| AddObjectDialog::new(state_for_dialog, window, cx));
-
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
             focus_handle: cx.focus_handle(),
-            add_dialog,
             last_scene_revision: 0,
         }
     }
@@ -127,6 +121,7 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let self_entity_id = cx.entity().entity_id();
         let state = self.state.read();
 
         // Track all scene changes (including edits that do not change object count)
@@ -139,17 +134,38 @@ impl Render for HierarchyPanelWrapper {
         drop(state);
 
         let state = self.state.read();
-        let add_dialog = self.add_dialog.clone();
+        let state_clone = self.state.clone();
 
-        let add_button = Popover::<AddObjectDialog>::new("add-object-picker")
-            .anchor(Corner::TopLeft)
-            .trigger(
-                Button::new("add_object")
-                    .icon(IconName::Plus)
-                    .ghost()
-                    .xsmall(),
-            )
-            .content(move |_, _| add_dialog.clone())
+        let add_button = Button::new("add_object")
+            .icon(IconName::Plus)
+            .ghost()
+            .xsmall()
+            .on_click(move |_, _, cx| {
+                use crate::level_editor::commands::{execute_command, SceneCommand};
+                use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+
+                let mut state = state_clone.write();
+                let new_object = SceneObjectData {
+                    id: String::new(),
+                    name: "New Object".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                };
+                execute_command(
+                    &mut state,
+                    SceneCommand::AddObject {
+                        data: new_object,
+                        parent_id: None,
+                    },
+                );
+                cx.notify(self_entity_id);
+            })
             .into_any_element();
 
         v_flex()

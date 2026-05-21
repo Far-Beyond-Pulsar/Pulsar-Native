@@ -164,14 +164,26 @@ impl PropertiesPanel {
         object: &super::state::SceneObject,
         cx: &Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
-        let icon = match object.object_type {
-            ObjectType::Camera => IconName::Camera,
-            ObjectType::Folder => IconName::Folder,
-            ObjectType::Light(_) => IconName::Sun,
-            ObjectType::Mesh(_) => IconName::Box,
-            ObjectType::Empty => IconName::Circle,
-            ObjectType::ParticleSystem => IconName::Spark,
-            ObjectType::AudioSource => IconName::MusicNote,
+        let icon_path = object
+            .props
+            .get("icon_asset")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_default();
+        let has_custom_icon = !icon_path.trim().is_empty();
+
+        let icon = if has_custom_icon {
+            IconName::Image
+        } else {
+            match object.object_type {
+                ObjectType::Camera => IconName::Camera,
+                ObjectType::Folder => IconName::Folder,
+                ObjectType::Light(_) => IconName::Sun,
+                ObjectType::Mesh(_) => IconName::Box,
+                ObjectType::Empty => IconName::Circle,
+                ObjectType::ParticleSystem => IconName::Spark,
+                ObjectType::AudioSource => IconName::MusicNote,
+            }
         };
 
         v_flex()
@@ -215,7 +227,21 @@ impl PropertiesPanel {
                                     .text_xs()
                                     .text_color(cx.theme().muted_foreground)
                                     .child(format!("ID: {}", object.id)),
-                            ),
+                            )
+                            .when(has_custom_icon, |this| {
+                                let icon_name = std::path::Path::new(&icon_path)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or(&icon_path)
+                                    .to_string();
+
+                                this.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(format!("Icon: {}", icon_name)),
+                                )
+                            }),
                     ),
             )
             .child(

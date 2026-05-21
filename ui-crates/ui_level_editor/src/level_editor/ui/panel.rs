@@ -653,12 +653,6 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
-        let object_type = match action.object_type.as_str() {
-            "Mesh" => ObjectType::Mesh(MeshType::Cube),
-            "Light" => ObjectType::Light(LightType::Directional),
-            "Camera" => ObjectType::Camera,
-            _ => ObjectType::Empty,
-        };
         let mut state = self.shared_state.write();
         execute_command(
             &mut state,
@@ -666,7 +660,7 @@ impl LevelEditorPanel {
                 data: SceneObjectData {
                     id: String::new(),
                     name: format!("New {}", action.object_type),
-                    object_type,
+                    object_type: ObjectType::Empty,
                     transform: Transform::default(),
                     visible: true,
                     locked: false,

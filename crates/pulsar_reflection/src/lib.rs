@@ -81,6 +81,88 @@ pub fn registered_scene_props_classes() -> Vec<&'static str> {
         .collect()
 }
 
+/// Scene object state available to runtime component behaviors.
+pub struct RuntimeComponentOwner<'a> {
+    pub scene_object_id: &'a str,
+    pub position: [f32; 3],
+    pub rotation: [f32; 3],
+    pub scale: [f32; 3],
+    pub props: &'a HashMap<String, Value>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RuntimeLightType {
+    Directional,
+    Point,
+    Spot,
+    Area,
+}
+
+#[derive(Clone, Debug)]
+pub struct RuntimeLightDesc {
+    pub actor_key: String,
+    pub light_type: RuntimeLightType,
+    pub color: [f32; 4],
+    pub intensity: f32,
+    pub range: f32,
+    pub inner_cone_angle_deg: f32,
+    pub outer_cone_angle_deg: f32,
+}
+
+#[derive(Clone, Debug)]
+pub struct RuntimeMeshDesc {
+    pub actor_key: String,
+    pub mesh_asset: String,
+}
+
+/// Runtime context implemented by renderer-side systems.
+pub trait ComponentRuntimeContext {
+    fn upsert_light(&mut self, desc: RuntimeLightDesc);
+    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc);
+    fn report_error(&mut self, message: String);
+}
+
+/// Trait for component-owned runtime behavior projection.
+pub trait ComponentRuntimeBehavior {
+    /// Reflection class name this runtime behavior handles.
+    const CLASS_NAME: &'static str;
+
+    /// Sync one component instance into runtime systems.
+    fn sync_component(
+        owner: &RuntimeComponentOwner,
+        component_index: usize,
+        component_data: &Value,
+        context: &mut dyn ComponentRuntimeContext,
+    );
+}
+
+/// Inventory registration entry for runtime behavior handlers.
+pub struct RuntimeBehaviorRegistration {
+    pub class_name: &'static str,
+    pub sync: fn(&RuntimeComponentOwner, usize, &Value, &mut dyn ComponentRuntimeContext),
+}
+
+inventory::collect!(RuntimeBehaviorRegistration);
+
+/// Apply registered runtime behavior for one component class.
+///
+/// Returns true if a registered behavior handled this class.
+pub fn apply_runtime_behavior_for_class(
+    class_name: &str,
+    owner: &RuntimeComponentOwner,
+    component_index: usize,
+    component_data: &Value,
+    context: &mut dyn ComponentRuntimeContext,
+) -> bool {
+    for registration in inventory::iter::<RuntimeBehaviorRegistration> {
+        if registration.class_name == class_name {
+            (registration.sync)(owner, component_index, component_data, context);
+            return true;
+        }
+    }
+    false
+}
+
 /// Core trait for all engine classes (components, actors, etc.)
 ///
 /// This trait is automatically implemented by the `#[derive(EngineClass)]` macro.

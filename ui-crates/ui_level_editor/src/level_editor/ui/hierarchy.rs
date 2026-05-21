@@ -55,6 +55,16 @@ impl HierarchyItem for SceneObjectItem {
     }
 
     fn icon(&self) -> IconName {
+        if self
+            .object
+            .props
+            .get("icon_asset")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return IconName::Image;
+        }
         HierarchyPanel::get_icon_for_object_type(self.object.object_type)
     }
 
@@ -62,6 +72,16 @@ impl HierarchyItem for SceneObjectItem {
     where
         V: Render,
     {
+        if self
+            .object
+            .props
+            .get("icon_asset")
+            .and_then(|v| v.as_str())
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+        {
+            return tree_colors::DOC_TEAL;
+        }
         HierarchyPanel::get_icon_color_for_type(self.object.object_type, cx)
     }
 

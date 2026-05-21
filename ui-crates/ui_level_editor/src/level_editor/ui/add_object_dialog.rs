@@ -1,8 +1,9 @@
 //! Add Object Picker
 //!
-//! Compact, searchable popover that lists built-in object types and any engine
-//! classes registered via `#[derive(EngineClass)]`.  Opens as a `Popover` when
-//! the `+` button in the hierarchy header is clicked.
+//! Compact popover used by the hierarchy `+` button.
+//!
+//! New objects are always spawned as empty objects. Behavior is authored via
+//! attached components rather than object type presets.
 
 use std::sync::Arc;
 
@@ -12,9 +13,7 @@ use ui::{
     IconName,
 };
 
-use crate::level_editor::scene_database::{
-    LightType, MeshType, ObjectType, SceneDb, SceneObjectData, Transform,
-};
+use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
 use crate::level_editor::ui::state::LevelEditorState;
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -26,85 +25,7 @@ pub struct ObjectSpawnedEvent;
 struct ObjectMenuItem {
     label: &'static str,
     icon: IconName,
-    kind: ObjectMenuKind,
 }
-
-#[derive(Clone, Copy)]
-enum ObjectMenuKind {
-    Builtin(fn() -> ObjectType),
-    EngineClass,
-}
-
-// ── Built-in types ────────────────────────────────────────────────────────────
-
-struct BuiltinEntry {
-    label: &'static str,
-    icon: IconName,
-    object_type: fn() -> ObjectType,
-}
-
-static BUILTIN_TYPES: &[BuiltinEntry] = &[
-    BuiltinEntry {
-        label: "Empty",
-        icon: IconName::Circle,
-        object_type: || ObjectType::Empty,
-    },
-    BuiltinEntry {
-        label: "Camera",
-        icon: IconName::Camera,
-        object_type: || ObjectType::Camera,
-    },
-    BuiltinEntry {
-        label: "Directional Light",
-        icon: IconName::Sun,
-        object_type: || ObjectType::Light(LightType::Directional),
-    },
-    BuiltinEntry {
-        label: "Point Light",
-        icon: IconName::LightBulb,
-        object_type: || ObjectType::Light(LightType::Point),
-    },
-    BuiltinEntry {
-        label: "Spot Light",
-        icon: IconName::Flash,
-        object_type: || ObjectType::Light(LightType::Spot),
-    },
-    BuiltinEntry {
-        label: "Area Light",
-        icon: IconName::SunLight,
-        object_type: || ObjectType::Light(LightType::Area),
-    },
-    BuiltinEntry {
-        label: "Cube",
-        icon: IconName::Cube,
-        object_type: || ObjectType::Mesh(MeshType::Cube),
-    },
-    BuiltinEntry {
-        label: "Sphere",
-        icon: IconName::Sphere,
-        object_type: || ObjectType::Mesh(MeshType::Sphere),
-    },
-    BuiltinEntry {
-        label: "Cylinder",
-        icon: IconName::Cylinder,
-        object_type: || ObjectType::Mesh(MeshType::Cylinder),
-    },
-    BuiltinEntry {
-        label: "Plane",
-        icon: IconName::Square,
-        object_type: || ObjectType::Mesh(MeshType::Plane),
-    },
-    BuiltinEntry {
-        label: "Particle System",
-        icon: IconName::Sparks,
-        object_type: || ObjectType::ParticleSystem,
-    },
-    BuiltinEntry {
-        label: "Audio Source",
-        icon: IconName::MusicNote,
-        object_type: || ObjectType::AudioSource,
-    },
-];
 
 // ── Entity ────────────────────────────────────────────────────────────────────
 
@@ -129,28 +50,13 @@ impl AddObjectDialog {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut items: Vec<ObjectMenuItem> = BUILTIN_TYPES
-            .iter()
-            .map(|entry| ObjectMenuItem {
-                label: entry.label,
-                icon: entry.icon.clone(),
-                kind: ObjectMenuKind::Builtin(entry.object_type),
-            })
-            .collect();
-
-        let mut engine_classes = pulsar_reflection::REGISTRY.get_class_names();
-        engine_classes.sort();
-        items.extend(engine_classes.into_iter().map(|name| ObjectMenuItem {
-            label: name,
-            icon: IconName::Code,
-            kind: ObjectMenuKind::EngineClass,
-        }));
+        let items = vec![ObjectMenuItem {
+            label: "Empty Object",
+            icon: IconName::Circle,
+        }];
 
         let searchable_list = cx.new(|cx| {
-            SearchableList::new(window, cx, items, |item| match item.kind {
-                ObjectMenuKind::Builtin(_) => format!("Built-in: {}", item.label),
-                ObjectMenuKind::EngineClass => format!("Engine Class: {}", item.label),
-            })
+            SearchableList::new(window, cx, items, |item| item.label.to_string())
             .with_empty_text("No results")
             .with_max_width(px(240.0))
             .with_max_height(px(380.0))
@@ -161,14 +67,8 @@ impl AddObjectDialog {
             &searchable_list,
             |this, _, event: &SearchableListEvent<ObjectMenuItem>, cx| {
                 if let SearchableListEvent::Select(item) = event {
-                    match item.kind {
-                        ObjectMenuKind::Builtin(make_type) => {
-                            this.spawn_object(item.label, make_type(), cx);
-                        }
-                        ObjectMenuKind::EngineClass => {
-                            this.spawn_object(item.label, ObjectType::Empty, cx);
-                        }
-                    }
+                    let _ = item;
+                    this.spawn_object(cx);
                 }
             },
         )];
@@ -180,12 +80,12 @@ impl AddObjectDialog {
         }
     }
 
-    fn spawn_object(&self, name: &str, object_type: ObjectType, cx: &mut Context<Self>) {
+    fn spawn_object(&self, cx: &mut Context<Self>) {
         let objects_count = self.state_arc.read().scene_objects().len();
         let new_object = SceneObjectData {
             id: format!("object_{}", objects_count + 1),
-            name: name.to_string(),
-            object_type,
+            name: "New Object".to_string(),
+            object_type: ObjectType::Empty,
             transform: Transform::default(),
             visible: true,
             locked: false,

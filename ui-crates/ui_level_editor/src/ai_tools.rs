@@ -767,7 +767,7 @@ fn execute_ai_tool_impl(
                     message: "level_editor_add_object requires `kind`".to_string(),
                 })?;
 
-            let object_type = object_type_from_kind(kind).ok_or_else(|| PluginError::Other {
+            object_type_from_kind(kind).ok_or_else(|| PluginError::Other {
                 message: format!(
                     "Unsupported kind '{kind}'. Valid kinds: empty, folder, camera, light_directional, light_point, light_spot, light_area, mesh_cube, mesh_sphere, mesh_cylinder, mesh_plane, mesh_custom, particle_system, audio_source"
                 ),
@@ -787,7 +787,7 @@ fn execute_ai_tool_impl(
             let mut object = crate::SceneObjectData {
                 id: String::new(),
                 name,
-                object_type,
+                object_type: ObjectType::Empty,
                 transform: Default::default(),
                 visible: tool_args
                     .get("visible")
@@ -864,7 +864,7 @@ fn execute_ai_tool_impl(
                     continue;
                 };
 
-                let Some(object_type) = object_type_from_kind(kind) else {
+                let Some(_validated_kind) = object_type_from_kind(kind) else {
                     errors.push(json!({
                         "index": index,
                         "error": format!("unsupported kind '{kind}'")
@@ -880,7 +880,7 @@ fn execute_ai_tool_impl(
                 let mut object = crate::SceneObjectData {
                     id: String::new(),
                     name: name.to_string(),
-                    object_type,
+                    object_type: ObjectType::Empty,
                     transform: Default::default(),
                     visible: item_obj
                         .get("visible")

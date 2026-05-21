@@ -3085,6 +3085,7 @@ dependencies = [
  "bytemuck",
  "crossbeam-channel",
  "dashmap 6.1.0",
+ "engine_fs",
  "engine_state",
  "flume 0.11.1",
  "futures",

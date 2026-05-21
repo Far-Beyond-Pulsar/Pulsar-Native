@@ -17,6 +17,9 @@ use super::state::LevelEditorState;
 use super::ComponentHierarchyPanel;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
+const OBJECT_ICON_PROP_KEY: &str = "icon_asset";
+const OBJECT_ICON_PICKER_SCOPE: &str = "__object__";
+
 pub struct ObjectTypeFieldsSection {
     object_id: String,
     scene_db: SceneDatabase,
@@ -340,6 +343,67 @@ impl ObjectTypeFieldsSection {
                 cx.notify();
             },
         )
+        .detach();
+
+        self.mesh_asset_pickers.insert(key, picker);
+    }
+
+    fn read_object_icon_path(&self) -> String {
+        self.scene_db
+            .get_object(&self.object_id)
+            .and_then(|obj| obj.props.get(OBJECT_ICON_PROP_KEY).cloned())
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default()
+    }
+
+    fn write_object_icon_path(&self, path: String) {
+        let Some(mut obj) = self.scene_db.get_object(&self.object_id) else {
+            return;
+        };
+
+        if path.is_empty() {
+            obj.props.remove(OBJECT_ICON_PROP_KEY);
+        } else {
+            obj.props
+                .insert(OBJECT_ICON_PROP_KEY.to_string(), Value::String(path));
+        }
+
+        let _ = self.scene_db.update_object(obj);
+    }
+
+    fn ensure_object_icon_picker(&mut self, current: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let key = (
+            OBJECT_ICON_PICKER_SCOPE.to_string(),
+            OBJECT_ICON_PROP_KEY.to_string(),
+        );
+        if self.mesh_asset_pickers.contains_key(&key) {
+            return;
+        }
+
+        let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
+        let queries = vec![
+            AssetQuery::extension("png"),
+            AssetQuery::extension("jpg"),
+            AssetQuery::extension("jpeg"),
+            AssetQuery::extension("webp"),
+        ];
+
+        let picker = cx.new(|cx| {
+            MeshAssetPicker::new(
+                current.to_string(),
+                vec![],
+                project_root,
+                queries,
+                window,
+                cx,
+            )
+        });
+
+        cx.subscribe(&picker, move |this, picker, _event: &AssetPickedEvent, cx| {
+            let selected = picker.read(cx).selected_path().to_string();
+            this.write_object_icon_path(selected);
+            cx.notify();
+        })
         .detach();
 
         self.mesh_asset_pickers.insert(key, picker);
@@ -834,6 +898,85 @@ impl Render for ObjectTypeFieldsSection {
                     ),
             );
 
+        let object_icon_path = self.read_object_icon_path();
+        self.ensure_object_icon_picker(&object_icon_path, window, cx);
+        let object_icon_key = (
+            OBJECT_ICON_PICKER_SCOPE.to_string(),
+            OBJECT_ICON_PROP_KEY.to_string(),
+        );
+        let object_icon_row = if let Some(picker) = self.mesh_asset_pickers.get(&object_icon_key).cloned() {
+            let display = if object_icon_path.is_empty() {
+                "Select icon asset...".to_string()
+            } else {
+                std::path::Path::new(&object_icon_path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&object_icon_path)
+                    .to_string()
+            };
+            let thumb = picker.read(cx).thumbnail_for_path(&object_icon_path);
+            let pop = Popover::<MeshAssetPicker>::new(format!(
+                "object-icon-picker-{}",
+                self.object_id
+            ))
+            .anchor(Corner::BottomRight)
+            .trigger(
+                ui::button::Button::new(format!("object-icon-btn-{}", self.object_id))
+                    .label(display)
+                    .small()
+                    .ghost()
+                    .dropdown_caret(true),
+            )
+            .content(move |_window, _cx| picker.clone())
+            .into_any_element();
+
+            h_flex()
+                .w_full()
+                .justify_between()
+                .items_center()
+                .gap_2()
+                .p_3()
+                .bg(cx.theme().sidebar)
+                .rounded(px(8.0))
+                .border_1()
+                .border_color(cx.theme().border)
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(cx.theme().foreground)
+                        .child("Object Icon"),
+                )
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(pop)
+                        .map(|el| match thumb {
+                            Some(render_img) => el.child(
+                                div()
+                                    .w(px(32.0))
+                                    .h(px(32.0))
+                                    .rounded(px(4.0))
+                                    .overflow_hidden()
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .flex_shrink_0()
+                                    .child(
+                                        gpui::img(gpui::ImageSource::Render(render_img))
+                                            .w(px(32.0))
+                                            .h(px(32.0))
+                                            .object_fit(gpui::ObjectFit::Cover),
+                                    ),
+                            ),
+                            None => el,
+                        }),
+                )
+                .into_any_element()
+        } else {
+            div().into_any_element()
+        };
+
         // ── Attached components ───────────────────────────────────────────
         let attached = self.scene_db.get_components(&self.object_id);
 
@@ -1087,6 +1230,7 @@ impl Render for ObjectTypeFieldsSection {
             .w_full()
             .gap_3()
             .child(type_card)
+            .child(object_icon_row)
             .child(component_panel)
             .children(diag_card)
             .children(component_sections)

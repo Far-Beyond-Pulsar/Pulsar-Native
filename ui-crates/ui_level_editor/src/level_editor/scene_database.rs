@@ -6,9 +6,7 @@
 
 use engine_backend::scene::SceneObjectSnapshot;
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
-use pulsar_reflection::{
-    apply_scene_props_for_class, registered_scene_props_classes, PropertyValue, REGISTRY,
-};
+use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -150,9 +148,7 @@ impl SceneDatabase {
 
     /// Add an object. Returns the assigned `ObjectId`.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
-        let object_type = obj.object_type;
         let object_id = self.scene_db.add_object(obj.into_snapshot(), parent);
-        Self::ensure_default_components(&object_id, object_type, &self.metadata_db);
         self.sync_registered_component_props_to_scene_db(&object_id);
         object_id
     }
@@ -675,6 +671,23 @@ impl SceneDatabase {
                     .map(|c| &c.data);
                 apply_scene_props_for_class(class_name, &mut meta.props, data);
             }
+
+            let component_instances = components
+                .iter()
+                .enumerate()
+                .filter(|(_, component)| component.enabled)
+                .map(|(index, component)| {
+                    serde_json::json!({
+                        "index": index,
+                        "class_name": component.class_name,
+                        "data": component.data
+                    })
+                })
+                .collect::<Vec<_>>();
+            meta.props.insert(
+                "__component_instances".to_string(),
+                Value::Array(component_instances),
+            );
         }
     }
 
@@ -685,81 +698,6 @@ impl SceneDatabase {
         }
     }
 
-    fn ensure_default_components(
-        object_id: &str,
-        object_type: ObjectType,
-        metadata_db: &SceneMetadataDb,
-    ) {
-        let has_component = |class_name: &str| {
-            metadata_db
-                .get_components(&object_id.to_string())
-                .iter()
-                .any(|c| c.class_name == class_name)
-        };
-
-        if matches!(object_type, ObjectType::Light(_)) && !has_component("LightComponent") {
-            metadata_db.add_component(
-                &object_id.to_string(),
-                "LightComponent".to_string(),
-                serde_json::json!({
-                    "color": [1.0, 1.0, 1.0, 1.0],
-                    "intensity": 7.0,
-                    "range": 100.0
-                }),
-            );
-        }
-
-        if let ObjectType::Mesh(mesh_type) = object_type {
-            if !has_component("StaticMeshComponent") {
-                let default_mesh = match mesh_type {
-                    MeshType::Cube => "meshes/primitives/SM_Cube.fbx",
-                    MeshType::Sphere => "meshes/primitives/SM_Sphere.fbx",
-                    MeshType::Cylinder => "meshes/primitives/SM_Cylinder.fbx",
-                    MeshType::Plane => "meshes/primitives/SM_Plane.fbx",
-                    MeshType::Custom => "meshes/primitives/SM_Cube.fbx",
-                };
-                metadata_db.add_component(
-                    &object_id.to_string(),
-                    "StaticMeshComponent".to_string(),
-                    serde_json::json!({
-                        "mesh_asset": default_mesh
-                    }),
-                );
-            }
-        }
-
-        if matches!(object_type, ObjectType::Mesh(_)) && !has_component("MaterialOverride") {
-            if let Some(mut instance) = REGISTRY.create_instance("MaterialOverride") {
-                let props = instance.get_properties();
-                let mut map = serde_json::Map::new();
-                for prop in &props {
-                    let v = (prop.getter)(instance.as_ref());
-                    map.insert(prop.name.to_string(), property_value_to_json(&v));
-                }
-                metadata_db.add_component(
-                    &object_id.to_string(),
-                    "MaterialOverride".to_string(),
-                    Value::Object(map),
-                );
-            }
-        }
-    }
-}
-
-fn property_value_to_json(value: &PropertyValue) -> Value {
-    match value {
-        PropertyValue::F32(v) => Value::from(*v),
-        PropertyValue::I32(v) => Value::from(*v),
-        PropertyValue::Bool(v) => Value::from(*v),
-        PropertyValue::String(v) => Value::from(v.clone()),
-        PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
-        PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
-        PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-        PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json).collect()),
-        PropertyValue::Component { class_name, .. } => {
-            serde_json::json!({"class_name": class_name})
-        }
-    }
 }
 
 impl Default for SceneDatabase {

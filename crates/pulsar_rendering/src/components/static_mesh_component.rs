@@ -1,7 +1,10 @@
 //! Static mesh component for mesh asset assignment.
 
-use engine_class_derive::EngineClass;
-use pulsar_reflection::ScenePropsProjector;
+use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use pulsar_reflection::{
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeMeshDesc,
+    ScenePropsProjector,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,7 +14,7 @@ use helio::Movability;
 /// Static mesh assignment component.
 ///
 /// Stores the mesh asset path and additional properties used by mesh scene objects.
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
 #[category("Rendering")]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (for example: "meshes/primitives/SM_Cube.fbx").
@@ -124,3 +127,36 @@ pulsar_reflection::inventory::submit! {
         apply: <StaticMeshComponent as ScenePropsProjector>::apply_scene_props,
     }
 }
+
+impl ComponentRuntimeBehavior for StaticMeshComponent {
+    const CLASS_NAME: &'static str = "StaticMeshComponent";
+
+    fn sync_component(
+        owner: &RuntimeComponentOwner,
+        component_index: usize,
+        component_data: &Value,
+        context: &mut dyn ComponentRuntimeContext,
+    ) {
+        let mesh_asset = component_data
+            .as_object()
+            .and_then(|obj| obj.get("mesh_asset"))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+
+        if mesh_asset.is_empty() {
+            context.report_error(format!(
+                "StaticMeshComponent on '{}' has no mesh_asset",
+                owner.scene_object_id
+            ));
+            return;
+        }
+
+        context.upsert_mesh(RuntimeMeshDesc {
+            actor_key: format!("{}::mesh::{}", owner.scene_object_id, component_index),
+            mesh_asset,
+        });
+    }
+}
+

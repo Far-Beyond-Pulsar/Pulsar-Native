@@ -1,7 +1,10 @@
 //! Light component for scene lighting
 
-use engine_class_derive::EngineClass;
-use pulsar_reflection::ScenePropsProjector;
+use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use pulsar_reflection::{
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeLightDesc,
+    RuntimeLightType, ScenePropsProjector,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -13,7 +16,7 @@ use std::collections::HashMap;
 /// - Color properties (RGBA)
 /// - Float properties with ranges
 /// - Boolean properties for toggles
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
 #[category("Rendering")]
 pub struct LightComponent {
     /// Type of light source
@@ -143,3 +146,33 @@ impl LightComponent {
         out
     }
 }
+
+impl ComponentRuntimeBehavior for LightComponent {
+    const CLASS_NAME: &'static str = "LightComponent";
+
+    fn sync_component(
+        owner: &RuntimeComponentOwner,
+        component_index: usize,
+        component_data: &Value,
+        context: &mut dyn ComponentRuntimeContext,
+    ) {
+        let light = Self::from_component_data(component_data);
+        let light_type = match light.light_type {
+            LightType::Directional => RuntimeLightType::Directional,
+            LightType::Point => RuntimeLightType::Point,
+            LightType::Spot => RuntimeLightType::Spot,
+            LightType::Area => RuntimeLightType::Area,
+        };
+
+        context.upsert_light(RuntimeLightDesc {
+            actor_key: format!("{}::light::{}", owner.scene_object_id, component_index),
+            light_type,
+            color: light.color,
+            intensity: light.intensity,
+            range: light.range,
+            inner_cone_angle_deg: light.inner_cone_angle,
+            outer_cone_angle_deg: light.outer_cone_angle,
+        });
+    }
+}
+

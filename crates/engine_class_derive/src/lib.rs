@@ -114,6 +114,23 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     generated.into()
 }
 
+#[proc_macro_derive(RegisterRuntimeBehavior)]
+pub fn derive_register_runtime_behavior(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    let generated = quote! {
+        pulsar_reflection::inventory::submit! {
+            pulsar_reflection::RuntimeBehaviorRegistration {
+                class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                sync: <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+            }
+        }
+    };
+
+    generated.into()
+}
+
 /// Check if a field has the #[property] attribute
 fn has_property_attr(field: &Field) -> bool {
     field
