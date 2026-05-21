@@ -18,6 +18,7 @@ thiserror = "2.0"
 image = "0.25"  # For loading window icon
 wgpu.workspace = true
 rfd = "0.15"
+file-association-manager = { git = "https://github.com/Far-Beyond-Pulsar/file-association-manager", rev = "6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3" }
 
 # Engine crates
 engine_backend.workspace = true

@@ -56,6 +56,7 @@ pub use ui::OpenSettings;
 
 // --- External and engine imports ---
 use crate::settings::EngineSettings;
+use file_association_manager::{AssociationRequest, FileAssociationManager};
 
 // --- Internal modules ---
 
@@ -84,6 +85,12 @@ pub use engine_state::{
 };
 
 use init::{task_ids::*, InitContext, InitGraph, InitTask};
+
+const PROJECT_ASSOC_EXTENSION: &str = "Pulsar.toml";
+const PROJECT_ASSOC_MIME: &str = "application/x-pulsar-project";
+
+#[cfg(target_os = "macos")]
+const MACOS_BUNDLE_ID: &str = "dev.pulsar.engine";
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -159,6 +166,149 @@ fn enforce_discrete_gpu_policy_or_exit() {
     }
 
     tracing::warn!("User chose to continue without a discrete GPU");
+}
+
+fn maybe_prompt_project_file_association() {
+    let manager = match FileAssociationManager::system() {
+        Ok(manager) => manager,
+        Err(err) => {
+            tracing::debug!("Skipping file association check: {}", err);
+            return;
+        }
+    };
+
+    let request = match build_project_association_request() {
+        Some(req) => req,
+        None => {
+            tracing::debug!("No file association request is available for this platform");
+            return;
+        }
+    };
+
+    let already_associated = manager
+        .query(PROJECT_ASSOC_EXTENSION)
+        .ok()
+        .flatten()
+        .map(|record| record.handler_id == request.handler_id)
+        .unwrap_or(false);
+
+    if already_associated {
+        tracing::debug!(
+            "Project descriptor association already points to this engine handler ({})",
+            request.handler_id
+        );
+        return;
+    }
+
+    let should_associate = rfd::MessageDialog::new()
+        .set_title("Associate Pulsar Project Files")
+        .set_description(format!(
+            "Pulsar can associate project descriptor files ({}) with this running engine build (v{}).\n\nAssociate now?",
+            PROJECT_ASSOC_EXTENSION,
+            consts::ENGINE_VERSION,
+        ))
+        .set_level(rfd::MessageLevel::Info)
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .show();
+
+    if !matches!(should_associate, rfd::MessageDialogResult::Yes) {
+        tracing::debug!("User declined Pulsar project file association prompt");
+        return;
+    }
+
+    match manager.set(request) {
+        Ok(()) => {
+            tracing::info!("Project descriptor file association updated successfully");
+            let _ = rfd::MessageDialog::new()
+                .set_title("Pulsar Project Association")
+                .set_description("Pulsar project descriptor association was updated for this engine build.")
+                .set_level(rfd::MessageLevel::Info)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+        }
+        Err(err) => {
+            tracing::warn!("Failed to update project file association: {}", err);
+            let _ = rfd::MessageDialog::new()
+                .set_title("Pulsar Project Association")
+                .set_description(format!(
+                    "Pulsar could not update file associations automatically.\n\n{}",
+                    err
+                ))
+                .set_level(rfd::MessageLevel::Warning)
+                .set_buttons(rfd::MessageButtons::Ok)
+                .show();
+        }
+    }
+}
+
+fn build_project_association_request() -> Option<AssociationRequest> {
+    let exe_path = std::env::current_exe().ok()?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let handler_id = format!(
+            "dev.pulsar.engine.{}",
+            consts::ENGINE_VERSION.replace('.', "_")
+        );
+        let command = format!("\"{}\" \"%1\"", exe_path.display());
+        return Some(
+            AssociationRequest::new(PROJECT_ASSOC_EXTENSION, handler_id)
+                .with_mime_type(PROJECT_ASSOC_MIME)
+                .with_command(command),
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return Some(
+            AssociationRequest::new(PROJECT_ASSOC_EXTENSION, MACOS_BUNDLE_ID)
+                .with_mime_type(PROJECT_ASSOC_MIME),
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let handler_id = ensure_linux_desktop_entry(&exe_path)?;
+        return Some(
+            AssociationRequest::new(PROJECT_ASSOC_EXTENSION, handler_id)
+                .with_mime_type(PROJECT_ASSOC_MIME),
+        );
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn ensure_linux_desktop_entry(exe_path: &std::path::Path) -> Option<String> {
+    let base_dirs = directories::BaseDirs::new()?;
+    let desktop_dir = base_dirs.data_dir().join("applications");
+    std::fs::create_dir_all(&desktop_dir).ok()?;
+
+    let desktop_file_name = format!(
+        "pulsar-engine-{}.desktop",
+        consts::ENGINE_VERSION.replace('.', "-")
+    );
+    let desktop_path = desktop_dir.join(&desktop_file_name);
+
+    let escaped_exe = exe_path.display().to_string().replace('"', "\\\"");
+    let desktop_content = format!(
+        "[Desktop Entry]\nType=Application\nName=Pulsar Engine\nExec=\"{}\" %f\nTerminal=false\nMimeType={};\nCategories=Development;IDE;\n",
+        escaped_exe, PROJECT_ASSOC_MIME
+    );
+
+    let current = std::fs::read_to_string(&desktop_path).unwrap_or_default();
+    if current != desktop_content {
+        std::fs::write(&desktop_path, desktop_content).ok()?;
+    }
+
+    let _ = std::process::Command::new("update-desktop-database")
+        .arg(&desktop_dir)
+        .output();
+
+    Some(desktop_file_name)
 }
 
 /// Main entry point for the Pulsar Engine binary.
@@ -409,6 +559,19 @@ fn main() {
                         tracing::error!("Failed to register URI scheme: {}", e);
                     }
                 });
+                Ok(())
+            }),
+        ))
+        .unwrap();
+
+    // Task 11: Project file association prompt (depends on global context)
+    graph
+        .add_task(InitTask::new(
+            FILE_ASSOCIATION,
+            "Project File Association",
+            vec![SET_GLOBAL],
+            Box::new(|_ctx| {
+                maybe_prompt_project_file_association();
                 Ok(())
             }),
         ))

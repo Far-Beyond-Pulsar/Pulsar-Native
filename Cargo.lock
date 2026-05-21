@@ -3509,6 +3509,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28dea519a9695b9977216879a3ebfddf92f1c08c05d984f8996aecd6ecdc811d"
 
 [[package]]
+name = "file-association-manager"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/file-association-manager?rev=6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3#6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3"
+dependencies = [
+ "tempfile",
+ "thiserror 2.0.18",
+ "winreg 0.52.0",
+]
+
+[[package]]
 name = "filetime"
 version = "0.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8997,6 +9007,7 @@ dependencies = [
  "dotenv",
  "engine_backend",
  "engine_state",
+ "file-association-manager",
  "futures",
  "gpui-ce",
  "image",
