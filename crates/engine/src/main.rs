@@ -329,24 +329,46 @@ fn association_query_target() -> &'static str {
 
 #[cfg(target_os = "macos")]
 fn detect_macos_toml_uti() -> Option<String> {
-    let output = std::process::Command::new("duti")
-        .args(["-x", MACOS_ASSOC_QUERY_EXTENSION])
+    let probe_path = std::env::temp_dir().join(format!(
+        "pulsar-assoc-probe-{}-{}.{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_nanos(),
+        MACOS_ASSOC_QUERY_EXTENSION
+    ));
+
+    if std::fs::write(&probe_path, b"").is_err() {
+        return None;
+    }
+
+    let output = std::process::Command::new("mdls")
+        .args([
+            "-raw",
+            "-name",
+            "kMDItemContentType",
+            &probe_path.to_string_lossy(),
+        ])
         .output()
         .ok()?;
+
+    let _ = std::fs::remove_file(&probe_path);
 
     if !output.status.success() {
         return None;
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let lines = stdout
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>();
+    let uti = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .trim_matches('"')
+        .to_string();
 
-    // duti -x prints: bundle id, app path, UTI
-    lines.get(2).map(|s| s.to_string())
+    if uti.is_empty() || uti == "(null)" || uti.contains('/') || uti.ends_with(".app") {
+        return None;
+    }
+
+    Some(uti)
 }
 
 #[cfg(target_os = "linux")]
