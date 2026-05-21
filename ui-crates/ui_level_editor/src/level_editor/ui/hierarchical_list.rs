@@ -18,6 +18,7 @@ use ui::{
     draggable::{DragHandlePosition, Draggable},
     drop_area::DropArea,
     h_flex,
+    menu::{context_menu::ContextMenu, popup_menu::PopupMenu},
     scroll::ScrollbarAxis,
     v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
@@ -49,6 +50,16 @@ pub trait HierarchyItem: Clone + 'static {
     /// Custom click behavior (return true if handled, false for default select behavior)
     fn on_click_custom(&self) -> Option<Arc<dyn Fn()>> {
         None
+    }
+
+    /// Optional right-click context menu for the whole row.
+    fn build_context_menu(
+        &self,
+        menu: PopupMenu,
+        _window: &mut Window,
+        _cx: &mut Context<PopupMenu>,
+    ) -> PopupMenu {
+        menu
     }
 }
 
@@ -185,6 +196,8 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
         let id_for_select = item_id.clone();
         let custom_click = item.on_click_custom();
 
+        let item_for_context_menu = item.clone();
+
         let row_content = h_flex()
             .id(SharedString::from(format!("item-{}", item_id)))
             .w_full()
@@ -232,7 +245,12 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
                     .text_ellipsis()
                     .child(item_name.clone()),
             )
-            .children(item.extra_row_content(cx));
+            .children(item.extra_row_content(cx))
+            .child(
+                ContextMenu::new(format!("tree-row-context-menu-{}", item.drag_drop_id())).menu(
+                    move |menu, window, cx| item_for_context_menu.build_context_menu(menu, window, cx),
+                ),
+            );
 
         // Drag payload
         let drag_payload = item.create_drag_payload();
@@ -464,6 +482,43 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
                     .gap_px()
                     .p_1()
                     .scrollable(ScrollbarAxis::Vertical)
+                    .when(self.config.root_drop_zone.is_some(), |this| {
+                        let (label, on_drop) = self.config.root_drop_zone.as_ref().unwrap();
+                        this.child(
+                            DropArea::<Item::DragPayload>::new("hierarchy-widget-root-drop")
+                                .on_drop({
+                                    let on_drop = on_drop.clone();
+                                    move |payload, _, _| {
+                                        (on_drop)(payload.clone());
+                                    }
+                                })
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .items_center()
+                                        .gap_1()
+                                        .h_7()
+                                        .pl(px(8.0))
+                                        .pr_2()
+                                        .rounded(px(4.0))
+                                        .border_1()
+                                        .border_color(cx.theme().border)
+                                        .bg(cx.theme().muted.opacity(0.18))
+                                        .child(
+                                            Icon::new(IconName::Folder)
+                                                .size(px(14.0))
+                                                .text_color(cx.theme().muted_foreground),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child(label.clone()),
+                                        ),
+                                ),
+                        )
+                    })
                     .when(is_empty, |el| {
                         el.child(
                             div()

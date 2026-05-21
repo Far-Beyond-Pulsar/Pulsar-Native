@@ -3,6 +3,7 @@ use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
+    menu::popup_menu::PopupMenu,
     h_flex,
     hierarchical_tree::tree_colors,
     ActiveTheme, Icon, IconName, Sizable, StyledExt,
@@ -36,7 +37,7 @@ impl Render for HierarchyDragPayload {
 #[derive(Clone)]
 struct SceneObjectItem {
     object: SceneObject,
-    scene_db: SceneDatabase,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_selected: bool,
     is_folder: bool,
 }
@@ -87,46 +88,63 @@ impl HierarchyItem for SceneObjectItem {
     where
         V: Render,
     {
-        let scene_db = self.scene_db.clone();
-        let object_id = self.object.id.clone();
+        let visibility_object_id = self.object.id.clone();
+        let visibility_state = self.state_arc.clone();
         let is_visible = self.object.visible;
 
-        Some(
-            div()
-                .w_5()
-                .h_5()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(2.0))
-                .cursor_pointer()
-                .hover(|s| s.bg(cx.theme().muted.opacity(0.3)))
-                .child(
-                    Icon::new(if is_visible {
-                        IconName::Eye
-                    } else {
-                        IconName::EyeOff
-                    })
-                    .size(px(12.0))
-                    .text_color(if is_visible {
-                        if self.is_selected {
-                            cx.theme().accent_foreground.opacity(0.7)
-                        } else {
-                            cx.theme().muted_foreground
-                        }
-                    } else {
-                        cx.theme().danger
-                    }),
-                )
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                    cx.stop_propagation();
-                    if let Some(mut obj) = scene_db.get_object(&object_id) {
-                        obj.visible = !obj.visible;
-                        scene_db.update_object(obj);
-                    }
-                })
-                .into_any_element(),
-        )
+        let visibility_button = Button::new(format!("scene-visibility-{}", visibility_object_id))
+            .ghost()
+            .xsmall()
+            .icon(if is_visible {
+                IconName::Eye
+            } else {
+                IconName::EyeOff
+            })
+            .tooltip(if is_visible { "Hide object" } else { "Show object" })
+            .on_click(move |_, _, cx| {
+                use crate::level_editor::commands::{execute_command, SceneCommand};
+
+                let mut state = visibility_state.write();
+                if let Some(mut obj) = state.scene_database.get_object(&visibility_object_id) {
+                    obj.visible = !obj.visible;
+                    execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
+                }
+                cx.stop_propagation();
+            });
+
+        Some(h_flex().gap_1().child(visibility_button).into_any_element())
+    }
+
+    fn build_context_menu(
+        &self,
+        menu: PopupMenu,
+        _window: &mut Window,
+        _cx: &mut Context<PopupMenu>,
+    ) -> PopupMenu {
+        use crate::level_editor::commands::{execute_command, SceneCommand};
+
+        let duplicate_id = self.object.id.clone();
+        let delete_id = self.object.id.clone();
+        let duplicate_state = self.state_arc.clone();
+        let delete_state = self.state_arc.clone();
+
+        menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
+            let _ = app;
+            let mut state = duplicate_state.write();
+            execute_command(
+                &mut state,
+                SceneCommand::DuplicateObject {
+                    source_id: duplicate_id.clone(),
+                    count: 1,
+                    position_offset: None,
+                },
+            );
+        })
+        .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
+            let _ = app;
+            let mut state = delete_state.write();
+            execute_command(&mut state, SceneCommand::RemoveObject { id: delete_id.clone() });
+        })
     }
 
     fn on_click_custom(&self) -> Option<Arc<dyn Fn()>> {
@@ -150,7 +168,7 @@ impl HierarchyPanel {
     fn build_items(
         all_objects: &[SceneObject],
         selected_object: Option<&String>,
-        scene_db: &SceneDatabase,
+        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Vec<SceneObjectItem> {
         all_objects
             .iter()
@@ -159,7 +177,7 @@ impl HierarchyPanel {
                 let is_folder = matches!(obj.object_type, ObjectType::Folder);
                 SceneObjectItem {
                     object: obj.clone(),
-                    scene_db: scene_db.clone(),
+                    state_arc: state_arc.clone(),
                     is_selected,
                     is_folder,
                 }
@@ -181,7 +199,7 @@ impl HierarchyPanel {
         let items = Self::build_items(
             &all_objects,
             state.selected_object().as_ref(),
-            &state.scene_database,
+            &state_arc,
         );
 
         // Root-level objects (those without parents)

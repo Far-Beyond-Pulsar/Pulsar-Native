@@ -159,7 +159,16 @@ impl SceneDatabase {
 
     /// Remove an object and all of its descendants. Returns `true` if found.
     pub fn remove_object(&self, id: &ObjectId) -> bool {
-        self.scene_db.remove_object(id)
+        let mut ids_to_clear = vec![id.clone()];
+        Self::collect_descendant_ids(&self.scene_db, id, &mut ids_to_clear);
+
+        let removed = self.scene_db.remove_object(id);
+        if removed {
+            for object_id in ids_to_clear {
+                self.metadata_db.clear_components(&object_id);
+            }
+        }
+        removed
     }
 
     /// Write updated transform, name, visibility, and component data back to an existing object.
@@ -341,12 +350,22 @@ impl SceneDatabase {
 
     /// Shallow-duplicate an object (children are not copied). Returns the new ID.
     pub fn duplicate_object(&self, id: &str) -> Option<ObjectId> {
-        let mut obj = self.get_object(&id.to_string())?;
+        let source_id = id.to_string();
+        let source_components = self.get_components(&source_id);
+        let mut obj = self.get_object(&source_id)?;
         obj.id = String::new(); // force auto-assign
         obj.name = format!("{} (Copy)", obj.name);
         obj.children = vec![];
         let parent = obj.parent.clone();
-        Some(self.add_object(obj, parent))
+        let new_id = self.add_object(obj, parent);
+
+        self.metadata_db.clear_components(&new_id);
+        for component in source_components {
+            self.metadata_db.add_component_instance(&new_id, component);
+        }
+        self.sync_registered_component_props_to_scene_db(&new_id);
+
+        Some(new_id)
     }
 
     // ── Folder helper ──────────────────────────────────────────────────────
@@ -379,10 +398,55 @@ impl SceneDatabase {
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
+    /// Add a fully specified component instance.
+    pub fn add_component_instance(
+        &self,
+        object_id: &EditorObjectId,
+        component: ComponentInstance,
+    ) {
+        self.metadata_db.add_component_instance(object_id, component);
+        self.sync_registered_component_props_to_scene_db(object_id);
+    }
+
     pub fn remove_component(&self, object_id: &EditorObjectId, component_index: usize) {
         self.metadata_db
             .remove_component(object_id, component_index);
         self.sync_registered_component_props_to_scene_db(object_id);
+    }
+
+    /// Enable or disable a component by index.
+    pub fn set_component_enabled(
+        &self,
+        object_id: &EditorObjectId,
+        component_index: usize,
+        enabled: bool,
+    ) -> bool {
+        let changed = self
+            .metadata_db
+            .set_component_enabled(object_id, component_index, enabled);
+        if changed {
+            self.sync_registered_component_props_to_scene_db(object_id);
+        }
+        changed
+    }
+
+    /// Duplicate a component at the same object, inserting the copy directly after the source.
+    pub fn duplicate_component(
+        &self,
+        object_id: &EditorObjectId,
+        component_index: usize,
+    ) -> Option<usize> {
+        let mut components = self.get_components(object_id);
+        if component_index >= components.len() {
+            return None;
+        }
+
+        let insert_index = component_index.saturating_add(1);
+        let component = components.get(component_index)?.clone();
+        components.insert(insert_index, component);
+        self.metadata_db.replace_components(object_id, components);
+        self.sync_registered_component_props_to_scene_db(object_id);
+        Some(insert_index)
     }
 
     pub fn reorder_component(
@@ -391,31 +455,15 @@ impl SceneDatabase {
         from_index: usize,
         to_index: usize,
     ) {
-        // Get all components
         let mut components = self.get_components(object_id);
         if from_index >= components.len() || to_index >= components.len() || from_index == to_index
         {
             return;
         }
 
-        // Reorder the components in the vector
         let component = components.remove(from_index);
         components.insert(to_index, component);
-
-        // Clear all existing components
-        while !self.get_components(object_id).is_empty() {
-            self.remove_component(object_id, 0);
-        }
-
-        // Re-add all components in the new order
-        for component in components {
-            self.add_component(
-                object_id,
-                component.class_name.clone(),
-                component.data.clone(),
-            );
-        }
-
+        self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
@@ -477,7 +525,6 @@ impl SceneDatabase {
             }
         }
 
-        // Update the component's data to include parent_index
         let component = &mut components[component_index];
         let mut data = component.data.as_object().cloned().unwrap_or_default();
 
@@ -488,20 +535,7 @@ impl SceneDatabase {
         }
 
         component.data = serde_json::Value::Object(data);
-
-        // Clear and re-add all components with updated data
-        while !self.get_components(object_id).is_empty() {
-            self.remove_component(object_id, 0);
-        }
-
-        for component in components {
-            self.add_component(
-                object_id,
-                component.class_name.clone(),
-                component.data.clone(),
-            );
-        }
-
+        self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
@@ -612,7 +646,7 @@ impl SceneDatabase {
         metadata_db: &SceneMetadataDb,
     ) {
         let components = metadata_db.get_components(&object_id.to_string());
-        for component in components {
+        for component in components.into_iter().filter(|component| component.enabled) {
             if apply_scene_props_for_class(
                 &component.class_name,
                 &mut snap.props,
@@ -637,10 +671,17 @@ impl SceneDatabase {
             for class_name in registered_scene_props_classes() {
                 let data = components
                     .iter()
-                    .find(|c| c.class_name == class_name)
+                    .find(|c| c.class_name == class_name && c.enabled)
                     .map(|c| &c.data);
                 apply_scene_props_for_class(class_name, &mut meta.props, data);
             }
+        }
+    }
+
+    fn collect_descendant_ids(scene_db: &SceneDb, id: &str, out: &mut Vec<ObjectId>) {
+        for child_id in scene_db.get_children(Some(id)) {
+            out.push(child_id.clone());
+            Self::collect_descendant_ids(scene_db, &child_id, out);
         }
     }
 

@@ -141,12 +141,23 @@ pub struct ComponentInstance {
     /// Class name from the component registry (e.g., "PhysicsComponent")
     pub class_name: String,
 
+    /// Whether the component is active.
+    ///
+    /// Disabled components remain serialized but are ignored by scene-property
+    /// projection and behave as if they were absent.
+    #[serde(default = "default_component_enabled")]
+    pub enabled: bool,
+
     /// Serialized component data
     ///
     /// NOTE: In the full implementation, this would be Box<dyn EngineClass>,
     /// but that's not directly serializable. For now, we store serialized JSON
     /// and reconstruct via the registry on load.
     pub data: serde_json::Value,
+}
+
+fn default_component_enabled() -> bool {
+    true
 }
 
 impl SceneObjectMetadata {

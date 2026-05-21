@@ -35,12 +35,51 @@ impl ComponentDb {
         class_name: String,
         data: serde_json::Value,
     ) {
-        let instance = ComponentInstance { class_name, data };
+        let instance = ComponentInstance {
+            class_name,
+            enabled: true,
+            data,
+        };
 
+        self.add_component_instance(object_id, instance);
+    }
+
+    /// Add a fully specified component instance to an object.
+    pub fn add_component_instance(&self, object_id: &EditorObjectId, instance: ComponentInstance) {
         self.components
             .entry(object_id.clone())
             .or_insert_with(Vec::new)
             .push(instance);
+    }
+
+    /// Replace all components on an object.
+    pub fn replace_components(
+        &self,
+        object_id: &EditorObjectId,
+        components: Vec<ComponentInstance>,
+    ) {
+        self.components.insert(object_id.clone(), components);
+    }
+
+    /// Update a component's enabled flag.
+    pub fn set_component_enabled(
+        &self,
+        object_id: &EditorObjectId,
+        component_index: usize,
+        enabled: bool,
+    ) -> bool {
+        if let Some(mut components) = self.components.get_mut(object_id) {
+            if let Some(component) = components.get_mut(component_index) {
+                component.enabled = enabled;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Get the number of components on an object
+    pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
+        self.components.get(object_id).map(|c| c.len()).unwrap_or(0)
     }
 
     /// Remove a component from an object by index
@@ -114,11 +153,6 @@ impl ComponentDb {
             .get(object_id)
             .map(|components| components.iter().any(|c| c.class_name == class_name))
             .unwrap_or(false)
-    }
-
-    /// Get the number of components on an object
-    pub fn component_count(&self, object_id: &EditorObjectId) -> usize {
-        self.components.get(object_id).map(|c| c.len()).unwrap_or(0)
     }
 
     /// Update a component's data

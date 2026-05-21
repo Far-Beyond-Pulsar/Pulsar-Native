@@ -300,10 +300,44 @@ impl SceneMetadataDb {
     }
 
     /// Get component database for direct access
+
+    /// Add a fully specified component instance.
+    pub fn add_component_instance(
+        &self,
+        object_id: &EditorObjectId,
+        component: super::metadata::ComponentInstance,
+    ) {
+        self.components.add_component_instance(object_id, component);
+    }
     pub fn components(&self) -> &ComponentDb {
         &self.components
     }
 
+
+    /// Clear all components from an object.
+    pub fn clear_components(&self, object_id: &EditorObjectId) {
+        self.components.clear_components(object_id);
+    }
+
+    /// Update a component's enabled flag.
+    pub fn set_component_enabled(
+        &self,
+        object_id: &EditorObjectId,
+        component_index: usize,
+        enabled: bool,
+    ) -> bool {
+        self.components
+            .set_component_enabled(object_id, component_index, enabled)
+    }
+
+    /// Replace all components on an object.
+    pub fn replace_components(
+        &self,
+        object_id: &EditorObjectId,
+        components: Vec<super::metadata::ComponentInstance>,
+    ) {
+        self.components.replace_components(object_id, components);
+    }
     // ── Hierarchy Access ──────────────────────────────────────────────────
 
     /// Get children of an object
@@ -443,7 +477,7 @@ impl SceneMetadataDb {
         // Load components
         for (object_id, components) in snapshot.components {
             for component in components {
-                self.add_component(&object_id, component.class_name, component.data);
+                self.add_component_instance(&object_id, component);
             }
         }
     }
