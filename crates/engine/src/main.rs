@@ -91,6 +91,8 @@ const PROJECT_ASSOC_MIME: &str = "application/x-pulsar-project";
 
 #[cfg(target_os = "macos")]
 const MACOS_BUNDLE_ID: &str = "dev.pulsar.engine";
+#[cfg(target_os = "macos")]
+const MACOS_ASSOC_QUERY_EXTENSION: &str = "toml";
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -201,12 +203,23 @@ fn maybe_prompt_project_file_association() {
         Some(req) => req,
         None => {
             tracing::debug!("No file association request is available for this platform");
+            #[cfg(target_os = "macos")]
+            {
+                let _ = rfd::MessageDialog::new()
+                    .set_title("Pulsar Project Association")
+                    .set_description(
+                        "Pulsar could not determine a valid TOML UTI on this macOS installation, so association was skipped.",
+                    )
+                    .set_level(rfd::MessageLevel::Warning)
+                    .set_buttons(rfd::MessageButtons::Ok)
+                    .show();
+            }
             return;
         }
     };
 
     let already_associated = manager
-        .query(PROJECT_ASSOC_EXTENSION)
+        .query(association_query_target())
         .ok()
         .flatten()
         .map(|record| record.handler_id == request.handler_id)
@@ -223,7 +236,7 @@ fn maybe_prompt_project_file_association() {
     let should_associate = rfd::MessageDialog::new()
         .set_title("Associate Pulsar Project Files")
         .set_description(format!(
-            "Pulsar can associate project descriptor files ({}) with this running engine build (v{}).\n\nAssociate now?",
+            "Pulsar can associate project descriptor files ({}) with this running engine build (v{}).\n\nOn macOS this is applied via the TOML UTI mapping.\n\nAssociate now?",
             PROJECT_ASSOC_EXTENSION,
             consts::ENGINE_VERSION,
         ))
@@ -280,8 +293,9 @@ fn build_project_association_request() -> Option<AssociationRequest> {
 
     #[cfg(target_os = "macos")]
     {
+        let uti = detect_macos_toml_uti()?;
         return Some(
-            AssociationRequest::new(PROJECT_ASSOC_EXTENSION, MACOS_BUNDLE_ID)
+            AssociationRequest::new(uti, MACOS_BUNDLE_ID)
                 .with_mime_type(PROJECT_ASSOC_MIME),
         );
     }
@@ -299,6 +313,40 @@ fn build_project_association_request() -> Option<AssociationRequest> {
     {
         None
     }
+}
+
+fn association_query_target() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        return MACOS_ASSOC_QUERY_EXTENSION;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        PROJECT_ASSOC_EXTENSION
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn detect_macos_toml_uti() -> Option<String> {
+    let output = std::process::Command::new("duti")
+        .args(["-x", MACOS_ASSOC_QUERY_EXTENSION])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let lines = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+
+    // duti -x prints: bundle id, app path, UTI
+    lines.get(2).map(|s| s.to_string())
 }
 
 #[cfg(target_os = "linux")]
