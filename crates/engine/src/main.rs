@@ -218,11 +218,12 @@ fn maybe_prompt_project_file_association() {
         }
     };
 
+    let expected_handler = request.handler_id.trim().to_ascii_lowercase();
     let already_associated = manager
         .query(association_query_target())
         .ok()
         .flatten()
-        .map(|record| record.handler_id == request.handler_id)
+        .map(|record| record.handler_id.trim().to_ascii_lowercase() == expected_handler)
         .unwrap_or(false);
 
     if already_associated {
