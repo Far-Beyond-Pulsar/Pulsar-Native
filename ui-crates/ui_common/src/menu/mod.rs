@@ -1334,11 +1334,6 @@ impl Render for AppTitleBar {
 
         let notifications_count = window.notifications(cx).len();
 
-        // DevPopover state
-        use std::cell::RefCell;
-        thread_local! {
-            static DEV_POPOVER_OPEN: RefCell<bool> = RefCell::new(false);
-        }
         let dev_popover = cx.new(DevPopover::new);
 
         TitleBar::new()
@@ -1368,17 +1363,11 @@ impl Render for AppTitleBar {
                                     .anchor(Corner::BottomLeft)
                                     .trigger(
                                         Button::new("dev-menu")
-                                            .label("Dev Tools")
+                                            .label("Dev")
                                             .icon(IconName::Bug)
                                             .small()
                                             .ghost()
-                                            .tooltip("Developer tools and diagnostics")
-                                            .on_click(|_, _, _| {
-                                                DEV_POPOVER_OPEN.with(|open| {
-                                                    let mut open = open.borrow_mut();
-                                                    *open = !*open;
-                                                });
-                                            }),
+                                            .tooltip("Developer menu and runtime diagnostics"),
                                     )
                                     .content(move |_, _| dev_popover.clone()),
                             )

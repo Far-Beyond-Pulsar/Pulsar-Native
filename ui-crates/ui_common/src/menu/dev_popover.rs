@@ -99,6 +99,15 @@ fn peer_row(peer_id: &str, fg: Hsla, muted: Hsla) -> Div {
         .child(div().text_xs().text_color(fg).child(peer_id.to_string()))
 }
 
+fn pill(label: &str, tone: Hsla, bg: Hsla) -> Div {
+    div()
+        .px_2()
+        .py(px(2.))
+        .rounded_full()
+        .bg(bg)
+        .child(div().text_xs().text_color(tone).child(label.to_string()))
+}
+
 // ── Render ────────────────────────────────────────────────────────────────────
 
 impl Render for DevPopover {
@@ -259,7 +268,7 @@ impl Render for DevPopover {
 
         // ── Build UI ───────────────────────────────────────────────────────────
         v_flex()
-            .w(px(480.))
+            .w(px(520.))
             .p_4()
             .gap_3()
             .bg(bg)
@@ -267,7 +276,7 @@ impl Render for DevPopover {
             .shadow_xl()
             .track_focus(&self.focus_handle)
 
-            // ── Header ────────────────────────────────────────────
+            // Header
             .child(
                 h_flex()
                     .justify_between()
@@ -277,160 +286,40 @@ impl Render for DevPopover {
                             .gap_2()
                             .items_center()
                             .child(Icon::new(IconName::Bug).text_color(accent))
-                            .child(div().text_sm().text_color(fg).child("Developer Tools")),
+                            .child(div().text_sm().text_color(fg).font_semibold().child("Dev Menu")),
                     )
                     .child(
-                        h_flex().gap_1().items_center()
+                        h_flex()
+                            .gap_1()
+                            .items_center()
                             .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(success))
                             .child(div().text_xs().text_color(muted).child("live · 1s")),
                     ),
             )
             .child(
-                div().text_xs().text_color(muted).child(format!(
-                    "v{}  ·  {}  ·  {}",
-                    engine_version,
-                    build_info,
-                    if is_source_build { "source build" } else { "release" },
-                )),
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(pill(
+                        &format!("v{}", engine_version),
+                        fg,
+                        card_bg,
+                    ))
+                    .child(pill(&build_info, muted, card_bg))
+                    .child(pill(
+                        if is_source_build { "source" } else { "release" },
+                        if is_source_build { success } else { muted },
+                        card_bg,
+                    )),
             )
 
-            // ── ENGINE ────────────────────────────────────────────
+            // Quick actions first.
             .child(
                 card(card_bg)
-                    .child(section_header("ENGINE", fg, border))
-                    .child(kv("Version",     &engine_version,   muted, fg))
-                    .child(kv("Build",       &build_info,       muted, fg))
-                    .child(kv("Executable",  &exe_path,         muted, fg))
-                    .child(status_row("Source Build", is_source_build, "Yes", "No", muted, success, muted))
-                    .child(kv("Source Root", &source_path,      muted, fg)),
-            )
-
-            // ── PROJECT ───────────────────────────────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header("PROJECT", fg, border))
-                    .child(kv("Path",      &project_path,      muted, fg))
-                    .child(kv("Window ID", &project_window_id, muted, fg))
-                    .child(kv("URI Path",  &uri_project_path,  muted, fg)),
-            )
-
-            // ── RUNTIME ───────────────────────────────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header("RUNTIME", fg, border))
-                    .child(
-                        h_flex().gap_6()
-                            .child(kv("Windows",   &window_count.to_string(),   muted, fg))
-                            .child(kv("Renderers", &renderer_count.to_string(), muted, fg)),
-                    )
-                    .child(
-                        h_flex().gap_6()
-                            .child(status_row("Type DB",  has_type_db,    "Loaded", "None", muted, success, muted))
-                            .child(status_row("Verbose",  verbose_launch, "On",     "Off",  muted, warning, muted)),
-                    )
-                    .child(kv("Default Level", &default_level_size, muted, fg)),
-            )
-
-            // ── SERVICES ──────────────────────────────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header("SERVICES", fg, border))
-                    .child(
-                        h_flex().gap_6()
-                            .child(status_row("Discord",    has_discord,       "Active", "None", muted, success, muted))
-                            .child(status_row("Window Mgr", has_window_manager,"Active", "None", muted, success, muted)),
-                    )
-                    .child(status_row("Multiuser", mu_active, "Enabled", "Disabled", muted, info, muted)),
-            )
-
-            // ── MULTIUSER SESSION — always visible ────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header("MULTIUSER SESSION", fg, border))
-                    // Status row with colored dot
+                    .child(section_header("QUICK ACTIONS", fg, border))
                     .child(
                         h_flex()
                             .gap_2()
-                            .py(px(1.))
-                            .child(div().text_xs().text_color(muted).w(px(104.)).flex_shrink_0().child("Status"))
-                            .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(mu_color).flex_shrink_0().mt(px(1.)))
-                            .child(div().text_xs().text_color(mu_color).child(mu_status.clone())),
-                    )
-                    .child(status_row("Role",     mu_is_host,     "Host",  "Participant", muted, accent, fg))
-                    .child(kv("Server URL",  &mu_server_url,    muted, if mu_active { fg } else { muted }))
-                    .child(kv("Session ID",  &mu_session_id,    muted, if mu_active { fg } else { muted }))
-                    .child(kv("Our Peer ID", &mu_peer_id,       muted, if mu_active { fg } else { muted }))
-                    .child(kv("Host Peer",   &mu_host_peer_id,  muted, if mu_active { fg } else { muted }))
-                    .child(kv("Join Token",  &mu_join_token,    muted, if mu_join_token != "—" { fg } else { muted }))
-                    .child(kv("Project ID",  &mu_project_id,    muted, if mu_project_id != "—" { fg } else { muted }))
-                    .when(!mu_participants.is_empty(), |el| {
-                        let peers = mu_participants.clone();
-                        let overflow = peers.len().saturating_sub(8);
-                        el.child(
-                            v_flex()
-                                .pt_1()
-                                .gap_y_0()
-                                .child(div().text_xs().text_color(muted).pb_1()
-                                    .child(format!("Participants ({})", peers.len())))
-                                .children(peers.into_iter().take(8).map(|p| peer_row(&p, fg, muted)))
-                                .when(overflow > 0, |el| {
-                                    el.child(div().text_xs().text_color(muted)
-                                        .child(format!("+ {} more", overflow)))
-                                }),
-                        )
-                    })
-                    .when(mu_participants.is_empty() && mu_active, |el| {
-                        el.child(div().text_xs().text_color(muted).py(px(1.)).child("No participants yet"))
-                    }),
-            )
-
-            // ── WINDOW REGISTRY ───────────────────────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header(
-                        &format!("WINDOW REGISTRY  ({})", window_count),
-                        fg, border,
-                    ))
-                    .when(window_rows.is_empty(), |el| {
-                        el.child(div().text_xs().text_color(muted).child("No windows registered"))
-                    })
-                    .children({
-                        let visible = window_rows.iter().take(8).map(|r| {
-                            div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
-                        }).collect::<Vec<_>>();
-                        visible
-                    })
-                    .when(window_rows.len() > 8, |el| {
-                        el.child(div().text_xs().text_color(muted)
-                            .child(format!("+ {} more", window_rows.len() - 8)))
-                    }),
-            )
-
-            // ── RENDERER REGISTRY ─────────────────────────────────
-            .child(
-                card(card_bg)
-                    .child(section_header(
-                        &format!("RENDERER REGISTRY  ({})", renderer_count),
-                        fg, border,
-                    ))
-                    .when(renderer_rows.is_empty(), |el| {
-                        el.child(div().text_xs().text_color(muted).child("No renderers registered"))
-                    })
-                    .children({
-                        let visible = renderer_rows.iter().map(|r| {
-                            div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
-                        }).collect::<Vec<_>>();
-                        visible
-                    }),
-            )
-
-            // ── ACTIONS ───────────────────────────────────────────
-            .child(
-                v_flex()
-                    .gap_2()
-                    .child(section_header("ACTIONS", fg, border))
-                    .child(
-                        h_flex().gap_2()
                             .child(
                                 Button::new("reload-assets")
                                     .label("Reload Assets")
@@ -454,7 +343,8 @@ impl Render for DevPopover {
                             ),
                     )
                     .child(
-                        h_flex().gap_2()
+                        h_flex()
+                            .gap_2()
                             .child(
                                 Button::new("open-workspace-root")
                                     .label("Workspace")
@@ -479,9 +369,193 @@ impl Render for DevPopover {
                     ),
             )
 
+            // Top-level status summary.
             .child(
-                div().text_xs().text_color(muted)
-                    .child("Pulsar Engine · dev panel · refreshes every 1s"),
+                card(card_bg)
+                    .child(section_header("STATUS", fg, border))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(pill(&format!("Windows {}", window_count), fg, bg))
+                            .child(pill(&format!("Renderers {}", renderer_count), fg, bg))
+                            .child(pill(
+                                if has_type_db { "Type DB loaded" } else { "Type DB missing" },
+                                if has_type_db { success } else { warning },
+                                bg,
+                            ))
+                            .child(pill(
+                                if verbose_launch { "Verbose on" } else { "Verbose off" },
+                                if verbose_launch { warning } else { muted },
+                                bg,
+                            )),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(pill(
+                                if has_discord { "Discord active" } else { "Discord none" },
+                                if has_discord { success } else { muted },
+                                bg,
+                            ))
+                            .child(pill(
+                                if has_window_manager { "Window mgr active" } else { "Window mgr none" },
+                                if has_window_manager { success } else { muted },
+                                bg,
+                            ))
+                            .child(pill(
+                                if mu_active { "Multiuser enabled" } else { "Multiuser disabled" },
+                                if mu_active { info } else { muted },
+                                bg,
+                            )),
+                    )
+                    .child(kv("Default Level", &default_level_size, muted, fg)),
             )
+
+            .child(
+                h_flex()
+                    .gap_3()
+                    .child(
+                        card(card_bg)
+                            .flex_1()
+                            .child(section_header("ENGINE", fg, border))
+                            .child(kv("Executable", &exe_path, muted, fg))
+                            .child(status_row(
+                                "Source Build",
+                                is_source_build,
+                                "Yes",
+                                "No",
+                                muted,
+                                success,
+                                muted,
+                            ))
+                            .child(kv("Source Root", &source_path, muted, fg)),
+                    )
+                    .child(
+                        card(card_bg)
+                            .flex_1()
+                            .child(section_header("PROJECT", fg, border))
+                            .child(kv("Path", &project_path, muted, fg))
+                            .child(kv("Window ID", &project_window_id, muted, fg))
+                            .child(kv("URI Path", &uri_project_path, muted, fg)),
+                    ),
+            )
+
+            // Multiuser details stay visible for diagnostics.
+            .child(
+                card(card_bg)
+                    .child(section_header("MULTIUSER SESSION", fg, border))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .py(px(1.))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .w(px(104.))
+                                    .flex_shrink_0()
+                                    .child("Status"),
+                            )
+                            .child(
+                                div()
+                                    .w(px(6.))
+                                    .h(px(6.))
+                                    .rounded_full()
+                                    .bg(mu_color)
+                                    .flex_shrink_0()
+                                    .mt(px(1.)),
+                            )
+                            .child(div().text_xs().text_color(mu_color).child(mu_status.clone())),
+                    )
+                    .child(status_row(
+                        "Role",
+                        mu_is_host,
+                        "Host",
+                        "Participant",
+                        muted,
+                        accent,
+                        fg,
+                    ))
+                    .child(kv("Server URL", &mu_server_url, muted, if mu_active { fg } else { muted }))
+                    .child(kv("Session ID", &mu_session_id, muted, if mu_active { fg } else { muted }))
+                    .child(kv("Our Peer ID", &mu_peer_id, muted, if mu_active { fg } else { muted }))
+                    .child(kv("Host Peer", &mu_host_peer_id, muted, if mu_active { fg } else { muted }))
+                    .child(kv("Join Token", &mu_join_token, muted, if mu_join_token != "—" { fg } else { muted }))
+                    .child(kv("Project ID", &mu_project_id, muted, if mu_project_id != "—" { fg } else { muted }))
+                    .when(!mu_participants.is_empty(), |el| {
+                        let peers = mu_participants.clone();
+                        let overflow = peers.len().saturating_sub(8);
+                        el.child(
+                            v_flex()
+                                .pt_1()
+                                .gap_y_0()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .pb_1()
+                                        .child(format!("Participants ({})", peers.len())),
+                                )
+                                .children(peers.into_iter().take(8).map(|p| peer_row(&p, fg, muted)))
+                                .when(overflow > 0, |el| {
+                                    el.child(div().text_xs().text_color(muted).child(format!("+ {} more", overflow)))
+                                }),
+                        )
+                    })
+                    .when(mu_participants.is_empty() && mu_active, |el| {
+                        el.child(div().text_xs().text_color(muted).py(px(1.)).child("No participants yet"))
+                    }),
+            )
+
+            .child(
+                h_flex()
+                    .gap_3()
+                    .child(
+                        card(card_bg)
+                            .flex_1()
+                            .child(section_header(&format!("WINDOWS ({})", window_count), fg, border))
+                            .when(window_rows.is_empty(), |el| {
+                                el.child(div().text_xs().text_color(muted).child("No windows registered"))
+                            })
+                            .children(window_rows.iter().take(8).map(|r| {
+                                div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
+                            }))
+                            .when(window_rows.len() > 8, |el| {
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(format!("+ {} more", window_rows.len() - 8)),
+                                )
+                            }),
+                    )
+                    .child(
+                        card(card_bg)
+                            .flex_1()
+                            .child(section_header(
+                                &format!("RENDERERS ({})", renderer_count),
+                                fg,
+                                border,
+                            ))
+                            .when(renderer_rows.is_empty(), |el| {
+                                el.child(div().text_xs().text_color(muted).child("No renderers registered"))
+                            })
+                            .children(renderer_rows.iter().take(8).map(|r| {
+                                div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
+                            }))
+                            .when(renderer_rows.len() > 8, |el| {
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(format!("+ {} more", renderer_rows.len() - 8)),
+                                )
+                            }),
+                    ),
+            )
+
+            .child(div().text_xs().text_color(muted).child("Pulsar Engine · toolbar dev menu · auto-refreshes every 1s"))
     }
 }
