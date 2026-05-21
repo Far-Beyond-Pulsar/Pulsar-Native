@@ -61,8 +61,12 @@
       "scene_path": "Red Light",
       "props": {
         "is_trigger": true,
-        "intensity": 7.0,
-        "range": 40.0,
+        "color": [
+          1.0,
+          0.0,
+          0.0,
+          1.0
+        ],
         "__component_instances": [
           {
             "index": 0,
@@ -90,14 +94,10 @@
           }
         ],
         "size": "unsupported",
+        "range": 40.0,
         "offset": "unsupported",
         "shape": "Box",
-        "color": [
-          1.0,
-          0.0,
-          0.0,
-          1.0
-        ]
+        "intensity": 7.0
       }
     },
     {
@@ -129,9 +129,7 @@
       "children": [],
       "scene_path": "Blue Light",
       "props": {
-        "is_trigger": false,
-        "intensity": 8.0,
-        "offset": "unsupported",
+        "size": "unsupported",
         "__component_instances": [
           {
             "index": 0,
@@ -149,15 +147,17 @@
             }
           }
         ],
-        "shape": "Box",
-        "range": 8.0,
         "color": [
           0.058823585510253906,
           0.0,
           1.0,
           1.0
         ],
-        "size": "unsupported"
+        "range": 8.0,
+        "shape": "Box",
+        "intensity": 8.0,
+        "is_trigger": false,
+        "offset": "unsupported"
       }
     },
     {
@@ -189,6 +189,7 @@
       "children": [],
       "scene_path": "Pink Light",
       "props": {
+        "intensity": 8.0,
         "range": 10.0,
         "__component_instances": [
           {
@@ -207,7 +208,6 @@
             }
           }
         ],
-        "intensity": 8.0,
         "color": [
           0.9058823585510254,
           0.09803923964500427,
@@ -225,7 +225,7 @@
       "transform": {
         "position": [
           0.0,
-          -1.1902394,
+          -2.11277,
           0.0
         ],
         "rotation": [
@@ -245,8 +245,6 @@
       "children": [],
       "scene_path": "Ground",
       "props": {
-        "mesh_asset": "meshes/primitives/SM_Cube.fbx",
-        "material": "None",
         "__component_instances": [
           {
             "index": 0,
@@ -260,7 +258,9 @@
             }
           }
         ],
-        "movability": "None"
+        "movability": "None",
+        "mesh_asset": "meshes/primitives/SM_Cube.fbx",
+        "material": "None"
       }
     },
     {
@@ -589,11 +589,10 @@
           0.0,
           1.0
         ],
-        "offset": "unsupported",
-        "size": "unsupported",
-        "is_trigger": false,
         "intensity": 2.0,
-        "shape": "Box",
+        "is_trigger": false,
+        "range": 100.0,
+        "offset": "unsupported",
         "__component_instances": [
           {
             "index": 0,
@@ -620,66 +619,8 @@
             }
           }
         ],
-        "range": 100.0
-      }
-    },
-    {
-      "id": "object_15",
-      "name": "Empty",
-      "object_type": "Empty",
-      "transform": {
-        "position": [
-          10.567162,
-          3.8598964,
-          1.396704
-        ],
-        "rotation": [
-          0.0,
-          0.0,
-          0.0
-        ],
-        "scale": [
-          1.0,
-          1.0,
-          1.0
-        ]
-      },
-      "visible": true,
-      "locked": false,
-      "parent": null,
-      "children": [],
-      "scene_path": "Empty",
-      "props": {
-        "__component_instances": [
-          {
-            "index": 0,
-            "class_name": "LightComponent",
-            "data": {
-              "light_type": "Point",
-              "intensity": 2.0,
-              "color": [
-                1.0,
-                1.0,
-                1.0,
-                1.0
-              ],
-              "range": 6.0,
-              "inner_cone_angle": 0.0,
-              "outer_cone_angle": 0.0,
-              "cast_shadows": false,
-              "shadow_resolution": 0.0,
-              "shadow_bias": 0.0
-            }
-          }
-        ],
-        "range": 6.0,
-        "color": [
-          1.0,
-          1.0,
-          1.0,
-          1.0
-        ],
-        "intensity": 2.0
+        "shape": "Box",
+        "size": "unsupported"
       }
     },
     {
@@ -709,8 +650,14 @@
       "children": [],
       "scene_path": "New Object",
       "props": {
-        "movability": "None",
         "material": "None",
+        "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+        "color": [
+          0.5803923606872559,
+          0.0,
+          1.0,
+          1.0
+        ],
         "__component_instances": [
           {
             "index": 0,
@@ -746,13 +693,7 @@
         ],
         "intensity": 5.0,
         "range": 4.0,
-        "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
-        "color": [
-          0.5803923606872559,
-          0.0,
-          1.0,
-          1.0
-        ]
+        "movability": "None"
       }
     },
     {
@@ -782,8 +723,14 @@
       "children": [],
       "scene_path": "New Object",
       "props": {
-        "movability": "None",
         "material": "None",
+        "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
+        "color": [
+          0.5803923606872559,
+          0.0,
+          1.0,
+          1.0
+        ],
         "__component_instances": [
           {
             "index": 0,
@@ -817,44 +764,13 @@
             }
           }
         ],
-        "intensity": 5.0,
         "range": 4.0,
-        "mesh_asset": "meshes/primitives/SM_Sphere.fbx",
-        "color": [
-          0.5803923606872559,
-          0.0,
-          1.0,
-          1.0
-        ]
+        "intensity": 5.0,
+        "movability": "None"
       }
     }
   ],
   "components": {
-    "object_13": [
-      {
-        "class_name": "StaticMeshComponent",
-        "enabled": true,
-        "data": {
-          "mesh_asset": "meshes/primitives/SM_Cube.fbx"
-        }
-      }
-    ],
-    "object_10": [
-      {
-        "class_name": "LightComponent",
-        "enabled": true,
-        "data": {
-          "color": [
-            0.49019622802734375,
-            0.0,
-            1.0,
-            1.0
-          ],
-          "intensity": 1.0,
-          "range": 100.0
-        }
-      }
-    ],
     "object_4": [
       {
         "class_name": "LightComponent",
@@ -869,41 +785,6 @@
           "intensity": 8.0,
           "range": 10.0,
           "cast_shadows": false
-        }
-      }
-    ],
-    "object_7": [
-      {
-        "class_name": "StaticMeshComponent",
-        "enabled": true,
-        "data": {
-          "mesh_asset": "monkey.fbx"
-        }
-      }
-    ],
-    "object_2": [
-      {
-        "class_name": "LightComponent",
-        "enabled": true,
-        "data": {
-          "color": [
-            1.0,
-            0.0,
-            0.0,
-            1.0
-          ],
-          "intensity": 7.0,
-          "range": 40.0
-        }
-      },
-      {
-        "class_name": "ColliderDescriptor",
-        "enabled": true,
-        "data": {
-          "shape": "Box",
-          "offset": "unsupported",
-          "size": "unsupported",
-          "is_trigger": true
         }
       }
     ],
@@ -924,64 +805,17 @@
         }
       }
     ],
-    "object_9": [
+    "object_11": [],
+    "object_13": [
       {
         "class_name": "StaticMeshComponent",
         "enabled": true,
         "data": {
-          "mesh_asset": "monkey.fbx"
+          "mesh_asset": "meshes/primitives/SM_Cube.fbx"
         }
       }
     ],
-    "object_11": [],
-    "object_15": [
-      {
-        "class_name": "LightComponent",
-        "enabled": true,
-        "data": {
-          "light_type": "Point",
-          "intensity": 2.0,
-          "color": [
-            1.0,
-            1.0,
-            1.0,
-            1.0
-          ],
-          "range": 6.0,
-          "inner_cone_angle": 0.0,
-          "outer_cone_angle": 0.0,
-          "cast_shadows": false,
-          "shadow_resolution": 0.0,
-          "shadow_bias": 0.0
-        }
-      }
-    ],
-    "object_14": [
-      {
-        "class_name": "LightComponent",
-        "enabled": true,
-        "data": {
-          "color": [
-            0.6078431606292725,
-            1.0,
-            0.0,
-            1.0
-          ],
-          "intensity": 2.0,
-          "range": 100.0
-        }
-      },
-      {
-        "class_name": "ColliderDescriptor",
-        "enabled": true,
-        "data": {
-          "shape": "Box",
-          "offset": "unsupported",
-          "size": "unsupported",
-          "is_trigger": false
-        }
-      }
-    ],
+    "object_1": [],
     "object_5": [
       {
         "class_name": "StaticMeshComponent",
@@ -992,16 +826,6 @@
           "material": "None",
           "transform": "None",
           "bounds": "None"
-        }
-      }
-    ],
-    "object_1": [],
-    "object_8": [
-      {
-        "class_name": "StaticMeshComponent",
-        "enabled": true,
-        "data": {
-          "mesh_asset": "meshes/primitives/SM_Cylinder.fbx"
         }
       }
     ],
@@ -1046,22 +870,117 @@
           "shadow_bias": 0.0
         }
       }
+    ],
+    "object_7": [
+      {
+        "class_name": "StaticMeshComponent",
+        "enabled": true,
+        "data": {
+          "mesh_asset": "monkey.fbx"
+        }
+      }
+    ],
+    "object_9": [
+      {
+        "class_name": "StaticMeshComponent",
+        "enabled": true,
+        "data": {
+          "mesh_asset": "monkey.fbx"
+        }
+      }
+    ],
+    "object_8": [
+      {
+        "class_name": "StaticMeshComponent",
+        "enabled": true,
+        "data": {
+          "mesh_asset": "meshes/primitives/SM_Cylinder.fbx"
+        }
+      }
+    ],
+    "object_14": [
+      {
+        "class_name": "LightComponent",
+        "enabled": true,
+        "data": {
+          "color": [
+            0.6078431606292725,
+            1.0,
+            0.0,
+            1.0
+          ],
+          "intensity": 2.0,
+          "range": 100.0
+        }
+      },
+      {
+        "class_name": "ColliderDescriptor",
+        "enabled": true,
+        "data": {
+          "shape": "Box",
+          "offset": "unsupported",
+          "size": "unsupported",
+          "is_trigger": false
+        }
+      }
+    ],
+    "object_10": [
+      {
+        "class_name": "LightComponent",
+        "enabled": true,
+        "data": {
+          "color": [
+            0.49019622802734375,
+            0.0,
+            1.0,
+            1.0
+          ],
+          "intensity": 1.0,
+          "range": 100.0
+        }
+      }
+    ],
+    "object_2": [
+      {
+        "class_name": "LightComponent",
+        "enabled": true,
+        "data": {
+          "color": [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+          ],
+          "intensity": 7.0,
+          "range": 40.0
+        }
+      },
+      {
+        "class_name": "ColliderDescriptor",
+        "enabled": true,
+        "data": {
+          "shape": "Box",
+          "offset": "unsupported",
+          "size": "unsupported",
+          "is_trigger": true
+        }
+      }
     ]
   },
   "metadata": {
-    "created": "2026-05-21T15:25:43.776447+00:00",
-    "modified": "2026-05-21T15:25:43.776447+00:00",
+    "created": "2026-05-21T15:32:52.037481+00:00",
+    "modified": "2026-05-21T15:32:52.037481+00:00",
     "editor_version": "0.1.0"
   },
   "editor": {
     "camera": {
       "position": [
-        16.621738,
-        3.6383314,
-        -25.068712
+        11.3372965,
+        1.3508537,
+        4.6216893
       ],
-      "yaw": 3.6724863,
-      "pitch": -0.23749998
+      "yaw": 4.697486,
+      "pitch": 0.0499999
     }
   }
 }
