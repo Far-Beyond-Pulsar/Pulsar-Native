@@ -32,6 +32,7 @@ pub mod menu;
 pub mod open_window;
 pub mod panel;
 pub mod properties_inspector;
+pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
 
@@ -44,6 +45,10 @@ pub use shared_state::SharedState;
 pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use menu::AppTitleBar;
 pub use panel::{PanelBase, PanelEvent};
+pub use reflected_properties_panel::{
+    PropertyStateManager, ReflectedPropertiesPanelConfig, json_to_property_value,
+    property_value_to_json, render_component_section, render_property_row,
+};
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
 
 // Re-export diagnostics from ui crate
