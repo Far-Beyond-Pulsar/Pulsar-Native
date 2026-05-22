@@ -190,6 +190,7 @@ files.extend-exclude = ["**/fixtures/*"]
 # Core engine crates
 ui                    = { path = "crates/ui" }
 pulsar_std            = { path = "crates/pulsar_std" }
+pulsar_reflection     = { path = "crates/pulsar_reflection" }
 engine_backend        = { path = "crates/engine_backend" }
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
 plugin_manager        = { path = "crates/plugin_manager" }
@@ -204,6 +205,8 @@ pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 pulsar_replication    = { path = "crates/pulsar_replication" }
+pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
+pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 gpui-component-macros = { path = "crates/macros" }
 # UI crates referenced by core crates
 ui_common             = { path = "ui-crates/ui_common" }
