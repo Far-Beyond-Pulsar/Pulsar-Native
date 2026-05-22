@@ -2,6 +2,7 @@ use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::sync::Arc;
+use ui_common::properties_inspector;
 use ui::{
     button::Button,
     h_flex,
@@ -84,80 +85,22 @@ impl PropertiesPanel {
     ) -> impl IntoElement {
         let has_selection = state.get_selected_object().is_some();
 
-        h_flex()
-            .w_full()
-            .px_4()
-            .py_3()
-            .justify_between()
-            .items_center()
-            .bg(cx.theme().sidebar)
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .child(
-                h_flex()
-                    .gap_3()
-                    .items_center()
-                    .child(
-                        div()
-                            .text_base()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(cx.theme().foreground)
-                            .child(t!("LevelEditor.Properties.Title").to_string()),
-                    )
-                    .when(has_selection, |this| {
-                        this.child(
-                            div()
-                                .px_2()
-                                .py(px(2.0))
-                                .rounded(px(4.0))
-                                .bg(cx.theme().accent.opacity(0.15))
-                                .text_xs()
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(cx.theme().accent)
-                                .child(t!("LevelEditor.Properties.Selected").to_string()),
-                        )
-                    }),
-            )
-            .child(
-                h_flex().gap_1().child(
-                    Button::new("more_options")
-                        .icon(IconName::Ellipsis)
-                        .xsmall(),
-                ),
-            )
+        properties_inspector::render_header(
+            t!("LevelEditor.Properties.Title").to_string(),
+            has_selection,
+            t!("LevelEditor.Properties.Selected").to_string(),
+            "level-editor-properties-more",
+            cx,
+        )
     }
 
     fn render_empty_state(cx: &Context<PropertiesPanelWrapper>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .items_center()
-            .justify_center()
-            .p_8()
-            .child(
-                v_flex()
-                    .gap_3()
-                    .items_center()
-                    .child(
-                        ui::Icon::new(IconName::CursorPointer)
-                            .size(px(48.0))
-                            .text_color(cx.theme().muted_foreground.opacity(0.5)),
-                    )
-                    .child(
-                        div()
-                            .text_base()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(cx.theme().muted_foreground)
-                            .child(t!("LevelEditor.Properties.NoSelection").to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground.opacity(0.7))
-                            .text_center()
-                            .child(t!("LevelEditor.Properties.NoSelectionDesc").to_string()),
-                    ),
-            )
+        properties_inspector::render_empty_state(
+            IconName::CursorPointer,
+            t!("LevelEditor.Properties.NoSelection").to_string(),
+            t!("LevelEditor.Properties.NoSelectionDesc").to_string(),
+            cx,
+        )
     }
 
     fn render_object_header(

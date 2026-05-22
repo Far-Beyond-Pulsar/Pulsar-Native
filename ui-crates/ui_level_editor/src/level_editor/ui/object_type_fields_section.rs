@@ -4,13 +4,11 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
-use ui::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
-use ui::input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction};
-use ui::menu::PopupMenuItem;
+use ui::color_picker::{ColorPickerEvent, ColorPickerState};
+use ui::input::{InputEvent, InputState, NumberInputEvent, StepAction};
 use ui::popover::Popover;
-use ui::switch::Switch;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
-use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+use ui_common::{properties_inspector, AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 use super::add_component_dialog::AddComponentDialog;
 use super::state::LevelEditorState;
@@ -444,316 +442,43 @@ impl ObjectTypeFieldsSection {
         value: &PropertyValue,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        match (property_type, value) {
-            (PropertyType::F32 { .. }, PropertyValue::F32(v)) => {
-                let input_key = (class_name.to_string(), prop_name.to_string());
-                let input_opt = self.numeric_inputs.get(&input_key).cloned();
-
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(if let Some(input) = input_opt {
-                                NumberInput::new(&input)
-                                    .xsmall()
-                                    .w(px(92.0))
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("{:.3}", v))
-                                    .into_any_element()
-                            }),
-                    )
-                    .into_any_element()
-            }
-            (PropertyType::I32 { .. }, PropertyValue::I32(v)) => {
-                let input_key = (class_name.to_string(), prop_name.to_string());
-                let input_opt = self.numeric_inputs.get(&input_key).cloned();
-
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_2()
-                            .child(if let Some(input) = input_opt {
-                                NumberInput::new(&input)
-                                    .xsmall()
-                                    .w(px(92.0))
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(v.to_string())
-                                    .into_any_element()
-                            }),
-                    )
-                    .into_any_element()
-            }
-            (PropertyType::Bool, PropertyValue::Bool(v)) => {
-                let class_toggle = class_name.to_string();
-                let prop_toggle = prop_name.to_string();
-                let scene_db = self.scene_db.clone();
-                let object_id = self.object_id.clone();
-                let view = cx.entity().downgrade();
-
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(
-                        Switch::new(format!("toggle-{}-{}", class_name, prop_name))
-                            .checked(*v)
-                            .small()
-                            .on_click(move |checked, _window, cx| {
-                                scene_db.update_component_property(
-                                    &object_id,
-                                    &class_toggle,
-                                    &prop_toggle,
-                                    Value::from(*checked),
-                                );
-                                if let Some(entity) = view.upgrade() {
-                                    entity.update(cx, |_this, cx| cx.notify());
-                                }
-                            }),
-                    )
-                    .into_any_element()
-            }
-            (PropertyType::Enum { variants }, PropertyValue::EnumVariant(current_ix)) => {
-                let selected_ix = (*current_ix).min(variants.len().saturating_sub(1));
-                let label = variants
-                    .get(selected_ix)
-                    .map(|v| (*v).to_string())
-                    .unwrap_or_else(|| "Select".to_string());
-                let options = variants
-                    .iter()
-                    .map(|v| (*v).to_string())
-                    .collect::<Vec<_>>();
-
-                let scene_db = self.scene_db.clone();
-                let object_id = self.object_id.clone();
-                let class_enum = class_name.to_string();
-                let prop_enum = prop_name.to_string();
-                let view = cx.entity().downgrade();
-
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(
-                        ui::button::Button::new(format!("enum-{}-{}", class_name, prop_name))
-                            .label(label)
-                            .xsmall()
-                            .ghost()
-                            .dropdown_caret(true)
-                            .dropdown_menu_with_anchor(
-                                Corner::BottomRight,
-                                move |menu, _window, _cx| {
-                                    options.iter().enumerate().fold(menu, |menu, (ix, option)| {
-                                        let scene_db = scene_db.clone();
-                                        let object_id = object_id.clone();
-                                        let class_enum = class_enum.clone();
-                                        let prop_enum = prop_enum.clone();
-                                        let view = view.clone();
-
-                                        menu.item(
-                                            PopupMenuItem::new(option.clone())
-                                                .checked(ix == selected_ix)
-                                                .on_click(move |_event, _window, cx| {
-                                                    scene_db.update_component_property(
-                                                        &object_id,
-                                                        &class_enum,
-                                                        &prop_enum,
-                                                        Value::from(ix as u64),
-                                                    );
-                                                    if let Some(entity) = view.upgrade() {
-                                                        entity.update(cx, |_this, cx| cx.notify());
-                                                    }
-                                                }),
-                                        )
-                                    })
-                                },
-                            ),
-                    )
-                    .into_any_element()
-            }
-            (_, PropertyValue::String(v))
-                if v == "unsupported" && Self::is_color_field_name(prop_name) =>
-            {
+        if matches!((property_type, value), (PropertyType::String { .. }, PropertyValue::String(v)) if prop_name == "mesh_asset" && !v.is_empty() || prop_name == "mesh_asset") {
+            if let PropertyValue::String(v) = value {
                 let key = (class_name.to_string(), prop_name.to_string());
-                if let Some(picker_state) = self.color_pickers.get(&key) {
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(ColorPicker::new(picker_state).anchor(Corner::BottomRight))
-                        .into_any_element()
-                } else {
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("Color field unavailable"),
-                        )
-                        .into_any_element()
-                }
-            }
-            (PropertyType::String { .. }, PropertyValue::String(v)) => {
-                if prop_name == "mesh_asset" {
-                    let key = (class_name.to_string(), prop_name.to_string());
-                    if let Some(picker) = self.mesh_asset_pickers.get(&key).cloned() {
-                        let display = if v.is_empty() {
-                            "Select mesh asset…".to_string()
-                        } else {
-                            // Show just the filename, not the full path.
-                            std::path::Path::new(&v)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or(&v)
-                                .to_string()
-                        };
+                if let Some(picker) = self.mesh_asset_pickers.get(&key).cloned() {
+                    let display = if v.is_empty() {
+                        "Select mesh asset…".to_string()
+                    } else {
+                        std::path::Path::new(v)
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or(v)
+                            .to_string()
+                    };
 
-                        // Read cached thumbnail for the currently selected path.
-                        let thumb = picker.read(cx).thumbnail_for_path(&v);
+                    let thumb = picker.read(cx).thumbnail_for_path(v);
 
-                        let pop = Popover::<MeshAssetPicker>::new(format!(
-                            "mesh-asset-picker-{}-{}",
-                            class_name, prop_name
-                        ))
-                        .anchor(Corner::BottomRight)
-                        .trigger(
-                            ui::button::Button::new(format!(
-                                "mesh-asset-btn-{}-{}",
-                                class_name, prop_name
-                            ))
+                    let pop = Popover::<MeshAssetPicker>::new(format!(
+                        "mesh-asset-picker-{}-{}",
+                        class_name, prop_name
+                    ))
+                    .anchor(Corner::BottomRight)
+                    .trigger(
+                        ui::button::Button::new(format!("mesh-asset-btn-{}-{}", class_name, prop_name))
                             .label(display)
                             .small()
                             .ghost()
                             .dropdown_caret(true),
-                        )
-                        .content(move |_window, _cx| picker.clone())
-                        .into_any_element();
+                    )
+                    .content(move |_window, _cx| picker.clone())
+                    .into_any_element();
 
-                        // Outer row: prop label on the left, [dropdown + thumb] on the right.
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .items_center()
-                            .gap_2()
-                            .py_1()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(display_name.to_string()),
-                            )
-                            .child(
-                                h_flex()
-                                    .items_center()
-                                    .gap_2()
-                                    .child(pop)
-                                    .map(|el| match thumb {
-                                        Some(render_img) => el.child(
-                                            div()
-                                                .w(px(40.0))
-                                                .h(px(40.0))
-                                                .rounded(px(4.0))
-                                                .overflow_hidden()
-                                                .border_1()
-                                                .border_color(cx.theme().border)
-                                                .flex_shrink_0()
-                                                .child(
-                                                    gpui::img(gpui::ImageSource::Render(render_img))
-                                                        .w(px(40.0))
-                                                        .h(px(40.0))
-                                                        .object_fit(gpui::ObjectFit::Cover),
-                                                ),
-                                        ),
-                                        None => el,
-                                    }),
-                            )
-                            .into_any_element()
-                    } else {
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(display_name.to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(v.clone()),
-                            )
-                            .into_any_element()
-                    }
-                } else {
-                    h_flex()
+                    return h_flex()
                         .w_full()
                         .justify_between()
                         .items_center()
                         .gap_2()
+                        .py_1()
                         .child(
                             div()
                                 .text_sm()
@@ -761,57 +486,86 @@ impl ObjectTypeFieldsSection {
                                 .child(display_name.to_string()),
                         )
                         .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(v.clone()),
+                            h_flex()
+                                .items_center()
+                                .gap_2()
+                                .child(pop)
+                                .map(|el| match thumb {
+                                    Some(render_img) => el.child(
+                                        div()
+                                            .w(px(40.0))
+                                            .h(px(40.0))
+                                            .rounded(px(4.0))
+                                            .overflow_hidden()
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            .flex_shrink_0()
+                                            .child(
+                                                gpui::img(gpui::ImageSource::Render(render_img))
+                                                    .w(px(40.0))
+                                                    .h(px(40.0))
+                                                    .object_fit(gpui::ObjectFit::Cover),
+                                            ),
+                                    ),
+                                    None => el,
+                                }),
                         )
-                        .into_any_element()
+                        .into_any_element();
                 }
             }
-            (PropertyType::Color, PropertyValue::Color(_)) => {
-                let key = (class_name.to_string(), prop_name.to_string());
-                if let Some(picker_state) = self.color_pickers.get(&key) {
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(ColorPicker::new(picker_state).anchor(Corner::BottomRight))
-                        .into_any_element()
-                } else {
-                    // Picker not yet created (pre-pass missed it) — show value as fallback.
-                    div()
-                        .text_sm()
-                        .child(format!("{:?}", value))
-                        .into_any_element()
-                }
-            }
-            _ => h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!("{:?}", value)),
-                )
-                .into_any_element(),
         }
+
+        let key = (class_name.to_string(), prop_name.to_string());
+        let numeric_input = self.numeric_inputs.get(&key).cloned();
+        let color_picker = self.color_pickers.get(&key).cloned();
+
+        let scene_db_bool = self.scene_db.clone();
+        let object_id_bool = self.object_id.clone();
+        let class_bool = class_name.to_string();
+        let prop_bool = prop_name.to_string();
+        let view_bool = cx.entity().downgrade();
+        let on_bool_toggle = Arc::new(move |checked: bool, _window: &mut Window, cx: &mut App| {
+            scene_db_bool.update_component_property(
+                &object_id_bool,
+                &class_bool,
+                &prop_bool,
+                Value::from(checked),
+            );
+            if let Some(entity) = view_bool.upgrade() {
+                entity.update(cx, |_this, cx| cx.notify());
+            }
+        });
+
+        let scene_db_enum = self.scene_db.clone();
+        let object_id_enum = self.object_id.clone();
+        let class_enum = class_name.to_string();
+        let prop_enum = prop_name.to_string();
+        let view_enum = cx.entity().downgrade();
+        let on_enum_select = Arc::new(move |ix: usize, _window: &mut Window, cx: &mut App| {
+            scene_db_enum.update_component_property(
+                &object_id_enum,
+                &class_enum,
+                &prop_enum,
+                Value::from(ix as u64),
+            );
+            if let Some(entity) = view_enum.upgrade() {
+                entity.update(cx, |_this, cx| cx.notify());
+            }
+        });
+
+        properties_inspector::render_reflected_property_row(
+            "level",
+            class_name,
+            display_name,
+            prop_name,
+            property_type,
+            value,
+            numeric_input,
+            color_picker,
+            on_bool_toggle,
+            on_enum_select,
+            cx,
+        )
     }
 }
 

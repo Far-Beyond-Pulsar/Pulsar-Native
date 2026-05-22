@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 pub mod type_system;
+pub mod prefab;
 pub use type_system::*;
+pub use prefab::{BlueprintClassRef, ComponentInstance as PrefabComponentInstance, PrefabAsset};
 
 /// Unified blueprint file format containing everything (like Unreal Engine)
 /// This is the top-level structure that gets saved to .bp_graph files

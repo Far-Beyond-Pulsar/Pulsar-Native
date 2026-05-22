@@ -21,3 +21,4 @@ smol = { workspace = true }
 engine_state.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true
+pulsar_reflection.workspace = true

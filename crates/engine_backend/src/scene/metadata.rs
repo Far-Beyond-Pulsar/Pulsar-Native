@@ -110,6 +110,9 @@ pub enum ObjectType {
     /// Audio source
     AudioSource,
 
+    /// Prefab instance root object
+    PrefabInstance,
+
     /// Water volume
     Water,
 }
