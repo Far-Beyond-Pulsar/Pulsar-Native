@@ -26,7 +26,6 @@ pub type PropertyReader = Arc<dyn Fn(&str, &str) -> Value + Send + Sync>;
 pub type PropertyWriter = Arc<dyn Fn(&str, &str, Value) + Send + Sync>;
 
 /// Configuration for the reflected properties panel
-#[derive(Clone)]
 pub struct ReflectedPropertiesPanelConfig {
     /// ID prefix for UI elements (e.g., "level", "prefab")
     pub id_prefix: String,
