@@ -215,10 +215,13 @@ ui                    = { path = "crates/ui" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
+pulsar_reflection     = { path = "crates/pulsar_reflection" }
 engine_backend        = { path = "crates/engine_backend" }
 window_manager        = { path = "crates/window_manager" }
 engine_state          = { path = "crates/engine_state" }
 engine_fs             = { path = "crates/engine_fs" }
+pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
+pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 
 [patch.crates-io]
 profiling             = { path = "crates/profiling" }
