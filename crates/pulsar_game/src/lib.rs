@@ -22,6 +22,9 @@ pub mod tick;
 pub mod time;
 mod world;
 
+// Blueprint runtime system
+pub mod blueprint_runtime;
+
 // Flatten the most commonly-used types to the crate root.
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};

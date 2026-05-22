@@ -1,4 +1,5 @@
 use crate::actor::ActorRegistry;
+use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
 use crate::schedule::Schedule;
 use crate::task::TaskPool;
 use crate::time::{Clock, GameTime};
@@ -39,6 +40,7 @@ pub struct TickLoop {
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
+    pub blueprint_dispatcher: Option<Arc<Mutex<BlueprintDispatcher>>>,
     clock: Clock,
     mode: TickMode,
     running: Arc<AtomicBool>,
@@ -62,6 +64,7 @@ impl TickLoop {
             schedule: Schedule::new(),
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
+            blueprint_dispatcher: None,
             clock: Clock::new(max_delta),
             mode,
             running: running.clone(),
@@ -89,6 +92,19 @@ impl TickLoop {
         profiling::profile_scope!("TickLoop::tick");
         self.schedule.run(&mut self.world, time);
         self.actors.tick_all(&mut self.world, time);
+
+        // Drive runtime blueprint tick events after ECS + actor updates.
+        if let Some(dispatcher) = &self.blueprint_dispatcher {
+            let mut dispatcher = dispatcher.lock().unwrap();
+            let object_ids = dispatcher.instance_ids();
+            for object_id in object_ids {
+                let _ = dispatcher.dispatch_event(BlueprintEvent::Tick {
+                    object_id,
+                    delta_time: time.delta.as_secs_f32(),
+                });
+            }
+        }
+
         time
     }
 

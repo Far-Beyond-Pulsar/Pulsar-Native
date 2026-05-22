@@ -31,6 +31,7 @@ pub mod helpers;
 pub mod menu;
 pub mod open_window;
 pub mod panel;
+pub mod properties_inspector;
 pub mod shared;
 pub mod shared_state;
 
