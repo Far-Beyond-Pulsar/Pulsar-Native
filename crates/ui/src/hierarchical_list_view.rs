@@ -6,6 +6,8 @@
 //! ## Features
 //! - N-depth nesting with expand/collapse
 //! - Drag-and-drop with modifier keys (regular=nest, Alt=reorder, Shift=un-nest)
+//! - Optional disable_nesting mode (only allow reordering, not nesting - for flat lists)
+//! - Optional accent color for items (for type indicators, etc.)
 //! - Optional root drop zone
 //! - Optional custom header with buttons
 //! - Optional panel layout (full-page) vs widget layout (compact)
@@ -13,7 +15,7 @@
 
 use gpui::{prelude::*, *};
 use std::sync::Arc;
-use ui::{
+use crate::{
     button::{Button, ButtonVariants as _},
     draggable::{DragHandlePosition, Draggable},
     drop_area::DropArea,
@@ -38,6 +40,14 @@ pub trait HierarchyItem: Clone + 'static {
     fn is_selected(&self) -> bool;
     fn create_drag_payload(&self) -> Self::DragPayload;
     fn drag_drop_id(&self) -> String;
+
+    /// Optional accent color for the item (e.g., type color for variables)
+    fn accent_color<V>(&self, _cx: &Context<V>) -> Option<Hsla>
+    where
+        V: Render,
+    {
+        None
+    }
 
     /// Optional extra content to render at the end of the row (e.g., visibility toggle)
     fn extra_row_content<V>(&self, _cx: &mut Context<V>) -> Option<AnyElement>
@@ -91,6 +101,9 @@ pub struct HierarchyConfig<Item: HierarchyItem> {
     pub widget_add_button: Option<AnyElement>,
     pub empty_message: String,
 
+    // Drag-and-drop options
+    pub disable_nesting: bool, // If true, only allow reordering (Alt+Drag behavior), not nesting
+
     // Callbacks
     pub is_expanded: Arc<dyn Fn(&Item::Id) -> bool>,
     pub on_toggle_expand: Arc<dyn Fn(&Item::Id)>,
@@ -142,6 +155,7 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
         let item_id = item.id();
         let icon = item.icon();
         let icon_color = item.icon_color(cx);
+        let accent_color = item.accent_color(cx);
 
         let text_color = if is_selected {
             cx.theme().accent_foreground
@@ -221,21 +235,38 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
                 cx.notify();
             }))
             .child(expand_arrow)
-            .child(
-                div()
-                    .w_5()
-                    .h_5()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(3.0))
-                    .bg(icon_color.opacity(0.15))
-                    .child(Icon::new(icon).size(px(14.0)).text_color(if is_selected {
-                        text_color
-                    } else {
-                        icon_color
-                    })),
-            )
+            .when(accent_color.is_some(), |el| {
+                // Render accent color dot (for variable types, etc.)
+                let accent = accent_color.unwrap();
+                el.child(
+                    div()
+                        .flex_shrink_0()
+                        .w(px(10.0))
+                        .h(px(10.0))
+                        .rounded_full()
+                        .bg(accent)
+                        .border_1()
+                        .border_color(cx.theme().border.opacity(0.5)),
+                )
+            })
+            .when(accent_color.is_none(), |el| {
+                // Render normal icon
+                el.child(
+                    div()
+                        .w_5()
+                        .h_5()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .rounded(px(3.0))
+                        .bg(icon_color.opacity(0.15))
+                        .child(Icon::new(icon).size(px(14.0)).text_color(if is_selected {
+                            text_color
+                        } else {
+                            icon_color
+                        })),
+                )
+            })
             .child(
                 div()
                     .flex_1()

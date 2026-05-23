@@ -6,11 +6,8 @@ use ui::{
     menu::popup_menu::PopupMenu,
     h_flex,
     hierarchical_tree::tree_colors,
-    ActiveTheme, Icon, IconName, Sizable, StyledExt,
-};
-
-use super::hierarchical_list::{
     HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
+    ActiveTheme, Icon, IconName, Sizable, StyledExt,
 };
 use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
@@ -320,6 +317,9 @@ impl HierarchyPanel {
             widget_icon: None,
             widget_add_button: None,
             empty_message: String::new(),
+
+            // Drag-and-drop options
+            disable_nesting: false, // Allow full nesting in hierarchy
 
             // Callbacks
             is_expanded: Arc::new(move |id: &String| {

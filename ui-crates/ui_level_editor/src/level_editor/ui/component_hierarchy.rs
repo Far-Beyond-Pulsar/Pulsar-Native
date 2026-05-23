@@ -16,11 +16,8 @@ use ui::{
     button::{Button, ButtonVariants as _},
     menu::popup_menu::PopupMenu,
     h_flex,
-    ActiveTheme, IconName, Sizable,
-};
-
-use super::hierarchical_list::{
     HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
+    ActiveTheme, IconName, Sizable,
 };
 use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::ui::state::LevelEditorState;
@@ -307,6 +304,9 @@ impl ComponentHierarchyPanel {
             widget_icon: Some(IconName::Component),
             widget_add_button: Some(add_button),
             empty_message: "No components — click + to add".to_string(),
+
+            // Drag-and-drop options
+            disable_nesting: false, // Allow component nesting
 
             // Callbacks
             is_expanded: Arc::new(move |idx: &usize| {

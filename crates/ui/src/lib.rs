@@ -67,6 +67,7 @@ pub mod dropdown;
 pub mod form;
 pub mod group_box;
 pub mod hierarchical_tree;
+pub mod hierarchical_list_view;
 pub mod highlighter;
 pub mod history;
 pub mod indicator;
@@ -128,6 +129,9 @@ pub use accordion::{Accordion, AccordionItem, CollapsibleSection};
 pub use component::*;
 pub use hierarchical_tree::{
     render_tree_category, render_tree_folder, render_tree_item, tree_colors,
+};
+pub use hierarchical_list_view::{
+    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
 };
 pub use icon::*;
 pub use kbd::*;
