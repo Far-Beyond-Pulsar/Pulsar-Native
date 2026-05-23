@@ -47,7 +47,11 @@
       "Bash(find ~/.cargo -name \"*.rs\" -path \"*helio*\" 2>/dev/null | grep -v \".cargo/registry\" | head -10)",
       "Read(//Users/tristanpoland/.cargo/**)",
       "Bash(find ~/.cargo/git -maxdepth 6 -name \"*.rs\" 2>/dev/null | xargs grep -l \"update_object_transform\\\\|remove_actor\\\\|ObjectId\" 2>/dev/null | head -5)",
-      "Read(//Users/tristanpoland/.cargo/git/**)"
+      "Read(//Users/tristanpoland/.cargo/git/**)",
+      "Bash(git commit:*)",
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(cargo update:*)"
     ]
   }
 }
