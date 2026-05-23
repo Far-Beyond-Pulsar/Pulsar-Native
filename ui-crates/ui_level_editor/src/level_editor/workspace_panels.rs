@@ -168,13 +168,15 @@ impl Render for HierarchyPanelWrapper {
             })
             .into_any_element();
 
+        let wrapper_entity = cx.entity().downgrade();
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
             .child(
                 self.hierarchy
-                    .render(&state, self.state.clone(), add_button, cx),
+                    .render(&state, self.state.clone(), wrapper_entity, add_button, cx),
             )
     }
 }

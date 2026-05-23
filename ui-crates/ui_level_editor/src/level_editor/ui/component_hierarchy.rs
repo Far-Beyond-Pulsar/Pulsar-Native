@@ -317,7 +317,7 @@ impl ComponentHierarchyPanel {
             }),
             on_toggle_expand: Arc::new({
                 let object_id = self.object_id.clone();
-                move |idx: &usize| {
+                move |idx: &usize, _window, _cx| {
                     let mut state = state_arc.write();
                     let key = (object_id.clone(), *idx);
                     if state.expanded_components.contains(&key) {
@@ -327,12 +327,12 @@ impl ComponentHierarchyPanel {
                     }
                 }
             }),
-            on_select: Arc::new(|_idx: &usize| {
+            on_select: Arc::new(|_idx: &usize, _window, _cx| {
                 // Component selection could be implemented here
             }),
             on_drop: Arc::new({
                 let object_id = self.object_id.clone();
-                move |payload: ComponentDragPayload, target_idx: &usize, modifiers: &Modifiers| {
+                move |payload: ComponentDragPayload, target_idx: &usize, modifiers: &Modifiers, _window, _cx| {
                     // Only allow operations within the same object
                     if payload.object_id != object_id {
                         return;

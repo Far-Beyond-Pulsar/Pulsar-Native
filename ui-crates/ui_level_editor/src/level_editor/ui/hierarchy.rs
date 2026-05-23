@@ -206,6 +206,7 @@ impl HierarchyPanel {
         &self,
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        wrapper_entity: WeakEntity<V>,
         add_button: AnyElement,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -227,9 +228,12 @@ impl HierarchyPanel {
             .collect();
 
         let state_arc_for_expand = state_arc.clone();
+        let state_arc_for_toggle = state_arc.clone();
+        let wrapper_for_toggle = wrapper_entity.clone();
         let state_arc_for_select = state_arc.clone();
+        let wrapper_for_select = wrapper_entity.clone();
         let state_arc_for_drop = state_arc.clone();
-        let state_arc_for_root_drop = state_arc.clone();
+        let wrapper_for_drop = wrapper_entity.clone();
         let state_arc_for_root_click = state_arc.clone();
 
         // Header buttons
@@ -296,12 +300,13 @@ impl HierarchyPanel {
             title: Some(t!("LevelEditor.Hierarchy.Title").to_string()),
             header_buttons,
 
-            // Root drop zone
+            // Root drop zone - NOTE: This callback doesn't have access to cx, so it still uses RwLock
+            // TODO: Update DropArea to pass window and cx to callbacks
             root_drop_zone: Some((
                 "Root".to_string(),
                 Arc::new(move |payload: HierarchyDragPayload| {
                     use crate::level_editor::commands::{execute_command, SceneCommand};
-                    let mut state = state_arc_for_root_drop.write();
+                    let mut state = state_arc.write();
                     execute_command(
                         &mut state,
                         SceneCommand::ReparentObject {
@@ -325,51 +330,80 @@ impl HierarchyPanel {
             is_expanded: Arc::new(move |id: &String| {
                 state_arc_for_expand.read().is_object_expanded(id)
             }),
-            on_toggle_expand: Arc::new(move |id: &String| {
-                let mut state = state_arc.write();
-                if state.is_object_expanded(id) {
-                    state.expanded_objects.remove(id);
-                } else {
-                    state.expanded_objects.insert(id.clone());
-                }
+            on_toggle_expand: Arc::new(move |id: &String, _window, cx| {
+                let id = id.clone();
+                let state = state_arc_for_toggle.clone();
+                let wrapper = wrapper_for_toggle.clone();
+                cx.defer(move |cx| {
+                    let mut state = state.write();
+                    if state.is_object_expanded(&id) {
+                        state.expanded_objects.remove(&id);
+                    } else {
+                        state.expanded_objects.insert(id);
+                    }
+                    drop(state);
+                    if let Some(wrapper) = wrapper.upgrade() {
+                        cx.notify(wrapper.entity_id());
+                    }
+                });
             }),
-            on_select: Arc::new(move |id: &String| {
-                state_arc_for_select.write().select_object(Some(id.clone()));
+            on_select: Arc::new(move |id: &String, _window, cx| {
+                let id = id.clone();
+                let state = state_arc_for_select.clone();
+                let wrapper = wrapper_for_select.clone();
+                cx.defer(move |cx| {
+                    state.write().select_object(Some(id));
+                    if let Some(wrapper) = wrapper.upgrade() {
+                        cx.notify(wrapper.entity_id());
+                    }
+                });
             }),
             on_drop: Arc::new(
-                move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers| {
+                move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers, _window, cx| {
                     use crate::level_editor::commands::{execute_command, SceneCommand};
                     if payload.object_id == *target_id {
                         return;
                     }
-                    let mut state = state_arc_for_drop.write();
-                    if modifiers.shift {
-                        execute_command(
-                            &mut state,
-                            SceneCommand::ReparentObject {
-                                id: payload.object_id,
-                                new_parent_id: None,
-                            },
-                        );
-                    } else if modifiers.alt {
-                        // Reorder doesn't fit a SceneCommand variant yet — call directly and
-                        // bump revision so the polling task propagates the change.
-                        state
-                            .scene_database
-                            .reorder_object_siblings(&payload.object_id, target_id);
-                        state.scene_revision = state.scene_revision.saturating_add(1);
-                    } else {
-                        let result = execute_command(
-                            &mut state,
-                            SceneCommand::ReparentObject {
-                                id: payload.object_id,
-                                new_parent_id: Some(target_id.clone()),
-                            },
-                        );
-                        if result.changed {
-                            state.expanded_objects.insert(target_id.clone());
+                    let object_id = payload.object_id.clone();
+                    let target_id = target_id.clone();
+                    let mods = modifiers.clone();
+                    let state = state_arc_for_drop.clone();
+                    let wrapper = wrapper_for_drop.clone();
+
+                    cx.defer(move |cx| {
+                        let mut state = state.write();
+                        if mods.shift {
+                            execute_command(
+                                &mut state,
+                                SceneCommand::ReparentObject {
+                                    id: object_id,
+                                    new_parent_id: None,
+                                },
+                            );
+                        } else if mods.alt {
+                            // Reorder doesn't fit a SceneCommand variant yet — call directly and
+                            // bump revision so the polling task propagates the change.
+                            state
+                                .scene_database
+                                .reorder_object_siblings(&object_id, &target_id);
+                            state.scene_revision = state.scene_revision.saturating_add(1);
+                        } else {
+                            let result = execute_command(
+                                &mut state,
+                                SceneCommand::ReparentObject {
+                                    id: object_id,
+                                    new_parent_id: Some(target_id.clone()),
+                                },
+                            );
+                            if result.changed {
+                                state.expanded_objects.insert(target_id);
+                            }
                         }
-                    }
+                        drop(state);
+                        if let Some(wrapper) = wrapper.upgrade() {
+                            cx.notify(wrapper.entity_id());
+                        }
+                    });
                 },
             ),
         };

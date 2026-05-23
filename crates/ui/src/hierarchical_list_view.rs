@@ -106,9 +106,9 @@ pub struct HierarchyConfig<Item: HierarchyItem> {
 
     // Callbacks
     pub is_expanded: Arc<dyn Fn(&Item::Id) -> bool>,
-    pub on_toggle_expand: Arc<dyn Fn(&Item::Id)>,
-    pub on_select: Arc<dyn Fn(&Item::Id)>,
-    pub on_drop: Arc<dyn Fn(Item::DragPayload, &Item::Id, &Modifiers)>,
+    pub on_toggle_expand: Arc<dyn Fn(&Item::Id, &mut Window, &mut App)>,
+    pub on_select: Arc<dyn Fn(&Item::Id, &mut Window, &mut App)>,
+    pub on_drop: Arc<dyn Fn(Item::DragPayload, &Item::Id, &Modifiers, &mut Window, &mut App)>,
 }
 
 /// Generic hierarchical tree view component
@@ -196,9 +196,9 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
                     .size(px(12.0))
                     .text_color(muted_color),
                 )
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+                .on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     cx.stop_propagation();
-                    (on_toggle)(&id_for_toggle);
+                    (on_toggle)(&id_for_toggle, window, cx);
                 })
                 .into_any_element()
         } else {
@@ -226,11 +226,11 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
             .when(!is_selected, |s| {
                 s.hover(|style| style.bg(cx.theme().muted.opacity(0.3)))
             })
-            .on_click(cx.listener(move |_view, _, _, cx| {
+            .on_click(cx.listener(move |_view, _, window, cx| {
                 if let Some(ref custom) = custom_click {
                     (custom)();
                 } else {
-                    (on_select)(&id_for_select);
+                    (on_select)(&id_for_select, window, cx);
                 }
                 cx.notify();
             }))
@@ -296,9 +296,9 @@ impl<Item: HierarchyItem> HierarchicalTreeView<Item> {
         let on_drop = self.config.on_drop.clone();
         let drop_target_id = item_id.clone();
         let drop_row = DropArea::<Item::DragPayload>::new(format!("tree-drop-{}", drag_id))
-            .on_drop(move |payload, window, _| {
+            .on_drop(move |payload, window, cx| {
                 let modifiers = window.modifiers();
-                (on_drop)(payload.clone(), &drop_target_id, &modifiers);
+                (on_drop)(payload.clone(), &drop_target_id, &modifiers, window, cx);
             })
             .w_full()
             .child(draggable_row);
