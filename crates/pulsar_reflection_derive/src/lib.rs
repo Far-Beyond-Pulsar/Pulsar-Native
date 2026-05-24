@@ -183,9 +183,10 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
     let type_info_name = format_ident!("{}_TYPE_INFO", alias_ident.to_string().to_uppercase());
 
     let json_serialize_value = if let Some(path) = override_serialize_json_with {
-        quote! { #path(typed)? }
+        quote! { #path(typed) }
     } else {
-        primitive_serialize_value_expr(&serialize_method, quote! { typed })?
+        let value_expr = primitive_serialize_value_expr(&serialize_method, quote! { typed })?;
+        quote! { Ok(#value_expr) }
     };
     let json_deserialize_value = if let Some(path) = override_deserialize_json_with {
         quote! { #path(value)? }
@@ -241,7 +242,7 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
                             found: format!("{:?}", value.type_id()),
                         }
                     })?;
-                    Ok(#json_serialize_value)
+                    #json_serialize_value
                 },
                 deserialize_json: |value: ::serde_json::Value| {
                     let typed: #target_ty = #json_deserialize_value;

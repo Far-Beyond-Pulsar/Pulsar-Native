@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn test_f32_serialization() {
-        let value: f32 = 3.14159;
+        let value: f32 = std::f32::consts::PI;
         let mut serializer = JsonSerializer::new();
         value.serialize(&mut serializer).unwrap();
 
@@ -48,10 +48,11 @@ mod tests {
 
     #[test]
     fn test_f32_deserialization() {
-        let json = serde_json::json!(2.71828);
+        let expected = std::f32::consts::E;
+        let json = serde_json::json!(expected);
         let mut deserializer = JsonDeserializer::new(json);
         let value = f32::deserialize(&mut deserializer).unwrap();
-        assert!((value - 2.71828).abs() < 0.00001);
+        assert!((value - expected).abs() < 0.00001);
     }
 
     #[test]

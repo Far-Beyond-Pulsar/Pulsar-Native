@@ -248,7 +248,6 @@ macro_rules! generate_thread_tests {
         $(
             #[test]
             fn $name() {
-                let f32_info = RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap();
                 let barrier = Arc::new(Barrier::new($threads));
 
                 let handles: Vec<_> = (0..$threads)
@@ -527,7 +526,7 @@ generate_property_tests! {
     prop_test_neg_one: -1.0f32;
     prop_test_small: 0.001f32;
     prop_test_large: 999999.0f32;
-    prop_test_decimal: 3.14159f32;
+    prop_test_decimal: std::f32::consts::PI;
 }
 
 // ============================================================================

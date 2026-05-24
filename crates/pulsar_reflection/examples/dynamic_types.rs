@@ -143,7 +143,7 @@ fn example_entity_definition() {
         // Look up the compile-time type by name
         let type_info = RUNTIME_TYPE_REGISTRY
             .get_by_name(field_type)
-            .expect(&format!("Unknown type: {}", field_type));
+            .unwrap_or_else(|| panic!("Unknown type: {}", field_type));
 
         builder = builder.add_field(field_name, type_info);
     }

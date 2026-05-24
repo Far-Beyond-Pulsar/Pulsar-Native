@@ -435,7 +435,7 @@ mod tests {
         assert!(result.is_err());
 
         // This should succeed - correct type
-        let result = instance.set_field("value", Box::new(3.14f32));
+        let result = instance.set_field("value", Box::new(std::f32::consts::PI));
         assert!(result.is_ok());
     }
 

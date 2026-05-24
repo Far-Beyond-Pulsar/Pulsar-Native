@@ -1,4 +1,7 @@
-use pulsar_reflection::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::RUNTIME_TYPE_REGISTRY;
+
+#[cfg(feature = "prims-serde")]
+use pulsar_reflection::{JsonDeserializer, JsonSerializer, Reflectable};
 
 #[cfg(not(feature = "prims-serde"))]
 #[test]
