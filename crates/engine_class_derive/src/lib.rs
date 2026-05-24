@@ -217,7 +217,6 @@ fn generate_property_metadata(
             type_info: #type_info_expr,
             getter: #getter,
             setter: #setter,
-            legacy_property_type: None, // No legacy type for new properties
         }
     }
 }

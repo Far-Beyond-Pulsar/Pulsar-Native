@@ -46,8 +46,7 @@ pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use menu::AppTitleBar;
 pub use panel::{PanelBase, PanelEvent};
 pub use reflected_properties_panel::{
-    PropertyStateManager, ReflectedPropertiesPanelConfig, json_to_property_value,
-    property_value_to_json, render_component_section, render_property_row,
+    PropertyStateManager, ReflectedPropertiesPanelConfig, render_property_row_runtime,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
 

@@ -55,7 +55,10 @@
       "Bash(gh issue view:*)",
       "Bash(gh issue create:*)",
       "Bash(gh issue close:*)",
-      "Bash(cargo new:*)"
+      "Bash(cargo new:*)",
+      "Bash(if [ -f \"ui-crates/ui_common/src/runtime_property_conversion.rs\" ])",
+      "Bash(then rm \"ui-crates/ui_common/src/runtime_property_conversion.rs\")",
+      "Bash(fi)"
     ]
   }
 }
