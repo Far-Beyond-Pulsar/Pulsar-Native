@@ -144,7 +144,7 @@ While the reflection system itself is built on safe Rust, there are a few scenar
 
 The `FieldInfo` structure includes an `offset` field that tells you where a field is located within a struct. You might be tempted to use this with raw pointer arithmetic to directly access fields:
 
-> [!DANGER]
+> [!CAUTION]
 > **NEVER Use Field Offsets for Direct Memory Access**
 >
 > ```rust
@@ -168,7 +168,7 @@ The `FieldInfo` structure includes an `offset` field that tells you where a fiel
 
 Another dangerous pattern is attempting to downcast raw pointers or references to trait objects without proper type checking:
 
-> [!DANGER]
+> [!CAUTION]
 > **NEVER Downcast Without TypeId Verification**
 >
 > ```rust
@@ -190,7 +190,7 @@ Another dangerous pattern is attempting to downcast raw pointers or references t
 
 Sometimes developers think they can use `std::mem::transmute` to convert between types if they have the same size:
 
-> [!DANGER]
+> [!CAUTION]
 > **NEVER Use transmute with Reflected Types**
 >
 > ```rust
@@ -311,23 +311,3 @@ pub struct MyStruct {
 ```
 
 You'll need to either implement `Reflectable` for `SomeExternalType` or exclude that field from reflection.
-
-## Best Practices
-
-After understanding both the capabilities and limitations, here are the recommended practices for using the reflection system effectively:
-
-**Use reflection for systems that need runtime flexibility**: Editor UI, property inspectors, serialization, debugging tools, console commands, and plugin systems all benefit from reflection. These systems naturally work with dynamic data and need to handle types they weren't compiled against.
-
-**Don't use reflection where static dispatch works**: If you know the concrete type at compile time, just use it directly. Reflection adds overhead and loses type safety benefits. Use `component.transform.position` instead of looking up the "position" property by name when you know you're working with a transform.
-
-**Trust the type system**: When you get an `Option<&T>` from `downcast_ref`, that's Rust telling you the cast might fail. Don't unwrap carelessly—handle the None case properly. The type system is your friend here.
-
-**Keep reflectable types simple**: Deeply nested generic types with lots of lifetimes are harder to reflect and might hit limitations in the derive macro. If you need complex types, consider creating a simpler DTO (Data Transfer Object) for reflection purposes.
-
-**Document custom types in plugins**: When plugin developers create new types with `#[derive(Reflectable)]`, they should document what the type represents and how to use it safely. The engine can discover these types automatically, but it can't document them for you.
-
-## Conclusion
-
-The runtime type reflection system eliminates manual enum maintenance and enables true plugin extensibility. By understanding what it can safely do, when to be cautious, and what it fundamentally cannot do, you'll use it effectively and avoid common pitfalls. Remember: this system describes types at runtime, it doesn't modify them. Use it for dynamic systems, not for performance-critical paths. And always trust the type system—if Rust gives you an `Option`, there's a reason.
-
-For more examples and implementation details, see the test suite in `pulsar_reflection/tests/` and the actual usage in `engine_class_derive/`.

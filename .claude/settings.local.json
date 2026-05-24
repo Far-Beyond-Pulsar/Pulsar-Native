@@ -52,7 +52,9 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(cargo update:*)",
-      "Bash(gh issue view:*)"
+      "Bash(gh issue view:*)",
+      "Bash(gh issue create:*)",
+      "Bash(gh issue close:*)"
     ]
   }
 }
