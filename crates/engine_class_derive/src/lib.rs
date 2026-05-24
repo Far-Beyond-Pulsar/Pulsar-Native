@@ -222,13 +222,9 @@ fn generate_property_metadata(
     }
 }
 
-/// Infer PropertyValue getter from field type
 
-/// Infer PropertyValue setter from field type
 
-/// Infer PropertyType from field type and attributes
 
-/// Extract numeric constraints from #[property(min = ..., max = ..., step = ...)]
 
 /// Capitalize first letter of a string
 fn capitalize_first(s: &str) -> String {
