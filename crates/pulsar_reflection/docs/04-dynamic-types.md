@@ -285,10 +285,10 @@ fn migrate_v1_to_v2(old: &DynamicValue, new_type: Arc<DynamicTypeInfo>) -> Dynam
 
     // Copy existing fields
     if let Ok(health) = old.get_field_typed::<f32>("health") {
-        new_save.set_field("health", Box::new(*health)).unwrap();
+        new_save.set_field("health", Box::new(health)).unwrap();
     }
     if let Ok(mana) = old.get_field_typed::<f32>("mana") {
-        new_save.set_field("mana", Box::new(*mana)).unwrap();
+        new_save.set_field("mana", Box::new(mana)).unwrap();
     }
 
     // Initialize new fields with defaults
