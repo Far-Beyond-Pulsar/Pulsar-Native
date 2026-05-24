@@ -14,22 +14,26 @@ struct StdWrapperTypeInfo {
 static STD_WRAPPER_TYPE_INFO: Lazy<StdWrapperTypeInfo> =
     Lazy::new(StdWrapperTypeInfo::default);
 
-fn get_or_insert_wrapper_type_info<T: Reflectable + Clone + Send + Sync + 'static>(
+fn get_or_insert_wrapper_type_info<Wrapper, Inner>(
     wrapper_kind: WrapperType,
-) -> &'static RuntimeTypeInfo {
-    let type_id = TypeId::of::<T>();
+) -> &'static RuntimeTypeInfo
+where
+    Wrapper: Reflectable + Clone + Send + Sync + 'static,
+    Inner: Reflectable + Clone + Send + Sync + 'static,
+{
+    let type_id = TypeId::of::<Wrapper>();
     if let Some(entry) = STD_WRAPPER_TYPE_INFO.entries.get(&type_id) {
         return *entry;
     }
 
     let info = Box::leak(Box::new(RuntimeTypeInfo {
         type_id,
-        type_name: std::any::type_name::<T>(),
-        size: std::mem::size_of::<T>(),
-        align: std::mem::align_of::<T>(),
+        type_name: std::any::type_name::<Wrapper>(),
+        size: std::mem::size_of::<Wrapper>(),
+        align: std::mem::align_of::<Wrapper>(),
         structure: TypeStructure::Wrapper {
             wrapper_kind,
-            inner: T::type_info(),
+            inner: Inner::type_info(),
         },
     }));
 
@@ -45,7 +49,7 @@ where
     where
         Self: Sized,
     {
-        get_or_insert_wrapper_type_info::<Self>(WrapperType::Vec)
+        get_or_insert_wrapper_type_info::<Self, T>(WrapperType::Vec)
     }
 
     fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
@@ -85,7 +89,7 @@ where
     where
         Self: Sized,
     {
-        get_or_insert_wrapper_type_info::<Self>(WrapperType::Option)
+        get_or_insert_wrapper_type_info::<Self, T>(WrapperType::Option)
     }
 
     fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
@@ -149,5 +153,40 @@ where
 
     fn clone_any(&self) -> Box<dyn Any> {
         Box::new(self.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vec_type_info_uses_element_inner_type() {
+        let info = <Vec<i32> as Reflectable>::type_info();
+        match &info.structure {
+            TypeStructure::Wrapper {
+                wrapper_kind,
+                inner,
+            } => {
+                assert_eq!(*wrapper_kind, WrapperType::Vec);
+                assert_eq!(inner.type_name, "i32");
+            }
+            other => panic!("expected wrapper structure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn option_type_info_uses_element_inner_type() {
+        let info = <Option<bool> as Reflectable>::type_info();
+        match &info.structure {
+            TypeStructure::Wrapper {
+                wrapper_kind,
+                inner,
+            } => {
+                assert_eq!(*wrapper_kind, WrapperType::Option);
+                assert_eq!(inner.type_name, "bool");
+            }
+            other => panic!("expected wrapper structure, got {other:?}"),
+        }
     }
 }
