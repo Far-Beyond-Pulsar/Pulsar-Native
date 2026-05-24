@@ -123,7 +123,7 @@ wood_material.set_field("texture_path",
 ### Step 5: Read Values Back
 
 ```rust
-// Get with automatic downcasting
+// Get with automatic downcasting (returns owned value)
 let roughness = wood_material.get_field_typed::<f32>("roughness").unwrap();
 println!("Roughness: {}", roughness);
 
@@ -133,6 +133,11 @@ if let Some(any_value) = wood_material.get_field("albedo") {
         println!("Albedo: {:?}", color);
     }
 }
+
+// Modify a field value in-place
+wood_material.modify_field("roughness", |r: f32| r * 0.9).unwrap();
+println!("Updated roughness: {}",
+    wood_material.get_field_typed::<f32>("roughness").unwrap());
 ```
 
 ## Type Safety Guarantees
@@ -181,6 +186,21 @@ builder.add_field("value", f32_info);
 ```
 
 The type signature requires `&'static RuntimeTypeInfo`, which can only come from registered types. This enforces that all fields are grounded in compile-time types.
+
+### 4. Owned Values for Ergonomic APIs
+
+The `get_field_typed<T>()` method returns **owned values** (`T`) rather than references (`&T`). This design choice avoids borrow checker conflicts:
+
+```rust
+// ✅ This works - no borrow conflicts
+let current = value.get_field_typed::<f32>("counter").unwrap();
+value.set_field("counter", Box::new(current + 1.0)).unwrap();
+
+// Alternative: use the convenience method
+value.modify_field("counter", |x: f32| x + 1.0).unwrap();
+```
+
+The trade-off is that values must implement `Clone`. For large types, consider using `get_field_mut()` to get a mutable reference and modify in-place, or restructure your data to use smaller value types.
 
 ## Use Case 1: Data-Driven Entity Definitions
 

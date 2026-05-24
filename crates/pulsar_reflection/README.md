@@ -369,7 +369,7 @@ The dynamic type system maintains strong type safety through several mechanisms:
 1. **Field type validation**: When you call `set_field()`, the system checks that the value's `TypeId` matches the field's declared type
 2. **Compile-time type grounding**: All field types must reference a `&'static RuntimeTypeInfo`, ensuring they're valid registered types
 3. **Memory layout calculation**: The system automatically calculates size, alignment, and field offsets using the same rules as the Rust compiler
-4. **Safe downcasting**: `get_field_typed<T>()` uses `downcast_ref` internally, returning `None` for type mismatches
+4. **Safe downcasting**: `get_field_typed<T>()` uses `downcast_ref` internally and returns owned values (requiring `Clone`), returning `Err` for type mismatches
 
 ### Type Tagging
 
