@@ -58,7 +58,14 @@
       "Bash(cargo new:*)",
       "Bash(if [ -f \"ui-crates/ui_common/src/runtime_property_conversion.rs\" ])",
       "Bash(then rm \"ui-crates/ui_common/src/runtime_property_conversion.rs\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(gh issue comment:*)",
+      "Bash(gh issue edit:*)",
+      "Bash(gh label:*)",
+      "Bash(Select-Object -First 50)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr edit:*)"
     ]
   }
 }

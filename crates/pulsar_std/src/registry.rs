@@ -17,6 +17,16 @@ pub struct NodeParameter {
     pub align: usize,
 }
 
+impl NodeParameter {
+    /// Get runtime type information by looking up the type name in the registry.
+    ///
+    /// This performs a runtime lookup since the registry is populated at link-time
+    /// via inventory, while NodeMetadata is a compile-time const.
+    pub fn get_type_info(&self) -> Option<&'static pulsar_reflection::RuntimeTypeInfo> {
+        pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(self.ty)
+    }
+}
+
 /// Import statement metadata for a blueprint node
 #[derive(Debug, Clone)]
 pub struct NodeImport {
@@ -42,6 +52,16 @@ pub struct NodeMetadata {
     pub category: &'static str,
     pub color: Option<&'static str>,
     pub imports: &'static [NodeImport],
+}
+
+impl NodeMetadata {
+    /// Get runtime type information for the return type by looking up in the registry.
+    ///
+    /// Returns None if the function returns void or if the type is not registered.
+    pub fn get_return_type_info(&self) -> Option<&'static pulsar_reflection::RuntimeTypeInfo> {
+        self.return_type
+            .and_then(|type_name| pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(type_name))
+    }
 }
 
 // ── Native registry (linkme distributed_slice) ───────────────────────────────

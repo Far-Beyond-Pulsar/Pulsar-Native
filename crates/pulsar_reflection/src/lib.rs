@@ -30,11 +30,11 @@ pub mod runtime_registry;
 pub mod type_traits;
 pub mod json_codec;
 pub mod dynamic_types;
+pub mod type_renderer;
 
 // Primitive type implementations
 pub mod prims;
 
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
@@ -56,6 +56,12 @@ pub use json_codec::{JsonDeserializer, JsonSerializer};
 pub use dynamic_types::{
     DynamicFieldInfo, DynamicTypeBuilder, DynamicTypeInfo, DynamicTypeRegistry,
     DynamicValue, TypeTag, DYNAMIC_TYPE_REGISTRY,
+};
+
+// Re-export type renderer system
+pub use type_renderer::{
+    RenderResult, TypeRenderer, TypeRendererRegistration, TypeRendererRegistry,
+    register_type_renderer, TYPE_RENDERER_REGISTRY,
 };
 
 // Re-export derive macro

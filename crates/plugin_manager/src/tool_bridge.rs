@@ -310,6 +310,7 @@ mod tests {
             ),
             plugin_id: PluginId::new("com.example.test"),
             file_types: vec![],
+            execute: None,
         };
 
         bridge.tools.insert("test_tool".to_string(), tool.clone());

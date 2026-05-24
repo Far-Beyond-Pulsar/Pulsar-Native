@@ -9160,6 +9160,7 @@ version = "0.1.0"
 dependencies = [
  "linkme",
  "pulsar_macros",
+ "pulsar_reflection",
  "rand 0.9.4",
  "rlua",
  "tracing",

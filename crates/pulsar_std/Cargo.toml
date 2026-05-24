@@ -15,6 +15,7 @@ native = ["dep:rlua", "dep:linkme"]
 
 [dependencies]
 pulsar_macros = { path = "../pulsar_macros" }
+pulsar_reflection = { path = "../pulsar_reflection" }
 linkme         = { version = "0.3", optional = true }
 tracing        = "0.1.41"
 rand           = { version = "0.9.2", features = [] }

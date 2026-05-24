@@ -10,7 +10,7 @@ use std::time::Instant;
 
 use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
-    PinType, Position, PropertyValue,
+    PinType, Position,
 };
 use pbgc::{compile_graph, compile_graph_to_bytecode, BpProgram};
 use pulsar_bp_executor::BpExecutor;
@@ -88,11 +88,11 @@ fn add_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -127,11 +127,11 @@ fn gt_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -214,7 +214,7 @@ fn assert_eq_int_node(id: &str, expected: i64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+        .insert(format!("{id}_x"), serde_json::json!(expected as f64));
     n
 }
 

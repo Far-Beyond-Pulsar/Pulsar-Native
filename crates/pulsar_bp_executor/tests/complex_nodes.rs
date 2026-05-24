@@ -5,7 +5,7 @@
 /// manual dispatch table, no type annotations in the test itself.
 use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
-    PinType, Position, PropertyValue,
+    PinType, Position,
 };
 use pbgc::compile_graph_to_bytecode;
 use pulsar_bp_executor::BpExecutor;
@@ -53,7 +53,7 @@ fn pure_f64(id: &str, node_type: &str, param_names: &[&str], consts: &[f64]) -> 
             ),
         ));
         if let Some(&v) = consts.get(i) {
-            n.properties.insert(pid, PropertyValue::Number(v));
+            n.properties.insert(pid, serde_json::json!(v));
         }
     }
     n.outputs.push(PinInstance::new(
@@ -82,7 +82,7 @@ fn pure_i64(id: &str, node_type: &str, param_names: &[&str], consts: &[f64]) -> 
             ),
         ));
         if let Some(&v) = consts.get(i) {
-            n.properties.insert(pid, PropertyValue::Number(v));
+            n.properties.insert(pid, serde_json::json!(v));
         }
     }
     n.outputs.push(PinInstance::new(
@@ -116,7 +116,7 @@ fn pure_bool_out(
             ),
         ));
         if let Some(&v) = consts.get(i) {
-            n.properties.insert(pid, PropertyValue::Number(v));
+            n.properties.insert(pid, serde_json::json!(v));
         }
     }
     n.outputs.push(PinInstance::new(
@@ -170,7 +170,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+        .insert(format!("{id}_x"), serde_json::json!(expected as f64));
     n
 }
 
@@ -222,9 +222,9 @@ fn assert_eq_float(id: &str, expected: f64, eps: f64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected));
+        .insert(format!("{id}_x"), serde_json::json!(expected));
     n.properties
-        .insert(format!("{id}_ep"), PropertyValue::Number(eps));
+        .insert(format!("{id}_ep"), serde_json::json!(eps));
     n
 }
 
@@ -276,9 +276,9 @@ fn assert_eq_f32(id: &str, expected: f32, eps: f32) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+        .insert(format!("{id}_x"), serde_json::json!(expected as f64));
     n.properties
-        .insert(format!("{id}_ep"), PropertyValue::Number(eps as f64));
+        .insert(format!("{id}_ep"), serde_json::json!(eps as f64));
     n
 }
 
@@ -709,11 +709,11 @@ fn test_smoothstep_midpoint() {
         ),
     ));
     n.properties
-        .insert("n_edge0".to_string(), PropertyValue::Number(0.0));
+        .insert("n_edge0".to_string(), serde_json::json!(0.0));
     n.properties
-        .insert("n_edge1".to_string(), PropertyValue::Number(1.0));
+        .insert("n_edge1".to_string(), serde_json::json!(1.0));
     n.properties
-        .insert("n_x".to_string(), PropertyValue::Number(0.5));
+        .insert("n_x".to_string(), serde_json::json!(0.5));
     g.add_node(n);
 
     g.add_node(assert_eq_f32("chk", 0.5f32, 1e-6));
@@ -751,11 +751,11 @@ fn test_clamp_to_range_below_min() {
         ),
     ));
     n.properties
-        .insert("n_value".to_string(), PropertyValue::Number(-5.0));
+        .insert("n_value".to_string(), serde_json::json!(-5.0));
     n.properties
-        .insert("n_min".to_string(), PropertyValue::Number(0.0));
+        .insert("n_min".to_string(), serde_json::json!(0.0));
     n.properties
-        .insert("n_max".to_string(), PropertyValue::Number(10.0));
+        .insert("n_max".to_string(), serde_json::json!(10.0));
     g.add_node(n);
     g.add_node(assert_eq_f32("chk", 0.0f32, 1e-6));
     g.add_connection(e("begin", "be", "chk", "chk_e"));
@@ -1111,11 +1111,11 @@ fn test_select_number_true() {
         ),
     ));
     n.properties
-        .insert("n_cond".to_string(), PropertyValue::Number(1.0));
+        .insert("n_cond".to_string(), serde_json::json!(1.0));
     n.properties
-        .insert("n_a".to_string(), PropertyValue::Number(10.0));
+        .insert("n_a".to_string(), serde_json::json!(10.0));
     n.properties
-        .insert("n_b".to_string(), PropertyValue::Number(20.0));
+        .insert("n_b".to_string(), serde_json::json!(20.0));
     g.add_node(n);
     g.add_node(assert_eq_float("chk", 10.0, 1e-9));
     g.add_connection(e("begin", "be", "chk", "chk_e"));
@@ -1167,11 +1167,11 @@ fn test_select_number_false() {
         ),
     ));
     n.properties
-        .insert("n_cond".to_string(), PropertyValue::Number(0.0));
+        .insert("n_cond".to_string(), serde_json::json!(0.0));
     n.properties
-        .insert("n_a".to_string(), PropertyValue::Number(10.0));
+        .insert("n_a".to_string(), serde_json::json!(10.0));
     n.properties
-        .insert("n_b".to_string(), PropertyValue::Number(20.0));
+        .insert("n_b".to_string(), serde_json::json!(20.0));
     g.add_node(n);
     g.add_node(assert_eq_float("chk", 20.0, 1e-9));
     g.add_connection(e("begin", "be", "chk", "chk_e"));
@@ -1439,7 +1439,7 @@ fn color_node(id: &str, node_type: &str, r: f32, g: f32, b: f32, a: f32) -> Node
                 PinType::Input,
             ),
         ));
-        n.properties.insert(pid, PropertyValue::Number(val as f64));
+        n.properties.insert(pid, serde_json::json!(val as f64));
     }
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
@@ -1477,7 +1477,7 @@ fn color_lerp_node(id: &str, t: f32) -> NodeInstance {
             PinType::Input,
         ),
     ));
-    n.properties.insert(tp, PropertyValue::Number(t as f64));
+    n.properties.insert(tp, serde_json::json!(t as f64));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
         Pin::new(
@@ -1514,7 +1514,7 @@ fn color_eq_node(id: &str, eps: f32) -> NodeInstance {
             PinType::Input,
         ),
     ));
-    n.properties.insert(ep, PropertyValue::Number(eps as f64));
+    n.properties.insert(ep, serde_json::json!(eps as f64));
     n.outputs.push(PinInstance::new(
         &format!("{id}_r"),
         Pin::new(

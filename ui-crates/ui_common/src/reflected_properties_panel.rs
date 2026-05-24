@@ -365,6 +365,32 @@ pub fn render_property_row_runtime<V: 'static>(
     on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App)>,
     cx: &Context<V>,
 ) -> AnyElement {
+    // PHASE 4: Custom Type Renderer Integration Point
+    //
+    // The TYPE_RENDERER_REGISTRY allows plugins to register custom property editors.
+    // Architecture note: The TypeRenderer trait is framework-agnostic (uses dyn Any),
+    // but GPUI requires returning AnyElement from render functions.
+    //
+    // Integration pattern for GPUI-based custom renderers:
+    // 1. Plugin implements TypeRenderer with render() method
+    // 2. The render() method accepts &mut dyn Any (downcast to GPUI context)
+    // 3. The method mutates the value and returns RenderResult::Changed/Unchanged
+    // 4. For GPUI integration, wrap the renderer in a GPUI-specific adapter that:
+    //    - Builds the UI elements
+    //    - Calls the renderer's render() on interaction
+    //    - Returns AnyElement to this function
+    //
+    // This check point allows future framework-specific renderer adapters without
+    // breaking the framework-agnostic pulsar_reflection crate.
+    let _has_custom_renderer = pulsar_reflection::TYPE_RENDERER_REGISTRY
+        .lock()
+        .ok()
+        .map(|registry| registry.has_renderer(type_info.type_id))
+        .unwrap_or(false);
+
+    // For now, fall through to built-in rendering. Custom renderers can be integrated
+    // via framework-specific extension traits or adapter patterns as needed.
+
     // Special case: mesh_asset field (string property with specific name)
     if prop_name == "mesh_asset" && type_info.is_string() {
         if let Some(picker) = mesh_picker {

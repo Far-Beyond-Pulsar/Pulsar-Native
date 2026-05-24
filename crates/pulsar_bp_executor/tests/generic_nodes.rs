@@ -2,7 +2,7 @@
 /// Verifies that type-erased size-dispatch shims work end-to-end.
 use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
-    PinType, Position, PropertyValue,
+    PinType, Position,
 };
 use pbgc::compile_graph_to_bytecode;
 use pulsar_bp_executor::BpExecutor;
@@ -70,9 +70,9 @@ fn add_node(id: &str, a: i64, b: i64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_a"), PropertyValue::Number(a as f64));
+        .insert(format!("{id}_a"), serde_json::json!(a as f64));
     n.properties
-        .insert(format!("{id}_b"), PropertyValue::Number(b as f64));
+        .insert(format!("{id}_b"), serde_json::json!(b as f64));
     n
 }
 
@@ -376,7 +376,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+        .insert(format!("{id}_x"), serde_json::json!(expected as f64));
     n
 }
 
