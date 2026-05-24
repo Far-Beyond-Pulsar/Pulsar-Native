@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 // Re-export for convenience
-pub use registry::{EngineClassRegistration, EngineClassRegistry, REGISTRY};
+pub use registry::{ComponentMethodRegistration, EngineClassRegistration, EngineClassRegistry, REGISTRY};
 
 // Re-export inventory for derive macro
 pub use inventory;
@@ -179,6 +179,17 @@ pub trait EngineClass: Any + Send + Sync {
     /// Returns a vector of PropertyMetadata describing each field marked with #[property]
     fn get_properties(&self) -> Vec<PropertyMetadata>;
 
+    /// Get reflection metadata for all blueprint-callable methods
+    ///
+    /// Returns a vector of MethodMetadata describing each method exposed to blueprints.
+    /// This includes both auto-generated property accessors and manually marked methods.
+    fn get_methods() -> Vec<MethodMetadata>
+    where
+        Self: Sized,
+    {
+        Vec::new() // Default: no methods
+    }
+
     /// Create default instance (used by object creation menu)
     fn create_default() -> Box<dyn EngineClass>
     where
@@ -227,6 +238,76 @@ impl fmt::Debug for PropertyMetadata {
             .field("property_type", &self.property_type)
             .finish()
     }
+}
+
+/// Metadata for a blueprint-callable method on a component
+///
+/// Contains all information needed to generate blueprint nodes for calling methods,
+/// including parameter/return types, execution type, and a caller closure for runtime invocation.
+pub struct MethodMetadata {
+    /// Method name (e.g., "apply_impulse")
+    pub name: &'static str,
+
+    /// Display name for UI (e.g., "Apply Impulse")
+    pub display_name: String,
+
+    /// Optional category for grouping (e.g., "Physics", "Rendering")
+    pub category: Option<&'static str>,
+
+    /// Parameters for the method
+    pub params: Vec<MethodParameter>,
+
+    /// Return type (None for void methods)
+    pub return_type: Option<MethodReturnType>,
+
+    /// Method execution type (affects blueprint node pins)
+    pub method_type: MethodType,
+
+    /// Caller closure to invoke the method via reflection
+    pub caller: Box<dyn Fn(&mut dyn EngineClass, Vec<PropertyValue>) -> Option<PropertyValue> + Send + Sync>,
+}
+
+impl fmt::Debug for MethodMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MethodMetadata")
+            .field("name", &self.name)
+            .field("display_name", &self.display_name)
+            .field("category", &self.category)
+            .field("params", &self.params)
+            .field("return_type", &self.return_type)
+            .field("method_type", &self.method_type)
+            .finish()
+    }
+}
+
+/// Parameter metadata for a method
+#[derive(Clone, Debug)]
+pub struct MethodParameter {
+    /// Parameter name
+    pub name: &'static str,
+
+    /// Parameter type information
+    pub param_type: PropertyType,
+}
+
+/// Return type metadata for a method
+#[derive(Clone, Debug)]
+pub struct MethodReturnType {
+    /// Return type information
+    pub return_type: PropertyType,
+}
+
+/// Method execution type (determines blueprint node behavior)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MethodType {
+    /// Pure function - no side effects, no execution pins
+    Pure,
+
+    /// Function with side effects - requires execution flow pins
+    Fn,
+
+    /// Control flow node - can branch execution (future feature)
+    ControlFlow,
 }
 
 /// Property type information for UI generation
