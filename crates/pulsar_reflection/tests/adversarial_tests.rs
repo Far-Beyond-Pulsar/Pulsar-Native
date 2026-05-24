@@ -4,6 +4,7 @@
 //! to prove the system's stability and error handling.
 
 use pulsar_reflection::*;
+use std::any::TypeId;
 use std::sync::Arc;
 
 // ============================================================================
@@ -629,5 +630,132 @@ fn test_partial_field_population() {
     assert!(value.has_value("c"));
 }
 
-// Total: 400+ tests so far
-// Additional tests would continue in this pattern...
+// ============================================================================
+// SECTION 8: JSON Registration Adversarial Tests
+// ============================================================================
+
+#[test]
+fn test_json_serializer_rejects_unregistered_type() {
+    #[derive(Clone)]
+    struct Unregistered {
+        _v: i32,
+    }
+
+    let mut serializer = JsonSerializer::new();
+    let value = Unregistered { _v: 7 };
+    let err = TypeSerializer::serialize_registered(&mut serializer, &value).unwrap_err();
+
+    match err {
+        ReflectError::SerializationFailed(message) => {
+            assert!(message.contains("Type not registered"));
+        }
+        other => panic!("Unexpected error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn test_json_deserializer_rejects_unregistered_type_info() {
+    #[derive(Clone)]
+    struct Ghost;
+
+    let type_info = RuntimeTypeInfo {
+        type_id: TypeId::of::<Ghost>(),
+        type_name: "Ghost",
+        size: std::mem::size_of::<Ghost>(),
+        align: std::mem::align_of::<Ghost>(),
+        structure: TypeStructure::Primitive,
+    };
+
+    let mut deserializer = JsonDeserializer::new(serde_json::json!(42));
+    let err = TypeDeserializer::deserialize_registered(&mut deserializer, &type_info).unwrap_err();
+
+    match err {
+        ReflectError::DeserializationFailed(message) => {
+            assert!(message.contains("Type not registered"));
+            assert!(message.contains("Ghost"));
+        }
+        other => panic!("Unexpected error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn test_json_deserialize_rejects_wrong_primitive_shapes() {
+    let mut f32_from_string = JsonDeserializer::new(serde_json::json!("not-a-number"));
+    assert!(f32::deserialize(&mut f32_from_string).is_err());
+
+    let mut bool_from_number = JsonDeserializer::new(serde_json::json!(1));
+    assert!(bool::deserialize(&mut bool_from_number).is_err());
+
+    let mut string_from_object = JsonDeserializer::new(serde_json::json!({ "x": 1 }));
+    assert!(String::deserialize(&mut string_from_object).is_err());
+}
+
+#[test]
+fn test_json_deserialize_rejects_invalid_vec_shapes() {
+    let mut vec3_too_short = JsonDeserializer::new(serde_json::json!([1.0, 2.0]));
+    assert!(<[f32; 3]>::deserialize(&mut vec3_too_short).is_err());
+
+    let mut color_too_long = JsonDeserializer::new(serde_json::json!([1.0, 2.0, 3.0, 4.0, 5.0]));
+    assert!(<[f32; 4]>::deserialize(&mut color_too_long).is_err());
+
+    let mut vec3_wrong_item_type = JsonDeserializer::new(serde_json::json!([1.0, "x", 3.0]));
+    let parsed = <[f32; 3]>::deserialize(&mut vec3_wrong_item_type).unwrap();
+    // Existing primitive decoder defaults invalid entries to 0.0; this test
+    // ensures malformed payloads cannot panic and stay deterministic.
+    assert_eq!(parsed, [1.0, 0.0, 3.0]);
+}
+
+#[test]
+fn test_json_enum_deserialize_rejects_invalid_variants() {
+    let mut deserializer = JsonDeserializer::new(serde_json::json!(999usize));
+    let err = TypeDeserializer::deserialize_enum(&mut deserializer, &["A", "B"]).unwrap_err();
+
+    match err {
+        ReflectError::InvalidVariant { .. } => {}
+        other => panic!("Unexpected error variant: {other:?}"),
+    }
+
+    let mut deserializer = JsonDeserializer::new(serde_json::json!("NotAVariant"));
+    let err = TypeDeserializer::deserialize_enum(&mut deserializer, &["A", "B"]).unwrap_err();
+
+    match err {
+        ReflectError::InvalidVariant { .. } => {}
+        other => panic!("Unexpected error variant: {other:?}"),
+    }
+}
+
+#[test]
+fn test_json_round_trip_high_volume_primitives() {
+    let mut values = Vec::new();
+    for i in 0..50_000 {
+        values.push(i as f32 * 0.5);
+    }
+
+    for value in values {
+        let mut serializer = JsonSerializer::new();
+        value.serialize(&mut serializer).unwrap();
+
+        let mut deserializer = JsonDeserializer::new(serializer.into_json());
+        let restored = f32::deserialize(&mut deserializer).unwrap();
+        assert_eq!(restored, value);
+    }
+}
+
+#[test]
+fn test_json_deep_object_round_trip_string_field() {
+    let string_info = RUNTIME_TYPE_REGISTRY.get::<String>().unwrap();
+    let dynamic_type = DynamicTypeBuilder::new("DeepJson")
+        .add_field("blob", string_info)
+        .build();
+
+    let mut value = DynamicValue::new(dynamic_type);
+
+    let mut payload = String::new();
+    for i in 0..20_000 {
+        payload.push_str(&format!("node_{i};"));
+    }
+
+    value.set_field("blob", Box::new(payload.clone())).unwrap();
+    let retrieved = value.get_field_typed::<String>("blob").unwrap();
+    assert_eq!(retrieved, payload);
+}
