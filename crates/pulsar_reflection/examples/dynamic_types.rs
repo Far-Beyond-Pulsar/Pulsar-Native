@@ -7,7 +7,7 @@
 //! - Use dynamic types for modding/data-driven design
 
 use pulsar_reflection::{
-    DynamicTypeBuilder, DynamicValue, Reflectable, DYNAMIC_TYPE_REGISTRY, RUNTIME_TYPE_REGISTRY,
+    DynamicTypeBuilder, DynamicValue, DYNAMIC_TYPE_REGISTRY, RUNTIME_TYPE_REGISTRY,
 };
 
 fn main() {
@@ -33,9 +33,9 @@ fn example_custom_material() {
     println!("Example 1: Custom Material Type\n");
 
     // Get compile-time type info for the field types we'll use
-    let f32_info = <f32>::type_info();
-    let color_info = <[f32; 4]>::type_info();
-    let string_info = <String>::type_info();
+    let f32_info = RUNTIME_TYPE_REGISTRY.get::<f32>().expect("f32 not registered");
+    let color_info = RUNTIME_TYPE_REGISTRY.get::<[f32; 4]>().expect("[f32; 4] not registered");
+    let string_info = RUNTIME_TYPE_REGISTRY.get::<String>().expect("String not registered");
 
     // Build a new material type at runtime
     let material_type = DynamicTypeBuilder::new("CustomWoodMaterial")
@@ -61,8 +61,9 @@ fn example_custom_material() {
     let mut wood_material = DynamicValue::new(material_type);
 
     // Set field values (type-safe!)
+    let albedo: [f32; 4] = [0.6, 0.4, 0.2, 1.0];
     wood_material
-        .set_field("albedo", Box::new([0.6, 0.4, 0.2, 1.0]))
+        .set_field("albedo", Box::new(albedo))
         .expect("Failed to set albedo");
 
     wood_material
@@ -199,8 +200,8 @@ fn example_schema_evolution() {
 
     // Version 1: Simple player stats
     let stats_v1 = DynamicTypeBuilder::new("PlayerStats_v1")
-        .add_field("health", <f32>::type_info())
-        .add_field("mana", <f32>::type_info())
+        .add_field("health", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap())
+        .add_field("mana", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap())
         .build();
 
     println!("Created PlayerStats v1:");
@@ -217,10 +218,10 @@ fn example_schema_evolution() {
 
     // Version 2: Extended stats with new fields
     let stats_v2 = DynamicTypeBuilder::new("PlayerStats_v2")
-        .add_field("health", <f32>::type_info())
-        .add_field("mana", <f32>::type_info())
-        .add_field("stamina", <f32>::type_info()) // New!
-        .add_field("shield", <f32>::type_info()) // New!
+        .add_field("health", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap())
+        .add_field("mana", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap())
+        .add_field("stamina", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap()) // New!
+        .add_field("shield", RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap()) // New!
         .build();
 
     println!("\n\nCreated PlayerStats v2 (with new fields):");
