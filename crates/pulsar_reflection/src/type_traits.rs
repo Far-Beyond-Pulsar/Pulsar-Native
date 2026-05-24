@@ -106,26 +106,8 @@ pub trait Reflectable: Any + Send + Sync {
 /// Implementors define how to serialize values to their target format
 /// (JSON, binary, etc.). The type-driven design eliminates pattern matching.
 pub trait TypeSerializer {
-    /// Serialize a 32-bit float
-    fn serialize_f32(&mut self, value: f32) -> ReflectResult<()>;
-
-    /// Serialize a 32-bit integer
-    fn serialize_i32(&mut self, value: i32) -> ReflectResult<()>;
-
-    /// Serialize a 64-bit unsigned integer
-    fn serialize_u64(&mut self, value: u64) -> ReflectResult<()>;
-
-    /// Serialize a boolean
-    fn serialize_bool(&mut self, value: bool) -> ReflectResult<()>;
-
-    /// Serialize a string
-    fn serialize_string(&mut self, value: &str) -> ReflectResult<()>;
-
-    /// Serialize a 3D vector [x, y, z]
-    fn serialize_vec3(&mut self, value: [f32; 3]) -> ReflectResult<()>;
-
-    /// Serialize a color [r, g, b, a]
-    fn serialize_color(&mut self, value: [f32; 4]) -> ReflectResult<()>;
+    /// Serialize a registered value through runtime type callbacks.
+    fn serialize_registered(&mut self, value: &dyn Any) -> ReflectResult<()>;
 
     /// Serialize an array of values
     fn serialize_array(
@@ -146,26 +128,8 @@ pub trait TypeSerializer {
 /// Implementors define how to deserialize values from their source format
 /// (JSON, binary, etc.). Returns type-erased Box<dyn Any> for flexibility.
 pub trait TypeDeserializer {
-    /// Deserialize a 32-bit float
-    fn deserialize_f32(&mut self) -> ReflectResult<f32>;
-
-    /// Deserialize a 32-bit integer
-    fn deserialize_i32(&mut self) -> ReflectResult<i32>;
-
-    /// Deserialize a 64-bit unsigned integer
-    fn deserialize_u64(&mut self) -> ReflectResult<u64>;
-
-    /// Deserialize a boolean
-    fn deserialize_bool(&mut self) -> ReflectResult<bool>;
-
-    /// Deserialize a string
-    fn deserialize_string(&mut self) -> ReflectResult<String>;
-
-    /// Deserialize a 3D vector
-    fn deserialize_vec3(&mut self) -> ReflectResult<[f32; 3]>;
-
-    /// Deserialize a color
-    fn deserialize_color(&mut self) -> ReflectResult<[f32; 4]>;
+    /// Deserialize one registered value from runtime type callbacks.
+    fn deserialize_registered(&mut self, type_info: &RuntimeTypeInfo) -> ReflectResult<Box<dyn Any>>;
 
     /// Deserialize an array of values
     fn deserialize_array(

@@ -46,6 +46,16 @@ This is crucial for:
 
 The key constraint that maintains safety: every field in a runtime-composed type must reference a registered compile-time type. You can't create a field of an unknown type.
 
+## Primitive Feature Modules
+
+Primitive registrations are organized into feature-gated modules:
+
+- `prims-core` (default): `f32`, `i32`, `u64`, `bool`, `[f32; 3]`, `[f32; 4]`
+- `prims-std` (default): `String`
+- `prims-serde` (optional): `serde_json::Value`
+
+The serde primitive module is intentionally not enabled by default so downstream users can opt in only when they want JSON value reflection.
+
 ## Documentation Structure
 
 This documentation is organized to take you from beginner to expert:

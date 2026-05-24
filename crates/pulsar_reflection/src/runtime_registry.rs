@@ -4,7 +4,10 @@
 //! Types are automatically registered via `#[derive(Reflectable)]` macro.
 
 use crate::runtime_types::RuntimeTypeInfo;
+use crate::type_traits::{ReflectError, ReflectResult};
 use once_cell::sync::Lazy;
+use serde_json::Value;
+use std::any::Any;
 use std::any::TypeId;
 use std::collections::HashMap;
 
@@ -13,10 +16,18 @@ use std::collections::HashMap;
 /// Automatically submitted by the `#[derive(Reflectable)]` macro
 pub struct RuntimeTypeRegistration {
     pub type_info: &'static RuntimeTypeInfo,
+    pub serialize_json: fn(&dyn Any) -> ReflectResult<Value>,
+    pub deserialize_json: fn(Value) -> ReflectResult<Box<dyn Any>>,
 }
 
 // Collect all runtime type registrations at link time
 inventory::collect!(RuntimeTypeRegistration);
+
+struct RuntimeTypeEntry {
+    type_info: &'static RuntimeTypeInfo,
+    serialize_json: fn(&dyn Any) -> ReflectResult<Value>,
+    deserialize_json: fn(Value) -> ReflectResult<Box<dyn Any>>,
+}
 
 /// Global registry of all reflectable types
 ///
@@ -24,10 +35,10 @@ inventory::collect!(RuntimeTypeRegistration);
 /// Provides O(1) lookup by TypeId or type name.
 pub struct RuntimeTypeRegistry {
     /// Index by TypeId for fast type-based lookup
-    types: HashMap<TypeId, &'static RuntimeTypeInfo>,
+    types: HashMap<TypeId, RuntimeTypeEntry>,
 
     /// Index by type name for string-based lookup
-    by_name: HashMap<&'static str, &'static RuntimeTypeInfo>,
+    by_name: HashMap<&'static str, TypeId>,
 }
 
 impl RuntimeTypeRegistry {
@@ -39,8 +50,16 @@ impl RuntimeTypeRegistry {
         // Auto-discover all RuntimeTypeRegistration entries via inventory
         for registration in inventory::iter::<RuntimeTypeRegistration> {
             let type_info = registration.type_info;
-            types.insert(type_info.type_id, type_info);
-            by_name.insert(type_info.type_name, type_info);
+
+            types.insert(
+                type_info.type_id,
+                RuntimeTypeEntry {
+                    type_info,
+                    serialize_json: registration.serialize_json,
+                    deserialize_json: registration.deserialize_json,
+                },
+            );
+            by_name.insert(type_info.type_name, type_info.type_id);
         }
 
         tracing::info!(
@@ -58,7 +77,7 @@ impl RuntimeTypeRegistry {
     /// let type_info = RUNTIME_TYPE_REGISTRY.get_by_id(TypeId::of::<f32>());
     /// ```
     pub fn get_by_id(&self, type_id: TypeId) -> Option<&'static RuntimeTypeInfo> {
-        self.types.get(&type_id).copied()
+        self.types.get(&type_id).map(|entry| entry.type_info)
     }
 
     /// Get type info by type (generic convenience method)
@@ -78,7 +97,37 @@ impl RuntimeTypeRegistry {
     /// let type_info = RUNTIME_TYPE_REGISTRY.get_by_name("f32");
     /// ```
     pub fn get_by_name(&self, type_name: &str) -> Option<&'static RuntimeTypeInfo> {
-        self.by_name.get(type_name).copied()
+        let type_id = self.by_name.get(type_name)?;
+        self.get_by_id(*type_id)
+    }
+
+    /// Serialize a type-erased value using the callback registered for its type.
+    pub fn serialize_json_for_any(&self, value: &dyn Any) -> ReflectResult<Value> {
+        let type_id = value.type_id();
+        let Some(entry) = self.types.get(&type_id) else {
+            return Err(ReflectError::SerializationFailed(format!(
+                "Type not registered for JSON serialization: {:?}",
+                type_id
+            )));
+        };
+
+        (entry.serialize_json)(value)
+    }
+
+    /// Deserialize JSON into a type-erased value for the provided runtime type.
+    pub fn deserialize_json_for_type(
+        &self,
+        type_info: &RuntimeTypeInfo,
+        value: Value,
+    ) -> ReflectResult<Box<dyn Any>> {
+        let Some(entry) = self.types.get(&type_info.type_id) else {
+            return Err(ReflectError::DeserializationFailed(format!(
+                "Type not registered for JSON deserialization: {}",
+                type_info.type_name
+            )));
+        };
+
+        (entry.deserialize_json)(value)
     }
 
     /// Check if a type is registered
@@ -110,7 +159,7 @@ impl RuntimeTypeRegistry {
 
     /// Iterate over all registered types
     pub fn iter(&self) -> impl Iterator<Item = &'static RuntimeTypeInfo> + '_ {
-        self.types.values().copied()
+        self.types.values().map(|entry| entry.type_info)
     }
 }
 

@@ -3,6 +3,12 @@ name = "pulsar_reflection"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["prims-core", "prims-std"]
+prims-core = []
+prims-std = ["prims-core"]
+prims-serde = ["prims-std"]
+
 [dependencies]
 inventory = "0.3"
 once_cell = "1.19"

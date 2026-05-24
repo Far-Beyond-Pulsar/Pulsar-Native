@@ -54,7 +54,8 @@
       "Bash(cargo update:*)",
       "Bash(gh issue view:*)",
       "Bash(gh issue create:*)",
-      "Bash(gh issue close:*)"
+      "Bash(gh issue close:*)",
+      "Bash(cargo new:*)"
     ]
   }
 }

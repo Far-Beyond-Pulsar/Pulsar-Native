@@ -20,14 +20,19 @@
 //! }
 //! ```
 
+extern crate self as pulsar_reflection;
+
 pub mod registry;
 
 // New runtime type reflection system
 pub mod runtime_types;
 pub mod runtime_registry;
 pub mod type_traits;
-pub mod json_serializer;
+pub mod json_codec;
 pub mod dynamic_types;
+
+// Primitive type implementations
+pub mod prims;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -45,7 +50,7 @@ pub use inventory;
 pub use runtime_types::{FieldInfo, RuntimeTypeInfo, TypeStructure, WrapperType};
 pub use runtime_registry::{RuntimeTypeRegistration, RuntimeTypeRegistry, RUNTIME_TYPE_REGISTRY};
 pub use type_traits::{Reflectable, ReflectError, ReflectResult, TypeDeserializer, TypeSerializer};
-pub use json_serializer::{JsonDeserializer, JsonSerializer};
+pub use json_codec::{JsonDeserializer, JsonSerializer};
 
 // Re-export dynamic type system
 pub use dynamic_types::{
@@ -54,7 +59,7 @@ pub use dynamic_types::{
 };
 
 // Re-export derive macro
-pub use pulsar_reflection_derive::Reflectable;
+pub use pulsar_reflection_derive::{pulsar_type, Reflectable};
 
 /// Trait for component-owned projection of reflection data into scene snapshot props.
 ///
@@ -457,113 +462,7 @@ impl PropertyValue {
     }
 }
 
-// Primitive type registrations
-use std::any::TypeId;
-
-// Register f32
-static F32_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<f32>(),
-    type_name: "f32",
-    size: std::mem::size_of::<f32>(),
-    align: std::mem::align_of::<f32>(),
-    structure: TypeStructure::Primitive,
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &F32_TYPE_INFO,
-    }
-}
-
-// Register i32
-static I32_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<i32>(),
-    type_name: "i32",
-    size: std::mem::size_of::<i32>(),
-    align: std::mem::align_of::<i32>(),
-    structure: TypeStructure::Primitive,
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &I32_TYPE_INFO,
-    }
-}
-
-// Register u64
-static U64_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<u64>(),
-    type_name: "u64",
-    size: std::mem::size_of::<u64>(),
-    align: std::mem::align_of::<u64>(),
-    structure: TypeStructure::Primitive,
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &U64_TYPE_INFO,
-    }
-}
-
-// Register bool
-static BOOL_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<bool>(),
-    type_name: "bool",
-    size: std::mem::size_of::<bool>(),
-    align: std::mem::align_of::<bool>(),
-    structure: TypeStructure::Primitive,
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &BOOL_TYPE_INFO,
-    }
-}
-
-// Register String
-static STRING_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<String>(),
-    type_name: "String",
-    size: std::mem::size_of::<String>(),
-    align: std::mem::align_of::<String>(),
-    structure: TypeStructure::String,
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &STRING_TYPE_INFO,
-    }
-}
-
-// Register [f32; 3] (Vec3)
-static VEC3_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<[f32; 3]>(),
-    type_name: "[f32; 3]",
-    size: std::mem::size_of::<[f32; 3]>(),
-    align: std::mem::align_of::<[f32; 3]>(),
-    structure: TypeStructure::Primitive, // Treat as primitive for simplicity
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &VEC3_TYPE_INFO,
-    }
-}
-
-// Register [f32; 4] (Color)
-static COLOR_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: TypeId::of::<[f32; 4]>(),
-    type_name: "[f32; 4]",
-    size: std::mem::size_of::<[f32; 4]>(),
-    align: std::mem::align_of::<[f32; 4]>(),
-    structure: TypeStructure::Primitive, // Treat as primitive for simplicity
-};
-
-inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &COLOR_TYPE_INFO,
-    }
-}
+// Primitive type registrations are now in the prims module
 
 #[cfg(test)]
 mod tests {
