@@ -80,3 +80,133 @@ impl Default for ColliderShape {
         ColliderShape::Box
     }
 }
+
+static COLLIDER_DESCRIPTOR_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: std::any::TypeId::of::<ColliderDescriptor>(),
+    type_name: "pulsar_physics::ColliderDescriptor",
+    size: std::mem::size_of::<ColliderDescriptor>(),
+    align: std::mem::align_of::<ColliderDescriptor>(),
+    structure: TypeStructure::Primitive,
+};
+
+impl Reflectable for ColliderDescriptor {
+    fn type_info() -> &'static RuntimeTypeInfo
+    where
+        Self: Sized,
+    {
+        &COLLIDER_DESCRIPTOR_TYPE_INFO
+    }
+
+    fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
+        serializer.serialize_registered(self as &dyn std::any::Any)
+    }
+
+    fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self>
+    where
+        Self: Sized,
+    {
+        let boxed = deserializer.deserialize_registered(Self::type_info())?;
+        let found = format!("{:?}", (&*boxed).type_id());
+        boxed
+            .downcast::<Self>()
+            .map(|v| *v)
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "ColliderDescriptor",
+                found,
+            })
+    }
+
+    fn clone_any(&self) -> Box<dyn std::any::Any> {
+        Box::new(self.clone())
+    }
+}
+
+fn serialize_collider_descriptor_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
+    let collider = value
+        .downcast_ref::<ColliderDescriptor>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "ColliderDescriptor",
+            found: format!("{:?}", value.type_id()),
+        })?;
+
+    serde_json::to_value(collider).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
+}
+
+fn deserialize_collider_descriptor_json(value: serde_json::Value) -> ReflectResult<Box<dyn std::any::Any>> {
+    let collider: ColliderDescriptor = serde_json::from_value(value)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    Ok(Box::new(collider))
+}
+
+pulsar_reflection::inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &COLLIDER_DESCRIPTOR_TYPE_INFO,
+        serialize_json: serialize_collider_descriptor_json,
+        deserialize_json: deserialize_collider_descriptor_json,
+    }
+}
+
+static COLLIDER_SHAPE_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: std::any::TypeId::of::<ColliderShape>(),
+    type_name: "pulsar_physics::ColliderShape",
+    size: std::mem::size_of::<ColliderShape>(),
+    align: std::mem::align_of::<ColliderShape>(),
+    structure: TypeStructure::Primitive,
+};
+
+impl Reflectable for ColliderShape {
+    fn type_info() -> &'static RuntimeTypeInfo
+    where
+        Self: Sized,
+    {
+        &COLLIDER_SHAPE_TYPE_INFO
+    }
+
+    fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
+        serializer.serialize_registered(self as &dyn std::any::Any)
+    }
+
+    fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self>
+    where
+        Self: Sized,
+    {
+        let boxed = deserializer.deserialize_registered(Self::type_info())?;
+        let found = format!("{:?}", (&*boxed).type_id());
+        boxed
+            .downcast::<Self>()
+            .map(|v| *v)
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "ColliderShape",
+                found,
+            })
+    }
+
+    fn clone_any(&self) -> Box<dyn std::any::Any> {
+        Box::new(*self)
+    }
+}
+
+fn serialize_collider_shape_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
+    let shape = value
+        .downcast_ref::<ColliderShape>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "ColliderShape",
+            found: format!("{:?}", value.type_id()),
+        })?;
+
+    serde_json::to_value(shape).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
+}
+
+fn deserialize_collider_shape_json(value: serde_json::Value) -> ReflectResult<Box<dyn std::any::Any>> {
+    let shape: ColliderShape = serde_json::from_value(value)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    Ok(Box::new(shape))
+}
+
+pulsar_reflection::inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &COLLIDER_SHAPE_TYPE_INFO,
+        serialize_json: serialize_collider_shape_json,
+        deserialize_json: deserialize_collider_shape_json,
+    }
+}

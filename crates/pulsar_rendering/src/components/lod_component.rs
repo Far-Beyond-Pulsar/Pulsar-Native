@@ -1,7 +1,9 @@
 //! Level of Detail (LOD) component for performance optimization
 
 use engine_class_derive::EngineClass;
+use pulsar_reflection::{ReflectError, ReflectResult, Reflectable, RuntimeTypeInfo, RuntimeTypeRegistration, TypeDeserializer, TypeSerializer, TypeStructure};
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 /// LOD component for managing mesh detail based on distance
 ///
@@ -43,4 +45,67 @@ pub struct LODLevel {
     /// In a full implementation, this would be a proper asset reference
     #[property]
     pub mesh_path: String,
+}
+
+static LOD_LEVEL_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: std::any::TypeId::of::<LODLevel>(),
+    type_name: "pulsar_rendering::LODLevel",
+    size: std::mem::size_of::<LODLevel>(),
+    align: std::mem::align_of::<LODLevel>(),
+    structure: TypeStructure::Primitive,
+};
+
+impl Reflectable for LODLevel {
+    fn type_info() -> &'static RuntimeTypeInfo
+    where
+        Self: Sized,
+    {
+        &LOD_LEVEL_TYPE_INFO
+    }
+
+    fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
+        serializer.serialize_registered(self as &dyn Any)
+    }
+
+    fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self>
+    where
+        Self: Sized,
+    {
+        let boxed = deserializer.deserialize_registered(Self::type_info())?;
+        let found = format!("{:?}", (&*boxed).type_id());
+        boxed
+            .downcast::<Self>()
+            .map(|v| *v)
+            .map_err(|_| ReflectError::TypeMismatch {
+                expected: "LODLevel",
+                found,
+            })
+    }
+
+    fn clone_any(&self) -> Box<dyn Any> {
+        Box::new(self.clone())
+    }
+}
+
+fn serialize_lod_level_json(value: &dyn Any) -> ReflectResult<serde_json::Value> {
+    let lod = value.downcast_ref::<LODLevel>().ok_or_else(|| ReflectError::TypeMismatch {
+        expected: "LODLevel",
+        found: format!("{:?}", value.type_id()),
+    })?;
+
+    serde_json::to_value(lod).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
+}
+
+fn deserialize_lod_level_json(value: serde_json::Value) -> ReflectResult<Box<dyn Any>> {
+    let lod: LODLevel = serde_json::from_value(value)
+        .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
+    Ok(Box::new(lod))
+}
+
+pulsar_reflection::inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &LOD_LEVEL_TYPE_INFO,
+        serialize_json: serialize_lod_level_json,
+        deserialize_json: deserialize_lod_level_json,
+    }
 }

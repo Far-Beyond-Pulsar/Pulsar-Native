@@ -1,5 +1,5 @@
 use gpui::{prelude::*, *};
-use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
+use pulsar_reflection::{PropertyType, PropertyValue, RuntimeTypeInfo, TypeStructure, WrapperType, REGISTRY};
 use serde_json::Value;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
@@ -386,16 +386,19 @@ impl Render for ObjectTypeFieldsSection {
                 // Prepare properties data for shared renderer
                 let mut props_data = Vec::new();
                 for prop in properties {
-                    let default = (prop.getter)(instance.as_ref());
+                    let default_any = (prop.getter)(instance.as_ref());
+                    let property_type = runtime_type_to_property_type(prop.type_info);
+                    let default = any_to_property_value(default_any.as_ref(), prop.type_info)
+                        .unwrap_or(PropertyValue::String("unsupported".to_string()));
                     let current = self.read_property(
                         class_name,
                         prop.name,
-                        &prop.property_type,
+                        &property_type,
                         &default,
                     );
 
                     // Set up state for different property types
-                    let numeric_input = match (&prop.property_type, &current) {
+                    let numeric_input = match (&property_type, current.clone()) {
                         (PropertyType::F32 { step, .. }, PropertyValue::F32(v)) => {
                             let cls = class_name.to_string();
                             let pn = prop.name.to_string();
@@ -404,7 +407,7 @@ impl Render for ObjectTypeFieldsSection {
                             Some(self.property_state.ensure_f32_input(
                                 class_name,
                                 prop.name,
-                                *v,
+                                v,
                                 step.unwrap_or(1.0),
                                 move |new_val| {
                                     db.update_component_property(&oid, &cls, &pn, Value::from(new_val));
@@ -421,7 +424,7 @@ impl Render for ObjectTypeFieldsSection {
                             Some(self.property_state.ensure_i32_input(
                                 class_name,
                                 prop.name,
-                                *v,
+                                v,
                                 move |new_val| {
                                     db.update_component_property(&oid, &cls, &pn, Value::from(new_val));
                                 },
@@ -432,7 +435,7 @@ impl Render for ObjectTypeFieldsSection {
                         _ => None,
                     };
 
-                    let mesh_picker = if matches!(&prop.property_type, PropertyType::String { .. })
+                    let mesh_picker = if matches!(&property_type, PropertyType::String { .. })
                         && prop.name == "mesh_asset"
                     {
                         if let PropertyValue::String(v) = &current {
@@ -457,7 +460,7 @@ impl Render for ObjectTypeFieldsSection {
                         None
                     };
 
-                    let should_create_color_picker = matches!(prop.property_type, PropertyType::Color)
+                    let should_create_color_picker = matches!(&property_type, PropertyType::Color)
                         || (matches!(&default, PropertyValue::String(s) if s == "unsupported")
                             && ui_common::reflected_properties_panel::is_color_field_name(prop.name));
 
@@ -495,7 +498,7 @@ impl Render for ObjectTypeFieldsSection {
                     props_data.push((
                         prop.display_name.to_string(),
                         prop.name.to_string(),
-                        prop.property_type.clone(),
+                        property_type,
                         current,
                         numeric_input,
                         color_picker,
@@ -538,5 +541,69 @@ impl Render for ObjectTypeFieldsSection {
             .children(diag_card)
             .children(component_sections)
             .into_any_element()
+    }
+}
+
+fn runtime_type_to_property_type(type_info: &RuntimeTypeInfo) -> PropertyType {
+    match &type_info.structure {
+        TypeStructure::Primitive => match type_info.base_name() {
+            "f32" => PropertyType::F32 {
+                min: None,
+                max: None,
+                step: None,
+            },
+            "i32" => PropertyType::I32 {
+                min: None,
+                max: None,
+            },
+            "bool" => PropertyType::Bool,
+            "[f32; 3]" => PropertyType::Vec3,
+            "[f32; 4]" => PropertyType::Color,
+            _ => PropertyType::String { max_length: None },
+        },
+        TypeStructure::String => PropertyType::String { max_length: None },
+        TypeStructure::Enum { variants } => PropertyType::Enum {
+            variants: variants.to_vec(),
+        },
+        TypeStructure::Wrapper {
+            wrapper_kind: WrapperType::Vec,
+            inner,
+        } => PropertyType::Vec {
+            element_type: Box::new(runtime_type_to_property_type(inner)),
+        },
+        TypeStructure::Struct { .. } => PropertyType::Component {
+            class_name: type_info.type_name,
+        },
+        TypeStructure::Wrapper { .. } => PropertyType::String { max_length: None },
+    }
+}
+
+fn any_to_property_value(value: &dyn std::any::Any, type_info: &RuntimeTypeInfo) -> Option<PropertyValue> {
+    match &type_info.structure {
+        TypeStructure::Primitive => match type_info.base_name() {
+            "f32" => value.downcast_ref::<f32>().copied().map(PropertyValue::F32),
+            "i32" => value.downcast_ref::<i32>().copied().map(PropertyValue::I32),
+            "bool" => value.downcast_ref::<bool>().copied().map(PropertyValue::Bool),
+            "[f32; 3]" => value.downcast_ref::<[f32; 3]>().copied().map(PropertyValue::Vec3),
+            "[f32; 4]" => value.downcast_ref::<[f32; 4]>().copied().map(PropertyValue::Color),
+            _ => Some(PropertyValue::String("unsupported".to_string())),
+        },
+        TypeStructure::String => value
+            .downcast_ref::<String>()
+            .map(|v| PropertyValue::String(v.clone())),
+        TypeStructure::Enum { variants } => value.downcast_ref::<String>().and_then(|name| {
+            variants
+                .iter()
+                .position(|v| v == name)
+                .map(PropertyValue::EnumVariant)
+        }),
+        TypeStructure::Wrapper {
+            wrapper_kind: WrapperType::Vec,
+            ..
+        } => Some(PropertyValue::Vec(Vec::new())),
+        TypeStructure::Struct { .. } => Some(PropertyValue::Component {
+            class_name: type_info.base_name().to_string(),
+        }),
+        TypeStructure::Wrapper { .. } => Some(PropertyValue::String("unsupported".to_string())),
     }
 }

@@ -9094,6 +9094,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -9102,6 +9103,8 @@ name = "pulsar_reflection"
 version = "0.1.0"
 dependencies = [
  "dashmap 6.2.1",
+ "glam 0.22.0",
+ "helio",
  "inventory",
  "once_cell",
  "pulsar_reflection_derive",

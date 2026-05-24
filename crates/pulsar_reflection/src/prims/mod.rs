@@ -17,3 +17,9 @@ pub mod std;
 
 #[cfg(feature = "prims-serde")]
 pub mod serde;
+
+#[cfg(feature = "prims-glam")]
+pub mod glam;
+
+#[cfg(feature = "prims-helio")]
+pub mod helio;

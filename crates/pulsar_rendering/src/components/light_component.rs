@@ -3,7 +3,7 @@
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeLightDesc,
-    RuntimeLightType, ScenePropsProjector,
+    RuntimeLightType, ScenePropsProjector, Reflectable,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -57,7 +57,7 @@ pub struct LightComponent {
 }
 
 /// Type of light source
-#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Reflectable)]
 pub enum LightType {
     /// Directional light (like the sun) - infinite distance, parallel rays
     Directional,

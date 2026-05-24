@@ -4,8 +4,9 @@
 //! `#[derive(EngineClass)]`. Directly adds the component to the object when clicked.
 
 use gpui::{prelude::*, *};
-use pulsar_reflection::{PropertyValue, REGISTRY};
+use pulsar_reflection::{PropertyValue, RuntimeTypeInfo, TypeStructure, WrapperType, REGISTRY};
 use serde_json::Value;
+use std::any::Any;
 use ui::{
     dropdown::{SearchableList, SearchableListEvent},
     IconName,
@@ -88,7 +89,10 @@ impl AddComponentDialog {
             let mut map = serde_json::Map::new();
             for prop in &props {
                 let v = (prop.getter)(instance.as_ref());
-                map.insert(prop.name.to_string(), property_value_to_json(&v));
+                map.insert(
+                    prop.name.to_string(),
+                    property_value_to_json(v.as_ref(), prop.type_info),
+                );
             }
             self.scene_db.add_component(
                 &self.object_id,
@@ -104,7 +108,7 @@ impl AddComponentDialog {
     }
 }
 
-fn property_value_to_json(value: &PropertyValue) -> Value {
+fn property_value_to_json_from_runtime(value: &PropertyValue) -> Value {
     match value {
         PropertyValue::F32(v) => Value::from(*v),
         PropertyValue::I32(v) => Value::from(*v),
@@ -113,11 +117,48 @@ fn property_value_to_json(value: &PropertyValue) -> Value {
         PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
         PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
         PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-        PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json).collect()),
+        PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json_from_runtime).collect()),
         PropertyValue::Component { class_name, .. } => {
             serde_json::json!({"class_name": class_name})
         }
     }
+}
+
+fn any_to_property_value(value: &dyn Any, type_info: &RuntimeTypeInfo) -> Option<PropertyValue> {
+    match &type_info.structure {
+        TypeStructure::Primitive => match type_info.base_name() {
+            "f32" => value.downcast_ref::<f32>().copied().map(PropertyValue::F32),
+            "i32" => value.downcast_ref::<i32>().copied().map(PropertyValue::I32),
+            "bool" => value.downcast_ref::<bool>().copied().map(PropertyValue::Bool),
+            "[f32; 3]" => value.downcast_ref::<[f32; 3]>().copied().map(PropertyValue::Vec3),
+            "[f32; 4]" => value.downcast_ref::<[f32; 4]>().copied().map(PropertyValue::Color),
+            _ => Some(PropertyValue::String("unsupported".to_string())),
+        },
+        TypeStructure::String => value
+            .downcast_ref::<String>()
+            .map(|v| PropertyValue::String(v.clone())),
+        TypeStructure::Enum { variants } => value.downcast_ref::<String>().and_then(|name| {
+            variants
+                .iter()
+                .position(|v| v == name)
+                .map(PropertyValue::EnumVariant)
+        }),
+        TypeStructure::Wrapper {
+            wrapper_kind: WrapperType::Vec,
+            ..
+        } => Some(PropertyValue::Vec(Vec::new())),
+        TypeStructure::Struct { .. } => Some(PropertyValue::Component {
+            class_name: type_info.base_name().to_string(),
+        }),
+        TypeStructure::Wrapper { .. } => Some(PropertyValue::String("unsupported".to_string())),
+    }
+}
+
+fn property_value_to_json(value: &dyn Any, type_info: &RuntimeTypeInfo) -> Value {
+    any_to_property_value(value, type_info)
+        .as_ref()
+        .map(property_value_to_json_from_runtime)
+        .unwrap_or_else(|| Value::String("unsupported".to_string()))
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
