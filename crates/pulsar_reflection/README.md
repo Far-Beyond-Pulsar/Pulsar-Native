@@ -311,3 +311,196 @@ pub struct MyStruct {
 ```
 
 You'll need to either implement `Reflectable` for `SomeExternalType` or exclude that field from reflection.
+
+## Dynamic Type Composition
+
+While the compile-time reflection system cannot create entirely new types at runtime, Pulsar provides a **dynamic type composition** system that allows you to build new types at runtime by composing existing compile-time types. This is perfect for modding systems, data-driven gameplay, and runtime schema evolution.
+
+### The Key Distinction
+
+- **Compile-time types** (via `#[derive(Reflectable)]`): Immutable, captured at compile time, stored as `&'static RuntimeTypeInfo`
+- **Runtime-composed types** (via `DynamicTypeBuilder`): Mutable structure, composed from compile-time types, stored as `Arc<DynamicTypeInfo>`
+
+All field types in a runtime-composed type **must** reference registered compile-time types. This ensures type safety—you can't create a field of an unknown type.
+
+### Building Runtime Types
+
+Here's how to create a new type at runtime:
+
+```rust
+use pulsar_reflection::{DynamicTypeBuilder, DynamicValue, DYNAMIC_TYPE_REGISTRY};
+
+// Get references to compile-time types
+let f32_info = <f32>::type_info();
+let color_info = <[f32; 4]>::type_info();
+let string_info = <String>::type_info();
+
+// Build a new type at runtime
+let material_type = DynamicTypeBuilder::new("CustomMaterial")
+    .add_field("albedo", color_info)
+    .add_field("roughness", f32_info)
+    .add_field("metallic", f32_info)
+    .add_field("texture_path", string_info)
+    .build();
+
+// Register it globally
+let type_uuid = DYNAMIC_TYPE_REGISTRY.register(material_type);
+
+// Create instances of the dynamic type
+let mut material = DynamicValue::new(
+    DYNAMIC_TYPE_REGISTRY.get(&type_uuid).unwrap()
+);
+
+// Set field values (with runtime type checking!)
+material.set_field("albedo", Box::new([1.0, 0.5, 0.2, 1.0])).unwrap();
+material.set_field("roughness", Box::new(0.8f32)).unwrap();
+material.set_field("metallic", Box::new(0.0f32)).unwrap();
+material.set_field("texture_path", Box::new("textures/wood.png".to_string())).unwrap();
+
+// Retrieve values with type safety
+let roughness = material.get_field_typed::<f32>("roughness").unwrap();
+println!("Material roughness: {}", roughness);
+```
+
+### Type Safety Guarantees
+
+The dynamic type system maintains strong type safety through several mechanisms:
+
+1. **Field type validation**: When you call `set_field()`, the system checks that the value's `TypeId` matches the field's declared type
+2. **Compile-time type grounding**: All field types must reference a `&'static RuntimeTypeInfo`, ensuring they're valid registered types
+3. **Memory layout calculation**: The system automatically calculates size, alignment, and field offsets using the same rules as the Rust compiler
+4. **Safe downcasting**: `get_field_typed<T>()` uses `downcast_ref` internally, returning `None` for type mismatches
+
+### Type Tagging
+
+Dynamic types are tagged to distinguish them from compile-time types:
+
+```rust
+use pulsar_reflection::TypeTag;
+
+match material_type.type_tag {
+    TypeTag::CompileTime(type_id) => {
+        println!("This is a compile-time type: {:?}", type_id);
+    }
+    TypeTag::RuntimeComposed(uuid) => {
+        println!("This is a runtime-composed type: {}", uuid);
+    }
+}
+```
+
+This allows systems to handle compile-time and runtime types differently. For example, you might serialize runtime-composed types with their full structure definition, while compile-time types only need their type name.
+
+### Use Cases
+
+**Modding and Scripting**
+```rust
+// A mod defines a new item type without recompiling the engine
+let sword_type = DynamicTypeBuilder::new("mod::EnchantedSword")
+    .add_field("damage", <f32>::type_info())
+    .add_field("enchantment", <String>::type_info())
+    .add_field("glow_color", <[f32; 4]>::type_info())
+    .build();
+
+// The mod can create instances and the game engine
+// can serialize/edit them without knowing about "EnchantedSword"
+```
+
+**Data-Driven Design**
+```rust
+// Game designers define entity types in JSON/YAML
+// The engine creates dynamic types at load time
+fn load_entity_definition(json: &str) -> Arc<DynamicTypeInfo> {
+    let definition: serde_json::Value = serde_json::from_str(json).unwrap();
+
+    let mut builder = DynamicTypeBuilder::new(
+        definition["name"].as_str().unwrap()
+    );
+
+    for field in definition["fields"].as_array().unwrap() {
+        let field_name = field["name"].as_str().unwrap();
+        let field_type = field["type"].as_str().unwrap();
+
+        // Look up the compile-time type by name
+        let type_info = RUNTIME_TYPE_REGISTRY.get_by_name(field_type).unwrap();
+        builder = builder.add_field(field_name, type_info);
+    }
+
+    builder.build()
+}
+```
+
+**Runtime Schema Evolution**
+```rust
+// Start with a simple type
+let mut player_stats_v1 = DynamicTypeBuilder::new("PlayerStats")
+    .add_field("health", <f32>::type_info())
+    .add_field("mana", <f32>::type_info())
+    .build();
+
+// Later, add more fields for a new game version
+let player_stats_v2 = DynamicTypeBuilder::new("PlayerStats")
+    .add_field("health", <f32>::type_info())
+    .add_field("mana", <f32>::type_info())
+    .add_field("stamina", <f32>::type_info())  // New field!
+    .add_field("shield", <f32>::type_info())    // New field!
+    .build();
+
+// Old save files with v1 structure can be migrated to v2
+// by copying common fields and initializing new ones to defaults
+```
+
+### Limitations of Dynamic Types
+
+While dynamic types are powerful, they have important limitations:
+
+1. **No methods or behavior**: Dynamic types only store data fields. They cannot have methods, trait implementations, or custom Drop logic.
+
+2. **Runtime overhead**: Accessing fields requires HashMap lookups and `Box<dyn Any>` downcasting. Don't use dynamic types in performance-critical hot paths.
+
+3. **No nested dynamic types**: A dynamic type's fields must reference compile-time types. You cannot create a field whose type is itself a dynamic type. However, you can work around this by serializing the nested dynamic value to JSON and storing it as a String field.
+
+4. **Memory layout not guaranteed stable**: While the layout calculation follows Rust's rules, don't rely on it for binary serialization or FFI. Use JSON or other schema-based formats.
+
+5. **Thread safety**: `DynamicValue` owns its data with `Box<dyn Any + Send + Sync>`, so it can be sent between threads, but the values themselves must be `Send + Sync`.
+
+### Best Practices
+
+**DO:**
+- ✅ Use dynamic types for plugin/mod systems where type definitions come from external sources
+- ✅ Use dynamic types for editor-created data types that don't need custom logic
+- ✅ Validate field values at the business logic level (e.g., health > 0)
+- ✅ Use JSON serialization for saving/loading dynamic values
+- ✅ Document which compile-time types are available as field types
+
+**DON'T:**
+- ❌ Use dynamic types in gameplay update loops or other hot paths
+- ❌ Store raw pointers or non-Send types in dynamic values
+- ❌ Assume field order or memory layout is stable across versions
+- ❌ Try to implement traits on dynamic types (use wrapper types instead)
+- ❌ Create deeply nested dynamic structures (flatten or use JSON fields)
+
+### Integration with EngineClass
+
+Dynamic types can be used alongside the `EngineClass` system for components:
+
+```rust
+// A wrapper component that contains a dynamic type
+#[derive(EngineClass, Reflectable, Clone)]
+pub struct CustomDataComponent {
+    #[property]
+    pub type_name: String,
+
+    // Store the dynamic value as JSON or in a separate storage system
+    // The EngineClass system works with compile-time types,
+    // but you can bridge to dynamic types through serialization
+}
+
+impl CustomDataComponent {
+    pub fn get_dynamic_value(&self) -> Option<DynamicValue> {
+        let type_info = DYNAMIC_TYPE_REGISTRY.get_by_name(&self.type_name)?;
+        Some(DynamicValue::new(type_info))
+    }
+}
+```
+
+This hybrid approach gives you the best of both worlds: compile-time type safety for engine systems, with runtime flexibility for user-defined data.

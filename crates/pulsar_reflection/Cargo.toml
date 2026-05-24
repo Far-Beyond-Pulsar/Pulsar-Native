@@ -10,6 +10,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
 pulsar_reflection_derive = { path = "../pulsar_reflection_derive" }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+dashmap = "6.0"
 
 [lints]
 workspace = true

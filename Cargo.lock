@@ -9101,12 +9101,14 @@ dependencies = [
 name = "pulsar_reflection"
 version = "0.1.0"
 dependencies = [
+ "dashmap 6.2.1",
  "inventory",
  "once_cell",
  "pulsar_reflection_derive",
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
