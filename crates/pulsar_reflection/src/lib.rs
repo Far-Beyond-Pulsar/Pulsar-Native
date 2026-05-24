@@ -22,6 +22,12 @@
 
 pub mod registry;
 
+// New runtime type reflection system
+pub mod runtime_types;
+pub mod runtime_registry;
+pub mod type_traits;
+pub mod json_serializer;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::any::Any;
@@ -33,6 +39,15 @@ pub use registry::{EngineClassRegistration, EngineClassRegistry, REGISTRY};
 
 // Re-export inventory for derive macro
 pub use inventory;
+
+// Re-export runtime type system
+pub use runtime_types::{FieldInfo, RuntimeTypeInfo, TypeStructure, WrapperType};
+pub use runtime_registry::{RuntimeTypeRegistration, RuntimeTypeRegistry, RUNTIME_TYPE_REGISTRY};
+pub use type_traits::{Reflectable, ReflectError, ReflectResult, TypeDeserializer, TypeSerializer};
+pub use json_serializer::{JsonDeserializer, JsonSerializer};
+
+// Re-export derive macro
+pub use pulsar_reflection_derive::Reflectable;
 
 /// Trait for component-owned projection of reflection data into scene snapshot props.
 ///
@@ -198,6 +213,8 @@ pub trait EngineClass: Any + Send + Sync {
 ///
 /// Contains all information needed to display and edit a property in the UI,
 /// including getters/setters, type information, and constraints.
+///
+/// Now uses runtime type reflection instead of enum-based PropertyType!
 pub struct PropertyMetadata {
     /// Field name (e.g., "mass")
     pub name: &'static str,
@@ -208,14 +225,19 @@ pub struct PropertyMetadata {
     /// Optional category for grouping (e.g., "Physics", "Rendering")
     pub category: Option<&'static str>,
 
-    /// Type information for UI generation
-    pub property_type: PropertyType,
+    /// Runtime type information (replaces PropertyType enum)
+    pub type_info: &'static RuntimeTypeInfo,
 
-    /// Getter closure to read current value
-    pub getter: Box<dyn Fn(&dyn EngineClass) -> PropertyValue + Send + Sync>,
+    /// Getter closure to read current value (returns type-erased Any)
+    pub getter: Box<dyn Fn(&dyn EngineClass) -> Box<dyn Any> + Send + Sync>,
 
-    /// Setter closure to write new value
-    pub setter: Box<dyn Fn(&mut dyn EngineClass, PropertyValue) + Send + Sync>,
+    /// Setter closure to write new value (accepts type-erased Any)
+    pub setter: Box<dyn Fn(&mut dyn EngineClass, Box<dyn Any>) + Send + Sync>,
+
+    /// DEPRECATED: Legacy PropertyType for backward compatibility
+    /// This will be removed in a future version
+    #[deprecated(note = "Use type_info instead - PropertyType enum is being phased out")]
+    pub legacy_property_type: Option<PropertyType>,
 }
 
 impl fmt::Debug for PropertyMetadata {
@@ -224,8 +246,77 @@ impl fmt::Debug for PropertyMetadata {
             .field("name", &self.name)
             .field("display_name", &self.display_name)
             .field("category", &self.category)
-            .field("property_type", &self.property_type)
+            .field("type_info", &self.type_info)
             .finish()
+    }
+}
+
+impl PropertyMetadata {
+    /// Synthesize a legacy PropertyType for backward compatibility
+    ///
+    /// DEPRECATED: This method exists only for gradual migration.
+    /// New code should use `type_info` directly.
+    #[deprecated(note = "Use type_info instead - PropertyType enum is being removed")]
+    #[allow(deprecated)]
+    pub fn synthesize_legacy_type(&self) -> PropertyType {
+        use std::any::TypeId;
+
+        match &self.type_info.structure {
+            TypeStructure::Primitive if self.type_info.type_id == TypeId::of::<f32>() => {
+                PropertyType::F32 {
+                    min: None,
+                    max: None,
+                    step: None,
+                }
+            }
+            TypeStructure::Primitive if self.type_info.type_id == TypeId::of::<i32>() => {
+                PropertyType::I32 {
+                    min: None,
+                    max: None,
+                }
+            }
+            TypeStructure::Primitive if self.type_info.type_id == TypeId::of::<bool>() => {
+                PropertyType::Bool
+            }
+            TypeStructure::String => PropertyType::String { max_length: None },
+            TypeStructure::Primitive if self.type_info.type_id == TypeId::of::<[f32; 3]>() => {
+                PropertyType::Vec3
+            }
+            TypeStructure::Primitive if self.type_info.type_id == TypeId::of::<[f32; 4]>() => {
+                PropertyType::Color
+            }
+            TypeStructure::Enum { variants } => PropertyType::Enum {
+                variants: variants.to_vec(),
+            },
+            TypeStructure::Wrapper {
+                wrapper_kind: WrapperType::Vec,
+                inner,
+            } => {
+                // Recursively synthesize for inner type
+                let inner_meta = PropertyMetadata {
+                    name: "",
+                    display_name: String::new(),
+                    category: None,
+                    type_info: inner,
+                    getter: Box::new(|_| Box::new(())),
+                    setter: Box::new(|_, _| {}),
+                    legacy_property_type: None,
+                };
+                PropertyType::Vec {
+                    element_type: Box::new(inner_meta.synthesize_legacy_type()),
+                }
+            }
+            TypeStructure::Struct { .. } => {
+                // Default to Component
+                PropertyType::Component {
+                    class_name: self.type_info.type_name,
+                }
+            }
+            _ => {
+                // Fallback to String for unknown types
+                PropertyType::String { max_length: None }
+            }
+        }
     }
 }
 
@@ -359,6 +450,114 @@ impl PropertyValue {
     }
 }
 
+// Primitive type registrations
+use std::any::TypeId;
+
+// Register f32
+static F32_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<f32>(),
+    type_name: "f32",
+    size: std::mem::size_of::<f32>(),
+    align: std::mem::align_of::<f32>(),
+    structure: TypeStructure::Primitive,
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &F32_TYPE_INFO,
+    }
+}
+
+// Register i32
+static I32_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<i32>(),
+    type_name: "i32",
+    size: std::mem::size_of::<i32>(),
+    align: std::mem::align_of::<i32>(),
+    structure: TypeStructure::Primitive,
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &I32_TYPE_INFO,
+    }
+}
+
+// Register u64
+static U64_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<u64>(),
+    type_name: "u64",
+    size: std::mem::size_of::<u64>(),
+    align: std::mem::align_of::<u64>(),
+    structure: TypeStructure::Primitive,
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &U64_TYPE_INFO,
+    }
+}
+
+// Register bool
+static BOOL_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<bool>(),
+    type_name: "bool",
+    size: std::mem::size_of::<bool>(),
+    align: std::mem::align_of::<bool>(),
+    structure: TypeStructure::Primitive,
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &BOOL_TYPE_INFO,
+    }
+}
+
+// Register String
+static STRING_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<String>(),
+    type_name: "String",
+    size: std::mem::size_of::<String>(),
+    align: std::mem::align_of::<String>(),
+    structure: TypeStructure::String,
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &STRING_TYPE_INFO,
+    }
+}
+
+// Register [f32; 3] (Vec3)
+static VEC3_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<[f32; 3]>(),
+    type_name: "[f32; 3]",
+    size: std::mem::size_of::<[f32; 3]>(),
+    align: std::mem::align_of::<[f32; 3]>(),
+    structure: TypeStructure::Primitive, // Treat as primitive for simplicity
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &VEC3_TYPE_INFO,
+    }
+}
+
+// Register [f32; 4] (Color)
+static COLOR_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<[f32; 4]>(),
+    type_name: "[f32; 4]",
+    size: std::mem::size_of::<[f32; 4]>(),
+    align: std::mem::align_of::<[f32; 4]>(),
+    structure: TypeStructure::Primitive, // Treat as primitive for simplicity
+};
+
+inventory::submit! {
+    RuntimeTypeRegistration {
+        type_info: &COLOR_TYPE_INFO,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,5 +570,106 @@ mod tests {
 
         let vec3_val = PropertyValue::Vec3([1.0, 2.0, 3.0]);
         assert_eq!(vec3_val.as_vec3(), Some([1.0, 2.0, 3.0]));
+    }
+
+    #[test]
+    fn test_runtime_type_registry_primitives() {
+        // Test that primitive types are registered
+        let registry = &*RUNTIME_TYPE_REGISTRY;
+
+        assert!(registry.get::<f32>().is_some());
+        assert!(registry.get::<i32>().is_some());
+        assert!(registry.get::<bool>().is_some());
+        assert!(registry.get::<String>().is_some());
+        assert!(registry.get::<[f32; 3]>().is_some());
+        assert!(registry.get::<[f32; 4]>().is_some());
+
+        // Verify f32 metadata
+        let f32_info = registry.get::<f32>().unwrap();
+        assert_eq!(f32_info.type_name, "f32");
+        assert_eq!(f32_info.size, 4);
+        assert!(f32_info.is_primitive());
+    }
+
+    // Test the Reflectable derive macro
+    #[derive(Reflectable, Clone, Debug)]
+    struct TestStruct {
+        value: f32,
+        count: i32,
+        active: bool,
+    }
+
+    #[test]
+    fn test_reflectable_derive_struct() {
+        // Test that the derived type is registered
+        let registry = &*RUNTIME_TYPE_REGISTRY;
+        let type_info = registry.get::<TestStruct>();
+        assert!(type_info.is_some());
+
+        let type_info = type_info.unwrap();
+        assert_eq!(type_info.type_name, "TestStruct");
+        assert!(type_info.is_struct());
+
+        // Check fields
+        let fields = type_info.fields().unwrap();
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].name, "value");
+        assert_eq!(fields[1].name, "count");
+        assert_eq!(fields[2].name, "active");
+
+        // Test serialization
+        let test_instance = TestStruct {
+            value: 42.5,
+            count: 10,
+            active: true,
+        };
+
+        let mut serializer = JsonSerializer::new();
+        test_instance.serialize(&mut serializer).unwrap();
+        let json = serializer.into_json();
+
+        assert_eq!(json["value"], 42.5);
+        assert_eq!(json["count"], 10);
+        assert_eq!(json["active"], true);
+    }
+
+    #[derive(Reflectable, Clone, Debug, PartialEq)]
+    enum TestEnum {
+        Option1,
+        Option2,
+        Option3,
+    }
+
+    #[test]
+    fn test_reflectable_derive_enum() {
+        // Test that the derived enum is registered
+        let registry = &*RUNTIME_TYPE_REGISTRY;
+        let type_info = registry.get::<TestEnum>();
+        assert!(type_info.is_some());
+
+        let type_info = type_info.unwrap();
+        assert_eq!(type_info.type_name, "TestEnum");
+        assert!(type_info.is_enum());
+
+        // Check variants
+        let variants = type_info.enum_variants().unwrap();
+        assert_eq!(variants.len(), 3);
+        assert_eq!(variants[0], "Option1");
+        assert_eq!(variants[1], "Option2");
+        assert_eq!(variants[2], "Option3");
+
+        // Test serialization
+        let test_value = TestEnum::Option2;
+        let mut serializer = JsonSerializer::new();
+        test_value.serialize(&mut serializer).unwrap();
+        let json = serializer.into_json();
+
+        // Should serialize as variant index (1)
+        assert_eq!(json, 1);
+
+        // Test deserialization
+        let mut deserializer = JsonDeserializer::new(serde_json::json!(1));
+        let deserialized = TestEnum::deserialize(&mut deserializer).unwrap();
+        assert_eq!(deserialized, TestEnum::Option2);
     }
 }

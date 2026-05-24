@@ -9103,9 +9103,19 @@ version = "0.1.0"
 dependencies = [
  "inventory",
  "once_cell",
+ "pulsar_reflection_derive",
  "serde",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_reflection_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
