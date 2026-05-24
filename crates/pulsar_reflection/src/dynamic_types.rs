@@ -176,17 +176,22 @@ impl DynamicValue {
 
     /// Get a field value with automatic downcasting
     ///
+    /// Returns a cloned copy of the field value. This avoids lifetime issues
+    /// and allows the value to be used without holding a borrow on the DynamicValue.
+    ///
     /// # Errors
     /// Returns an error if:
     /// - The field doesn't exist
     /// - The field hasn't been set yet
     /// - The type T doesn't match the field's actual type
-    pub fn get_field_typed<T: 'static>(&self, field_name: &str) -> Result<&T, String> {
+    /// - The type T doesn't implement Clone
+    pub fn get_field_typed<T: 'static + Clone>(&self, field_name: &str) -> Result<T, String> {
         let any_ref = self.get_field(field_name)
             .ok_or_else(|| format!("Field '{}' not found or not set", field_name))?;
 
         any_ref.downcast_ref::<T>()
             .ok_or_else(|| format!("Failed to downcast field '{}' to requested type", field_name))
+            .map(|val| val.clone())
     }
 
     /// Get a mutable field value with automatic downcasting
@@ -202,6 +207,32 @@ impl DynamicValue {
 
         any_ref.downcast_mut::<T>()
             .ok_or_else(|| format!("Failed to downcast field '{}' to requested type", field_name))
+    }
+
+    /// Modify a field value using a closure
+    ///
+    /// This is a convenience method that gets the current value, applies a function to it,
+    /// and sets the new value back. This is more ergonomic than get + modify + set.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - The field doesn't exist
+    /// - The field hasn't been set yet
+    /// - The type T doesn't match the field's actual type
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Increment a counter field
+    /// value.modify_field("counter", |x: f32| x + 1.0)?;
+    /// ```
+    pub fn modify_field<T, F>(&mut self, field_name: &str, f: F) -> Result<(), String>
+    where
+        T: 'static + Clone + Send + Sync,
+        F: FnOnce(T) -> T,
+    {
+        let current = self.get_field_typed::<T>(field_name)?;
+        let new_value = f(current);
+        self.set_field(field_name, Box::new(new_value))
     }
 
     /// Get all field names that have been set
@@ -385,8 +416,8 @@ mod tests {
         let x = value.get_field_typed::<f32>("x").unwrap();
         let y = value.get_field_typed::<f32>("y").unwrap();
 
-        assert_eq!(*x, 10.0);
-        assert_eq!(*y, 20.0);
+        assert_eq!(x, 10.0);
+        assert_eq!(y, 20.0);
     }
 
     #[test]

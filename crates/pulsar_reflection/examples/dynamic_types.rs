@@ -233,11 +233,11 @@ fn example_schema_evolution() {
     // Copy common fields
     if let Ok(health) = old_stats.get_field_typed::<f32>("health") {
         new_stats
-            .set_field("health", Box::new(*health))
+            .set_field("health", Box::new(health))
             .unwrap();
     }
     if let Ok(mana) = old_stats.get_field_typed::<f32>("mana") {
-        new_stats.set_field("mana", Box::new(*mana)).unwrap();
+        new_stats.set_field("mana", Box::new(mana)).unwrap();
     }
 
     // Initialize new fields with defaults
