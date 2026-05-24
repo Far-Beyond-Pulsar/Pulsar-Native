@@ -37,7 +37,7 @@ plugin_manager = { path = "../../crates/plugin_manager" }
 plugin_editor_api = { path = "../../crates/plugin_editor_api" }
 
 # Built-in plugins
-blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "133b0715b8a0c363a3b96afc7468ec095efb4197" }
+blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "6a5e918d11c1485caf1d6124e87de453ee4c3ba4" }
 script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "8190e6c13dbaf9a758ec6eb3a1070259afb70781" }
 serde = { version = "1.0", features = ["derive"] }
 schemars = "1.0"
