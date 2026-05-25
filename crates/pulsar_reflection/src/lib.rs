@@ -276,6 +276,55 @@ impl fmt::Debug for PropertyMetadata {
     }
 }
 
+/// Classification for blueprint-callable method behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MethodType {
+    Pure,
+    Fn,
+    ControlFlow,
+}
+
+/// Metadata for a single method parameter.
+#[derive(Debug, Clone)]
+pub struct MethodParameter {
+    pub name: &'static str,
+    pub type_info: &'static RuntimeTypeInfo,
+}
+
+/// Metadata for a method return type.
+#[derive(Debug, Clone)]
+pub struct MethodReturnType {
+    pub type_info: &'static RuntimeTypeInfo,
+}
+
+pub type MethodArgs = Vec<Box<dyn Any>>;
+pub type MethodReturnValue = Option<Box<dyn Any>>;
+pub type MethodCaller = Box<dyn Fn(&mut dyn EngineClass, MethodArgs) -> MethodReturnValue + Send + Sync>;
+
+/// Metadata for a blueprint-callable method.
+pub struct MethodMetadata {
+    pub name: &'static str,
+    pub display_name: String,
+    pub category: Option<&'static str>,
+    pub params: Vec<MethodParameter>,
+    pub return_type: Option<MethodReturnType>,
+    pub method_type: MethodType,
+    pub caller: MethodCaller,
+}
+
+impl fmt::Debug for MethodMetadata {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MethodMetadata")
+            .field("name", &self.name)
+            .field("display_name", &self.display_name)
+            .field("category", &self.category)
+            .field("params", &self.params)
+            .field("return_type", &self.return_type)
+            .field("method_type", &self.method_type)
+            .finish()
+    }
+}
+
 // Primitive type registrations are now in the prims module
 
 #[cfg(test)]
