@@ -3,7 +3,7 @@
 //! Uses the `inventory` crate to auto-discover all types marked with
 //! `#[derive(EngineClass)]` at link time (zero runtime cost).
 
-use crate::EngineClass;
+use crate::{EngineClass, MethodMetadata};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 
@@ -18,6 +18,17 @@ pub struct EngineClassRegistration {
 
 // Collect all engine class registrations at link time
 inventory::collect!(EngineClassRegistration);
+
+/// Registration entry for component methods
+///
+/// Automatically submitted by the `#[component_methods]` macro via `inventory::submit!`
+pub struct ComponentMethodRegistration {
+    pub class_name: &'static str,
+    pub methods: fn() -> Vec<MethodMetadata>,
+}
+
+// Collect all component method registrations at link time
+inventory::collect!(ComponentMethodRegistration);
 
 /// Entry stored in the registry
 struct RegistryEntry {
@@ -111,6 +122,36 @@ impl EngineClassRegistry {
     /// Check if registry is empty
     pub fn is_empty(&self) -> bool {
         self.classes.is_empty()
+    }
+
+    /// Get all methods for a component class
+    ///
+    /// Returns method metadata for both auto-generated property accessors
+    /// and manually marked methods. Returns None if class is not registered.
+    pub fn get_methods(&self, class_name: &str) -> Option<Vec<MethodMetadata>> {
+        // Look up the class
+        if !self.has_class(class_name) {
+            return None;
+        }
+
+        // Collect methods from all matching registrations in inventory
+        let mut all_methods = Vec::new();
+        for registration in inventory::iter::<ComponentMethodRegistration> {
+            if registration.class_name == class_name {
+                all_methods.extend((registration.methods)());
+            }
+        }
+
+        Some(all_methods)
+    }
+
+    /// Get a specific method by name from a component class
+    ///
+    /// Returns None if the class or method is not found.
+    pub fn get_method(&self, class_name: &str, method_name: &str) -> Option<MethodMetadata> {
+        self.get_methods(class_name)?
+            .into_iter()
+            .find(|m| m.name == method_name)
     }
 }
 

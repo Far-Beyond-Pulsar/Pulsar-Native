@@ -41,7 +41,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 // Re-export for convenience
-pub use registry::{EngineClassRegistration, EngineClassRegistry, REGISTRY};
+pub use registry::{ComponentMethodRegistration, EngineClassRegistration, EngineClassRegistry, REGISTRY};
 
 // Re-export inventory for derive macro
 pub use inventory;
@@ -211,6 +211,17 @@ pub trait EngineClass: Any + Send + Sync {
     ///
     /// Returns a vector of PropertyMetadata describing each field marked with #[property]
     fn get_properties(&self) -> Vec<PropertyMetadata>;
+
+    /// Get reflection metadata for all blueprint-callable methods
+    ///
+    /// Returns a vector of MethodMetadata describing each method exposed to blueprints.
+    /// This includes both auto-generated property accessors and manually marked methods.
+    fn get_methods() -> Vec<MethodMetadata>
+    where
+        Self: Sized,
+    {
+        Vec::new() // Default: no methods
+    }
 
     /// Create default instance (used by object creation menu)
     fn create_default() -> Box<dyn EngineClass>
