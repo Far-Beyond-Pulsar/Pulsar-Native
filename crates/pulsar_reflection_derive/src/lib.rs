@@ -172,11 +172,26 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
         ));
     }
 
-    let inferred = infer_primitive_alias_config(&item_type.ty)?;
-    let serialize_method = override_serialize.unwrap_or(inferred.serialize_method);
-    let deserialize_method = override_deserialize.unwrap_or(inferred.deserialize_method);
-    let structure = override_structure.unwrap_or(inferred.structure);
-    let _clone_mode = override_clone.unwrap_or(inferred.clone_mode);
+    // Only try to infer if we don't have custom serialize/deserialize functions
+    let needs_inference = override_serialize_json_with.is_none() || override_deserialize_json_with.is_none();
+
+    let (serialize_method, deserialize_method, structure, _clone_mode) = if needs_inference {
+        let inferred = infer_primitive_alias_config(&item_type.ty)?;
+        (
+            override_serialize.unwrap_or(inferred.serialize_method),
+            override_deserialize.unwrap_or(inferred.deserialize_method),
+            override_structure.unwrap_or(inferred.structure),
+            override_clone.unwrap_or(inferred.clone_mode),
+        )
+    } else {
+        // When custom functions are provided, use defaults
+        (
+            override_serialize.unwrap_or_else(|| format_ident!("serialize_generic")),
+            override_deserialize.unwrap_or_else(|| format_ident!("deserialize_generic")),
+            override_structure.unwrap_or_else(|| format_ident!("Primitive")),
+            override_clone.unwrap_or(PrimitiveCloneMode::Clone),
+        )
+    };
 
     let alias_ident = &item_type.ident;
     let target_ty = &item_type.ty;
