@@ -20,9 +20,21 @@
 //! }
 //! ```
 
+extern crate self as pulsar_reflection;
+
 pub mod registry;
 
-use serde::{Deserialize, Serialize};
+// New runtime type reflection system
+pub mod runtime_types;
+pub mod runtime_registry;
+pub mod type_traits;
+pub mod json_codec;
+pub mod dynamic_types;
+pub mod type_renderer;
+
+// Primitive type implementations
+pub mod prims;
+
 use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
@@ -33,6 +45,27 @@ pub use registry::{ComponentMethodRegistration, EngineClassRegistration, EngineC
 
 // Re-export inventory for derive macro
 pub use inventory;
+
+// Re-export runtime type system
+pub use runtime_types::{FieldInfo, RuntimeTypeInfo, TypeStructure, WrapperType};
+pub use runtime_registry::{RuntimeTypeRegistration, RuntimeTypeRegistry, RUNTIME_TYPE_REGISTRY};
+pub use type_traits::{Reflectable, ReflectError, ReflectResult, TypeDeserializer, TypeSerializer};
+pub use json_codec::{JsonDeserializer, JsonSerializer};
+
+// Re-export dynamic type system
+pub use dynamic_types::{
+    DynamicFieldInfo, DynamicTypeBuilder, DynamicTypeInfo, DynamicTypeRegistry,
+    DynamicValue, TypeTag, DYNAMIC_TYPE_REGISTRY,
+};
+
+// Re-export type renderer system
+pub use type_renderer::{
+    RenderResult, TypeRenderer, TypeRendererRegistration, TypeRendererRegistry,
+    register_type_renderer, TYPE_RENDERER_REGISTRY,
+};
+
+// Re-export derive macro
+pub use pulsar_reflection_derive::{pulsar_type, Reflectable};
 
 /// Trait for component-owned projection of reflection data into scene snapshot props.
 ///
@@ -209,6 +242,8 @@ pub trait EngineClass: Any + Send + Sync {
 ///
 /// Contains all information needed to display and edit a property in the UI,
 /// including getters/setters, type information, and constraints.
+///
+/// Now uses runtime type reflection instead of enum-based PropertyType!
 pub struct PropertyMetadata {
     /// Field name (e.g., "mass")
     pub name: &'static str,
@@ -219,14 +254,15 @@ pub struct PropertyMetadata {
     /// Optional category for grouping (e.g., "Physics", "Rendering")
     pub category: Option<&'static str>,
 
-    /// Type information for UI generation
-    pub property_type: PropertyType,
+    /// Runtime type information (replaces PropertyType enum)
+    pub type_info: &'static RuntimeTypeInfo,
 
-    /// Getter closure to read current value
-    pub getter: Box<dyn Fn(&dyn EngineClass) -> PropertyValue + Send + Sync>,
+    /// Getter closure to read current value (returns type-erased Any)
+    pub getter: Box<dyn Fn(&dyn EngineClass) -> Box<dyn Any> + Send + Sync>,
 
-    /// Setter closure to write new value
-    pub setter: Box<dyn Fn(&mut dyn EngineClass, PropertyValue) + Send + Sync>,
+    /// Setter closure to write new value (accepts type-erased Any)
+    pub setter: Box<dyn Fn(&mut dyn EngineClass, Box<dyn Any>) + Send + Sync>,
+
 }
 
 impl fmt::Debug for PropertyMetadata {
@@ -235,222 +271,37 @@ impl fmt::Debug for PropertyMetadata {
             .field("name", &self.name)
             .field("display_name", &self.display_name)
             .field("category", &self.category)
-            .field("property_type", &self.property_type)
+            .field("type_info", &self.type_info)
             .finish()
     }
 }
 
-/// Metadata for a blueprint-callable method on a component
-///
-/// Contains all information needed to generate blueprint nodes for calling methods,
-/// including parameter/return types, execution type, and a caller closure for runtime invocation.
-pub struct MethodMetadata {
-    /// Method name (e.g., "apply_impulse")
-    pub name: &'static str,
-
-    /// Display name for UI (e.g., "Apply Impulse")
-    pub display_name: String,
-
-    /// Optional category for grouping (e.g., "Physics", "Rendering")
-    pub category: Option<&'static str>,
-
-    /// Parameters for the method
-    pub params: Vec<MethodParameter>,
-
-    /// Return type (None for void methods)
-    pub return_type: Option<MethodReturnType>,
-
-    /// Method execution type (affects blueprint node pins)
-    pub method_type: MethodType,
-
-    /// Caller closure to invoke the method via reflection
-    pub caller: Box<dyn Fn(&mut dyn EngineClass, Vec<PropertyValue>) -> Option<PropertyValue> + Send + Sync>,
-}
-
-impl fmt::Debug for MethodMetadata {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MethodMetadata")
-            .field("name", &self.name)
-            .field("display_name", &self.display_name)
-            .field("category", &self.category)
-            .field("params", &self.params)
-            .field("return_type", &self.return_type)
-            .field("method_type", &self.method_type)
-            .finish()
-    }
-}
-
-/// Parameter metadata for a method
-#[derive(Clone, Debug)]
-pub struct MethodParameter {
-    /// Parameter name
-    pub name: &'static str,
-
-    /// Parameter type information
-    pub param_type: PropertyType,
-}
-
-/// Return type metadata for a method
-#[derive(Clone, Debug)]
-pub struct MethodReturnType {
-    /// Return type information
-    pub return_type: PropertyType,
-}
-
-/// Method execution type (determines blueprint node behavior)
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum MethodType {
-    /// Pure function - no side effects, no execution pins
-    Pure,
-
-    /// Function with side effects - requires execution flow pins
-    Fn,
-
-    /// Control flow node - can branch execution (future feature)
-    ControlFlow,
-}
-
-/// Property type information for UI generation
-///
-/// Each variant contains metadata specific to that type (constraints, options, etc.)
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PropertyType {
-    /// 32-bit floating point with optional constraints
-    F32 {
-        min: Option<f32>,
-        max: Option<f32>,
-        step: Option<f32>,
-    },
-
-    /// 32-bit integer with optional constraints
-    I32 { min: Option<i32>, max: Option<i32> },
-
-    /// Boolean (checkbox)
-    Bool,
-
-    /// String with optional max length
-    String { max_length: Option<usize> },
-
-    /// 3D vector [x, y, z]
-    Vec3,
-
-    /// RGBA color [r, g, b, a]
-    Color,
-
-    /// Enum with a list of possible variants
-    Enum { variants: Vec<&'static str> },
-
-    /// Dynamic array of elements
-    Vec { element_type: Box<PropertyType> },
-
-    /// Nested component
-    Component { class_name: &'static str },
-}
-
-/// Runtime property value (for generic getter/setter)
-///
-/// This enum wraps all possible property value types for dynamic access.
-/// Used by getters/setters that operate on trait objects.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub enum PropertyValue {
-    F32(f32),
-    I32(i32),
-    Bool(bool),
-    String(String),
-    Vec3([f32; 3]),
-    Color([f32; 4]),
-
-    /// Index into enum variants (e.g., 0 = first variant)
-    EnumVariant(usize),
-
-    /// Vec<T> contents
-    Vec(Vec<PropertyValue>),
-
-    /// Nested component (boxed trait object not serializable, so we store class name + data)
-    Component {
-        class_name: String,
-        // NOTE: Actual component data would be serialized separately
-        // This is just a placeholder for the reflection system
-    },
-}
-
-impl PropertyValue {
-    /// Try to extract f32 value
-    pub fn as_f32(&self) -> Option<f32> {
-        match self {
-            PropertyValue::F32(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract i32 value
-    pub fn as_i32(&self) -> Option<i32> {
-        match self {
-            PropertyValue::I32(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract bool value
-    pub fn as_bool(&self) -> Option<bool> {
-        match self {
-            PropertyValue::Bool(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract string value
-    pub fn as_string(&self) -> Option<&str> {
-        match self {
-            PropertyValue::String(v) => Some(v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract Vec3 value
-    pub fn as_vec3(&self) -> Option<[f32; 3]> {
-        match self {
-            PropertyValue::Vec3(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract Color value
-    pub fn as_color(&self) -> Option<[f32; 4]> {
-        match self {
-            PropertyValue::Color(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract enum variant index
-    pub fn as_enum_variant(&self) -> Option<usize> {
-        match self {
-            PropertyValue::EnumVariant(v) => Some(*v),
-            _ => None,
-        }
-    }
-
-    /// Try to extract vec of values
-    pub fn as_vec(&self) -> Option<&[PropertyValue]> {
-        match self {
-            PropertyValue::Vec(v) => Some(v),
-            _ => None,
-        }
-    }
-}
+// Primitive type registrations are now in the prims module
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_property_value_as_methods() {
-        let f32_val = PropertyValue::F32(42.0);
-        assert_eq!(f32_val.as_f32(), Some(42.0));
-        assert_eq!(f32_val.as_i32(), None);
+    fn test_runtime_type_registry_primitives() {
+        // Test that primitive types are registered
+        let registry = &*RUNTIME_TYPE_REGISTRY;
 
-        let vec3_val = PropertyValue::Vec3([1.0, 2.0, 3.0]);
-        assert_eq!(vec3_val.as_vec3(), Some([1.0, 2.0, 3.0]));
+        assert!(registry.get::<f32>().is_some());
+        assert!(registry.get::<i32>().is_some());
+        assert!(registry.get::<bool>().is_some());
+        assert!(registry.get::<String>().is_some());
+        assert!(registry.get::<[f32; 3]>().is_some());
+        assert!(registry.get::<[f32; 4]>().is_some());
+
+        // Verify f32 metadata
+        let f32_info = registry.get::<f32>().unwrap();
+        assert_eq!(f32_info.type_name, "f32");
+        assert_eq!(f32_info.size, 4);
+        assert!(f32_info.is_primitive());
     }
+
+    // NOTE: Tests using #[derive(Reflectable)] cannot be placed inside this crate
+    // due to the absolute path resolution issue. The derive macro works correctly
+    // when used from external crates. See the integration tests for usage examples.
 }

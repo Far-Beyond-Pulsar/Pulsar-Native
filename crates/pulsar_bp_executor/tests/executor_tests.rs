@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
-    PinType, Position, PropertyValue,
+    PinType, Position,
 };
 use pbgc::{compile_graph_to_bytecode, BpProgram};
 use pulsar_bp_executor::BpExecutor;
@@ -82,11 +82,11 @@ fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -122,11 +122,11 @@ fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -162,11 +162,11 @@ fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -211,15 +211,15 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     if let Some(v) = t {
         n.properties
-            .insert(format!("{id}_t"), PropertyValue::Number(v));
+            .insert(format!("{id}_t"), serde_json::json!(v));
     }
     n
 }
@@ -255,11 +255,11 @@ fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
     ));
     if let Some(v) = a {
         n.properties
-            .insert(format!("{id}_a"), PropertyValue::Number(v));
+            .insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
         n.properties
-            .insert(format!("{id}_b"), PropertyValue::Number(v));
+            .insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -344,7 +344,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected as f64));
+        .insert(format!("{id}_x"), serde_json::json!(expected as f64));
     n
 }
 
@@ -396,9 +396,9 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         ),
     ));
     n.properties
-        .insert(format!("{id}_x"), PropertyValue::Number(expected));
+        .insert(format!("{id}_x"), serde_json::json!(expected));
     n.properties
-        .insert(format!("{id}_ep"), PropertyValue::Number(epsilon));
+        .insert(format!("{id}_ep"), serde_json::json!(epsilon));
     n
 }
 

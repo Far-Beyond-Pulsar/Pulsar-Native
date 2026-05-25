@@ -4,7 +4,7 @@
 //! that is used by both the level editor and blueprint prefab editor.
 
 use gpui::{prelude::*, *};
-use pulsar_reflection::{PropertyType, PropertyValue, REGISTRY};
+use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,67 +42,6 @@ impl Default for ReflectedPropertiesPanelConfig {
             show_component_list: false,
             component_list_renderer: None,
         }
-    }
-}
-
-// ============================================================================
-// Property Value Conversion Utilities
-// ============================================================================
-
-pub fn property_value_to_json(value: &PropertyValue) -> Value {
-    match value {
-        PropertyValue::F32(v) => Value::from(*v),
-        PropertyValue::I32(v) => Value::from(*v),
-        PropertyValue::Bool(v) => Value::from(*v),
-        PropertyValue::String(v) => Value::from(v.clone()),
-        PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
-        PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
-        PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-        PropertyValue::Vec(v) => {
-            Value::Array(v.iter().map(property_value_to_json).collect())
-        }
-        PropertyValue::Component { class_name, .. } => {
-            serde_json::json!({"class_name": class_name})
-        }
-    }
-}
-
-pub fn json_to_property_value(property_type: &PropertyType, json: &Value) -> Option<PropertyValue> {
-    match property_type {
-        PropertyType::F32 { .. } => json.as_f64().map(|v| PropertyValue::F32(v as f32)),
-        PropertyType::I32 { .. } => json.as_i64().map(|v| PropertyValue::I32(v as i32)),
-        PropertyType::Bool => json.as_bool().map(PropertyValue::Bool),
-        PropertyType::String { .. } => {
-            json.as_str().map(|s| PropertyValue::String(s.to_string()))
-        }
-        PropertyType::Vec3 => {
-            let arr = json.as_array()?;
-            if arr.len() != 3 {
-                return None;
-            }
-            let x = arr.first()?.as_f64()? as f32;
-            let y = arr.get(1)?.as_f64()? as f32;
-            let z = arr.get(2)?.as_f64()? as f32;
-            Some(PropertyValue::Vec3([x, y, z]))
-        }
-        PropertyType::Color => {
-            let arr = json.as_array()?;
-            if arr.len() != 4 {
-                return None;
-            }
-            let r = arr.first()?.as_f64()? as f32;
-            let g = arr.get(1)?.as_f64()? as f32;
-            let b = arr.get(2)?.as_f64()? as f32;
-            let a = arr.get(3)?.as_f64()? as f32;
-            Some(PropertyValue::Color([r, g, b, a]))
-        }
-        PropertyType::Enum { .. } => json
-            .as_u64()
-            .map(|v| PropertyValue::EnumVariant(v as usize)),
-        PropertyType::Vec { .. } => None,
-        PropertyType::Component { class_name } => Some(PropertyValue::Component {
-            class_name: class_name.to_string(),
-        }),
     }
 }
 
@@ -408,17 +347,17 @@ impl Default for PropertyStateManager {
 }
 
 // ============================================================================
-// Property Row Rendering
+// Runtime-Type-Aware Property Rendering (New Architecture)
 // ============================================================================
 
-/// Render a single property row with full type support including mesh fields
-pub fn render_property_row<V: 'static>(
+/// Render a property row using RuntimeTypeInfo directly, without PropertyType/PropertyValue bridge
+pub fn render_property_row_runtime<V: 'static>(
     id_prefix: &str,
     class_name: &str,
     display_name: &str,
     prop_name: &str,
-    property_type: &PropertyType,
-    value: &PropertyValue,
+    type_info: &'static RuntimeTypeInfo,
+    current_json: &Value,
     numeric_input: Option<Entity<InputState>>,
     color_picker: Option<Entity<ColorPickerState>>,
     mesh_picker: Option<Entity<MeshAssetPicker>>,
@@ -426,21 +365,47 @@ pub fn render_property_row<V: 'static>(
     on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App)>,
     cx: &Context<V>,
 ) -> AnyElement {
-    // ── Mesh Asset Field Handling ──
-    if matches!((property_type, value), (PropertyType::String { .. }, PropertyValue::String(v)) if prop_name == "mesh_asset")
-    {
-        if let (PropertyValue::String(v), Some(picker)) = (value, mesh_picker) {
-            let display = if v.is_empty() {
+    // PHASE 4: Custom Type Renderer Integration Point
+    //
+    // The TYPE_RENDERER_REGISTRY allows plugins to register custom property editors.
+    // Architecture note: The TypeRenderer trait is framework-agnostic (uses dyn Any),
+    // but GPUI requires returning AnyElement from render functions.
+    //
+    // Integration pattern for GPUI-based custom renderers:
+    // 1. Plugin implements TypeRenderer with render() method
+    // 2. The render() method accepts &mut dyn Any (downcast to GPUI context)
+    // 3. The method mutates the value and returns RenderResult::Changed/Unchanged
+    // 4. For GPUI integration, wrap the renderer in a GPUI-specific adapter that:
+    //    - Builds the UI elements
+    //    - Calls the renderer's render() on interaction
+    //    - Returns AnyElement to this function
+    //
+    // This check point allows future framework-specific renderer adapters without
+    // breaking the framework-agnostic pulsar_reflection crate.
+    let _has_custom_renderer = pulsar_reflection::TYPE_RENDERER_REGISTRY
+        .lock()
+        .ok()
+        .map(|registry| registry.has_renderer(type_info.type_id))
+        .unwrap_or(false);
+
+    // For now, fall through to built-in rendering. Custom renderers can be integrated
+    // via framework-specific extension traits or adapter patterns as needed.
+
+    // Special case: mesh_asset field (string property with specific name)
+    if prop_name == "mesh_asset" && type_info.is_string() {
+        if let Some(picker) = mesh_picker {
+            let path_str = current_json.as_str().unwrap_or("");
+            let display = if path_str.is_empty() {
                 "Select mesh asset…".to_string()
             } else {
-                std::path::Path::new(v)
+                std::path::Path::new(path_str)
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .unwrap_or(v)
+                    .unwrap_or(path_str)
                     .to_string()
             };
 
-            let thumb = picker.read(cx).thumbnail_for_path(v);
+            let thumb = picker.read(cx).thumbnail_for_path(path_str);
 
             let pop = Popover::<MeshAssetPicker>::new(format!(
                 "mesh-asset-picker-{}-{}",
@@ -498,62 +463,175 @@ pub fn render_property_row<V: 'static>(
         }
     }
 
-    // ── Standard Property Type Handling ──
-    match (property_type, value) {
-        (PropertyType::F32 { .. }, PropertyValue::F32(v)) => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(h_flex().items_center().gap_2().child(
-                if let Some(input) = numeric_input {
-                    ui::input::NumberInput::new(&input)
-                        .xsmall()
-                        .w(px(92.0))
+    // Render based on RuntimeTypeInfo structure
+    match &type_info.structure {
+        TypeStructure::Primitive => {
+            match type_info.base_name() {
+                "f32" => {
+                    let value = current_json.as_f64().unwrap_or(0.0) as f32;
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(h_flex().items_center().gap_2().child(
+                            if let Some(input) = numeric_input {
+                                ui::input::NumberInput::new(&input)
+                                    .xsmall()
+                                    .w(px(92.0))
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("{:.3}", value))
+                                    .into_any_element()
+                            },
+                        ))
                         .into_any_element()
-                } else {
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(format!("{:.3}", v))
+                }
+                "i32" => {
+                    let value = current_json.as_i64().unwrap_or(0) as i32;
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(h_flex().items_center().gap_2().child(
+                            if let Some(input) = numeric_input {
+                                ui::input::NumberInput::new(&input)
+                                    .xsmall()
+                                    .w(px(92.0))
+                                    .into_any_element()
+                            } else {
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(value.to_string())
+                                    .into_any_element()
+                            },
+                        ))
                         .into_any_element()
-                },
-            ))
-            .into_any_element(),
-        (PropertyType::I32 { .. }, PropertyValue::I32(v)) => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(h_flex().items_center().gap_2().child(
-                if let Some(input) = numeric_input {
-                    ui::input::NumberInput::new(&input)
-                        .xsmall()
-                        .w(px(92.0))
+                }
+                "bool" => {
+                    let value = current_json.as_bool().unwrap_or(false);
+                    let on_bool_toggle = on_bool_toggle.clone();
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(
+                            ui::switch::Switch::new(format!("toggle-{id_prefix}-{class_name}-{prop_name}"))
+                                .checked(value)
+                                .small()
+                                .on_click(move |checked, window, cx| {
+                                    (on_bool_toggle)(*checked, window, cx);
+                                }),
+                        )
                         .into_any_element()
-                } else {
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(v.to_string())
+                }
+                "[f32; 4]" => {
+                    // Color type
+                    if let Some(picker_state) = color_picker {
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(display_name.to_string()),
+                            )
+                            .child(ui::color_picker::ColorPicker::new(&picker_state).anchor(Corner::BottomRight))
+                            .into_any_element()
+                    } else {
+                        h_flex()
+                            .w_full()
+                            .justify_between()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(display_name.to_string()),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().foreground)
+                                    .child(format!("{:?}", current_json)),
+                            )
+                            .into_any_element()
+                    }
+                }
+                "[f32; 3]" => {
+                    // Vec3 type - display as readonly for now
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().foreground)
+                                .child(format!("{:?}", current_json)),
+                        )
                         .into_any_element()
-                },
-            ))
-            .into_any_element(),
-        (PropertyType::Bool, PropertyValue::Bool(v)) => {
-            let on_bool_toggle = on_bool_toggle.clone();
+                }
+                _ => {
+                    // Unsupported primitive - show error
+                    h_flex()
+                        .w_full()
+                        .justify_between()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(display_name.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().danger)
+                                .child(format!("Unsupported primitive: {}", type_info.base_name())),
+                        )
+                        .into_any_element()
+                }
+            }
+        }
+        TypeStructure::String => {
+            let value = current_json.as_str().unwrap_or("");
             h_flex()
                 .w_full()
                 .justify_between()
@@ -566,17 +644,16 @@ pub fn render_property_row<V: 'static>(
                         .child(display_name.to_string()),
                 )
                 .child(
-                    ui::switch::Switch::new(format!("toggle-{id_prefix}-{class_name}-{prop_name}"))
-                        .checked(*v)
-                        .small()
-                        .on_click(move |checked, window, cx| {
-                            (on_bool_toggle)(*checked, window, cx);
-                        }),
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().foreground)
+                        .child(value.to_string()),
                 )
                 .into_any_element()
         }
-        (PropertyType::Enum { variants }, PropertyValue::EnumVariant(current_ix)) => {
-            let selected_ix = (*current_ix).min(variants.len().saturating_sub(1));
+        TypeStructure::Enum { variants } => {
+            let current_ix = current_json.as_u64().unwrap_or(0) as usize;
+            let selected_ix = current_ix.min(variants.len().saturating_sub(1));
             let label = variants
                 .get(selected_ix)
                 .map(|v| (*v).to_string())
@@ -617,179 +694,47 @@ pub fn render_property_row<V: 'static>(
                 )
                 .into_any_element()
         }
-        (_, PropertyValue::String(v)) if v == "unsupported" && is_color_field_name(prop_name) => {
-            if let Some(picker_state) = color_picker {
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(ui::color_picker::ColorPicker::new(&picker_state).anchor(Corner::BottomRight))
-                    .into_any_element()
-            } else {
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child("Color field unavailable"),
-                    )
-                    .into_any_element()
-            }
-        }
-        (PropertyType::String { .. }, PropertyValue::String(v)) => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().foreground)
-                    .child(v.clone()),
-            )
-            .into_any_element(),
-        (PropertyType::Color, PropertyValue::Color(_)) => {
-            if let Some(picker_state) = color_picker {
-                h_flex()
-                    .w_full()
-                    .justify_between()
-                    .items_center()
-                    .gap_2()
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(display_name.to_string()),
-                    )
-                    .child(ui::color_picker::ColorPicker::new(&picker_state).anchor(Corner::BottomRight))
-                    .into_any_element()
-            } else {
-                div()
-                    .text_sm()
-                    .child(format!("{:?}", value))
-                    .into_any_element()
-            }
-        }
-        _ => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("{:?}", value)),
-            )
-            .into_any_element(),
-    }
-}
-
-// ============================================================================
-// Component Section Rendering
-// ============================================================================
-
-/// Render a complete component section with all its properties
-pub fn render_component_section<V: 'static>(
-    id_prefix: &str,
-    class_name: &str,
-    properties: Vec<(
-        String,      // display_name
-        String,      // prop_name
-        PropertyType,
-        PropertyValue,
-        Option<Entity<InputState>>,         // numeric_input
-        Option<Entity<ColorPickerState>>,   // color_picker
-        Option<Entity<MeshAssetPicker>>,    // mesh_picker
-    )>,
-    on_bool_toggle: Arc<dyn Fn(&str, bool, &mut Window, &mut App) + Send + Sync>,
-    on_enum_select: Arc<dyn Fn(&str, usize, &mut Window, &mut App) + Send + Sync>,
-    cx: &Context<V>,
-) -> impl IntoElement {
-    let rows = properties
-        .into_iter()
-        .map(
-            |(display_name, prop_name, property_type, value, numeric_input, color_picker, mesh_picker)| {
-                let prop_bool = prop_name.clone();
-                let on_bool_toggle = on_bool_toggle.clone();
-                let bool_callback = Arc::new(move |checked: bool, window: &mut Window, cx: &mut App| {
-                    (on_bool_toggle)(&prop_bool, checked, window, cx);
-                });
-
-                let prop_enum = prop_name.clone();
-                let on_enum_select = on_enum_select.clone();
-                let enum_callback = Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
-                    (on_enum_select)(&prop_enum, ix, window, cx);
-                });
-
-                render_property_row(
-                    id_prefix,
-                    class_name,
-                    &display_name,
-                    &prop_name,
-                    &property_type,
-                    &value,
-                    numeric_input,
-                    color_picker,
-                    mesh_picker,
-                    bool_callback,
-                    enum_callback,
-                    cx,
-                )
-            },
-        )
-        .collect::<Vec<_>>();
-
-    v_flex()
-        .w_full()
-        .gap_2()
-        .p_3()
-        .bg(cx.theme().sidebar)
-        .rounded(px(8.0))
-        .border_1()
-        .border_color(cx.theme().border)
-        .child(
+        TypeStructure::Wrapper { .. } => {
+            // Wrappers are not yet fully supported in UI
             h_flex()
                 .w_full()
+                .justify_between()
                 .items_center()
                 .gap_2()
-                .child(ui::Icon::new(IconName::Component).small())
                 .child(
                     div()
                         .text_sm()
-                        .font_weight(FontWeight::SEMIBOLD)
-                        .text_color(cx.theme().foreground)
-                        .child(class_name.to_string()),
-                ),
-        )
-        .children(rows)
+                        .text_color(cx.theme().muted_foreground)
+                        .child(display_name.to_string()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().warning)
+                        .child(format!("Wrapper type not yet supported in UI")),
+                )
+                .into_any_element()
+        }
+        TypeStructure::Struct { .. } => {
+            // Structs are not editable inline
+            h_flex()
+                .w_full()
+                .justify_between()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(display_name.to_string()),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("Struct: {}", type_info.base_name())),
+                )
+                .into_any_element()
+        }
+    }
 }

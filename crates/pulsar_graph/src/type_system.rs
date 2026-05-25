@@ -228,6 +228,71 @@ impl TypeInfo {
         )
     }
 
+    /// Create TypeInfo from RuntimeTypeInfo
+    ///
+    /// Converts pulsar_reflection RuntimeTypeInfo into the graph system's TypeInfo.
+    /// This bridges the reflection system with the blueprint pin type system.
+    #[cfg(feature = "reflection")]
+    pub fn from_runtime_type_info(
+        runtime_info: &pulsar_reflection::RuntimeTypeInfo,
+    ) -> Self {
+        use pulsar_reflection::TypeStructure;
+
+        // Extract wrapper types from RuntimeTypeInfo
+        let mut wrappers = Vec::new();
+        let mut current_info = runtime_info;
+
+        // Recursively extract wrappers from nested wrapper types
+        while let TypeStructure::Wrapper { wrapper_kind, inner } = &current_info.structure {
+            wrappers.push(match wrapper_kind {
+                pulsar_reflection::WrapperType::Vec => WrapperType::Vec,
+                pulsar_reflection::WrapperType::Box => WrapperType::Box,
+                pulsar_reflection::WrapperType::Arc => WrapperType::Arc,
+                pulsar_reflection::WrapperType::Rc => WrapperType::Arc, // Treat Rc as Arc for graph purposes
+                pulsar_reflection::WrapperType::Option => WrapperType::Option,
+                pulsar_reflection::WrapperType::Result => WrapperType::Result,
+                pulsar_reflection::WrapperType::HashMap => WrapperType::HashMap,
+                pulsar_reflection::WrapperType::HashSet => WrapperType::HashSet,
+                pulsar_reflection::WrapperType::Custom(_) => WrapperType::Box, // Treat custom wrappers as Box
+            });
+            current_info = inner;
+        }
+
+        // Get the base name without module path
+        let base_type = current_info.base_name().to_string();
+
+        Self {
+            base_type,
+            wrappers,
+            is_wildcard: false,
+        }
+    }
+
+    /// Try to get RuntimeTypeInfo for this type
+    ///
+    /// Looks up the type in the RuntimeTypeRegistry by name.
+    /// Returns None if the type is not registered or is a wildcard.
+    #[cfg(feature = "reflection")]
+    pub fn get_runtime_type_info(&self) -> Option<&'static pulsar_reflection::RuntimeTypeInfo> {
+        if self.is_wildcard {
+            return None;
+        }
+
+        // Try to construct the full type name for lookup
+        let full_type_name = if self.wrappers.is_empty() {
+            self.base_type.clone()
+        } else {
+            // For wrapped types, try common patterns
+            format!("{:?}<{}>", self.wrappers[0], self.base_type)
+        };
+
+        pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(&full_type_name)
+            .or_else(|| {
+                // Fallback: try just the base type name
+                pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(&self.base_type)
+            })
+    }
+
     fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
         let c = v * s;
         let h_prime = h / 60.0;

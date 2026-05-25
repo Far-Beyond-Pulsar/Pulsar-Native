@@ -4,7 +4,7 @@
 //! `#[derive(EngineClass)]`. Directly adds the component to the object when clicked.
 
 use gpui::{prelude::*, *};
-use pulsar_reflection::{PropertyValue, REGISTRY};
+use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
 use ui::{
     dropdown::{SearchableList, SearchableListEvent},
@@ -88,7 +88,11 @@ impl AddComponentDialog {
             let mut map = serde_json::Map::new();
             for prop in &props {
                 let v = (prop.getter)(instance.as_ref());
-                map.insert(prop.name.to_string(), property_value_to_json(&v));
+                // Use runtime type registry for serialization
+                let json_value = RUNTIME_TYPE_REGISTRY
+                    .serialize_json_for_any(v.as_ref())
+                    .unwrap_or(serde_json::json!(null));
+                map.insert(prop.name.to_string(), json_value);
             }
             self.scene_db.add_component(
                 &self.object_id,
@@ -101,22 +105,6 @@ impl AddComponentDialog {
             class_name: class_name.to_string(),
         });
         cx.emit(DismissEvent);
-    }
-}
-
-fn property_value_to_json(value: &PropertyValue) -> Value {
-    match value {
-        PropertyValue::F32(v) => Value::from(*v),
-        PropertyValue::I32(v) => Value::from(*v),
-        PropertyValue::Bool(v) => Value::from(*v),
-        PropertyValue::String(v) => Value::from(v.clone()),
-        PropertyValue::Vec3(v) => serde_json::json!([v[0], v[1], v[2]]),
-        PropertyValue::Color(v) => serde_json::json!([v[0], v[1], v[2], v[3]]),
-        PropertyValue::EnumVariant(v) => Value::from(*v as u64),
-        PropertyValue::Vec(v) => Value::Array(v.iter().map(property_value_to_json).collect()),
-        PropertyValue::Component { class_name, .. } => {
-            serde_json::json!({"class_name": class_name})
-        }
     }
 }
 

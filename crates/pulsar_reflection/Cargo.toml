@@ -3,12 +3,25 @@ name = "pulsar_reflection"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["prims-core", "prims-std", "prims-glam", "prims-helio"]
+prims-core = []
+prims-std = ["prims-core"]
+prims-serde = ["prims-std"]
+prims-glam = ["prims-core", "dep:glam"]
+prims-helio = ["prims-core", "dep:helio"]
+
 [dependencies]
 inventory = "0.3"
 once_cell = "1.19"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tracing = "0.1"
+pulsar_reflection_derive = { path = "../pulsar_reflection_derive" }
+uuid = { version = "1.0", features = ["v4", "serde"] }
+dashmap = "6.0"
+glam = { version = "0.22", features = ["serde"], optional = true }
+helio = { workspace = true, optional = true }
 
 [lints]
 workspace = true

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use std::collections::HashMap;
 
 pub mod type_system;
@@ -258,7 +259,7 @@ pub struct NodeInstance {
     pub id: String,
     pub node_type: String,
     pub position: Position,
-    pub properties: HashMap<String, PropertyValue>,
+    pub properties: HashMap<String, JsonValue>,
     pub inputs: Vec<PinInstance>,
     pub outputs: Vec<PinInstance>,
 }
@@ -274,11 +275,11 @@ impl<'de> Deserialize<'de> for NodeInstance {
             id: String,
             node_type: String,
             position: Position,
-            properties: HashMap<String, PropertyValue>,
+            properties: HashMap<String, JsonValue>,
             #[serde(default)]
-            inputs: serde_json::Value,
+            inputs: JsonValue,
             #[serde(default)]
-            outputs: serde_json::Value,
+            outputs: JsonValue,
         }
 
         let helper = NodeInstanceHelper::deserialize(deserializer)?;
@@ -362,16 +363,6 @@ pub struct GraphMetadata {
     pub version: String,
     pub created_at: String,
     pub modified_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum PropertyValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    Vector2(f32, f32),
-    Vector3(f32, f32, f32),
-    Color(f32, f32, f32, f32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -660,7 +651,7 @@ impl NodeInstance {
         });
     }
 
-    pub fn set_property(&mut self, name: &str, value: PropertyValue) {
+    pub fn set_property(&mut self, name: &str, value: JsonValue) {
         self.properties.insert(name.to_string(), value);
     }
 }
@@ -998,19 +989,19 @@ impl SubGraphDefinition {
         );
 
         // Set macro_id property (for compiler expansion)
-        node.set_property("macro_id", PropertyValue::String(self.id.clone()));
+        node.set_property("macro_id", serde_json::json!(self.id));
 
         // Set display properties from macro config
         if let Some(ref icon) = self.macro_config.icon {
-            node.set_property("icon", PropertyValue::String(icon.clone()));
+            node.set_property("icon", serde_json::json!(icon));
         }
         if let Some((r, g, b)) = self.macro_config.color {
-            node.set_property("color_r", PropertyValue::Number(r as f64));
-            node.set_property("color_g", PropertyValue::Number(g as f64));
-            node.set_property("color_b", PropertyValue::Number(b as f64));
+            node.set_property("color_r", serde_json::json!(r));
+            node.set_property("color_g", serde_json::json!(g));
+            node.set_property("color_b", serde_json::json!(b));
         }
         if let Some(ref title) = self.macro_config.compact_node_title {
-            node.set_property("compact_title", PropertyValue::String(title.clone()));
+            node.set_property("compact_title", serde_json::json!(title));
         }
 
         // Add input pins from interface

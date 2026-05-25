@@ -9057,6 +9057,7 @@ name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tracing",
@@ -9094,6 +9095,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "serde",
+ "serde_json",
  "tracing",
 ]
 
@@ -9101,11 +9103,25 @@ dependencies = [
 name = "pulsar_reflection"
 version = "0.1.0"
 dependencies = [
+ "dashmap 6.2.1",
+ "glam 0.22.0",
+ "helio",
  "inventory",
  "once_cell",
+ "pulsar_reflection_derive",
  "serde",
  "serde_json",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "pulsar_reflection_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -9145,8 +9161,12 @@ version = "0.1.0"
 dependencies = [
  "linkme",
  "pulsar_macros",
+ "pulsar_reflection",
+ "pulsar_reflection_derive",
  "rand 0.9.4",
  "rlua",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
