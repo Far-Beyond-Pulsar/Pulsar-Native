@@ -228,12 +228,30 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
                             quote! { ::std::mem::align_of::<#ty>() },
                         )
                     };
+
+                    // Generate type_info accessor function for Reflectable types
+                    // For generic types, this will return None (types resolved at instantiation)
+                    let type_info_fn = if is_generic {
+                        quote! { None }
+                    } else {
+                        quote! {
+                            Some(|| {
+                                // Try to get type info via Reflectable trait
+                                // This is a compile-time check: if T doesn't implement Reflectable,
+                                // the code still compiles but returns None at runtime
+                                use ::pulsar_reflection::type_traits::Reflectable as _;
+                                ::pulsar_reflection::RUNTIME_TYPE_REGISTRY.get::<#ty>()
+                            })
+                        }
+                    };
+
                     return Some(quote! {
                         crate::NodeParameter {
                             name: #param_name,
                             ty: #param_type,
                             size: #size_expr,
                             align: #align_expr,
+                            type_info_fn: #type_info_fn,
                         }
                     });
                 }
@@ -246,25 +264,44 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
     // For void (Default or "()") return: size=0, align=1.
     // For "!" (never/diverging) return: also treated as void.
     // For generic functions: substitute T→() to get the wrapper size.
-    let (return_type, return_size, return_align) = match &input.sig.output {
-        ReturnType::Default => (quote! { None }, quote! { 0usize }, quote! { 1usize }),
+    let (return_type, return_size, return_align, return_type_info_fn) = match &input.sig.output {
+        ReturnType::Default => (
+            quote! { None },
+            quote! { 0usize },
+            quote! { 1usize },
+            quote! { None },
+        ),
         ReturnType::Type(_, ty) => {
             let ty_str = quote!(#ty).to_string();
             let ty_trimmed = ty_str.trim();
             if ty_trimmed == "()" || ty_trimmed == "!" {
-                (quote! { None }, quote! { 0usize }, quote! { 1usize })
+                (
+                    quote! { None },
+                    quote! { 0usize },
+                    quote! { 1usize },
+                    quote! { None },
+                )
             } else if is_generic {
                 let subst = substitute_generics_with_unit(ty, &generic_param_names);
                 (
                     quote! { Some(#ty_str) },
                     quote! { ::std::mem::size_of::<#subst>() },
                     quote! { ::std::mem::align_of::<#subst>() },
+                    quote! { None }, // Generic return types resolved at instantiation
                 )
             } else {
+                // Generate type_info accessor for non-generic return types
+                let type_info_fn = quote! {
+                    Some(|| {
+                        use ::pulsar_reflection::type_traits::Reflectable as _;
+                        ::pulsar_reflection::RUNTIME_TYPE_REGISTRY.get::<#ty>()
+                    })
+                };
                 (
                     quote! { Some(#ty_str) },
                     quote! { ::std::mem::size_of::<#ty>() },
                     quote! { ::std::mem::align_of::<#ty>() },
+                    type_info_fn,
                 )
             }
         }
@@ -399,6 +436,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             return_type: #return_type,
             return_size: #return_size,
             return_align: #return_align,
+            return_type_info_fn: #return_type_info_fn,
             exec_inputs: #exec_inputs,
             exec_outputs: #exec_outputs_array,
             function_source: #fn_source,

@@ -9,3 +9,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = "0.4"
 tracing = "0.1"
+pulsar_reflection = { path = "../pulsar_reflection", optional = true }
+
+[features]
+default = ["reflection"]
+reflection = ["pulsar_reflection"]

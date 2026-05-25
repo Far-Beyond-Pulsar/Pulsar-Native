@@ -9057,6 +9057,7 @@ name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tracing",

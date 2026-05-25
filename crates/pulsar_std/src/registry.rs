@@ -15,14 +15,24 @@ pub struct NodeParameter {
     pub size: usize,
     /// `std::mem::align_of::<T>()` for this parameter's type, set by the macro.
     pub align: usize,
+    /// Direct runtime type info accessor (populated by macro for Reflectable types)
+    pub type_info_fn: Option<fn() -> Option<&'static pulsar_reflection::RuntimeTypeInfo>>,
 }
 
 impl NodeParameter {
     /// Get runtime type information by looking up the type name in the registry.
     ///
-    /// This performs a runtime lookup since the registry is populated at link-time
-    /// via inventory, while NodeMetadata is a compile-time const.
+    /// First tries the direct type_info_fn accessor (for Reflectable types),
+    /// then falls back to string-based lookup for compatibility.
     pub fn get_type_info(&self) -> Option<&'static pulsar_reflection::RuntimeTypeInfo> {
+        // Try direct accessor first (faster, O(1))
+        if let Some(type_info_fn) = self.type_info_fn {
+            if let Some(info) = type_info_fn() {
+                return Some(info);
+            }
+        }
+
+        // Fallback to string-based lookup for non-Reflectable types
         pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(self.ty)
     }
 }
@@ -45,6 +55,8 @@ pub struct NodeMetadata {
     pub return_size: usize,
     /// `std::mem::align_of::<ReturnType>()`, set by the `#[blueprint]` macro. 1 for void.
     pub return_align: usize,
+    /// Direct runtime type info accessor for return type (populated by macro for Reflectable types)
+    pub return_type_info_fn: Option<fn() -> Option<&'static pulsar_reflection::RuntimeTypeInfo>>,
     pub exec_inputs: &'static [&'static str],
     pub exec_outputs: &'static [&'static str],
     pub function_source: &'static str,
@@ -57,8 +69,17 @@ pub struct NodeMetadata {
 impl NodeMetadata {
     /// Get runtime type information for the return type by looking up in the registry.
     ///
-    /// Returns None if the function returns void or if the type is not registered.
+    /// First tries the direct return_type_info_fn accessor (for Reflectable types),
+    /// then falls back to string-based lookup. Returns None if the function returns void.
     pub fn get_return_type_info(&self) -> Option<&'static pulsar_reflection::RuntimeTypeInfo> {
+        // Try direct accessor first (faster, O(1))
+        if let Some(type_info_fn) = self.return_type_info_fn {
+            if let Some(info) = type_info_fn() {
+                return Some(info);
+            }
+        }
+
+        // Fallback to string-based lookup for non-Reflectable types
         self.return_type
             .and_then(|type_name| pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(type_name))
     }
@@ -164,6 +185,81 @@ pub fn get_all_type_constructors() -> &'static [TypeConstructorMetadata] {
 #[cfg(not(feature = "native"))]
 pub fn get_all_type_constructors() -> &'static [TypeConstructorMetadata] {
     &[]
+}
+
+// ── RuntimeTypeInfo Integration ──────────────────────────────────────────────
+
+impl NodeMetadata {
+    /// Validate that all parameter and return types are registered in RuntimeTypeRegistry
+    ///
+    /// Returns a list of unregistered type names. Empty list means all types are registered.
+    pub fn validate_type_registration(&self) -> Vec<&'static str> {
+        let mut unregistered = Vec::new();
+
+        // Check parameters
+        for param in self.params {
+            if param.get_type_info().is_none() {
+                unregistered.push(param.ty);
+            }
+        }
+
+        // Check return type
+        if self.return_type.is_some() && self.get_return_type_info().is_none() {
+            if let Some(ty) = self.return_type {
+                unregistered.push(ty);
+            }
+        }
+
+        unregistered
+    }
+
+    /// Check if all types used by this node are properly registered
+    pub fn has_all_types_registered(&self) -> bool {
+        self.validate_type_registration().is_empty()
+    }
+
+    /// Get all parameter type info as a Vec
+    ///
+    /// Skips parameters that don't have runtime type info available.
+    pub fn get_param_type_infos(&self) -> Vec<&'static pulsar_reflection::RuntimeTypeInfo> {
+        self.params
+            .iter()
+            .filter_map(|p| p.get_type_info())
+            .collect()
+    }
+}
+
+/// Validate all blueprint nodes have their types registered
+///
+/// Returns a report of nodes with unregistered types. Call this during
+/// engine initialization to catch missing Reflectable implementations.
+#[cfg(feature = "native")]
+pub fn validate_all_node_types() -> Vec<(&'static str, Vec<&'static str>)> {
+    let mut issues = Vec::new();
+
+    for node in get_all_nodes() {
+        let unregistered = node.validate_type_registration();
+        if !unregistered.is_empty() {
+            issues.push((node.name, unregistered));
+        }
+    }
+
+    if !issues.is_empty() {
+        tracing::warn!(
+            "Blueprint type validation: {} nodes have unregistered types",
+            issues.len()
+        );
+        for (node_name, types) in &issues {
+            tracing::warn!("  Node '{}': {:?}", node_name, types);
+        }
+    }
+
+    issues
+}
+
+#[cfg(not(feature = "native"))]
+pub fn validate_all_node_types() -> Vec<(&'static str, Vec<&'static str>)> {
+    vec![]
 }
 
 #[cfg(feature = "native")]
