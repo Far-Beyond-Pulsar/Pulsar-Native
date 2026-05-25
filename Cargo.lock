@@ -9162,8 +9162,11 @@ dependencies = [
  "linkme",
  "pulsar_macros",
  "pulsar_reflection",
+ "pulsar_reflection_derive",
  "rand 0.9.4",
  "rlua",
+ "serde",
+ "serde_json",
  "tracing",
 ]
 
