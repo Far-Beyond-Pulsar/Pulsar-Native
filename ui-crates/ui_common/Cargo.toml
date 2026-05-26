@@ -22,3 +22,4 @@ engine_state.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true
 pulsar_reflection.workspace = true
+pulsar_rendering = { path = "../../crates/pulsar_rendering" }

@@ -68,6 +68,8 @@ struct PrimitiveAliasConfig {
     clone_mode: PrimitiveCloneMode,
 }
 
+// ── editor fn path (optional) ─────────────────────────────────────────────────
+
 /// Attribute macro for runtime type registration.
 ///
 /// Primitive alias mode:
@@ -114,6 +116,7 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
     let mut override_clone: Option<PrimitiveCloneMode> = None;
     let mut override_serialize_json_with: Option<Path> = None;
     let mut override_deserialize_json_with: Option<Path> = None;
+    let mut override_editor: Option<Path> = None;
 
     for meta in args {
         match meta {
@@ -155,6 +158,9 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
                     &name_value.value,
                     "deserialize_json_with",
                 )?);
+            }
+            Meta::NameValue(name_value) if name_value.path.is_ident("editor") => {
+                override_editor = Some(parse_path_expr(&name_value.value, "editor")?);
             }
             _ => {
                 return Err(syn::Error::new_spanned(
@@ -207,6 +213,27 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
         quote! { #path(value)? }
     } else {
         primitive_deserialize_value_expr(&deserialize_method, quote! { value })?
+    };
+
+    // Optional UI property-editor hint — only emitted when `editor = fn` is provided.
+    let editor_submit = if let Some(editor_fn) = override_editor {
+        quote! {
+            ::pulsar_reflection::inventory::submit! {
+                ::pulsar_reflection::UiPropertyEditorHint {
+                    type_id: ::std::any::TypeId::of::<#target_ty>(),
+                    // Erase the concrete fn-pointer type to `fn()` via the
+                    // pulsar_reflection helper so this submit can live in any
+                    // crate without a GPUI dependency.  The `ui_common` registry
+                    // transmutes it back under the documented safety contract:
+                    // the function must have signature
+                    //   `fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
+                    // SAFETY: the `editor = fn` author guarantees the signature.
+                    fn_ptr: unsafe { ::pulsar_reflection::erase_property_editor_fn_ptr(#editor_fn) },
+                }
+            }
+        }
+    } else {
+        quote! {}
     };
 
     Ok(quote! {
@@ -265,6 +292,8 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
                 },
             }
         }
+
+        #editor_submit
     })
 }
 

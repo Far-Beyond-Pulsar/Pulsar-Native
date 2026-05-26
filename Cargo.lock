@@ -13323,6 +13323,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_reflection",
+ "pulsar_rendering",
  "rust-i18n",
  "serde",
  "serde_json",

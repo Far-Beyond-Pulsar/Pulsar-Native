@@ -67,6 +67,53 @@ pub use type_renderer::{
 // Re-export derive macro
 pub use pulsar_reflection_derive::{pulsar_type, Reflectable};
 
+// ── UI property-editor hint ───────────────────────────────────────────────────
+
+/// Type-erased hint that a concrete type has a registered GPUI property editor.
+///
+/// Submitted via `inventory::submit!` — either directly or by the
+/// `editor = fn` argument on [`pulsar_type`].
+///
+/// The `fn_ptr` field stores a function pointer erased to `fn()` so that this
+/// type remains free of GPUI dependencies.  The framework layer (`ui_common`)
+/// is responsible for transmuting it back to the correct concrete signature:
+/// `fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
+///
+/// Storing as `fn()` (rather than `usize`) allows the `inventory::submit!`
+/// static-initialiser to compile without triggering E0658 (fn ptr → int cast
+/// is forbidden in const context since Rust 1.83).
+///
+/// # Safety contract
+///
+/// Only submit function pointers whose actual Rust type matches the above
+/// signature.  The transmute in `ui_common` is safe by construction as long as
+/// this invariant is upheld.
+pub struct UiPropertyEditorHint {
+    /// [`TypeId`](std::any::TypeId) of the type this editor handles.
+    pub type_id: std::any::TypeId,
+    /// Erased function pointer — actual type is `PropertyEditorRenderFn`.
+    /// Cast to `fn()` so it can appear in `const` / `static` initialisers.
+    pub fn_ptr: fn(),
+}
+
+inventory::collect!(UiPropertyEditorHint);
+
+/// Erase a two-argument render function to the opaque `fn()` stored in
+/// [`UiPropertyEditorHint::fn_ptr`].
+///
+/// All Rust function pointer types are pointer-sized, so transmuting between
+/// them preserves size.  This is a `const unsafe fn` so it can be called
+/// inside `inventory::submit!` static initialisers.
+///
+/// # Safety
+/// `f` must be a function whose actual signature is:
+/// `fn(&ui_common::PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
+pub const unsafe fn erase_property_editor_fn_ptr<A, B, C>(f: fn(A, B) -> C) -> fn() {
+    // SAFETY: fn(A, B) -> C and fn() are both pointer-sized on every supported
+    // platform; transmuting between any two fn-pointer types is defined behaviour.
+    unsafe { std::mem::transmute(f) }
+}
+
 /// Trait for component-owned projection of reflection data into scene snapshot props.
 ///
 /// This keeps per-component prop mapping logic modular and out of central systems.

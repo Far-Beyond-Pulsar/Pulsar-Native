@@ -361,281 +361,44 @@ pub fn render_property_row_runtime<V: 'static>(
     numeric_input: Option<Entity<InputState>>,
     color_picker: Option<Entity<ColorPickerState>>,
     mesh_picker: Option<Entity<MeshAssetPicker>>,
-    on_bool_toggle: Arc<dyn Fn(bool, &mut Window, &mut App)>,
-    on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App)>,
+    on_bool_toggle: Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync>,
+    on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync>,
     cx: &Context<V>,
 ) -> AnyElement {
-    // PHASE 4: Custom Type Renderer Integration Point
+    use crate::property_editor_registry::{PropertyEditorArgs, PROPERTY_EDITOR_REGISTRY};
+
+    // ── 1. Registered per-type editor (highest priority) ─────────────────────
     //
-    // The TYPE_RENDERER_REGISTRY allows plugins to register custom property editors.
-    // Architecture note: The TypeRenderer trait is framework-agnostic (uses dyn Any),
-    // but GPUI requires returning AnyElement from render functions.
-    //
-    // Integration pattern for GPUI-based custom renderers:
-    // 1. Plugin implements TypeRenderer with render() method
-    // 2. The render() method accepts &mut dyn Any (downcast to GPUI context)
-    // 3. The method mutates the value and returns RenderResult::Changed/Unchanged
-    // 4. For GPUI integration, wrap the renderer in a GPUI-specific adapter that:
-    //    - Builds the UI elements
-    //    - Calls the renderer's render() on interaction
-    //    - Returns AnyElement to this function
-    //
-    // This check point allows future framework-specific renderer adapters without
-    // breaking the framework-agnostic pulsar_reflection crate.
-    let _has_custom_renderer = pulsar_reflection::TYPE_RENDERER_REGISTRY
-        .lock()
-        .ok()
-        .map(|registry| registry.has_renderer(type_info.type_id))
-        .unwrap_or(false);
-
-    // For now, fall through to built-in rendering. Custom renderers can be integrated
-    // via framework-specific extension traits or adapter patterns as needed.
-
-    // Mesh asset browser: render whenever the field type is MeshAssetPath (preferred,
-    // type-based detection) or the field is a plain string conventionally named
-    // "mesh_asset" (legacy fallback).
-    if type_info.type_name == "MeshAssetPath"
-        || (prop_name == "mesh_asset" && type_info.is_string())
-    {
-        if let Some(picker) = mesh_picker {
-            let path_str = current_json.as_str().unwrap_or("");
-            let display = if path_str.is_empty() {
-                "Select mesh asset…".to_string()
-            } else {
-                std::path::Path::new(path_str)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or(path_str)
-                    .to_string()
-            };
-
-            let thumb = picker.read(cx).thumbnail_for_path(path_str);
-
-            let pop = Popover::<MeshAssetPicker>::new(format!(
-                "mesh-asset-picker-{}-{}",
-                class_name, prop_name
-            ))
-            .anchor(Corner::BottomRight)
-            .trigger(
-                ui::button::Button::new(format!("mesh-asset-btn-{}-{}", class_name, prop_name))
-                    .label(display)
-                    .small()
-                    .ghost()
-                    .dropdown_caret(true),
-            )
-            .content(move |_window, _cx| picker.clone())
-            .into_any_element();
-
-            return h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .py_1()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    h_flex()
-                        .items_center()
-                        .gap_2()
-                        .child(pop)
-                        .map(|el| match thumb {
-                            Some(render_img) => el.child(
-                                div()
-                                    .w(px(40.0))
-                                    .h(px(40.0))
-                                    .rounded(px(4.0))
-                                    .overflow_hidden()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .flex_shrink_0()
-                                    .child(
-                                        gpui::img(gpui::ImageSource::Render(render_img))
-                                            .w(px(40.0))
-                                            .h(px(40.0))
-                                            .object_fit(gpui::ObjectFit::Cover),
-                                    ),
-                            ),
-                            None => el,
-                        }),
-                )
-                .into_any_element();
-        }
+    // Types self-register via `#[pulsar_type(editor = fn)]` or via an explicit
+    // `inventory::submit! { UiPropertyEditorHint { … } }` in their companion
+    // prim_editor file.  No central matching required — just a HashMap lookup.
+    if let Some(render_fn) = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id) {
+        let args = PropertyEditorArgs {
+            id_prefix,
+            class_name,
+            display_name,
+            prop_name,
+            type_info,
+            current_json,
+            numeric_input,
+            color_picker,
+            mesh_picker,
+            on_bool_toggle,
+            on_enum_select,
+        };
+        return render_fn(&args, cx);
     }
 
-    // Render based on RuntimeTypeInfo structure
+    // ── 2. Structural fallback for types with no registered editor ────────────
+    //
+    // Handles Enum (dropdown), String (plain text), Struct/Wrapper (read-only
+    // label).  Primitives that reach here have no registered editor — show an
+    // informative placeholder instead of crashing.
     match &type_info.structure {
-        TypeStructure::Primitive => {
-            match type_info.base_name() {
-                "f32" => {
-                    let value = current_json.as_f64().unwrap_or(0.0) as f32;
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(h_flex().items_center().gap_2().child(
-                            if let Some(input) = numeric_input {
-                                ui::input::NumberInput::new(&input)
-                                    .xsmall()
-                                    .w(px(92.0))
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("{:.3}", value))
-                                    .into_any_element()
-                            },
-                        ))
-                        .into_any_element()
-                }
-                "i32" => {
-                    let value = current_json.as_i64().unwrap_or(0) as i32;
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(h_flex().items_center().gap_2().child(
-                            if let Some(input) = numeric_input {
-                                ui::input::NumberInput::new(&input)
-                                    .xsmall()
-                                    .w(px(92.0))
-                                    .into_any_element()
-                            } else {
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(value.to_string())
-                                    .into_any_element()
-                            },
-                        ))
-                        .into_any_element()
-                }
-                "bool" => {
-                    let value = current_json.as_bool().unwrap_or(false);
-                    let on_bool_toggle = on_bool_toggle.clone();
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(
-                            ui::switch::Switch::new(format!("toggle-{id_prefix}-{class_name}-{prop_name}"))
-                                .checked(value)
-                                .small()
-                                .on_click(move |checked, window, cx| {
-                                    (on_bool_toggle)(*checked, window, cx);
-                                }),
-                        )
-                        .into_any_element()
-                }
-                "[f32; 4]" => {
-                    // Color type
-                    if let Some(picker_state) = color_picker {
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(display_name.to_string()),
-                            )
-                            .child(ui::color_picker::ColorPicker::new(&picker_state).anchor(Corner::BottomRight))
-                            .into_any_element()
-                    } else {
-                        h_flex()
-                            .w_full()
-                            .justify_between()
-                            .items_center()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(display_name.to_string()),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("{:?}", current_json)),
-                            )
-                            .into_any_element()
-                    }
-                }
-                "[f32; 3]" => {
-                    // Vec3 type - display as readonly for now
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().foreground)
-                                .child(format!("{:?}", current_json)),
-                        )
-                        .into_any_element()
-                }
-                _ => {
-                    // Unsupported primitive - show error
-                    h_flex()
-                        .w_full()
-                        .justify_between()
-                        .items_center()
-                        .gap_2()
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().muted_foreground)
-                                .child(display_name.to_string()),
-                        )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(cx.theme().danger)
-                                .child(format!("Unsupported primitive: {}", type_info.base_name())),
-                        )
-                        .into_any_element()
-                }
-            }
-        }
-        TypeStructure::String => {
-            let value = current_json.as_str().unwrap_or("");
+        TypeStructure::Primitive | TypeStructure::String => {
+            // A registered editor should have caught every known primitive/string.
+            // If we land here it means a new type was added without a prim_editor
+            // file — surface that clearly.
             h_flex()
                 .w_full()
                 .justify_between()
@@ -650,11 +413,12 @@ pub fn render_property_row_runtime<V: 'static>(
                 .child(
                     div()
                         .text_sm()
-                        .text_color(cx.theme().foreground)
-                        .child(value.to_string()),
+                        .text_color(cx.theme().muted_foreground)
+                        .child(format!("(no editor: {})", type_info.type_name)),
                 )
                 .into_any_element()
         }
+
         TypeStructure::Enum { variants } => {
             let current_ix = current_json.as_u64().unwrap_or(0) as usize;
             let selected_ix = current_ix.min(variants.len().saturating_sub(1));
@@ -676,12 +440,16 @@ pub fn render_property_row_runtime<V: 'static>(
                         .child(display_name.to_string()),
                 )
                 .child(
-                    ui::button::Button::new(format!("enum-{id_prefix}-{class_name}-{prop_name}"))
-                        .label(label)
-                        .xsmall()
-                        .ghost()
-                        .dropdown_caret(true)
-                        .dropdown_menu_with_anchor(Corner::BottomRight, move |menu, _window, _cx| {
+                    ui::button::Button::new(format!(
+                        "enum-{id_prefix}-{class_name}-{prop_name}"
+                    ))
+                    .label(label)
+                    .xsmall()
+                    .ghost()
+                    .dropdown_caret(true)
+                    .dropdown_menu_with_anchor(
+                        Corner::BottomRight,
+                        move |menu, _window, _cx| {
                             let mut menu = menu;
                             for (ix, option) in options.iter().enumerate() {
                                 let on_enum_select = on_enum_select.clone();
@@ -694,51 +462,48 @@ pub fn render_property_row_runtime<V: 'static>(
                                 );
                             }
                             menu
-                        }),
+                        },
+                    ),
                 )
                 .into_any_element()
         }
-        TypeStructure::Wrapper { .. } => {
-            // Wrappers are not yet fully supported in UI
-            h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().warning)
-                        .child(format!("Wrapper type not yet supported in UI")),
-                )
-                .into_any_element()
-        }
-        TypeStructure::Struct { .. } => {
-            // Structs are not editable inline
-            h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!("Struct: {}", type_info.base_name())),
-                )
-                .into_any_element()
-        }
+
+        TypeStructure::Wrapper { .. } => h_flex()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(display_name.to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("wrapper<{}>", type_info.base_name())),
+            )
+            .into_any_element(),
+
+        TypeStructure::Struct { .. } => h_flex()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(display_name.to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!("struct {}", type_info.base_name())),
+            )
+            .into_any_element(),
     }
 }
