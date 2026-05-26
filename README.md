@@ -14,6 +14,8 @@
   <strong>A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.</strong>
 </p>
 
+<img width="4343" height="2467" alt="Frame 1" src="https://github.com/user-attachments/assets/69314162-e900-44de-ba2f-67bf40a4d745" />
+
 <p align="center">
 <a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/stargazers"><img src="https://img.shields.io/github/stars/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=gold" alt="GitHub Stars" /></a>
 <a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/network/members"><img src="https://img.shields.io/github/forks/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=8A2BE2" alt="Forks" /></a>
