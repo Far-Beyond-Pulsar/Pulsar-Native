@@ -27,8 +27,13 @@ pub struct SearchableListItemAction {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SearchableListItemState {
+    /// Normal — clickable, no visual decoration.
     Enabled,
+    /// Not implemented / unavailable — strikethrough, not clickable.
     Disabled,
+    /// Requires authentication — clickable (triggers auth flow), shows a lock
+    /// icon suffix, text is dimmed but **not** struck through.
+    Locked,
 }
 
 pub struct SearchableList<T: Clone + 'static> {
@@ -186,13 +191,16 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                 let theme = cx.theme().clone();
                                 let selected_item = item.clone();
                                 let is_enabled = item_state == SearchableListItemState::Enabled;
+                                let is_locked = item_state == SearchableListItemState::Locked;
+                                let is_clickable = is_enabled || is_locked;
 
                                 row_style(div())
                                     .id(("searchable-list-item", ix))
-                                    .when(is_enabled, |el| {
+                                    .when(is_clickable, |el| {
                                         el.hover(move |s| s.bg(theme.accent.opacity(0.12)))
                                     })
-                                    .when(!is_enabled, |el| el.cursor_default().opacity(0.7))
+                                    .when(!is_clickable, |el| el.cursor_default().opacity(0.5))
+                                    .when(is_locked, |el| el.opacity(0.65))
                                     .child(
                                         div()
                                             .flex()
@@ -201,7 +209,7 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                             .min_w_0()
                                             .gap_2()
                                             .items_center()
-                                            .when(is_enabled, |el| {
+                                            .when(is_clickable, |el| {
                                                 el.on_mouse_down(
                                                     MouseButton::Left,
                                                     cx.listener(move |_this, _, _, cx| {
@@ -229,11 +237,26 @@ impl<T: Clone + 'static> Render for SearchableList<T> {
                                                     } else {
                                                         cx.theme().muted_foreground
                                                     })
-                                                    .when(!is_enabled, |el| {
-                                                        el.italic().line_through()
-                                                    })
+                                                    // Only Disabled gets struck through.
+                                                    // Locked stays readable so the user
+                                                    // knows they can click to authenticate.
+                                                    .when(
+                                                        item_state
+                                                            == SearchableListItemState::Disabled,
+                                                        |el| el.italic().line_through(),
+                                                    )
                                                     .child(label),
-                                            ),
+                                            )
+                                            // Lock badge shown only for RequiresAuth items.
+                                            .when(is_locked, |el| {
+                                                el.child(
+                                                    Icon::new(IconName::Lock)
+                                                        .size(px(11.0))
+                                                        .text_color(
+                                                            cx.theme().muted_foreground.opacity(0.7),
+                                                        ),
+                                                )
+                                            }),
                                     )
                                     .when(!actions.is_empty(), |el| {
                                         el.child(

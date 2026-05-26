@@ -84,7 +84,11 @@ pub struct AgentChatPanel {
     pub(crate) custom_provider_ids: Rc<RefCell<HashSet<String>>>,
     pub(crate) pending_custom_provider: Option<PendingCustomProvider>,
     pub(crate) pending_custom_provider_step: Option<AddProviderPromptStep>,
+    /// Providers with `AvailabilityState::Wip` — shown crossed-out, not selectable.
     pub(crate) wip_providers: HashMap<&'static str, String>,
+    /// Providers with `AvailabilityState::RequiresAuth` — shown with a lock icon,
+    /// still selectable so the user can click through to authenticate.
+    pub(crate) locked_providers: HashMap<&'static str, String>,
     pub(crate) provider_registry: ProviderRegistry,
     pub(crate) tool_registry: ToolRegistry,
     pub(crate) plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
@@ -234,37 +238,42 @@ impl AgentChatPanel {
                 .map(Self::custom_provider_to_definition),
         );
 
-        // Providers that are not immediately usable: Wip (not implemented) or
-        // RequiresAuth (implemented but no API key configured). Both are shown
-        // greyed-out at the bottom of the sorted dropdown.
-        let wip_providers: HashMap<&'static str, String> = provider_registry
-            .catalog(&env)
-            .into_iter()
-            .filter(|e| {
-                matches!(
-                    e.availability.state,
-                    agent_chat_core::AvailabilityState::Wip
-                        | agent_chat_core::AvailabilityState::RequiresAuth
-                )
-            })
-            .map(|e| {
-                let reason = match e.availability.state {
-                    agent_chat_core::AvailabilityState::Wip => "Not yet implemented".to_string(),
-                    _ => "API key not configured".to_string(),
-                };
-                (e.metadata.id, reason)
-            })
-            .collect();
-
-        // Sort: active providers alphabetically first, WIP/disabled alphabetically at the bottom.
-        provider_catalog.sort_by(|a, b| {
-            let a_wip = wip_providers.contains_key(a.id);
-            let b_wip = wip_providers.contains_key(b.id);
-            match (a_wip, b_wip) {
-                (false, true) => std::cmp::Ordering::Less,
-                (true, false) => std::cmp::Ordering::Greater,
-                _ => a.label.cmp(b.label),
+        // Wip: not yet implemented — crossed out, not selectable.
+        // Locked: implemented but no API key — lock icon, still selectable for auth.
+        let mut wip_providers: HashMap<&'static str, String> = HashMap::new();
+        let mut locked_providers: HashMap<&'static str, String> = HashMap::new();
+        for e in provider_registry.catalog(&env) {
+            match e.availability.state {
+                agent_chat_core::AvailabilityState::Wip => {
+                    wip_providers.insert(e.metadata.id, "Not yet implemented".to_string());
+                }
+                agent_chat_core::AvailabilityState::RequiresAuth => {
+                    locked_providers.insert(
+                        e.metadata.id,
+                        e.availability
+                            .reason
+                            .unwrap_or_else(|| "API key not configured".to_string()),
+                    );
+                }
+                agent_chat_core::AvailabilityState::Ready => {}
             }
+        }
+
+        // Sort order: Ready → Locked (auth needed) → Wip (not implemented).
+        // Within each tier, alphabetical by label.
+        provider_catalog.sort_by(|a, b| {
+            let tier = |id: &str| {
+                if wip_providers.contains_key(id) {
+                    2u8
+                } else if locked_providers.contains_key(id) {
+                    1u8
+                } else {
+                    0u8
+                }
+            };
+            let ta = tier(a.id);
+            let tb = tier(b.id);
+            ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
         });
         let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
             manager_lock
@@ -290,6 +299,7 @@ impl AgentChatPanel {
         });
 
         let wip_for_list = wip_providers.clone();
+        let locked_for_list = locked_providers.clone();
         let custom_ids_for_list = custom_provider_ids.clone();
         let provider_list = cx.new(|cx| {
             SearchableList::new(
@@ -319,7 +329,11 @@ impl AgentChatPanel {
             })
             .with_item_state(move |provider| {
                 if wip_for_list.contains_key(provider.id) {
+                    // Not yet implemented — crossed out, not clickable.
                     SearchableListItemState::Disabled
+                } else if locked_for_list.contains_key(provider.id) {
+                    // Implemented but needs an API key — lock icon, still clickable.
+                    SearchableListItemState::Locked
                 } else {
                     SearchableListItemState::Enabled
                 }
@@ -405,6 +419,7 @@ impl AgentChatPanel {
             pending_custom_provider: None,
             pending_custom_provider_step: None,
             wip_providers,
+            locked_providers,
             provider_registry,
             tool_registry: agent_chat_tools::build_default_registry(),
             plugin_bridge,

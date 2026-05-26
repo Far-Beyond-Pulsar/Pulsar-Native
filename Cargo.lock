@@ -89,6 +89,7 @@ dependencies = [
  "anyhow",
  "reqwest 0.12.28",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1325,6 +1326,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=ea4e7ee6c75397f381c2e39796cb33d45ea36424#ea4e7ee6c75397f381c2e39796cb33d45ea36424"
 dependencies = [
  "anyhow",
  "arboard",

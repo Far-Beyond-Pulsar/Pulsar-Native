@@ -12,6 +12,9 @@ impl AgentChatPanel {
 
     pub(super) fn set_provider(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.provider_catalog.len() {
+            // Block Wip providers entirely — they're not implemented.
+            // Locked (RequiresAuth) providers ARE selectable: clicking through
+            // will trigger the auth prompt so the user can add their API key.
             if self
                 .provider_catalog
                 .get(index)
