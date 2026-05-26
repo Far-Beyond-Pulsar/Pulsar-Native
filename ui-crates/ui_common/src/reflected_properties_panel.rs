@@ -391,8 +391,12 @@ pub fn render_property_row_runtime<V: 'static>(
     // For now, fall through to built-in rendering. Custom renderers can be integrated
     // via framework-specific extension traits or adapter patterns as needed.
 
-    // Special case: mesh_asset field (string property with specific name)
-    if prop_name == "mesh_asset" && type_info.is_string() {
+    // Mesh asset browser: render whenever the field type is MeshAssetPath (preferred,
+    // type-based detection) or the field is a plain string conventionally named
+    // "mesh_asset" (legacy fallback).
+    if type_info.type_name == "MeshAssetPath"
+        || (prop_name == "mesh_asset" && type_info.is_string())
+    {
         if let Some(picker) = mesh_picker {
             let path_str = current_json.as_str().unwrap_or("");
             let display = if path_str.is_empty() {

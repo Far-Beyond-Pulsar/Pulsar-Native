@@ -3,13 +3,104 @@
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeMeshDesc,
-    ScenePropsProjector,
+    ReflectError, ScenePropsProjector,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use glam::{Mat4, Vec3};
 use helio::Movability;
+
+// ── MeshAssetPath ─────────────────────────────────────────────────────────────
+
+/// Strongly-typed wrapper for mesh asset paths.
+///
+/// Using this as a field type causes the reflection property inspector to render
+/// a mesh-asset search browser (via `MeshAssetPicker`) instead of a plain text box.
+///
+/// Serialises transparently as a JSON string so existing scene files require no
+/// migration.
+///
+/// # Example
+///
+/// ```ignore
+/// #[property]
+/// pub mesh_asset: MeshAssetPath,
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct MeshAssetPath(pub String);
+
+impl MeshAssetPath {
+    /// Create a new `MeshAssetPath` from any string-like value.
+    pub fn new(path: impl Into<String>) -> Self {
+        Self(path.into())
+    }
+
+    /// Borrow the inner path string.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Returns `true` if the path is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl std::fmt::Display for MeshAssetPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<String> for MeshAssetPath {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<&str> for MeshAssetPath {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+// ── Reflection registration ───────────────────────────────────────────────────
+
+fn serialize_mesh_asset_path_json(
+    value: &MeshAssetPath,
+) -> pulsar_reflection::ReflectResult<serde_json::Value> {
+    Ok(serde_json::json!(value.0))
+}
+
+fn deserialize_mesh_asset_path_json(
+    value: serde_json::Value,
+) -> pulsar_reflection::ReflectResult<MeshAssetPath> {
+    value
+        .as_str()
+        .map(|s| MeshAssetPath(s.to_string()))
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "MeshAssetPath",
+            found: format!("{:?}", value),
+        })
+}
+
+/// Register `MeshAssetPath` with the reflection system.
+///
+/// `structure = String` makes `type_info.is_string()` return `true`, which
+/// enables the property inspector to detect this type and render the
+/// mesh-asset browser UI.
+#[pulsar_reflection::pulsar_type(
+    primitive,
+    structure = String,
+    serialize_json_with = serialize_mesh_asset_path_json,
+    deserialize_json_with = deserialize_mesh_asset_path_json
+)]
+#[allow(dead_code)]
+type RegisteredMeshAssetPath = MeshAssetPath;
+
+// ── StaticMeshComponent ───────────────────────────────────────────────────────
 
 /// Static mesh assignment component.
 ///
@@ -18,8 +109,11 @@ use helio::Movability;
 #[category("Rendering")]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (for example: "meshes/primitives/SM_Cube.fbx").
+    ///
+    /// Typed as [`MeshAssetPath`] so the property inspector renders the mesh-asset
+    /// search browser instead of a plain text input.
     #[property]
-    pub mesh_asset: String,
+    pub mesh_asset: MeshAssetPath,
 
     /// Movability setting for the mesh (e.g., Static, Movable).
     #[property]

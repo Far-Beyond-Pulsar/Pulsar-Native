@@ -409,7 +409,13 @@ impl Render for ObjectTypeFieldsSection {
                         _ => None,
                     };
 
-                    let mesh_picker = if prop.type_info.is_string() && prop.name == "mesh_asset" {
+                    // Detect MeshAssetPath by type name so any field carrying this type
+                    // gets the mesh-asset browser, regardless of field name.
+                    // Also retain the old field-name guard as a fallback for plain String
+                    // fields that are conventionally named "mesh_asset".
+                    let mesh_picker = if prop.type_info.type_name == "MeshAssetPath"
+                        || (prop.type_info.is_string() && prop.name == "mesh_asset")
+                    {
                         let v = current_json.as_str().unwrap_or("");
                         let cls = class_name.to_string();
                         let pn = prop.name.to_string();
