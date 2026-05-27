@@ -70,6 +70,15 @@ pub struct Notification {
     message: Option<SharedString>,
     icon: Option<Icon>,
     autohide: bool,
+    /// Delay before auto-hiding, used for the autohide timer and for
+    /// the auto-dismiss-on-complete path (when progress reaches 1.0).
+    autohide_delay: Duration,
+    /// Optional progress value in `0.0..=1.0`.
+    ///
+    /// - `None`  — no progress bar rendered.
+    /// - `Some(p)` where `p < 1.0` — animated indeterminate shimmer bar.
+    /// - `Some(1.0)` — full solid bar; triggers auto-dismiss after `autohide_delay`.
+    progress: Option<f32>,
     action_builder: Option<Rc<dyn Fn(&mut Window, &mut Context<Self>) -> Button>>,
     content_builder: Option<Rc<dyn Fn(&mut Window, &mut Context<Self>) -> AnyElement>>,
     on_click: Option<Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>>,
@@ -124,6 +133,8 @@ impl Notification {
             type_: None,
             icon: None,
             autohide: true,
+            autohide_delay: Duration::from_secs(5),
+            progress: None,
             action_builder: None,
             content_builder: None,
             on_click: None,
@@ -205,6 +216,25 @@ impl Notification {
         self
     }
 
+    /// Override the auto-hide delay (default: 5 s).
+    ///
+    /// Also controls the delay before the notification disappears when
+    /// `progress(1.0)` is set.
+    pub fn autohide_delay(mut self, delay: Duration) -> Self {
+        self.autohide_delay = delay;
+        self
+    }
+
+    /// Attach a progress bar to this notification.
+    ///
+    /// - Values in `0.0..1.0` show an animated indeterminate shimmer.
+    /// - Value `1.0` renders a full solid bar and **automatically starts**
+    ///   the dismiss timer (using `autohide_delay`, default 3 s for this path).
+    pub fn progress(mut self, value: f32) -> Self {
+        self.progress = Some(value.clamp(0.0, 1.0));
+        self
+    }
+
     /// Set the click callback of the notification.
     pub fn on_click(
         mut self,
@@ -267,6 +297,15 @@ impl Render for Notification {
             Some(type_) => Some(type_.icon(cx)),
         };
         let has_icon = icon.is_some();
+        let progress = self.progress;
+        let is_complete = progress.map(|p| p >= 1.0).unwrap_or(false);
+
+        // Pick progress bar colour: green when complete, accent otherwise.
+        let bar_color = if is_complete {
+            cx.theme().success
+        } else {
+            cx.theme().accent
+        };
 
         h_flex()
             .id("notification")
@@ -279,9 +318,14 @@ impl Render for Notification {
             .bg(cx.theme().popover)
             .rounded(cx.theme().radius_lg)
             .shadow_md()
-            .py_3p5()
+            // Extra bottom padding when a progress bar is present so the bar
+            // doesn't overlap the text content.
+            .when(progress.is_some(), |this| this.pb_1())
+            .when(progress.is_none(), |this| this.py_3p5())
+            .pt_3p5()
             .px_4()
             .gap_3()
+            .overflow_hidden()
             .refine_style(&self.style)
             .when_some(icon, |this, icon| {
                 this.child(div().absolute().py_3p5().left_4().child(icon))
@@ -325,6 +369,51 @@ impl Render for Notification {
                             .on_click(cx.listener(|this, _, window, cx| this.dismiss(window, cx))),
                     ),
             )
+            // ── Progress bar ─────────────────────────────────────────────────
+            .when_some(progress, |this, p| {
+                if p >= 1.0 {
+                    // Completed: full solid bar.
+                    this.child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(3.))
+                            .bg(bar_color),
+                    )
+                } else {
+                    // In-progress: animated shimmer that cycles across the bar.
+                    this.child(
+                        div()
+                            .absolute()
+                            .bottom_0()
+                            .left_0()
+                            .right_0()
+                            .h(px(3.))
+                            .bg(cx.theme().border)
+                            .child(
+                                div()
+                                    .h_full()
+                                    .bg(bar_color)
+                                    .with_animation(
+                                        "progress-shimmer",
+                                        Animation::new(Duration::from_secs_f32(1.4))
+                                            .repeat()
+                                            .with_easing(cubic_bezier(0.4, 0., 0.6, 1.)),
+                                        move |el, delta| {
+                                            // Shimmer: slide a ~40% wide block left→right
+                                            let track_pct = delta;
+                                            let start = (track_pct * 1.4 - 0.4).clamp(0., 1.);
+                                            let end = (track_pct * 1.4).clamp(0., 1.);
+                                            el.w(gpui::relative(end - start))
+                                                .ml(gpui::relative(start))
+                                        },
+                                    ),
+                            ),
+                    )
+                }
+            })
             .with_animation(
                 ElementId::NamedInteger("slide-up".into(), closing as u64),
                 Animation::new(Duration::from_secs_f64(0.25))
@@ -375,6 +464,8 @@ impl NotificationList {
         let notification = notification.into();
         let id = notification.id.clone();
         let autohide = notification.autohide;
+        let autohide_delay = notification.autohide_delay;
+        let is_complete = notification.progress.map(|p| p >= 1.0).unwrap_or(false);
 
         // Remove the notification by id, for keep unique.
         self.notifications.retain(|note| note.read(cx).id != id);
@@ -390,11 +481,23 @@ impl NotificationList {
         );
 
         self.notifications.push_back(notification.clone());
-        if autohide {
-            // Sleep for 5 seconds to autohide the notification
-            cx.spawn_in(window, async move |_, cx| {
-                Timer::after(Duration::from_secs(5)).await;
 
+        // Auto-dismiss paths:
+        //   1. progress(1.0) — build complete; use autohide_delay (default 3 s)
+        //   2. autohide == true (and not already complete) — standard 5 s timer
+        if is_complete {
+            cx.spawn_in(window, async move |_, cx| {
+                Timer::after(autohide_delay).await;
+                if let Err(err) =
+                    notification.update_in(cx, |note, window, cx| note.dismiss(window, cx))
+                {
+                    tracing::error!("failed to auto-hide completed notification: {:?}", err);
+                }
+            })
+            .detach();
+        } else if autohide {
+            cx.spawn_in(window, async move |_, cx| {
+                Timer::after(autohide_delay).await;
                 if let Err(err) =
                     notification.update_in(cx, |note, window, cx| note.dismiss(window, cx))
                 {
@@ -403,6 +506,7 @@ impl NotificationList {
             })
             .detach();
         }
+
         cx.notify();
     }
 
