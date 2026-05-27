@@ -166,7 +166,7 @@ futures = "0.3"
 axum = { version = "0.8", features = ["ws", "macros"] }
 parking_lot = "0.12"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
-pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "02aa3ec5fc8e1bad177f67e1d0efc064f5454e25" }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "fc1a0b7aeac64c16f092eee9ab182d92dbc04472" }
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "=3.27.0"
 base64 = "0.22"
