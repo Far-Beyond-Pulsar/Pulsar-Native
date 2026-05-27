@@ -325,7 +325,7 @@ impl MultiuserClient {
                     };
 
                     if let Ok(join_json) = serde_json::to_string(&join_msg) {
-                        if let Err(e) = write.send(Message::Text(join_json)).await {
+                        if let Err(e) = write.send(Message::Text(join_json.into())).await {
                             error!("Failed to send join message: {}", e);
                             let _ =
                                 result_tx.send(Err(anyhow::anyhow!("Failed to send join: {}", e)));
@@ -342,7 +342,7 @@ impl MultiuserClient {
                         let mut message_rx = message_rx;
                         while let Some(msg) = message_rx.recv().await {
                             if let Ok(json) = serde_json::to_string(&msg) {
-                                if let Err(e) = write.send(Message::Text(json)).await {
+                                if let Err(e) = write.send(Message::Text(json.into())).await {
                                     error!("Failed to send message: {}", e);
                                     *status_clone_out.write().await =
                                         ConnectionStatus::Error(e.to_string());

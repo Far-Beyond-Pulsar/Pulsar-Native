@@ -153,9 +153,9 @@ impl RelayServer {
             // Generate self-signed certificate
             let cert = rcgen::generate_simple_self_signed(vec!["localhost".to_string()])
                 .context("Failed to generate self-signed certificate")?;
-            let cert_der = rustls::pki_types::CertificateDer::from(cert.cert);
+            let cert_der = cert.cert.der().clone();
             let key_der =
-                rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der());
+                rustls::pki_types::PrivatePkcs8KeyDer::from(cert.signing_key.serialize_der());
             (vec![cert_der], key_der.into())
         };
 
