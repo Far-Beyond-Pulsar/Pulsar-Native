@@ -271,7 +271,6 @@ helio-snapshot = { path = "../Helio/crates_other/helio-snapshot" }
 pbgc = { path = "../PBGC" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
-blueprint_editor_plugin = { path = "../Plugin_Blueprints" }
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
 ui                    = { path = "crates/ui" }
 ui_common             = { path = "ui-crates/ui_common" }
