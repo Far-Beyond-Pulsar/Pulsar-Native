@@ -87,7 +87,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
  "tracing",
 ]
@@ -123,7 +123,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -142,7 +142,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tracing",
@@ -154,7 +154,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -164,7 +164,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -174,7 +174,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tracing",
@@ -186,7 +186,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -196,7 +196,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -206,7 +206,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -216,7 +216,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -226,7 +226,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tracing",
@@ -238,7 +238,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -248,7 +248,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -258,7 +258,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -268,7 +268,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -286,7 +286,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -296,7 +296,7 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde_json",
 ]
 
@@ -1004,6 +1004,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e7178fe5f7d460b13895ebb9dcb28a3a6216d2df2574a0806cb51b555d297f38"
 dependencies = [
  "arrayvec",
+]
+
+[[package]]
+name = "aws-lc-rs"
+version = "1.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ec2f1fc3ec205783a5da9a7e6c1509cc69dedf09a1949e412c1e18469326d00"
+dependencies = [
+ "aws-lc-sys",
+ "zeroize",
+]
+
+[[package]]
+name = "aws-lc-sys"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a2f9779ce85b93ab6170dd940ad0169b5766ff848247aff13bb788b832fe3f4"
+dependencies = [
+ "cc",
+ "cmake",
+ "dunce",
+ "fs_extra",
 ]
 
 [[package]]
@@ -1810,6 +1832,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
 dependencies = [
  "error-code",
+]
+
+[[package]]
+name = "cmake"
+version = "0.1.58"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c0f78a02292a74a88ac736019ab962ece0bc380e3f977bf72e376c5d78ff0678"
+dependencies = [
+ "cc",
 ]
 
 [[package]]
@@ -3648,6 +3679,12 @@ dependencies = [
  "nix 0.29.0",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "fs_extra"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
 name = "fsevent-sys"
@@ -8718,7 +8755,7 @@ dependencies = [
  "quinn",
  "rand 0.8.6",
  "rcgen",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -8790,6 +8827,7 @@ dependencies = [
  "pulsar_std",
  "rfd",
  "rust-embed 6.8.1",
+ "rustls",
  "serde",
  "serde_json",
  "sysuri",
@@ -9048,6 +9086,7 @@ version = "0.11.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "434b42fec591c96ef50e21e886936e66d3cc3f737104fdb9b737c40ffb94c098"
 dependencies = [
+ "aws-lc-rs",
  "bytes",
  "fastbloom",
  "getrandom 0.3.4",
@@ -9515,6 +9554,46 @@ checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "futures-channel",
+ "futures-core",
+ "futures-util",
+ "http 1.4.0",
+ "http-body",
+ "http-body-util",
+ "hyper",
+ "hyper-rustls",
+ "hyper-util",
+ "js-sys",
+ "log",
+ "percent-encoding",
+ "pin-project-lite",
+ "quinn",
+ "rustls",
+ "rustls-pki-types",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sync_wrapper",
+ "tokio",
+ "tokio-rustls",
+ "tower 0.5.3",
+ "tower-http 0.6.11",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "webpki-roots 1.0.7",
+]
+
+[[package]]
+name = "reqwest"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
  "encoding_rs",
  "futures-channel",
  "futures-core",
@@ -9536,6 +9615,7 @@ dependencies = [
  "quinn",
  "rustls",
  "rustls-pki-types",
+ "rustls-platform-verifier",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -9543,44 +9623,6 @@ dependencies = [
  "tokio",
  "tokio-native-tls",
  "tokio-rustls",
- "tower 0.5.3",
- "tower-http 0.6.11",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
- "webpki-roots 1.0.7",
-]
-
-[[package]]
-name = "reqwest"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "futures-channel",
- "futures-core",
- "futures-util",
- "h2",
- "http 1.4.0",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-tls",
- "hyper-util",
- "js-sys",
- "log",
- "native-tls",
- "percent-encoding",
- "pin-project-lite",
- "rustls-pki-types",
- "sync_wrapper",
- "tokio",
- "tokio-native-tls",
  "tokio-util",
  "tower 0.5.3",
  "tower-http 0.6.11",
@@ -10109,6 +10151,7 @@ version = "0.23.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b"
 dependencies = [
+ "aws-lc-rs",
  "log",
  "once_cell",
  "ring",
@@ -10182,6 +10225,7 @@ version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
+ "aws-lc-rs",
  "ring",
  "rustls-pki-types",
  "untrusted",
@@ -10220,7 +10264,7 @@ dependencies = [
  "rayon",
  "regex",
  "remove_dir_all",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "retry",
  "rs_tracing",
  "same-file",
@@ -13141,7 +13185,7 @@ dependencies = [
  "gpui-ce",
  "open",
  "parking_lot",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "rfd",
  "rodio",
  "runas",
@@ -13165,7 +13209,7 @@ dependencies = [
  "dirs 5.0.1",
  "gpui-ce",
  "image",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "smallvec",
@@ -13251,7 +13295,7 @@ dependencies = [
  "image",
  "keyring",
  "parking_lot",
- "reqwest 0.12.28",
+ "reqwest 0.13.4",
  "serde",
  "similar",
  "smallvec",

@@ -406,6 +406,8 @@ fn ensure_linux_desktop_entry(exe_path: &std::path::Path) -> Option<String> {
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     enforce_discrete_gpu_policy_or_exit();
 
     macos_permissions::ensure_accessibility_permission_blocking();

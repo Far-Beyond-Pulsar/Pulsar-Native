@@ -44,6 +44,7 @@ serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rust-embed = { workspace = true, features = ["interpolate-folder-path", "include-exclude"] }
 tokio = { workspace = true, features = ["full"] }
 futures = { workspace = true }
