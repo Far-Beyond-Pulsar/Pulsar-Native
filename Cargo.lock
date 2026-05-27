@@ -3011,7 +3011,7 @@ dependencies = [
  "flume 0.11.1",
  "futures",
  "git2",
- "glam 0.29.3",
+ "glam 0.33.0",
  "gpui-ce",
  "helio",
  "helio-asset-compat",
@@ -4095,7 +4095,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8babf46d4c1c9d92deac9f7be466f76dfc4482b6452fc5024b5e8daf6ffeb3ee"
 dependencies = [
  "bytemuck",
- "serde",
 ]
 
 [[package]]
@@ -4119,6 +4118,16 @@ name = "glam"
 version = "0.32.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
+
+[[package]]
+name = "glam"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fb167719045debebe9f532320accc7b5c993c5a3b813f5696a11d5ca7bdc57b"
+dependencies = [
+ "bytemuck",
+ "serde_core",
+]
 
 [[package]]
 name = "glamx"
@@ -8928,7 +8937,7 @@ name = "pulsar_reflection"
 version = "0.1.0"
 dependencies = [
  "dashmap",
- "glam 0.29.3",
+ "glam 0.33.0",
  "helio",
  "inventory",
  "once_cell",
@@ -8953,7 +8962,7 @@ name = "pulsar_rendering"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
- "glam 0.29.3",
+ "glam 0.33.0",
  "helio",
  "pulsar_reflection",
  "serde",
@@ -13316,7 +13325,7 @@ dependencies = [
  "device_query 4.0.1",
  "engine_backend",
  "engine_state",
- "glam 0.29.3",
+ "glam 0.33.0",
  "gpui-ce",
  "helio-asset-compat",
  "objc2 0.6.4",
