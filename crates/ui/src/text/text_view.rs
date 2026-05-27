@@ -148,22 +148,35 @@ impl Future for UpdateFuture {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
-            match self.rx.poll_next(cx) {
+            // SAFETY: `self` is pinned for the duration of `poll`. We never move
+            // the `rx` field after taking this mutable reference; we only project it
+            // to a pinned reference for polling. The remaining fields are mutated in
+            // place and are not moved out of `self`.
+            let this = unsafe { self.as_mut().get_unchecked_mut() };
+
+            let rx_poll = {
+                // SAFETY: `rx` is a field inside the pinned future and is not moved
+                // while polled.
+                let mut rx = unsafe { Pin::new_unchecked(&mut this.rx) };
+                rx.as_mut().poll_next(cx)
+            };
+
+            match rx_poll {
                 Poll::Ready(Some(update)) => {
                     let changed = match update {
-                        Update::Text(text) if self.current_text != text => {
-                            self.current_text = text;
+                        Update::Text(text) if this.current_text != text => {
+                            this.current_text = text;
                             true
                         }
-                        Update::Style(style) if self.current_style != *style => {
-                            self.current_style = *style;
+                        Update::Style(style) if this.current_style != *style => {
+                            this.current_style = *style;
                             true
                         }
                         _ => false,
                     };
                     if changed {
-                        let delay = self.delay;
-                        self.timer.set_after(delay);
+                        let delay = this.delay;
+                        this.timer.set_after(delay);
                     }
                     continue;
                 }
@@ -171,15 +184,15 @@ impl Future for UpdateFuture {
                 Poll::Pending => {}
             }
 
-            match self.timer.poll_next(cx) {
+            match this.timer.poll_next(cx) {
                 Poll::Ready(Some(_)) => {
                     let res = parse_content(
-                        self.type_,
-                        &self.current_text,
-                        self.current_style.clone(),
-                        &self.highlight_theme,
+                        this.type_,
+                        &this.current_text,
+                        this.current_style.clone(),
+                        &this.highlight_theme,
                     );
-                    _ = self.tx_result.try_send(res);
+                    _ = this.tx_result.try_send(res);
                     continue;
                 }
                 Poll::Ready(None) | Poll::Pending => return Poll::Pending,
