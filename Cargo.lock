@@ -6190,13 +6190,13 @@ dependencies = [
 
 [[package]]
 name = "markup5ever_rcdom"
-version = "0.3.0"
+version = "0.39.0+unofficial"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edaa21ab3701bfee5099ade5f7e1f84553fd19228cf332f13cd6e964bf59be18"
+checksum = "3ac010f19d6c4af81eeb4018a39d7a115de9d285af45c126a4ac02e6fc5716b7"
 dependencies = [
- "html5ever 0.27.0",
- "markup5ever 0.12.1",
- "tendril 0.4.3",
+ "html5ever 0.39.0",
+ "markup5ever 0.39.0",
+ "tendril 0.5.0",
  "xml5ever",
 ]
 
@@ -10446,7 +10446,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 4.0.0",
+ "dirs 6.0.0",
 ]
 
 [[package]]
@@ -11058,6 +11058,7 @@ dependencies = [
  "parking_lot",
  "phf_shared 0.13.1",
  "precomputed-hash",
+ "serde",
 ]
 
 [[package]]
@@ -14813,13 +14814,12 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xml5ever"
-version = "0.18.1"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bbb26405d8e919bc1547a5aa9abc95cbfa438f04844f5fdd9dc7596b748bf69"
+checksum = "5ab627f34ff61b80d756180d556f9c68801d836d271b3b8c094504ceca69d221"
 dependencies = [
  "log",
- "mac",
- "markup5ever 0.12.1",
+ "markup5ever 0.39.0",
 ]
 
 [[package]]
