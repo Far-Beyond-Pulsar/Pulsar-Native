@@ -8760,7 +8760,7 @@ dependencies = [
  "rustls-pemfile",
  "serde",
  "serde_json",
- "socket2 0.5.10",
+ "socket2 0.6.3",
  "sqlx",
  "tempfile",
  "tokio",
