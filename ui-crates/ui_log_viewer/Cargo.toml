@@ -43,7 +43,7 @@ tokio = { workspace = true, features = ["sync", "macros"] }
 wgpu.workspace = true
 
 # File watching
-notify = { version = "6.0", default-features = false, features = ["macos_kqueue"] }
+notify = { version = "8.0", default-features = false, features = ["macos_kqueue"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Performance", "Win32_System_ProcessStatus"] }
