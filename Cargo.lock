@@ -4356,7 +4356,7 @@ dependencies = [
  "log",
  "nix 0.29.0",
  "regex",
- "rust-embed 8.11.0",
+ "rust-embed",
  "schemars",
  "serde",
  "serde_json",
@@ -8667,7 +8667,7 @@ version = "0.1.0"
 dependencies = [
  "prettyplease",
  "quote",
- "rust-embed 6.8.1",
+ "rust-embed",
  "serde",
  "serde_json",
  "syn 2.0.117",
@@ -8696,7 +8696,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_std",
  "rfd",
- "rust-embed 6.8.1",
+ "rust-embed",
  "rustls",
  "serde",
  "serde_json",
@@ -9765,37 +9765,12 @@ dependencies = [
 
 [[package]]
 name = "rust-embed"
-version = "6.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a36224c3276f8c4ebc8c20f158eca7ca4359c8db89991c4925132aaaf6702661"
-dependencies = [
- "rust-embed-impl 6.8.1",
- "rust-embed-utils 7.8.1",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed"
 version = "8.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04113cb9355a377d83f06ef1f0a45b8ab8cd7d8b1288160717d66df5c7988d27"
 dependencies = [
- "rust-embed-impl 8.11.0",
- "rust-embed-utils 8.11.0",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-impl"
-version = "6.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49b94b81e5b2c284684141a2fb9e2a31be90638caf040bf9afbc5a0416afe1ac"
-dependencies = [
- "proc-macro2",
- "quote",
- "rust-embed-utils 7.8.1",
- "shellexpand",
- "syn 2.0.117",
+ "rust-embed-impl",
+ "rust-embed-utils",
  "walkdir",
 ]
 
@@ -9807,19 +9782,9 @@ checksum = "da0902e4c7c8e997159ab384e6d0fc91c221375f6894346ae107f47dd0f3ccaa"
 dependencies = [
  "proc-macro2",
  "quote",
- "rust-embed-utils 8.11.0",
+ "rust-embed-utils",
+ "shellexpand",
  "syn 2.0.117",
- "walkdir",
-]
-
-[[package]]
-name = "rust-embed-utils"
-version = "7.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d38ff6bf570dc3bb7100fce9f7b60c33fa71d80e88da3f2580df4ff2bdded74"
-dependencies = [
- "globset",
- "sha2 0.10.9",
  "walkdir",
 ]
 
@@ -10597,9 +10562,9 @@ dependencies = [
 
 [[package]]
 name = "shellexpand"
-version = "2.1.2"
+version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ccc8076840c4da029af4f87e4e8daeb0fca6b87bbb02e10cb60b791450e11e4"
+checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
  "dirs 4.0.0",
 ]
@@ -12819,7 +12784,7 @@ dependencies = [
  "regex",
  "resvg",
  "ropey",
- "rust-embed 6.8.1",
+ "rust-embed",
  "rust-i18n",
  "rust_decimal",
  "schemars",
