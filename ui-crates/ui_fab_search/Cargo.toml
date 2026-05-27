@@ -11,7 +11,7 @@ ui_common = { workspace = true }
 urlencoding = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "blocking"] }
+reqwest = { version = "0.13", features = ["json", "gzip", "brotli", "blocking"] }
 tokio = { workspace = true, features = ["rt"] }
 smol = { workspace = true }
 image = { workspace = true }
