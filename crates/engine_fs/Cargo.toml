@@ -25,4 +25,4 @@ tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev =
 tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 
 [dev-dependencies]
-tempfile = "3.8"
+tempfile = "=3.27.0"

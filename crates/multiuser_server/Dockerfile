@@ -1,7 +1,7 @@
 # Multi-stage Docker build for Pulsar MultiEdit
 
 # Stage 1: Builder
-FROM rust:1.88-slim AS builder
+FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
 
 WORKDIR /app
 
@@ -48,7 +48,7 @@ RUN touch crates/multiuser_server/src/main.rs && \
   cargo build --release -p pulsar-multiedit --bin pulsar-multiedit
 
 # Stage 2: Runtime
-FROM debian:bookworm-slim
+FROM debian:bookworm-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
 
 WORKDIR /app
 
