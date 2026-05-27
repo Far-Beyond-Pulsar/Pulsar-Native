@@ -10,9 +10,11 @@
     },
     {
       "matchManagers": ["cargo"],
-      "matchPackagePatterns": ["^tree-sitter"],
       "groupName": "tree-sitter grammars",
-      "groupSlug": "tree-sitter"
+      "groupSlug": "tree-sitter",
+      "matchPackageNames": [
+      "/^tree-sitter/"
+     ]
     }
   ]
 }
