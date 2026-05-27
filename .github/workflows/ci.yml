@@ -23,8 +23,8 @@ jobs:
             run_on: windows-latest
     runs-on: ${{ matrix.run_on }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
         with:
           components: clippy
       - name: Install system dependencies
@@ -32,7 +32,7 @@ jobs:
         run: script/bootstrap
       - name: Machete
         if: ${{ matrix.run_on == 'macos-latest' }}
-        uses: bnjbvr/cargo-machete@v0.9.1
+        uses: bnjbvr/cargo-machete@7959c845782fed02ee69303126d4a12d64f1db18 # v0.9.1
 
       - name: Typo check
         if: ${{ matrix.run_on == 'macos-latest' }}

@@ -77,11 +77,11 @@ libc = "0.2"
 prost-build = "0.13"
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["async_tokio"] }
-proptest = "1.4"
-mockall = "0.13"
-tempfile = "3.12"
-reqwest = { version = "0.12", features = ["json"] }
+criterion = { version = "=0.5.1", features = ["async_tokio"] }
+proptest = "=1.11.0"
+mockall = "=0.13.1"
+tempfile = "=3.27.0"
+reqwest = { version = "=0.12.28", features = ["json"] }
 
 # [[bench]]
 # name = "relay_throughput"

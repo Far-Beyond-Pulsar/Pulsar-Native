@@ -24,4 +24,4 @@ rust-i18n.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-rand = "0.8"
+rand = "=0.8.6"

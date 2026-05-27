@@ -23,4 +23,4 @@ serde_json = "1.0"
 tracing = "0.1"
 
 [dev-dependencies]
-tracing-subscriber = "0.3"
+tracing-subscriber = "=0.3.23"

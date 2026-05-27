@@ -157,7 +157,7 @@ windows = { version = "0.58", features = [
 ] }
 
 [dev-dependencies]
-indoc = "2"
+indoc = "=2.0.7"
 
 [lints]
 workspace = true
