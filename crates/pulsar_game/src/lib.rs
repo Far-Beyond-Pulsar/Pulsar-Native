@@ -13,6 +13,7 @@
 pub mod actor;
 pub mod archetype;
 pub mod component;
+pub mod component_store;
 pub mod entity;
 pub mod event;
 pub mod query;
@@ -29,6 +30,12 @@ pub mod blueprint_runtime;
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use component::Component;
+pub use component_store::{
+    ComponentStore,
+    __bp_set_comp_ctx,
+    __bp_clear_comp_ctx,
+    __bp_with_comp,
+};
 pub use entity::Entity;
 pub use event::{EventBuffer, EventReader, EventWriter};
 pub use query::{QueryIter, WorldQuery};
@@ -46,6 +53,7 @@ pub mod prelude {
     pub use crate::{
         actor::{Actor, ActorRegistry},
         component::Component,
+        component_store::ComponentStore,
         entity::Entity,
         event::{EventReader, EventWriter},
         query::{QueryIter, WorldQuery},

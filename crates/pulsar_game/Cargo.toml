@@ -24,5 +24,8 @@ serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 notify = { workspace = true }
 
+# Reflection — for ComponentStore property access
+pulsar_reflection = { workspace = true }
+
 [lints]
 workspace = true
