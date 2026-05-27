@@ -11,7 +11,7 @@ ui_common = { workspace = true }
 engine_state = { workspace = true }
 chrono = { workspace = true }
 git2 = { workspace = true }
-keyring = "3"
+keyring = "4"
 serde = { workspace = true }
 parking_lot = { workspace = true }
 similar = { workspace = true }
