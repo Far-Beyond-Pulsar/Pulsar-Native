@@ -181,7 +181,7 @@ helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev =
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.10"
-dirs = "5.0"
+dirs = "6.0"
 winapi = { version = "0.3", features = ["winuser"] }
 ui_gen_macros = { path = "crates/ui_gen_macros" }
 pulsar_macros = { path = "crates/pulsar_macros" }
