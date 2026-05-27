@@ -259,17 +259,6 @@ gpui-component-macros = { path = "crates/macros" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 
-[patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
-graphy = { path = "../Graphy" }
-
-[patch."https://github.com/Far-Beyond-Pulsar/Helio"]
-helio = { path = "../Helio/crates/helio" }
-helio-asset-compat = { path = "../Helio/crates/helio-asset-compat" }
-helio-snapshot = { path = "../Helio/crates_other/helio-snapshot" }
-
-[patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
-pbgc = { path = "../PBGC" }
-
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
 ui                    = { path = "crates/ui" }
