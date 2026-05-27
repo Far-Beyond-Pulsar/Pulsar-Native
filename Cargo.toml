@@ -163,7 +163,7 @@ pulsar_reflection_derive = { path = "crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"
 flume = "0.11"
 futures = "0.3"
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { version = "0.8", features = ["ws", "macros"] }
 parking_lot = "0.12"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
 pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "98b1510a153447f4af69c1b3bee5b3cb85c185e1" }
