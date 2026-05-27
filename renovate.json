@@ -8,19 +8,5 @@
       "matchUpdateTypes": ["digest"],
       "enabled": false
     },
-    {
-      "matchManagers": ["cargo"],
-      "matchPackagePatterns": ["^agent_provider"],
-      "groupName": "agent providers",
-      "groupSlug": "agent-providers",
-      "separateMultipleMajor": true
-    },
-    {
-      "matchManagers": ["cargo"],
-      "matchPackagePatterns": ["^ui-crates"],
-      "groupName": "ui",
-      "groupSlug": "ui-crates",
-      "separateMultipleMajor": true
-    }
   ]
 }
