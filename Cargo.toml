@@ -112,7 +112,7 @@ plugin_manager    = { path = "crates/plugin_manager" }
 # ---------- Helio Renderer (wgpu-based) ----------
 helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
 helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
-glam           = { version = "0.29", features = ["bytemuck"] }
+glam           = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
 pulsar-config = { git = "https://github.com/Far-Beyond-Pulsar/PulsarConfig", rev = "78a332cc59e82db5dc4d7b26c920b0ac7a703102" }
