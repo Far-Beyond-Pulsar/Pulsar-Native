@@ -8,10 +8,10 @@ build = "build.rs"
 [dependencies]
 
 [dev-dependencies]
-pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "98b1510a153447f4af69c1b3bee5b3cb85c185e1" }
-graphy           = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
-pulsar_std       = { path = "../pulsar_std" }
-pulsar_bp_executor = { path = "../pulsar_bp_executor" }
-serde_json       = "1.0"
+pbgc = { workspace = true }
+graphy           = { workspace = true }
+pulsar_std       = { workspace = true }
+pulsar_bp_executor = { workspace = true }
+serde_json       = { workspace = true }
 
 [build-dependencies]

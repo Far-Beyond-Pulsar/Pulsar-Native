@@ -5,9 +5,9 @@ edition = "2021"
 publish = false
 
 [dependencies]
-anyhow = "1"
-agent_chat_core = { path = "../agent_chat_core" }
+anyhow = { workspace = true }
+agent_chat_core = { workspace = true }
 reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }

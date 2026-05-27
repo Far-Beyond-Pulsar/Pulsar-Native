@@ -21,23 +21,23 @@ tracing.workspace = true
 
 window_manager.workspace = true
 # Utilities
-anyhow = "1.0"
-chrono = { version = "0.4" }
-directories = "5.0"
+anyhow = { workspace = true }
+chrono = { workspace = true }
+directories = { workspace = true }
 rust-i18n.workspace = true
 sysinfo = "0.30"
-parking_lot = "0.12"
-rand = "0.8"
-dashmap = "6.0"
-once_cell = "1.19"
-rusqlite = { version = "0.32", features = ["bundled"] }
-crossbeam-channel = "0.5"
+parking_lot = { workspace = true }
+rand = { workspace = true }
+dashmap = { workspace = true }
+once_cell = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+crossbeam-channel = { workspace = true }
 backtrace = "0.3"
 
 # Async
-futures = "0.3"
-smol = "2.0"
-tokio = { version = "1", features = ["sync", "macros"] }
+futures = { workspace = true }
+smol = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros"] }
 
 # GPU detection
 wgpu.workspace = true
