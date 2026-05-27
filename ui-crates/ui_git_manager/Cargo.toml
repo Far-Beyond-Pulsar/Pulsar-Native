@@ -6,17 +6,17 @@ edition = "2024"
 [dependencies]
 gpui-ce.workspace = true
 window_manager.workspace = true
-ui = { workspace = true, features = ["tree-sitter-languages"] }
+ui = { path = "../../crates/ui", features = ["tree-sitter-languages"] }
 ui_common = { workspace = true }
-engine_state = { workspace = true }
-chrono = { workspace = true }
-git2 = { workspace = true }
+engine_state = { path = "../../crates/engine_state" }
+chrono = "0.4"
+git2 = "0.19"
 keyring = "3"
 serde = { workspace = true }
-parking_lot = { workspace = true }
-similar = { workspace = true }
-reqwest = { workspace = true, default-features = false, features = ["blocking", "rustls-tls"] }
-image = { workspace = true, default-features = false, features = ["png", "jpeg"] }
+parking_lot = "0.12"
+similar = "2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 smallvec = { workspace = true }
 smol = { workspace = true }
 

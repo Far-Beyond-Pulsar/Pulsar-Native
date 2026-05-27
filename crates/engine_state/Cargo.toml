@@ -11,11 +11,11 @@ gpui-ce.workspace = true
 window_manager.workspace = true
 
 # Thread-safe data structures
-dashmap = { workspace = true }
-parking_lot = { workspace = true }
+dashmap = "6.1.0"
+parking_lot = "0.12"
 
 # Error handling
-anyhow = { workspace = true }
+anyhow = "1.0"
 
 # Logging
 tracing.workspace = true
@@ -27,9 +27,9 @@ rust-discord-activity = { git = "https://github.com/Far-Beyond-Pulsar/Discord-RP
 # Settings system (PulsarConfig)
 pulsar-config.workspace = true
 pulsar_settings.workspace = true
-serde = { workspace = true, features = ["derive"] }
-toml = { workspace = true }
-directories = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+directories = "5"
 
 # Shared window types
-ui_types_common = { workspace = true }
+ui_types_common = { path = "../../ui-crates/ui_types_common" }

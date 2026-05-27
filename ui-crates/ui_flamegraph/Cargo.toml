@@ -10,18 +10,18 @@ gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 window_manager.workspace = true
-engine_backend = { workspace = true }
+engine_backend = { path = "../../crates/engine_backend" }
 
 # Profiling - instrumentation-based (Unreal Insights style)
-profiling = { workspace = true }
-parking_lot = { workspace = true }
-rusqlite = { workspace = true, features = ["bundled"] }
-engine_state = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-rand = { workspace = true }
-rfd = { workspace = true }
+profiling = { path = "../../crates/profiling" }
+parking_lot = "0.12"
+rusqlite = { version = "0.32", features = ["bundled"] }
+engine_state = { path = "../../crates/engine_state" }
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8"
+rfd = "0.9"
 rust-i18n.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-rand = { workspace = true }
+rand = "=0.8.6"

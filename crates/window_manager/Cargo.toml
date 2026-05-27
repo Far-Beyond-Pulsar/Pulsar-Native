@@ -9,18 +9,18 @@ publish = false
 gpui-ce.workspace = true
 
 # ui_types_common for resolving import errors
-ui_types_common = { workspace = true }
+ui_types_common = { path = "../../ui-crates/ui_types_common" }
 
 # Error handling
-thiserror = { workspace = true }
-anyhow = { workspace = true }
+thiserror = "2.0"
+anyhow = "1.0"
 
 # Thread-safe data structures
-parking_lot = { workspace = true }
-dashmap = { workspace = true }
+parking_lot = "0.12"
+dashmap = "6.1.0"
 
 # Logging
 tracing.workspace = true
 
 # Serialization (for window state)
-serde = { workspace = true, features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }

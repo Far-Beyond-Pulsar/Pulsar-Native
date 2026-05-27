@@ -12,17 +12,17 @@ tracing     = { workspace = true }
 # Fast hasher — avoids DoS-resistant hashing overhead for internal tables
 ahash       = "0.8"
 # Stable, fast type-name/id utilities
-once_cell   = { workspace = true }
+once_cell   = "1"
 
 # Blueprint runtime dependencies
-pulsar_graph = { workspace = true }
-blueprint_compiler = { workspace = true }
-pulsar_bp_executor = { workspace = true }
-pulsar_std_bundle = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
-notify = { workspace = true }
+pulsar_graph = { path = "../pulsar_graph" }
+blueprint_compiler = { path = "../blueprint_compiler" }
+pulsar_bp_executor = { path = "../pulsar_bp_executor" }
+pulsar_std_bundle = { path = "../pulsar_std_bundle" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+notify = "6"
 
 [lints]
 workspace = true

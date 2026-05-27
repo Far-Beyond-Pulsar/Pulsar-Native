@@ -22,7 +22,7 @@ ui_file_manager.workspace = true
 ui_plugin_manager.workspace = true
 ui_log_viewer.workspace = true
 ui_settings.workspace = true
-ui_git_manager = { workspace = true }
+ui_git_manager = { path = "../ui_git_manager" }
 ui_about.workspace = true
 ui_documentation.workspace = true
 
@@ -33,19 +33,19 @@ engine_backend.workspace = true
 window_manager.workspace = true
 
 # Plugin system
-plugin_manager = { workspace = true }
-plugin_editor_api = { workspace = true }
+plugin_manager = { path = "../../crates/plugin_manager" }
+plugin_editor_api = { path = "../../crates/plugin_editor_api" }
 
 # Built-in plugins
 blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "ea4e7ee6c75397f381c2e39796cb33d45ea36424" }
 script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "8190e6c13dbaf9a758ec6eb3a1070259afb70781" }
-serde = { workspace = true, features = ["derive"] }
-schemars = { workspace = true }
+serde = { version = "1.0", features = ["derive"] }
+schemars = "1.0"
 tracing.workspace = true
-smol = { workspace = true }
-futures = { workspace = true }
+smol = "2"
+futures = "0.3"
 rust-i18n.workspace = true
-serde_json = { workspace = true }
+serde_json = "1.0"
 anyhow.workspace = true
 agent_chat_core.workspace = true
 directories.workspace = true
@@ -73,5 +73,5 @@ agent_provider_azure_openai.workspace = true
 agent_provider_aws_bedrock.workspace = true
 agent_provider_vertex_ai.workspace = true
 agent_provider_cohere.workspace = true
-dirs = { workspace = true }
-rfd = { workspace = true }
+dirs = "5.0"
+rfd = "0.14"

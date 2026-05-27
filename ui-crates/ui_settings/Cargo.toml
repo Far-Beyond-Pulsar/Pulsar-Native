@@ -11,6 +11,6 @@ ui.workspace = true
 window_manager.workspace = true
 # Engine
 engine_state.workspace = true
-directories = { workspace = true }
+directories = "5"
 # Logging
 tracing.workspace = true
