@@ -70,7 +70,7 @@ smol.workspace = true
 tracing.workspace = true
 image.workspace = true
 
-itertools = "0.13.0"
+itertools = "0.14.0"
 linkme = { workspace = true }
 once_cell = { workspace = true }
 open = { workspace = true }
