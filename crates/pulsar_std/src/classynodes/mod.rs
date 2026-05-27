@@ -1,12 +1,11 @@
 use crate::{blueprint,NodeTypes,exec_output};
-use rand::Rng;
 
 static CATAGORY:&str = "ClassyPallet";
 static COLOR:&str = "#0e0ed86e";
 
 #[blueprint(type:NodeTypes::control_flow,category:CATAGORY,color:COLOR)]
 pub fn random_exec_switch() {
-    let state = rand::rng().random_range(1..=2);
+    let state = rand::random_range(1..=2);
     if state==1{
         exec_output!("ONE");
     } else {

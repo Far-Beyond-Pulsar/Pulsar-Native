@@ -139,23 +139,23 @@ impl TraceData {
     /// Create TraceData with comprehensive sample data
     /// Generates 2000+ frames with dedicated threads for engine subsystems
     pub fn with_sample_data() -> Self {
-        use rand::Rng;
+        use rand::RngExt;
         let trace = Self::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut current_time = 0u64;
 
         // Generate 2000 frames with realistic multi-threaded workload
         for frame_idx in 0..2000 {
             let frame_start = current_time;
             let base_frame_time = 16_600_000u64; // 16.6ms target
-            let frame_variance = rng.gen_range(-3_000_000i64..5_000_000i64);
+            let frame_variance = rng.random_range(-3_000_000i64..5_000_000i64);
             let frame_duration = (base_frame_time as i64 + frame_variance).max(8_000_000) as u64;
 
             trace.add_frame_time(frame_duration as f32 / 1_000_000.0);
 
             // === THREAD 0: GPU ===
-            let gpu_start = frame_start + rng.gen_range(1_000_000..3_000_000);
-            let gpu_duration = rng.gen_range(8_000_000..14_000_000);
+            let gpu_start = frame_start + rng.random_range(1_000_000..3_000_000);
+            let gpu_duration = rng.random_range(8_000_000..14_000_000);
 
             trace.add_span(TraceSpan {
                 name: "GPU Frame".to_string(),
@@ -176,7 +176,7 @@ impl TraceData {
 
             let mut gpu_time = gpu_start;
             for (pass_name, min_dur, max_dur) in gpu_passes {
-                let pass_dur = rng.gen_range(min_dur..max_dur);
+                let pass_dur = rng.random_range(min_dur..max_dur);
                 trace.add_span(TraceSpan {
                     name: pass_name.to_string(),
                     start_ns: gpu_time,
@@ -187,7 +187,7 @@ impl TraceData {
                 });
 
                 // Draw calls per pass
-                let num_draws = rng.gen_range(5..20);
+                let num_draws = rng.random_range(5..20);
                 let draw_dur = pass_dur / num_draws as u64;
                 let mut draw_time = gpu_time;
                 for draw in 0..num_draws {
@@ -254,7 +254,7 @@ impl TraceData {
             let mut main_time = frame_start;
 
             // Input processing
-            let input_dur = rng.gen_range(100_000..500_000);
+            let input_dur = rng.random_range(100_000..500_000);
             trace.add_span(TraceSpan {
                 name: "Input::Process".to_string(),
                 start_ns: main_time,
@@ -266,7 +266,7 @@ impl TraceData {
             main_time += input_dur;
 
             // Game logic update with deeper callstacks
-            let update_dur = rng.gen_range(2_000_000..6_000_000);
+            let update_dur = rng.random_range(2_000_000..6_000_000);
             trace.add_span(TraceSpan {
                 name: "GameLogic::Update".to_string(),
                 start_ns: main_time,
@@ -276,7 +276,7 @@ impl TraceData {
                 color_index: 2,
             });
 
-            let num_entities = rng.gen_range(10..30);
+            let num_entities = rng.random_range(10..30);
             let entity_dur = update_dur / num_entities as u64;
             let mut entity_time = main_time;
             for entity in 0..num_entities {
@@ -361,8 +361,8 @@ impl TraceData {
             }
 
             // === THREAD 2: RENDER THREAD ===
-            let render_start = frame_start + rng.gen_range(500_000..2_000_000);
-            let render_dur = rng.gen_range(4_000_000..10_000_000);
+            let render_start = frame_start + rng.random_range(500_000..2_000_000);
+            let render_dur = rng.random_range(4_000_000..10_000_000);
 
             trace.add_span(TraceSpan {
                 name: "RenderThread".to_string(),
@@ -376,7 +376,7 @@ impl TraceData {
             let render_tasks = ["Cull", "Sort", "BuildCmdBuffer", "Submit"];
             let mut render_time = render_start;
             for task in render_tasks {
-                let task_dur = rng.gen_range(500_000..2_500_000);
+                let task_dur = rng.random_range(500_000..2_500_000);
                 trace.add_span(TraceSpan {
                     name: format!("Render::{}", task),
                     start_ns: render_time,
@@ -403,7 +403,7 @@ impl TraceData {
 
                         // Octree traversal for frustum culling
                         if *op == "FrustumCull" {
-                            let num_nodes = rng.gen_range(3..8);
+                            let num_nodes = rng.random_range(3..8);
                             let node_dur = cull_dur / num_nodes as u64;
                             for node in 0..num_nodes {
                                 trace.add_span(TraceSpan {
@@ -420,7 +420,7 @@ impl TraceData {
                     }
                 } else if task == "BuildCmdBuffer" {
                     let mut cmd_time = render_time;
-                    let num_batches = rng.gen_range(5..15);
+                    let num_batches = rng.random_range(5..15);
                     let batch_dur = task_dur / num_batches as u64;
                     for batch in 0..num_batches {
                         trace.add_span(TraceSpan {
@@ -460,8 +460,8 @@ impl TraceData {
             }
 
             // === THREAD 3: PHYSICS THREAD ===
-            let physics_start = frame_start + rng.gen_range(0..2_000_000);
-            let physics_dur = rng.gen_range(3_000_000..8_000_000);
+            let physics_start = frame_start + rng.random_range(0..2_000_000);
+            let physics_dur = rng.random_range(3_000_000..8_000_000);
 
             trace.add_span(TraceSpan {
                 name: "PhysicsThread".to_string(),
@@ -475,7 +475,7 @@ impl TraceData {
             let physics_phases = ["BroadPhase", "NarrowPhase", "SolveConstraints", "Integrate"];
             let mut phys_time = physics_start;
             for phase in physics_phases {
-                let phase_dur = rng.gen_range(500_000..2_000_000);
+                let phase_dur = rng.random_range(500_000..2_000_000);
                 trace.add_span(TraceSpan {
                     name: format!("Physics::{}", phase),
                     start_ns: phys_time,
@@ -502,7 +502,7 @@ impl TraceData {
                         broad_time += broad_dur;
                     }
                 } else if phase == "NarrowPhase" {
-                    let num_pairs = rng.gen_range(8..20);
+                    let num_pairs = rng.random_range(8..20);
                     let pair_dur = phase_dur / num_pairs as u64;
                     let mut pair_time = phys_time;
                     for pair in 0..num_pairs {
@@ -551,7 +551,7 @@ impl TraceData {
                         pair_time += pair_dur;
                     }
                 } else if phase == "SolveConstraints" {
-                    let num_islands = rng.gen_range(3..8);
+                    let num_islands = rng.random_range(3..8);
                     let island_dur = phase_dur / num_islands as u64;
                     let mut island_time = phys_time;
                     for island in 0..num_islands {
@@ -565,7 +565,7 @@ impl TraceData {
                         });
 
                         // Constraint solver iterations
-                        let num_iterations = rng.gen_range(4..10);
+                        let num_iterations = rng.random_range(4..10);
                         let iter_dur = island_dur / num_iterations as u64;
                         let mut iter_time = island_time;
                         for iter in 0..num_iterations {
@@ -583,7 +583,7 @@ impl TraceData {
                     }
                 } else {
                     // Objects per phase for other phases
-                    let num_objs = rng.gen_range(8..20);
+                    let num_objs = rng.random_range(8..20);
                     let obj_dur = phase_dur / num_objs as u64;
                     for obj in 0..num_objs {
                         trace.add_span(TraceSpan {
@@ -600,8 +600,8 @@ impl TraceData {
             }
 
             // === THREAD 4: AUDIO THREAD ===
-            let audio_start = frame_start + rng.gen_range(0..1_000_000);
-            let audio_dur = rng.gen_range(1_000_000..3_000_000);
+            let audio_start = frame_start + rng.random_range(0..1_000_000);
+            let audio_dur = rng.random_range(1_000_000..3_000_000);
 
             trace.add_span(TraceSpan {
                 name: "AudioThread".to_string(),
@@ -615,7 +615,7 @@ impl TraceData {
             let audio_tasks = ["MixChannels", "ApplyEffects", "StreamDecode", "Output"];
             let mut audio_time = audio_start;
             for task in audio_tasks {
-                let task_dur = rng.gen_range(200_000..800_000);
+                let task_dur = rng.random_range(200_000..800_000);
                 trace.add_span(TraceSpan {
                     name: format!("Audio::{}", task),
                     start_ns: audio_time,
@@ -630,8 +630,8 @@ impl TraceData {
             // === THREAD 5: NETWORK THREAD ===
             if frame_idx % 3 == 0 {
                 // Network updates every 3rd frame
-                let net_start = frame_start + rng.gen_range(0..5_000_000);
-                let net_dur = rng.gen_range(500_000..2_000_000);
+                let net_start = frame_start + rng.random_range(0..5_000_000);
+                let net_dur = rng.random_range(500_000..2_000_000);
 
                 trace.add_span(TraceSpan {
                     name: "NetworkThread".to_string(),
@@ -645,7 +645,7 @@ impl TraceData {
                 let net_ops = ["RecvPackets", "ProcessEvents", "SendUpdates", "Serialize"];
                 let mut net_time = net_start;
                 for op in net_ops {
-                    let op_dur = rng.gen_range(100_000..500_000);
+                    let op_dur = rng.random_range(100_000..500_000);
                     trace.add_span(TraceSpan {
                         name: format!("Net::{}", op),
                         start_ns: net_time,
@@ -661,8 +661,8 @@ impl TraceData {
             // === THREAD 6: I/O THREAD ===
             if frame_idx % 5 == 0 {
                 // I/O operations every 5th frame
-                let io_start = frame_start + rng.gen_range(0..8_000_000);
-                let io_dur = rng.gen_range(1_000_000..4_000_000);
+                let io_start = frame_start + rng.random_range(0..8_000_000);
+                let io_dur = rng.random_range(1_000_000..4_000_000);
 
                 trace.add_span(TraceSpan {
                     name: "IOThread".to_string(),
@@ -676,7 +676,7 @@ impl TraceData {
                 let io_ops = ["LoadAsset", "StreamTexture", "WriteCache"];
                 let mut io_time = io_start;
                 for op in io_ops {
-                    let op_dur = rng.gen_range(300_000..1_500_000);
+                    let op_dur = rng.random_range(300_000..1_500_000);
                     trace.add_span(TraceSpan {
                         name: format!("IO::{}", op),
                         start_ns: io_time,
@@ -777,8 +777,8 @@ impl TraceData {
             // === THREADS 7-18: JOB SYSTEM WORKERS ===
             for worker_id in 0..12 {
                 let thread_id = 7 + worker_id;
-                let job_start = frame_start + rng.gen_range(0..3_000_000);
-                let job_dur = rng.gen_range(2_000_000..7_000_000);
+                let job_start = frame_start + rng.random_range(0..3_000_000);
+                let job_dur = rng.random_range(2_000_000..7_000_000);
 
                 trace.add_span(TraceSpan {
                     name: format!("Worker_{}", worker_id),
@@ -790,7 +790,7 @@ impl TraceData {
                 });
 
                 // Parallel tasks with varying complexity
-                let num_tasks = rng.gen_range(5..12);
+                let num_tasks = rng.random_range(5..12);
                 let task_dur = job_dur / num_tasks as u64;
                 let mut task_time = job_start;
                 for task in 0..num_tasks {
