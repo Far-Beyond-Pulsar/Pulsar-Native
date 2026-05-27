@@ -3008,7 +3008,7 @@ dependencies = [
  "dashmap",
  "engine_fs",
  "engine_state",
- "flume 0.11.1",
+ "flume 0.12.0",
  "futures",
  "git2",
  "glam 0.33.0",
@@ -3471,7 +3471,6 @@ checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
 dependencies = [
  "futures-core",
  "futures-sink",
- "nanorand",
  "spin 0.9.8",
 ]
 
@@ -6544,15 +6543,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nanorand"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
-dependencies = [
- "getrandom 0.2.17",
-]
-
-[[package]]
 name = "native-tls"
 version = "0.2.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8626,7 +8616,7 @@ name = "pulsar_lsp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "flume 0.11.1",
+ "flume 0.12.0",
  "gpui-ce",
  "lsp-types",
  "pulsar_diagnostics",
