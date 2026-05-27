@@ -4,7 +4,7 @@
 //! with retry logic, exponential backoff, token validation, and punch coordination.
 
 use anyhow::{Context, Result};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
     net::SocketAddr,
@@ -37,6 +37,17 @@ const MAX_RETRIES: u32 = 10;
 
 /// Hole punch coordination timeout
 const COORDINATION_TIMEOUT: Duration = Duration::from_secs(10);
+
+fn serialize_bincode<T: Serialize>(value: &T) -> Result<Vec<u8>> {
+    bincode::serde::encode_to_vec(value, bincode::config::standard())
+        .context("Failed to serialize message")
+}
+
+fn deserialize_bincode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
+    let (value, _) = bincode::serde::decode_from_slice(bytes, bincode::config::standard())
+        .context("Failed to deserialize message")?;
+    Ok(value)
+}
 
 /// UDP hole punching coordinator
 pub struct UdpHolePuncher {
@@ -294,7 +305,7 @@ impl UdpHolePuncher {
         session_id: String,
     ) -> Result<()> {
         let message = PunchMessage::PunchRequest { token, session_id };
-        let payload = bincode::serialize(&message).context("Failed to serialize message")?;
+        let payload = serialize_bincode(&message)?;
 
         self.socket
             .send_to(&payload, peer_addr)
@@ -313,7 +324,7 @@ impl UdpHolePuncher {
             loop {
                 match self.socket.recv_from(&mut buffer).await {
                     Ok((n, addr)) if addr == peer_addr => {
-                        if let Ok(message) = bincode::deserialize::<PunchMessage>(&buffer[..n]) {
+                        if let Ok(message) = deserialize_bincode::<PunchMessage>(&buffer[..n]) {
                             match message {
                                 PunchMessage::PunchAck { session_id: ack_id }
                                     if ack_id == session_id =>
@@ -372,8 +383,7 @@ impl UdpHolePuncher {
 
     /// Handle incoming message
     async fn handle_message(&self, data: Vec<u8>, addr: SocketAddr) -> Result<()> {
-        let message: PunchMessage =
-            bincode::deserialize(&data).context("Failed to deserialize message")?;
+        let message: PunchMessage = deserialize_bincode(&data)?;
 
         match message {
             PunchMessage::PunchRequest { token, session_id } => {
@@ -386,7 +396,7 @@ impl UdpHolePuncher {
                 if self.validate_token(&token).await? {
                     // Send acknowledgment
                     let ack = PunchMessage::PunchAck { session_id };
-                    let payload = bincode::serialize(&ack)?;
+                    let payload = serialize_bincode(&ack)?;
                     self.socket.send_to(&payload, addr).await?;
                     debug!("Sent ACK to {}", addr);
                 } else {
@@ -397,7 +407,7 @@ impl UdpHolePuncher {
                 debug!("Received NAT probe {} from {}", sequence, addr);
                 // Echo back for NAT detection
                 let response = PunchMessage::NatProbe { sequence };
-                let payload = bincode::serialize(&response)?;
+                let payload = serialize_bincode(&response)?;
                 self.socket.send_to(&payload, addr).await?;
             }
             PunchMessage::KeepAlive => {
@@ -461,7 +471,7 @@ impl UdpHolePuncher {
     /// Probe external address via STUN server
     async fn probe_external_address(&self, stun_server: SocketAddr) -> Result<SocketAddr> {
         let probe = PunchMessage::NatProbe { sequence: 1 };
-        let payload = bincode::serialize(&probe)?;
+        let payload = serialize_bincode(&probe)?;
 
         self.socket.send_to(&payload, stun_server).await?;
 
@@ -519,8 +529,8 @@ mod tests {
     #[tokio::test]
     async fn test_nat_type_serialization() {
         let nat_type = NatType::FullCone;
-        let serialized = bincode::serialize(&nat_type).unwrap();
-        let deserialized: NatType = bincode::deserialize(&serialized).unwrap();
+        let serialized = serialize_bincode(&nat_type).unwrap();
+        let deserialized: NatType = deserialize_bincode(&serialized).unwrap();
         assert_eq!(nat_type, deserialized);
     }
 
@@ -531,8 +541,8 @@ mod tests {
             session_id: "session_123".to_string(),
         };
 
-        let serialized = bincode::serialize(&msg).unwrap();
-        let deserialized: PunchMessage = bincode::deserialize(&serialized).unwrap();
+        let serialized = serialize_bincode(&msg).unwrap();
+        let deserialized: PunchMessage = deserialize_bincode(&serialized).unwrap();
 
         match deserialized {
             PunchMessage::PunchRequest { token, session_id } => {
