@@ -153,7 +153,7 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 windows = {version = "0.62.2",features = ["Wdk","Wdk_System","Wdk_System_SystemServices","Win32_System_Threading","Win32_System_SystemInformation","Win32_Graphics_Direct3D","Win32_Graphics_Direct3D_Fxc","Win32_Graphics_Direct3D11","Win32_Graphics_Direct3D12","Win32_Graphics_Dxgi","Win32_Graphics_Dxgi_Common","Win32_Foundation",]}
 open = "5.0"
 quote = "1.0"
-rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
+rust-embed = { version = "8", features = ["interpolate-folder-path", "include-exclude"] }
 crossbeam-channel = "0.5"
 git2 = "0.19"
 walkdir = "2.4"
