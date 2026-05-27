@@ -259,7 +259,14 @@ gpui-component-macros = { path = "crates/macros" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 
+[patch."https://github.com/Far-Beyond-Pulsar/Graphy"]
+graphy = { path = "../Graphy" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
+pbgc = { path = "../PBGC" }
+
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
+blueprint_editor_plugin = { path = "../Plugin_Blueprints" }
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
 ui                    = { path = "crates/ui" }
 ui_common             = { path = "ui-crates/ui_common" }

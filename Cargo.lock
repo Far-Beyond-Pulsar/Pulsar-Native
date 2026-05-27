@@ -1187,7 +1187,6 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=ea4e7ee6c75397f381c2e39796cb33d45ea36424#ea4e7ee6c75397f381c2e39796cb33d45ea36424"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4304,7 +4303,6 @@ dependencies = [
 [[package]]
 name = "graphy"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47#74a993fe51efc00ac5e208af74a3df79f2c0ba47"
 dependencies = [
  "quote",
  "rayon",
@@ -6132,13 +6130,13 @@ dependencies = [
 
 [[package]]
 name = "markup5ever_rcdom"
-version = "0.3.0"
+version = "0.39.0+unofficial"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "edaa21ab3701bfee5099ade5f7e1f84553fd19228cf332f13cd6e964bf59be18"
+checksum = "3ac010f19d6c4af81eeb4018a39d7a115de9d285af45c126a4ac02e6fc5716b7"
 dependencies = [
- "html5ever 0.27.0",
- "markup5ever 0.12.1",
- "tendril 0.4.3",
+ "html5ever 0.39.0",
+ "markup5ever 0.39.0",
+ "tendril 0.5.0",
  "xml5ever",
 ]
 
@@ -7576,7 +7574,6 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=98b1510a153447f4af69c1b3bee5b3cb85c185e1#98b1510a153447f4af69c1b3bee5b3cb85c185e1"
 dependencies = [
  "graphy",
  "pulsar_std",
@@ -10993,6 +10990,7 @@ dependencies = [
  "parking_lot",
  "phf_shared 0.13.1",
  "precomputed-hash",
+ "serde",
 ]
 
 [[package]]
@@ -14748,13 +14746,12 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
 name = "xml5ever"
-version = "0.18.1"
+version = "0.39.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9bbb26405d8e919bc1547a5aa9abc95cbfa438f04844f5fdd9dc7596b748bf69"
+checksum = "5ab627f34ff61b80d756180d556f9c68801d836d271b3b8c094504ceca69d221"
 dependencies = [
  "log",
- "mac",
- "markup5ever 0.12.1",
+ "markup5ever 0.39.0",
 ]
 
 [[package]]
