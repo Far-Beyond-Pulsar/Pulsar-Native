@@ -22,7 +22,7 @@ pub fn load_repository_state(path: &Path) -> Result<RepositoryState, git2::Error
     let current_branch = repo
         .head()
         .ok()
-        .and_then(|h| h.shorthand().map(|s| s.to_string()))
+        .and_then(|h| h.shorthand().ok().map(|s| s.to_string()))
         .unwrap_or_else(|| "HEAD".to_string());
 
     let branches = load_branches(&repo).unwrap_or_default();
@@ -195,7 +195,7 @@ fn get_ahead_behind(repo: &Repository) -> Result<(usize, usize), git2::Error> {
     let local_oid = head
         .target()
         .ok_or_else(|| git2::Error::from_str("No target"))?;
-    let branch = repo.find_branch(head.shorthand().unwrap_or(""), BranchType::Local)?;
+    let branch = repo.find_branch(head.shorthand().ok().unwrap_or(""), BranchType::Local)?;
     let upstream = match branch.upstream() {
         Ok(upstream) => upstream,
         Err(_) => return Ok((0, 0)),
@@ -398,7 +398,7 @@ pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2
 fn find_remote_name(repo: &Repository) -> Result<String, git2::Error> {
     // Try the upstream remote for the current branch via config
     if let Ok(head) = repo.head() {
-        if let Some(branch_name) = head.shorthand() {
+        if let Ok(branch_name) = head.shorthand() {
             let key = format!("branch.{}.remote", branch_name);
             if let Ok(remote) = repo.config().and_then(|c| c.get_string(&key)) {
                 if !remote.is_empty() {
@@ -415,7 +415,7 @@ fn find_remote_name(repo: &Repository) -> Result<String, git2::Error> {
     let remotes = repo.remotes()?;
     remotes
         .get(0)
-        .map(|n| n.to_string())
+        .and_then(|n| n.map(|name| name.to_string()))
         .ok_or_else(|| git2::Error::from_str("No remotes configured"))
 }
 
@@ -436,6 +436,7 @@ fn remote_url_for_keyring(repo_path: &Path) -> Option<String> {
     repo.find_remote(&remote_name)
         .ok()?
         .url()
+        .ok()
         .map(|u| u.to_string())
 }
 
@@ -475,12 +476,10 @@ fn make_callbacks(creds: Option<(String, String)>) -> git2::RemoteCallbacks<'sta
                 return Ok(c);
             }
         }
-        // System credential helper (git credential store / keychain)
-        if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
-            if let Ok(cfg) = git2::Config::open_default() {
-                if let Ok(c) = git2::Cred::credential_helper(&cfg, url, username) {
-                    return Ok(c);
-                }
+        // Fall back to libgit2's default credential handling when supported.
+        if allowed_types.contains(git2::CredentialType::DEFAULT) {
+            if let Ok(c) = git2::Cred::default() {
+                return Ok(c);
             }
         }
         Err(git2::Error::from_str("No credentials available"))
