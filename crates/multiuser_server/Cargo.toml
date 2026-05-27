@@ -39,7 +39,7 @@ jsonwebtoken = "9.2"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 toml = { workspace = true }
-bincode = "1.3"
+bincode = "3.0"
 
 # Logging & Telemetry
 tracing = { workspace = true }
