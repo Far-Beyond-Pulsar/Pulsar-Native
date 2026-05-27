@@ -8,4 +8,4 @@ version = "0.1.34"
 [dependencies]
 
 # QUIC transport
-quinn = "0.11.9"
+quinn = { workspace = true }
