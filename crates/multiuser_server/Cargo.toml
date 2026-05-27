@@ -74,7 +74,7 @@ dashmap = { workspace = true }
 libc = "0.2"
 
 [build-dependencies]
-prost-build = "0.13"
+prost-build = "0.14"
 
 [dev-dependencies]
 criterion = { version = "=0.5.1", features = ["async_tokio"] }
