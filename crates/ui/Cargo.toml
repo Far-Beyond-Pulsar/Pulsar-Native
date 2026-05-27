@@ -93,7 +93,7 @@ mermaid-rs-renderer = { version = "0.2.2", default-features = false }
 base64 = { workspace = true }
 
 # HTML Parser
-html5ever = "0.27"
+html5ever = "0.39"
 markup5ever_rcdom = "0.3.0"
 
 # Calendar
