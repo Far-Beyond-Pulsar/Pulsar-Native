@@ -76,7 +76,21 @@ impl BuildCoreButton {
 }
 
 fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
+    // Regenerate all bootstrap files (Cargo.toml, main.rs, engine_main.rs,
+    // classes/mod.rs) before building. JSON/blueprints are the source of truth.
     engine_backend::services::ensure_core_bootstrap(project_root)?;
+
+    // Update git-sourced deps to their latest commits so the build never
+    // uses a stale Cargo.lock pointing at an old Pulsar-Native revision.
+    let update_status = std::process::Command::new("cargo")
+        .args(["update", "--aggressive"])
+        .current_dir(project_root)
+        .status()
+        .map_err(|e| format!("Failed to spawn cargo update: {e}"))?;
+
+    if !update_status.success() {
+        tracing::warn!("cargo update returned non-zero; proceeding with build anyway");
+    }
 
     let status = std::process::Command::new("cargo")
         .arg("build")
@@ -87,6 +101,6 @@ fn run_build(project_root: &PathBuf) -> Result<PathBuf, String> {
     if status.success() {
         Ok(project_root.clone())
     } else {
-        Err("cargo build failed".into())
+        Err("cargo build failed — check the editor log for details".into())
     }
 }
