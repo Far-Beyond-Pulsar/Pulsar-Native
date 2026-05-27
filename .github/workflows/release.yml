@@ -990,7 +990,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build and push ${{ matrix.name }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
