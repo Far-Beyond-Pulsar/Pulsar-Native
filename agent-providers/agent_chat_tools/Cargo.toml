@@ -5,11 +5,11 @@ edition = "2021"
 publish = false
 
 [dependencies]
-anyhow = "1"
-serde_json = "1"
-engine_fs = { path = "../../crates/engine_fs" }
-plugin_manager = { path = "../../crates/plugin_manager" }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+engine_fs = { workspace = true }
+plugin_manager = { workspace = true }
 tracing.workspace = true
-tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry = { workspace = true }
 tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
-tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_macros = { workspace = true }

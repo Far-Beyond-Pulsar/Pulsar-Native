@@ -151,6 +151,54 @@ ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_l
 ###################################
 
 windows = {version = "0.62.2",features = ["Wdk","Wdk_System","Wdk_System_SystemServices","Win32_System_Threading","Win32_System_SystemInformation","Win32_Graphics_Direct3D","Win32_Graphics_Direct3D_Fxc","Win32_Graphics_Direct3D11","Win32_Graphics_Direct3D12","Win32_Graphics_Dxgi","Win32_Graphics_Dxgi_Common","Win32_Foundation",]}
+tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+toml = "0.8"
+walkdir = "2.4"
+flume = "0.11"
+quinn = "0.11"
+sha2 = "0.10"
+rand = "0.8"
+futures = "0.3"
+regex = "1"
+open = "5.0"
+syn = { version = "2.0", features = ["full", "extra-traits"] }
+thiserror = "2.0"
+tracing-subscriber = "=0.3.23"
+tokio = { version = "1", features = ["full"] }
+parking_lot = "0.12"
+reqwest = { version = "0.12", features = ["blocking", "json", "rustls-tls"] }
+uuid = { version = "1.4", features = ["v4"] }
+dashmap = "6.1.0"
+winapi = { version = "0.3", features = ["winuser"] }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
+git2 = "0.19"
+proc-macro2 = "1.0"
+linkme = "0.3"
+lazy_static = "1.4"
+chrono = { version = "0.4", features = ["serde"] }
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+quote = "1.0"
+axum = { version = "0.7", features = ["ws", "macros"] }
+similar = "2"
+graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
+rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
+clap = { version = "4", features = ["derive", "env"] }
+dirs = "5.0"
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "98b1510a153447f4af69c1b3bee5b3cb85c185e1" }
+once_cell = "1.20"
+libloading = "0.8"
+crossbeam-channel = "0.5"
+rusqlite = { version = "0.32", features = ["bundled"] }
+rfd = "0.15"
+core-foundation-sys = "0.8"
+tempfile = "=3.27.0"
+base64 = "0.22"
+pulsar_reflection_derive = { path = "crates/pulsar_reflection_derive" }
+ui_gen_macros = { path = "crates/ui_gen_macros" }
+pulsar_macros = { path = "crates/pulsar_macros" }
+pulsar_bp_executor = { path = "crates/pulsar_bp_executor" }
+pulsar_std_bundle = { path = "crates/pulsar_std_bundle" }
 
 ###################################
 # Clippy Lints
