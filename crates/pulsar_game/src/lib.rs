@@ -26,6 +26,10 @@ mod world;
 // Blueprint runtime system
 pub mod blueprint_runtime;
 
+// Window / rendering integration
+pub mod window;
+pub mod windowed_app;
+
 // Flatten the most commonly-used types to the crate root.
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
@@ -43,6 +47,7 @@ pub use schedule::Schedule;
 pub use task::TaskPool;
 pub use tick::{SharedTickLoop, TickLoop, TickMode};
 pub use time::GameTime;
+pub use window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager};
 pub use world::World;
 
 #[cfg(test)]
@@ -61,6 +66,7 @@ pub mod prelude {
         task::TaskPool,
         tick::{SharedTickLoop, TickLoop, TickMode},
         time::GameTime,
+        window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
         world::World,
     };
 }

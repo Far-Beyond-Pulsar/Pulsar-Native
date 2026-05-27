@@ -3,6 +3,7 @@ use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
 use crate::schedule::Schedule;
 use crate::task::TaskPool;
 use crate::time::{Clock, GameTime};
+use crate::window::{WindowBridge, WindowCommand, WindowManager};
 use crate::world::World;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,14 +34,25 @@ impl Default for TickMode {
 /// 2. An `ActorRegistry` — object lifecycle callbacks.
 /// 3. A `TaskPool` — background async tasks.
 ///
-/// Run from a dedicated thread via `TickLoop::run_blocking`, or drive it
-/// manually frame-by-frame with `TickLoop::tick_once`.
+/// ## Headless (no window)
+/// ```rust,ignore
+/// game.run_blocking();
+/// ```
+///
+/// ## Windowed (Helio renderer, multiple windows supported)
+/// ```rust,ignore
+/// let event_loop = winit::event_loop::EventLoop::with_user_event().build().unwrap();
+/// game.run_with_windows(event_loop);   // blocks on main thread
+/// ```
 pub struct TickLoop {
     pub world: World,
     pub schedule: Schedule,
     pub actors: ActorRegistry,
     pub tasks: Arc<TaskPool>,
     pub blueprint_dispatcher: Option<Arc<Mutex<BlueprintDispatcher>>>,
+    /// Set by [`run_with_windows`][Self::run_with_windows]; game code can
+    /// clone this to open/close/configure windows from actors and systems.
+    pub window_manager: Option<Arc<WindowManager>>,
     clock: Clock,
     mode: TickMode,
     running: Arc<AtomicBool>,
@@ -65,6 +77,7 @@ impl TickLoop {
             actors: ActorRegistry::new(),
             tasks: Arc::new(TaskPool::new(task_threads)),
             blueprint_dispatcher: None,
+            window_manager: None,
             clock: Clock::new(max_delta),
             mode,
             running: running.clone(),
@@ -138,6 +151,74 @@ impl TickLoop {
     /// `true` while `run_blocking` is executing.
     pub fn is_running(&self) -> bool {
         self.running.load(Ordering::Relaxed)
+    }
+
+    /// Start a windowed game session with Helio rendering.
+    ///
+    /// This method:
+    /// 1. Creates a [`WindowBridge`] from the event loop's proxy.
+    /// 2. Injects a [`WindowManager`] into `self.window_manager` so actors can
+    ///    call `wm.open(…)` to open their first window.
+    /// 3. Spawns the ECS tick loop on a background thread.
+    /// 4. **Blocks the calling thread** running the winit event loop.
+    ///    On macOS the main thread must own the event loop; always call this
+    ///    from `main()`, never from a spawned thread.
+    ///
+    /// When all game windows are closed (or [`stop`][Self::stop] is called),
+    /// both the event loop and the ECS thread exit.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// fn main() {
+    ///     let event_loop = winit::event_loop::EventLoop::with_user_event()
+    ///         .build()
+    ///         .unwrap();
+    ///
+    ///     let threads = std::thread::available_parallelism()
+    ///         .map(|n| n.get()).unwrap_or(4);
+    ///     let mut game = TickLoop::new(TickMode::default(), threads);
+    ///     engine_main::setup(&mut game).unwrap();
+    ///
+    ///     game.run_with_windows(event_loop);
+    /// }
+    /// ```
+    pub fn run_with_windows(
+        mut self,
+        event_loop: winit::event_loop::EventLoop<WindowCommand>,
+    ) {
+        use crate::windowed_app::PulsarApp;
+        use winit::event_loop::EventLoop;
+
+        // Build the bridge using the event loop proxy so the ECS thread can
+        // send window commands without polling.
+        let proxy = event_loop.create_proxy();
+        let bridge = Arc::new(WindowBridge::new(proxy));
+
+        // Inject the WindowManager so game code can reach it.
+        let wm = Arc::new(WindowManager::new(Arc::clone(&bridge)));
+        self.window_manager = Some(Arc::clone(&wm));
+
+        // Capture the running flag so the main thread can stop the ECS when
+        // the last window closes.
+        let running_flag = Arc::clone(&self.running_flag);
+
+        // Spawn the ECS tick thread.
+        std::thread::Builder::new()
+            .name("pulsar-ecs".into())
+            .spawn(move || {
+                self.run_blocking();
+            })
+            .expect("Failed to spawn ECS tick thread");
+
+        // Main thread: drive the winit event loop (required on macOS).
+        let mut app = PulsarApp::new(bridge);
+        event_loop
+            .run_app(&mut app)
+            .expect("Winit event loop error");
+
+        // The event loop has exited (all windows closed) — stop the ECS thread.
+        running_flag.store(false, Ordering::SeqCst);
     }
 }
 

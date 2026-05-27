@@ -27,5 +27,12 @@ notify = { workspace = true }
 # Reflection — for ComponentStore property access
 pulsar_reflection = { workspace = true }
 
+# Windowed rendering (Helio + winit + wgpu)
+helio   = { workspace = true }
+winit   = { workspace = true }
+wgpu    = { workspace = true }
+glam    = { workspace = true }
+pollster = "0.3"
+
 [lints]
 workspace = true
