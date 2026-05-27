@@ -597,7 +597,7 @@ jobs:
 
       - name: Upload native artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-native-${{ matrix.target }}
           path: release-artifacts/
@@ -623,7 +623,7 @@ jobs:
 
       - name: Upload macOS .app artifact
         if: runner.os == 'macOS' && matrix.target == 'aarch64-apple-darwin' && env.BUILD_CRATES == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-macos-app
           path: ${{ env.APP_ZIP_PATH }}
@@ -696,7 +696,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-examples-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
@@ -819,7 +819,7 @@ jobs:
 
       - name: Upload cross-build artifacts
         if: ${{ env.BUILD_CRATES == 'true' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-cross-${{ matrix.target }}
           path: release-artifacts/
@@ -887,7 +887,7 @@ jobs:
 
       - name: Upload examples artifact
         if: ${{ env.BUILD_EXAMPLES == 'true' && env.EXAMPLES_ARCHIVE != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: release-examples-cross-${{ matrix.target }}
           path: ${{ env.EXAMPLES_ARCHIVE }}
@@ -903,7 +903,7 @@ jobs:
       id-token: write
     steps:
       - name: Download all release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: release-*
           path: all-artifacts
