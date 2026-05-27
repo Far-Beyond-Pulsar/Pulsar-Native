@@ -175,7 +175,7 @@ tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS"
 tracing-subscriber = "=0.3.23"
 rand = "0.8"
 core-foundation-sys = "0.8"
-libloading = "0.8"
+libloading = "0.9"
 uuid = { version = "1.4", features = ["v4"] }
 helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
 tokio = { version = "1", features = ["full"] }
