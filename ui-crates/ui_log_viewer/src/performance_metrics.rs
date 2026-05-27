@@ -2,7 +2,7 @@
 
 use crate::gpu_info;
 use std::collections::VecDeque;
-use sysinfo::{Components, Networks, System};
+use sysinfo::{Components, Networks, ProcessesToUpdate, System};
 use ui_common::SharedState;
 
 /// Maximum number of data points to keep in history
@@ -180,12 +180,13 @@ impl PerformanceMetrics {
 
     /// Update system metrics — called every second from the background task.
     pub fn update_system_metrics(&mut self) {
-        self.system.refresh_cpu();
+        self.system.refresh_cpu_all();
         self.system.refresh_memory();
-        self.system.refresh_processes();
-        self.networks.refresh();
+        self.system
+            .refresh_processes(ProcessesToUpdate::Some(&[self.current_pid]), true);
+        self.networks.refresh(false);
         #[cfg(not(windows))]
-        self.components.refresh();
+        self.components.refresh(false);
 
         // ── Per-process CPU + memory ──────────────────────────────────────────
         let cpu_usage = if let Some(process) = self.system.process(self.current_pid) {
@@ -241,12 +242,13 @@ impl PerformanceMetrics {
         // kernel driver. We surface a UI note instead of showing garbage data.
         #[cfg(not(windows))]
         {
-            // sysinfo's `refresh` now takes no arguments (the old boolean flag
-            // was removed), and `temperature()` returns an `f32` directly.
-            self.components.refresh();
+            self.components.refresh(false);
             for comp in self.components.iter() {
+                let Some(temp) = comp.temperature() else {
+                    continue;
+                };
                 let label = comp.label().to_string();
-                let temp = comp.temperature() as f64;
+                let temp = temp as f64;
                 if let Some(entry) = self.temp_histories.iter_mut().find(|(l, _)| *l == label) {
                     if entry.1.len() >= MAX_HISTORY_SIZE {
                         entry.1.pop_front();
