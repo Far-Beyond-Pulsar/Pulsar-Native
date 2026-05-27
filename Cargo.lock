@@ -13124,7 +13124,7 @@ dependencies = [
  "anyhow",
  "blueprint_editor_plugin",
  "directories",
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "engine_backend",
  "engine_state",
  "futures",
@@ -13206,7 +13206,7 @@ dependencies = [
 name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
- "dirs 5.0.1",
+ "dirs 6.0.0",
  "gpui-ce",
  "image",
  "reqwest 0.13.4",
