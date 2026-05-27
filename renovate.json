@@ -7,6 +7,12 @@
       "matchManagers": ["cargo"],
       "matchUpdateTypes": ["digest"],
       "enabled": false
+    },
+    {
+      "matchManagers": ["cargo"],
+      "matchPackagePatterns": ["^tree-sitter"],
+      "groupName": "tree-sitter grammars",
+      "groupSlug": "tree-sitter"
     }
   ]
 }
