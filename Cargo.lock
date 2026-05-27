@@ -7614,7 +7614,7 @@ dependencies = [
  "bytes",
  "http 1.4.0",
  "opentelemetry",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
 ]
 
 [[package]]
@@ -7629,7 +7629,7 @@ dependencies = [
  "opentelemetry-proto",
  "opentelemetry_sdk",
  "prost 0.14.3",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "thiserror 2.0.18",
  "tokio",
  "tonic",
@@ -8808,7 +8808,7 @@ dependencies = [
 
 [[package]]
 name = "pulsar_engine"
-version = "0.2.16"
+version = "0.2.17"
 dependencies = [
  "anyhow",
  "chrono",
