@@ -35,7 +35,7 @@ toml = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 parking_lot = { workspace = true }
 open = { workspace = true }
-reqwest = { version = "0.13", features = ["json", "blocking"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "rustls-no-provider", "system-proxy"] }
 tokio = { workspace = true, features = ["rt"] }
 smol = { workspace = true }
 tracing.workspace = true
