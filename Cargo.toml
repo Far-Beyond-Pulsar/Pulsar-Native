@@ -161,7 +161,7 @@ rfd = "0.15"
 thiserror = "2.0"
 pulsar_reflection_derive = { path = "crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"
-flume = "0.11"
+flume = "0.12"
 futures = "0.3"
 axum = { version = "0.7", features = ["ws", "macros"] }
 parking_lot = "0.12"
