@@ -107,9 +107,10 @@ pub struct RemoteFsProvider {
 
 impl RemoteFsProvider {
     pub fn new(config: RemoteConfig) -> Self {
-        let agent = ureq::AgentBuilder::new()
-            .timeout(std::time::Duration::from_secs(30))
-            .build();
+        let agent = ureq::Agent::config_builder()
+            .timeout_global(Some(std::time::Duration::from_secs(30)))
+            .build()
+            .new_agent();
         Self {
             config: Arc::new(config),
             agent,
@@ -126,9 +127,9 @@ impl RemoteFsProvider {
     }
 
     /// Inject the `Authorization` header when the config carries a token.
-    fn auth(&self, req: ureq::Request) -> ureq::Request {
+    fn auth<B>(&self, req: ureq::RequestBuilder<B>) -> ureq::RequestBuilder<B> {
         if let Some(ref tok) = self.config.auth_token {
-            req.set("Authorization", &format!("Bearer {}", tok))
+            req.header("Authorization", format!("Bearer {}", tok))
         } else {
             req
         }
@@ -175,12 +176,13 @@ impl FsProvider for RemoteFsProvider {
         let rel = self.to_rel(path)?;
         debug!("RemoteFs: read_file {rel:?}");
         let url = format!("{}?path={}", self.files_base(), Self::encode(&rel));
-        let resp = self
+        let mut resp = self
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs read HTTP call failed")?;
         let body: ApiReadResponse = resp
-            .into_json()
+            .body_mut()
+            .read_json()
             .context("RemoteFs read: JSON parse error")?;
         decode_b64(&body.content)
     }
@@ -190,9 +192,9 @@ impl FsProvider for RemoteFsProvider {
         debug!("RemoteFs: write_file {rel:?} ({} bytes)", content.len());
         let url = format!("{}?path={}", self.files_base(), Self::encode(&rel));
         let b64 = encode_b64(content);
+        let body = ApiWriteRequest { content: &b64 };
         self.auth(self.agent.put(&url))
-            .set("Content-Type", "application/json")
-            .send_json(ureq::serde_json::json!({ "content": b64 }))
+            .send_json(body)
             .context("RemoteFs write HTTP call failed")?;
         Ok(())
     }
@@ -206,9 +208,9 @@ impl FsProvider for RemoteFsProvider {
             Self::encode(&rel)
         );
         let b64 = encode_b64(content);
+        let body = ApiWriteRequest { content: &b64 };
         self.auth(self.agent.put(&url))
-            .set("Content-Type", "application/json")
-            .send_json(ureq::serde_json::json!({ "content": b64 }))
+            .send_json(body)
             .context("RemoteFs create HTTP call failed")?;
         Ok(())
     }
@@ -228,9 +230,12 @@ impl FsProvider for RemoteFsProvider {
         let to_rel = self.to_rel(to)?;
         debug!("RemoteFs: rename {from_rel:?} -> {to_rel:?}");
         let url = format!("{}/rename", self.files_base());
+        let body = ApiRenameRequest {
+            from: from_rel,
+            to: to_rel,
+        };
         self.auth(self.agent.post(&url))
-            .set("Content-Type", "application/json")
-            .send_json(ureq::serde_json::json!({ "from": from_rel, "to": to_rel }))
+            .send_json(&body)
             .context("RemoteFs rename HTTP call failed")?;
         Ok(())
     }
@@ -243,12 +248,13 @@ impl FsProvider for RemoteFsProvider {
         } else {
             format!("{}/list?path={}", self.files_base(), Self::encode(&rel))
         };
-        let resp = self
+        let mut resp = self
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs list HTTP call failed")?;
         let entries: Vec<ApiDirEntry> = resp
-            .into_json()
+            .body_mut()
+            .read_json()
             .context("RemoteFs list: JSON parse error")?;
         Ok(entries
             .into_iter()
@@ -266,7 +272,7 @@ impl FsProvider for RemoteFsProvider {
         debug!("RemoteFs: create_dir_all {rel:?}");
         let url = format!("{}/mkdir?path={}", self.files_base(), Self::encode(&rel));
         self.auth(self.agent.post(&url))
-            .call()
+            .send_empty()
             .context("RemoteFs mkdir HTTP call failed")?;
         Ok(())
     }
@@ -275,9 +281,10 @@ impl FsProvider for RemoteFsProvider {
         let rel = self.to_rel(path)?;
         let url = format!("{}/exists?path={}", self.files_base(), Self::encode(&rel));
         match self.auth(self.agent.get(&url)).call() {
-            Ok(resp) => {
+            Ok(mut resp) => {
                 let r: ApiExistsResponse = resp
-                    .into_json()
+                    .body_mut()
+                    .read_json()
                     .context("RemoteFs exists: JSON parse error")?;
                 Ok(r.exists)
             }
@@ -288,12 +295,13 @@ impl FsProvider for RemoteFsProvider {
     fn metadata(&self, path: &Path) -> Result<FsMetadata> {
         let rel = self.to_rel(path)?;
         let url = format!("{}/stat?path={}", self.files_base(), Self::encode(&rel));
-        let resp = self
+        let mut resp = self
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs stat HTTP call failed")?;
         let r: ApiStatResponse = resp
-            .into_json()
+            .body_mut()
+            .read_json()
             .context("RemoteFs stat: JSON parse error")?;
         Ok(FsMetadata {
             is_dir: r.is_dir,
@@ -310,12 +318,13 @@ impl FsProvider for RemoteFsProvider {
         } else {
             format!("{}/manifest?path={}", self.files_base(), Self::encode(&rel))
         };
-        let resp = self
+        let mut resp = self
             .auth(self.agent.get(&url))
             .call()
             .context("RemoteFs manifest HTTP call failed")?;
         let entries: Vec<ManifestEntry> = resp
-            .into_json()
+            .body_mut()
+            .read_json()
             .context("RemoteFs manifest: JSON parse error")?;
         Ok(entries)
     }
