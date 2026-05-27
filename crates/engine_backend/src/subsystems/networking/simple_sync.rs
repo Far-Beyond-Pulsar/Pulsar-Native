@@ -104,7 +104,12 @@ fn hash_file(path: &Path) -> Result<String, std::io::Error> {
     let data = fs::read(path)?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
-    Ok(format!("{:x}", hasher.finalize()))
+    let digest = hasher.finalize();
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        output.push_str(&format!("{byte:02x}"));
+    }
+    Ok(output)
 }
 
 /// Create file manifest for a project directory
