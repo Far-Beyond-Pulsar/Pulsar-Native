@@ -300,11 +300,12 @@ impl Render for Notification {
         let progress = self.progress;
         let is_complete = progress.map(|p| p >= 1.0).unwrap_or(false);
 
-        // Pick progress bar colour: green when complete, accent otherwise.
+        // Progress bar colour: foreground (matches normal text) while building,
+        // success green when complete.
         let bar_color = if is_complete {
             cx.theme().success
         } else {
-            cx.theme().accent
+            cx.theme().foreground
         };
 
         h_flex()
@@ -372,7 +373,7 @@ impl Render for Notification {
             // ── Progress bar ─────────────────────────────────────────────────
             .when_some(progress, |this, p| {
                 if p >= 1.0 {
-                    // Completed: full solid bar.
+                    // Completed: full solid bar, no animation.
                     this.child(
                         div()
                             .absolute()
@@ -383,7 +384,10 @@ impl Render for Notification {
                             .bg(bar_color),
                     )
                 } else {
-                    // In-progress: animated shimmer that cycles across the bar.
+                    // In-progress: determinate fill + breathing pulse overlay.
+                    // The fill width reflects actual progress (0..95%).
+                    // A pulse animation on the filled portion signals activity.
+                    let fill = p.clamp(0.0, 0.95);
                     this.child(
                         div()
                             .absolute()
@@ -395,19 +399,17 @@ impl Render for Notification {
                             .child(
                                 div()
                                     .h_full()
+                                    .w(gpui::relative(fill))
                                     .bg(bar_color)
                                     .with_animation(
-                                        "progress-shimmer",
-                                        Animation::new(Duration::from_secs_f32(1.4))
+                                        "progress-pulse",
+                                        Animation::new(Duration::from_secs_f32(1.2))
                                             .repeat()
                                             .with_easing(cubic_bezier(0.4, 0., 0.6, 1.)),
-                                        move |el, delta| {
-                                            // Shimmer: slide a ~40% wide block left→right
-                                            let track_pct = delta;
-                                            let start = (track_pct * 1.4 - 0.4).clamp(0., 1.);
-                                            let end = (track_pct * 1.4).clamp(0., 1.);
-                                            el.w(gpui::relative(end - start))
-                                                .ml(gpui::relative(start))
+                                        |el, delta| {
+                                            // Breathe: opacity cycles 1.0 → 0.45 → 1.0
+                                            let opacity = 1.0 - (delta * std::f32::consts::PI).sin() * 0.55;
+                                            el.opacity(opacity)
                                         },
                                     ),
                             ),
