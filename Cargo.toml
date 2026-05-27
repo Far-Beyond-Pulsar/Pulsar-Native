@@ -166,7 +166,7 @@ futures = "0.3"
 axum = { version = "0.8", features = ["ws", "macros"] }
 parking_lot = "0.12"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
-pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "67d675e7b678e29041d51068aee4a5737dcb67da" }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "34703e896572b7c3429f16236ef7a3c4aa1a6618" }
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "=3.27.0"
 base64 = "0.22"
@@ -195,7 +195,7 @@ pulsar_bp_executor = { path = "crates/pulsar_bp_executor" }
 similar = "3"
 quinn = "0.11"
 tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
-graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
+graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "cd8961d65279b890434765ffcc2265e17667682c" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 pulsar_std_bundle = { path = "crates/pulsar_std_bundle" }
 

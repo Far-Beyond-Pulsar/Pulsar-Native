@@ -1233,7 +1233,7 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47)",
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
  "pbgc",
  "pulsar_graph",
  "serde_json",
@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=ef8e40c2d1ae6598e816f7d6885e89185a62c54d#ef8e40c2d1ae6598e816f7d6885e89185a62c54d"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=2143b3e0b53641653844a1ba3bd1195ef589f75c#2143b3e0b53641653844a1ba3bd1195ef589f75c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4398,7 +4398,7 @@ dependencies = [
 [[package]]
 name = "graphy"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47#74a993fe51efc00ac5e208af74a3df79f2c0ba47"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=944b114e79f88b44eecd493a000e95ce0ce6b5bd#944b114e79f88b44eecd493a000e95ce0ce6b5bd"
 dependencies = [
  "quote",
  "rayon",
@@ -4414,7 +4414,7 @@ dependencies = [
 [[package]]
 name = "graphy"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=944b114e79f88b44eecd493a000e95ce0ce6b5bd#944b114e79f88b44eecd493a000e95ce0ce6b5bd"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c#cd8961d65279b890434765ffcc2265e17667682c"
 dependencies = [
  "quote",
  "rayon",
@@ -5047,9 +5047,9 @@ dependencies = [
 
 [[package]]
 name = "hyper"
-version = "1.9.0"
+version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6299f016b246a94207e63da54dbe807655bf9e00044f73ded42c3ac5305fbcca"
+checksum = "eb92f162bf56536459fc83c79b974bb12837acfed43d6bc370a7916d0ae15ecc"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -8209,7 +8209,7 @@ version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e67ba7e9b2b56446f1d419b1d807906278ffa1a658a8a5d8a39dcb1f5a78614f"
 dependencies = [
- "toml_edit 0.25.11+spec-1.1.0",
+ "toml_edit 0.25.12+spec-1.1.0",
 ]
 
 [[package]]
@@ -8531,7 +8531,7 @@ dependencies = [
 name = "pulsar_bp_executor"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47)",
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
  "libloading 0.9.0",
  "pbgc",
  "pulsar_std_bundle",
@@ -8755,7 +8755,7 @@ dependencies = [
 name = "pulsar_std_bundle"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=74a993fe51efc00ac5e208af74a3df79f2c0ba47)",
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
  "pbgc",
  "pulsar_bp_executor",
  "pulsar_std",
@@ -11945,9 +11945,9 @@ dependencies = [
 
 [[package]]
 name = "toml_edit"
-version = "0.25.11+spec-1.1.0"
+version = "0.25.12+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b59c4d22ed448339746c59b905d24568fcbb3ab65a500494f7b8c3e97739f2b"
+checksum = "d2153edc6955a6c354fad8f5efd38b6a8769bdccf9fe50f8e1329f81b0baa5d7"
 dependencies = [
  "indexmap",
  "toml_datetime 1.1.1+spec-1.1.0",
@@ -14989,18 +14989,18 @@ checksum = "6df3dc4292935e51816d896edcd52aa30bc297907c26167fec31e2b0c6a32524"
 
 [[package]]
 name = "zerocopy"
-version = "0.8.48"
+version = "0.8.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eed437bf9d6692032087e337407a86f04cd8d6a16a37199ed57949d415bd68e9"
+checksum = "bce33a6288fa3f072a8c2c7d0f2fdbb90e28298f0135c1f99b96c3db2efcc60b"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.48"
+version = "0.8.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e3cd084b1788766f53af483dd21f93881ff30d7320490ec3ef7526d203bad4"
+checksum = "8fd425244944f4ab65ccff928e7323354c5a018c75838362fdce749dfad2ee1e"
 dependencies = [
  "proc-macro2",
  "quote",
