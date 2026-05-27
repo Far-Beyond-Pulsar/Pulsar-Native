@@ -59,7 +59,7 @@ sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "tls-rustls",
 
 # Config & CLI
 clap = { workspace = true, features = ["derive", "env"] }
-config = "0.14"
+config = "0.15"
 anyhow = { workspace = true }
 
 # Utilities
