@@ -415,7 +415,7 @@ fn find_remote_name(repo: &Repository) -> Result<String, git2::Error> {
     let remotes = repo.remotes()?;
     remotes
         .get(0)
-        .and_then(|n| n.map(|name| name.to_string()))
+        .map(|name| name.map(|name| name.to_string()))?
         .ok_or_else(|| git2::Error::from_str("No remotes configured"))
 }
 
