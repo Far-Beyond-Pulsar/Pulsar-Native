@@ -157,7 +157,7 @@ rust-embed = { version = "8", features = ["interpolate-folder-path", "include-ex
 crossbeam-channel = "0.5"
 git2 = "0.19"
 walkdir = "2.4"
-rfd = "0.15"
+rfd = "0.17"
 thiserror = "2.0"
 pulsar_reflection_derive = { path = "crates/pulsar_reflection_derive" }
 dashmap = "6.1.0"
