@@ -80,7 +80,7 @@ unicode-segmentation = "1.12.0"
 uuid = { workspace = true }
 parking_lot = { workspace = true }
 lazy_static = { workspace = true }
-resvg = "0.45"
+resvg = "0.47"
 
 # Chart
 num-traits = "0.2"
