@@ -33,7 +33,7 @@ ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 rand = { workspace = true }
 
 # JWT
-jsonwebtoken = "9.2"
+jsonwebtoken = "10.0"
 
 # Serialization
 serde = { workspace = true, features = ["derive"] }
