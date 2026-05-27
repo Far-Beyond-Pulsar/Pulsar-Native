@@ -1,7 +1,7 @@
 # Multi-stage Docker build for Pulsar Host
 
 # Stage 1: Builder
-FROM rust:1.88-slim@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
+FROM rust:1.95-slim@sha256:e14e87345b4d5964ddcc3491d27ee046a0f23820f340c3c1e24da6880141f7c0 AS builder
 
 WORKDIR /app
 
