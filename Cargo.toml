@@ -110,8 +110,8 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "5d5061c773d2b39f10a2b17d6537cdfe62f6f49b" }
-helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "5d5061c773d2b39f10a2b17d6537cdfe62f6f49b" }
+helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
+helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
 glam           = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
@@ -166,7 +166,7 @@ futures = "0.3"
 axum = { version = "0.8", features = ["ws", "macros"] }
 parking_lot = "0.12"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
-pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "98b1510a153447f4af69c1b3bee5b3cb85c185e1" }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "90ee0d74f5900027d9f93340789dedabf92fd2b1" }
 chrono = { version = "0.4", features = ["serde"] }
 tempfile = "=3.27.0"
 base64 = "0.22"
@@ -177,7 +177,7 @@ rand = "0.10"
 core-foundation-sys = "0.8"
 libloading = "0.9"
 uuid = { version = "1.4", features = ["v4"] }
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"

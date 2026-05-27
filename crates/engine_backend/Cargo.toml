@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 ui_gen_macros = { workspace = true }
-PebbleVault = "0.7.0"
+pebble = { package = "PebbleVault", version = "0.7.0" }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }

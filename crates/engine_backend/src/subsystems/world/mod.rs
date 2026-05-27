@@ -23,9 +23,8 @@
 use super::classes::actor::Actor;
 use std::sync::Arc;
 use uuid::Uuid;
-use PebbleVault as pebble;
-use PebbleVault::spacial_store::sqlite_backend::SqliteDatabase;
-use PebbleVault::SpatialObject;
+use pebble::spacial_store::sqlite_backend::SqliteDatabase;
+use pebble::SpatialObject;
 
 // NOTE: World cannot implement the Subsystem trait due to PebbleVault::VaultManager
 // not implementing Send + Sync (it contains Box<dyn PersistenceBackend> without bounds).
