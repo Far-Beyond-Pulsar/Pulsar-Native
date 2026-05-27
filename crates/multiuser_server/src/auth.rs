@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -68,7 +67,8 @@ impl AuthService {
             tracing::warn!(
                 "Generating ephemeral Ed25519 server key - this should be persisted in production"
             );
-            SigningKey::generate(&mut OsRng)
+            let key_bytes: [u8; 32] = rand::random();
+            SigningKey::from_bytes(&key_bytes)
         };
 
         let server_verifying_key = server_signing_key.verifying_key();
