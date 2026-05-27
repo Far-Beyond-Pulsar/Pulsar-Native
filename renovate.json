@@ -1,0 +1,12 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:best-practices"],
+  "schedule": ["before 8am on wednesday"],
+   "packageRules": [
+    {
+      "matchManagers": ["cargo"],
+      "matchUpdateTypes": ["digest"],
+      "enabled": false
+    }
+  ]
+}
