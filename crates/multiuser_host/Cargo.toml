@@ -17,7 +17,7 @@ futures = { workspace = true }
 
 # HTTP server
 axum = { workspace = true, features = ["ws", "macros"] }
-tower = { version = "0.4", features = ["util"] }
+tower = { version = "0.5", features = ["util"] }
 tower-http = { workspace = true, features = ["cors", "trace"] }
 
 # Serialization
