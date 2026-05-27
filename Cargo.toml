@@ -194,6 +194,11 @@ rfd = "0.15"
 core-foundation-sys = "0.8"
 tempfile = "=3.27.0"
 base64 = "0.22"
+pulsar_reflection_derive = { path = "crates/pulsar_reflection_derive" }
+ui_gen_macros = { path = "crates/ui_gen_macros" }
+pulsar_macros = { path = "crates/pulsar_macros" }
+pulsar_bp_executor = { path = "crates/pulsar_bp_executor" }
+pulsar_std_bundle = { path = "crates/pulsar_std_bundle" }
 
 ###################################
 # Clippy Lints
