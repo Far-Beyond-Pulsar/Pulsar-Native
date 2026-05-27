@@ -220,7 +220,7 @@ fn main() {{
         std::process::exit(1);
     }}
 
-    tracing::info!("World ready — opening window");
+    tracing::info!("World ready — opening primary window");
 
     // Build the winit event loop before handing off to the game runtime.
     // On macOS the event loop MUST be created and run on the main thread.
@@ -228,9 +228,14 @@ fn main() {{
         .build()
         .expect("Failed to create event loop");
 
-    // run_with_windows blocks this (main) thread for the event loop and
-    // spawns the ECS tick loop on a background thread.
-    game.run_with_windows(event_loop);
+    // The primary window is opened before begin_play fires on any actor.
+    // Additional windows can be opened at runtime via WindowManager::open().
+    game.run_with_windows(event_loop, WindowDescriptor {{
+        title: env!("CARGO_PKG_NAME").into(),
+        width: 1280,
+        height: 720,
+        editor_mode: false,
+    }});
 }}
 "#
         );

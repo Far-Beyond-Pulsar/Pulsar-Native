@@ -212,14 +212,23 @@ impl GpuContext {
 
 /// The main-thread winit application.  Owns all [`GameWindow`]s and the
 /// shared GPU context.
+///
+/// The ECS [`TickLoop`][crate::TickLoop] is stored here and only spawned on the
+/// **first** `resumed` event, after all initial windows have been created and
+/// their GPU state is ready.  This guarantees that `begin_play` never fires
+/// before the primary window exists.
 pub struct PulsarApp {
     bridge: Arc<WindowBridge>,
 
     gpu: GpuContext,
 
-    /// Pending open requests that arrived before the event loop was ready
-    /// (i.e. before `resumed` fires).
-    pending: Vec<(WindowHandle, WindowDescriptor)>,
+    /// The ECS tick loop, held until `resumed` fires for the first time.
+    /// Taken (set to `None`) when the ECS thread is spawned.
+    tick_loop: Option<crate::tick::TickLoop>,
+
+    /// Windows to open during `resumed` (before the ECS thread starts).
+    /// Additional windows requested at runtime arrive via `user_event`.
+    initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
 
     /// Map from winit's `WindowId` to our stable `WindowHandle`.
     winit_to_handle: HashMap<WindowId, WindowHandle>,
@@ -228,11 +237,16 @@ pub struct PulsarApp {
 }
 
 impl PulsarApp {
-    pub fn new(bridge: Arc<WindowBridge>) -> Self {
+    pub fn new(
+        bridge: Arc<WindowBridge>,
+        tick_loop: crate::tick::TickLoop,
+        initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
+    ) -> Self {
         Self {
             bridge,
             gpu: GpuContext::new(),
-            pending: Vec::new(),
+            tick_loop: Some(tick_loop),
+            initial_windows,
             winit_to_handle: HashMap::new(),
             windows: HashMap::new(),
         }
@@ -258,13 +272,15 @@ impl PulsarApp {
             }
         };
 
-        // Temporarily create a surface just to prime the GPU on the first window.
-        // We'll recreate it properly inside GameWindow::new.
+        // Initialise the shared GPU context from the first window's surface.
         if self.gpu.device.is_none() {
-            let temp_surface = self.gpu.instance.create_surface(window.clone())
-                .expect("Failed to create temp surface for GPU init");
+            // Safe: we need a surface to pick a compatible adapter, but
+            // GameWindow::new will create its own surface from the same window.
+            let temp_surface = self.gpu.instance
+                .create_surface(window.clone())
+                .expect("Failed to create surface for GPU init");
             self.gpu.ensure_device(&temp_surface);
-            // temp_surface is dropped here; GameWindow::new creates its own.
+            // temp_surface drops here; GameWindow::new makes its own.
         }
 
         let winit_id = window.id();
@@ -281,11 +297,7 @@ impl PulsarApp {
         self.winit_to_handle.insert(winit_id, handle);
         self.windows.insert(handle, game_window);
 
-        tracing::info!(
-            id = handle.id(),
-            title = %desc.title,
-            "Window opened"
-        );
+        tracing::info!(id = handle.id(), title = %desc.title, "Window opened");
     }
 
     fn close_window(&mut self, handle: WindowHandle) {
@@ -295,17 +307,37 @@ impl PulsarApp {
             tracing::info!(id = handle.id(), "Window closed");
         }
     }
+
+    /// Spawn the ECS tick thread.  Called once, after all initial windows are
+    /// open, so `begin_play` can safely call `wm.set_camera` / `wm.open`.
+    fn spawn_ecs_thread(&mut self) {
+        if let Some(mut tick_loop) = self.tick_loop.take() {
+            std::thread::Builder::new()
+                .name("pulsar-ecs".into())
+                .spawn(move || tick_loop.run_blocking())
+                .expect("Failed to spawn ECS tick thread");
+            tracing::info!("ECS tick thread started");
+        }
+    }
 }
 
 impl ApplicationHandler<WindowCommand> for PulsarApp {
-    // Called when the event loop is ready to accept window creation.
+    /// Called when the event loop is ready to receive window-creation requests.
+    ///
+    /// We open every initial window here **first**, then start the ECS thread.
+    /// This means the primary window's GPU context exists before `begin_play`
+    /// fires on any actor.
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        for (handle, desc) in std::mem::take(&mut self.pending) {
+        // Open all pre-queued windows (primary window first).
+        for (handle, desc) in std::mem::take(&mut self.initial_windows) {
             self.open_window(event_loop, handle, desc);
         }
+
+        // Now that the window(s) are live, start the ECS.
+        self.spawn_ecs_thread();
     }
 
-    // Window-creation / close commands from the ECS thread.
+    /// Window-creation / close commands from the ECS thread (runtime).
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WindowCommand) {
         match event {
             WindowCommand::Open { handle, desc } => {
@@ -313,7 +345,6 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             }
             WindowCommand::Close { handle } => {
                 self.close_window(handle);
-                // If all windows are closed, exit the application.
                 if self.windows.is_empty() {
                     tracing::info!("All windows closed — exiting");
                     event_loop.exit();
@@ -360,7 +391,6 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        // Drive continuous rendering: request a redraw for every live window.
         for gw in self.windows.values() {
             gw.window.request_redraw();
         }
