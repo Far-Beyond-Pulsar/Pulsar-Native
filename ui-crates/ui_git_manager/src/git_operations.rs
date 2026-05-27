@@ -3,6 +3,9 @@
 use crate::models::*;
 use git2::{BranchType, Repository, StatusOptions};
 use std::path::Path;
+use std::sync::OnceLock;
+
+use keyring_core::Entry;
 
 fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
     Repository::discover(path)
@@ -439,11 +442,21 @@ fn remote_url_for_keyring(repo_path: &Path) -> Option<String> {
         .map(|u| u.to_string())
 }
 
+fn keyring_entry(url: &str) -> Option<Entry> {
+    static KEYRING_READY: OnceLock<bool> = OnceLock::new();
+
+    if !*KEYRING_READY.get_or_init(|| keyring::use_native_store(false).is_ok()) {
+        return None;
+    }
+
+    Entry::new("pulsar-git", url).ok()
+}
+
 /// Save credentials to the OS keychain, keyed by the remote URL.
 /// The secret value encodes both username and password as "username\npassword".
 pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
     if let Some(url) = remote_url_for_keyring(repo_path) {
-        if let Ok(entry) = keyring::Entry::new("pulsar-git", &url) {
+        if let Some(entry) = keyring_entry(&url) {
             let _ = entry.set_password(&format!("{}\n{}", username, password));
         }
     }
@@ -453,7 +466,7 @@ pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
 /// Returns `(username, password)` or `None`.
 pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
     let url = remote_url_for_keyring(repo_path)?;
-    let entry = keyring::Entry::new("pulsar-git", &url).ok()?;
+    let entry = keyring_entry(&url)?;
     let secret = entry.get_password().ok()?;
     let mut parts = secret.splitn(2, '\n');
     let username = parts.next()?.to_string();

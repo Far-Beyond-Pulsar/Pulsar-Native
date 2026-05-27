@@ -12,6 +12,7 @@ engine_state = { workspace = true }
 chrono = { workspace = true }
 git2 = { workspace = true }
 keyring = "4"
+keyring-core = "1"
 serde = { workspace = true }
 parking_lot = { workspace = true }
 similar = { workspace = true }

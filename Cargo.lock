@@ -14376,6 +14376,7 @@ dependencies = [
  "gpui-ce",
  "image",
  "keyring",
+ "keyring-core",
  "parking_lot",
  "reqwest 0.13.4",
  "serde",
