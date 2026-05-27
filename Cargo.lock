@@ -1233,7 +1233,7 @@ dependencies = [
 name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
+ "graphy",
  "pbgc",
  "pulsar_graph",
  "serde_json",
@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.5.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=ada32999fbe6662d4042a5ecdcd6c483f21112d8#ada32999fbe6662d4042a5ecdcd6c483f21112d8"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=4fbecdf9b1108513ae9da822c3393ac947bf24c7#4fbecdf9b1108513ae9da822c3393ac947bf24c7"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1252,7 +1252,7 @@ dependencies = [
  "engine_backend",
  "futures",
  "gpui-ce",
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=944b114e79f88b44eecd493a000e95ce0ce6b5bd)",
+ "graphy",
  "log",
  "parking_lot",
  "pbgc",
@@ -4398,23 +4398,7 @@ dependencies = [
 [[package]]
 name = "graphy"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=944b114e79f88b44eecd493a000e95ce0ce6b5bd#944b114e79f88b44eecd493a000e95ce0ce6b5bd"
-dependencies = [
- "quote",
- "rayon",
- "rustc-hash 2.1.2",
- "serde",
- "serde_json",
- "smallvec",
- "syn 2.0.117",
- "thiserror 1.0.69",
- "tracing",
-]
-
-[[package]]
-name = "graphy"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c#cd8961d65279b890434765ffcc2265e17667682c"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=d18837c13dd3e1cf6076d9a3c64c450971a6d1af#d18837c13dd3e1cf6076d9a3c64c450971a6d1af"
 dependencies = [
  "quote",
  "rayon",
@@ -7643,9 +7627,9 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=34703e896572b7c3429f16236ef7a3c4aa1a6618#34703e896572b7c3429f16236ef7a3c4aa1a6618"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=02aa3ec5fc8e1bad177f67e1d0efc064f5454e25#02aa3ec5fc8e1bad177f67e1d0efc064f5454e25"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
+ "graphy",
  "pulsar_std",
  "serde",
  "serde_json",
@@ -8531,7 +8515,7 @@ dependencies = [
 name = "pulsar_bp_executor"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
+ "graphy",
  "libloading 0.9.0",
  "pbgc",
  "pulsar_std_bundle",
@@ -8755,7 +8739,7 @@ dependencies = [
 name = "pulsar_std_bundle"
 version = "0.1.0"
 dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=cd8961d65279b890434765ffcc2265e17667682c)",
+ "graphy",
  "pbgc",
  "pulsar_bp_executor",
  "pulsar_std",
