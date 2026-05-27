@@ -10445,7 +10445,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "similar",
+ "similar 2.7.0",
  "tracing",
  "ui",
  "ui_common",
@@ -10840,6 +10840,15 @@ name = "similar"
 version = "2.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbbb5d9659141646ae647b42fe094daf6c6192d1620870b449d9557f748b2daa"
+
+[[package]]
+name = "similar"
+version = "3.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6505efef05804732ed8a3f2d4f279429eb485bd69d5b0cc6b19cc02005cda16"
+dependencies = [
+ "bstr",
+]
 
 [[package]]
 name = "simple_asn1"
@@ -13297,7 +13306,7 @@ dependencies = [
  "parking_lot",
  "reqwest 0.13.4",
  "serde",
- "similar",
+ "similar 3.1.1",
  "smallvec",
  "smol 1.3.0",
  "ui",
@@ -13405,7 +13414,7 @@ dependencies = [
  "futures",
  "gpui-ce",
  "serde_json",
- "similar",
+ "similar 3.1.1",
  "tokio",
  "tracing",
  "ui",
@@ -13430,7 +13439,7 @@ version = "0.1.0"
 dependencies = [
  "gpui-ce",
  "rust-i18n",
- "similar",
+ "similar 3.1.1",
  "tracing",
  "ui",
  "ui_common",
