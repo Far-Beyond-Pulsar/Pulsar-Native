@@ -12,41 +12,41 @@ path = "src/main.rs"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1", features = ["full"] }
-futures = "0.3"
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
 
 # HTTP server
-axum = { version = "0.7", features = ["ws", "macros"] }
+axum = { workspace = true, features = ["ws", "macros"] }
 tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { workspace = true, features = ["cors", "trace"] }
 
 # Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 # Logging / tracing
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "fmt"] }
 
 # CLI / config
-clap = { version = "4", features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive", "env"] }
 
 # IDs & time
-uuid = { version = "1", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+uuid = { workspace = true, features = ["v4"] }
+chrono = { workspace = true, features = ["serde"] }
 
 # Error handling
-anyhow = "1"
-thiserror = "1"
+anyhow = { workspace = true }
+thiserror = { workspace = true }
 
 # Concurrency
-parking_lot = "0.12"
-dashmap = "5"
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
 
 # File I/O
 tokio-util = { version = "0.7", features = ["io"] }
 
 # Password / token hashing  (for optional auth token storage)
-sha2 = "0.10"
+sha2 = { workspace = true }
 hex = "0.4"
-base64 = "0.22"
+base64 = { workspace = true }
