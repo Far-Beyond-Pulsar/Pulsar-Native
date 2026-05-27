@@ -19,7 +19,7 @@ image = { workspace = true }
 helio-snapshot = { workspace = true }
 parking_lot = { workspace = true }
 urlencoding = { workspace = true }
-ureq = { version = "2.10", features = ["json"] }
+ureq = { version = "3.0", features = ["json"] }
 base64 = { workspace = true }
 tool_registry = { workspace = true }
 tool_registry_macros = { workspace = true }
