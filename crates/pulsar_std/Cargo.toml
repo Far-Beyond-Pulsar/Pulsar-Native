@@ -14,16 +14,16 @@ default = ["native"]
 native = ["dep:rlua", "dep:linkme"]
 
 [dependencies]
-pulsar_macros = { workspace = true }
-pulsar_reflection = { workspace = true }
-linkme         = { workspace = true, optional = true }
-tracing        = { workspace = true }
-rand           = { workspace = true, features = [] }
+pulsar_macros = { path = "../pulsar_macros" }
+pulsar_reflection = { path = "../pulsar_reflection" }
+linkme         = { version = "0.3", optional = true }
+tracing        = "0.1.41"
+rand           = { version = "0.9.2", features = [] }
 
 # rlua is native-only (links to liblua, uses pthreads)
 rlua = { version = "0.20", optional = true }
 
 [dev-dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-pulsar_reflection_derive = { workspace = true }
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.150"
+pulsar_reflection_derive = { path = "../pulsar_reflection_derive" }

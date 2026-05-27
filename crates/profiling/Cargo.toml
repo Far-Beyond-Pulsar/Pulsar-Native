@@ -5,12 +5,12 @@ edition = "2021"
 publish = false
 
 [dependencies]
-parking_lot = { workspace = true }
-crossbeam-channel = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-once_cell = { workspace = true }
-rusqlite = { workspace = true, features = ["bundled"] }
-chrono = { workspace = true }
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+serde = { version = "1.0", features = ["derive"] }
+once_cell = "1.19"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = "0.4"
 
 [lib]
 name = "profiling"

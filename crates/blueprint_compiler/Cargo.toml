@@ -8,19 +8,19 @@ license = "MIT"
 
 [dependencies]
 # Core Blueprint compiler (local PBGC checkout)
-pbgc = { workspace = true }
+pbgc = { git = "https://github.com/Far-Beyond-Pulsar/PBGC", rev = "98b1510a153447f4af69c1b3bee5b3cb85c185e1" }
 
 # Also need direct access to Graphy for traits
-graphy = { workspace = true }
+graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "74a993fe51efc00ac5e208af74a3df79f2c0ba47" }
 
 # Editor's native graph type — so we can read graph_save.json files directly.
-pulsar_graph = { workspace = true }
+pulsar_graph = { path = "../pulsar_graph" }
 
 # JSON parsing for graph_save.json files.
-serde_json = { workspace = true }
+serde_json = "1.0"
 
 # Logging
-tracing = { workspace = true }
+tracing = "0.1"
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true }
+tracing-subscriber = "=0.3.23"

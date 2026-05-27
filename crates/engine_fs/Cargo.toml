@@ -6,23 +6,23 @@ edition = "2021"
 [dependencies]
 ui_types_common = { workspace = true }
 type_db = { workspace = true }
-plugin_manager = { workspace = true }
-plugin_editor_api = { workspace = true }
+plugin_manager = { path = "../plugin_manager" }
+plugin_editor_api = { path = "../plugin_editor_api" }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true }
-notify = { workspace = true }
-walkdir = { workspace = true }
-profiling = { workspace = true }
+serde_json = "1.0"
+notify = "8.2.0"
+walkdir = "2.5"
+profiling = { path = "../profiling" }
 image = { workspace = true }
 helio-snapshot = { workspace = true }
-parking_lot = { workspace = true }
+parking_lot = "0.12"
 urlencoding = { workspace = true }
 ureq = { version = "2.10", features = ["json"] }
-base64 = { workspace = true }
-tool_registry = { workspace = true }
-tool_registry_macros = { workspace = true }
+base64 = "0.22"
+tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 
 [dev-dependencies]
-tempfile = { workspace = true }
+tempfile = "=3.27.0"

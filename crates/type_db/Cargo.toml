@@ -4,6 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-dashmap = { workspace = true }
-plugin_editor_api = { workspace = true }
-ui_types_common = { workspace = true }
+dashmap = "5.3"
+plugin_editor_api = { path = "../plugin_editor_api" }
+ui_types_common = { path = "../../ui-crates/ui_types_common" }

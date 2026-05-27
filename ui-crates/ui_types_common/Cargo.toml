@@ -9,9 +9,9 @@ publish = false
 serde.workspace = true
 serde_json.workspace = true
 schemars.workspace = true
-thiserror = { workspace = true }
-chrono = { workspace = true }
+thiserror = "2.0"
+chrono = "0.4"
 
 # Validation
-regex = { workspace = true }
-lazy_static = { workspace = true }
+regex = "1.10"
+lazy_static = "1.5"
