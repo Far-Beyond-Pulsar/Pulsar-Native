@@ -148,7 +148,14 @@ impl Future for UpdateFuture {
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
         loop {
-            match self.rx.poll_next(cx) {
+            let rx_poll = {
+                // SAFETY: `self` is pinned for the duration of `poll`, so projecting
+                // the `rx` field to a pinned reference is valid.
+                let mut rx = unsafe { self.as_mut().map_unchecked_mut(|this| &mut this.rx) };
+                rx.as_mut().poll_next(cx)
+            };
+
+            match rx_poll {
                 Poll::Ready(Some(update)) => {
                     let changed = match update {
                         Update::Text(text) if self.current_text != text => {
