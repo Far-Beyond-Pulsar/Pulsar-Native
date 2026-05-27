@@ -10,7 +10,7 @@ use rand::Rng;
 ///
 #[blueprint(type: crate::NodeTypes::control_flow, category: "Logic Execution ++ (Experimental)",color="#861212ff")]
 pub fn randexec() -> i32 {
-    let selectedpin: i32 = rand::thread_rng().gen_range(1..=5);
+    let selectedpin: i32 = rand::rng().random_range(1..=5);
 
     match selectedpin{
         1=>exec_output!("A"),
