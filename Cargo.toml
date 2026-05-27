@@ -155,7 +155,7 @@ open = "5.0"
 quote = "1.0"
 rust-embed = { version = "6", features = ["interpolate-folder-path", "include-exclude"] }
 crossbeam-channel = "0.5"
-git2 = "0.19"
+git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.15"
 thiserror = "2.0"
