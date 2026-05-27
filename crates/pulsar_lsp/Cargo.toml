@@ -17,4 +17,4 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 ropey.workspace = true
-flume = "0.11"
+flume = { workspace = true }

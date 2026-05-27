@@ -9,21 +9,21 @@ version = "0.1.34"
 opt-level = 3
 
 [dev-dependencies]
-tempfile = "=3.27.0"
+tempfile = { workspace = true }
 
 [lints]
 workspace = true
 
 [dependencies]
-ui_gen_macros = { path = "../ui_gen_macros" }
+ui_gen_macros = { workspace = true }
 PebbleVault = "0.7.0"
-serde = { version = "1.0", features = ["derive"] }
-uuid = { version = "1.4", features = ["v4"] }
-tokio = { version = "1", features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+uuid = { workspace = true, features = ["v4"] }
+tokio = { workspace = true, features = ["full"] }
 rapier3d.workspace = true
-tracing = "0.1"
-thiserror = "2.0"
-dashmap = "6.1.0"
+tracing = { workspace = true }
+thiserror = { workspace = true }
+dashmap = { workspace = true }
 
 # Reflection system
 pulsar_reflection.workspace = true
@@ -31,7 +31,7 @@ engine_state.workspace = true
 engine_fs.workspace = true
 
 # Profiling - instrumentation-based
-profiling = { path = "../profiling" }
+profiling = { workspace = true }
 
 # UI dependencies needed for services
 gpui-ce.workspace = true
@@ -40,31 +40,31 @@ pulsar_diagnostics.workspace = true
 pulsar_lsp.workspace = true
 lsp-types.workspace = true
 ropey.workspace = true
-flume = "0.11"
+flume = { workspace = true }
 
 # Helio rendering (wgpu-based)
 helio.workspace = true
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "26622aa" }
+helio-asset-compat = { workspace = true }
 glam.workspace = true
 bytemuck = "1.14"
 
 wgpu.workspace = true
-crossbeam-channel = "0.5"
-futures = "0.3"
-parking_lot = "0.12"
-anyhow = "1.0"
+crossbeam-channel = { workspace = true }
+futures = { workspace = true }
+parking_lot = { workspace = true }
+anyhow = { workspace = true }
 # horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
-serde_json = "1.0"
+serde_json = { workspace = true }
 
 # Networking dependencies
 async-tungstenite = { version = "0.23", features = ["tokio-runtime"] }
-git2 = "0.19"
-sha2 = "0.10"
-walkdir = "2.4"
+git2 = { workspace = true }
+sha2 = { workspace = true }
+walkdir = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
-winapi = { version = "0.3", features = ["winuser"] }
+winapi = { workspace = true, features = ["winuser"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ash = "0.38"
