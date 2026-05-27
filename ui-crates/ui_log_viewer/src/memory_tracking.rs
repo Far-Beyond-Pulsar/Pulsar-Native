@@ -158,8 +158,8 @@ impl MemoryTracker {
 
     /// Simulate some allocations for testing
     pub fn simulate_allocations(&self) {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        use rand::RngExt;
+        let mut rng = rand::rng();
 
         let categories = vec![
             MemoryCategory::Engine,

@@ -139,9 +139,9 @@ impl TraceData {
     /// Create TraceData with comprehensive sample data
     /// Generates 2000+ frames with dedicated threads for engine subsystems
     pub fn with_sample_data() -> Self {
-        use rand::Rng;
+        use rand::RngExt;
         let trace = Self::new();
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let mut current_time = 0u64;
 
         // Generate 2000 frames with realistic multi-threaded workload
