@@ -89,14 +89,31 @@ impl SceneLoader {
     ) -> Result<LoadedScene, SceneLoadError> {
         let mut loaded = LoadedScene::default();
 
+        let total = scene.objects.len();
+        tracing::info!(total_objects = total, "Processing scene objects");
+
         for obj in &scene.objects {
+            tracing::debug!(
+                id = %obj.id,
+                name = %obj.name,
+                type_ = ?obj.object_type,
+                visible = obj.visible,
+                "Scene object"
+            );
+
             if !obj.visible {
+                tracing::debug!(id = %obj.id, "Skipping hidden object");
                 continue;
             }
+
             match obj.object_type {
                 ObjectType::Mesh(mesh_type) => {
+                    tracing::debug!(id = %obj.id, name = %obj.name, mesh_type = ?mesh_type, "Loading mesh");
                     match load_mesh(obj, mesh_type, renderer) {
-                        Ok(lm) => loaded.meshes.push(lm),
+                        Ok(lm) => {
+                            tracing::info!(id = %obj.id, name = %obj.name, "Mesh loaded");
+                            loaded.meshes.push(lm);
+                        }
                         Err(e) => tracing::warn!(
                             id = %obj.id, name = %obj.name,
                             "Failed to load mesh: {e}"
@@ -104,8 +121,12 @@ impl SceneLoader {
                     }
                 }
                 ObjectType::Light(light_type) => {
+                    tracing::debug!(id = %obj.id, name = %obj.name, light_type = ?light_type, "Loading light");
                     match load_light(obj, light_type, renderer) {
-                        Ok(ll) => loaded.lights.push(ll),
+                        Ok(ll) => {
+                            tracing::info!(id = %obj.id, name = %obj.name, "Light loaded");
+                            loaded.lights.push(ll);
+                        }
                         Err(e) => tracing::warn!(
                             id = %obj.id, name = %obj.name,
                             "Failed to load light: {e}"
@@ -113,7 +134,10 @@ impl SceneLoader {
                     }
                 }
                 ObjectType::Empty | ObjectType::Folder | ObjectType::Camera => {
-                    // No Helio representation.
+                    tracing::debug!(id = %obj.id, name = %obj.name, "Skipping non-renderable object");
+                }
+                ObjectType::Unknown => {
+                    tracing::debug!(id = %obj.id, name = %obj.name, "Skipping unknown object type");
                 }
             }
         }
@@ -121,7 +145,7 @@ impl SceneLoader {
         tracing::info!(
             meshes = loaded.meshes.len(),
             lights = loaded.lights.len(),
-            "Scene loaded"
+            "Scene load complete"
         );
 
         Ok(loaded)
@@ -165,7 +189,7 @@ fn load_mesh(
 
     let transform = object_transform(obj);
     // Bounding radius: max of the scale components (conservative sphere).
-    let radius = obj.scale.iter().cloned().fold(0.0_f32, f32::max);
+    let radius = obj.world_scale().iter().cloned().fold(0.0_f32, f32::max);
 
     let object_id = renderer
         .scene_mut()
@@ -356,10 +380,10 @@ fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
     let color = obj.light_color();
     let intensity = obj.light_intensity();
     let range = obj.light_range();
-    let pos = obj.position;
+    let pos = obj.world_position();
 
     // Compute forward direction from Euler rotation (YXZ degrees).
-    let rot = obj.rotation;
+    let rot = obj.world_rotation();
     let quat = Quat::from_euler(
         glam::EulerRot::YXZ,
         rot[1].to_radians(),
@@ -406,9 +430,9 @@ fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
 // ── Transform helper ──────────────────────────────────────────────────────────
 
 fn object_transform(obj: &SceneObject) -> Mat4 {
-    let p = Vec3::from_array(obj.position);
-    let s = Vec3::from_array(obj.scale);
-    let rot = obj.rotation;
+    let p = Vec3::from_array(obj.world_position());
+    let s = Vec3::from_array(obj.world_scale());
+    let rot = obj.world_rotation();
     let q = Quat::from_euler(
         glam::EulerRot::YXZ,
         rot[1].to_radians(),

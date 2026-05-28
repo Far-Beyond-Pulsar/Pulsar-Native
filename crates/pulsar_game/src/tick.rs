@@ -212,28 +212,58 @@ impl TickLoop {
         let running_flag = Arc::clone(&self.running_flag);
 
         // Register all schema definitions so the config manager knows about them.
+        tracing::info!(root = %project_root.display(), "Loading project settings");
         pulsar_settings::register_all_settings(engine_state::settings::global_config());
 
         // Load persisted project settings from <project_root>/.pulsar/
-        let default_scene: Option<std::path::PathBuf> =
-            engine_state::settings::ProjectSettings::new(&project_root)
-                .and_then(|ps| {
-                    ps.load_all();
-                    ps.get("project", "default_map")
-                })
+        let default_scene: Option<std::path::PathBuf> = {
+            let ps_result = engine_state::settings::ProjectSettings::new(&project_root);
+            tracing::debug!(ok = ps_result.is_some(), "ProjectSettings::new");
+
+            let raw_value = ps_result.and_then(|ps| {
+                ps.load_all();
+                let v = ps.get("project", "default_map");
+                tracing::debug!(found = v.is_some(), "settings key project.default_map");
+                v
+            });
+
+            let raw_path = raw_value.as_ref()
+                .and_then(|v| v.as_str().ok())
+                .map(|s| s.to_owned());
+            tracing::info!(raw_map = ?raw_path, "default_map from settings");
+
+            raw_value
                 .and_then(|v| v.as_str().ok().map(|s| project_root.join(s)))
                 .and_then(|p| {
+                    tracing::info!(scene = %p.display(), exists = p.exists(), "Checking default scene path");
                     if p.exists() {
-                        tracing::info!(scene = %p.display(), "Default scene found");
+                        tracing::info!(scene = %p.display(), "Default scene found — will load");
                         Some(p)
                     } else {
-                        tracing::debug!(
+                        // Try common fallback locations
+                        let fallbacks = [
+                            project_root.join("scene/default.level"),
+                            project_root.join("scenes/default_level.json"),
+                            project_root.join("Pulsar/level.json"),
+                        ];
+                        for fb in &fallbacks {
+                            if fb.exists() {
+                                tracing::warn!(
+                                    configured = %p.display(),
+                                    fallback = %fb.display(),
+                                    "Configured scene not found — using fallback"
+                                );
+                                return Some(fb.clone());
+                            }
+                        }
+                        tracing::warn!(
                             scene = %p.display(),
-                            "Default scene not found — starting with empty world"
+                            "Default scene not found on disk and no fallback matched — starting with empty world"
                         );
                         None
                     }
-                });
+                })
+        };
 
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open.
