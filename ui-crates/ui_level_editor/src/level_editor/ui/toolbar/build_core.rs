@@ -307,22 +307,11 @@ fn run_build(
 }
 
 fn launch_game(project_root: &PathBuf) -> Result<(), String> {
-    // Find the built binary: target/debug/<project_name>
-    let project_name = project_root
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("game")
-        .to_string();
-
-    let binary = project_root
-        .join("target")
-        .join("debug")
-        .join(&project_name);
-
-    std::process::Command::new(&binary)
+    std::process::Command::new("cargo")
+        .arg("run")
         .current_dir(project_root)
         .spawn()
-        .map_err(|e| format!("Failed to launch game binary '{}': {e}", binary.display()))?;
+        .map_err(|e| format!("Failed to spawn cargo run: {e}"))?;
 
     Ok(())
 }
