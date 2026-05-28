@@ -21,7 +21,7 @@ use ui::{
 /// World Settings Panel (replaced Scene Browser)
 pub struct WorldSettingsPanel {
     pub(crate) world_settings: WorldSettingsReplicated,
-    state: crate::level_editor::StateEntity,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     /// Tracks which sections are collapsed (by section name)
     collapsed_sections: HashSet<String>,
@@ -29,7 +29,7 @@ pub struct WorldSettingsPanel {
 
 impl WorldSettingsPanel {
     pub fn new(
-        state: crate::level_editor::StateEntity,
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -70,12 +70,14 @@ ui_common::panel_boilerplate!(WorldSettingsPanel);
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let self_entity_id = cx.entity().entity_id();
+        let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .child(
-                self.world_settings.render(&collapsed_sections, cx),
+                self.world_settings
+                    .render(&state, self.state.clone(), &collapsed_sections, cx),
             )
     }
 }
@@ -93,19 +95,17 @@ impl Panel for WorldSettingsPanel {
 /// Hierarchy Panel
 pub struct HierarchyPanelWrapper {
     hierarchy: HierarchyPanel,
-    state: crate::level_editor::StateEntity,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     last_scene_revision: u64,
 }
 
 impl HierarchyPanelWrapper {
     pub fn new(
-        state: crate::level_editor::StateEntity,
-        _window: &mut Window,
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // Re-render whenever the shared state is updated.
-        cx.observe(&state, |_, _, cx| cx.notify()).detach();
         Self {
             hierarchy: HierarchyPanel::new(),
             state,
@@ -121,7 +121,19 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // cx.observe() in new() drives re-renders — no manual revision tracking needed.
+        let self_entity_id = cx.entity().entity_id();
+        let state = self.state.read();
+
+        // Track all scene changes (including edits that do not change object count)
+        // through the shared scene revision counter.
+        let current_revision = state.scene_revision;
+        if current_revision != self.last_scene_revision {
+            self.last_scene_revision = current_revision;
+            cx.notify();
+        }
+        drop(state);
+
+        let state = self.state.read();
         let state_clone = self.state.clone();
 
         let add_button = Button::new("add_object")
@@ -131,31 +143,33 @@ impl Render for HierarchyPanelWrapper {
             .on_click(move |_, _, cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
                 use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
-                state_clone.update(cx, |state, cx| {
-                    execute_command(state, SceneCommand::AddObject {
-                        data: SceneObjectData {
-                            id: String::new(),
-                            name: "New Object".to_string(),
-                            object_type: ObjectType::Empty,
-                            transform: Transform::default(),
-                            visible: true,
-                            locked: false,
-                            parent: None,
-                            children: vec![],
-                            scene_path: String::new(),
-                            props: Default::default(),
-                        },
+
+                let mut state = state_clone.write();
+                let new_object = SceneObjectData {
+                    id: String::new(),
+                    name: "New Object".to_string(),
+                    object_type: ObjectType::Empty,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    scene_path: String::new(),
+                    props: Default::default(),
+                };
+                execute_command(
+                    &mut state,
+                    SceneCommand::AddObject {
+                        data: new_object,
                         parent_id: None,
-                    });
-                    cx.notify();
-                });
+                    },
+                );
+                cx.notify(self_entity_id);
             })
             .into_any_element();
 
         let wrapper_entity = cx.entity().downgrade();
 
-        // Clone state to an owned value so cx borrow is released before render.
-        let state = self.state.read(cx).clone();
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
@@ -180,7 +194,7 @@ impl Panel for HierarchyPanelWrapper {
 /// Properties Panel
 pub struct PropertiesPanelWrapper {
     properties: PropertiesPanel,
-    state: crate::level_editor::StateEntity,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
     focus_handle: FocusHandle,
     // New field binding system
     object_header_section: Option<Entity<ObjectHeaderSection>>,
@@ -198,7 +212,7 @@ pub struct PropertiesPanelWrapper {
 
 impl PropertiesPanelWrapper {
     pub fn new(
-        state: crate::level_editor::StateEntity,
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -217,8 +231,6 @@ impl PropertiesPanelWrapper {
         collapsed_sections.insert("Rendering".to_string());
         collapsed_sections.insert("Physics".to_string());
 
-        // Re-render whenever the shared state is updated.
-        cx.observe(&state, |_, _, cx| cx.notify()).detach();
         Self {
             properties: PropertiesPanel::new(),
             state,
@@ -268,7 +280,7 @@ impl PropertiesPanelWrapper {
 
             // Parse and update the property
             if let Ok(value) = new_value.parse::<f32>() {
-                self.update_transform_property(&property_path, value, cx);
+                self.update_transform_property(&property_path, value);
             }
         }
         cx.notify();
@@ -279,32 +291,27 @@ impl PropertiesPanelWrapper {
         cx.notify();
     }
 
-    fn update_transform_property(&self, property_path: &str, value: f32, cx: &mut Context<Self>) {
+    fn update_transform_property(&self, property_path: &str, value: f32) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
-        let path = property_path.to_string();
-        let (selected, obj) = {
-            let s = self.state.read(cx);
-            let sel = s.selected_object();
-            let obj = sel.as_ref().and_then(|id| s.scene_database.get_object(id));
-            (sel, obj)
-        };
-        if let (Some(_), Some(mut obj)) = (selected, obj) {
-            match path.as_str() {
-                "position.x" => obj.transform.position[0] = value,
-                "position.y" => obj.transform.position[1] = value,
-                "position.z" => obj.transform.position[2] = value,
-                "rotation.x" => obj.transform.rotation[0] = value,
-                "rotation.y" => obj.transform.rotation[1] = value,
-                "rotation.z" => obj.transform.rotation[2] = value,
-                "scale.x"    => obj.transform.scale[0] = value,
-                "scale.y"    => obj.transform.scale[1] = value,
-                "scale.z"    => obj.transform.scale[2] = value,
-                _ => return,
+        let selected = self.state.read().selected_object();
+        if let Some(object_id) = selected {
+            let obj_opt = self.state.read().scene_database.get_object(&object_id);
+            if let Some(mut obj) = obj_opt {
+                match property_path {
+                    "position.x" => obj.transform.position[0] = value,
+                    "position.y" => obj.transform.position[1] = value,
+                    "position.z" => obj.transform.position[2] = value,
+                    "rotation.x" => obj.transform.rotation[0] = value,
+                    "rotation.y" => obj.transform.rotation[1] = value,
+                    "rotation.z" => obj.transform.rotation[2] = value,
+                    "scale.x" => obj.transform.scale[0] = value,
+                    "scale.y" => obj.transform.scale[1] = value,
+                    "scale.z" => obj.transform.scale[2] = value,
+                    _ => return,
+                }
+                let mut state = self.state.write();
+                execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
             }
-            self.state.update(cx, |state, cx| {
-                execute_command(state, SceneCommand::UpdateObject { data: obj });
-                cx.notify();
-            });
         }
     }
 }
@@ -315,54 +322,68 @@ ui_common::panel_boilerplate!(PropertiesPanelWrapper);
 
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // ── Phase 1: extract what we need, release the borrow ────────────────
-        // cx.observe() in the constructor already drives re-renders; we never
-        // need to call cx.notify() here ourselves.
-        let (selected_object_id, scene_revision, scene_db) = {
-            let s = self.state.read(cx);
-            (s.selected_object(), s.scene_revision, s.scene_database.clone())
-        };
+        let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
+        let selected_object_id = state.selected_object();
+        let scene_revision = state.scene_revision;
 
+        // Force a section rebuild on external scene changes even when selection stays the same.
         if scene_revision != self.last_scene_revision {
             self.last_scene_revision = scene_revision;
             self.current_object_id = None;
         }
 
-        // ── Phase 2: update sub-sections (may call cx.new) ───────────────────
-        // State borrow is released — cx.new() is safe here.
+        // Update sections when selection changes or when sections are unexpectedly missing
         if selected_object_id != self.current_object_id
             || (selected_object_id.is_some() && self.object_type_fields_section.is_none())
         {
             if let Some(ref object_id) = selected_object_id {
-                let oid = object_id.clone();
-                let db  = scene_db.clone();
+                // Create new sections for the selected object
+                let scene_db = state.scene_database.clone();
+                let object_id_clone = object_id.clone();
+
+                // Object header section
                 self.object_header_section = Some(cx.new(|cx| {
-                    ObjectHeaderSection::new(oid.clone(), db.clone(), window, cx)
+                    ObjectHeaderSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
+
+                // Transform section
                 self.transform_section = Some(cx.new(|cx| {
-                    TransformSection::new(oid.clone(), db.clone(), window, cx)
+                    TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
+
+                // Reflection-backed object type property section
                 self.object_type_fields_section = Some(cx.new(|cx| {
-                    ObjectTypeFieldsSection::new(oid.clone(), db.clone(), self.state.clone(), window, cx)
+                    ObjectTypeFieldsSection::new(
+                        object_id_clone.clone(),
+                        scene_db.clone(),
+                        self.state.clone(),
+                        window,
+                        cx,
+                    )
                 }));
+
                 self.current_object_id = Some(object_id.clone());
             } else {
+                // No selection - clear all sections
                 self.object_header_section = None;
                 self.transform_section = None;
                 self.object_type_fields_section = None;
                 self.current_object_id = None;
             }
         }
+        // NOTE: Removed the refresh() calls that were running every render frame.
+        // The bound fields automatically subscribe to InputEvents and sync changes.
+        // External changes (undo/redo, gizmo moves) should explicitly call refresh()
+        // when those events occur, not on every render.
 
-        // ── Phase 3: build element tree using an owned state clone.
-        // Cloning is cheap: SceneDatabase fields are Arc-wrapped.
-        let state = self.state.read(cx).clone();
+        drop(state);
+
         v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .child(self.properties.render(
-                &state,
+                &self.state.read(),
                 self.state.clone(),
                 &self.editing_property,
                 &self.property_input,
@@ -404,7 +425,7 @@ impl Panel for PropertiesPanelWrapper {
 /// Viewport Panel Wrapper
 pub struct ViewportPanelWrapper {
     viewport_panel: ViewportPanel,
-    state: crate::level_editor::StateEntity,
+    state: Arc<parking_lot::RwLock<LevelEditorState>>,
     fps_graph_is_line: Rc<RefCell<bool>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
     game_thread: Arc<GameThread>,
@@ -414,7 +435,7 @@ pub struct ViewportPanelWrapper {
 impl ViewportPanelWrapper {
     pub fn new(
         viewport_panel: ViewportPanel,
-        state: crate::level_editor::StateEntity,
+        state: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_is_line: Rc<RefCell<bool>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
         game_thread: Arc<GameThread>,
@@ -437,9 +458,9 @@ ui_common::panel_boilerplate!(ViewportPanelWrapper);
 
 impl Render for ViewportPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.read(cx).clone();
+        let mut state = self.state.write();
         self.viewport_panel.render(
-            &state,
+            &mut state,
             self.state.clone(),
             self.fps_graph_is_line.clone(),
             &self.gpu_engine,

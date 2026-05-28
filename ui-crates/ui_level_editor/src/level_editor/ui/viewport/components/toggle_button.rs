@@ -4,18 +4,27 @@
 //! with icons, tooltips, and state management.
 
 use gpui::*;
+use std::sync::Arc;
 use ui::{button::Button, IconName, Selectable};
 
 /// A reusable toggle button that manages state through a callback.
 ///
-/// The `on_toggle` callback receives `&mut App` so callers can use
-/// GPUI entity updates without holding any locks.
+/// # Example
+/// ```rust
+/// ToggleButton::new("my_button")
+///     .icon(IconName::Grid)
+///     .tooltip("Toggle Grid")
+///     .selected(state.show_grid)
+///     .on_toggle(move || {
+///         state.write().toggle_grid();
+///     })
+/// ```
 pub struct ToggleButton {
     id: SharedString,
     icon: IconName,
     tooltip: Option<SharedString>,
     selected: bool,
-    on_toggle: Option<Box<dyn Fn(&mut App) + 'static>>,
+    on_toggle: Option<Box<dyn Fn() + 'static>>,
 }
 
 impl ToggleButton {
@@ -51,7 +60,7 @@ impl ToggleButton {
     /// Set the callback to invoke when the button is toggled.
     pub fn on_toggle<F>(mut self, f: F) -> Self
     where
-        F: Fn(&mut App) + 'static,
+        F: Fn() + 'static,
     {
         self.on_toggle = Some(Box::new(f));
         self
@@ -66,8 +75,8 @@ impl ToggleButton {
         }
 
         if let Some(on_toggle) = self.on_toggle {
-            button = button.on_click(move |_, _, cx| {
-                on_toggle(cx);
+            button = button.on_click(move |_, _, _| {
+                on_toggle();
             });
         }
 
@@ -96,7 +105,7 @@ pub fn create_state_toggle<S>(
     icon: IconName,
     tooltip: impl Into<SharedString>,
     selected: bool,
-    state: Entity<S>,
+    state: Arc<parking_lot::RwLock<S>>,
     toggle_fn: impl Fn(&mut S) + 'static,
 ) -> Button
 where
@@ -106,8 +115,8 @@ where
         .icon(icon)
         .tooltip(tooltip)
         .selected(selected)
-        .on_toggle(move |cx| {
-            state.update(cx, |s, cx| { toggle_fn(s); cx.notify(); });
+        .on_toggle(move || {
+            toggle_fn(&mut state.write());
         })
         .build()
 }

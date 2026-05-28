@@ -130,8 +130,8 @@ impl ViewportPanel {
     /// Render the viewport panel.
     pub fn render<V>(
         &mut self,
-        state: &LevelEditorState,
-        state_arc: crate::level_editor::StateEntity,
+        state: &mut LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         game_thread: &Arc<GameThread>,
@@ -447,8 +447,8 @@ impl ViewportPanel {
     /// Build the complete viewport UI.
     fn build_viewport_ui<V>(
         &mut self,
-        state: &LevelEditorState,
-        state_arc: crate::level_editor::StateEntity,
+        state: &mut LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         _game_thread: &Arc<GameThread>,
@@ -599,39 +599,38 @@ impl ViewportPanel {
                     }
 
                     // Handle overlay dragging
-                    let (cam_dragging, cam_drag_start, vp_dragging, vp_drag_start) = {
-                        let s = state_arc_move.read(cx);
-                        (s.is_dragging_camera_overlay, s.camera_overlay_drag_start,
-                         s.is_dragging_viewport_overlay, s.viewport_overlay_drag_start)
-                    };
-                    if cam_dragging {
-                        if let Some((start_x, start_y)) = cam_drag_start {
+                    let mut state = state_arc_move.write();
+                    if state.is_dragging_camera_overlay {
+                        if let Some((start_x, start_y)) = state.camera_overlay_drag_start {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
                             let delta_y = current_y - start_y;
-                            state_arc_move.update(cx, |state, cx| {
-                                state.camera_overlay_pos.0 = (state.camera_overlay_pos.0 - delta_x).max(0.0);
-                                state.camera_overlay_pos.1 = (state.camera_overlay_pos.1 + delta_y).max(0.0);
-                                state.camera_overlay_drag_start = Some((current_x, current_y));
-                                cx.notify();
-                            });
+
+                            // Camera overlay positioned from right edge with .right(px(value))
+                            // When dragging right, delta_x is positive, but right value should decrease
+                            state.camera_overlay_pos.0 =
+                                (state.camera_overlay_pos.0 - delta_x).max(0.0);
+                            state.camera_overlay_pos.1 =
+                                (state.camera_overlay_pos.1 + delta_y).max(0.0);
+                            state.camera_overlay_drag_start = Some((current_x, current_y));
                         }
                         return;
                     }
 
-                    if vp_dragging {
-                        if let Some((start_x, start_y)) = vp_drag_start {
+                    if state.is_dragging_viewport_overlay {
+                        if let Some((start_x, start_y)) = state.viewport_overlay_drag_start {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
                             let delta_y = current_y - start_y;
-                            state_arc_move.update(cx, |state, cx| {
-                                state.viewport_overlay_pos.0 = (state.viewport_overlay_pos.0 + delta_x).max(0.0);
-                                state.viewport_overlay_pos.1 = (state.viewport_overlay_pos.1 + delta_y).max(0.0);
-                                state.viewport_overlay_drag_start = Some((current_x, current_y));
-                                cx.notify();
-                            });
+
+                            // Viewport overlay is positioned from left edge, normal drag
+                            state.viewport_overlay_pos.0 =
+                                (state.viewport_overlay_pos.0 + delta_x).max(0.0);
+                            state.viewport_overlay_pos.1 =
+                                (state.viewport_overlay_pos.1 + delta_y).max(0.0);
+                            state.viewport_overlay_drag_start = Some((current_x, current_y));
                         }
                         return;
                     }
@@ -831,14 +830,13 @@ impl ViewportPanel {
 
                 move |_event: &gpui::MouseUpEvent,
                       _window: &mut gpui::Window,
-                      cx: &mut gpui::App| {
-                    state_arc_up.update(cx, |state, cx| {
-                        state.is_dragging_camera_overlay = false;
-                        state.is_dragging_viewport_overlay = false;
-                        state.camera_overlay_drag_start = None;
-                        state.viewport_overlay_drag_start = None;
-                        cx.notify();
-                    });
+                      _cx: &mut gpui::App| {
+                    let mut state = state_arc_up.write();
+                    state.is_dragging_camera_overlay = false;
+                    state.is_dragging_viewport_overlay = false;
+                    state.camera_overlay_drag_start = None;
+                    state.viewport_overlay_drag_start = None;
+                    drop(state);
 
                     if let Ok(mut engine) = gpu_engine_up.try_lock() {
                         engine.handle_left_release();
@@ -872,7 +870,7 @@ impl ViewportPanel {
     fn render_overlays<V>(
         &self,
         state: &LevelEditorState,
-        state_arc: crate::level_editor::StateEntity,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         ui_fps: f64,
         _helio_fps: f64,

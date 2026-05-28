@@ -4,6 +4,7 @@
 //! and positioned anywhere in the viewport. It includes a drag handle with
 //! grip dots and supports custom content through children.
 
+use std::sync::Arc;
 
 use gpui::*;
 use ui::{h_flex, ActiveTheme};
@@ -88,7 +89,7 @@ impl<E: IntoElement> FloatingToolbar<E> {
 /// * `is_dragging_field` - Function to set the dragging flag
 /// * `cx` - The window context
 pub fn create_drag_handle<V, S>(
-    state_entity: Entity<S>,
+    state_arc: Arc<parking_lot::RwLock<S>>,
     drag_start_field: impl Fn(&mut S, Option<(f32, f32)>) + Clone + 'static,
     is_dragging_field: impl Fn(&mut S, bool) + Clone + 'static,
     cx: &Context<V>,
@@ -109,17 +110,15 @@ where
         .cursor(CursorStyle::PointingHand)
         .hover(|style| style.bg(cx.theme().background))
         .on_mouse_down(MouseButton::Left, {
-            let state = state_entity.clone();
+            let state = state_arc.clone();
             let drag_start = drag_start_field.clone();
             let is_dragging = is_dragging_field.clone();
-            move |event: &MouseDownEvent, _window, cx| {
+            move |event: &MouseDownEvent, _window, _cx| {
+                let mut s = state.write();
                 let x: f32 = event.position.x.into();
                 let y: f32 = event.position.y.into();
-                state.update(cx, |s, cx| {
-                    drag_start(s, Some((x, y)));
-                    is_dragging(s, true);
-                    cx.notify();
-                });
+                drag_start(&mut s, Some((x, y)));
+                is_dragging(&mut s, true);
             }
         })
         .child(

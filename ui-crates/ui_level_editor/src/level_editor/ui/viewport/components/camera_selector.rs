@@ -59,7 +59,7 @@ const CAMERA_MODES: &[CameraModeButton] = &[
 
 /// Render camera mode buttons.
 fn camera_mode_buttons(
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     current_mode: CameraMode,
 ) -> impl IntoElement {
     h_flex()
@@ -83,8 +83,8 @@ fn camera_mode_buttons(
                 .icon(icon)
                 .tooltip(tooltip)
                 .selected(matches!(current_mode, m if m == target_mode))
-                .on_click(move |_, _, cx| {
-                    state_clone.update(cx, |s, cx| { s.set_camera_mode(target_mode); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_camera_mode(target_mode);
                 })
         }))
 }
@@ -112,7 +112,7 @@ where
                 .icon(IconName::Minus)
                 .small()
                 .tooltip(t!("LevelEditor.Camera.DecreaseSpeed"))
-                .on_click(move |_, _, cx| {
+                .on_click(move |_, _, _| {
                     input_clone.adjust_move_speed(-2.0);
                 })
         })
@@ -131,7 +131,7 @@ where
                 .icon(IconName::Plus)
                 .small()
                 .tooltip(t!("LevelEditor.Camera.IncreaseSpeed"))
-                .on_click(move |_, _, cx| {
+                .on_click(move |_, _, _| {
                     input_clone.adjust_move_speed(2.0);
                 })
         })
@@ -146,7 +146,7 @@ pub trait CameraSpeedControl {
 /// Render the complete camera mode selector overlay.
 pub fn render_camera_selector<V, S>(
     state: &LevelEditorState,
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     camera_mode: CameraMode,
     input_state: Arc<S>,
     is_dragging: bool,
@@ -160,8 +160,8 @@ where
         return Button::new("expand_camera_mode")
             .icon(IconName::Cube)
             .tooltip(t!("LevelEditor.Camera.CameraMode"))
-            .on_click(move |_, _, cx| {
-                state_arc.update(cx, |s, cx| { s.set_camera_mode_selector_collapsed(false); cx.notify(); });
+            .on_click(move |_, _, _| {
+                state_arc.write().set_camera_mode_selector_collapsed(false);
             })
             .into_any_element();
     }
@@ -183,8 +183,8 @@ where
             Button::new("collapse_camera_mode")
                 .icon(IconName::Close)
                 .ghost()
-                .on_click(move |_, _, cx| {
-                    state_arc.update(cx, |s, cx| { s.set_camera_mode_selector_collapsed(true); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_arc.write().set_camera_mode_selector_collapsed(true);
                 }),
         );
 

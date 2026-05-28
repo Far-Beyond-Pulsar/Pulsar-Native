@@ -26,7 +26,7 @@ impl PropertiesPanel {
     pub fn render(
         &self,
         state: &LevelEditorState,
-        state_arc: crate::level_editor::StateEntity,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
         collapsed_sections: &HashSet<String>,

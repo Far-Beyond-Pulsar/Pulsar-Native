@@ -1,16 +1,7 @@
-use gpui::Entity;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
-
-/// Lockless handle to the shared editor state.
-///
-/// `Entity<LevelEditorState>` is GPUI's reactive shared-state primitive.
-/// All GPUI panels use this; reads go through `cx` (zero-cost borrow) and
-/// writes go through `.update(cx, ...)` which triggers reactive re-renders
-/// automatically.  There is no `RwLock` on the UI hot path.
-pub type StateEntity = Entity<LevelEditorState>;
 
 // Import our scene database
 use crate::level_editor::scene_database::SceneDb;
@@ -357,11 +348,9 @@ impl LevelEditorState {
         self.scene_database.get_root_objects()
     }
 
-    /// Select an object.  Bumps `scene_revision` so `cx.observe` subscribers
-    /// (hierarchy, properties panels) receive an immediate re-render.
+    /// Select an object
     pub fn select_object(&mut self, object_id: Option<String>) {
         self.scene_database.select_object(object_id);
-        self.scene_revision = self.scene_revision.saturating_add(1);
     }
 
     /// Get selected object data

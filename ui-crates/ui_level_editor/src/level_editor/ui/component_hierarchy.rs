@@ -55,7 +55,7 @@ struct ComponentItem {
     instance: ComponentInstance,
     object_id: String,
     scene_db: SceneDatabase,
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     selected: bool,
     children_indices: Vec<usize>,
 }
@@ -129,12 +129,10 @@ impl HierarchyItem for ComponentItem {
             .tooltip(if enabled { "Disable component" } else { "Enable component" })
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
+                let mut state = toggle_state.write();
                 if scene_db.set_component_enabled(&toggle_object_id, index, !enabled) {
-                    toggle_state.update(cx, |state, cx| {
-                        state.scene_revision = state.scene_revision.saturating_add(1);
-                        state.has_unsaved_changes = true;
-                        cx.notify();
-                    });
+                    state.scene_revision = state.scene_revision.saturating_add(1);
+                    state.has_unsaved_changes = true;
                 }
             });
 
@@ -157,21 +155,22 @@ impl HierarchyItem for ComponentItem {
         let delete_state = self.state_arc.clone();
 
         menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
-            if duplicate_scene_db.duplicate_component(&duplicate_object_id, duplicate_index).is_some() {
-                duplicate_state.update(app, |state, cx| {
-                    state.scene_revision = state.scene_revision.saturating_add(1);
-                    state.has_unsaved_changes = true;
-                    cx.notify();
-                });
+            let _ = app;
+            if duplicate_scene_db
+                .duplicate_component(&duplicate_object_id, duplicate_index)
+                .is_some()
+            {
+                let mut state = duplicate_state.write();
+                state.scene_revision = state.scene_revision.saturating_add(1);
+                state.has_unsaved_changes = true;
             }
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
+            let _ = app;
             delete_scene_db.remove_component(&delete_object_id, delete_index);
-            delete_state.update(app, |state, cx| {
-                state.scene_revision = state.scene_revision.saturating_add(1);
-                state.has_unsaved_changes = true;
-                cx.notify();
-            });
+            let mut state = delete_state.write();
+            state.scene_revision = state.scene_revision.saturating_add(1);
+            state.has_unsaved_changes = true;
         })
     }
 }
@@ -221,7 +220,7 @@ impl ComponentHierarchyPanel {
         &self,
         components: &[ComponentInstance],
         _selected_component: Option<usize>,
-        state_arc: &crate::level_editor::StateEntity,
+        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Vec<ComponentItem> {
         components
             .iter()
@@ -244,7 +243,7 @@ impl ComponentHierarchyPanel {
     pub fn render<V>(
         &self,
         state: &LevelEditorState,
-        state_arc: crate::level_editor::StateEntity,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         add_button: AnyElement,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -312,22 +311,20 @@ impl ComponentHierarchyPanel {
             // Callbacks
             is_expanded: Arc::new(move |idx: &usize| {
                 state_arc_for_expand
-                    .read(cx)
+                    .read()
                     .expanded_components
                     .contains(&(object_id.clone(), *idx))
             }),
             on_toggle_expand: Arc::new({
                 let object_id = self.object_id.clone();
-                move |idx: &usize, _window, cx| {
+                move |idx: &usize, _window, _cx| {
+                    let mut state = state_arc.write();
                     let key = (object_id.clone(), *idx);
-                    state_arc.update(cx, |state, cx| {
-                        if state.expanded_components.contains(&key) {
-                            state.expanded_components.remove(&key);
-                        } else {
-                            state.expanded_components.insert(key.clone());
-                        }
-                        cx.notify();
-                    });
+                    if state.expanded_components.contains(&key) {
+                        state.expanded_components.remove(&key);
+                    } else {
+                        state.expanded_components.insert(key);
+                    }
                 }
             }),
             on_select: Arc::new(|_idx: &usize, _window, _cx| {
@@ -359,10 +356,10 @@ impl ComponentHierarchyPanel {
                         // Default: nest the dragged component under the drop target
                         scene_db.set_component_parent(&object_id, from_idx, Some(to_idx));
                         // Auto-expand the parent to show the new child
-                        state_arc_for_nest.update(_cx, |state, cx| {
-                            state.expanded_components.insert((object_id.clone(), to_idx));
-                            cx.notify();
-                        });
+                        state_arc_for_nest
+                            .write()
+                            .expanded_components
+                            .insert((object_id.clone(), to_idx));
                     }
                 }
             }),

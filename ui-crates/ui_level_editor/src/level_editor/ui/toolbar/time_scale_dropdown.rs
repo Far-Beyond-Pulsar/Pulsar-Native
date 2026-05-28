@@ -15,7 +15,7 @@ pub struct TimeScaleDropdown;
 impl TimeScaleDropdown {
     pub fn render<V>(
         state: &LevelEditorState,
-        _state_arc: crate::level_editor::StateEntity,
+        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where

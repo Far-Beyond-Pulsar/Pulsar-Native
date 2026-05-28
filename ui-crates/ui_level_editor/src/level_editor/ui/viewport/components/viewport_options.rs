@@ -47,7 +47,7 @@ const VISUAL_TOGGLES: &[VisualToggle] = &[
 
 /// Render visual toggle buttons (grid, wireframe, lighting).
 fn visual_toggles(
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     state: &LevelEditorState,
 ) -> impl IntoElement {
     h_flex()
@@ -80,7 +80,7 @@ fn visual_toggles(
 
 /// Render overlay toggle switches (performance, camera).
 fn overlay_toggles<V>(
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     state: &LevelEditorState,
     cx: &Context<V>,
 ) -> impl IntoElement
@@ -104,8 +104,8 @@ where
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_perf")
                         .checked(state.show_performance_overlay)
-                        .on_click(move |checked, _, cx| {
-                            state_clone.update(cx, |s, cx| { s.set_show_performance_overlay(*checked); cx.notify(); });
+                        .on_click(move |checked, _, _| {
+                            state_clone.write().set_show_performance_overlay(*checked);
                         })
                 }),
         )
@@ -123,8 +123,8 @@ where
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_gpu")
                         .checked(state.show_gpu_pipeline_overlay)
-                        .on_click(move |checked, _, cx| {
-                            state_clone.update(cx, |s, cx| { s.set_show_gpu_pipeline_overlay(*checked); cx.notify(); });
+                        .on_click(move |checked, _, _| {
+                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -149,8 +149,8 @@ where
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_gpu")
                         .checked(state.show_gpu_pipeline_overlay)
-                        .on_click(move |checked, _, cx| {
-                            state_clone.update(cx, |s, cx| { s.set_show_gpu_pipeline_overlay(*checked); cx.notify(); });
+                        .on_click(move |checked, _, _| {
+                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -168,8 +168,8 @@ where
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_cam")
                         .checked(state.show_camera_mode_selector)
-                        .on_click(move |checked, _, cx| {
-                            state_clone.update(cx, |s, cx| { s.set_show_camera_mode_selector(*checked); cx.notify(); });
+                        .on_click(move |checked, _, _| {
+                            state_clone.write().set_show_camera_mode_selector(*checked);
                         })
                 }),
         )
@@ -177,7 +177,7 @@ where
 
 /// Render gizmo tool selector buttons.
 fn gizmo_tool_buttons(
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     state: &LevelEditorState,
 ) -> impl IntoElement {
     h_flex()
@@ -189,8 +189,8 @@ fn gizmo_tool_buttons(
                 .ghost()
                 .tooltip("Select Tool (Q)")
                 .selected(state.current_tool == TransformTool::Select)
-                .on_click(move |_, _, cx| {
-                    state_clone.update(cx, |s, cx| { s.set_tool(TransformTool::Select); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Select);
                 })
         })
         .child({
@@ -200,8 +200,8 @@ fn gizmo_tool_buttons(
                 .ghost()
                 .tooltip("Move Tool (W)")
                 .selected(state.current_tool == TransformTool::Move)
-                .on_click(move |_, _, cx| {
-                    state_clone.update(cx, |s, cx| { s.set_tool(TransformTool::Move); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Move);
                 })
         })
         .child({
@@ -211,8 +211,8 @@ fn gizmo_tool_buttons(
                 .ghost()
                 .tooltip("Rotate Tool (E)")
                 .selected(state.current_tool == TransformTool::Rotate)
-                .on_click(move |_, _, cx| {
-                    state_clone.update(cx, |s, cx| { s.set_tool(TransformTool::Rotate); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Rotate);
                 })
         })
         .child({
@@ -222,8 +222,8 @@ fn gizmo_tool_buttons(
                 .ghost()
                 .tooltip("Scale Tool (R)")
                 .selected(state.current_tool == TransformTool::Scale)
-                .on_click(move |_, _, cx| {
-                    state_clone.update(cx, |s, cx| { s.set_tool(TransformTool::Scale); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_clone.write().set_tool(TransformTool::Scale);
                 })
         })
 }
@@ -231,7 +231,7 @@ fn gizmo_tool_buttons(
 /// Render the complete viewport options toolbar.
 pub fn render_viewport_options<V>(
     state: &LevelEditorState,
-    state_arc: crate::level_editor::StateEntity,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_dragging: bool,
     cx: &mut Context<V>,
 ) -> impl IntoElement
@@ -242,8 +242,8 @@ where
         return Button::new("expand_viewport_options")
             .icon(IconName::LayoutDashboard)
             .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
-            .on_click(move |_, _, cx| {
-                state_arc.update(cx, |s, cx| { s.set_viewport_options_collapsed(false); cx.notify(); });
+            .on_click(move |_, _, _| {
+                state_arc.write().set_viewport_options_collapsed(false);
             })
             .into_any_element();
     }
@@ -267,8 +267,8 @@ where
             Button::new("collapse_viewport_options")
                 .icon(IconName::Close)
                 .ghost()
-                .on_click(move |_, _, cx| {
-                    state_arc.update(cx, |s, cx| { s.set_viewport_options_collapsed(true); cx.notify(); });
+                .on_click(move |_, _, _| {
+                    state_arc.write().set_viewport_options_collapsed(true);
                 }),
         );
 

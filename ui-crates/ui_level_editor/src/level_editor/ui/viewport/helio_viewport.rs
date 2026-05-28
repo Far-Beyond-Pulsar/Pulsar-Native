@@ -20,7 +20,7 @@ use crate::level_editor::ui::state::LevelEditorState;
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
-    shared_state: crate::level_editor::StateEntity,
+    shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
@@ -29,7 +29,7 @@ pub struct HelioViewport {
 impl HelioViewport {
     pub fn new<V: 'static>(
         gpu_engine: Arc<Mutex<GpuRenderer>>,
-        shared_state: crate::level_editor::StateEntity,
+        shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
         debug_replace_with_yellow: bool,
         cx: &mut Context<V>,
     ) -> Self {
@@ -89,7 +89,7 @@ impl HelioViewport {
     fn import_asset(
         path: PathBuf,
         kind: AssetKind,
-        shared_state: crate::level_editor::StateEntity,
+        shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if !path.exists() {
             return Err(format!("File not found: {}", path.display()).into());
