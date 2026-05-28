@@ -43,4 +43,5 @@ pub use format::{
 pub use loader::{
     LoadedLight, LoadedMesh, LoadedScene, SceneLoader, SceneObjectView,
     component_instances_from_props, build_transform_parts,
+    build_gpu_light, load_mesh_upload,
 };

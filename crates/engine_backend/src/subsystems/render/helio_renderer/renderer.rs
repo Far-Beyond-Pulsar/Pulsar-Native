@@ -1054,32 +1054,8 @@ impl HelioRenderer {
             fn upsert_light(&mut self, desc: RuntimeLightDesc) {
                 self.live_light_ids.insert(desc.actor_key.clone());
 
-                let light_type = match desc.light_type {
-                    RuntimeLightType::Directional => crate::scene::LightType::Directional,
-                    RuntimeLightType::Point => crate::scene::LightType::Point,
-                    RuntimeLightType::Spot => crate::scene::LightType::Spot,
-                    RuntimeLightType::Area => crate::scene::LightType::Area,
-                };
-
-                let gpu_light = GpuLight {
-                    position_range: [
-                        self.owner_snap.position[0],
-                        self.owner_snap.position[1],
-                        self.owner_snap.position[2],
-                        desc.range,
-                    ],
-                    direction_outer: [0.0, -1.0, 0.0, desc.outer_cone_angle_deg.to_radians()],
-                    color_intensity: [
-                        desc.color[0],
-                        desc.color[1],
-                        desc.color[2],
-                        desc.intensity,
-                    ],
-                    shadow_index: u32::MAX,
-                    light_type: light_type as u32,
-                    inner_angle: desc.inner_cone_angle_deg.to_radians(),
-                    _pad: 0,
-                };
+                // Delegate to pulsar_scene's canonical builder — same code the game uses.
+                let gpu_light = pulsar_scene::build_gpu_light(&desc, self.owner_snap.position);
 
                 if let Some(&light_id) = self.inner.light_map.get(&desc.actor_key) {
                     if Some(light_id) == self.dragged_light_id {

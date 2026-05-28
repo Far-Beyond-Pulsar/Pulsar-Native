@@ -76,31 +76,8 @@ struct SceneLoaderContext<'a> {
 
 impl<'a> ComponentRuntimeContext for SceneLoaderContext<'a> {
     fn upsert_light(&mut self, desc: RuntimeLightDesc) {
-        let light_type = match desc.light_type {
-            RuntimeLightType::Directional => HelioLightType::Directional,
-            RuntimeLightType::Point       => HelioLightType::Point,
-            RuntimeLightType::Spot        => HelioLightType::Spot,
-            RuntimeLightType::Area        => HelioLightType::Point,
-        };
-
-        let pos = self.current_position;
-        let rot = self.current_rotation;
-        let quat = Quat::from_euler(
-            EulerRot::YXZ,
-            rot[1].to_radians(), rot[0].to_radians(), rot[2].to_radians(),
-        );
-        let forward = (quat * Vec3::NEG_Z).to_array();
-
-        let gpu_light = GpuLight {
-            position_range:  [pos[0], pos[1], pos[2], desc.range],
-            direction_outer: [forward[0], forward[1], forward[2],
-                              desc.outer_cone_angle_deg.to_radians().cos()],
-            color_intensity: [desc.color[0], desc.color[1], desc.color[2], desc.intensity],
-            shadow_index:    0,
-            light_type:      light_type as u32,
-            inner_angle:     desc.inner_cone_angle_deg.to_radians().cos(),
-            _pad:            0,
-        };
+        // Delegate to the shared canonical builder — byte-for-byte identical to engine.
+        let gpu_light = build_gpu_light(&desc, self.current_position);
 
         match self.renderer.scene_mut().insert_actor(SceneActor::light(gpu_light)).as_light() {
             Some(light_id) => {
@@ -455,4 +432,48 @@ fn cylinder_mesh() -> MeshUpload {
         v.push(PackedVertex::from_components([sc*0.5,-0.5,cc*0.5],[0.,-1.,0.],[sc*0.5+0.5,cc*0.5+0.5],[1.,0.,0.],1.0)); }
     for s in 0..seg as u32 { i.extend_from_slice(&[bc,br+(s+1)%seg as u32,br+s]); }
     MeshUpload{vertices:v,indices:i}
+}
+
+// ── Shared GpuLight builder — the ONE place both engine and game construct lights ──
+
+/// Build a [`GpuLight`] from a [`RuntimeLightDesc`] and world position.
+///
+/// This is the **canonical** implementation.  Both the editor engine
+/// (`HelioRuntimeContext::upsert_light`) and the game runtime
+/// (`SceneLoaderContext::upsert_light`) call this function so that the
+/// resulting GPU data is byte-for-byte identical.
+///
+/// Construction matches the engine's `upsert_light` exactly:
+/// - `direction_outer.xyz` = `[0, -1, 0]` (fixed; spot direction not yet wired)
+/// - `direction_outer.w`   = outer angle in **radians** (matches engine convention)
+/// - `inner_angle`         = inner angle in **radians** (matches engine convention)
+/// - `shadow_index`        = `u32::MAX`  (no shadow — matches engine)
+pub fn build_gpu_light(
+    desc: &RuntimeLightDesc,
+    position: [f32; 3],
+) -> GpuLight {
+    let light_type = match desc.light_type {
+        RuntimeLightType::Directional => HelioLightType::Directional,
+        RuntimeLightType::Point       => HelioLightType::Point,
+        RuntimeLightType::Spot        => HelioLightType::Spot,
+        RuntimeLightType::Area        => HelioLightType::Point, // same fallback as engine
+    };
+
+    GpuLight {
+        position_range:  [position[0], position[1], position[2], desc.range],
+        direction_outer: [0.0, -1.0, 0.0, desc.outer_cone_angle_deg.to_radians()],
+        color_intensity: [desc.color[0], desc.color[1], desc.color[2], desc.intensity],
+        shadow_index:    u32::MAX,
+        light_type:      light_type as u32,
+        inner_angle:     desc.inner_cone_angle_deg.to_radians(),
+        _pad:            0,
+    }
+}
+
+/// Load a mesh file and return a [`MeshUpload`].
+///
+/// Canonical implementation shared by engine and game — delegates to
+/// `helio_asset_compat` exactly as the engine's `load_fbx_mesh` does.
+pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
+    load_fbx_mesh(path)
 }
