@@ -102,115 +102,31 @@ type RegisteredMeshAssetPath = MeshAssetPath;
 
 // ── StaticMeshComponent ───────────────────────────────────────────────────────
 
-/// Static mesh assignment component.
-///
-/// Stores the mesh asset path and additional properties used by mesh scene objects.
+/// Attaches a mesh asset to a scene object.
 #[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
 #[category("Rendering")]
 pub struct StaticMeshComponent {
-    /// Relative asset path to the mesh file (for example: "meshes/primitives/SM_Cube.fbx").
+    /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
     ///
-    /// Typed as [`MeshAssetPath`] so the property inspector renders the mesh-asset
+    /// Typed as [`MeshAssetPath`] so the property inspector renders a mesh-asset
     /// search browser instead of a plain text input.
     #[property]
     pub mesh_asset: MeshAssetPath,
-
-    /// Movability setting for the mesh (e.g., Static, Movable).
-    #[property]
-    #[serde(skip)]
-    pub movability: Option<Movability>,
-
-    /// Material ID associated with the mesh.
-    #[property]
-    pub material: Option<String>,
-
-    /// Transform matrix for the mesh.
-    #[property]
-    pub transform: Option<Mat4>,
-
-    /// Bounding box for the mesh.
-    #[property]
-    pub bounds: Option<[f32; 4]>,
 }
 
 impl ScenePropsProjector for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";
 
     fn apply_scene_props(props: &mut HashMap<String, Value>, component_data: Option<&Value>) {
-        // Clear previously projected values to avoid stale data.
         props.remove("mesh_asset");
-        props.remove("movability");
-        props.remove("material");
-        props.remove("transform");
-        props.remove("bounds");
-
-        let Some(data) = component_data else {
-            return;
-        };
-
+        let Some(data) = component_data else { return };
         if let Some(path) = data
             .as_object()
-            .and_then(|obj| obj.get("mesh_asset"))
+            .and_then(|o| o.get("mesh_asset"))
             .and_then(|v| v.as_str())
             .filter(|s| !s.trim().is_empty())
         {
             props.insert("mesh_asset".to_string(), Value::from(path));
-        }
-
-        if let Some(movability) = data
-            .as_object()
-            .and_then(|obj| obj.get("movability"))
-            .and_then(|v| v.as_str())
-        {
-            props.insert("movability".to_string(), Value::from(movability));
-        }
-
-        if let Some(material) = data
-            .as_object()
-            .and_then(|obj| obj.get("material"))
-            .and_then(|v| v.as_str())
-        {
-            props.insert("material".to_string(), Value::from(material));
-        }
-
-        if let Some(transform) = data
-            .as_object()
-            .and_then(|obj| obj.get("transform"))
-            .and_then(|v| v.as_array())
-            .and_then(|arr| {
-                if arr.len() == 16 {
-                    let floats: [f32; 16] = arr.iter()
-                        .filter_map(|v| v.as_f64().map(|f| f as f32))
-                        .collect::<Vec<_>>()
-                        .try_into()
-                        .ok()?;
-                    Some(Mat4::from_cols_array(&floats))
-                } else {
-                    None
-                }
-            })
-        {
-            props.insert("transform".to_string(), Value::from(transform.to_cols_array()));
-        }
-
-        if let Some(bounds) = data
-            .as_object()
-            .and_then(|obj| obj.get("bounds"))
-            .and_then(|v| v.as_array())
-            .and_then(|arr| {
-                if arr.len() == 4 {
-                    Some([
-                        arr[0].as_f64().unwrap_or(0.0) as f32,
-                        arr[1].as_f64().unwrap_or(0.0) as f32,
-                        arr[2].as_f64().unwrap_or(0.0) as f32,
-                        arr[3].as_f64().unwrap_or(0.0) as f32,
-                    ])
-                } else {
-                    None
-                }
-            })
-        {
-            props.insert("bounds".to_string(), Value::from(bounds));
         }
     }
 }

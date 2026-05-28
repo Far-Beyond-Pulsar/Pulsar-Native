@@ -44,7 +44,6 @@ impl GpuRendererBuilder {
         let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
         GpuRenderer {
             helio_renderer: Some(HelioRenderer::new(scene_db)),
-            pending_scene_inserts: Vec::new(),
             frame_count: 0,
             start_time: Instant::now(),
         }
@@ -57,7 +56,6 @@ impl GpuRendererBuilder {
 /// Callers must not access `helio_renderer` directly; use the methods below.
 pub struct GpuRenderer {
     helio_renderer: Option<HelioRenderer>,
-    pending_scene_inserts: Vec<helio_asset_compat::ConvertedScene>,
     frame_count: u64,
     start_time: Instant,
 }
@@ -76,16 +74,6 @@ impl GpuRenderer {
         if let Some(ref mut r) = self.helio_renderer {
             r.render_frame(device, queue, view, width, height, format);
 
-            // Imports can be requested before the first render pass initializes
-            // Helio internals. Defer and replay once ready.
-            if r.is_initialized() && !self.pending_scene_inserts.is_empty() {
-                let pending = std::mem::take(&mut self.pending_scene_inserts);
-                for scene in pending {
-                    if let Err(err) = r.insert_converted_scene(scene) {
-                        tracing::error!("Failed to insert deferred scene: {err}");
-                    }
-                }
-            }
         }
         self.frame_count += 1;
     }
@@ -255,39 +243,6 @@ impl GpuRenderer {
         }
     }
 
-    /// Insert a loaded scene object into the Helio renderer.
-    ///
-    /// This method takes a `ConvertedScene` from helio-asset-compat and inserts
-    /// the meshes, materials, and textures into the active scene.
-    pub fn insert_scene_object(
-        &mut self,
-        scene: helio_asset_compat::ConvertedScene,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        tracing::info!(
-            "Inserting scene object: {} ({} meshes, {} materials, {} textures)",
-            scene.name,
-            scene.meshes.len(),
-            scene.materials.len(),
-            scene.textures.len()
-        );
-
-        let Some(renderer) = self.helio_renderer.as_mut() else {
-            return Err(std::io::Error::other("Helio renderer is not available").into());
-        };
-
-        if !renderer.is_initialized() {
-            tracing::info!(
-                "Helio renderer not initialized yet; deferring scene insertion for '{}'",
-                scene.name
-            );
-            self.pending_scene_inserts.push(scene);
-            return Ok(());
-        }
-
-        renderer
-            .insert_converted_scene(scene)
-            .map_err(|e| std::io::Error::other(e).into())
-    }
 }
 
 unsafe impl Send for GpuRenderer {}
