@@ -14,3 +14,4 @@ tracing    = { workspace = true }
 # Same reflection + component registrations the engine uses — ensures identical dispatch
 pulsar_reflection  = { workspace = true }
 pulsar_rendering   = { workspace = true }
+pulsar_events      = { workspace = true }

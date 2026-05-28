@@ -170,43 +170,67 @@ pub struct RuntimeComponentOwner<'a> {
     pub props: &'a HashMap<String, Value>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum RuntimeLightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeLightDesc {
-    pub actor_key: String,
-    pub light_type: RuntimeLightType,
-    pub color: [f32; 4],
-    pub intensity: f32,
-    pub range: f32,
-    pub inner_cone_angle_deg: f32,
-    pub outer_cone_angle_deg: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeMeshDesc {
-    pub actor_key: String,
-    pub mesh_asset: String,
-}
-
-/// Runtime context implemented by renderer-side systems.
+/// Hash a SceneDb string ID to a compact `u64` tag for storage in helio actors.
 ///
-/// `upsert_light` receives a fully-constructed [`helio::GpuLight`] — the
-/// component (e.g. `LightComponent`) is responsible for building it from its
-/// own fields.  The context just inserts it; there is no translation layer
-/// where values can silently diverge between engine and game.
+/// Components call this to compute the [`ObjectDescriptor::user_tag`] /
+/// [`SceneActor::light_with_tag`] value before inserting an actor.  The picker
+/// returns the same tag in [`PickHit::user_tag`], allowing the engine to
+/// identify the owning SceneDb object without any reverse-lookup maps.
+///
+/// The hash uses Rust's default hasher (SipHash) which is stable within a
+/// single process run.  It is not persisted to disk.
+pub fn scene_id_to_tag(id: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    id.hash(&mut h);
+    h.finish()
+}
+
+/// Context provided to every component's [`ComponentRuntimeBehavior::sync_component`].
+///
+/// Exposes **generic services only** — no knowledge of what any specific
+/// component does.  Each component is fully self-contained: it parses its own
+/// data, constructs any GPU payloads, and writes directly to the renderer.
+///
+/// # Implementing this trait
+///
+/// * **Editor (`HelioRuntimeContext`)** — clears the helio scene each sync pass
+///   and lets components re-insert fresh.  Rebuilds reverse-lookup maps from the
+///   inserted actor IDs reported via [`track_actor`].
+/// * **Game (`SceneObjectContext`)** — one-shot scene load; components insert
+///   once and the loader records the resulting IDs.
 pub trait ComponentRuntimeContext {
-    /// Insert or update a light.  The component builds the [`helio::GpuLight`]
-    /// directly so there is exactly one code path for all light construction.
+    /// Raw mutable access to the Helio renderer.
+    ///
+    /// Components use this to insert lights, meshes, and objects directly.
+    /// The context owns no knowledge of what they insert or how.
     #[cfg(feature = "prims-helio")]
-    fn upsert_light(&mut self, actor_key: String, gpu: helio::GpuLight);
-    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc);
+    fn renderer_mut(&mut self) -> &mut helio::Renderer;
+
+    /// Project root for resolving relative asset paths.
+    fn project_root(&self) -> &std::path::Path;
+
+    /// Load a mesh file, with optional context-level caching.
+    ///
+    /// The path may be absolute or relative to [`project_root`].
+    /// Returns `None` when the file cannot be loaded; the component should
+    /// call [`report_error`] and return early in that case.
+    ///
+    /// Default implementation returns `None`; override in contexts that
+    /// support mesh loading.
+    #[cfg(feature = "prims-helio")]
+    fn load_mesh_file(&mut self, _path: &std::path::Path) -> Option<helio::MeshUpload> {
+        None
+    }
+
+    /// Mark an actor key as live in the current sync pass **without** inserting
+    /// a render actor.
+    ///
+    /// Used by components (e.g. `ScriptComponent`) that register with
+    /// non-renderer systems and still need stale-cleanup semantics.
+    fn mark_live(&mut self, _actor_key: &str) {}
+
+    /// Report a non-fatal component error.
     fn report_error(&mut self, message: String);
 }
 

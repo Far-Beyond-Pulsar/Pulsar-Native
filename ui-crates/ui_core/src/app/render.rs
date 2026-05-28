@@ -683,6 +683,7 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_agent_chat))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_open_file))
+            .on_action(cx.listener(Self::on_open_asset))
             .on_action(cx.listener(Self::on_activate_open_editor))
             .on_action(cx.listener(Self::on_open_settings))
             .on_action(cx.listener(Self::on_open_settings_menu))

@@ -38,7 +38,6 @@ use serde_json::Value;
 use pulsar_reflection::{
     apply_runtime_behavior_for_class,
     ComponentRuntimeContext, RuntimeComponentOwner,
-    RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc,
 };
 
 use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError};
@@ -49,6 +48,7 @@ use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError};
 // (ComponentRuntimeContext dispatch only works if those statics are linked in.)
 pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
 pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
+pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
 
 // ── Public result types ───────────────────────────────────────────────────────
 
@@ -56,9 +56,7 @@ pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 pub struct LoadedMesh {
     pub id: String,
     pub name: String,
-    pub mesh_id: MeshId,
     pub object_id: ObjectId,
-    pub material_id: MaterialId,
 }
 
 #[derive(Clone, Debug)]
@@ -133,7 +131,7 @@ impl SceneLoader {
     pub fn load_views(
         objects: &[SceneObjectView<'_>],
         project_root: &Path,
-        renderer: &mut Renderer,
+        mut renderer: &mut Renderer,
     ) -> LoadedScene {
         let mut loaded = LoadedScene::default();
         tracing::info!(total = objects.len(), "Processing scene objects");
@@ -152,36 +150,35 @@ impl SceneLoader {
                 props:    obj.props,
             };
 
-            let mut ctx = SceneObjectContext {
-                obj_id:       obj.id,
-                obj_name:     obj.name,
-                position:     obj.position,
-                rotation:     obj.rotation,
-                scale:        obj.scale,
-                project_root,
-                renderer,
-                lights: &mut loaded.lights,
-                meshes: &mut loaded.meshes,
-                had_light: false,
-                had_mesh:  false,
-            };
+            // Objects with component instances are v2 — components own all insertion.
+            // Objects without are v1 legacy — the fallback path below handles them.
+            let has_components = !instances.is_empty();
 
-            for (idx, class_name, data) in &instances {
-                let handled = apply_runtime_behavior_for_class(
-                    class_name, &owner, *idx, data, &mut ctx,
-                );
-                if !handled {
-                    tracing::debug!(
-                        class = class_name, id = obj.id,
-                        "No runtime behavior registered for component (skipped)"
+            if has_components {
+                let mut ctx = SceneObjectContext {
+                    obj_id:       obj.id,
+                    obj_name:     obj.name,
+                    project_root,
+                    renderer,
+                };
+
+                for (idx, class_name, data) in &instances {
+                    let handled = apply_runtime_behavior_for_class(
+                        class_name, &owner, *idx, data, &mut ctx,
                     );
+                    if !handled {
+                        tracing::debug!(
+                            class = class_name, id = obj.id,
+                            "No runtime behavior registered for component (skipped)"
+                        );
+                    }
                 }
+                // Reborrow after ctx is dropped.
+                renderer = ctx.renderer;
             }
 
-            let had_light = ctx.had_light;
-            let had_mesh  = ctx.had_mesh;
-            // Reborrow renderer after ctx is dropped.
-            let renderer  = ctx.renderer;
+            let had_light = has_components;
+            let had_mesh  = has_components;
 
             // ── Legacy fallback (v1 scenes, no __component_instances) ─────
             if !had_light {
@@ -189,24 +186,30 @@ impl SceneLoader {
                     let color     = prop_f32_4(obj.props, "color",     [1.;4]);
                     let intensity = prop_f32  (obj.props, "intensity", 1.0);
                     let range     = prop_f32  (obj.props, "range",     10.0);
-                    let desc = RuntimeLightDesc {
-                        actor_key: format!("{}::light::0", obj.id),
-                        light_type: match lt {
-                            LightType::Directional => RuntimeLightType::Directional,
-                            LightType::Point       => RuntimeLightType::Point,
-                            LightType::Spot        => RuntimeLightType::Spot,
-                        },
-                        color, intensity, range,
-                        inner_cone_angle_deg: prop_f32(obj.props, "inner_angle", 30.0),
-                        outer_cone_angle_deg: prop_f32(obj.props, "outer_angle", 45.0),
+                    let inner_deg = prop_f32(obj.props, "inner_angle", 30.0);
+                    let outer_deg = prop_f32(obj.props, "outer_angle", 45.0);
+                    let helio_lt  = match lt {
+                        LightType::Directional => HelioLightType::Directional,
+                        LightType::Point       => HelioLightType::Point,
+                        LightType::Spot        => HelioLightType::Spot,
                     };
-                    let gpu = build_gpu_light(&desc, obj.position);
+                    let [px, py, pz] = obj.position;
+                    let gpu = GpuLight {
+                        position_range:  [px, py, pz, range],
+                        direction_outer: [0.0, -1.0, 0.0, outer_deg.to_radians()],
+                        color_intensity: [color[0], color[1], color[2], intensity],
+                        shadow_index:    u32::MAX,
+                        light_type:      helio_lt as u32,
+                        inner_angle:     inner_deg.to_radians(),
+                        _pad:            0,
+                    };
+                    let actor_key = format!("{}::light::0", obj.id);
                     if let Some(light_id) = renderer.scene_mut()
                         .insert_actor(SceneActor::light(gpu)).as_light()
                     {
                         tracing::info!(id = obj.id, name = obj.name, "Light loaded (legacy)");
                         loaded.lights.push(LoadedLight {
-                            id: desc.actor_key, name: obj.name.to_string(), light_id,
+                            id: actor_key, name: obj.name.to_string(), light_id,
                         });
                     }
                 }
@@ -220,13 +223,11 @@ impl SceneLoader {
                         Some(p) => load_mesh_or_fallback(&resolve_asset(project_root, p)),
                         None    => build_primitive(mt),
                     };
-                    if let Err(e) = spawn_mesh(
-                        obj.id, obj.name, 0,
+                    spawn_mesh_legacy(
+                        obj.id, obj.name,
                         obj.position, obj.rotation, obj.scale,
                         upload, renderer, &mut loaded.meshes,
-                    ) {
-                        tracing::warn!(id = obj.id, "Mesh spawn failed (legacy): {e}");
-                    }
+                    );
                 }
             }
         }
@@ -240,57 +241,32 @@ impl SceneLoader {
 
 /// Per-object context passed into each component's `sync_component`.
 ///
-/// Components call `upsert_light` / `upsert_mesh`; the context translates
-/// those into helio renderer calls.  The loader never reads component fields.
+/// Gives components direct renderer access.  The loader never reads component
+/// fields — all parsing, GPU construction, and insertion logic lives in the
+/// component itself.
 struct SceneObjectContext<'r, 'p> {
     obj_id:       &'p str,
     obj_name:     &'p str,
-    position:     [f32; 3],
-    rotation:     [f32; 3],
-    scale:        [f32; 3],
     project_root: &'p Path,
     renderer:     &'r mut Renderer,
-    lights:       &'p mut Vec<LoadedLight>,
-    meshes:       &'p mut Vec<LoadedMesh>,
-    had_light:    bool,
-    had_mesh:     bool,
 }
 
 impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
-    fn upsert_light(&mut self, actor_key: String, gpu: GpuLight) {
-        self.had_light = true;
-        // GpuLight is already fully constructed by the component — just insert.
-        match self.renderer.scene_mut()
-            .insert_actor(SceneActor::light(gpu)).as_light()
-        {
-            Some(light_id) => {
-                tracing::info!(id = self.obj_id, name = self.obj_name, "Light loaded");
-                self.lights.push(LoadedLight {
-                    id: actor_key,
-                    name: self.obj_name.to_string(),
-                    light_id,
-                });
-            }
-            None => tracing::warn!(id = self.obj_id, "non-light handle from insert_actor"),
-        }
+    fn renderer_mut(&mut self) -> &mut Renderer {
+        self.renderer
     }
 
-    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc) {
-        self.had_mesh = true;
-        let asset = desc.mesh_asset.trim();
-        if asset.is_empty() || asset == "None" {
-            tracing::warn!(id = self.obj_id, "StaticMeshComponent has no valid mesh_asset");
-            return;
+    fn project_root(&self) -> &std::path::Path {
+        self.project_root
+    }
+
+    fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
+        let path_str = path.to_str().unwrap_or("");
+        if path_str.is_empty() || path_str == "None" {
+            return None;
         }
-        let full   = resolve_asset(self.project_root, asset);
-        let upload = load_mesh_or_fallback(&full);
-        if let Err(e) = spawn_mesh_with_key(
-            &desc.actor_key, self.obj_name,
-            self.position, self.rotation, self.scale,
-            upload, self.renderer, self.meshes,
-        ) {
-            tracing::warn!(id = self.obj_id, "Mesh spawn failed: {e}");
-        }
+        let full = resolve_asset(self.project_root, path_str);
+        Some(load_mesh_or_fallback(&full))
     }
 
     fn report_error(&mut self, message: String) {
@@ -325,28 +301,6 @@ pub fn build_transform_parts(position: [f32;3], rotation: [f32;3], scale: [f32;3
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
 
-/// Build a [`GpuLight`] from a v1 legacy [`RuntimeLightDesc`] and world position.
-///
-/// Only used by the backwards-compat fallback for scene files that have no
-/// `__component_instances` (pre-v2 format).  For all current scenes,
-/// `LightComponent::sync_component` builds the `GpuLight` directly.
-fn build_gpu_light(desc: &RuntimeLightDesc, position: [f32; 3]) -> GpuLight {
-    let lt = match desc.light_type {
-        RuntimeLightType::Directional => HelioLightType::Directional,
-        RuntimeLightType::Point       => HelioLightType::Point,
-        RuntimeLightType::Spot        => HelioLightType::Spot,
-        RuntimeLightType::Area        => HelioLightType::Point,
-    };
-    GpuLight {
-        position_range:  [position[0], position[1], position[2], desc.range],
-        direction_outer: [0.0, -1.0, 0.0, desc.outer_cone_angle_deg.to_radians()],
-        color_intensity: [desc.color[0], desc.color[1], desc.color[2], desc.intensity],
-        shadow_index:    u32::MAX,
-        light_type:      lt as u32,
-        inner_angle:     desc.inner_cone_angle_deg.to_radians(),
-        _pad:            0,
-    }
-}
 
 /// Load a mesh file via helio-asset-compat.
 /// Identical to engine's `load_fbx_mesh`.
@@ -356,67 +310,49 @@ pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-/// Spawn a mesh+object into the renderer using a pre-formatted actor key.
+/// Spawn a mesh+object into the renderer for the v1 legacy fallback path.
 ///
-/// Used by [`SceneObjectContext::upsert_mesh`]; the key is already formatted by
-/// `StaticMeshComponent::sync_component` as `"<obj_id>::mesh::<idx>"`.
-fn spawn_mesh_with_key(
-    actor_key: &str,
+/// For v2 scenes this is never called — `StaticMeshComponent::sync_component`
+/// owns the full two-step insert.  This helper exists only for pre-v2 scene
+/// files that have no `__component_instances` array.
+fn spawn_mesh_legacy(
+    obj_id:   &str,
     obj_name: &str,
     position: [f32; 3],
     rotation: [f32; 3],
-    scale: [f32; 3],
-    upload: MeshUpload,
+    scale:    [f32; 3],
+    upload:   MeshUpload,
     renderer: &mut Renderer,
-    out: &mut Vec<LoadedMesh>,
-) -> Result<(), String> {
-    let mesh_id = renderer.scene_mut()
-        .insert_actor(SceneActor::mesh(upload))
-        .as_mesh()
-        .ok_or("non-mesh handle")?;
-
+    out:      &mut Vec<LoadedMesh>,
+) {
+    let mesh_id = match renderer.scene_mut()
+        .insert_actor(SceneActor::mesh(upload)).as_mesh()
+    {
+        Some(id) => id,
+        None => { tracing::warn!(id = obj_id, "Mesh insert: non-mesh handle (legacy)"); return; }
+    };
     let mat_id = renderer.scene_mut()
         .insert_material(make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0));
-
     let transform = build_transform_parts(position, rotation, scale);
     let pos    = transform.w_axis.truncate();
     let radius = Vec3::from_array(scale).length() * 0.5;
-
-    let obj_id = renderer.scene_mut()
+    let obj_id_helio = match renderer.scene_mut()
         .insert_actor(SceneActor::object(ObjectDescriptor {
             mesh: mesh_id, material: mat_id, transform,
             bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
             flags: 0, groups: helio::GroupMask::NONE,
             movability: Some(helio::Movability::Movable),
-        }))
-        .as_object()
-        .ok_or("non-object handle")?;
-
+            user_tag: 0,
+        })).as_object()
+    {
+        Some(id) => id,
+        None => { tracing::warn!(id = obj_id, "Object insert: non-object handle (legacy)"); return; }
+    };
     out.push(LoadedMesh {
-        id:          actor_key.to_string(),
-        name:        obj_name.to_string(),
-        mesh_id, object_id: obj_id, material_id: mat_id,
+        id:        format!("{}::mesh::0", obj_id),
+        name:      obj_name.to_string(),
+        object_id: obj_id_helio,
     });
-    Ok(())
-}
-
-/// Legacy helper used by the v1 fallback path (no `__component_instances`).
-fn spawn_mesh(
-    obj_id: &str,
-    obj_name: &str,
-    idx: usize,
-    position: [f32; 3],
-    rotation: [f32; 3],
-    scale: [f32; 3],
-    upload: MeshUpload,
-    renderer: &mut Renderer,
-    out: &mut Vec<LoadedMesh>,
-) -> Result<(), String> {
-    spawn_mesh_with_key(
-        &format!("{}::mesh::{}", obj_id, idx),
-        obj_name, position, rotation, scale,
-        upload, renderer, out,
-    )
 }
 
 /// The engine's built-in assets live next to pulsar_scene in the Pulsar-Native

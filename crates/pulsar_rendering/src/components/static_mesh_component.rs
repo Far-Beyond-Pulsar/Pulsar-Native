@@ -2,14 +2,14 @@
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeMeshDesc,
-    ReflectError, ScenePropsProjector,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+    ReflectError, ScenePropsProjector, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use glam::{Mat4, Vec3};
-use helio::Movability;
+use glam::{EulerRot, Mat4, Quat, Vec3};
+use helio::{GpuMaterial, GroupMask, Movability, ObjectDescriptor, SceneActor};
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
 
@@ -247,10 +247,71 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        context.upsert_mesh(RuntimeMeshDesc {
-            actor_key: format!("{}::mesh::{}", owner.scene_object_id, component_index),
-            mesh_asset,
-        });
+        let path = std::path::PathBuf::from(&mesh_asset);
+        let Some(upload) = context.load_mesh_file(&path) else {
+            context.report_error(format!(
+                "StaticMeshComponent on '{}': failed to load mesh '{}'",
+                owner.scene_object_id, mesh_asset
+            ));
+            return;
+        };
+
+        // Two-step helio insert: mesh geometry → object instance.
+        // The component owns this logic completely; the context has no mesh knowledge.
+        let mesh_id = match context.renderer_mut().scene_mut()
+            .insert_actor(SceneActor::mesh(upload))
+            .as_mesh()
+        {
+            Some(id) => id,
+            None => {
+                context.report_error(format!(
+                    "StaticMeshComponent on '{}': mesh insert returned non-mesh handle",
+                    owner.scene_object_id
+                ));
+                return;
+            }
+        };
+
+        let mat = GpuMaterial {
+            base_color: [0.6, 0.6, 0.65, 1.0],
+            emissive: [0.0; 4],
+            roughness_metallic: [0.7, 0.0, 1.5, 0.5],
+            tex_base_color: GpuMaterial::NO_TEXTURE,
+            tex_normal:     GpuMaterial::NO_TEXTURE,
+            tex_roughness:  GpuMaterial::NO_TEXTURE,
+            tex_emissive:   GpuMaterial::NO_TEXTURE,
+            tex_occlusion:  GpuMaterial::NO_TEXTURE,
+            workflow: 0, flags: 0, _pad: 0,
+        };
+        let mat_id = context.renderer_mut().scene_mut().insert_material(mat);
+
+        let q = Quat::from_euler(
+            EulerRot::YXZ,
+            owner.rotation[1].to_radians(),
+            owner.rotation[0].to_radians(),
+            owner.rotation[2].to_radians(),
+        );
+        let transform = Mat4::from_scale_rotation_translation(
+            Vec3::from_array(owner.scale),
+            q,
+            Vec3::from_array(owner.position),
+        );
+        let pos    = transform.w_axis.truncate();
+        let radius = Vec3::from_array(owner.scale).length() * 0.5;
+
+        // Tag the actor with a hash of the SceneDb ID so the picker can
+        // identify it without any external reverse-lookup map.
+        context.renderer_mut().scene_mut()
+            .insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh:       mesh_id,
+                material:   mat_id,
+                transform,
+                bounds:     [pos.x, pos.y, pos.z, radius.max(0.1)],
+                flags:      0,
+                groups:     GroupMask::NONE,
+                movability: Some(Movability::Movable),
+                user_tag:   scene_id_to_tag(owner.scene_object_id),
+            }));
     }
 }
 

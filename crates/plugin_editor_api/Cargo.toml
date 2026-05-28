@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+schemars = { workspace = true }
 tracing = { workspace = true }
 gpui-ce.workspace = true
 window_manager = { workspace = true }

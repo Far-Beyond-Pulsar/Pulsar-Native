@@ -420,6 +420,7 @@ impl HierarchyPanel {
             ObjectType::Empty => IconName::Circle,
             ObjectType::ParticleSystem => IconName::Sparks,
             ObjectType::AudioSource => IconName::MusicNote,
+            ObjectType::Blueprint => IconName::Code,
         }
     }
 
@@ -435,6 +436,7 @@ impl HierarchyPanel {
             ObjectType::Empty => cx.theme().muted_foreground,
             ObjectType::ParticleSystem => tree_colors::EFFECT_ORANGE,
             ObjectType::AudioSource => tree_colors::DOC_TEAL,
+            ObjectType::Blueprint => tree_colors::CODE_BLUE,
         }
     }
 }

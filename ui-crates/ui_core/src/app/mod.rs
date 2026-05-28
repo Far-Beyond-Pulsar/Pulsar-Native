@@ -90,6 +90,15 @@ impl PulsarApp {
         self.open_path(action.path.clone(), window, cx);
     }
 
+    fn on_open_asset(
+        &mut self,
+        action: &plugin_editor_api::OpenAsset,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_path(action.path.clone(), window, cx);
+    }
+
     fn on_activate_open_editor(
         &mut self,
         action: &ActivateOpenEditor,

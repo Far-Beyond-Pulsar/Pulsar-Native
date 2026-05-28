@@ -135,6 +135,7 @@ fn object_type_key(object_type: &ObjectType) -> &'static str {
         ObjectType::Mesh(MeshType::Custom) => "mesh_custom",
         ObjectType::ParticleSystem => "particle_system",
         ObjectType::AudioSource => "audio_source",
+        ObjectType::Blueprint => "blueprint",
     }
 }
 

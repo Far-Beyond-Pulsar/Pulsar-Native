@@ -20,7 +20,7 @@ use crate::drawer::{
     actions::*, context_menus, operations::FileOperations, tree::FolderNode, types::*, utils::*,
     FsMetadataManager,
 };
-use plugin_editor_api::AssetPayload;
+use plugin_editor_api::{AssetKind, AssetPayload};
 
 // ============================================================================
 // FILE MANAGER DRAWER

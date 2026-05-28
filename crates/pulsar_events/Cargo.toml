@@ -1,0 +1,11 @@
+[package]
+name = "pulsar_events"
+version = "0.1.0"
+edition = "2024"
+description = "Central script-event registry for Pulsar Engine blueprint dispatch"
+
+[dependencies]
+parking_lot = { workspace = true }
+once_cell   = { workspace = true }
+serde       = { workspace = true, features = ["derive"] }
+tracing     = { workspace = true }

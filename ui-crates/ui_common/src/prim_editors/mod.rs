@@ -14,5 +14,6 @@ mod color;
 mod f32;
 mod i32;
 mod mesh_asset;
+mod script_asset;
 mod string;
 mod vec3;
