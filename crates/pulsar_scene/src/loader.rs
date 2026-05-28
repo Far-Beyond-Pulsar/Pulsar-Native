@@ -361,7 +361,8 @@ fn spawn_mesh(
         .insert_actor(SceneActor::object(ObjectDescriptor {
             mesh: mesh_id, material: mat_id, transform,
             bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-            flags: 0, groups: helio::GroupMask::NONE, movability: None,
+            flags: 0, groups: helio::GroupMask::NONE,
+            movability: Some(helio::Movability::Movable), // match engine's upsert_mesh
         }))
         .as_object()
         .ok_or("non-object handle")?;
@@ -374,12 +375,42 @@ fn spawn_mesh(
     Ok(())
 }
 
+/// The engine's built-in assets live next to pulsar_scene in the Pulsar-Native
+/// source tree.  At *compile time* this is a known absolute path; at runtime
+/// it allows game binaries to load engine primitives (SM_Cube.fbx, etc.) even
+/// when those files haven't been copied into the game project yet.
+const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets");
+
 fn resolve_asset(project_root: &Path, asset: &str) -> PathBuf {
     let norm = asset.replace('\\', "/");
     let p = Path::new(&norm);
+
+    // 1. Absolute path — check first.
     if p.is_absolute() && p.exists() { return p.to_path_buf(); }
+
+    // 2. Relative to the game project root.
     let proj = project_root.join(&norm);
-    if proj.exists() { return proj; }
+    if proj.exists() { return proj.clone(); }
+
+    // 3. Relative to the working directory (matches engine's cwd/assets check).
+    if let Ok(cwd) = std::env::current_dir() {
+        let cwd_path = cwd.join(&norm);
+        if cwd_path.exists() { return cwd_path; }
+        let cwd_assets = cwd.join("assets").join(&norm);
+        if cwd_assets.exists() { return cwd_assets; }
+    }
+
+    // 4. Engine built-in assets — compiled-in path (dev builds only).
+    let engine_path = Path::new(ENGINE_ASSETS_DIR).join(&norm);
+    if engine_path.exists() {
+        tracing::debug!(
+            path = %engine_path.display(),
+            "Mesh resolved from engine assets (copy to game project for release)"
+        );
+        return engine_path;
+    }
+
+    // Not found — return the project-relative path; caller will use fallback.
     proj
 }
 
