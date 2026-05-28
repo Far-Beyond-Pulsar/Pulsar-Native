@@ -620,6 +620,16 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    fn on_set_build_mode(
+        &mut self,
+        action: &toolbar::SetBuildMode,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.shared_state.write().build_mode = action.0;
+        cx.notify();
+    }
+
     fn on_add_object(&mut self, _: &AddObject, _: &mut Window, cx: &mut Context<Self>) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
         let mut state = self.shared_state.write();
@@ -1182,6 +1192,7 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_set_multiplayer_mode))
             .on_action(cx.listener(Self::on_set_build_config))
             .on_action(cx.listener(Self::on_set_target_platform))
+            .on_action(cx.listener(Self::on_set_build_mode))
             // Object operations
             .on_action(cx.listener(Self::on_add_object))
             .on_action(cx.listener(Self::on_add_object_of_type))

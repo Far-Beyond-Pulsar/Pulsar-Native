@@ -106,6 +106,7 @@ pub struct LevelEditorState {
     pub multiplayer_mode: MultiplayerMode,
     pub build_config: BuildConfig,
     pub target_platform: TargetPlatform,
+    pub build_mode: BuildMode,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,6 +121,18 @@ pub enum BuildConfig {
     Debug,
     Release,
     Shipping,
+}
+
+/// Which action the Build button's primary click performs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum BuildMode {
+    /// Compile the project (no run).
+    #[default]
+    Build,
+    /// Compile then immediately launch the game.
+    BuildAndRun,
+    /// Run `cargo check` only — no codegen.
+    Check,
 }
 
 /// Complete Rust target platform and architecture support (excluding WASM)
@@ -275,7 +288,8 @@ impl Default for LevelEditorState {
             game_target_fps: 60,
             multiplayer_mode: MultiplayerMode::Offline,
             build_config: BuildConfig::Debug,
-            target_platform: TargetPlatform::WindowsX86_64Msvc, // Default to Windows x64 MSVC
+            target_platform: TargetPlatform::WindowsX86_64Msvc,
+            build_mode: BuildMode::Build,
         }
     }
 }

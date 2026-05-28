@@ -1,4 +1,4 @@
-use super::super::state::{BuildConfig, MultiplayerMode, TargetPlatform};
+use super::super::state::{BuildConfig, BuildMode, MultiplayerMode, TargetPlatform};
 use gpui::*;
 
 // Actions for toolbar dropdowns
@@ -23,6 +23,11 @@ pub struct SetTargetPlatform(pub TargetPlatform);
 #[derive(Action, Clone, PartialEq, Default)]
 #[action(namespace = level_editor_toolbar, no_json)]
 pub struct BuildCore;
+
+/// Switch the build button's primary action mode.
+#[derive(Action, Clone, PartialEq)]
+#[action(namespace = level_editor_toolbar, no_json)]
+pub struct SetBuildMode(pub BuildMode);
 
 /// Save the current scene as the engine's built-in default level.
 ///
