@@ -230,6 +230,23 @@ pub trait ComponentRuntimeContext {
     /// non-renderer systems and still need stale-cleanup semantics.
     fn mark_live(&mut self, _actor_key: &str) {}
 
+    /// Called by `StaticMeshComponent` after obtaining a `MeshUpload` from
+    /// [`load_mesh_file`].  The context decides whether to update an existing
+    /// object's transform (fast path) or upload geometry and insert a new
+    /// object instance (slow path, runs once per unique asset).
+    ///
+    /// Default is a no-op so game-side contexts that insert once on load are
+    /// unaffected.
+    #[cfg(all(feature = "prims-helio", feature = "prims-glam"))]
+    fn track_mesh_object(
+        &mut self,
+        _tag: u64,
+        _upload: helio::MeshUpload,
+        _mesh_key: String,
+        _transform: glam::Mat4,
+        _bounds: [f32; 4],
+    ) {}
+
     /// Report a non-fatal component error.
     fn report_error(&mut self, message: String);
 }

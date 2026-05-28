@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use glam::{EulerRot, Mat4, Quat, Vec3};
-use helio::{GpuMaterial, GroupMask, Movability, ObjectDescriptor, SceneActor};
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
 
@@ -163,8 +162,19 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        let path = std::path::PathBuf::from(&mesh_asset);
-        let Some(upload) = context.load_mesh_file(&path) else {
+        // Resolve the asset path — used as the mesh-cache key so two objects
+        // sharing the same FBX reuse the same GPU geometry.
+        let abs_path = {
+            let p = std::path::Path::new(&mesh_asset);
+            if p.is_absolute() { p.to_path_buf() }
+            else {
+                context.project_root().join(&mesh_asset)
+            }
+        };
+        let mesh_key = abs_path.to_string_lossy().replace('\\', "/");
+
+        // Load geometry from disk (context caches after first load).
+        let Some(upload) = context.load_mesh_file(&abs_path) else {
             context.report_error(format!(
                 "StaticMeshComponent on '{}': failed to load mesh '{}'",
                 owner.scene_object_id, mesh_asset
@@ -172,35 +182,8 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         };
 
-        // Two-step helio insert: mesh geometry → object instance.
-        // The component owns this logic completely; the context has no mesh knowledge.
-        let mesh_id = match context.renderer_mut().scene_mut()
-            .insert_actor(SceneActor::mesh(upload))
-            .as_mesh()
-        {
-            Some(id) => id,
-            None => {
-                context.report_error(format!(
-                    "StaticMeshComponent on '{}': mesh insert returned non-mesh handle",
-                    owner.scene_object_id
-                ));
-                return;
-            }
-        };
-
-        let mat = GpuMaterial {
-            base_color: [0.6, 0.6, 0.65, 1.0],
-            emissive: [0.0; 4],
-            roughness_metallic: [0.7, 0.0, 1.5, 0.5],
-            tex_base_color: GpuMaterial::NO_TEXTURE,
-            tex_normal:     GpuMaterial::NO_TEXTURE,
-            tex_roughness:  GpuMaterial::NO_TEXTURE,
-            tex_emissive:   GpuMaterial::NO_TEXTURE,
-            tex_occlusion:  GpuMaterial::NO_TEXTURE,
-            workflow: 0, flags: 0, _pad: 0,
-        };
-        let mat_id = context.renderer_mut().scene_mut().insert_material(mat);
-
+        // Build world-space transform from owner — same every call for a
+        // given object position/rotation/scale.
         let q = Quat::from_euler(
             EulerRot::YXZ,
             owner.rotation[1].to_radians(),
@@ -214,20 +197,13 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         );
         let pos    = transform.w_axis.truncate();
         let radius = Vec3::from_array(owner.scale).length() * 0.5;
+        let bounds = [pos.x, pos.y, pos.z, radius.max(0.1)];
 
-        // Tag the actor with a hash of the SceneDb ID so the picker can
-        // identify it without any external reverse-lookup map.
-        context.renderer_mut().scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh:       mesh_id,
-                material:   mat_id,
-                transform,
-                bounds:     [pos.x, pos.y, pos.z, radius.max(0.1)],
-                flags:      0,
-                groups:     GroupMask::NONE,
-                movability: Some(Movability::Movable),
-                user_tag:   scene_id_to_tag(owner.scene_object_id),
-            }));
+        // Delegate the insert-vs-update decision to the context.
+        // The context tracks which helio objects already exist (keyed by tag)
+        // and decides whether to update the transform or upload geometry fresh.
+        let tag = scene_id_to_tag(owner.scene_object_id);
+        context.track_mesh_object(tag, upload, mesh_key, transform, bounds);
     }
 }
 
