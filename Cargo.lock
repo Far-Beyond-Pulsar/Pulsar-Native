@@ -8735,6 +8735,8 @@ dependencies = [
  "glam 0.33.0",
  "helio",
  "helio-asset-compat",
+ "pulsar_reflection",
+ "pulsar_rendering",
  "serde",
  "serde_json",
  "tracing",
