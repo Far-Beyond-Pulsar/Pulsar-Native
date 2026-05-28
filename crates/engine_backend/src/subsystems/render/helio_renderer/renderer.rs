@@ -750,61 +750,52 @@ impl HelioRenderer {
 
             fn project_root(&self) -> &std::path::Path { std::path::Path::new("") }
 
-            /// Returns the cached upload if already on disk-cache; loads from
-            /// disk only on the very first encounter per asset path.
             fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
+                // Game-context fallback only — editor uses sync_mesh_object.
                 let abs = resolve_mesh_path(path.to_str().unwrap_or(""))?;
-                let key = abs.to_str().unwrap_or_default().to_string();
-                // If the GPU-level cache already has a MeshId for this key we
-                // still return Some(upload) so the component can use the
-                // object-instance check below.  We load from disk once.
-                if self.mesh_upload_cache.contains_key(&key) {
-                    // Already uploaded — return a sentinel so component proceeds.
-                    // The real geometry lives in helio; component will update-in-place.
-                    return load_fbx_mesh(&key).ok();
-                }
-                match load_fbx_mesh(&key) {
-                    Ok(u) => Some(u),
-                    Err(e) => {
-                        self.report_error(format!("Failed to load mesh '{}': {e}", path.display()));
-                        None
-                    }
-                }
+                load_fbx_mesh(abs.to_str().unwrap_or("")).ok()
             }
 
-            /// Called by StaticMeshComponent after load_mesh_file.
-            /// Records the scene object as live and handles the insert-vs-update decision:
-            /// - Already exists with same mesh → update transform only (no GPU work).
-            /// - New or mesh changed → upload geometry once, insert object instance.
-            fn track_mesh_object(
+            /// Full insert-vs-update logic.  Zero disk I/O and zero GPU upload
+            /// on every frame where the object already exists with the same mesh.
+            fn sync_mesh_object(
                 &mut self,
                 tag: u64,
-                upload: MeshUpload,
-                mesh_key: String,
+                mesh_asset: &str,
                 transform: glam::Mat4,
                 bounds: [f32; 4],
             ) {
                 self.live_object_tags.insert(tag);
 
-                if let Some(&(existing_obj, _mesh_id, ref cached_key))
+                // Fast path: object exists with same mesh — update transform only.
+                if let Some(&(existing_obj, _, ref cached_key))
                     = self.object_instance_cache.get(&tag)
                 {
-                    if *cached_key == mesh_key {
-                        // Same mesh, same object — just update transform.
+                    if cached_key.as_str() == mesh_asset {
                         let _ = self.renderer.scene_mut()
                             .update_object_transform(existing_obj, transform);
-                        return;
+                        return; // ← no disk I/O, no GPU upload
                     }
-                    // Mesh changed — remove old object so we can re-insert below.
-                    let _ = self.renderer.scene_mut().remove_object(existing_obj);
+                    // Mesh asset changed — remove old instance, fall through.
+                    let _ = self.renderer.scene_mut()
+                        .remove_object(existing_obj);
                     self.object_instance_cache.remove(&tag);
                 }
 
-                // Insert mesh geometry (once per unique asset path).
+                // Slow path: first time this object appears or its mesh changed.
+                // Upload geometry once; subsequent frames take the fast path above.
                 let (mesh_id, mat_id) =
-                    if let Some(&ids) = self.mesh_upload_cache.get(&mesh_key) {
-                        ids
+                    if let Some(&ids) = self.mesh_upload_cache.get(mesh_asset) {
+                        ids // GPU cache hit — geometry already uploaded
                     } else {
+                        let abs = match resolve_mesh_path(mesh_asset) {
+                            Some(p) => p,
+                            None    => { self.report_error(format!("Cannot resolve '{mesh_asset}'")); return; }
+                        };
+                        let upload = match load_fbx_mesh(abs.to_str().unwrap_or("")) {
+                            Ok(u)  => u,
+                            Err(e) => { self.report_error(format!("Mesh load failed: {e}")); return; }
+                        };
                         let mid = match self.renderer.scene_mut()
                             .insert_actor(SceneActor::mesh(upload.clone()))
                             .as_mesh()
@@ -814,7 +805,7 @@ impl HelioRenderer {
                         };
                         let mat   = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
                         let matid = self.renderer.scene_mut().insert_material(mat);
-                        self.mesh_upload_cache.insert(mesh_key.clone(), (mid, matid));
+                        self.mesh_upload_cache.insert(mesh_asset.to_string(), (mid, matid));
                         (mid, matid)
                     };
 
@@ -827,7 +818,8 @@ impl HelioRenderer {
                         user_tag: tag,
                     })).as_object()
                 {
-                    self.object_instance_cache.insert(tag, (obj_id, mesh_id, mesh_key));
+                    self.object_instance_cache.insert(
+                        tag, (obj_id, mesh_id, mesh_asset.to_string()));
                 }
             }
 

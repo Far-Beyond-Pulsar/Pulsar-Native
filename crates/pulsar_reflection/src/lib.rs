@@ -237,12 +237,22 @@ pub trait ComponentRuntimeContext {
     ///
     /// Default is a no-op so game-side contexts that insert once on load are
     /// unaffected.
+    /// Sync a mesh scene object into the renderer.
+    ///
+    /// The context owns the full insert-vs-update decision:
+    /// - If an object with `tag` already exists using the same `mesh_asset` →
+    ///   update transform only (no disk I/O, no GPU upload).
+    /// - If the mesh geometry has not been uploaded yet →
+    ///   load from disk once, upload to GPU, cache both.
+    ///
+    /// The component passes the *resolved absolute asset path* so the context
+    /// can use it as a cache key without re-doing path resolution.
+    /// Default is a no-op; contexts that support incremental mesh sync override.
     #[cfg(all(feature = "prims-helio", feature = "prims-glam"))]
-    fn track_mesh_object(
+    fn sync_mesh_object(
         &mut self,
         _tag: u64,
-        _upload: helio::MeshUpload,
-        _mesh_key: String,
+        _mesh_asset: &str,
         _transform: glam::Mat4,
         _bounds: [f32; 4],
     ) {}

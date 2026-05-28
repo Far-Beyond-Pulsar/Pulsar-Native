@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use glam::{EulerRot, Mat4, Quat, Vec3};
+// Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
 
@@ -162,28 +163,20 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        // Resolve the asset path — used as the mesh-cache key so two objects
-        // sharing the same FBX reuse the same GPU geometry.
+        // Resolve to an absolute path so the context can use it as a stable
+        // cache key regardless of which working directory the process uses.
         let abs_path = {
             let p = std::path::Path::new(&mesh_asset);
-            if p.is_absolute() { p.to_path_buf() }
-            else {
-                context.project_root().join(&mesh_asset)
+            if p.is_absolute() {
+                p.to_string_lossy().replace('\\', "/")
+            } else {
+                context.project_root()
+                    .join(&mesh_asset)
+                    .to_string_lossy()
+                    .replace('\\', "/")
             }
         };
-        let mesh_key = abs_path.to_string_lossy().replace('\\', "/");
 
-        // Load geometry from disk (context caches after first load).
-        let Some(upload) = context.load_mesh_file(&abs_path) else {
-            context.report_error(format!(
-                "StaticMeshComponent on '{}': failed to load mesh '{}'",
-                owner.scene_object_id, mesh_asset
-            ));
-            return;
-        };
-
-        // Build world-space transform from owner — same every call for a
-        // given object position/rotation/scale.
         let q = Quat::from_euler(
             EulerRot::YXZ,
             owner.rotation[1].to_radians(),
@@ -197,13 +190,15 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         );
         let pos    = transform.w_axis.truncate();
         let radius = Vec3::from_array(owner.scale).length() * 0.5;
-        let bounds = [pos.x, pos.y, pos.z, radius.max(0.1)];
 
-        // Delegate the insert-vs-update decision to the context.
-        // The context tracks which helio objects already exist (keyed by tag)
-        // and decides whether to update the transform or upload geometry fresh.
-        let tag = scene_id_to_tag(owner.scene_object_id);
-        context.track_mesh_object(tag, upload, mesh_key, transform, bounds);
+        // Hand off to the context — it decides fast (transform update) or
+        // slow (first-time disk load + GPU upload) based on its own caches.
+        context.sync_mesh_object(
+            scene_id_to_tag(owner.scene_object_id),
+            &abs_path,
+            transform,
+            [pos.x, pos.y, pos.z, radius.max(0.1)],
+        );
     }
 }
 
