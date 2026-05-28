@@ -112,8 +112,8 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
-helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
+helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6e5a6c75df312b9595db532a0f7a20bf9e5c62fc" }
+helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6e5a6c75df312b9595db532a0f7a20bf9e5c62fc" }
 glam           = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
@@ -179,7 +179,7 @@ rand = "0.10"
 core-foundation-sys = "0.8"
 libloading = "0.9"
 uuid = { version = "1.4", features = ["v4"] }
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2dce3e5e28c1ef751c46d58fd197264e381d7b50" }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "6e5a6c75df312b9595db532a0f7a20bf9e5c62fc" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"
@@ -234,11 +234,6 @@ files.extend-exclude = ["**/fixtures/*"]
 # from git revs. Without patching, Cargo compiles a second copy of
 # every crate, causing duplicate linkme slices and trait mismatches.
 ###################################
-
-[patch."https://github.com/Far-Beyond-Pulsar/Helio"]
-helio          = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio" }
-helio-snapshot = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates_other/helio-snapshot" }
-helio-asset-compat = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio-asset-compat" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates

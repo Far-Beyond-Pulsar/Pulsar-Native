@@ -106,14 +106,12 @@ impl HelioViewport {
 
                 // Build a __component_instances entry for StaticMeshComponent so the
                 // renderer's sync_scene() loop loads the FBX via the component path.
-                let component_instances = serde_json::json!([{
+                let mut props = std::collections::HashMap::new();
+                props.insert("__component_instances".to_string(), serde_json::json!([{
                     "class_name": "StaticMeshComponent",
                     "enabled": true,
                     "data": { "mesh_asset": asset_path }
-                }]);
-                let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), component_instances);
-                props.insert("mesh_asset".to_string(), serde_json::Value::String(asset_path));
+                }]));
 
                 let mut state = shared_state.write();
                 let mesh_object = SceneObjectData {
@@ -164,21 +162,12 @@ impl HelioViewport {
                     .to_string();
                 let script_path = path.to_string_lossy().replace('\\', "/");
 
-                // Blueprint actors go through the same component-driven path as
-                // all other scene objects.  A ScriptComponent instance stores the
-                // path to the blueprint directory; the engine's sync pass registers
-                // it with SCRIPT_REGISTRY for event dispatch.
-                let component_instances = serde_json::json!([{
+                let mut props = std::collections::HashMap::new();
+                props.insert("__component_instances".to_string(), serde_json::json!([{
                     "class_name": "ScriptComponent",
                     "enabled": true,
                     "data": { "script_asset": script_path }
-                }]);
-                let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), component_instances);
-                props.insert(
-                    "script_asset".to_string(),
-                    serde_json::Value::String(script_path),
-                );
+                }]));
 
                 let mut state = shared_state.write();
                 let blueprint_object = SceneObjectData {

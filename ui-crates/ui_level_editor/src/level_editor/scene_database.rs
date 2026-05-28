@@ -147,8 +147,35 @@ impl SceneDatabase {
     // reconciles Helio state every frame — no immediate write-through needed.
 
     /// Add an object. Returns the assigned `ObjectId`.
+    ///
+    /// Blueprint objects always receive a `ScriptComponent` in `metadata_db`
+    /// pointing at their blueprint directory.  `sync_registered_component_props_to_scene_db`
+    /// rebuilds `__component_instances` from `metadata_db`, so the component
+    /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
+        let blueprint_script_path = if obj.object_type == ObjectType::Blueprint {
+            Some(find_script_path(&obj.props))
+        } else {
+            None
+        };
+
         let object_id = self.scene_db.add_object(obj.into_snapshot(), parent);
+
+        if let Some(script_path) = blueprint_script_path {
+            let already_has = self.metadata_db
+                .get_components(&object_id)
+                .iter()
+                .any(|c| c.class_name == "ScriptComponent");
+
+            if !already_has {
+                self.metadata_db.add_component(
+                    &object_id,
+                    "ScriptComponent".to_string(),
+                    serde_json::json!({ "script_asset": script_path }),
+                );
+            }
+        }
+
         self.sync_registered_component_props_to_scene_db(&object_id);
         object_id
     }
@@ -739,4 +766,38 @@ pub struct LevelEditorCameraState {
     pub position: [f32; 3],
     pub yaw: f32,
     pub pitch: f32,
+}
+
+// ── Blueprint helpers ──────────────────────────────────────────────────────
+
+/// Extract the script asset path for a Blueprint object from its props.
+///
+/// Checks `props["__component_instances"][ScriptComponent].data.script_asset`
+/// first, then falls back to the flat `props["script_asset"]`.  Returns an
+/// empty string if neither is present (the user will fill it in via the
+/// properties panel).
+fn find_script_path(props: &HashMap<String, Value>) -> String {
+    // Try __component_instances first — the authoritative location.
+    if let Some(path) = props
+        .get("__component_instances")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find(|inst| {
+                inst.get("class_name").and_then(|v| v.as_str()) == Some("ScriptComponent")
+            })
+        })
+        .and_then(|inst| inst.get("data"))
+        .and_then(|data| data.get("script_asset"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        return path.to_string();
+    }
+
+    // Flat prop fallback (older scene files or explicit callers).
+    props
+        .get("script_asset")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string()
 }
