@@ -228,14 +228,20 @@ fn main() {{
         .build()
         .expect("Failed to create event loop");
 
+    // env!("CARGO_MANIFEST_DIR") expands to THIS project's root at compile
+    // time — must be here in main.rs, not inside pulsar_game, so it resolves
+    // to the game project directory rather than the engine library directory.
+    let project_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+
     // The primary window is opened before begin_play fires on any actor.
+    // The default map from .pulsar/project/project.toml is loaded into it.
     // Additional windows can be opened at runtime via WindowManager::open().
     game.run_with_windows(event_loop, WindowDescriptor {{
         title: env!("CARGO_PKG_NAME").into(),
         width: 1280,
         height: 720,
         editor_mode: false,
-    }});
+    }}, project_root);
 }}
 "#
         );

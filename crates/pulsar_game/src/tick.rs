@@ -182,10 +182,15 @@ impl TickLoop {
     ///     });
     /// }
     /// ```
+    /// `project_root` must be the directory that contains the project's
+    /// `Cargo.toml` and `.pulsar/` settings tree.  Pass
+    /// `std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))` from the game
+    /// project's `main.rs` so the macro expands in the right crate context.
     pub fn run_with_windows(
         mut self,
         event_loop: winit::event_loop::EventLoop<WindowCommand>,
         primary_window: WindowDescriptor,
+        project_root: std::path::PathBuf,
     ) {
         use crate::windowed_app::PulsarApp;
 
@@ -205,16 +210,6 @@ impl TickLoop {
 
         // Capture running_flag so the app can stop the ECS after exit.
         let running_flag = Arc::clone(&self.running_flag);
-
-        // ── Load settings to find the default scene ───────────────────────────
-        //
-        // The project root is the directory containing the project's Cargo.toml,
-        // which is available at compile time via CARGO_MANIFEST_DIR.  Shipped
-        // games should override this with the executable's directory at runtime.
-        let project_root = std::path::PathBuf::from(
-            std::env::var("CARGO_MANIFEST_DIR")
-                .unwrap_or_else(|_| ".".into())
-        );
 
         // Register all schema definitions so the config manager knows about them.
         pulsar_settings::register_all_settings(engine_state::settings::global_config());
