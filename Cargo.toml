@@ -79,6 +79,7 @@ agent_provider_cohere              = { path = "agent-providers/agent_provider_co
 
 # ---------- Reflection System ----------
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
+pulsar_events         = { path = "crates/pulsar_events" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 
 # ---------- Component Crates ----------

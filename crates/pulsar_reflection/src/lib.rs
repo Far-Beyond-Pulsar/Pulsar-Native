@@ -170,43 +170,71 @@ pub struct RuntimeComponentOwner<'a> {
     pub props: &'a HashMap<String, Value>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum RuntimeLightType {
-    Directional,
-    Point,
-    Spot,
-    Area,
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeLightDesc {
-    pub actor_key: String,
-    pub light_type: RuntimeLightType,
-    pub color: [f32; 4],
-    pub intensity: f32,
-    pub range: f32,
-    pub inner_cone_angle_deg: f32,
-    pub outer_cone_angle_deg: f32,
-}
-
-#[derive(Clone, Debug)]
-pub struct RuntimeMeshDesc {
-    pub actor_key: String,
-    pub mesh_asset: String,
-}
-
-/// Runtime context implemented by renderer-side systems.
+/// The render data a component hands to the context for GPU insertion.
 ///
-/// `upsert_light` receives a fully-constructed [`helio::GpuLight`] — the
-/// component (e.g. `LightComponent`) is responsible for building it from its
-/// own fields.  The context just inserts it; there is no translation layer
-/// where values can silently diverge between engine and game.
+/// The component constructs this entirely from its own fields; the context
+/// never inspects component data.  The variants map to helio-level renderer
+/// concepts, not to component class names, so new components that reuse an
+/// existing primitive require no trait changes.
+#[cfg(feature = "prims-helio")]
+pub enum SceneRenderPayload {
+    /// A fully constructed GPU light.  The context handles insert-vs-update
+    /// and all internal tracking (light_map, drag-guard, etc.).
+    Light(helio::GpuLight),
+
+    /// Loaded mesh geometry.  The context handles the two-step helio insert
+    /// (mesh upload → object descriptor) and all internal tracking
+    /// (mesh_cache, object_map, scene-picker, etc.).
+    Mesh(helio::MeshUpload),
+}
+
+/// Context provided to every component's [`ComponentRuntimeBehavior::sync_component`].
+///
+/// Exposes **generic services only** — no knowledge of what any specific
+/// component does.  Each component is fully self-contained: it parses its own
+/// data, constructs any GPU payloads, and calls the appropriate methods here.
+///
+/// # Implementing this trait
+///
+/// * **Editor (`HelioRuntimeContext`)** — full incremental sync with per-actor
+///   tracking maps, drag-guard, mesh caching, and scene-picker rebuilds.
+/// * **Game (`SceneObjectContext`)** — one-shot scene load; actors are inserted
+///   once and never updated.
 pub trait ComponentRuntimeContext {
-    /// Insert or update a light.  The component builds the [`helio::GpuLight`]
-    /// directly so there is exactly one code path for all light construction.
+    /// Insert or update a named render actor.
+    ///
+    /// The component builds the [`SceneRenderPayload`] from its own fields.
+    /// The context owns all tracking maps and helio insertion details.
+    ///
+    /// Calling this method implicitly marks `actor_key` as live for the current
+    /// sync pass; there is no need to also call [`mark_live`].
     #[cfg(feature = "prims-helio")]
-    fn upsert_light(&mut self, actor_key: String, gpu: helio::GpuLight);
-    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc);
+    fn upsert_actor(&mut self, actor_key: String, payload: SceneRenderPayload);
+
+    /// Project root for resolving relative asset paths.
+    fn project_root(&self) -> &std::path::Path;
+
+    /// Load a mesh file, with optional context-level caching.
+    ///
+    /// The path may be absolute or relative to [`project_root`].
+    /// Returns `None` when the file cannot be loaded; the component should
+    /// call [`report_error`] and return early in that case.
+    ///
+    /// Default implementation returns `None`; override in contexts that
+    /// support mesh loading.
+    #[cfg(feature = "prims-helio")]
+    fn load_mesh_file(&mut self, _path: &std::path::Path) -> Option<helio::MeshUpload> {
+        None
+    }
+
+    /// Mark an actor key as live in the current sync pass **without** inserting
+    /// a render actor.
+    ///
+    /// Used by components (e.g. `ScriptComponent`) that register with
+    /// non-renderer systems and still need stale-cleanup semantics.
+    fn mark_live(&mut self, _actor_key: &str) {}
+
+    /// Report a non-fatal component error.
     fn report_error(&mut self, message: String);
 }
 

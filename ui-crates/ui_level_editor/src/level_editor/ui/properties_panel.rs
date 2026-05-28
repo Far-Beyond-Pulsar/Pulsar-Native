@@ -126,6 +126,7 @@ impl PropertiesPanel {
                 ObjectType::Empty => IconName::Circle,
                 ObjectType::ParticleSystem => IconName::Spark,
                 ObjectType::AudioSource => IconName::MusicNote,
+                ObjectType::Blueprint => IconName::Code,
             }
         };
 
@@ -321,6 +322,7 @@ impl PropertiesPanel {
             ObjectType::Empty => ("Empty Object", IconName::Circle),
             ObjectType::ParticleSystem => ("Particle System", IconName::Sparks),
             ObjectType::AudioSource => ("Audio Source", IconName::MusicNote),
+            ObjectType::Blueprint => ("Blueprint Actor", IconName::Code),
         };
 
         let is_collapsed = collapsed_sections.contains(title);

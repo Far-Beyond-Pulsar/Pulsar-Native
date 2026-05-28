@@ -2,8 +2,8 @@
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeMeshDesc,
-    ReflectError, ScenePropsProjector,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+    ReflectError, ScenePropsProjector, SceneRenderPayload,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -247,10 +247,19 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        context.upsert_mesh(RuntimeMeshDesc {
-            actor_key: format!("{}::mesh::{}", owner.scene_object_id, component_index),
-            mesh_asset,
-        });
+        // Resolve the path: absolute paths are used as-is; relative paths are
+        // resolved against project_root by the context's load_mesh_file impl.
+        let path = std::path::PathBuf::from(&mesh_asset);
+        let Some(upload) = context.load_mesh_file(&path) else {
+            context.report_error(format!(
+                "StaticMeshComponent on '{}': failed to load mesh '{}'",
+                owner.scene_object_id, mesh_asset
+            ));
+            return;
+        };
+
+        let actor_key = format!("{}::mesh::{}", owner.scene_object_id, component_index);
+        context.upsert_actor(actor_key, SceneRenderPayload::Mesh(upload));
     }
 }
 

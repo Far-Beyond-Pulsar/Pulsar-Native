@@ -3,8 +3,8 @@
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use helio::{GpuLight, LightType as HelioLightType};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeLightDesc,
-    RuntimeLightType, ScenePropsProjector, Reflectable,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+    ScenePropsProjector, SceneRenderPayload, Reflectable,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -168,9 +168,9 @@ impl ComponentRuntimeBehavior for LightComponent {
 
         let [px, py, pz] = owner.position;
 
-        // Build the GpuLight directly — this is the single source of truth for
-        // how a LightComponent maps to the GPU.  No intermediate RuntimeLightDesc
-        // or build_gpu_light translation step means engine and game are identical.
+        // Build the GpuLight directly — single source of truth for how a
+        // LightComponent maps to the GPU.  The context handles insert-vs-update
+        // and all internal helio tracking.
         let gpu = GpuLight {
             position_range:  [px, py, pz, light.range],
             direction_outer: [0.0, -1.0, 0.0, light.outer_cone_angle.to_radians()],
@@ -181,10 +181,8 @@ impl ComponentRuntimeBehavior for LightComponent {
             _pad:            0,
         };
 
-        context.upsert_light(
-            format!("{}::light::{}", owner.scene_object_id, component_index),
-            gpu,
-        );
+        let actor_key = format!("{}::light::{}", owner.scene_object_id, component_index);
+        context.upsert_actor(actor_key, SceneRenderPayload::Light(gpu));
     }
 }
 

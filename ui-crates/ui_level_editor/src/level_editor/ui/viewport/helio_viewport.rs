@@ -14,7 +14,7 @@ use plugin_editor_api::{AssetKind, AssetPayload};
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
 use crate::level_editor::commands::{execute_command, SceneCommand};
-use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::ui::state::LevelEditorState;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
@@ -55,112 +55,84 @@ impl HelioViewport {
 
         tracing::info!("Asset dropped on viewport: {} ({:?})", name, kind);
 
-        // Show importing notification
         window.push_notification(
-            Notification::info("Importing Asset").message(format!("Loading {}...", name)),
+            Notification::info("Adding to Scene").message(format!("Placing {}...", name)),
             cx,
         );
 
-        let result = Self::import_asset(
-            path,
-            kind,
-            self.gpu_engine.clone(),
-            self.shared_state.clone(),
-        );
+        let result = Self::import_asset(path, kind, self.shared_state.clone());
         match result {
             Ok(()) => {
                 window.push_notification(
-                    Notification::success("Import Successful")
-                        .message(format!("Imported {}", name)),
+                    Notification::success("Added to Scene")
+                        .message(format!("Placed {}", name)),
                     cx,
                 );
             }
             Err(e) => {
-                tracing::error!("Failed to import {}: {}", name, e);
+                tracing::error!("Failed to place {}: {}", name, e);
                 window.push_notification(
-                    Notification::error("Import Failed")
-                        .message(format!("Failed to import {}: {}", name, e)),
+                    Notification::error("Placement Failed")
+                        .message(format!("Failed to place {}: {}", name, e)),
                     cx,
                 );
             }
         }
     }
 
-    /// Load and insert the dropped asset into the scene.
+    /// Insert the dropped asset into the scene via the central SceneDatabase API.
+    ///
+    /// All assets — meshes, FBX files, blueprints — are inserted as SceneObjectData
+    /// entries with the appropriate component instances.  The renderer's sync_scene()
+    /// loop handles the actual GPU work every frame; nothing writes directly to Helio
+    /// from this path.
     fn import_asset(
         path: PathBuf,
         kind: AssetKind,
-        gpu_engine: Arc<Mutex<GpuRenderer>>,
         shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Validate file exists
         if !path.exists() {
             return Err(format!("File not found: {}", path.display()).into());
         }
 
-        // Based on AssetKind, load different asset types
         match kind {
             AssetKind::Mesh | AssetKind::Scene => {
-                tracing::info!("Loading FBX/scene from {:?}", path);
+                let asset_path = path.to_string_lossy().replace('\\', "/");
+                let imported_name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Imported Asset")
+                    .to_string();
 
-                // Load the scene file using helio-asset-compat
-                let load_config = helio_asset_compat::LoadConfig {
-                    flip_uv_y: true,               // Convert DirectX → OpenGL UVs
-                    merge_meshes: false,           // Keep separate meshes
-                    import_scale: glam::Vec3::ONE, // 1:1 scale
-                };
+                // Build a __component_instances entry for StaticMeshComponent so the
+                // renderer's sync_scene() loop loads the FBX via the component path.
+                let component_instances = serde_json::json!([{
+                    "class_name": "StaticMeshComponent",
+                    "enabled": true,
+                    "data": { "mesh_asset": asset_path }
+                }]);
+                let mut props = std::collections::HashMap::new();
+                props.insert("__component_instances".to_string(), component_instances);
+                props.insert("mesh_asset".to_string(), serde_json::Value::String(asset_path));
 
-                let converted_scene =
-                    helio_asset_compat::load_scene_file_with_config(&path, load_config).map_err(
-                        |e| format!("Failed to load scene file {}: {}", path.display(), e),
-                    )?;
-
-                tracing::info!(
-                    "Loaded scene: {} meshes, {} materials, {} textures",
-                    converted_scene.meshes.len(),
-                    converted_scene.materials.len(),
-                    converted_scene.textures.len()
-                );
-
-                let imported_name = if converted_scene.name.is_empty() {
-                    path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("Imported Scene")
-                        .to_string()
-                } else {
-                    converted_scene.name.clone()
-                };
-
-                // Insert the scene into Helio. We use a blocking lock here so
-                // drops don't fail transiently during a render tick.
-                let mut engine = gpu_engine
-                    .lock()
-                    .map_err(|_| "Failed to lock GPU renderer")?;
-                engine
-                    .insert_scene_object(converted_scene)
-                    .map_err(|e| format!("Failed to insert scene object: {}", e))?;
-                tracing::info!("Scene successfully inserted into Helio renderer");
-
-                // IMPORTANT: mirror import into SceneDatabase via unified command path so
-                // hierarchy/properties stay in sync with viewport drops.
                 let mut state = shared_state.write();
-                let import_root = SceneObjectData {
+                let mesh_object = SceneObjectData {
                     id: String::new(),
-                    name: format!("Imported: {}", imported_name),
-                    object_type: ObjectType::Folder,
+                    name: imported_name,
+                    object_type: ObjectType::Mesh(MeshType::Custom),
                     transform: Transform::default(),
                     visible: true,
                     locked: false,
                     parent: None,
                     children: vec![],
-                    props: Default::default(),
+                    props,
                     scene_path: path.display().to_string(),
                 };
 
                 let add_result = execute_command(
                     &mut state,
                     SceneCommand::AddObject {
-                        data: import_root,
+                        data: mesh_object,
                         parent_id: None,
                     },
                 );
@@ -168,9 +140,72 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     let _ = execute_command(
                         &mut state,
-                        SceneCommand::SelectObject {
-                            id: Some(id.clone()),
-                        },
+                        SceneCommand::SelectObject { id: Some(id.clone()) },
+                    );
+                }
+            }
+            AssetKind::Blueprint => {
+                if !path.is_dir() {
+                    return Err(format!(
+                        "Blueprint path is not a directory: {}", path.display()
+                    ).into());
+                }
+                if !path.join("graph_save.json").exists() {
+                    return Err(format!(
+                        "Not a valid blueprint class (missing graph_save.json): {}",
+                        path.display()
+                    ).into());
+                }
+
+                let class_name = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                let script_path = path.to_string_lossy().replace('\\', "/");
+
+                // Blueprint actors go through the same component-driven path as
+                // all other scene objects.  A ScriptComponent instance stores the
+                // path to the blueprint directory; the engine's sync pass registers
+                // it with SCRIPT_REGISTRY for event dispatch.
+                let component_instances = serde_json::json!([{
+                    "class_name": "ScriptComponent",
+                    "enabled": true,
+                    "data": { "script_asset": script_path }
+                }]);
+                let mut props = std::collections::HashMap::new();
+                props.insert("__component_instances".to_string(), component_instances);
+                props.insert(
+                    "script_asset".to_string(),
+                    serde_json::Value::String(script_path),
+                );
+
+                let mut state = shared_state.write();
+                let blueprint_object = SceneObjectData {
+                    id: String::new(),
+                    name: class_name,
+                    object_type: ObjectType::Blueprint,
+                    transform: Transform::default(),
+                    visible: true,
+                    locked: false,
+                    parent: None,
+                    children: vec![],
+                    props,
+                    scene_path: path.display().to_string(),
+                };
+
+                let add_result = execute_command(
+                    &mut state,
+                    SceneCommand::AddObject {
+                        data: blueprint_object,
+                        parent_id: None,
+                    },
+                );
+
+                if let Some(id) = add_result.affected_ids.first() {
+                    let _ = execute_command(
+                        &mut state,
+                        SceneCommand::SelectObject { id: Some(id.clone()) },
                     );
                 }
             }
@@ -267,13 +302,13 @@ impl Render for HelioViewport {
                 .into_any_element()
         };
 
-        // Accept mesh/scene payload drags and forward successful drops to the viewport entity.
+        // Accept mesh/scene/blueprint payload drags and forward successful drops to the viewport entity.
         let viewport = cx.entity().clone();
         div()
             .id("helio-viewport-drop")
             .size_full()
             .drag_over::<AssetPayload>(|style, payload, _window, cx| {
-                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene) {
+                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint) {
                     style
                         .border_2()
                         .border_color(cx.theme().accent)
@@ -283,7 +318,7 @@ impl Render for HelioViewport {
                 }
             })
             .on_drop::<AssetPayload>(move |payload, window, cx| {
-                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene) {
+                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint) {
                     let payload = payload.clone();
                     viewport.update(cx, |this, cx| {
                         this.handle_asset_drop(&payload, window, cx);

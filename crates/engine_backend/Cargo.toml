@@ -27,6 +27,7 @@ dashmap = { workspace = true }
 
 # Reflection system
 pulsar_reflection.workspace = true
+pulsar_events.workspace = true
 engine_state.workspace = true
 
 # Shared scene loading — canonical implementation used by both engine and game

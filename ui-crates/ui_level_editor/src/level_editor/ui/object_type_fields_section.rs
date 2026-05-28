@@ -154,6 +154,7 @@ impl Render for ObjectTypeFieldsSection {
                 ObjectType::Camera => "Camera".to_string(),
                 ObjectType::ParticleSystem => "Particle System".to_string(),
                 ObjectType::AudioSource => "Audio Source".to_string(),
+                ObjectType::Blueprint => "Blueprint Actor".to_string(),
                 ObjectType::Light(lt) => format!("Light ({lt:?})"),
                 ObjectType::Mesh(mt) => format!("Mesh ({mt:?})"),
             },

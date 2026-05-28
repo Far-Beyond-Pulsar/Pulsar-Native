@@ -147,7 +147,16 @@ impl FileManagerDrawer {
                 cx.new(|_| drag_with_pos)
             });
         } else {
-            let asset_payload = AssetPayload::from_path(&item_clone.path);
+            let asset_payload = if is_class {
+                AssetPayload {
+                    engine_path: item_clone.path.to_string_lossy().replace('\\', "/"),
+                    name: item_clone.name.clone(),
+                    kind: AssetKind::Blueprint,
+                    extension: "class".to_string(),
+                }
+            } else {
+                AssetPayload::from_path(&item_clone.path)
+            };
             let payload_for_event = asset_payload.clone();
             let drawer_entity_for_drag = drawer_entity.clone();
             content = content.on_drag(asset_payload, move |drag, _, _, cx| {
@@ -423,7 +432,16 @@ impl FileManagerDrawer {
         });
 
         if !is_folder {
-            let asset_payload = AssetPayload::from_path(&item_clone2.path);
+            let asset_payload = if is_class {
+                AssetPayload {
+                    engine_path: item_clone2.path.to_string_lossy().replace('\\', "/"),
+                    name: item_clone2.name.clone(),
+                    kind: AssetKind::Blueprint,
+                    extension: "class".to_string(),
+                }
+            } else {
+                AssetPayload::from_path(&item_clone2.path)
+            };
             let payload_for_event = asset_payload.clone();
             let drawer_entity_for_drag = drawer_entity.clone();
             list_item = list_item.on_drag(asset_payload, move |drag, _, _, cx| {

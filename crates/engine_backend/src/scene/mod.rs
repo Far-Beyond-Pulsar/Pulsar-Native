@@ -55,6 +55,7 @@ pub enum ObjectType {
     Mesh(MeshType),
     ParticleSystem,
     AudioSource,
+    Blueprint,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

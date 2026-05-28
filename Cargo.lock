@@ -3023,6 +3023,7 @@ dependencies = [
  "parking_lot",
  "profiling 0.1.0",
  "pulsar_diagnostics",
+ "pulsar_events",
  "pulsar_lsp",
  "pulsar_reflection",
  "pulsar_scene",
@@ -8605,6 +8606,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_events"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
@@ -8711,6 +8722,7 @@ dependencies = [
  "engine_class_derive",
  "glam 0.33.0",
  "helio",
+ "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -8735,6 +8747,7 @@ dependencies = [
  "glam 0.33.0",
  "helio",
  "helio-asset-compat",
+ "pulsar_events",
  "pulsar_reflection",
  "pulsar_rendering",
  "serde",
