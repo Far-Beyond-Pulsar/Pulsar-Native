@@ -226,3 +226,90 @@ fn bump(state: &mut LevelEditorState, marks_unsaved: bool) {
         state.has_unsaved_changes = true;
     }
 }
+
+/// Apply `cmd` directly to a [`SceneDatabase`] without touching
+/// [`LevelEditorState`] UI fields.
+///
+/// Used by AI tools that operate off the GPUI thread.  Callers are responsible
+/// for incrementing the revision counter and marking unsaved changes.
+pub fn execute_command_on_db(
+    db: &crate::level_editor::scene_database::SceneDatabase,
+    cmd: SceneCommand,
+) -> CommandResult {
+    match cmd {
+        SceneCommand::AddObject { data, parent_id } => {
+            let id = db.add_object(data, parent_id);
+            CommandResult::ok(vec![id])
+        }
+        SceneCommand::RemoveObject { ref id } => {
+            let removed = db.remove_object(id);
+            if removed {
+                if db.get_selected_object_id().as_deref() == Some(id) {
+                    db.select_object(None);
+                }
+                CommandResult::ok(vec![id.clone()])
+            } else {
+                CommandResult::noop("Object not found")
+            }
+        }
+        SceneCommand::UpdateObject { data } => {
+            let id = data.id.clone();
+            if db.update_object(data) {
+                CommandResult::ok(vec![id])
+            } else {
+                CommandResult::noop("Object not found")
+            }
+        }
+        SceneCommand::ReparentObject { ref id, ref new_parent_id } => {
+            let moved = db.reparent_object(id, new_parent_id.clone());
+            if moved {
+                CommandResult::ok(vec![id.clone()])
+            } else {
+                CommandResult::noop("Object not found or reparent rejected")
+            }
+        }
+        SceneCommand::DuplicateObject { ref source_id, count, position_offset } => {
+            let src_pos = db.get_object(source_id).map(|o| o.transform.position);
+            let mut created = Vec::new();
+            for i in 0..count {
+                if let Some(new_id) = db.duplicate_object(source_id) {
+                    if let (Some(off), Some(src)) = (position_offset, src_pos) {
+                        let n = (i + 1) as f32;
+                        if let Some(mut copy) = db.get_object(&new_id) {
+                            copy.transform.position = [
+                                src[0] + off[0] * n,
+                                src[1] + off[1] * n,
+                                src[2] + off[2] * n,
+                            ];
+                            db.update_object(copy);
+                        }
+                    }
+                    created.push(new_id);
+                } else {
+                    break;
+                }
+            }
+            if created.is_empty() {
+                CommandResult::noop("Source object not found")
+            } else {
+                CommandResult::ok(created)
+            }
+        }
+        SceneCommand::SelectObject { id } => {
+            db.select_object(id.clone());
+            CommandResult::ok(id.into_iter().collect())
+        }
+        SceneCommand::SetTransform { ref id, position, rotation, scale } => {
+            let Some(mut obj) = db.get_object(id) else {
+                return CommandResult::noop("Object not found");
+            };
+            let mut changed = false;
+            if let Some(p) = position { if obj.transform.position != p { obj.transform.position = p; changed = true; } }
+            if let Some(r) = rotation { if obj.transform.rotation != r { obj.transform.rotation = r; changed = true; } }
+            if let Some(s) = scale    { if obj.transform.scale    != s { obj.transform.scale    = s; changed = true; } }
+            if !changed { return CommandResult::noop("No transform fields changed"); }
+            if db.update_object(obj) { CommandResult::ok(vec![id.clone()]) }
+            else { CommandResult::noop("Transform update failed") }
+        }
+    }
+}

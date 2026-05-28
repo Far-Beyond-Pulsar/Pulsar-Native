@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use tool_registry::{ChatTool, ToolContext, ToolRegistry};
 
 use crate::ai_sessions;
-use crate::level_editor::commands::{execute_command, SceneCommand};
+use crate::level_editor::commands::SceneCommand;
 use engine_backend::scene::{LightType, MeshType, ObjectType};
 
 fn is_level_file(file_path: &Path) -> bool {
@@ -17,16 +17,31 @@ fn is_level_file(file_path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn open_state_for(
-    file_path: &Path,
-) -> Result<std::sync::Arc<parking_lot::RwLock<crate::level_editor::LevelEditorState>>, PluginError>
-{
-    ai_sessions::get_open_scene_state(file_path).ok_or_else(|| PluginError::Other {
+use crate::ai_sessions::OpenSceneHandle;
+use std::sync::atomic::Ordering;
+
+fn get_scene_handle(file_path: &Path) -> Result<OpenSceneHandle, PluginError> {
+    ai_sessions::get_open_scene(file_path).ok_or_else(|| PluginError::Other {
         message: format!(
             "Level is not open in editor: {}. Call open_file_in_default_editor first.",
             file_path.display()
         ),
     })
+}
+
+/// Execute a scene command against an AI-accessible scene handle.
+///
+/// Equivalent to the GPUI-side  but operates on an
+///  instead of a locked .  Increments the
+/// revision counter and marks unsaved changes on success.
+fn execute_ai_command(handle: &OpenSceneHandle, cmd: SceneCommand) -> crate::level_editor::commands::CommandResult {
+    use crate::level_editor::commands::{execute_command_on_db, CommandResult};
+    let result = execute_command_on_db(&handle.scene_db, cmd);
+    if result.changed {
+        handle.has_unsaved_changes.store(true, Ordering::Relaxed);
+        handle.revision.fetch_add(1, Ordering::Relaxed);
+    }
+    result
 }
 
 fn object_matches_filter(object: &crate::SceneObjectData, filter: Option<&Value>) -> bool {
@@ -625,14 +640,13 @@ fn execute_ai_tool_impl(
     tool_name: &str,
     tool_args: Value,
 ) -> Result<Value, PluginError> {
-    let state_arc = open_state_for(file_path)?;
+    let handle = get_scene_handle(file_path)?;
 
     match tool_name {
         "level_editor_query_scene" => {
-            let state = state_arc.read();
-            let objects = state.scene_database.get_all_objects();
-            let roots = state.scene_database.get_root_objects();
-            let selected_object_id = state.scene_database.get_selected_object_id();
+            let objects = handle.scene_db.get_all_objects();
+            let roots = handle.scene_db.get_root_objects();
+            let selected_object_id = handle.scene_db.get_selected_object_id();
 
             let mut counts_by_type = std::collections::BTreeMap::new();
             for object in &objects {
@@ -645,9 +659,9 @@ fn execute_ai_tool_impl(
                 "apply_mode": "editor_state",
                 "persists_to_disk": false,
                 "open_file": file_path.display().to_string(),
-                "current_scene": state.current_scene.as_ref().map(|p| p.display().to_string()),
-                "has_unsaved_changes": state.has_unsaved_changes,
-                "editor_mode": format!("{:?}", state.editor_mode),
+                "current_scene": Some(file_path.display().to_string()),
+                "has_unsaved_changes": handle.has_unsaved_changes.load(Ordering::Relaxed),
+                "editor_mode": format!("{:?}", crate::level_editor::ui::EditorMode::Edit),
                 "object_count": objects.len(),
                 "root_object_count": roots.len(),
                 "selected_object_id": selected_object_id,
@@ -655,8 +669,7 @@ fn execute_ai_tool_impl(
             }))
         }
         "level_editor_query_objects" => {
-            let state = state_arc.read();
-            let objects = state.scene_database.get_all_objects();
+            let objects = handle.scene_db.get_all_objects();
             let filter = tool_args.get("filter");
             let offset = tool_args
                 .get("offset")
@@ -697,9 +710,7 @@ fn execute_ai_tool_impl(
                 .ok_or_else(|| PluginError::Other {
                     message: "level_editor_get_object requires `id`".to_string(),
                 })?;
-
-            let state = state_arc.read();
-            let object = state.scene_database.get_object(&object_id.to_string());
+            let object = handle.scene_db.get_object(&object_id.to_string());
 
             Ok(json!({
                 "ok": true,
@@ -711,9 +722,8 @@ fn execute_ai_tool_impl(
             }))
         }
         "level_editor_query_selection" => {
-            let state = state_arc.read();
-            let selected_id = state.scene_database.get_selected_object_id();
-            let selected_object = state.scene_database.get_selected_object();
+            let selected_id = handle.scene_db.get_selected_object_id();
+            let selected_object = handle.scene_db.get_selected_object();
 
             Ok(json!({
                 "ok": true,
@@ -736,11 +746,7 @@ fn execute_ai_tool_impl(
                     })
                 }
             };
-
-            let mut state = state_arc.write();
-            execute_command(
-                &mut state,
-                SceneCommand::SelectObject {
+            execute_ai_command(&handle, SceneCommand::SelectObject {
                     id: selection.clone(),
                 },
             );
@@ -778,13 +784,7 @@ fn execute_ai_tool_impl(
                 .get("parent_id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
-
-            let mut state = state_arc.write();
-            let scene_path = state
-                .current_scene
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_default();
+            let scene_path = file_path.display().to_string();
             let mut object = crate::SceneObjectData {
                 id: String::new(),
                 name,
@@ -810,9 +810,7 @@ fn execute_ai_tool_impl(
             object.transform.scale =
                 vec3_from_value(tool_args.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
 
-            let result = execute_command(
-                &mut state,
-                SceneCommand::AddObject {
+            let result = execute_ai_command(&handle, SceneCommand::AddObject {
                     data: object,
                     parent_id,
                 },
@@ -835,8 +833,6 @@ fn execute_ai_tool_impl(
                 .ok_or_else(|| PluginError::Other {
                     message: "level_editor_batch_add_objects requires `objects` array".to_string(),
                 })?;
-
-            let mut state = state_arc.write();
             let mut created_ids = Vec::new();
             let mut errors = Vec::new();
 
@@ -894,11 +890,7 @@ fn execute_ai_tool_impl(
                     parent: parent_id.clone(),
                     children: vec![],
                     props: Default::default(),
-                    scene_path: state
-                        .current_scene
-                        .as_ref()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default(),
+                    scene_path: file_path.display().to_string(),
                 };
 
                 object.transform.position =
@@ -908,9 +900,7 @@ fn execute_ai_tool_impl(
                 object.transform.scale =
                     vec3_from_value(item_obj.get("scale")).unwrap_or([1.0, 1.0, 1.0]);
 
-                let res = execute_command(
-                    &mut state,
-                    SceneCommand::AddObject {
+                let res = execute_ai_command(&handle, SceneCommand::AddObject {
                         data: object,
                         parent_id,
                     },
@@ -946,17 +936,15 @@ fn execute_ai_tool_impl(
                 }
             };
 
-            let state = state_arc.read();
-
             let (child_ids, child_objects) = if let Some(ref parent_id) = parent_id {
-                let ids = state.scene_database.get_children(parent_id);
+                let ids = handle.scene_db.get_children(parent_id);
                 let objects = ids
                     .iter()
-                    .filter_map(|id| state.scene_database.get_object(id))
+                    .filter_map(|id| handle.scene_db.get_object(id))
                     .collect::<Vec<_>>();
                 (ids, objects)
             } else {
-                let objects = state.scene_database.get_root_objects();
+                let objects = handle.scene_db.get_root_objects();
                 let ids = objects.iter().map(|o| o.id.clone()).collect::<Vec<_>>();
                 (ids, objects)
             };
@@ -992,11 +980,7 @@ fn execute_ai_tool_impl(
                                 .to_string(),
                     }),
                 };
-
-            let mut state = state_arc.write();
-            let result = execute_command(
-                &mut state,
-                SceneCommand::ReparentObject {
+            let result = execute_ai_command(&handle, SceneCommand::ReparentObject {
                     id: object_id.clone(),
                     new_parent_id: new_parent_id.clone(),
                 },
@@ -1031,11 +1015,7 @@ fn execute_ai_tool_impl(
                 .min(100) as usize;
 
             let position_offset = vec3_from_value(tool_args.get("position_offset"));
-
-            let mut state = state_arc.write();
-            let result = execute_command(
-                &mut state,
-                SceneCommand::DuplicateObject {
+            let result = execute_ai_command(&handle, SceneCommand::DuplicateObject {
                     source_id: source_id.clone(),
                     count,
                     position_offset,
@@ -1064,11 +1044,7 @@ fn execute_ai_tool_impl(
                     message: "level_editor_remove_object requires `id`".to_string(),
                 })?
                 .to_string();
-
-            let mut state = state_arc.write();
-            let result = execute_command(
-                &mut state,
-                SceneCommand::RemoveObject {
+            let result = execute_ai_command(&handle, SceneCommand::RemoveObject {
                     id: object_id.clone(),
                 },
             );
@@ -1092,11 +1068,7 @@ fn execute_ai_tool_impl(
                     message: "level_editor_set_transform requires `id`".to_string(),
                 })?
                 .to_string();
-
-            let mut state = state_arc.write();
-            let result = execute_command(
-                &mut state,
-                SceneCommand::SetTransform {
+            let result = execute_ai_command(&handle, SceneCommand::SetTransform {
                     id: object_id.clone(),
                     position: vec3_from_value(tool_args.get("position")),
                     rotation: vec3_from_value(tool_args.get("rotation")),
@@ -1123,9 +1095,7 @@ fn execute_ai_tool_impl(
                     message: "level_editor_update_object requires `id`".to_string(),
                 })?
                 .to_string();
-
-            let mut state = state_arc.write();
-            let Some(mut object) = state.scene_database.get_object(&object_id) else {
+            let Some(mut object) = handle.scene_db.get_object(&object_id) else {
                 return Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",
@@ -1156,7 +1126,7 @@ fn execute_ai_tool_impl(
                 object.transform.scale = s;
             }
 
-            let result = execute_command(&mut state, SceneCommand::UpdateObject { data: object });
+            let result = execute_ai_command(&handle, SceneCommand::UpdateObject { data: object });
 
             Ok(json!({
                 "ok": true,
@@ -1170,8 +1140,7 @@ fn execute_ai_tool_impl(
             }))
         }
         "level_editor_save_scene" => {
-            let mut state = state_arc.write();
-            let Some(path) = state.current_scene.clone() else {
+            let Some(path) = Some(file_path.to_path_buf()) else {
                 return Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",
@@ -1181,10 +1150,10 @@ fn execute_ai_tool_impl(
                 }));
             };
 
-            match state.scene_database.save_to_file(&path) {
+            match handle.scene_db.save_to_file(&path) {
                 Ok(_) => {
-                    state.has_unsaved_changes = false;
-                    state.scene_revision = state.scene_revision.saturating_add(1);
+                    handle.has_unsaved_changes.store(false, Ordering::Relaxed);
+                    handle.revision.fetch_add(1, Ordering::Relaxed);
                     Ok(json!({
                         "ok": true,
                         "apply_mode": "editor_state",
@@ -1211,9 +1180,7 @@ fn execute_ai_tool_impl(
                     message: "level_editor_bulk_update_objects requires a `set` object".to_string(),
                 })?;
             let filter = tool_args.get("filter");
-
-            let mut state = state_arc.write();
-            let objects = state.scene_database.get_all_objects();
+            let objects = handle.scene_db.get_all_objects();
             let mut updated_ids = Vec::new();
             let mut matched_count = 0usize;
 
@@ -1265,7 +1232,7 @@ fn execute_ai_tool_impl(
                 if changed {
                     let id = object.id.clone();
                     let res =
-                        execute_command(&mut state, SceneCommand::UpdateObject { data: object });
+                        execute_ai_command(&handle, SceneCommand::UpdateObject { data: object });
                     if res.changed {
                         updated_ids.push(id);
                     }
@@ -1294,9 +1261,7 @@ fn execute_ai_tool_impl(
         }
         "level_editor_bulk_delete_objects" => {
             let filter = tool_args.get("filter");
-
-            let mut state = state_arc.write();
-            let objects = state.scene_database.get_all_objects();
+            let objects = handle.scene_db.get_all_objects();
             let delete_ids = objects
                 .iter()
                 .filter(|object| object_matches_filter(object, filter))
@@ -1306,9 +1271,7 @@ fn execute_ai_tool_impl(
 
             let mut deleted_ids = Vec::new();
             for object_id in delete_ids {
-                let res = execute_command(
-                    &mut state,
-                    SceneCommand::RemoveObject {
+                let res = execute_ai_command(&handle, SceneCommand::RemoveObject {
                         id: object_id.clone(),
                     },
                 );

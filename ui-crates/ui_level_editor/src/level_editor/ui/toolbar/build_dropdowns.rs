@@ -102,7 +102,7 @@ impl BuildDropdowns {
 
     pub fn render<V>(
         state: &LevelEditorState,
-        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        _state_arc: crate::level_editor::StateEntity,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where

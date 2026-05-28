@@ -10,7 +10,7 @@ pub struct FeatureToggles;
 impl FeatureToggles {
     pub fn render<V>(
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -62,7 +62,7 @@ impl FeatureToggles {
         label: &'static str,
         enabled: bool,
         icon: ui::IconName,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         feature_name: &'static str,
     ) -> impl IntoElement {
@@ -70,23 +70,18 @@ impl FeatureToggles {
             .icon(icon)
             .tooltip(format!("Toggle {}", label))
             .selected(enabled)
-            .on_click(move |_, _, _| {
-                // Toggle state in UI
-                let mut state = state_arc.write();
-                match feature_name {
-                    "basic_materials" => {
-                        state.feature_materials_enabled = !state.feature_materials_enabled
+            .on_click(move |_, _, cx| {
+                state_arc.update(cx, |state, cx| {
+                    match feature_name {
+                        "basic_materials" => state.feature_materials_enabled = !state.feature_materials_enabled,
+                        "basic_lighting"  => state.feature_lighting_enabled  = !state.feature_lighting_enabled,
+                        "procedural_shadows" => state.feature_shadows_enabled = !state.feature_shadows_enabled,
+                        "bloom" => state.feature_bloom_enabled = !state.feature_bloom_enabled,
+                        _ => {}
                     }
-                    "basic_lighting" => {
-                        state.feature_lighting_enabled = !state.feature_lighting_enabled
-                    }
-                    "procedural_shadows" => {
-                        state.feature_shadows_enabled = !state.feature_shadows_enabled
-                    }
-                    "bloom" => state.feature_bloom_enabled = !state.feature_bloom_enabled,
-                    _ => {}
-                }
-                drop(state);
+                    cx.notify();
+                });
+                let state = state_arc.read(cx);
 
                 // Send command to renderer thread
                 if let Ok(engine) = gpu_engine.try_lock() {

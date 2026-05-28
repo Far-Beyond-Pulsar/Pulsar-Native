@@ -56,7 +56,7 @@ impl ToolbarPanel {
     pub fn render<V>(
         &self,
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
@@ -114,7 +114,7 @@ impl ToolbarPanel {
 
     fn render_save_button(
         &self,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) -> impl IntoElement {
         let state_clone = state_arc.clone();
@@ -122,9 +122,9 @@ impl ToolbarPanel {
             .label("Save")
             .primary()
             .tooltip("Save scene")
-            .on_click(move |_, _, _| {
+            .on_click(move |_, _, cx| {
                 let target_path = {
-                    let state = state_clone.read();
+                    let state = state_clone.read(cx);
                     state
                         .current_scene
                         .clone()
@@ -144,7 +144,7 @@ impl ToolbarPanel {
                 }
 
                 let save_result = {
-                    let state = state_clone.read();
+                    let state = state_clone.read(cx);
                     let editor_camera = gpu_engine
                         .lock()
                         .ok()
@@ -161,9 +161,11 @@ impl ToolbarPanel {
 
                 match save_result {
                     Ok(_) => {
-                        let mut state = state_clone.write();
-                        state.current_scene = Some(path);
-                        state.has_unsaved_changes = false;
+                        state_clone.update(cx, |state, cx| {
+                            state.current_scene = Some(path.clone());
+                            state.has_unsaved_changes = false;
+                            cx.notify();
+                        });
                     }
                     Err(e) => {
                         tracing::error!("Save failed: {e}");
@@ -174,13 +176,13 @@ impl ToolbarPanel {
 
     fn is_source_build() -> bool {
         engine_state::EngineContext::global()
-            .map(|ctx| ctx.dev.read().is_source_build)
+            .map(|ctx| ctx.dev.try_read().map(|g| g.is_source_build).unwrap_or(false))
             .unwrap_or(false)
     }
 
     fn render_save_as_default_button(
         &self,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     ) -> impl IntoElement {
         let state_clone = state_arc.clone();
@@ -191,7 +193,7 @@ impl ToolbarPanel {
             .on_click(move |_, window, cx| {
                 // Resolve the target path: <workspace_root>/assets/default.level
                 let target_path = engine_state::EngineContext::global()
-                    .and_then(|ctx| ctx.dev.read().source_path.clone())
+                    .and_then(|ctx| ctx.dev.try_read().ok().and_then(|g| g.source_path.clone()))
                     .map(|root| root.join("assets").join("default.level"));
 
                 let Some(path) = target_path else {
@@ -215,7 +217,7 @@ impl ToolbarPanel {
                 }
 
                 let save_result = {
-                    let state = state_clone.read();
+                    let state = state_clone.read(cx);
                     let editor_camera = gpu_engine
                         .lock()
                         .ok()
@@ -257,7 +259,7 @@ impl ToolbarPanel {
     fn render_profiling_button<V>(
         &self,
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -268,9 +270,11 @@ impl ToolbarPanel {
         let btn = Button::new("toggle_profiling")
             .icon(ui::IconName::Activity)
             .tooltip(t!("LevelEditor.Toolbar.TogglePerformance"))
-            .on_click(move |_, _, _| {
-                let mut s = state_clone.write();
-                s.show_performance_overlay = !s.show_performance_overlay;
+            .on_click(move |_, _, cx| {
+                state_clone.update(cx, |s, cx| {
+                    s.show_performance_overlay = !s.show_performance_overlay;
+                    cx.notify();
+                });
             });
         if is_profiling {
             btn.primary()

@@ -10,7 +10,7 @@ mod object_header_section;
 mod object_type_fields_section;
 mod panel;
 mod properties_panel; // Old properties panel (to be integrated)
-mod state;
+pub mod state;
 mod toolbar;
 mod transform_section;
 mod tree_item_renderer;

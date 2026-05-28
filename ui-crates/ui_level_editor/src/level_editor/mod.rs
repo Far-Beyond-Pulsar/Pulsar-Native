@@ -12,8 +12,8 @@
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
 pub mod commands;
-mod scene_database;
-mod ui;
+pub mod scene_database;
+pub mod ui;
 mod workspace_panels;
 mod world_settings_data;
 
@@ -22,5 +22,6 @@ pub use scene_database::SceneDatabase;
 pub use scene_database::SceneObjectData;
 pub use ui::LevelEditorPanel;
 pub use ui::LevelEditorState;
+pub use ui::state::StateEntity;
 pub use workspace_panels::*;
 pub use world_settings_data::*;

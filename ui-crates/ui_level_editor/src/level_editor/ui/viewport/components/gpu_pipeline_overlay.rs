@@ -24,7 +24,7 @@ const PASS_COLORS: &[(f32, f32, f32)] = &[
 /// Render the GPU pipeline overlay with fixed-width columns.
 pub fn render_gpu_pipeline_overlay<V>(
     state: &LevelEditorState,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state_arc: crate::level_editor::StateEntity,
     gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement

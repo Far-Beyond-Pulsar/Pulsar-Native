@@ -218,8 +218,6 @@ impl WorldSettingsReplicated {
 
     pub fn render(
         &self,
-        _state: &LevelEditorState,
-        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<WorldSettingsPanel>,
     ) -> impl IntoElement {

@@ -68,7 +68,7 @@ where
 /// Render the complete compact performance overlay.
 pub fn render_performance_overlay<V>(
     state: &LevelEditorState,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state_arc: crate::level_editor::StateEntity,
     ui_fps: f64,
     render_fps: f64,
     fps_data: Vec<FpsDataPoint>,
@@ -90,8 +90,8 @@ where
             .icon(IconName::Activity)
             .ghost()
             .tooltip("Show Performance Stats")
-            .on_click(move |_, _, _| {
-                state_arc.write().set_performance_overlay_collapsed(false);
+            .on_click(move |_, _, cx| {
+                state_arc.update(cx, |s, cx| { s.set_performance_overlay_collapsed(false); cx.notify(); });
             })
             .into_any_element();
     }
@@ -196,8 +196,8 @@ where
                         .icon(IconName::Close)
                         .ghost()
                         .tooltip("Close")
-                        .on_click(move |_, _, _| {
-                            state_clone.write().set_performance_overlay_collapsed(true);
+                        .on_click(move |_, _, cx| {
+                            state_clone.update(cx, |s, cx| { s.set_performance_overlay_collapsed(true); cx.notify(); });
                         })
                 }),
         )

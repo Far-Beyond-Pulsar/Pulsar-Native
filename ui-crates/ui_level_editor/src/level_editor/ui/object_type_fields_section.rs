@@ -25,7 +25,7 @@ pub struct ObjectTypeFieldsSection {
     /// Add component dialog entity
     add_component_dialog: Entity<AddComponentDialog>,
     /// Shared state for expand/collapse tracking
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state_arc: crate::level_editor::StateEntity,
     /// Shared property state manager
     property_state: PropertyStateManager,
     /// Icon asset picker (special case for object-level icon)
@@ -36,7 +36,7 @@ impl ObjectTypeFieldsSection {
     pub fn new(
         object_id: String,
         scene_db: SceneDatabase,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -338,11 +338,10 @@ impl Render for ObjectTypeFieldsSection {
 
         let component_hierarchy =
             ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
-        let state = self.state_arc.read();
+        let state_owned = self.state_arc.read(cx).clone();
         let component_panel = component_hierarchy
-            .render(&state, self.state_arc.clone(), add_popover, cx)
+            .render(&state_owned, self.state_arc.clone(), add_popover, cx)
             .into_any_element();
-        drop(state);
 
         // ── Property sections for every attached component ─────────────────
         // Use shared panel system

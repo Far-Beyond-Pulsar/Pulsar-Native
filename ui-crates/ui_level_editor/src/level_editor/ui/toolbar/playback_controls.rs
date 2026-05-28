@@ -14,7 +14,7 @@ pub struct PlaybackControls;
 impl PlaybackControls {
     pub fn render<V>(
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         _cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -29,8 +29,8 @@ impl PlaybackControls {
                     Button::new("play")
                         .icon(IconName::Play)
                         .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
-                        .on_click(move |_, _, _| {
-                            state_clone.write().enter_play_mode();
+                        .on_click(move |_, _, cx| {
+                            state_clone.update(cx, |s, cx| { s.enter_play_mode(); cx.notify(); });
                         })
                         .into_any_element()
                 } else {
@@ -47,7 +47,7 @@ impl PlaybackControls {
                     .icon(IconName::Pause)
                     .tooltip(t!("LevelEditor.Toolbar.PauseSimulation"))
                     .ghost()
-                    .on_click(move |_, _, _| {
+                    .on_click(move |_, _, cx| {
                         // TODO: Implement pause
                     });
                 if disabled {
@@ -62,8 +62,8 @@ impl PlaybackControls {
                 let btn = Button::new("stop")
                     .icon(IconName::Square)
                     .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
-                    .on_click(move |_, _, _| {
-                        state_clone.write().exit_play_mode();
+                    .on_click(move |_, _, cx| {
+                        state_clone.update(cx, |s, cx| { s.exit_play_mode(); cx.notify(); });
                     });
                 if disabled {
                     btn.opacity(0.5).into_any_element()

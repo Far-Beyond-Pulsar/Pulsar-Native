@@ -71,7 +71,9 @@
       "Bash(python3 *)",
       "Bash(sed -n 1039,1340p /Users/tristanpoland/Documents/GitHub/Pulsar-Native/crates/engine_backend/src/subsystems/render/helio_renderer/renderer.rs)",
       "Read(//tmp/**)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(awk -F: '{print $1}')",
+      "Bash(xargs sed -i '' 's/crate::level_editor::ui::state::StateEntity/crate::level_editor::StateEntity/g')"
     ]
   }
 }

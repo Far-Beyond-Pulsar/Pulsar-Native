@@ -32,7 +32,7 @@ struct ObjectMenuItem {
 pub struct AddObjectDialog {
     searchable_list: Entity<SearchableList<ObjectMenuItem>>,
     _subscriptions: Vec<Subscription>,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state_arc: crate::level_editor::StateEntity,
 }
 
 impl EventEmitter<DismissEvent> for AddObjectDialog {}
@@ -46,7 +46,7 @@ impl Focusable for AddObjectDialog {
 
 impl AddObjectDialog {
     pub fn new(
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -81,7 +81,7 @@ impl AddObjectDialog {
     }
 
     fn spawn_object(&self, cx: &mut Context<Self>) {
-        let objects_count = self.state_arc.read().scene_objects().len();
+        let objects_count = self.state_arc.read(cx).scene_objects().len();
         let new_object = SceneObjectData {
             id: format!("object_{}", objects_count + 1),
             name: "New Object".to_string(),
@@ -95,7 +95,7 @@ impl AddObjectDialog {
             props: Default::default(),
         };
         self.state_arc
-            .read()
+            .read(cx)
             .scene_database
             .add_object(new_object, None);
         cx.emit(ObjectSpawnedEvent);

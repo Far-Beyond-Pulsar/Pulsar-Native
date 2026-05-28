@@ -34,7 +34,7 @@ impl Render for HierarchyDragPayload {
 #[derive(Clone)]
 struct SceneObjectItem {
     object: SceneObject,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    state_arc: crate::level_editor::StateEntity,
     is_selected: bool,
     is_folder: bool,
 }
@@ -121,11 +121,13 @@ impl HierarchyItem for SceneObjectItem {
             .on_click(move |_, _, cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
 
-                let mut state = visibility_state.write();
-                if let Some(mut obj) = state.scene_database.get_object(&visibility_object_id) {
-                    obj.visible = !obj.visible;
-                    execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
-                }
+                visibility_state.update(cx, |state, cx| {
+                    if let Some(mut obj) = state.scene_database.get_object(&visibility_object_id) {
+                        obj.visible = !obj.visible;
+                        execute_command(state, SceneCommand::UpdateObject { data: obj });
+                        cx.notify();
+                    }
+                });
                 cx.stop_propagation();
             });
 
@@ -146,21 +148,18 @@ impl HierarchyItem for SceneObjectItem {
         let delete_state = self.state_arc.clone();
 
         menu.menu_handler_with_icon("Duplicate", IconName::Copy, move |_, app| {
-            let _ = app;
-            let mut state = duplicate_state.write();
-            execute_command(
-                &mut state,
-                SceneCommand::DuplicateObject {
-                    source_id: duplicate_id.clone(),
-                    count: 1,
-                    position_offset: None,
-                },
-            );
+            duplicate_state.update(app, |state, cx| {
+                execute_command(state, SceneCommand::DuplicateObject {
+                    source_id: duplicate_id.clone(), count: 1, position_offset: None,
+                });
+                cx.notify();
+            });
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
-            let _ = app;
-            let mut state = delete_state.write();
-            execute_command(&mut state, SceneCommand::RemoveObject { id: delete_id.clone() });
+            delete_state.update(app, |state, cx| {
+                execute_command(state, SceneCommand::RemoveObject { id: delete_id.clone() });
+                cx.notify();
+            });
         })
     }
 
@@ -185,7 +184,7 @@ impl HierarchyPanel {
     fn build_items(
         all_objects: &[SceneObject],
         selected_object: Option<&String>,
-        state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: &crate::level_editor::StateEntity,
     ) -> Vec<SceneObjectItem> {
         all_objects
             .iter()
@@ -205,7 +204,7 @@ impl HierarchyPanel {
     pub fn render<V>(
         &self,
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        state_arc: crate::level_editor::StateEntity,
         wrapper_entity: WeakEntity<V>,
         add_button: AnyElement,
         cx: &mut Context<V>,
@@ -235,6 +234,7 @@ impl HierarchyPanel {
         let state_arc_for_drop = state_arc.clone();
         let wrapper_for_drop = wrapper_entity.clone();
         let state_arc_for_root_click = state_arc.clone();
+        let scene_db_for_root = state.scene_database.clone();
 
         // Header buttons
         let header_buttons = vec![
@@ -246,30 +246,21 @@ impl HierarchyPanel {
                     .ghost()
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.AddFolder"))
-                    .on_click(move |_, _, _| {
+                    .on_click(move |_, _, cx| {
                         use crate::level_editor::commands::{execute_command, SceneCommand};
-                        use crate::level_editor::scene_database::{
-                            ObjectType, SceneObjectData, Transform,
-                        };
-                        let mut state = state_clone.write();
-                        execute_command(
-                            &mut state,
-                            SceneCommand::AddObject {
+                        use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
+                        state_clone.update(cx, |state, cx| {
+                            execute_command(state, SceneCommand::AddObject {
                                 data: SceneObjectData {
-                                    id: String::new(),
-                                    name: "New Folder".to_string(),
-                                    object_type: ObjectType::Folder,
-                                    transform: Transform::default(),
-                                    visible: true,
-                                    locked: false,
-                                    parent: None,
-                                    children: vec![],
-                                    scene_path: String::new(),
-                                    props: Default::default(),
+                                    id: String::new(), name: "New Folder".to_string(),
+                                    object_type: ObjectType::Folder, transform: Transform::default(),
+                                    visible: true, locked: false, parent: None, children: vec![],
+                                    scene_path: String::new(), props: Default::default(),
                                 },
                                 parent_id: None,
-                            },
-                        );
+                            });
+                            cx.notify();
+                        });
                     })
                     .into_any_element()
             },
@@ -280,11 +271,14 @@ impl HierarchyPanel {
                     .ghost()
                     .xsmall()
                     .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
-                    .on_click(move |_, _, _| {
+                    .on_click(move |_, _, cx| {
                         use crate::level_editor::commands::{execute_command, SceneCommand};
-                        if let Some(id) = state_clone.read().selected_object() {
-                            let mut state = state_clone.write();
-                            execute_command(&mut state, SceneCommand::RemoveObject { id });
+                        let sel = state_clone.read(cx).selected_object();
+                        if let Some(id) = sel {
+                            state_clone.update(cx, |state, cx| {
+                                execute_command(state, SceneCommand::RemoveObject { id: id.clone() });
+                                cx.notify();
+                            });
                         }
                     })
                     .into_any_element()
@@ -305,15 +299,11 @@ impl HierarchyPanel {
             root_drop_zone: Some((
                 "Root".to_string(),
                 Arc::new(move |payload: HierarchyDragPayload| {
-                    use crate::level_editor::commands::{execute_command, SceneCommand};
-                    let mut state = state_arc.write();
-                    execute_command(
-                        &mut state,
-                        SceneCommand::ReparentObject {
-                            id: payload.object_id,
-                            new_parent_id: None,
-                        },
-                    );
+                    use crate::level_editor::commands::{execute_command_on_db, SceneCommand};
+                    execute_command_on_db(&scene_db_for_root, SceneCommand::ReparentObject {
+                        id: payload.object_id,
+                        new_parent_id: None,
+                    });
                 }),
             )),
 
@@ -327,21 +317,24 @@ impl HierarchyPanel {
             disable_nesting: false, // Allow full nesting in hierarchy
 
             // Callbacks
-            is_expanded: Arc::new(move |id: &String| {
-                state_arc_for_expand.read().is_object_expanded(id)
+            is_expanded: Arc::new({
+                let state_arc = state_arc_for_expand.clone();
+                let expanded: std::collections::HashSet<String> = state.expanded_objects.clone();
+                move |id: &String| expanded.contains(id)
             }),
             on_toggle_expand: Arc::new(move |id: &String, _window, cx| {
                 let id = id.clone();
                 let state = state_arc_for_toggle.clone();
                 let wrapper = wrapper_for_toggle.clone();
                 cx.defer(move |cx| {
-                    let mut state = state.write();
-                    if state.is_object_expanded(&id) {
-                        state.expanded_objects.remove(&id);
-                    } else {
-                        state.expanded_objects.insert(id);
-                    }
-                    drop(state);
+                    state.update(cx, |state, cx| {
+                        if state.is_object_expanded(&id) {
+                            state.expanded_objects.remove(&id);
+                        } else {
+                            state.expanded_objects.insert(id.clone());
+                        }
+                        cx.notify();
+                    });
                     if let Some(wrapper) = wrapper.upgrade() {
                         cx.notify(wrapper.entity_id());
                     }
@@ -352,7 +345,10 @@ impl HierarchyPanel {
                 let state = state_arc_for_select.clone();
                 let wrapper = wrapper_for_select.clone();
                 cx.defer(move |cx| {
-                    state.write().select_object(Some(id));
+                    state.update(cx, |state, cx| {
+                        state.select_object(Some(id.clone()));
+                        cx.notify();
+                    });
                     if let Some(wrapper) = wrapper.upgrade() {
                         cx.notify(wrapper.entity_id());
                     }
@@ -371,35 +367,23 @@ impl HierarchyPanel {
                     let wrapper = wrapper_for_drop.clone();
 
                     cx.defer(move |cx| {
-                        let mut state = state.write();
-                        if mods.shift {
-                            execute_command(
-                                &mut state,
-                                SceneCommand::ReparentObject {
-                                    id: object_id,
-                                    new_parent_id: None,
-                                },
-                            );
-                        } else if mods.alt {
-                            // Reorder doesn't fit a SceneCommand variant yet — call directly and
-                            // bump revision so the polling task propagates the change.
-                            state
-                                .scene_database
-                                .reorder_object_siblings(&object_id, &target_id);
-                            state.scene_revision = state.scene_revision.saturating_add(1);
-                        } else {
-                            let result = execute_command(
-                                &mut state,
-                                SceneCommand::ReparentObject {
-                                    id: object_id,
+                        state.update(cx, |state, cx| {
+                            if mods.shift {
+                                execute_command(state, SceneCommand::ReparentObject {
+                                    id: object_id.clone(), new_parent_id: None,
+                                });
+                            } else if mods.alt {
+                                state.scene_database.reorder_object_siblings(&object_id, &target_id);
+                                state.scene_revision = state.scene_revision.saturating_add(1);
+                            } else {
+                                let result = execute_command(state, SceneCommand::ReparentObject {
+                                    id: object_id.clone(),
                                     new_parent_id: Some(target_id.clone()),
-                                },
-                            );
-                            if result.changed {
-                                state.expanded_objects.insert(target_id);
+                                });
+                                if result.changed { state.expanded_objects.insert(target_id.clone()); }
                             }
-                        }
-                        drop(state);
+                            cx.notify();
+                        });
                         if let Some(wrapper) = wrapper.upgrade() {
                             cx.notify(wrapper.entity_id());
                         }
