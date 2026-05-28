@@ -7962,6 +7962,7 @@ name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
  "gpui-ce",
+ "schemars",
  "serde",
  "serde_json",
  "tracing",

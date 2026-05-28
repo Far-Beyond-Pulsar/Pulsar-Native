@@ -1,22 +1,20 @@
 //! Property editor for `ScriptAssetPath` — read-only blueprint asset reference.
 //!
-//! Displays the blueprint directory name.  Clicking opens the blueprint in
-//! its default editor via the global `OpenAsset` action.
-//!
-//! This file's sole job is to register the `ScriptAssetPath` type's editor.
+//! Shows a Code icon next to the blueprint folder name.  Clicking opens the
+//! blueprint in its registered editor via the global `OpenAsset` action.
 
 use gpui::{prelude::*, *};
 use plugin_editor_api::OpenAsset;
 use pulsar_rendering::components::ScriptAssetPath;
-use ui::{h_flex, ActiveTheme};
+use ui::{button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, Icon, IconName, Sizable, Disableable as _};
 
 use crate::property_editor_registry::PropertyEditorArgs;
 
 pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     let path_str = args.current_json.as_str().unwrap_or("").to_string();
 
-    let display = if path_str.is_empty() {
-        "No script assigned".to_string()
+    let file_name = if path_str.is_empty() {
+        "None".to_string()
     } else {
         std::path::Path::new(&path_str)
             .file_name()
@@ -26,7 +24,12 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     };
 
     let open_path = std::path::PathBuf::from(&path_str);
-    let can_open = !path_str.is_empty();
+    let has_asset  = !path_str.is_empty();
+
+    let id = format!(
+        "script-asset-{}-{}-{}",
+        args.id_prefix, args.class_name, args.prop_name
+    );
 
     h_flex()
         .w_full()
@@ -35,28 +38,22 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
         .gap_2()
         .py_1()
         .child(
+            // Field label
             div()
                 .text_sm()
                 .text_color(cx.theme().muted_foreground)
                 .child(args.display_name.to_string()),
         )
         .child(
-            div()
-                .id(SharedString::from(format!(
-                    "script-asset-{}-{}-{}",
-                    args.id_prefix, args.class_name, args.prop_name
-                )))
-                .text_sm()
-                .when(can_open, |el| el.cursor_pointer())
-                .text_color(if can_open {
-                    cx.theme().accent
-                } else {
-                    cx.theme().muted_foreground
-                })
-                .hover(|s| if can_open { s.underline() } else { s })
-                .child(display)
-                .when(can_open, move |el| {
-                    el.on_click(move |_event, window, cx| {
+            // [Code icon] [filename] — clickable when an asset is assigned
+            Button::new(id)
+                .icon(Icon::new(IconName::Code).size(px(12.)))
+                .label(file_name)
+                .ghost()
+                .small()
+                .when(!has_asset, |b| b.disabled(true))
+                .when(has_asset, move |b| {
+                    b.on_click(move |_event, window, cx| {
                         window.dispatch_action(
                             Box::new(OpenAsset { path: open_path.clone() }),
                             cx,
