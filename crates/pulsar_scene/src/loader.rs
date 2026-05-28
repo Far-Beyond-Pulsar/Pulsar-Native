@@ -257,16 +257,16 @@ struct SceneObjectContext<'r, 'p> {
 }
 
 impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
-    fn upsert_light(&mut self, desc: RuntimeLightDesc) {
+    fn upsert_light(&mut self, actor_key: String, gpu: GpuLight) {
         self.had_light = true;
-        let gpu = build_gpu_light(&desc, self.position);
+        // GpuLight is already fully constructed by the component — just insert.
         match self.renderer.scene_mut()
             .insert_actor(SceneActor::light(gpu)).as_light()
         {
             Some(light_id) => {
                 tracing::info!(id = self.obj_id, name = self.obj_name, "Light loaded");
                 self.lights.push(LoadedLight {
-                    id: desc.actor_key,
+                    id: actor_key,
                     name: self.obj_name.to_string(),
                     light_id,
                 });
@@ -325,17 +325,12 @@ pub fn build_transform_parts(position: [f32;3], rotation: [f32;3], scale: [f32;3
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
 
-/// Build a [`GpuLight`] from a [`RuntimeLightDesc`] and world position.
+/// Build a [`GpuLight`] from a v1 legacy [`RuntimeLightDesc`] and world position.
 ///
-/// **This is the single canonical GpuLight constructor.**  Both the engine
-/// (`HelioRuntimeContext::upsert_light`) and the game (`SceneLoaderContext`)
-/// call here so the GPU bytes are identical.
-///
-/// Convention matches engine's `upsert_light` exactly:
-/// - `direction_outer.w` = outer angle in radians (NOT cos)
-/// - `inner_angle`       = inner angle in radians (NOT cos)
-/// - `shadow_index`      = `u32::MAX` (no shadow)
-pub fn build_gpu_light(desc: &RuntimeLightDesc, position: [f32; 3]) -> GpuLight {
+/// Only used by the backwards-compat fallback for scene files that have no
+/// `__component_instances` (pre-v2 format).  For all current scenes,
+/// `LightComponent::sync_component` builds the `GpuLight` directly.
+fn build_gpu_light(desc: &RuntimeLightDesc, position: [f32; 3]) -> GpuLight {
     let lt = match desc.light_type {
         RuntimeLightType::Directional => HelioLightType::Directional,
         RuntimeLightType::Point       => HelioLightType::Point,

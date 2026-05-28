@@ -1,6 +1,7 @@
 //! Light component for scene lighting
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use helio::{GpuLight, LightType as HelioLightType};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, RuntimeLightDesc,
     RuntimeLightType, ScenePropsProjector, Reflectable,
@@ -157,22 +158,33 @@ impl ComponentRuntimeBehavior for LightComponent {
         context: &mut dyn ComponentRuntimeContext,
     ) {
         let light = Self::from_component_data(component_data);
-        let light_type = match light.light_type {
-            LightType::Directional => RuntimeLightType::Directional,
-            LightType::Point => RuntimeLightType::Point,
-            LightType::Spot => RuntimeLightType::Spot,
-            LightType::Area => RuntimeLightType::Area,
+
+        let helio_type = match light.light_type {
+            LightType::Directional => HelioLightType::Directional,
+            LightType::Point       => HelioLightType::Point,
+            LightType::Spot        => HelioLightType::Spot,
+            LightType::Area        => HelioLightType::Point, // helio has no Area; nearest equivalent
         };
 
-        context.upsert_light(RuntimeLightDesc {
-            actor_key: format!("{}::light::{}", owner.scene_object_id, component_index),
-            light_type,
-            color: light.color,
-            intensity: light.intensity,
-            range: light.range,
-            inner_cone_angle_deg: light.inner_cone_angle,
-            outer_cone_angle_deg: light.outer_cone_angle,
-        });
+        let [px, py, pz] = owner.position;
+
+        // Build the GpuLight directly — this is the single source of truth for
+        // how a LightComponent maps to the GPU.  No intermediate RuntimeLightDesc
+        // or build_gpu_light translation step means engine and game are identical.
+        let gpu = GpuLight {
+            position_range:  [px, py, pz, light.range],
+            direction_outer: [0.0, -1.0, 0.0, light.outer_cone_angle.to_radians()],
+            color_intensity: [light.color[0], light.color[1], light.color[2], light.intensity],
+            shadow_index:    u32::MAX,
+            light_type:      helio_type as u32,
+            inner_angle:     light.inner_cone_angle.to_radians(),
+            _pad:            0,
+        };
+
+        context.upsert_light(
+            format!("{}::light::{}", owner.scene_object_id, component_index),
+            gpu,
+        );
     }
 }
 

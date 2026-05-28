@@ -16,7 +16,7 @@ use engine_fs::virtual_fs;
 use pulsar_scene::{component_instances_from_props, build_transform_parts};
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, ComponentRuntimeContext, RuntimeComponentOwner,
-    RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc,
+    RuntimeMeshDesc,
 };
 
 use crate::scene::{ObjectType, SceneObjectSnapshot};
@@ -1051,13 +1051,11 @@ impl HelioRenderer {
         }
 
         impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
-            fn upsert_light(&mut self, desc: RuntimeLightDesc) {
-                self.live_light_ids.insert(desc.actor_key.clone());
+            fn upsert_light(&mut self, actor_key: String, gpu_light: GpuLight) {
+                self.live_light_ids.insert(actor_key.clone());
 
-                // Delegate to pulsar_scene's canonical builder — same code the game uses.
-                let gpu_light = pulsar_scene::build_gpu_light(&desc, self.owner_snap.position);
-
-                if let Some(&light_id) = self.inner.light_map.get(&desc.actor_key) {
+                // GpuLight is built by the component — no translation here.
+                if let Some(&light_id) = self.inner.light_map.get(&actor_key) {
                     if Some(light_id) == self.dragged_light_id {
                         return;
                     }
@@ -1069,7 +1067,7 @@ impl HelioRenderer {
                     .insert_actor(SceneActor::light(gpu_light))
                     .as_light()
                 {
-                    self.inner.light_map.insert(desc.actor_key, light_id);
+                    self.inner.light_map.insert(actor_key, light_id);
                     self.inner
                         .light_id_to_scene
                         .insert(light_id, self.owner_snap.id.clone());

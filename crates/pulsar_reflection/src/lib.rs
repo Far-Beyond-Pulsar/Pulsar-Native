@@ -196,8 +196,16 @@ pub struct RuntimeMeshDesc {
 }
 
 /// Runtime context implemented by renderer-side systems.
+///
+/// `upsert_light` receives a fully-constructed [`helio::GpuLight`] — the
+/// component (e.g. `LightComponent`) is responsible for building it from its
+/// own fields.  The context just inserts it; there is no translation layer
+/// where values can silently diverge between engine and game.
 pub trait ComponentRuntimeContext {
-    fn upsert_light(&mut self, desc: RuntimeLightDesc);
+    /// Insert or update a light.  The component builds the [`helio::GpuLight`]
+    /// directly so there is exactly one code path for all light construction.
+    #[cfg(feature = "prims-helio")]
+    fn upsert_light(&mut self, actor_key: String, gpu: helio::GpuLight);
     fn upsert_mesh(&mut self, desc: RuntimeMeshDesc);
     fn report_error(&mut self, message: String);
 }
