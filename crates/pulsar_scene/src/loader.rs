@@ -1,42 +1,29 @@
 //! Loads a [`SceneFile`] into a [`helio::Renderer`].
 //!
-//! Each [`SceneObject`] is translated to one or more Helio scene actors:
-//! - `Mesh(*)` → `SceneActor::mesh` + `SceneActor::object` (with material)
-//! - `Light(*)` → `SceneActor::light`
-//! - `Empty` / `Folder` / `Camera` → skipped (no Helio representation)
+//! ## Mesh resolution order (per object)
 //!
-//! The returned [`LoadedScene`] holds all Helio handles so game code can
-//! update transforms or light properties at runtime without re-parsing the
-//! file.
+//! 1. Read `mesh_asset` from the object's `StaticMeshComponent` / `props`.
+//! 2. If the filename matches a known primitive (SM_Cube, SM_Sphere, …), use
+//!    our procedural geometry — this is correct and avoids disk I/O.
+//! 3. If the file exists on disk and has a recognised extension (`.fbx`, `.gltf`,
+//!    `.glb`, `.obj`), load it through `helio-asset-compat` / `solid-fbx`.
+//! 4. Fall back to the `object_type` primitive (Cube / Sphere / …).
 //!
-//! # Example
-//!
-//! ```rust,ignore
-//! let loaded = SceneLoader::load_file(
-//!     &project_root.join("scenes/default_level.json"),
-//!     &project_root,
-//!     renderer,
-//! )?;
-//! // loaded.objects, loaded.lights — helio handles
-//! ```
+//! Lights are always built from the scene file data; no file loading needed.
 
-use std::collections::HashMap;
 use std::path::Path;
 
 use glam::{Mat4, Quat, Vec3};
 use helio::{
-    Camera, GpuLight, GpuMaterial, LightId, LightType as HelioLightType,
-    MaterialId, MeshId, ObjectDescriptor, ObjectId, Renderer, RendererConfig,
-    SceneActor, SceneResult,
-    required_wgpu_features, required_wgpu_limits,
-    MeshUpload, PackedVertex,
+    GpuLight, GpuMaterial, LightId, LightType as HelioLightType,
+    MaterialId, MeshId, ObjectDescriptor, ObjectId, Renderer,
+    SceneActor, MeshUpload, PackedVertex,
 };
 
 use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError, SceneObject};
 
-// ── Result type ───────────────────────────────────────────────────────────────
+// ── Public result types ───────────────────────────────────────────────────────
 
-/// A Helio handle for a loaded mesh object.
 #[derive(Clone, Debug)]
 pub struct LoadedMesh {
     pub id: String,
@@ -46,7 +33,6 @@ pub struct LoadedMesh {
     pub material_id: MaterialId,
 }
 
-/// A Helio handle for a loaded light.
 #[derive(Clone, Debug)]
 pub struct LoadedLight {
     pub id: String,
@@ -54,24 +40,17 @@ pub struct LoadedLight {
     pub light_id: LightId,
 }
 
-/// All Helio handles produced by loading a scene file.
-///
-/// Keep this alive as long as you need to update the scene.
 #[derive(Default, Debug)]
 pub struct LoadedScene {
     pub meshes: Vec<LoadedMesh>,
     pub lights: Vec<LoadedLight>,
 }
 
-// ── Loader ────────────────────────────────────────────────────────────────────
+// ── SceneLoader ───────────────────────────────────────────────────────────────
 
 pub struct SceneLoader;
 
 impl SceneLoader {
-    /// Parse `path` as a [`SceneFile`] and populate `renderer` with its contents.
-    ///
-    /// `project_root` is used to resolve relative asset paths (currently unused
-    /// for built-in primitives but required for `MeshType::Custom` in the future).
     pub fn load_file(
         path: &Path,
         project_root: &Path,
@@ -81,14 +60,12 @@ impl SceneLoader {
         Self::load_scene(&scene, project_root, renderer)
     }
 
-    /// Populate `renderer` from an already-parsed [`SceneFile`].
     pub fn load_scene(
         scene: &SceneFile,
-        _project_root: &Path,
+        project_root: &Path,
         renderer: &mut Renderer,
     ) -> Result<LoadedScene, SceneLoadError> {
         let mut loaded = LoadedScene::default();
-
         let total = scene.objects.len();
         tracing::info!(total_objects = total, "Processing scene objects");
 
@@ -98,30 +75,28 @@ impl SceneLoader {
                 name = %obj.name,
                 type_ = ?obj.object_type,
                 visible = obj.visible,
+                mesh_asset = ?obj.mesh_asset(),
                 "Scene object"
             );
 
             if !obj.visible {
-                tracing::debug!(id = %obj.id, "Skipping hidden object");
                 continue;
             }
 
             match obj.object_type {
-                ObjectType::Mesh(mesh_type) => {
-                    tracing::debug!(id = %obj.id, name = %obj.name, mesh_type = ?mesh_type, "Loading mesh");
-                    match load_mesh(obj, mesh_type, renderer) {
+                ObjectType::Mesh(_) => {
+                    match load_mesh(obj, project_root, renderer) {
                         Ok(lm) => {
                             tracing::info!(id = %obj.id, name = %obj.name, "Mesh loaded");
                             loaded.meshes.push(lm);
                         }
                         Err(e) => tracing::warn!(
                             id = %obj.id, name = %obj.name,
-                            "Failed to load mesh: {e}"
+                            "Mesh load failed: {e}"
                         ),
                     }
                 }
                 ObjectType::Light(light_type) => {
-                    tracing::debug!(id = %obj.id, name = %obj.name, light_type = ?light_type, "Loading light");
                     match load_light(obj, light_type, renderer) {
                         Ok(ll) => {
                             tracing::info!(id = %obj.id, name = %obj.name, "Light loaded");
@@ -129,16 +104,12 @@ impl SceneLoader {
                         }
                         Err(e) => tracing::warn!(
                             id = %obj.id, name = %obj.name,
-                            "Failed to load light: {e}"
+                            "Light load failed: {e}"
                         ),
                     }
                 }
-                ObjectType::Empty | ObjectType::Folder | ObjectType::Camera => {
-                    tracing::debug!(id = %obj.id, name = %obj.name, "Skipping non-renderable object");
-                }
-                ObjectType::Unknown => {
-                    tracing::debug!(id = %obj.id, name = %obj.name, "Skipping unknown object type");
-                }
+                ObjectType::Empty | ObjectType::Folder | ObjectType::Camera
+                | ObjectType::Unknown => {}
             }
         }
 
@@ -147,27 +118,28 @@ impl SceneLoader {
             lights = loaded.lights.len(),
             "Scene load complete"
         );
-
         Ok(loaded)
     }
 }
 
-// ── Per-type loaders ──────────────────────────────────────────────────────────
+// ── Mesh loading ──────────────────────────────────────────────────────────────
 
 fn load_mesh(
     obj: &SceneObject,
-    mesh_type: MeshType,
+    project_root: &Path,
     renderer: &mut Renderer,
 ) -> Result<LoadedMesh, String> {
-    let upload = build_mesh_upload(mesh_type)
-        .ok_or_else(|| format!("Unsupported mesh type: {:?}", mesh_type))?;
+    // --- 1. Resolve geometry ----------------------------------------------------
+    let upload = resolve_mesh_upload(obj, project_root);
 
+    // --- 2. Upload mesh ---------------------------------------------------------
     let mesh_id = renderer
         .scene_mut()
         .insert_actor(SceneActor::mesh(upload))
         .as_mesh()
         .ok_or_else(|| "insert_actor returned non-mesh handle".to_string())?;
 
+    // --- 3. Material from scene props -------------------------------------------
     let material = GpuMaterial {
         base_color: obj.mat_base_color(),
         emissive: {
@@ -176,19 +148,19 @@ fn load_mesh(
             [e[0], e[1], e[2], s]
         },
         roughness_metallic: [obj.mat_roughness(), obj.mat_metallic(), 1.5, 0.5],
-        tex_base_color: GpuMaterial::NO_TEXTURE,
-        tex_normal: GpuMaterial::NO_TEXTURE,
-        tex_roughness: GpuMaterial::NO_TEXTURE,
-        tex_emissive: GpuMaterial::NO_TEXTURE,
-        tex_occlusion: GpuMaterial::NO_TEXTURE,
+        tex_base_color:  GpuMaterial::NO_TEXTURE,
+        tex_normal:      GpuMaterial::NO_TEXTURE,
+        tex_roughness:   GpuMaterial::NO_TEXTURE,
+        tex_emissive:    GpuMaterial::NO_TEXTURE,
+        tex_occlusion:   GpuMaterial::NO_TEXTURE,
         workflow: 0,
-        flags: 0,
-        _pad: 0,
+        flags:   0,
+        _pad:    0,
     };
     let material_id = renderer.scene_mut().insert_material(material);
 
+    // --- 4. Place object --------------------------------------------------------
     let transform = object_transform(obj);
-    // Bounding radius: max of the scale components (conservative sphere).
     let radius = obj.world_scale().iter().cloned().fold(0.0_f32, f32::max);
 
     let object_id = renderer
@@ -203,43 +175,139 @@ fn load_mesh(
                 transform.w_axis.z,
                 radius,
             ],
-            flags: 0,
-            groups: helio::GroupMask::NONE,
+            flags:      0,
+            groups:     helio::GroupMask::NONE,
             movability: None,
         }))
         .as_object()
         .ok_or_else(|| "insert_actor returned non-object handle".to_string())?;
 
     Ok(LoadedMesh {
-        id: obj.id.clone(),
-        name: obj.name.clone(),
+        id:          obj.id.clone(),
+        name:        obj.name.clone(),
         mesh_id,
         object_id,
         material_id,
     })
 }
 
-fn load_light(
-    obj: &SceneObject,
-    light_type: LightType,
-    renderer: &mut Renderer,
-) -> Result<LoadedLight, String> {
-    let gpu_light = build_gpu_light(obj, light_type);
+/// Resolve what geometry to use for a mesh object, in priority order.
+fn resolve_mesh_upload(obj: &SceneObject, project_root: &Path) -> MeshUpload {
+    // 1. mesh_asset path from scene props
+    if let Some(asset_path) = obj.mesh_asset() {
+        // 1a. Is it a known primitive by filename?
+        if let Some(prim) = primitive_from_asset_name(asset_path) {
+            tracing::debug!(
+                id = %obj.id,
+                asset = asset_path,
+                prim = ?prim,
+                "mesh_asset resolved to built-in primitive"
+            );
+            if let Some(upload) = build_mesh_upload(prim) {
+                return upload;
+            }
+        }
 
-    let light_id = renderer
-        .scene_mut()
-        .insert_actor(SceneActor::light(gpu_light))
-        .as_light()
-        .ok_or_else(|| "insert_actor returned non-light handle".to_string())?;
+        // 1b. Try to load from disk (FBX / GLTF / OBJ).
+        let full_path = if std::path::Path::new(asset_path).is_absolute() {
+            std::path::PathBuf::from(asset_path)
+        } else {
+            project_root.join(asset_path)
+        };
 
-    Ok(LoadedLight {
-        id: obj.id.clone(),
-        name: obj.name.clone(),
-        light_id,
-    })
+        if full_path.exists() {
+            tracing::info!(
+                id = %obj.id,
+                path = %full_path.display(),
+                "Loading mesh from file"
+            );
+            if let Some(upload) = load_file_mesh(&full_path) {
+                return upload;
+            }
+        } else {
+            tracing::debug!(
+                id = %obj.id,
+                path = %full_path.display(),
+                "Mesh asset file not found — falling back to primitive"
+            );
+        }
+    }
+
+    // 2. Fall back to the object_type primitive.
+    let fallback_prim = match obj.object_type {
+        ObjectType::Mesh(mt) => mt,
+        _ => MeshType::Cube,
+    };
+    tracing::debug!(id = %obj.id, prim = ?fallback_prim, "Using object_type primitive fallback");
+    build_mesh_upload(fallback_prim).unwrap_or_else(cube_mesh)
 }
 
-// ── Geometry builders ─────────────────────────────────────────────────────────
+/// Map a mesh asset filename to a built-in primitive type.
+///
+/// Matches by file stem, case-insensitive.  Returns `None` for genuine custom
+/// assets (e.g. `"monkey.fbx"`, `"character.glb"`).
+fn primitive_from_asset_name(path: &str) -> Option<MeshType> {
+    let stem = std::path::Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path)
+        .to_lowercase();
+
+    if stem.contains("cube")     { Some(MeshType::Cube)     }
+    else if stem.contains("sphere")   { Some(MeshType::Sphere)   }
+    else if stem.contains("cylinder") { Some(MeshType::Cylinder) }
+    else if stem.contains("plane")    { Some(MeshType::Plane)    }
+    else { None }
+}
+
+/// Load a mesh file via `helio-asset-compat` (FBX, GLTF, OBJ …).
+///
+/// All sub-meshes are merged into a single `MeshUpload`.  Node transforms
+/// from the file are **ignored** — the scene object's own transform is applied
+/// by the caller via `ObjectDescriptor::transform`.
+fn load_file_mesh(path: &std::path::Path) -> Option<MeshUpload> {
+    use helio_asset_compat::{load_scene_file_with_config, LoadConfig};
+
+    // FBX uses DirectX UV convention (top-left origin) — flip V for Helio.
+    let flip_uv = path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| matches!(e.to_lowercase().as_str(), "fbx"))
+        .unwrap_or(false);
+
+    let config = LoadConfig::default().with_uv_flip(flip_uv);
+
+    match load_scene_file_with_config(path, config) {
+        Ok(scene) => {
+            let mut vertices: Vec<PackedVertex> = Vec::new();
+            let mut indices:  Vec<u32>          = Vec::new();
+
+            for mesh in &scene.meshes {
+                let base = vertices.len() as u32;
+                vertices.extend_from_slice(&mesh.vertices);
+                for &idx in &mesh.indices {
+                    indices.push(base + idx);
+                }
+            }
+
+            if vertices.is_empty() {
+                tracing::warn!(path = %path.display(), "Mesh file loaded but has no geometry");
+                return None;
+            }
+
+            tracing::info!(
+                path = %path.display(),
+                vertices = vertices.len(),
+                triangles = indices.len() / 3,
+                "Mesh file loaded OK"
+            );
+            Some(MeshUpload { vertices, indices })
+        }
+        Err(e) => {
+            tracing::warn!(path = %path.display(), "Failed to load mesh file: {e}");
+            None
+        }
+    }
+}
 
 fn build_mesh_upload(mesh_type: MeshType) -> Option<MeshUpload> {
     match mesh_type {
@@ -248,142 +316,40 @@ fn build_mesh_upload(mesh_type: MeshType) -> Option<MeshUpload> {
         MeshType::Sphere   => Some(sphere_mesh()),
         MeshType::Cylinder => Some(cylinder_mesh()),
         MeshType::Custom   => {
-            tracing::warn!("MeshType::Custom is not yet supported in pulsar_scene loader");
+            tracing::warn!("MeshType::Custom has no asset path — no geometry");
             None
         }
     }
 }
 
-fn cube_mesh() -> MeshUpload {
-    let corners = [
-        [-0.5_f32, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
-        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
-    ];
-    let faces: [([usize; 4], [f32; 3], [f32; 3]); 6] = [
-        ([0, 1, 2, 3], [0., 0., 1.], [1., 0., 0.]),
-        ([5, 4, 7, 6], [0., 0., -1.], [-1., 0., 0.]),
-        ([4, 0, 3, 7], [-1., 0., 0.], [0., 0., 1.]),
-        ([1, 5, 6, 2], [1., 0., 0.], [0., 0., -1.]),
-        ([3, 2, 6, 7], [0., 1., 0.], [1., 0., 0.]),
-        ([4, 5, 1, 0], [0., -1., 0.], [1., 0., 0.]),
-    ];
-    let uvs = [[0.0_f32, 1.0], [1., 1.], [1., 0.], [0., 0.]];
-    let mut vertices = Vec::with_capacity(24);
-    let mut indices = Vec::with_capacity(36);
-    for (fi, (quad, normal, tangent)) in faces.iter().enumerate() {
-        let base = (fi * 4) as u32;
-        for (i, ci) in quad.iter().enumerate() {
-            vertices.push(PackedVertex::from_components(corners[*ci], *normal, uvs[i], *tangent, 1.0));
-        }
-        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
-    }
-    MeshUpload { vertices, indices }
+// ── Light loading ─────────────────────────────────────────────────────────────
+
+fn load_light(
+    obj: &SceneObject,
+    light_type: LightType,
+    renderer: &mut Renderer,
+) -> Result<LoadedLight, String> {
+    let gpu_light = build_gpu_light(obj, light_type);
+    let light_id = renderer
+        .scene_mut()
+        .insert_actor(SceneActor::light(gpu_light))
+        .as_light()
+        .ok_or_else(|| "insert_actor returned non-light handle".to_string())?;
+
+    Ok(LoadedLight {
+        id:   obj.id.clone(),
+        name: obj.name.clone(),
+        light_id,
+    })
 }
-
-fn plane_mesh() -> MeshUpload {
-    let normal = [0.0_f32, 1.0, 0.0];
-    let tangent = [1.0_f32, 0.0, 0.0];
-    let positions: [[f32; 3]; 4] = [[-0.5, 0., -0.5], [0.5, 0., -0.5], [0.5, 0., 0.5], [-0.5, 0., 0.5]];
-    let uvs: [[f32; 2]; 4] = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
-    let vertices = positions.iter().zip(uvs.iter())
-        .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
-        .collect();
-    MeshUpload { vertices, indices: vec![0, 2, 1, 0, 3, 2] }
-}
-
-fn sphere_mesh() -> MeshUpload {
-    let (lat, lon) = (16usize, 32usize);
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    for i in 0..=lat {
-        let phi = std::f32::consts::PI * (i as f32 / lat as f32);
-        let y = phi.cos();
-        let sin_phi = phi.sin();
-        for j in 0..=lon {
-            let theta = 2.0 * std::f32::consts::PI * (j as f32 / lon as f32);
-            let x = sin_phi * theta.cos();
-            let z = sin_phi * theta.sin();
-            let pos = [x * 0.5, y * 0.5, z * 0.5];
-            let normal = [x, y, z];
-            let uv = [j as f32 / lon as f32, i as f32 / lat as f32];
-            let tv = Vec3::new(-z, 0., x).normalize_or_zero();
-            let tangent = tv.to_array();
-            vertices.push(PackedVertex::from_components(pos, normal, uv, tangent, 1.0));
-        }
-    }
-    for i in 0..lat {
-        for j in 0..lon {
-            let a = (i * (lon + 1) + j) as u32;
-            let b = a + (lon + 1) as u32;
-            indices.extend_from_slice(&[a, a+1, b, b, a+1, b+1]);
-        }
-    }
-    MeshUpload { vertices, indices }
-}
-
-fn cylinder_mesh() -> MeshUpload {
-    // Simple approximation: two end-caps + side quads.
-    let segments = 24usize;
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-    let two_pi = 2.0 * std::f32::consts::PI;
-
-    // Side ring verts (top + bottom)
-    for i in 0..=segments {
-        let theta = two_pi * (i as f32 / segments as f32);
-        let (s, c) = theta.sin_cos();
-        let normal = [s, 0.0, c];
-        let tangent = [c, 0.0, -s];
-        let u = i as f32 / segments as f32;
-        vertices.push(PackedVertex::from_components([s * 0.5, 0.5, c * 0.5], normal, [u, 0.0], tangent, 1.0));
-        vertices.push(PackedVertex::from_components([s * 0.5, -0.5, c * 0.5], normal, [u, 1.0], tangent, 1.0));
-    }
-    let ring_verts = (segments + 1) * 2;
-    for i in 0..segments {
-        let b = (i * 2) as u32;
-        indices.extend_from_slice(&[b, b+2, b+1, b+1, b+2, b+3]);
-    }
-
-    // Top cap
-    let top_center = vertices.len() as u32;
-    vertices.push(PackedVertex::from_components([0., 0.5, 0.], [0., 1., 0.], [0.5, 0.5], [1., 0., 0.], 1.0));
-    let top_ring_start = vertices.len() as u32;
-    for i in 0..segments {
-        let theta = two_pi * (i as f32 / segments as f32);
-        let (s, c) = theta.sin_cos();
-        vertices.push(PackedVertex::from_components([s*0.5, 0.5, c*0.5], [0.,1.,0.], [s*0.5+0.5, c*0.5+0.5], [1.,0.,0.], 1.0));
-    }
-    for i in 0..segments as u32 {
-        indices.extend_from_slice(&[top_center, top_ring_start + i, top_ring_start + (i+1) % segments as u32]);
-    }
-
-    // Bottom cap
-    let bot_center = vertices.len() as u32;
-    vertices.push(PackedVertex::from_components([0., -0.5, 0.], [0., -1., 0.], [0.5, 0.5], [1., 0., 0.], 1.0));
-    let bot_ring_start = vertices.len() as u32;
-    for i in 0..segments {
-        let theta = two_pi * (i as f32 / segments as f32);
-        let (s, c) = theta.sin_cos();
-        vertices.push(PackedVertex::from_components([s*0.5, -0.5, c*0.5], [0.,-1.,0.], [s*0.5+0.5, c*0.5+0.5], [1.,0.,0.], 1.0));
-    }
-    for i in 0..segments as u32 {
-        // Reverse winding for bottom face
-        indices.extend_from_slice(&[bot_center, bot_ring_start + (i+1) % segments as u32, bot_ring_start + i]);
-    }
-
-    MeshUpload { vertices, indices }
-}
-
-// ── Light builder ─────────────────────────────────────────────────────────────
 
 fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
-    let color = obj.light_color();
+    let color     = obj.light_color();
     let intensity = obj.light_intensity();
-    let range = obj.light_range();
-    let pos = obj.world_position();
+    let range     = obj.light_range();
+    let pos       = obj.world_position();
 
-    // Compute forward direction from Euler rotation (YXZ degrees).
-    let rot = obj.world_rotation();
+    let rot  = obj.world_rotation();
     let quat = Quat::from_euler(
         glam::EulerRot::YXZ,
         rot[1].to_radians(),
@@ -440,4 +406,151 @@ fn object_transform(obj: &SceneObject) -> Mat4 {
         rot[2].to_radians(),
     );
     Mat4::from_scale_rotation_translation(s, q, p)
+}
+
+// ── Procedural geometry ───────────────────────────────────────────────────────
+
+fn cube_mesh() -> MeshUpload {
+    let corners = [
+        [-0.5_f32, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5],
+        [-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5],
+    ];
+    // (quad indices, outward normal, tangent along U axis)
+    let faces: [([usize; 4], [f32; 3], [f32; 3]); 6] = [
+        ([0, 1, 2, 3], [ 0.,  0.,  1.], [ 1.,  0.,  0.]),  // +Z front
+        ([5, 4, 7, 6], [ 0.,  0., -1.], [-1.,  0.,  0.]),  // -Z back
+        ([4, 0, 3, 7], [-1.,  0.,  0.], [ 0.,  0.,  1.]),  // -X left
+        ([1, 5, 6, 2], [ 1.,  0.,  0.], [ 0.,  0., -1.]),  // +X right
+        ([3, 2, 6, 7], [ 0.,  1.,  0.], [ 1.,  0.,  0.]),  // +Y top
+        ([4, 5, 1, 0], [ 0., -1.,  0.], [ 1.,  0.,  0.]),  // -Y bottom
+    ];
+    let uvs = [[0.0_f32, 1.0], [1., 1.], [1., 0.], [0., 0.]];
+    let mut vertices = Vec::with_capacity(24);
+    let mut indices  = Vec::with_capacity(36);
+
+    for (fi, (quad, normal, tangent)) in faces.iter().enumerate() {
+        let base = (fi * 4) as u32;
+        for (i, &ci) in quad.iter().enumerate() {
+            vertices.push(PackedVertex::from_components(
+                corners[ci], *normal, uvs[i], *tangent, 1.0,
+            ));
+        }
+        // CCW winding, viewed from outside (consistent with counter-clockwise front-face)
+        indices.extend_from_slice(&[base, base+1, base+2, base, base+2, base+3]);
+    }
+    MeshUpload { vertices, indices }
+}
+
+fn plane_mesh() -> MeshUpload {
+    let normal  = [0.0_f32, 1.0, 0.0];
+    let tangent = [1.0_f32, 0.0, 0.0];
+    let positions: [[f32; 3]; 4] = [
+        [-0.5, 0., -0.5], [0.5, 0., -0.5], [0.5, 0., 0.5], [-0.5, 0., 0.5],
+    ];
+    let uvs: [[f32; 2]; 4] = [[0., 0.], [1., 0.], [1., 1.], [0., 1.]];
+    let vertices = positions.iter().zip(uvs.iter())
+        .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
+        .collect();
+    // CCW winding viewed from +Y (looking down)
+    MeshUpload { vertices, indices: vec![0, 2, 1, 0, 3, 2] }
+}
+
+fn sphere_mesh() -> MeshUpload {
+    let (lat, lon) = (24usize, 48usize);
+    let mut vertices = Vec::new();
+    let mut indices  = Vec::new();
+
+    for i in 0..=lat {
+        let phi     = std::f32::consts::PI * (i as f32 / lat as f32);
+        let y       = phi.cos();
+        let sin_phi = phi.sin();
+        for j in 0..=lon {
+            let theta = 2.0 * std::f32::consts::PI * (j as f32 / lon as f32);
+            let x = sin_phi * theta.cos();
+            let z = sin_phi * theta.sin();
+            let pos    = [x * 0.5, y * 0.5, z * 0.5];
+            let normal = [x, y, z];
+            let uv     = [j as f32 / lon as f32, i as f32 / lat as f32];
+            // Tangent along longitude direction (∂pos/∂θ, normalised)
+            let tangent = Vec3::new(-theta.sin(), 0., theta.cos()).normalize_or_zero().to_array();
+            vertices.push(PackedVertex::from_components(pos, normal, uv, tangent, 1.0));
+        }
+    }
+    for i in 0..lat {
+        for j in 0..lon {
+            let a = (i * (lon + 1) + j) as u32;
+            let b = a + (lon + 1) as u32;
+            indices.extend_from_slice(&[a, a+1, b, b, a+1, b+1]);
+        }
+    }
+    MeshUpload { vertices, indices }
+}
+
+fn cylinder_mesh() -> MeshUpload {
+    let segments = 32usize;
+    let two_pi   = 2.0 * std::f32::consts::PI;
+    let mut vertices = Vec::new();
+    let mut indices  = Vec::new();
+
+    // ── Side rings (top at y=0.5, bottom at y=-0.5) ──────────────────────────
+    for i in 0..=segments {
+        let theta      = two_pi * (i as f32 / segments as f32);
+        let (s, c)     = theta.sin_cos();
+        let normal     = [s, 0.0, c];
+        let tangent    = [c, 0.0, -s];  // ∂pos/∂θ direction
+        let u          = i as f32 / segments as f32;
+        vertices.push(PackedVertex::from_components([s*0.5, 0.5, c*0.5],  normal, [u, 0.0], tangent, 1.0));
+        vertices.push(PackedVertex::from_components([s*0.5, -0.5, c*0.5], normal, [u, 1.0], tangent, 1.0));
+    }
+    for i in 0..segments {
+        let b = (i * 2) as u32;
+        indices.extend_from_slice(&[b, b+2, b+1, b+1, b+2, b+3]);
+    }
+
+    // ── Top cap ───────────────────────────────────────────────────────────────
+    let top_center = vertices.len() as u32;
+    vertices.push(PackedVertex::from_components(
+        [0., 0.5, 0.], [0., 1., 0.], [0.5, 0.5], [1., 0., 0.], 1.0,
+    ));
+    let top_ring_start = vertices.len() as u32;
+    for i in 0..segments {
+        let theta  = two_pi * (i as f32 / segments as f32);
+        let (s, c) = theta.sin_cos();
+        vertices.push(PackedVertex::from_components(
+            [s*0.5, 0.5, c*0.5], [0., 1., 0.],
+            [s*0.5+0.5, c*0.5+0.5], [1., 0., 0.], 1.0,
+        ));
+    }
+    for i in 0..segments as u32 {
+        indices.extend_from_slice(&[
+            top_center,
+            top_ring_start + i,
+            top_ring_start + (i + 1) % segments as u32,
+        ]);
+    }
+
+    // ── Bottom cap (reversed winding so normal points -Y) ─────────────────────
+    let bot_center = vertices.len() as u32;
+    vertices.push(PackedVertex::from_components(
+        [0., -0.5, 0.], [0., -1., 0.], [0.5, 0.5], [1., 0., 0.], 1.0,
+    ));
+    let bot_ring_start = vertices.len() as u32;
+    for i in 0..segments {
+        let theta  = two_pi * (i as f32 / segments as f32);
+        let (s, c) = theta.sin_cos();
+        vertices.push(PackedVertex::from_components(
+            [s*0.5, -0.5, c*0.5], [0., -1., 0.],
+            [s*0.5+0.5, c*0.5+0.5], [1., 0., 0.], 1.0,
+        ));
+    }
+    for i in 0..segments as u32 {
+        // Flipped winding vs top cap
+        indices.extend_from_slice(&[
+            bot_center,
+            bot_ring_start + (i + 1) % segments as u32,
+            bot_ring_start + i,
+        ]);
+    }
+
+    MeshUpload { vertices, indices }
 }

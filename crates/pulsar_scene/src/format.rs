@@ -379,6 +379,36 @@ impl SceneObject {
             .unwrap_or(default)
     }
 
+    // ── Mesh asset path ───────────────────────────────────────────────────────
+
+    /// Return the `mesh_asset` path from this object's props or its
+    /// `StaticMeshComponent` entry in `__component_instances`, if any.
+    ///
+    /// This is the authoritative mesh path set by the editor — prefer it over
+    /// `object_type` when deciding what geometry to render.
+    pub fn mesh_asset(&self) -> Option<&str> {
+        // Flat prop (v2.x editor writes it here directly).
+        if let Some(s) = self.props.get("mesh_asset").and_then(|v| v.as_str()) {
+            if !s.is_empty() && s != "None" {
+                return Some(s);
+            }
+        }
+        // Fall back to StaticMeshComponent data.
+        self.props
+            .get("__component_instances")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| {
+                arr.iter().find(|inst| {
+                    inst.get("class_name").and_then(|v| v.as_str())
+                        == Some("StaticMeshComponent")
+                })
+            })
+            .and_then(|inst| inst.get("data"))
+            .and_then(|data| data.get("mesh_asset"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty() && *s != "None")
+    }
+
     // ── Material accessors ────────────────────────────────────────────────────
 
     pub fn mat_base_color(&self) -> [f32; 4] {
