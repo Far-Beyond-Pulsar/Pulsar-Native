@@ -13,6 +13,7 @@ use helio::{
 };
 use helio_asset_compat::ConvertedScene;
 use engine_fs::virtual_fs;
+use pulsar_scene::{component_instances_from_props, build_transform_parts};
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, ComponentRuntimeContext, RuntimeComponentOwner,
     RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc,
@@ -155,17 +156,9 @@ fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMate
     }
 }
 
+/// Delegates to the shared implementation in `pulsar_scene`.
 fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
-    let pos = Vec3::from_array(snap.position);
-    let rot = snap.rotation;
-    let scale = Vec3::from_array(snap.scale);
-    let quat = Quat::from_euler(
-        EulerRot::YXZ,
-        rot[1].to_radians(),
-        rot[0].to_radians(),
-        rot[2].to_radians(),
-    );
-    Mat4::from_scale_rotation_translation(scale, quat, pos)
+    build_transform_parts(snap.position, snap.rotation, snap.scale)
 }
 
 // ── Per-mesh-type cache ───────────────────────────────────────────────────────
@@ -1041,33 +1034,9 @@ impl HelioRenderer {
         inner: &mut HelioInner,
         error_queue: &Arc<Mutex<Vec<String>>>,
     ) {
+        // component_instances_from_snap now delegates to pulsar_scene's shared impl.
         fn component_instances_from_snap(snap: &SceneObjectSnapshot) -> Vec<(usize, String, serde_json::Value)> {
-            let Some(entries) = snap
-                .props
-                .get("__component_instances")
-                .and_then(|v| v.as_array())
-            else {
-                return Vec::new();
-            };
-
-            entries
-                .iter()
-                .enumerate()
-                .filter_map(|(fallback_index, entry)| {
-                    let obj = entry.as_object()?;
-                    let index = obj
-                        .get("index")
-                        .and_then(|v| v.as_u64())
-                        .map(|v| v as usize)
-                        .unwrap_or(fallback_index);
-                    let class_name = obj
-                        .get("class_name")
-                        .and_then(|v| v.as_str())
-                        .map(str::to_string)?;
-                    let data = obj.get("data").cloned().unwrap_or(serde_json::Value::Null);
-                    Some((index, class_name, data))
-                })
-                .collect()
+            component_instances_from_props(&snap.props)
         }
 
         struct HelioRuntimeContext<'a> {

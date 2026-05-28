@@ -67,7 +67,10 @@
       "Bash(gh pr list:*)",
       "Bash(gh pr edit:*)",
       "Bash(sed -i '' 's|rev = \"afa97a63b21aaae33cf4adecd73aa3cd65dd8be5\"|rev = \"e8ed290652c1bf5806acd174b520ef308ecfd41c\"|g' /Users/tristanpoland/Documents/GitHub/Plugin_Blueprints/Cargo.toml)",
-      "Bash(sed -i '' 's|rev = \"723116aabe695ff6198fbc9317d983fda05b5e21\"|rev = \"4c05ad0b146c6d3cc82d850212b64b9b91a5f3a1\"|g' /Users/tristanpoland/Documents/GitHub/Pulsar-Native/ui-crates/ui_core/Cargo.toml)"
+      "Bash(sed -i '' 's|rev = \"723116aabe695ff6198fbc9317d983fda05b5e21\"|rev = \"4c05ad0b146c6d3cc82d850212b64b9b91a5f3a1\"|g' /Users/tristanpoland/Documents/GitHub/Pulsar-Native/ui-crates/ui_core/Cargo.toml)",
+      "Bash(python3 *)",
+      "Bash(sed -n 1039,1340p /Users/tristanpoland/Documents/GitHub/Pulsar-Native/crates/engine_backend/src/subsystems/render/helio_renderer/renderer.rs)",
+      "Read(//tmp/**)"
     ]
   }
 }

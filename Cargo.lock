@@ -3025,6 +3025,7 @@ dependencies = [
  "pulsar_diagnostics",
  "pulsar_lsp",
  "pulsar_reflection",
+ "pulsar_scene",
  "rapier3d",
  "ropey",
  "serde",
@@ -8733,6 +8734,7 @@ version = "0.1.0"
 dependencies = [
  "glam 0.33.0",
  "helio",
+ "helio-asset-compat",
  "serde",
  "serde_json",
  "tracing",

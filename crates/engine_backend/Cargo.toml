@@ -28,6 +28,9 @@ dashmap = { workspace = true }
 # Reflection system
 pulsar_reflection.workspace = true
 engine_state.workspace = true
+
+# Shared scene loading — canonical implementation used by both engine and game
+pulsar_scene.workspace = true
 engine_fs.workspace = true
 
 # Profiling - instrumentation-based

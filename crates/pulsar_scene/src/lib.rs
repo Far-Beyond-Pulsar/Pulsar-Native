@@ -40,4 +40,7 @@ pub mod loader;
 pub use format::{
     LightType, MeshType, ObjectType, SceneFile, SceneLoadError, SceneObject,
 };
-pub use loader::{LoadedLight, LoadedMesh, LoadedScene, SceneLoader};
+pub use loader::{
+    LoadedLight, LoadedMesh, LoadedScene, SceneLoader, SceneObjectView,
+    component_instances_from_props, build_transform_parts,
+};
