@@ -770,12 +770,31 @@ pub struct LevelEditorCameraState {
 
 // ── Blueprint helpers ──────────────────────────────────────────────────────
 
-/// Extract the script asset path from a Blueprint object's props.
+/// Extract the script asset path for a Blueprint object from its props.
 ///
-/// Callers set `props["script_asset"]`; `add_object` reads it here and
-/// injects it into `metadata_db` as a `ScriptComponent`.  Returns an empty
-/// string when absent — the user can fill it in via the properties panel.
+/// Checks `props["__component_instances"][ScriptComponent].data.script_asset`
+/// first, then falls back to the flat `props["script_asset"]`.  Returns an
+/// empty string if neither is present (the user will fill it in via the
+/// properties panel).
 fn find_script_path(props: &HashMap<String, Value>) -> String {
+    // Try __component_instances first — the authoritative location.
+    if let Some(path) = props
+        .get("__component_instances")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| {
+            arr.iter().find(|inst| {
+                inst.get("class_name").and_then(|v| v.as_str()) == Some("ScriptComponent")
+            })
+        })
+        .and_then(|inst| inst.get("data"))
+        .and_then(|data| data.get("script_asset"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        return path.to_string();
+    }
+
+    // Flat prop fallback (older scene files or explicit callers).
     props
         .get("script_asset")
         .and_then(|v| v.as_str())
