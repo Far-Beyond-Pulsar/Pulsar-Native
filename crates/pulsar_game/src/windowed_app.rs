@@ -335,12 +335,10 @@ impl PulsarApp {
         if let Some(ref path) = scene_path {
             tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into window");
             match pulsar_scene::SceneLoader::load_file(path, &self.project_root, &mut game_window.renderer) {
-                Ok(loaded) => {
+                Ok(()) => {
                     tracing::info!(
                         window = handle.id(),
                         scene = %path.display(),
-                        meshes = loaded.meshes.len(),
-                        lights = loaded.lights.len(),
                         "Scene loaded into window"
                     );
 

@@ -44,17 +44,9 @@ pub struct LightComponent {
     #[property(min = 0.0, max = 90.0, step = 1.0)]
     pub outer_cone_angle: f32,
 
-    /// Whether this light casts shadows
+    /// Whether this light casts shadows.
     #[property]
     pub cast_shadows: bool,
-
-    /// Shadow map resolution (power of 2)
-    #[property(min = 256.0, max = 4096.0, step = 256.0)]
-    pub shadow_resolution: f32,
-
-    /// Shadow bias to prevent shadow acne
-    #[property(min = 0.0, max = 1.0, step = 0.001)]
-    pub shadow_bias: f32,
 }
 
 /// Type of light source
@@ -130,6 +122,9 @@ impl LightComponent {
                     ];
                 }
             }
+            if let Some(v) = obj.get("cast_shadows").and_then(|v| v.as_bool()) {
+                light.cast_shadows = v;
+            }
         }
 
         light
@@ -175,7 +170,9 @@ impl ComponentRuntimeBehavior for LightComponent {
             position_range:  [px, py, pz, light.range],
             direction_outer: [0.0, -1.0, 0.0, light.outer_cone_angle.to_radians()],
             color_intensity: [light.color[0], light.color[1], light.color[2], light.intensity],
-            shadow_index:    u32::MAX,
+            // shadow_index 0 = shadows enabled (helio assigns the atlas slot in flush()).
+            // u32::MAX = shadows disabled.
+            shadow_index:    if light.cast_shadows { 0 } else { u32::MAX },
             light_type:      helio_type as u32,
             inner_angle:     light.inner_cone_angle.to_radians(),
             _pad:            0,

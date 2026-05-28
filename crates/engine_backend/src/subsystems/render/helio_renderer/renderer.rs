@@ -8,10 +8,9 @@ use std::time::Instant;
 
 use helio::{
     Camera, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId,
-    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
     Renderer, RendererConfig, SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
-use helio_asset_compat::ConvertedScene;
 use engine_fs::virtual_fs;
 use pulsar_scene::{component_instances_from_props, build_transform_parts};
 use pulsar_reflection::{
@@ -40,106 +39,6 @@ pub struct EditorCameraState {
 
 // ── Mesh Generation ──────────────────────────────────────────────────────────
 
-fn box_mesh(half_extents: [f32; 3]) -> MeshUpload {
-    let e = glam::Vec3::from_array(half_extents);
-    let corners = [
-        glam::Vec3::new(-e.x, -e.y, e.z),
-        glam::Vec3::new(e.x, -e.y, e.z),
-        glam::Vec3::new(e.x, e.y, e.z),
-        glam::Vec3::new(-e.x, e.y, e.z),
-        glam::Vec3::new(-e.x, -e.y, -e.z),
-        glam::Vec3::new(e.x, -e.y, -e.z),
-        glam::Vec3::new(e.x, e.y, -e.z),
-        glam::Vec3::new(-e.x, e.y, -e.z),
-    ];
-    let faces: [([usize; 4], [f32; 3], [f32; 3]); 6] = [
-        ([0, 1, 2, 3], [0., 0., 1.], [1., 0., 0.]),
-        ([5, 4, 7, 6], [0., 0., -1.], [-1., 0., 0.]),
-        ([4, 0, 3, 7], [-1., 0., 0.], [0., 0., 1.]),
-        ([1, 5, 6, 2], [1., 0., 0.], [0., 0., -1.]),
-        ([3, 2, 6, 7], [0., 1., 0.], [1., 0., 0.]),
-        ([4, 5, 1, 0], [0., -1., 0.], [1., 0., 0.]),
-    ];
-    let mut vertices = Vec::with_capacity(24);
-    let mut indices = Vec::with_capacity(36);
-    for (fi, (quad, normal, tangent)) in faces.iter().enumerate() {
-        let base = (fi * 4) as u32;
-        let uvs = [[0.0f32, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
-        for (i, &ci) in quad.iter().enumerate() {
-            vertices.push(PackedVertex::from_components(
-                corners[ci].to_array(),
-                *normal,
-                uvs[i],
-                *tangent,
-                1.0,
-            ));
-        }
-        indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-    }
-    MeshUpload { vertices, indices }
-}
-
-fn plane_mesh(half_extent: f32) -> MeshUpload {
-    let e = half_extent;
-    let normal = [0.0, 1.0, 0.0];
-    let tangent = [1.0, 0.0, 0.0];
-    let positions = [[-e, 0.0, -e], [e, 0.0, -e], [e, 0.0, e], [-e, 0.0, e]];
-    let uvs = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
-    let vertices = positions
-        .iter()
-        .zip(uvs.iter())
-        .map(|(p, uv)| PackedVertex::from_components(*p, normal, *uv, tangent, 1.0))
-        .collect();
-    // Counter-clockwise winding when viewed from above (positive Y)
-    MeshUpload {
-        vertices,
-        indices: vec![0, 2, 1, 0, 3, 2],
-    }
-}
-
-fn sphere_mesh(radius: f32) -> MeshUpload {
-    let center = Vec3::ZERO;
-    let lat_steps = 16;
-    let lon_steps = 32;
-    let mut vertices = Vec::new();
-    let mut indices = Vec::new();
-
-    for i in 0..=lat_steps {
-        let phi = std::f32::consts::PI * (i as f32 / lat_steps as f32);
-        let y = phi.cos();
-        let sin_phi = phi.sin();
-        for j in 0..=lon_steps {
-            let theta = 2.0 * std::f32::consts::PI * (j as f32 / lon_steps as f32);
-            let x = sin_phi * theta.cos();
-            let z = sin_phi * theta.sin();
-
-            let position = center + Vec3::new(x, y, z) * radius;
-            let normal = [x, y, z];
-            let uv = [j as f32 / lon_steps as f32, i as f32 / lat_steps as f32];
-            let tangent_vec = Vec3::new(-z, 0.0, x).normalize_or_zero();
-            let tangent = tangent_vec.to_array();
-            vertices.push(PackedVertex::from_components(
-                position.to_array(),
-                normal,
-                uv,
-                tangent,
-                1.0,
-            ));
-        }
-    }
-
-    for i in 0..lat_steps {
-        for j in 0..lon_steps {
-            let a = (i * (lon_steps + 1) + j) as u32;
-            let b = a + (lon_steps + 1) as u32;
-            // CCW winding when viewed from outside (outward normals).
-            indices.extend_from_slice(&[a, a + 1, b]);
-            indices.extend_from_slice(&[b, a + 1, b + 1]);
-        }
-    }
-
-    MeshUpload { vertices, indices }
-}
 
 fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMaterial {
     GpuMaterial {
@@ -162,56 +61,32 @@ fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
     build_transform_parts(snap.position, snap.rotation, snap.scale)
 }
 
-// ── Per-mesh-type cache ───────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum MeshKey {
-    /// Arbitrary file path — loaded via helio_asset_compat.
-    File(String),
-}
-
-fn mesh_for_key(key: &MeshKey) -> Result<MeshUpload, String> {
-    match key {
-        MeshKey::File(path) => load_fbx_mesh(path),
-    }
-}
-
-/// Resolve a `mesh_asset` prop value to the actual embedded asset path.
+/// Resolve a mesh asset path string to an absolute filesystem path.
 ///
-/// We do not infer primitive types here. The mesh asset must resolve to a real
-/// file in either the project root or the embedded engine assets tree.
-fn mesh_key_from_asset_path(path: &str) -> Option<MeshKey> {
-    if path.is_empty() {
-        return None;
-    }
-    let normalized = path.replace('\\', "/");
+/// Checks (in order): absolute, project-root-relative, cwd/assets-relative,
+/// virtual-fs manifest.  Returns `None` if the asset cannot be located.
+fn resolve_mesh_path(path: &str) -> Option<PathBuf> {
+    if path.is_empty() { return None; }
+    let norm = path.replace('\\', "/");
+    let p    = Path::new(&norm);
 
-    let direct = if Path::new(&normalized).is_absolute() {
-        PathBuf::from(&normalized)
-    } else if let Some(root) = engine_state::get_project_path() {
-        PathBuf::from(root).join(&normalized)
-    } else {
-        PathBuf::from(&normalized)
-    };
-    if direct.exists() {
-        return Some(MeshKey::File(direct.to_string_lossy().into_owned()));
+    if p.is_absolute() && p.exists() { return Some(p.to_path_buf()); }
+
+    if let Some(root) = engine_state::get_project_path() {
+        let abs = PathBuf::from(root).join(&norm);
+        if abs.exists() { return Some(abs); }
     }
 
-    let assets_root = std::env::current_dir().ok().map(|cwd| cwd.join("assets"))?;
-    let embedded = assets_root.join(&normalized);
-    if embedded.exists() {
-        return Some(MeshKey::File(embedded.to_string_lossy().into_owned()));
+    if let Ok(cwd) = std::env::current_dir() {
+        let abs = cwd.join("assets").join(&norm);
+        if abs.exists() { return Some(abs); }
     }
 
-    let manifest = virtual_fs::manifest(Path::new("assets")).ok()?;
-    manifest
-        .into_iter()
-        .find(|entry| !entry.is_dir && entry.path == normalized)
-        .map(|entry| MeshKey::File(assets_root.join(entry.path).to_string_lossy().into_owned()))
-}
-
-fn scene_id_from_actor_key(key: &str) -> &str {
-    key.split("::").next().unwrap_or(key)
+    let assets_root = std::env::current_dir().ok()?.join("assets");
+    let manifest    = virtual_fs::manifest(Path::new("assets")).ok()?;
+    manifest.into_iter()
+        .find(|e| !e.is_dir && e.path == norm)
+        .map(|e| assets_root.join(e.path))
 }
 
 /// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
@@ -509,176 +384,6 @@ impl HelioRenderer {
             .lock()
             .map(|m| m.clone())
             .unwrap_or_default()
-    }
-
-    /// Insert a converted scene into the active Helio scene and place it in front of the camera.
-    pub fn insert_converted_scene(&mut self, scene: ConvertedScene) -> Result<(), String> {
-        let Some(inner) = &mut self.inner else {
-            return Err("Renderer not initialized yet".to_string());
-        };
-
-        // Compute local-space bounds over whichever geometry representation is present.
-        let mut bb_min = Vec3::splat(f32::INFINITY);
-        let mut bb_max = Vec3::splat(f32::NEG_INFINITY);
-        let mut saw_vertex = false;
-
-        if let Some(sectioned_mesh) = scene.sectioned_mesh.as_ref() {
-            for v in &sectioned_mesh.vertices {
-                let p = Vec3::from(v.position);
-                bb_min = bb_min.min(p);
-                bb_max = bb_max.max(p);
-                saw_vertex = true;
-            }
-        } else {
-            for mesh in &scene.meshes {
-                for v in &mesh.vertices {
-                    let p = mesh.node_transform.transform_point3(Vec3::from(v.position));
-                    bb_min = bb_min.min(p);
-                    bb_max = bb_max.max(p);
-                    saw_vertex = true;
-                }
-            }
-        }
-
-        if !saw_vertex {
-            return Err("Converted scene contained no vertices".to_string());
-        }
-
-        let local_center = (bb_min + bb_max) * 0.5;
-        let local_size = bb_max - bb_min;
-        let scene_radius = (local_size * 0.5).length().max(0.5);
-
-        let (sy, cy) = self.cam_yaw.sin_cos();
-        let (sp, cp) = self.cam_pitch.sin_cos();
-        let camera_forward = Vec3::new(sy * cp, sp, -cy * cp).normalize_or_zero();
-        let spawn_pos = self.cam_pos + camera_forward * 8.0;
-
-        let placement_base =
-            Mat4::from_translation(spawn_pos) * Mat4::from_translation(-local_center);
-
-        let default_mat = inner.renderer.scene_mut().insert_material(make_material(
-            [0.82, 0.84, 0.9, 1.0],
-            0.5,
-            0.0,
-        ));
-
-        let mut inserted_any = false;
-
-        if let Some(sectioned_mesh) = scene.sectioned_mesh.as_ref() {
-            let converted_vertices: Vec<PackedVertex> = sectioned_mesh
-                .vertices
-                .iter()
-                .map(|v| PackedVertex {
-                    position: v.position,
-                    bitangent_sign: v.bitangent_sign,
-                    tex_coords0: v.tex_coords0,
-                    tex_coords1: v.tex_coords1,
-                    normal: v.normal,
-                    tangent: v.tangent,
-                })
-                .collect();
-
-            for section in &sectioned_mesh.sections {
-                if section.indices.is_empty() {
-                    continue;
-                }
-
-                let upload = MeshUpload {
-                    vertices: converted_vertices.clone(),
-                    indices: section.indices.clone(),
-                };
-
-                let Some(mesh_id) = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::mesh(upload.clone()))
-                    .as_mesh()
-                else {
-                    continue;
-                };
-
-                inner.scene_picker.register_mesh(mesh_id, &upload);
-
-                let _ =
-                    inner
-                        .renderer
-                        .scene_mut()
-                        .insert_actor(SceneActor::object(ObjectDescriptor {
-                            mesh: mesh_id,
-                            material: default_mat,
-                            transform: placement_base,
-                            bounds: [spawn_pos.x, spawn_pos.y, spawn_pos.z, scene_radius],
-                            flags: 0,
-                            groups: GroupMask::NONE,
-                            movability: Some(Movability::Movable),
-                            user_tag: 0,
-                        }));
-
-                inserted_any = true;
-            }
-        } else {
-            for mesh in &scene.meshes {
-                if mesh.indices.is_empty() || mesh.vertices.is_empty() {
-                    continue;
-                }
-
-                let converted_vertices: Vec<PackedVertex> = mesh
-                    .vertices
-                    .iter()
-                    .map(|v| PackedVertex {
-                        position: v.position,
-                        bitangent_sign: v.bitangent_sign,
-                        tex_coords0: v.tex_coords0,
-                        tex_coords1: v.tex_coords1,
-                        normal: v.normal,
-                        tangent: v.tangent,
-                    })
-                    .collect();
-
-                let upload = MeshUpload {
-                    vertices: converted_vertices,
-                    indices: mesh.indices.clone(),
-                };
-
-                let Some(mesh_id) = inner
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::mesh(upload.clone()))
-                    .as_mesh()
-                else {
-                    continue;
-                };
-
-                inner.scene_picker.register_mesh(mesh_id, &upload);
-
-                let transform = placement_base * mesh.node_transform;
-                let pos = transform.w_axis.truncate();
-
-                let _ =
-                    inner
-                        .renderer
-                        .scene_mut()
-                        .insert_actor(SceneActor::object(ObjectDescriptor {
-                            mesh: mesh_id,
-                            material: default_mat,
-                            transform,
-                            bounds: [pos.x, pos.y, pos.z, scene_radius],
-                            flags: 0,
-                            groups: GroupMask::NONE,
-                            movability: Some(Movability::Movable),
-                            user_tag: 0,
-                        }));
-
-                inserted_any = true;
-            }
-        }
-
-        if !inserted_any {
-            return Err("Scene sections contained no renderable indices".to_string());
-        }
-
-        inner.scene_picker.rebuild_instances(inner.renderer.scene());
-        Ok(())
     }
 
     // ── Editor Integration ───────────────────────────────────────────────────
@@ -1037,8 +742,8 @@ impl HelioRenderer {
             }
 
             fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
-                let key = mesh_key_from_asset_path(path.to_str().unwrap_or(""))?;
-                match mesh_for_key(&key) {
+                let abs = resolve_mesh_path(path.to_str().unwrap_or(""))?;
+                match load_fbx_mesh(abs.to_str().unwrap_or("")) {
                     Ok(u)  => Some(u),
                     Err(e) => {
                         self.report_error(format!(
