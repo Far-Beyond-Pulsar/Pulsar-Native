@@ -292,8 +292,14 @@ impl HelioRenderer {
             }
         }
 
+        let t_sync = std::time::Instant::now();
         Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
+        let sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
+        if sync_ms > 5.0 {
+            tracing::warn!("[SYNC_SCENE] took {:.2}ms — SLOW", sync_ms);
+        }
 
+        let t_render = std::time::Instant::now();
         let (sy, cy) = self.cam_yaw.sin_cos();
         let (sp, cp) = self.cam_pitch.sin_cos();
         let fwd = Vec3::new(sy * cp, sp, -cy * cp);
@@ -314,6 +320,10 @@ impl HelioRenderer {
         inner.renderer.debug_clear();
         inner.editor_state.draw_gizmos(&mut inner.renderer);
 
+        let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
+        if render_ms > 5.0 {
+            tracing::warn!("[HELIO RENDER] gpu render took {:.2}ms — SLOW", render_ms);
+        }
         if let Err(e) = inner.renderer.render(&camera, &view) {
             tracing::error!("Helio render error: {:?}", e);
         }
@@ -846,7 +856,11 @@ impl HelioRenderer {
         }
 
         // ── Component sync pass ───────────────────────────────────────────────
+        let t_snap = std::time::Instant::now();
         let snapshots = scene_db.get_all_snapshots();
+        let snap_ms = t_snap.elapsed().as_secs_f64() * 1000.0;
+        if snap_ms > 2.0 { tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms); }
+        let t_components = std::time::Instant::now();
         let mut live_object_tags  = std::collections::HashSet::<u64>::new();
         let mut live_light_tags   = std::collections::HashSet::<u64>::new();
         let mut live_script_keys  = std::collections::HashSet::<String>::new();
@@ -885,6 +899,9 @@ impl HelioRenderer {
             }
         }
 
+        let comp_ms = t_components.elapsed().as_secs_f64() * 1000.0;
+        if comp_ms > 2.0 { tracing::warn!("[SYNC_SCENE] component loop took {:.2}ms", comp_ms); }
+
         // Cull script registrations for objects no longer in the scene.
         SCRIPT_REGISTRY.lock().retain_keys(&live_script_keys);
 
@@ -909,6 +926,9 @@ impl HelioRenderer {
         }
 
         // Rebuild scene picker BVH after any insertions or removals.
+        let t_picker = std::time::Instant::now();
         inner.scene_picker.rebuild_instances(inner.renderer.scene());
+        let picker_ms = t_picker.elapsed().as_secs_f64() * 1000.0;
+        if picker_ms > 2.0 { tracing::warn!("[SYNC_SCENE] picker rebuild took {:.2}ms", picker_ms); }
     }
 }

@@ -332,37 +332,39 @@ ui_common::panel_boilerplate!(PropertiesPanelWrapper);
 
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t_props = std::time::Instant::now();
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         let selected_object_id = state.selected_object();
         let scene_revision = state.scene_revision;
 
-        // Force a section rebuild on external scene changes even when selection stays the same.
         if scene_revision != self.last_scene_revision {
             self.last_scene_revision = scene_revision;
             self.current_object_id = None;
         }
 
-        // Update sections when selection changes or when sections are unexpectedly missing
-        if selected_object_id != self.current_object_id
-            || (selected_object_id.is_some() && self.object_type_fields_section.is_none())
-        {
+        let selection_changed = selected_object_id != self.current_object_id
+            || (selected_object_id.is_some() && self.object_type_fields_section.is_none());
+
+        if selection_changed {
+            tracing::info!("[PROPS RENDER] selection changed to {:?} — rebuilding sections", selected_object_id);
             if let Some(ref object_id) = selected_object_id {
-                // Create new sections for the selected object
                 let scene_db = state.scene_database.clone();
                 let object_id_clone = object_id.clone();
 
-                // Object header section
+                let t0 = std::time::Instant::now();
                 self.object_header_section = Some(cx.new(|cx| {
                     ObjectHeaderSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
+                tracing::info!("[PROPS RENDER] ObjectHeaderSection::new in {:?}", t0.elapsed());
 
-                // Transform section
+                let t1 = std::time::Instant::now();
                 self.transform_section = Some(cx.new(|cx| {
                     TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
+                tracing::info!("[PROPS RENDER] TransformSection::new in {:?}", t1.elapsed());
 
-                // Reflection-backed object type property section
+                let t2 = std::time::Instant::now();
                 self.object_type_fields_section = Some(cx.new(|cx| {
                     ObjectTypeFieldsSection::new(
                         object_id_clone.clone(),
@@ -372,10 +374,11 @@ impl Render for PropertiesPanelWrapper {
                         cx,
                     )
                 }));
+                tracing::info!("[PROPS RENDER] ObjectTypeFieldsSection::new in {:?}", t2.elapsed());
 
                 self.current_object_id = Some(object_id.clone());
+                tracing::info!("[PROPS RENDER] section rebuild total {:?}", t_props.elapsed());
             } else {
-                // No selection - clear all sections
                 self.object_header_section = None;
                 self.transform_section = None;
                 self.object_type_fields_section = None;
