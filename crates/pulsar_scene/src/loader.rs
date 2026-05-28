@@ -343,8 +343,27 @@ fn load_light(
     })
 }
 
+/// Convert a single sRGB channel (0–1 range) to linear light.
+///
+/// Scene files store colours as normalised sRGB (0–1).  Helio's WGSL shader
+/// expects linear RGB, so we must un-gamma the values before handing them off.
+#[inline]
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
-    let color     = obj.light_color();
+    let srgb      = obj.light_color();
+    // Convert sRGB → linear for correct physically-based lighting.
+    let color     = [
+        srgb_to_linear(srgb[0]),
+        srgb_to_linear(srgb[1]),
+        srgb_to_linear(srgb[2]),
+    ];
     let intensity = obj.light_intensity();
     let range     = obj.light_range();
     let pos       = obj.world_position();
@@ -358,12 +377,16 @@ fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
     );
     let forward = (quat * Vec3::NEG_Z).to_array();
 
+    // u32::MAX means "no shadow map" in Helio (documented as -1u32 = no shadow).
+    // Using 0 would reference an uninitialised shadow slot and corrupt lighting.
+    const NO_SHADOW: u32 = u32::MAX;
+
     match light_type {
         LightType::Directional => GpuLight {
             position_range:  [0., 0., 0., f32::MAX],
             direction_outer: [forward[0], forward[1], forward[2], 0.],
             color_intensity: [color[0], color[1], color[2], intensity],
-            shadow_index:    0,
+            shadow_index:    NO_SHADOW,
             light_type:      HelioLightType::Directional as u32,
             inner_angle:     0.,
             _pad:            0,
@@ -372,7 +395,7 @@ fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
             position_range:  [pos[0], pos[1], pos[2], range],
             direction_outer: [0., 0., -1., 0.],
             color_intensity: [color[0], color[1], color[2], intensity],
-            shadow_index:    0,
+            shadow_index:    NO_SHADOW,
             light_type:      HelioLightType::Point as u32,
             inner_angle:     0.,
             _pad:            0,
@@ -384,7 +407,7 @@ fn build_gpu_light(obj: &SceneObject, light_type: LightType) -> GpuLight {
                 position_range:  [pos[0], pos[1], pos[2], range],
                 direction_outer: [forward[0], forward[1], forward[2], outer],
                 color_intensity: [color[0], color[1], color[2], intensity],
-                shadow_index:    0,
+                shadow_index:    NO_SHADOW,
                 light_type:      HelioLightType::Spot as u32,
                 inner_angle:     inner,
                 _pad:            0,
