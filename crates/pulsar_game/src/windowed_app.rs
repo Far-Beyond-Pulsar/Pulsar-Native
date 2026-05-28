@@ -9,16 +9,18 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use winit::{
     application::ApplicationHandler,
-    event::WindowEvent,
+    event::{DeviceEvent, DeviceId, ElementState, WindowEvent},
     event_loop::ActiveEventLoop,
-    window::{Window, WindowId},
+    window::{CursorGrabMode, Window, WindowId},
 };
 
 use helio::{Camera, Renderer, RendererConfig, required_wgpu_features, required_wgpu_limits};
 
+use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
 
 // ── Per-window GPU state ──────────────────────────────────────────────────────
@@ -30,13 +32,12 @@ struct GameWindow {
     surface_config: wgpu::SurfaceConfiguration,
     surface_format: wgpu::TextureFormat,
     renderer: Renderer,
+    /// Built-in free-look camera — active when no ECS camera has been set.
+    freecam: FreeCam,
 }
 
 impl GameWindow {
     /// Initialise a new window's GPU surface and Helio renderer.
-    ///
-    /// Requires that `device` and `queue` are already initialised (the first
-    /// window creates them; subsequent windows reuse them).
     fn new(
         handle: WindowHandle,
         window: Arc<Window>,
@@ -46,7 +47,6 @@ impl GameWindow {
         queue: Arc<wgpu::Queue>,
         desc: &WindowDescriptor,
     ) -> Self {
-        // Safety: the window is `Arc`-owned and outlives the surface.
         let surface = instance
             .create_surface(window.clone())
             .expect("Failed to create wgpu surface");
@@ -86,6 +86,7 @@ impl GameWindow {
             surface_config,
             surface_format,
             renderer,
+            freecam: FreeCam::default(),
         }
     }
 
@@ -99,18 +100,24 @@ impl GameWindow {
         self.renderer.set_render_size(width, height);
     }
 
-    fn render(&mut self, camera: &RenderCamera) {
+    /// Render one frame.
+    ///
+    /// `ecs_camera` is whatever the ECS thread last wrote via
+    /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
+    fn render(&mut self, ecs_camera: Option<RenderCamera>) {
+        let cam = ecs_camera.unwrap_or_else(|| self.freecam.to_render_camera());
+
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;
 
         let helio_cam = Camera::perspective_look_at(
-            glam::Vec3::from_array(camera.position),
-            glam::Vec3::from_array(camera.target),
-            glam::Vec3::from_array(camera.up),
-            camera.fov_y,
+            glam::Vec3::from_array(cam.position),
+            glam::Vec3::from_array(cam.target),
+            glam::Vec3::from_array(cam.up),
+            cam.fov_y,
             aspect,
-            camera.near,
-            camera.far,
+            cam.near,
+            cam.far,
         );
 
         let output = match self.surface.get_current_texture() {
@@ -134,7 +141,6 @@ impl GameWindow {
 
 // ── Shared GPU context ────────────────────────────────────────────────────────
 
-/// Lazily-initialised wgpu adapter + device + queue shared across all windows.
 struct GpuContext {
     instance: wgpu::Instance,
     adapter: Option<wgpu::Adapter>,
@@ -156,9 +162,6 @@ impl GpuContext {
         }
     }
 
-    /// Initialise the adapter + device from the first compatible surface.
-    ///
-    /// No-op if already initialised.
     fn ensure_device(&mut self, surface: &wgpu::Surface<'_>) {
         if self.device.is_some() {
             return;
@@ -199,11 +202,9 @@ impl GpuContext {
     fn adapter(&self) -> &wgpu::Adapter {
         self.adapter.as_ref().expect("GPU not initialised")
     }
-
     fn device(&self) -> Arc<wgpu::Device> {
         self.device.clone().expect("GPU not initialised")
     }
-
     fn queue(&self) -> Arc<wgpu::Queue> {
         self.queue.clone().expect("GPU not initialised")
     }
@@ -211,36 +212,22 @@ impl GpuContext {
 
 // ── PulsarApp ─────────────────────────────────────────────────────────────────
 
-/// The main-thread winit application.  Owns all [`GameWindow`]s and the
-/// shared GPU context.
-///
-/// The ECS [`TickLoop`][crate::TickLoop] is stored here and only spawned on the
-/// **first** `resumed` event, after all initial windows have been created and
-/// their GPU state is ready.  This guarantees that `begin_play` never fires
-/// before the primary window exists.
 pub struct PulsarApp {
     bridge: Arc<WindowBridge>,
-
     gpu: GpuContext,
-
-    /// The ECS tick loop, held until `resumed` fires for the first time.
-    /// Taken (set to `None`) when the ECS thread is spawned.
     tick_loop: Option<crate::tick::TickLoop>,
-
-    /// Windows to open during `resumed` (before the ECS thread starts).
-    /// Additional windows requested at runtime arrive via `user_event`.
     initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
-
-    /// Map from winit's `WindowId` to our stable `WindowHandle`.
     winit_to_handle: HashMap<WindowId, WindowHandle>,
-    /// The live game windows, keyed by our stable handle.
     windows: HashMap<WindowHandle, GameWindow>,
-
-    /// Project root used to resolve asset / scene paths.
     project_root: PathBuf,
-
-    /// Path to the scene file to load into the first window, if any.
     default_scene: Option<PathBuf>,
+
+    /// Which window currently owns the cursor (receives mouse-look).
+    focused_window: Option<WindowHandle>,
+    /// Whether the cursor is currently captured for mouse-look.
+    cursor_captured: bool,
+    /// Time of last `about_to_wait` — used to compute per-frame dt for freecam.
+    last_frame: Instant,
 }
 
 impl PulsarApp {
@@ -260,10 +247,38 @@ impl PulsarApp {
             windows: HashMap::new(),
             project_root,
             default_scene,
+            focused_window: None,
+            cursor_captured: false,
+            last_frame: Instant::now(),
         }
     }
 
-    // ── Internal helpers ──────────────────────────────────────────────────────
+    // ── Cursor capture ────────────────────────────────────────────────────────
+
+    fn capture_cursor(&mut self, handle: WindowHandle) {
+        let Some(gw) = self.windows.get(&handle) else { return };
+        // Try confined first (stays in window), fall back to locked (OS-locked).
+        let ok = gw.window.set_cursor_grab(CursorGrabMode::Confined)
+            .or_else(|_| gw.window.set_cursor_grab(CursorGrabMode::Locked))
+            .is_ok();
+        if ok {
+            gw.window.set_cursor_visible(false);
+            self.cursor_captured = true;
+            self.focused_window = Some(handle);
+        }
+    }
+
+    fn release_cursor(&mut self) {
+        if let Some(handle) = self.focused_window {
+            if let Some(gw) = self.windows.get(&handle) {
+                let _ = gw.window.set_cursor_grab(CursorGrabMode::None);
+                gw.window.set_cursor_visible(true);
+            }
+        }
+        self.cursor_captured = false;
+    }
+
+    // ── Window lifecycle ──────────────────────────────────────────────────────
 
     fn open_window(
         &mut self,
@@ -293,15 +308,11 @@ impl PulsarApp {
             }
         };
 
-        // Initialise the shared GPU context from the first window's surface.
         if self.gpu.device.is_none() {
-            // Safe: we need a surface to pick a compatible adapter, but
-            // GameWindow::new will create its own surface from the same window.
             let temp_surface = self.gpu.instance
                 .create_surface(window.clone())
                 .expect("Failed to create surface for GPU init");
             self.gpu.ensure_device(&temp_surface);
-            // temp_surface drops here; GameWindow::new makes its own.
         }
 
         let winit_id = window.id();
@@ -317,17 +328,30 @@ impl PulsarApp {
 
         self.winit_to_handle.insert(winit_id, handle);
 
-        // Load the scene into this window's renderer before inserting so the
-        // first frame already has content.
+        // Load the scene into this window's renderer if one was requested.
         if let Some(ref path) = scene_path {
+            tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into window");
             match pulsar_scene::SceneLoader::load_file(path, &self.project_root, &mut game_window.renderer) {
-                Ok(loaded) => tracing::info!(
-                    window = handle.id(),
-                    scene = %path.display(),
-                    meshes = loaded.meshes.len(),
-                    lights = loaded.lights.len(),
-                    "Scene loaded into window"
-                ),
+                Ok(loaded) => {
+                    tracing::info!(
+                        window = handle.id(),
+                        scene = %path.display(),
+                        meshes = loaded.meshes.len(),
+                        lights = loaded.lights.len(),
+                        "Scene loaded into window"
+                    );
+
+                    // Seed the freecam from the editor camera stored in the
+                    // scene file, if present, so the first frame matches the
+                    // editor view.
+                    if let Ok(cam) = editor_camera_from_file(path) {
+                        game_window.freecam = cam;
+                        tracing::info!(
+                            window = handle.id(),
+                            "FreeCam seeded from scene editor camera"
+                        );
+                    }
+                }
                 Err(e) => tracing::warn!(
                     window = handle.id(),
                     scene = %path.display(),
@@ -344,12 +368,14 @@ impl PulsarApp {
         if let Some(gw) = self.windows.remove(&handle) {
             self.winit_to_handle.remove(&gw.window.id());
             self.bridge.remove_camera(handle);
+            if self.focused_window == Some(handle) {
+                self.focused_window = None;
+                self.cursor_captured = false;
+            }
             tracing::info!(id = handle.id(), "Window closed");
         }
     }
 
-    /// Spawn the ECS tick thread.  Called once, after all initial windows are
-    /// open, so `begin_play` can safely call `wm.set_camera` / `wm.open`.
     fn spawn_ecs_thread(&mut self) {
         if let Some(mut tick_loop) = self.tick_loop.take() {
             std::thread::Builder::new()
@@ -362,14 +388,7 @@ impl PulsarApp {
 }
 
 impl ApplicationHandler<WindowCommand> for PulsarApp {
-    /// Called when the event loop is ready to receive window-creation requests.
-    ///
-    /// We open every initial window here **first**, then start the ECS thread.
-    /// This means the primary window's GPU context exists before `begin_play`
-    /// fires on any actor.
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // Open all pre-queued windows.  The *first* one gets the default scene
-        // loaded into its renderer before the ECS thread starts.
         let initial = std::mem::take(&mut self.initial_windows);
         let default_scene = self.default_scene.take();
 
@@ -378,11 +397,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             self.open_window_with_scene(event_loop, handle, desc, scene);
         }
 
-        // Windows are live — start the ECS tick thread.
         self.spawn_ecs_thread();
     }
 
-    /// Window-creation / close commands from the ECS thread (runtime).
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WindowCommand) {
         match event {
             WindowCommand::Open { handle, desc } => {
@@ -393,6 +410,25 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 if self.windows.is_empty() {
                     tracing::info!("All windows closed — exiting");
                     event_loop.exit();
+                }
+            }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        // Raw mouse motion — only forwarded to the freecam of the focused window
+        // when the cursor is captured.
+        if let DeviceEvent::MouseMotion { delta: (dx, dy) } = event {
+            if self.cursor_captured {
+                if let Some(handle) = self.focused_window {
+                    if let Some(gw) = self.windows.get_mut(&handle) {
+                        gw.freecam.on_mouse_delta(dx, dy);
+                    }
                 }
             }
         }
@@ -409,7 +445,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
         };
 
         match event {
+            // ── Window management ─────────────────────────────────────────────
             WindowEvent::CloseRequested => {
+                self.release_cursor();
                 self.close_window(handle);
                 if self.windows.is_empty() {
                     event_loop.exit();
@@ -424,10 +462,58 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
                 }
             }
 
-            WindowEvent::RedrawRequested => {
+            // ── Focus ─────────────────────────────────────────────────────────
+            WindowEvent::Focused(focused) => {
+                if focused {
+                    self.focused_window = Some(handle);
+                    // Re-capture when regaining focus (if we were captured before).
+                    if self.cursor_captured {
+                        self.capture_cursor(handle);
+                    }
+                } else {
+                    // Always release on blur — other apps need the cursor.
+                    self.release_cursor();
+                }
+            }
+
+            // ── Keyboard ──────────────────────────────────────────────────────
+            WindowEvent::KeyboardInput { event: key_event, .. } => {
+                use winit::keyboard::Key;
+
+                let pressed = key_event.state == ElementState::Pressed;
+
+                // Escape releases the cursor.
+                if pressed {
+                    if let winit::keyboard::Key::Named(winit::keyboard::NamedKey::Escape) =
+                        &key_event.logical_key
+                    {
+                        self.release_cursor();
+                        return;
+                    }
+                }
+
                 if let Some(gw) = self.windows.get_mut(&handle) {
-                    let camera = self.bridge.camera(handle).unwrap_or_default();
-                    gw.render(&camera);
+                    gw.freecam.on_key(&key_event.physical_key, pressed);
+                }
+            }
+
+            // ── Mouse click — capture cursor ──────────────────────────────────
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                if !self.cursor_captured {
+                    self.capture_cursor(handle);
+                }
+            }
+
+            // ── Render ────────────────────────────────────────────────────────
+            WindowEvent::RedrawRequested => {
+                // ECS camera takes priority; freecam is the fallback.
+                let ecs_camera = self.bridge.camera(handle);
+                if let Some(gw) = self.windows.get_mut(&handle) {
+                    gw.render(ecs_camera);
                 }
             }
 
@@ -436,8 +522,45 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        for gw in self.windows.values() {
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+
+        // Advance every window's freecam and request a redraw.
+        for gw in self.windows.values_mut() {
+            gw.freecam.update(dt);
             gw.window.request_redraw();
         }
     }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Try to extract the editor camera from a scene file and return a [`FreeCam`]
+/// seeded with that position + orientation.
+fn editor_camera_from_file(path: &std::path::Path) -> Result<FreeCam, ()> {
+    let text = std::fs::read_to_string(path).map_err(|_| ())?;
+    let v: serde_json::Value = serde_json::from_str(&text).map_err(|_| ())?;
+
+    let cam = v.get("editor").and_then(|e| e.get("camera")).ok_or(())?;
+
+    let pos = cam.get("position")
+        .and_then(|p| p.as_array())
+        .and_then(|a| {
+            if a.len() >= 3 {
+                Some(glam::Vec3::new(
+                    a[0].as_f64()? as f32,
+                    a[1].as_f64()? as f32,
+                    a[2].as_f64()? as f32,
+                ))
+            } else {
+                None
+            }
+        })
+        .ok_or(())?;
+
+    let yaw   = cam.get("yaw")  .and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(0.0);
+    let pitch = cam.get("pitch").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(0.0);
+
+    Ok(FreeCam::default().place(pos, yaw, pitch))
 }
