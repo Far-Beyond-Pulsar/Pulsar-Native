@@ -32,7 +32,7 @@ helio   = { workspace = true }
 winit   = { workspace = true }
 wgpu    = { workspace = true }
 glam    = { workspace = true }
-pollster = "0.3"
+pollster = "0.4"
 
 # Scene loading + settings
 pulsar_scene    = { workspace = true }
