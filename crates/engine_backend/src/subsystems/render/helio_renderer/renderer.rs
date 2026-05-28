@@ -7,16 +7,16 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
 
 use helio::{
-    Camera, EditorState, GizmoMode, GpuLight, GpuMaterial, GroupMask, LightId, LightType,
-    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex, Renderer,
-    RendererConfig, SceneActor, ScenePicker, SkyActor,
+    Camera, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, PackedVertex,
+    Renderer, RendererConfig, SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
 use helio_asset_compat::ConvertedScene;
 use engine_fs::virtual_fs;
 use pulsar_scene::{component_instances_from_props, build_transform_parts};
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, ComponentRuntimeContext, RuntimeComponentOwner,
-    SceneRenderPayload,
+    scene_id_to_tag,
 };
 use pulsar_events::SCRIPT_REGISTRY;
 
@@ -277,26 +277,10 @@ pub struct HelioRenderer {
 }
 
 struct HelioInner {
-    renderer: Renderer,
-    device: Arc<wgpu::Device>,
-    queue: Arc<wgpu::Queue>,
-    /// SceneDb id → (helio ObjectId, MeshId) — mesh objects only.
-    object_map: HashMap<String, (ObjectId, MeshId)>,
-    /// SceneDb id → helio LightId — lights only, for illumination.
-    /// Helio renders its own billboard for each light; this map lets us
-    /// reverse-lookup SceneDb IDs from the actor the user clicks.
-    light_map: HashMap<String, LightId>,
-    /// LightId → SceneDb id reverse index (built alongside light_map).
-    light_id_to_scene: HashMap<LightId, String>,
-    /// MeshKey → (MeshId, MaterialId) shared across objects of that shape/file.
-    mesh_cache: HashMap<MeshKey, (MeshId, MaterialId)>,
-    /// Raw mesh_asset path → resolved mesh key (or None if unresolved).
-    mesh_asset_resolution_cache: HashMap<String, Option<MeshKey>>,
-    /// Tracks unresolved mesh paths that have already been reported.
-    reported_mesh_asset_errors: HashSet<String>,
-    /// Helio editor state for gizmo management
+    renderer:     Renderer,
+    device:       Arc<wgpu::Device>,
+    queue:        Arc<wgpu::Queue>,
     editor_state: EditorState,
-    /// Scene picker for raycasting object selection
     scene_picker: ScenePicker,
 }
 
@@ -312,9 +296,9 @@ impl HelioRenderer {
             pending_deselect: Arc::new(AtomicBool::new(false)),
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
-            cam_pos: Vec3::new(8.0, 6.0, 12.0), // Better view angle
-            cam_yaw: -0.5,                      // Look left a bit
-            cam_pitch: -0.3,                    // Look down to see objects
+            cam_pos: Vec3::new(8.0, 6.0, 12.0),
+            cam_yaw: -0.5,
+            cam_pitch: -0.3,
             cam_local_velocity: Vec3::ZERO,
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
@@ -383,15 +367,9 @@ impl HelioRenderer {
             r.set_ambient([0.0, 0.0, 0.0], 0.0);
 
             let mut inner = HelioInner {
-                renderer: r,
-                device: device_arc,
-                queue: queue_arc,
-                object_map: HashMap::new(),
-                light_map: HashMap::new(),
-                light_id_to_scene: HashMap::new(),
-                mesh_cache: HashMap::new(),
-                mesh_asset_resolution_cache: HashMap::new(),
-                reported_mesh_asset_errors: HashSet::new(),
+                renderer:     r,
+                device:       device_arc,
+                queue:        queue_arc,
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
             };
@@ -633,6 +611,7 @@ impl HelioRenderer {
                             flags: 0,
                             groups: GroupMask::NONE,
                             movability: Some(Movability::Movable),
+                            user_tag: 0,
                         }));
 
                 inserted_any = true;
@@ -687,6 +666,7 @@ impl HelioRenderer {
                             flags: 0,
                             groups: GroupMask::NONE,
                             movability: Some(Movability::Movable),
+                            user_tag: 0,
                         }));
 
                 inserted_any = true;
@@ -757,38 +737,38 @@ impl HelioRenderer {
     pub fn get_selected_scene_db_id(&self) -> Option<String> {
         use helio::SceneActorId;
         let inner = self.inner.as_ref()?;
-        let selected = inner.editor_state.selected()?;
-        match selected {
-            SceneActorId::Object(obj_id) => inner
-                .object_map
-                .iter()
-                .find(|(_, (oid, _))| *oid == obj_id)
-                .map(|(id, _)| scene_id_from_actor_key(id).to_string()),
-            SceneActorId::Light(light_id) => inner.light_id_to_scene.get(&light_id).cloned(),
-            _ => None,
-        }
+        let tag = match inner.editor_state.selected()? {
+            SceneActorId::Object(obj_id) => inner.renderer.scene()
+                .iter_objects_for_editor()
+                .find(|(id, _, _, _)| *id == obj_id)
+                .map(|(_, _, _, t)| t)?,
+            SceneActorId::Light(light_id) => inner.renderer.scene()
+                .iter_lights()
+                .find(|(id, _, _)| *id == light_id)
+                .map(|(_, _, t)| t)?,
+            _ => return None,
+        };
+        self.scene_db.get_all_snapshots()
+            .into_iter()
+            .find(|snap| scene_id_to_tag(&snap.id) == tag)
+            .map(|snap| snap.id)
     }
 
     /// Select an object or light by its SceneDb ID.
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
         use helio::SceneActorId;
-        let Some(inner) = &mut self.inner else {
-            return false;
-        };
+        let Some(inner) = &mut self.inner else { return false };
+        let tag = scene_id_to_tag(scene_db_id);
 
-        if let Some((obj_id, _)) = inner
-            .object_map
-            .iter()
-            .find(|(key, _)| scene_id_from_actor_key(key) == scene_db_id)
-            .map(|(_, value)| value)
+        if let Some((obj_id, _, _, _)) = inner.renderer.scene()
+            .iter_objects_for_editor()
+            .find(|(_, _, _, t)| *t == tag)
         {
-            inner.editor_state.select(SceneActorId::Object(*obj_id));
+            inner.editor_state.select(SceneActorId::Object(obj_id));
             true
-        } else if let Some(&light_id) = inner
-            .light_map
-            .iter()
-            .find(|(key, _)| scene_id_from_actor_key(key) == scene_db_id)
-            .map(|(_, value)| value)
+        } else if let Some((light_id, _, _)) = inner.renderer.scene()
+            .iter_lights()
+            .find(|(_, _, t)| *t == tag)
         {
             inner.editor_state.select(SceneActorId::Light(light_id));
             true
@@ -820,20 +800,23 @@ impl HelioRenderer {
         };
 
         if let Some(ref id) = scene_db_id {
-            // Look up the Helio ObjectId from the scene_db_id
-            if let Some((helio_obj_id, _)) = inner
-                .object_map
-                .iter()
-                .find(|(key, _)| scene_id_from_actor_key(key) == id.as_str())
-                .map(|(_, value)| value)
+            let tag = scene_id_to_tag(id);
+            if let Some((obj_id, _, _, _)) = inner.renderer.scene()
+                .iter_objects_for_editor()
+                .find(|(_, _, _, t)| *t == tag)
             {
-                inner
-                    .editor_state
-                    .select(SceneActorId::Object(*helio_obj_id));
-                tracing::info!("[ATOMIC] Selected object: {} -> {:?}", id, helio_obj_id);
+                inner.editor_state.select(SceneActorId::Object(obj_id));
+                tracing::info!("[ATOMIC] Selected object: {}", id);
+                true
+            } else if let Some((light_id, _, _)) = inner.renderer.scene()
+                .iter_lights()
+                .find(|(_, _, t)| *t == tag)
+            {
+                inner.editor_state.select(SceneActorId::Light(light_id));
+                tracing::info!("[ATOMIC] Selected light: {}", id);
                 true
             } else {
-                tracing::warn!("[ATOMIC] Object not found in object_map: {}", id);
+                tracing::warn!("[ATOMIC] Actor not found for scene ID: {}", id);
                 false
             }
         } else {
@@ -886,29 +869,13 @@ impl HelioRenderer {
                     .cast_ray(inner.renderer.scene(), ray_o, ray_d)
                 {
                     match hit.actor_id {
-                        SceneActorId::Object(helio_obj_id) => {
-                            if let Some(scene_db_id) = inner
-                                .object_map
-                                .iter()
-                                .find(|(_, (oid, _))| *oid == helio_obj_id)
-                                .map(|(id, _)| scene_id_from_actor_key(id).to_string())
-                            {
-                                Some(Some(scene_db_id))
-                            } else {
-                                inner.editor_state.select(hit.actor_id);
-                                None
-                            }
-                        }
-                        SceneActorId::Light(light_id) => {
-                            // Light billboard clicked — resolve to SceneDb ID.
-                            if let Some(scene_db_id) =
-                                inner.light_id_to_scene.get(&light_id).cloned()
-                            {
-                                Some(Some(scene_db_id))
-                            } else {
-                                inner.editor_state.select(hit.actor_id);
-                                None
-                            }
+                        SceneActorId::Object(_) | SceneActorId::Light(_) => {
+                            // Resolve SceneDb ID by scanning for matching user_tag.
+                            let scene_db_id = self.scene_db.get_all_snapshots()
+                                .into_iter()
+                                .find(|snap| scene_id_to_tag(&snap.id) == hit.user_tag)
+                                .map(|snap| snap.id);
+                            Some(scene_db_id)
                         }
                         _ => {
                             inner.editor_state.select(hit.actor_id);
@@ -969,11 +936,15 @@ impl HelioRenderer {
                     if let Ok(mat) = inner.renderer.scene().get_object_transform(obj_id) {
                         let (scale_v, quat, pos_v) = mat.to_scale_rotation_translation();
                         let (yaw, pitch, roll) = quat.to_euler(EulerRot::YXZ);
-                        if let Some(scene_id) = inner
-                            .object_map
-                            .iter()
-                            .find(|(_, &(oid, _))| oid == obj_id)
-                            .map(|(id, _)| scene_id_from_actor_key(id).to_string())
+                        let tag = inner.renderer.scene()
+                            .iter_objects_for_editor()
+                            .find(|(id, _, _, _)| *id == obj_id)
+                            .map(|(_, _, _, t)| t)
+                            .unwrap_or(0);
+                        if let Some(scene_id) = self.scene_db.get_all_snapshots()
+                            .into_iter()
+                            .find(|snap| scene_id_to_tag(&snap.id) == tag)
+                            .map(|snap| snap.id)
                         {
                             self.scene_db.apply_transform(
                                 &scene_id,
@@ -991,8 +962,16 @@ impl HelioRenderer {
                             gpu_light.position_range[1],
                             gpu_light.position_range[2],
                         ];
-                        if let Some(scene_id) = inner.light_id_to_scene.get(&light_id).cloned() {
-                            // Lights have no meaningful rotation or scale — preserve existing values.
+                        let tag = inner.renderer.scene()
+                            .iter_lights()
+                            .find(|(id, _, _)| *id == light_id)
+                            .map(|(_, _, t)| t)
+                            .unwrap_or(0);
+                        if let Some(scene_id) = self.scene_db.get_all_snapshots()
+                            .into_iter()
+                            .find(|snap| scene_id_to_tag(&snap.id) == tag)
+                            .map(|snap| snap.id)
+                        {
                             self.scene_db.apply_transform(
                                 &scene_id,
                                 pos,
@@ -1041,158 +1020,33 @@ impl HelioRenderer {
         }
 
         struct HelioRuntimeContext<'a> {
-            inner:            &'a mut HelioInner,
+            renderer:         &'a mut Renderer,
             owner_snap:       &'a SceneObjectSnapshot,
-            live_mesh_ids:    &'a mut std::collections::HashSet<String>,
-            live_light_ids:   &'a mut std::collections::HashSet<String>,
             live_script_keys: &'a mut std::collections::HashSet<String>,
-            dragged_obj_id:   Option<ObjectId>,
-            dragged_light_id: Option<LightId>,
-            picker_dirty:     &'a mut bool,
             error_queue:      &'a Arc<Mutex<Vec<String>>>,
         }
 
         impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
-            fn upsert_actor(&mut self, actor_key: String, payload: SceneRenderPayload) {
-                match payload {
-                    SceneRenderPayload::Light(gpu_light) => {
-                        self.live_light_ids.insert(actor_key.clone());
-
-                        if let Some(&light_id) = self.inner.light_map.get(&actor_key) {
-                            // Skip updating if this light is currently being dragged —
-                            // Helio owns its position while the gizmo is active.
-                            if Some(light_id) != self.dragged_light_id {
-                                let _ = self.inner.renderer.scene_mut()
-                                    .update_light(light_id, gpu_light);
-                            }
-                        } else if let Some(light_id) = self.inner.renderer.scene_mut()
-                            .insert_actor(SceneActor::light(gpu_light))
-                            .as_light()
-                        {
-                            self.inner.light_map.insert(actor_key.clone(), light_id);
-                            self.inner.light_id_to_scene
-                                .insert(light_id, self.owner_snap.id.clone());
-                        }
-                    }
-
-                    SceneRenderPayload::Mesh(upload) => {
-                        self.live_mesh_ids.insert(actor_key.clone());
-
-                        // The mesh cache key is derived from the MeshUpload content.
-                        // We use the actor_key itself as the cache key so that each
-                        // unique scene object keeps its own mesh entry.
-                        //
-                        // If the mesh for this actor_key is not yet cached, insert it
-                        // into the Helio scene and cache the resulting IDs.
-                        if !self.inner.mesh_cache.contains_key(&MeshKey::File(actor_key.clone())) {
-                            let mid = match self.inner.renderer.scene_mut()
-                                .insert_actor(SceneActor::mesh(upload.clone()))
-                                .as_mesh()
-                            {
-                                Some(m) => m,
-                                None => {
-                                    self.report_error(format!(
-                                        "Failed to insert mesh for actor '{}'", actor_key
-                                    ));
-                                    return;
-                                }
-                            };
-                            let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                            let matid = self.inner.renderer.scene_mut().insert_material(mat);
-                            self.inner.scene_picker.register_mesh(mid, &upload);
-                            self.inner.mesh_cache.insert(
-                                MeshKey::File(actor_key.clone()),
-                                (mid, matid),
-                            );
-                        }
-
-                        let (mesh_id, mat_id) =
-                            self.inner.mesh_cache[&MeshKey::File(actor_key.clone())];
-                        let transform = build_transform(self.owner_snap);
-                        let radius = Vec3::from_array(self.owner_snap.scale).length() * 0.5;
-                        let pos    = transform.w_axis.truncate();
-                        let existing = self.inner.object_map.get(&actor_key).copied();
-
-                        if let Some((obj_id, existing_mesh_id)) = existing {
-                            let skip = self.dragged_obj_id.map_or(false, |did| did == obj_id);
-                            if existing_mesh_id != mesh_id {
-                                // Mesh changed — remove old object and re-insert.
-                                let _ = self.inner.renderer.scene_mut().remove_object(obj_id);
-                                if let Some(new_obj_id) = self.inner.renderer.scene_mut()
-                                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                                        mesh: mesh_id, material: mat_id, transform,
-                                        bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                                        flags: 0, groups: GroupMask::NONE,
-                                        movability: Some(Movability::Movable),
-                                    }))
-                                    .as_object()
-                                {
-                                    self.inner.object_map.insert(actor_key, (new_obj_id, mesh_id));
-                                    *self.picker_dirty = true;
-                                }
-                            } else if !skip {
-                                let _ = self.inner.renderer.scene_mut()
-                                    .update_object_transform(obj_id, transform);
-                            }
-                        } else if let Some(obj_id) = self.inner.renderer.scene_mut()
-                            .insert_actor(SceneActor::object(ObjectDescriptor {
-                                mesh: mesh_id, material: mat_id, transform,
-                                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                                flags: 0, groups: GroupMask::NONE,
-                                movability: Some(Movability::Movable),
-                            }))
-                            .as_object()
-                        {
-                            self.inner.object_map.insert(actor_key, (obj_id, mesh_id));
-                            *self.picker_dirty = true;
-                        }
-                    }
-                }
+            fn renderer_mut(&mut self) -> &mut Renderer {
+                self.renderer
             }
 
             fn project_root(&self) -> &std::path::Path {
-                // The editor resolves paths via engine_state; load_mesh_file handles
-                // this internally.  Return an empty path as the canonical fallback.
+                // Editor resolves paths via engine_state inside load_mesh_file.
                 std::path::Path::new("")
             }
 
             fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
-                let path_str = path.to_str().unwrap_or("");
-                if path_str.is_empty() {
-                    return None;
-                }
-                let mesh_key = mesh_key_from_asset_path(path_str)?;
-
-                // Cache resolved MeshUpload so repeated sync passes don't reload disk.
-                if !self.inner.mesh_cache.contains_key(&mesh_key) {
-                    match mesh_for_key(&mesh_key) {
-                        Ok(upload) => {
-                            let mid = self.inner.renderer.scene_mut()
-                                .insert_actor(SceneActor::mesh(upload.clone()))
-                                .as_mesh()
-                                .expect("mesh actor handle");
-                            let mat  = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                            let matid = self.inner.renderer.scene_mut().insert_material(mat);
-                            self.inner.scene_picker.register_mesh(mid, &upload);
-                            self.inner.mesh_cache.insert(mesh_key.clone(), (mid, matid));
-                            // Return the upload for the caller to wrap in SceneRenderPayload.
-                            return Some(upload);
-                        }
-                        Err(e) => {
-                            if self.inner.reported_mesh_asset_errors.insert(path_str.to_string()) {
-                                self.report_error(format!(
-                                    "Failed to load mesh '{}': {}", path_str, e
-                                ));
-                            }
-                            return None;
-                        }
+                let key = mesh_key_from_asset_path(path.to_str().unwrap_or(""))?;
+                match mesh_for_key(&key) {
+                    Ok(u)  => Some(u),
+                    Err(e) => {
+                        self.report_error(format!(
+                            "Failed to load mesh '{}': {e}", path.display()
+                        ));
+                        None
                     }
                 }
-                // Already in cache — we need to return a MeshUpload for upsert_actor to use.
-                // Re-load from disk to get a fresh upload (the cache is for MeshId/MatId, not
-                // the raw geometry).  This is only reached on the first frame after a hot-reload.
-                self.inner.reported_mesh_asset_errors.remove(path_str);
-                mesh_for_key(&mesh_key).ok()
             }
 
             fn mark_live(&mut self, actor_key: &str) {
@@ -1207,35 +1061,38 @@ impl HelioRenderer {
             }
         }
 
+        // Skip sync while the gizmo is actively dragging — helio owns transforms
+        // during drag, and re-inserting from SceneDb would fight the gizmo.
+        // Drag-end (`handle_left_release`) writes the final position back to SceneDb.
+        if inner.editor_state.is_dragging() {
+            return;
+        }
+
+        // ── Clear all lights and objects from the helio scene ─────────────────
+        // Collect IDs before mutating (iterators are invalidated by removal).
+        let light_ids: Vec<LightId> = inner.renderer.scene()
+            .iter_lights()
+            .map(|(id, _, _)| id)
+            .collect();
+        for id in light_ids {
+            let _ = inner.renderer.scene_mut().remove_light(id);
+        }
+
+        let object_ids: Vec<ObjectId> = inner.renderer.scene()
+            .iter_objects_for_editor()
+            .map(|(id, _, _, _)| id)
+            .collect();
+        for id in object_ids {
+            let _ = inner.renderer.scene_mut().remove_object(id);
+        }
+
+        // ── Component sync pass ───────────────────────────────────────────────
         let snapshots = scene_db.get_all_snapshots();
-        let mut picker_dirty = false;
-
-        let gizmo_dragging = inner.editor_state.is_dragging();
-        let dragged_obj_id: Option<ObjectId> = if gizmo_dragging {
-            inner.editor_state.selected_object()
-        } else {
-            None
-        };
-        // When a light is being dragged Helio owns its position — don't overwrite it.
-        let dragged_light_id: Option<LightId> = if gizmo_dragging {
-            use helio::SceneActorId;
-            if let Some(SceneActorId::Light(lid)) = inner.editor_state.selected() {
-                Some(lid)
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let mut live_mesh_ids    = std::collections::HashSet::new();
-        let mut live_light_ids   = std::collections::HashSet::new();
         let mut live_script_keys = std::collections::HashSet::new();
 
         for snap in &snapshots {
-            if !snap.visible {
-                continue;
-            }
+            if !snap.visible { continue; }
+
             let owner = RuntimeComponentOwner {
                 scene_object_id: snap.id.as_str(),
                 position: snap.position,
@@ -1245,15 +1102,10 @@ impl HelioRenderer {
             };
 
             let component_instances = component_instances_from_snap(snap);
-            let mut runtime_context = HelioRuntimeContext {
-                inner,
+            let mut ctx = HelioRuntimeContext {
+                renderer:         &mut inner.renderer,
                 owner_snap:       snap,
-                live_mesh_ids:    &mut live_mesh_ids,
-                live_light_ids:   &mut live_light_ids,
                 live_script_keys: &mut live_script_keys,
-                dragged_obj_id,
-                dragged_light_id,
-                picker_dirty:     &mut picker_dirty,
                 error_queue,
             };
 
@@ -1263,45 +1115,15 @@ impl HelioRenderer {
                     &owner,
                     component_index,
                     &data,
-                    &mut runtime_context,
+                    &mut ctx,
                 );
             }
         }
 
-        // ── Stale removal ────────────────────────────────────────────────────
-
-        // Meshes and objects no longer referenced by any live component.
-        let stale_meshes: Vec<(String, ObjectId)> = inner
-            .object_map
-            .iter()
-            .filter(|(key, _)| !live_mesh_ids.contains(*key))
-            .map(|(id, &(oid, _))| (id.clone(), oid))
-            .collect();
-        for (sid, oid) in stale_meshes {
-            let _ = inner.renderer.scene_mut().remove_object(oid);
-            inner.object_map.remove(&sid);
-            inner.mesh_cache.remove(&MeshKey::File(sid));
-            picker_dirty = true;
-        }
-
-        // Lights no longer referenced by any live component.
-        let stale_lights: Vec<(String, LightId)> = inner
-            .light_map
-            .iter()
-            .filter(|(key, _)| !live_light_ids.contains(*key))
-            .map(|(id, &lid)| (id.clone(), lid))
-            .collect();
-        for (sid, lid) in stale_lights {
-            let _ = inner.renderer.scene_mut().remove_light(lid);
-            inner.light_id_to_scene.remove(&lid);
-            inner.light_map.remove(&sid);
-        }
-
-        // Script registrations no longer referenced by any live ScriptComponent.
+        // Cull script registrations for objects no longer in the scene.
         SCRIPT_REGISTRY.lock().retain_keys(&live_script_keys);
 
-        if picker_dirty {
-            inner.scene_picker.rebuild_instances(inner.renderer.scene());
-        }
+        // Rebuild scene picker BVH from the freshly inserted objects.
+        inner.scene_picker.rebuild_instances(inner.renderer.scene());
     }
 }

@@ -1,10 +1,10 @@
 //! Light component for scene lighting
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
-use helio::{GpuLight, LightType as HelioLightType};
+use helio::{GpuLight, LightType as HelioLightType, SceneActor};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
-    ScenePropsProjector, SceneRenderPayload, Reflectable,
+    ScenePropsProjector, Reflectable, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -181,8 +181,11 @@ impl ComponentRuntimeBehavior for LightComponent {
             _pad:            0,
         };
 
-        let actor_key = format!("{}::light::{}", owner.scene_object_id, component_index);
-        context.upsert_actor(actor_key, SceneRenderPayload::Light(gpu));
+        // Tag the actor with a hash of the SceneDb ID so the picker can
+        // identify it without any external reverse-lookup map.
+        let tag = scene_id_to_tag(owner.scene_object_id);
+        context.renderer_mut().scene_mut()
+            .insert_actor(SceneActor::light_with_tag(gpu, tag));
     }
 }
 

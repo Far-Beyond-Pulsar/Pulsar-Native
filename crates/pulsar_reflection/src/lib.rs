@@ -170,46 +170,42 @@ pub struct RuntimeComponentOwner<'a> {
     pub props: &'a HashMap<String, Value>,
 }
 
-/// The render data a component hands to the context for GPU insertion.
+/// Hash a SceneDb string ID to a compact `u64` tag for storage in helio actors.
 ///
-/// The component constructs this entirely from its own fields; the context
-/// never inspects component data.  The variants map to helio-level renderer
-/// concepts, not to component class names, so new components that reuse an
-/// existing primitive require no trait changes.
-#[cfg(feature = "prims-helio")]
-pub enum SceneRenderPayload {
-    /// A fully constructed GPU light.  The context handles insert-vs-update
-    /// and all internal tracking (light_map, drag-guard, etc.).
-    Light(helio::GpuLight),
-
-    /// Loaded mesh geometry.  The context handles the two-step helio insert
-    /// (mesh upload → object descriptor) and all internal tracking
-    /// (mesh_cache, object_map, scene-picker, etc.).
-    Mesh(helio::MeshUpload),
+/// Components call this to compute the [`ObjectDescriptor::user_tag`] /
+/// [`SceneActor::light_with_tag`] value before inserting an actor.  The picker
+/// returns the same tag in [`PickHit::user_tag`], allowing the engine to
+/// identify the owning SceneDb object without any reverse-lookup maps.
+///
+/// The hash uses Rust's default hasher (SipHash) which is stable within a
+/// single process run.  It is not persisted to disk.
+pub fn scene_id_to_tag(id: &str) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    id.hash(&mut h);
+    h.finish()
 }
 
 /// Context provided to every component's [`ComponentRuntimeBehavior::sync_component`].
 ///
 /// Exposes **generic services only** — no knowledge of what any specific
 /// component does.  Each component is fully self-contained: it parses its own
-/// data, constructs any GPU payloads, and calls the appropriate methods here.
+/// data, constructs any GPU payloads, and writes directly to the renderer.
 ///
 /// # Implementing this trait
 ///
-/// * **Editor (`HelioRuntimeContext`)** — full incremental sync with per-actor
-///   tracking maps, drag-guard, mesh caching, and scene-picker rebuilds.
-/// * **Game (`SceneObjectContext`)** — one-shot scene load; actors are inserted
-///   once and never updated.
+/// * **Editor (`HelioRuntimeContext`)** — clears the helio scene each sync pass
+///   and lets components re-insert fresh.  Rebuilds reverse-lookup maps from the
+///   inserted actor IDs reported via [`track_actor`].
+/// * **Game (`SceneObjectContext`)** — one-shot scene load; components insert
+///   once and the loader records the resulting IDs.
 pub trait ComponentRuntimeContext {
-    /// Insert or update a named render actor.
+    /// Raw mutable access to the Helio renderer.
     ///
-    /// The component builds the [`SceneRenderPayload`] from its own fields.
-    /// The context owns all tracking maps and helio insertion details.
-    ///
-    /// Calling this method implicitly marks `actor_key` as live for the current
-    /// sync pass; there is no need to also call [`mark_live`].
+    /// Components use this to insert lights, meshes, and objects directly.
+    /// The context owns no knowledge of what they insert or how.
     #[cfg(feature = "prims-helio")]
-    fn upsert_actor(&mut self, actor_key: String, payload: SceneRenderPayload);
+    fn renderer_mut(&mut self) -> &mut helio::Renderer;
 
     /// Project root for resolving relative asset paths.
     fn project_root(&self) -> &std::path::Path;

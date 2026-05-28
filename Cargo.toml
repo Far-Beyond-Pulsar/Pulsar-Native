@@ -235,6 +235,11 @@ files.extend-exclude = ["**/fixtures/*"]
 # every crate, causing duplicate linkme slices and trait mismatches.
 ###################################
 
+[patch."https://github.com/Far-Beyond-Pulsar/Helio"]
+helio          = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio" }
+helio-snapshot = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates_other/helio-snapshot" }
+helio-asset-compat = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio-asset-compat" }
+
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
 ui                    = { path = "crates/ui" }
