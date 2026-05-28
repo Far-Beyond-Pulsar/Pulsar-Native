@@ -2,17 +2,27 @@
 //!
 //! ## Design
 //!
-//! Component dispatch calls the **real** `pulsar_rendering` component types directly
-//! (`LightComponent::from_component_data`, etc.).  This gives us:
+//! Component dispatch goes through the **inventory registration system**:
 //!
-//! 1. A live code reference to `pulsar_rendering` — the linker cannot drop its
-//!    inventory static initialisers, so `apply_runtime_behavior_for_class` works
-//!    everywhere.
-//! 2. The component structs are the single source of truth; any field added to
-//!    `LightComponent` is automatically picked up here without an extra edit.
+//! 1. Each component crate (e.g. `pulsar_rendering`) submits a
+//!    `RuntimeBehaviorRegistration` via `inventory::submit!` in its
+//!    `#[derive(RegisterRuntimeBehavior)]` expansion.
+//! 2. The loader creates a [`SceneObjectContext`] that implements
+//!    [`ComponentRuntimeContext`] and owns all renderer state needed to
+//!    materialise lights and meshes.
+//! 3. `apply_runtime_behavior_for_class` iterates the inventory and calls the
+//!    matching component's `sync_component` — which parses its own fields and
+//!    calls `context.upsert_light` / `context.upsert_mesh`.
 //!
-//! Previously the parsing was inlined which caused a subtle divergence and meant
-//! the `pulsar_rendering` crate wasn't actually linked into game binaries.
+//! The loader **never touches component field values**.  All parsing, defaults,
+//! and unit conversions live inside the component's `sync_component`.  Adding a
+//! new field to `LightComponent` automatically works here with zero loader edits.
+//!
+//! ## Linker note
+//!
+//! `pulsar_rendering` types are re-exported from `pulsar_scene::rendering` to
+//! create a live code reference.  Without it the linker can silently drop
+//! `pulsar_rendering`'s `#[used]` inventory statics.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -25,16 +35,20 @@ use helio::{
 };
 use serde_json::Value;
 
-use pulsar_reflection::{RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc};
-
-// ── Real component types (source of truth + live linker reference) ────────────
-use pulsar_rendering::{
-    LightComponent,
-    LightType as PulsarLightType,
-    StaticMeshComponent,
+use pulsar_reflection::{
+    apply_runtime_behavior_for_class,
+    ComponentRuntimeContext, RuntimeComponentOwner,
+    RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc,
 };
 
 use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError};
+
+// ── Force pulsar_rendering into the binary ────────────────────────────────────
+// Re-exporting these types creates a live symbol reference that prevents the
+// linker from dropping pulsar_rendering's #[used] inventory statics.
+// (ComponentRuntimeContext dispatch only works if those statics are linked in.)
+pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
+pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 
 // ── Public result types ───────────────────────────────────────────────────────
 
@@ -109,12 +123,13 @@ impl SceneLoader {
 
     /// Core loader — walks every object, dispatches every component instance.
     ///
-    /// Every object is walked regardless of `object_type`.  For each object
-    /// `__component_instances` is parsed and dispatched inline:
-    /// - `"LightComponent"` → inlined from `LightComponent::from_component_data` +
-    ///   `sync_component` → `build_gpu_light`
-    /// - `"StaticMeshComponent"` → inlined from `StaticMeshComponent::sync_component`
-    ///   → `load_mesh_upload`
+    /// For each object a [`SceneObjectContext`] is created that implements
+    /// [`ComponentRuntimeContext`].  `apply_runtime_behavior_for_class` looks up
+    /// the matching inventory registration (submitted by the component crate) and
+    /// calls its `sync_component` — which parses its own fields and calls
+    /// `context.upsert_light` / `context.upsert_mesh`.
+    ///
+    /// The loader never inspects component field values.
     pub fn load_views(
         objects: &[SceneObjectView<'_>],
         project_root: &Path,
@@ -128,95 +143,45 @@ impl SceneLoader {
             tracing::debug!(id = obj.id, name = obj.name, "Scene object");
 
             let instances = component_instances_from_props(obj.props);
-            let mut had_light = false;
-            let mut had_mesh  = false;
+
+            let owner = RuntimeComponentOwner {
+                scene_object_id: obj.id,
+                position: obj.position,
+                rotation: obj.rotation,
+                scale:    obj.scale,
+                props:    obj.props,
+            };
+
+            let mut ctx = SceneObjectContext {
+                obj_id:       obj.id,
+                obj_name:     obj.name,
+                position:     obj.position,
+                rotation:     obj.rotation,
+                scale:        obj.scale,
+                project_root,
+                renderer,
+                lights: &mut loaded.lights,
+                meshes: &mut loaded.meshes,
+                had_light: false,
+                had_mesh:  false,
+            };
 
             for (idx, class_name, data) in &instances {
-                match class_name.as_str() {
-
-                    // ── LightComponent ──────────────────────────────────────
-                    // Uses the real pulsar_rendering::LightComponent as source of truth.
-                    "LightComponent" => {
-                        had_light = true;
-                        let lc = LightComponent::from_component_data(data);
-                        tracing::debug!(
-                            obj_id = obj.id, idx,
-                            r = lc.color[0], g = lc.color[1],
-                            b = lc.color[2], a = lc.color[3],
-                            intensity = lc.intensity, range = lc.range,
-                            "LightComponent parsed"
-                        );
-                        let light_type = match lc.light_type {
-                            PulsarLightType::Directional => RuntimeLightType::Directional,
-                            PulsarLightType::Point       => RuntimeLightType::Point,
-                            PulsarLightType::Spot        => RuntimeLightType::Spot,
-                            PulsarLightType::Area        => RuntimeLightType::Area,
-                        };
-                        let desc = RuntimeLightDesc {
-                            actor_key:            format!("{}::light::{}", obj.id, idx),
-                            light_type,
-                            color:                lc.color,
-                            intensity:            lc.intensity,
-                            range:                lc.range,
-                            inner_cone_angle_deg: lc.inner_cone_angle,
-                            outer_cone_angle_deg: lc.outer_cone_angle,
-                        };
-                        let gpu  = build_gpu_light(&desc, obj.position);
-                        match renderer.scene_mut()
-                            .insert_actor(SceneActor::light(gpu)).as_light()
-                        {
-                            Some(light_id) => {
-                                tracing::info!(id = obj.id, name = obj.name, "Light loaded");
-                                loaded.lights.push(LoadedLight {
-                                    id:   desc.actor_key,
-                                    name: obj.name.to_string(),
-                                    light_id,
-                                });
-                            }
-                            None => tracing::warn!(id = obj.id, "non-light handle from insert_actor"),
-                        }
-                    }
-
-                    // ── StaticMeshComponent ─────────────────────────────────
-                    // Uses the real pulsar_rendering::StaticMeshComponent as source of truth.
-                    // We deserialise via serde_json so new fields are picked up automatically.
-                    "StaticMeshComponent" => {
-                        had_mesh = true;
-                        // Deserialise through the real type so we use its field names exactly.
-                        let smc: StaticMeshComponent = serde_json::from_value(data.clone())
-                            .unwrap_or_default();
-                        let asset = if smc.mesh_asset.is_empty() {
-                            // Fall back to raw JSON in case serde mapping differs
-                            data.as_object()
-                                .and_then(|o| o.get("mesh_asset"))
-                                .and_then(|v| v.as_str())
-                                .map(str::trim)
-                                .filter(|s| !s.is_empty() && *s != "None")
-                                .map(str::to_string)
-                        } else {
-                            Some(smc.mesh_asset.0.clone())
-                        }
-                        .filter(|s| s != "None");
-
-                        let Some(asset_path) = asset else {
-                            tracing::warn!(id = obj.id, "StaticMeshComponent has no mesh_asset");
-                            continue;
-                        };
-
-                        let full = resolve_asset(project_root, &asset_path);
-                        let upload = load_mesh_or_fallback(&full);
-                        if let Err(e) = spawn_mesh(
-                            obj.id, obj.name, *idx,
-                            obj.position, obj.rotation, obj.scale,
-                            upload, renderer, &mut loaded.meshes,
-                        ) {
-                            tracing::warn!(id = obj.id, "Mesh spawn failed: {e}");
-                        }
-                    }
-
-                    _ => {} // unknown component — skip
+                let handled = apply_runtime_behavior_for_class(
+                    class_name, &owner, *idx, data, &mut ctx,
+                );
+                if !handled {
+                    tracing::debug!(
+                        class = class_name, id = obj.id,
+                        "No runtime behavior registered for component (skipped)"
+                    );
                 }
             }
+
+            let had_light = ctx.had_light;
+            let had_mesh  = ctx.had_mesh;
+            // Reborrow renderer after ctx is dropped.
+            let renderer  = ctx.renderer;
 
             // ── Legacy fallback (v1 scenes, no __component_instances) ─────
             if !had_light {
@@ -268,6 +233,68 @@ impl SceneLoader {
 
         tracing::info!(meshes = loaded.meshes.len(), lights = loaded.lights.len(), "Scene load complete");
         loaded
+    }
+}
+
+// ── SceneObjectContext — ComponentRuntimeContext impl ─────────────────────────
+
+/// Per-object context passed into each component's `sync_component`.
+///
+/// Components call `upsert_light` / `upsert_mesh`; the context translates
+/// those into helio renderer calls.  The loader never reads component fields.
+struct SceneObjectContext<'r, 'p> {
+    obj_id:       &'p str,
+    obj_name:     &'p str,
+    position:     [f32; 3],
+    rotation:     [f32; 3],
+    scale:        [f32; 3],
+    project_root: &'p Path,
+    renderer:     &'r mut Renderer,
+    lights:       &'p mut Vec<LoadedLight>,
+    meshes:       &'p mut Vec<LoadedMesh>,
+    had_light:    bool,
+    had_mesh:     bool,
+}
+
+impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
+    fn upsert_light(&mut self, desc: RuntimeLightDesc) {
+        self.had_light = true;
+        let gpu = build_gpu_light(&desc, self.position);
+        match self.renderer.scene_mut()
+            .insert_actor(SceneActor::light(gpu)).as_light()
+        {
+            Some(light_id) => {
+                tracing::info!(id = self.obj_id, name = self.obj_name, "Light loaded");
+                self.lights.push(LoadedLight {
+                    id: desc.actor_key,
+                    name: self.obj_name.to_string(),
+                    light_id,
+                });
+            }
+            None => tracing::warn!(id = self.obj_id, "non-light handle from insert_actor"),
+        }
+    }
+
+    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc) {
+        self.had_mesh = true;
+        let asset = desc.mesh_asset.trim();
+        if asset.is_empty() || asset == "None" {
+            tracing::warn!(id = self.obj_id, "StaticMeshComponent has no valid mesh_asset");
+            return;
+        }
+        let full   = resolve_asset(self.project_root, asset);
+        let upload = load_mesh_or_fallback(&full);
+        if let Err(e) = spawn_mesh_with_key(
+            &desc.actor_key, self.obj_name,
+            self.position, self.rotation, self.scale,
+            upload, self.renderer, self.meshes,
+        ) {
+            tracing::warn!(id = self.obj_id, "Mesh spawn failed: {e}");
+        }
+    }
+
+    fn report_error(&mut self, message: String) {
+        tracing::warn!(id = self.obj_id, "Component error: {message}");
     }
 }
 
@@ -334,10 +361,13 @@ pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
-fn spawn_mesh(
-    obj_id: &str,
+/// Spawn a mesh+object into the renderer using a pre-formatted actor key.
+///
+/// Used by [`SceneObjectContext::upsert_mesh`]; the key is already formatted by
+/// `StaticMeshComponent::sync_component` as `"<obj_id>::mesh::<idx>"`.
+fn spawn_mesh_with_key(
+    actor_key: &str,
     obj_name: &str,
-    idx: usize,
     position: [f32; 3],
     rotation: [f32; 3],
     scale: [f32; 3],
@@ -357,22 +387,41 @@ fn spawn_mesh(
     let pos    = transform.w_axis.truncate();
     let radius = Vec3::from_array(scale).length() * 0.5;
 
-    let obj_id2 = renderer.scene_mut()
+    let obj_id = renderer.scene_mut()
         .insert_actor(SceneActor::object(ObjectDescriptor {
             mesh: mesh_id, material: mat_id, transform,
             bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
             flags: 0, groups: helio::GroupMask::NONE,
-            movability: Some(helio::Movability::Movable), // match engine's upsert_mesh
+            movability: Some(helio::Movability::Movable),
         }))
         .as_object()
         .ok_or("non-object handle")?;
 
     out.push(LoadedMesh {
-        id: format!("{}::mesh::{}", obj_id, idx),
-        name: obj_name.to_string(),
-        mesh_id, object_id: obj_id2, material_id: mat_id,
+        id:          actor_key.to_string(),
+        name:        obj_name.to_string(),
+        mesh_id, object_id: obj_id, material_id: mat_id,
     });
     Ok(())
+}
+
+/// Legacy helper used by the v1 fallback path (no `__component_instances`).
+fn spawn_mesh(
+    obj_id: &str,
+    obj_name: &str,
+    idx: usize,
+    position: [f32; 3],
+    rotation: [f32; 3],
+    scale: [f32; 3],
+    upload: MeshUpload,
+    renderer: &mut Renderer,
+    out: &mut Vec<LoadedMesh>,
+) -> Result<(), String> {
+    spawn_mesh_with_key(
+        &format!("{}::mesh::{}", obj_id, idx),
+        obj_name, position, rotation, scale,
+        upload, renderer, out,
+    )
 }
 
 /// The engine's built-in assets live next to pulsar_scene in the Pulsar-Native
