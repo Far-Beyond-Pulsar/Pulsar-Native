@@ -370,19 +370,53 @@ impl QuicServer {
     }
 
     /// Create a QUIC client endpoint for P2P connections with post-quantum key exchange
-    pub async fn create_p2p_endpoint(bind_addr: SocketAddr) -> Result<Endpoint> {
+    ///
+    /// # Arguments
+    /// * `bind_addr` - Local socket address to bind to
+    /// * `allow_insecure` - If true, skips server certificate verification (DANGEROUS, dev only)
+    ///
+    /// # Security
+    ///
+    /// When `allow_insecure` is `false` (the default), the endpoint performs standard
+    /// TLS certificate validation using the system CA roots. P2P connections that use
+    /// self-signed certificates will fail unless the server certificate chains to a
+    /// trusted root. For development environments, set `allow_insecure` to `true`,
+    /// or provide trusted certificates via the `PULSAR_TLS_CERT` / `PULSAR_TLS_KEY`
+    /// configuration variables.
+    pub async fn create_p2p_endpoint(
+        bind_addr: SocketAddr,
+        allow_insecure: bool,
+    ) -> Result<Endpoint> {
         let mut endpoint =
             Endpoint::client(bind_addr).context("Failed to create client endpoint")?;
 
         // Use ring crypto provider (post-quantum disabled for Windows compatibility)
         let provider = rustls::crypto::ring::default_provider();
 
-        let crypto = rustls::ClientConfig::builder_with_provider(Arc::new(provider))
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .dangerous()
-            .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
-            .with_no_client_auth();
+        let crypto = if allow_insecure {
+            warn!("⚠️  P2P certificate verification is DISABLED — connections are vulnerable to MITM attacks");
+            rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .dangerous()
+                .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
+                .with_no_client_auth()
+        } else {
+            // Default: use platform CA roots for proper certificate validation.
+            // If no CA roots are available and the server uses self-signed certs,
+            // the handshake will fail — this is the correct secure behaviour.
+            // Users should either:
+            //   • provide trusted certificates via PULSAR_TLS_CERT/PULSAR_TLS_KEY, or
+            //   • set p2p_allow_insecure = true for development only.
+            let mut root_store = rustls::RootCertStore::empty();
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+            rustls::ClientConfig::builder_with_provider(Arc::new(provider))
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_root_certificates(root_store)
+                .with_no_client_auth()
+        };
 
         let mut client_config = quinn::ClientConfig::new(Arc::new(
             QuicClientConfig::try_from(crypto).context("Failed to create QUIC client config")?,
@@ -511,7 +545,7 @@ mod tests {
     async fn test_p2p_endpoint_creation() {
         crate::init_test_crypto();
         let bind_addr = "127.0.0.1:0".parse().unwrap();
-        let endpoint = QuicServer::create_p2p_endpoint(bind_addr).await;
+        let endpoint = QuicServer::create_p2p_endpoint(bind_addr, true).await;
         assert!(endpoint.is_ok());
     }
 

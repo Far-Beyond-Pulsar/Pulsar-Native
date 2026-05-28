@@ -177,7 +177,7 @@ mod registry;
 pub mod tool_bridge;
 
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
-pub use permanent_library::PermanentLibrary;
+pub use permanent_library::{IntegrityError, PermanentLibrary};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;
 
@@ -445,6 +445,44 @@ impl PluginManager {
                 message: e.to_string(),
             })?;
 
+        // Verify the plugin binary against the optional integrity manifest.
+        // The manifest is a sibling JSON file named "plugin_integrity.json" that
+        // maps plugin filenames to their expected SHA-256 hex digests.
+        let plugin_dir = path.parent().unwrap_or(Path::new("."));
+        if let Some(manifest) = Self::load_plugin_manifest(plugin_dir) {
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+            let expected_hex = manifest.get(file_name);
+            if let Some(expected_hex) = expected_hex {
+                let expected: [u8; 32] = Self::parse_hex_hash(expected_hex).map_err(|e| {
+                    PluginManagerError::LibraryLoadError {
+                        path: path.to_path_buf(),
+                        message: format!("Invalid hash in manifest for '{}': {}", file_name, e),
+                    }
+                })?;
+                if library.sha256() != &expected {
+                    return Err(PluginManagerError::IntegrityCheckFailed {
+                        path: path.to_path_buf(),
+                        expected: expected,
+                        actual: *library.sha256(),
+                    });
+                }
+                tracing::debug!("Integrity check passed for plugin: {:?}", path);
+            } else {
+                // Plugin not listed in manifest — reject unless manifest explicitly
+                // allows unlisted plugins via the special "allow_unlisted": true key.
+                if !manifest.get("__allow_unlisted__").map_or(false, |v| v == "true") {
+                    return Err(PluginManagerError::IntegrityCheckFailed {
+                        path: path.to_path_buf(),
+                        expected: [0u8; 32],
+                        actual: *library.sha256(),
+                    });
+                }
+            }
+        }
+
         // Get the version info function
         let version_fn: libloading::Symbol<extern "C" fn() -> VersionInfo> = unsafe {
             // SAFETY: We're loading a symbol from the permanently loaded library.
@@ -609,6 +647,41 @@ impl PluginManager {
     /// Get all loaded plugins.
     pub fn get_plugins(&self) -> Vec<&PluginMetadata> {
         self.plugins.values().map(|p| &p.metadata).collect()
+    }
+
+    /// Load the plugin integrity manifest from a JSON file in the plugin directory.
+    ///
+    /// The manifest file must be named `plugin_integrity.json` and contains a flat
+    /// JSON object mapping plugin filenames (e.g. `"my_editor.dll"`) to their
+    /// expected SHA-256 hex digest strings.
+    ///
+    /// Special keys:
+    /// - `"__allow_unlisted__": "true"` allows plugins not in the manifest to load
+    ///   (use with caution).
+    ///
+    /// Returns `None` if no manifest file exists (verification is optional).
+    fn load_plugin_manifest(plugin_dir: &Path) -> Option<std::collections::HashMap<String, String>> {
+        let manifest_path = plugin_dir.join("plugin_integrity.json");
+        if !manifest_path.exists() {
+            return None;
+        }
+        let content = std::fs::read_to_string(&manifest_path).ok()?;
+        let map: std::collections::HashMap<String, String> = serde_json::from_str(&content).ok()?;
+        Some(map)
+    }
+
+    /// Parse a hex-encoded SHA-256 digest string into a 32-byte array.
+    fn parse_hex_hash(hex: &str) -> Result<[u8; 32], String> {
+        let hex = hex.trim();
+        if hex.len() != 64 {
+            return Err(format!("Expected 64 hex chars, got {}", hex.len()));
+        }
+        let mut out = [0u8; 32];
+        for i in 0..32 {
+            out[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
+                .map_err(|e| format!("Invalid hex at position {}: {}", i * 2, e))?;
+        }
+        Ok(out)
     }
 
     /// Build a snapshot bridge containing AI tools exposed by all loaded plugins.
@@ -1034,6 +1107,13 @@ pub enum PluginManagerError {
     /// Failed to load dynamic library
     LibraryLoadError { path: PathBuf, message: String },
 
+    /// Plugin binary integrity check failed (hash mismatch or not in manifest).
+    IntegrityCheckFailed {
+        path: PathBuf,
+        expected: [u8; 32],
+        actual: [u8; 32],
+    },
+
     /// Required symbol not found in library
     MissingSymbol { symbol: String, message: String },
 
@@ -1076,6 +1156,18 @@ impl std::fmt::Display for PluginManagerError {
         match self {
             Self::LibraryLoadError { path, message } => {
                 write!(f, "Failed to load library {:?}: {}", path, message)
+            }
+            Self::IntegrityCheckFailed { path, expected, actual } => {
+                let exp_hex = expected.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                let act_hex = actual.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                write!(
+                    f,
+                    "Integrity check failed for '{}': expected sha256={}, got sha256={}. \
+                     The plugin may have been tampered with or is not in the allowlist.",
+                    path.display(),
+                    exp_hex,
+                    act_hex,
+                )
             }
             Self::MissingSymbol { symbol, message } => {
                 write!(f, "Missing symbol '{}': {}", symbol, message)

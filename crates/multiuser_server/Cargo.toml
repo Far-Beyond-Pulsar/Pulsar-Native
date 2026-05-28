@@ -22,6 +22,7 @@ quinn = { workspace = true }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-pemfile = "2.1"
 rcgen = "0.14"
+webpki-roots = "0.26"
 # Commented out post-quantum until aws-lc-sys Windows support improves
 # rustls-post-quantum = "0.2"
 

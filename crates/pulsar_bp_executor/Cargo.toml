@@ -7,6 +7,7 @@ description = "Native dylib-backed Blueprint executor — zero-enum, direct fn-p
 [dependencies]
 libloading = { workspace = true }
 pbgc = { workspace = true }
+sha2 = { workspace = true }
 
 [dev-dependencies]
 graphy           = { workspace = true }
