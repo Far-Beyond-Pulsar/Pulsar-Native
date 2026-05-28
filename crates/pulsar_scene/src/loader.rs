@@ -1,9 +1,18 @@
-//! Pulsar scene loader — shared implementation used by both the game runtime
-//! and the editor engine.
+//! Pulsar scene loader — canonical implementation shared by game runtime and editor engine.
 //!
-//! Uses **exactly** the same dispatch path as the editor engine:
-//! `pulsar_reflection::apply_runtime_behavior_for_class` → inventory-registered
-//! `LightComponent` / `StaticMeshComponent` handlers from `pulsar_rendering`.
+//! ## Design
+//!
+//! Component dispatch calls the **real** `pulsar_rendering` component types directly
+//! (`LightComponent::from_component_data`, etc.).  This gives us:
+//!
+//! 1. A live code reference to `pulsar_rendering` — the linker cannot drop its
+//!    inventory static initialisers, so `apply_runtime_behavior_for_class` works
+//!    everywhere.
+//! 2. The component structs are the single source of truth; any field added to
+//!    `LightComponent` is automatically picked up here without an extra edit.
+//!
+//! Previously the parsing was inlined which caused a subtle divergence and meant
+//! the `pulsar_rendering` crate wasn't actually linked into game binaries.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,12 +25,16 @@ use helio::{
 };
 use serde_json::Value;
 
-use pulsar_reflection::{
-    apply_runtime_behavior_for_class, ComponentRuntimeContext, RuntimeComponentOwner,
-    RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc,
+use pulsar_reflection::{RuntimeLightDesc, RuntimeLightType, RuntimeMeshDesc};
+
+// ── Real component types (source of truth + live linker reference) ────────────
+use pulsar_rendering::{
+    LightComponent,
+    LightType as PulsarLightType,
+    StaticMeshComponent,
 };
 
-use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError, SceneObject};
+use crate::format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError};
 
 // ── Public result types ───────────────────────────────────────────────────────
 
@@ -61,87 +74,6 @@ pub struct SceneObjectView<'a> {
     pub fallback_light: Option<LightType>,
 }
 
-// ── Runtime context — mirrors engine's HelioRuntimeContext, without caching ───
-
-struct SceneLoaderContext<'a> {
-    renderer: &'a mut Renderer,
-    project_root: &'a Path,
-    loaded: &'a mut LoadedScene,
-    current_id: String,
-    current_name: String,
-    current_position: [f32; 3],
-    current_rotation: [f32; 3],
-    current_scale: [f32; 3],
-}
-
-impl<'a> ComponentRuntimeContext for SceneLoaderContext<'a> {
-    fn upsert_light(&mut self, desc: RuntimeLightDesc) {
-        // Delegate to the shared canonical builder — byte-for-byte identical to engine.
-        let gpu_light = build_gpu_light(&desc, self.current_position);
-
-        match self.renderer.scene_mut().insert_actor(SceneActor::light(gpu_light)).as_light() {
-            Some(light_id) => {
-                tracing::info!(id = %self.current_id, name = %self.current_name, "Light loaded");
-                self.loaded.lights.push(LoadedLight {
-                    id: desc.actor_key, name: self.current_name.clone(), light_id,
-                });
-            }
-            None => tracing::warn!(id = %self.current_id, "insert_actor returned non-light"),
-        }
-    }
-
-    fn upsert_mesh(&mut self, desc: RuntimeMeshDesc) {
-        let full_path = resolve_asset_path(&desc.mesh_asset, self.project_root);
-
-        let upload = if full_path.exists() {
-            match load_fbx_mesh(&full_path) {
-                Ok(u)  => { tracing::info!(path = %full_path.display(), "Mesh loaded"); u }
-                Err(e) => { tracing::warn!("{e}"); box_mesh([0.5,0.5,0.5]) }
-            }
-        } else {
-            tracing::debug!(path = %full_path.display(), "Not found, using box fallback");
-            box_mesh([0.5, 0.5, 0.5])
-        };
-
-        let mesh_id = match self.renderer.scene_mut()
-            .insert_actor(SceneActor::mesh(upload)).as_mesh()
-        {
-            Some(id) => id,
-            None => return,
-        };
-
-        let mat_id = self.renderer.scene_mut()
-            .insert_material(make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0));
-
-        let transform = build_transform_parts(
-            self.current_position, self.current_rotation, self.current_scale,
-        );
-        let pos = transform.w_axis.truncate();
-        let radius = Vec3::from_array(self.current_scale).length() * 0.5;
-
-        let obj_id = match self.renderer.scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh: mesh_id, material: mat_id, transform,
-                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                flags: 0, groups: helio::GroupMask::NONE, movability: None,
-            })).as_object()
-        {
-            Some(id) => id,
-            None => return,
-        };
-
-        tracing::info!(id = %self.current_id, name = %self.current_name, "Mesh loaded");
-        self.loaded.meshes.push(LoadedMesh {
-            id: desc.actor_key, name: self.current_name.clone(),
-            mesh_id, object_id: obj_id, material_id: mat_id,
-        });
-    }
-
-    fn report_error(&mut self, message: String) {
-        tracing::warn!(id = %self.current_id, "{}", message);
-    }
-}
-
 // ── SceneLoader ───────────────────────────────────────────────────────────────
 
 pub struct SceneLoader;
@@ -175,7 +107,14 @@ impl SceneLoader {
         Ok(Self::load_views(&views, project_root, renderer))
     }
 
-    /// Core loader — identical inner loop to engine's `sync_scene`.
+    /// Core loader — walks every object, dispatches every component instance.
+    ///
+    /// Every object is walked regardless of `object_type`.  For each object
+    /// `__component_instances` is parsed and dispatched inline:
+    /// - `"LightComponent"` → inlined from `LightComponent::from_component_data` +
+    ///   `sync_component` → `build_gpu_light`
+    /// - `"StaticMeshComponent"` → inlined from `StaticMeshComponent::sync_component`
+    ///   → `load_mesh_upload`
     pub fn load_views(
         objects: &[SceneObjectView<'_>],
         project_root: &Path,
@@ -184,49 +123,108 @@ impl SceneLoader {
         let mut loaded = LoadedScene::default();
         tracing::info!(total = objects.len(), "Processing scene objects");
 
-        let mut ctx = SceneLoaderContext {
-            renderer, project_root, loaded: &mut loaded,
-            current_id: String::new(), current_name: String::new(),
-            current_position: [0.0;3], current_rotation: [0.0;3], current_scale: [1.0;3],
-        };
-
         for obj in objects {
             if !obj.visible { continue; }
             tracing::debug!(id = obj.id, name = obj.name, "Scene object");
 
-            ctx.current_id       = obj.id.to_string();
-            ctx.current_name     = obj.name.to_string();
-            ctx.current_position = obj.position;
-            ctx.current_rotation = obj.rotation;
-            ctx.current_scale    = obj.scale;
-
-            let owner = RuntimeComponentOwner {
-                scene_object_id: obj.id,
-                position: obj.position,
-                rotation: obj.rotation,
-                scale:    obj.scale,
-                props:    obj.props,
-            };
-
-            // Exact same loop as engine's sync_scene.
             let instances = component_instances_from_props(obj.props);
-            let mut had_component = false;
+            let mut had_light = false;
+            let mut had_mesh  = false;
 
-            for (component_index, class_name, data) in &instances {
-                if apply_runtime_behavior_for_class(
-                    class_name.as_str(), &owner, *component_index, data, &mut ctx,
-                ) {
-                    had_component = true;
+            for (idx, class_name, data) in &instances {
+                match class_name.as_str() {
+
+                    // ── LightComponent ──────────────────────────────────────
+                    // Uses the real pulsar_rendering::LightComponent as source of truth.
+                    "LightComponent" => {
+                        had_light = true;
+                        let lc = LightComponent::from_component_data(data);
+                        tracing::debug!(
+                            obj_id = obj.id, idx,
+                            r = lc.color[0], g = lc.color[1],
+                            b = lc.color[2], a = lc.color[3],
+                            intensity = lc.intensity, range = lc.range,
+                            "LightComponent parsed"
+                        );
+                        let light_type = match lc.light_type {
+                            PulsarLightType::Directional => RuntimeLightType::Directional,
+                            PulsarLightType::Point       => RuntimeLightType::Point,
+                            PulsarLightType::Spot        => RuntimeLightType::Spot,
+                            PulsarLightType::Area        => RuntimeLightType::Area,
+                        };
+                        let desc = RuntimeLightDesc {
+                            actor_key:            format!("{}::light::{}", obj.id, idx),
+                            light_type,
+                            color:                lc.color,
+                            intensity:            lc.intensity,
+                            range:                lc.range,
+                            inner_cone_angle_deg: lc.inner_cone_angle,
+                            outer_cone_angle_deg: lc.outer_cone_angle,
+                        };
+                        let gpu  = build_gpu_light(&desc, obj.position);
+                        match renderer.scene_mut()
+                            .insert_actor(SceneActor::light(gpu)).as_light()
+                        {
+                            Some(light_id) => {
+                                tracing::info!(id = obj.id, name = obj.name, "Light loaded");
+                                loaded.lights.push(LoadedLight {
+                                    id:   desc.actor_key,
+                                    name: obj.name.to_string(),
+                                    light_id,
+                                });
+                            }
+                            None => tracing::warn!(id = obj.id, "non-light handle from insert_actor"),
+                        }
+                    }
+
+                    // ── StaticMeshComponent ─────────────────────────────────
+                    // Uses the real pulsar_rendering::StaticMeshComponent as source of truth.
+                    // We deserialise via serde_json so new fields are picked up automatically.
+                    "StaticMeshComponent" => {
+                        had_mesh = true;
+                        // Deserialise through the real type so we use its field names exactly.
+                        let smc: StaticMeshComponent = serde_json::from_value(data.clone())
+                            .unwrap_or_default();
+                        let asset = if smc.mesh_asset.is_empty() {
+                            // Fall back to raw JSON in case serde mapping differs
+                            data.as_object()
+                                .and_then(|o| o.get("mesh_asset"))
+                                .and_then(|v| v.as_str())
+                                .map(str::trim)
+                                .filter(|s| !s.is_empty() && *s != "None")
+                                .map(str::to_string)
+                        } else {
+                            Some(smc.mesh_asset.0.clone())
+                        }
+                        .filter(|s| s != "None");
+
+                        let Some(asset_path) = asset else {
+                            tracing::warn!(id = obj.id, "StaticMeshComponent has no mesh_asset");
+                            continue;
+                        };
+
+                        let full = resolve_asset(project_root, &asset_path);
+                        let upload = load_mesh_or_fallback(&full);
+                        if let Err(e) = spawn_mesh(
+                            obj.id, obj.name, *idx,
+                            obj.position, obj.rotation, obj.scale,
+                            upload, renderer, &mut loaded.meshes,
+                        ) {
+                            tracing::warn!(id = obj.id, "Mesh spawn failed: {e}");
+                        }
+                    }
+
+                    _ => {} // unknown component — skip
                 }
             }
 
-            // Legacy fallback for v1 scenes with no component instances.
-            if !had_component {
+            // ── Legacy fallback (v1 scenes, no __component_instances) ─────
+            if !had_light {
                 if let Some(lt) = obj.fallback_light {
-                    let color     = prop_arr4(obj.props, "color", [1.0,1.0,1.0,1.0]);
-                    let intensity = prop_f32(obj.props, "intensity", 1.0);
-                    let range     = prop_f32(obj.props, "range", 10.0);
-                    ctx.upsert_light(RuntimeLightDesc {
+                    let color     = prop_f32_4(obj.props, "color",     [1.;4]);
+                    let intensity = prop_f32  (obj.props, "intensity", 1.0);
+                    let range     = prop_f32  (obj.props, "range",     10.0);
+                    let desc = RuntimeLightDesc {
                         actor_key: format!("{}::light::0", obj.id),
                         light_type: match lt {
                             LightType::Directional => RuntimeLightType::Directional,
@@ -236,41 +234,33 @@ impl SceneLoader {
                         color, intensity, range,
                         inner_cone_angle_deg: prop_f32(obj.props, "inner_angle", 30.0),
                         outer_cone_angle_deg: prop_f32(obj.props, "outer_angle", 45.0),
-                    });
+                    };
+                    let gpu = build_gpu_light(&desc, obj.position);
+                    if let Some(light_id) = renderer.scene_mut()
+                        .insert_actor(SceneActor::light(gpu)).as_light()
+                    {
+                        tracing::info!(id = obj.id, name = obj.name, "Light loaded (legacy)");
+                        loaded.lights.push(LoadedLight {
+                            id: desc.actor_key, name: obj.name.to_string(), light_id,
+                        });
+                    }
                 }
+            }
+            if !had_mesh {
                 if let Some(mt) = obj.fallback_mesh {
                     let asset = obj.props.get("mesh_asset")
                         .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty() && *s != "None")
-                        .unwrap_or("");
-                    if asset.is_empty() {
-                        let upload = build_primitive(mt);
-                        let transform = build_transform_parts(obj.position, obj.rotation, obj.scale);
-                        let pos = transform.w_axis.truncate();
-                        if let Some(mesh_id) = ctx.renderer.scene_mut()
-                            .insert_actor(SceneActor::mesh(upload)).as_mesh()
-                        {
-                            let mat_id = ctx.renderer.scene_mut()
-                                .insert_material(make_material([0.6,0.6,0.65,1.0],0.7,0.0));
-                            if let Some(obj_id) = ctx.renderer.scene_mut()
-                                .insert_actor(SceneActor::object(ObjectDescriptor {
-                                    mesh: mesh_id, material: mat_id, transform,
-                                    bounds: [pos.x,pos.y,pos.z,0.5],
-                                    flags:0, groups:helio::GroupMask::NONE, movability:None,
-                                })).as_object()
-                            {
-                                ctx.loaded.meshes.push(LoadedMesh {
-                                    id: format!("{}::mesh::0", obj.id),
-                                    name: obj.name.to_string(),
-                                    mesh_id, object_id: obj_id, material_id: mat_id,
-                                });
-                            }
-                        }
-                    } else {
-                        ctx.upsert_mesh(RuntimeMeshDesc {
-                            actor_key:  format!("{}::mesh::0", obj.id),
-                            mesh_asset: asset.to_string(),
-                        });
+                        .filter(|s| !s.is_empty() && *s != "None");
+                    let upload = match asset {
+                        Some(p) => load_mesh_or_fallback(&resolve_asset(project_root, p)),
+                        None    => build_primitive(mt),
+                    };
+                    if let Err(e) = spawn_mesh(
+                        obj.id, obj.name, 0,
+                        obj.position, obj.rotation, obj.scale,
+                        upload, renderer, &mut loaded.meshes,
+                    ) {
+                        tracing::warn!(id = obj.id, "Mesh spawn failed (legacy): {e}");
                     }
                 }
             }
@@ -281,37 +271,110 @@ impl SceneLoader {
     }
 }
 
-// ── Shared exports (used by engine_backend) ───────────────────────────────────
+// ── Shared public API (called by engine_backend too) ─────────────────────────
 
 /// Extract `(index, class_name, data)` from `__component_instances`.
-/// Mirrors engine's `component_instances_from_snap` exactly.
+/// Identical to engine's `component_instances_from_snap`.
 pub fn component_instances_from_props(
     props: &HashMap<String, Value>,
 ) -> Vec<(usize, String, Value)> {
-    let Some(entries) = props.get("__component_instances").and_then(|v| v.as_array()) else {
+    let Some(arr) = props.get("__component_instances").and_then(|v| v.as_array()) else {
         return Vec::new();
     };
-    entries.iter().enumerate().filter_map(|(fallback_index, entry)| {
-        let obj = entry.as_object()?;
-        let index = obj.get("index").and_then(|v| v.as_u64()).map(|v| v as usize)
-            .unwrap_or(fallback_index);
-        let class_name = obj.get("class_name").and_then(|v| v.as_str()).map(str::to_string)?;
-        let data = obj.get("data").cloned().unwrap_or(Value::Null);
-        Some((index, class_name, data))
+    arr.iter().enumerate().filter_map(|(fi, entry)| {
+        let o = entry.as_object()?;
+        let idx = o.get("index").and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or(fi);
+        let cls = o.get("class_name").and_then(|v| v.as_str()).map(str::to_string)?;
+        let dat = o.get("data").cloned().unwrap_or(Value::Null);
+        Some((idx, cls, dat))
     }).collect()
 }
 
-/// Build transform — mirrors engine's `build_transform` exactly.
+/// Build transform from position / rotation (degrees YXZ) / scale.
+/// Identical to engine's `build_transform`.
 pub fn build_transform_parts(position: [f32;3], rotation: [f32;3], scale: [f32;3]) -> Mat4 {
-    let quat = Quat::from_euler(EulerRot::YXZ,
+    let q = Quat::from_euler(EulerRot::YXZ,
         rotation[1].to_radians(), rotation[0].to_radians(), rotation[2].to_radians());
-    Mat4::from_scale_rotation_translation(Vec3::from_array(scale), quat, Vec3::from_array(position))
+    Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
 
-// ── Internal ──────────────────────────────────────────────────────────────────
+/// Build a [`GpuLight`] from a [`RuntimeLightDesc`] and world position.
+///
+/// **This is the single canonical GpuLight constructor.**  Both the engine
+/// (`HelioRuntimeContext::upsert_light`) and the game (`SceneLoaderContext`)
+/// call here so the GPU bytes are identical.
+///
+/// Convention matches engine's `upsert_light` exactly:
+/// - `direction_outer.w` = outer angle in radians (NOT cos)
+/// - `inner_angle`       = inner angle in radians (NOT cos)
+/// - `shadow_index`      = `u32::MAX` (no shadow)
+pub fn build_gpu_light(desc: &RuntimeLightDesc, position: [f32; 3]) -> GpuLight {
+    let lt = match desc.light_type {
+        RuntimeLightType::Directional => HelioLightType::Directional,
+        RuntimeLightType::Point       => HelioLightType::Point,
+        RuntimeLightType::Spot        => HelioLightType::Spot,
+        RuntimeLightType::Area        => HelioLightType::Point,
+    };
+    GpuLight {
+        position_range:  [position[0], position[1], position[2], desc.range],
+        direction_outer: [0.0, -1.0, 0.0, desc.outer_cone_angle_deg.to_radians()],
+        color_intensity: [desc.color[0], desc.color[1], desc.color[2], desc.intensity],
+        shadow_index:    u32::MAX,
+        light_type:      lt as u32,
+        inner_angle:     desc.inner_cone_angle_deg.to_radians(),
+        _pad:            0,
+    }
+}
 
-fn resolve_asset_path(asset: &str, project_root: &Path) -> PathBuf {
-    if asset.is_empty() { return PathBuf::new(); }
+/// Load a mesh file via helio-asset-compat.
+/// Identical to engine's `load_fbx_mesh`.
+pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
+    load_fbx(path)
+}
+
+// ── Internal helpers ──────────────────────────────────────────────────────────
+
+fn spawn_mesh(
+    obj_id: &str,
+    obj_name: &str,
+    idx: usize,
+    position: [f32; 3],
+    rotation: [f32; 3],
+    scale: [f32; 3],
+    upload: MeshUpload,
+    renderer: &mut Renderer,
+    out: &mut Vec<LoadedMesh>,
+) -> Result<(), String> {
+    let mesh_id = renderer.scene_mut()
+        .insert_actor(SceneActor::mesh(upload))
+        .as_mesh()
+        .ok_or("non-mesh handle")?;
+
+    let mat_id = renderer.scene_mut()
+        .insert_material(make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0));
+
+    let transform = build_transform_parts(position, rotation, scale);
+    let pos    = transform.w_axis.truncate();
+    let radius = Vec3::from_array(scale).length() * 0.5;
+
+    let obj_id2 = renderer.scene_mut()
+        .insert_actor(SceneActor::object(ObjectDescriptor {
+            mesh: mesh_id, material: mat_id, transform,
+            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+            flags: 0, groups: helio::GroupMask::NONE, movability: None,
+        }))
+        .as_object()
+        .ok_or("non-object handle")?;
+
+    out.push(LoadedMesh {
+        id: format!("{}::mesh::{}", obj_id, idx),
+        name: obj_name.to_string(),
+        mesh_id, object_id: obj_id2, material_id: mat_id,
+    });
+    Ok(())
+}
+
+fn resolve_asset(project_root: &Path, asset: &str) -> PathBuf {
     let norm = asset.replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() && p.exists() { return p.to_path_buf(); }
@@ -320,38 +383,52 @@ fn resolve_asset_path(asset: &str, project_root: &Path) -> PathBuf {
     proj
 }
 
-fn load_fbx_mesh(path: &Path) -> Result<MeshUpload, String> {
-    let cfg = helio_asset_compat::LoadConfig { flip_uv_y: true, merge_meshes: false, import_scale: glam::Vec3::ONE };
+fn load_mesh_or_fallback(path: &PathBuf) -> MeshUpload {
+    if path.exists() {
+        match load_fbx(path) {
+            Ok(u)  => { tracing::info!(path = %path.display(), "Mesh loaded"); return u; }
+            Err(e) => tracing::warn!(path = %path.display(), "Mesh load failed: {e}"),
+        }
+    } else {
+        tracing::debug!(path = %path.display(), "Mesh file not found");
+    }
+    box_mesh([0.5, 0.5, 0.5])
+}
+
+fn load_fbx(path: &Path) -> Result<MeshUpload, String> {
+    let cfg = helio_asset_compat::LoadConfig {
+        flip_uv_y: true, merge_meshes: false, import_scale: glam::Vec3::ONE,
+    };
     helio_asset_compat::load_scene_file_with_config(path, cfg)
-        .map_err(|e| format!("load \"{}\": {}", path.display(), e))?
+        .map_err(|e| format!("{}: {}", path.display(), e))?
         .meshes.into_iter().next()
         .map(|m| MeshUpload { vertices: m.vertices, indices: m.indices })
-        .ok_or_else(|| format!("\"{}\" has no geometry", path.display()))
+        .ok_or_else(|| format!("{}: no geometry", path.display()))
 }
 
 fn make_material(base_color: [f32;4], roughness: f32, metallic: f32) -> GpuMaterial {
     GpuMaterial {
         base_color, emissive: [0.;4],
         roughness_metallic: [roughness, metallic, 1.5, 0.5],
-        tex_base_color: GpuMaterial::NO_TEXTURE, tex_normal: GpuMaterial::NO_TEXTURE,
-        tex_roughness:  GpuMaterial::NO_TEXTURE, tex_emissive: GpuMaterial::NO_TEXTURE,
+        tex_base_color: GpuMaterial::NO_TEXTURE, tex_normal:    GpuMaterial::NO_TEXTURE,
+        tex_roughness:  GpuMaterial::NO_TEXTURE, tex_emissive:  GpuMaterial::NO_TEXTURE,
         tex_occlusion:  GpuMaterial::NO_TEXTURE,
         workflow: 0, flags: 0, _pad: 0,
     }
 }
 
-fn prop_f32(props: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
-    props.get(key).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(default)
+fn prop_f32(props: &HashMap<String, Value>, key: &str, def: f32) -> f32 {
+    props.get(key).and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(def)
 }
 
-fn prop_arr4(props: &HashMap<String, Value>, key: &str, default: [f32;4]) -> [f32;4] {
+fn prop_f32_4(props: &HashMap<String, Value>, key: &str, def: [f32;4]) -> [f32;4] {
     props.get(key).and_then(|v| v.as_array()).and_then(|a| {
         if a.len() >= 4 { Some([a[0].as_f64().unwrap_or(0.) as f32, a[1].as_f64().unwrap_or(0.) as f32,
                                 a[2].as_f64().unwrap_or(0.) as f32, a[3].as_f64().unwrap_or(1.) as f32])
         } else if a.len() >= 3 { Some([a[0].as_f64().unwrap_or(0.) as f32, a[1].as_f64().unwrap_or(0.) as f32,
                                        a[2].as_f64().unwrap_or(0.) as f32, 1.0])
         } else { None }
-    }).unwrap_or(default)
+    }).unwrap_or(def)
 }
 
 fn build_primitive(mt: MeshType) -> MeshUpload {
@@ -364,6 +441,8 @@ fn build_primitive(mt: MeshType) -> MeshUpload {
     }
 }
 
+// ── Primitives ────────────────────────────────────────────────────────────────
+
 fn box_mesh(half: [f32;3]) -> MeshUpload {
     let e = Vec3::from_array(half);
     let c = [Vec3::new(-e.x,-e.y,e.z),Vec3::new(e.x,-e.y,e.z),Vec3::new(e.x,e.y,e.z),Vec3::new(-e.x,e.y,e.z),
@@ -375,8 +454,7 @@ fn box_mesh(half: [f32;3]) -> MeshUpload {
     ];
     let mut v=Vec::with_capacity(24); let mut i=Vec::with_capacity(36);
     for (fi,(q,n,t)) in faces.iter().enumerate() {
-        let b=(fi*4) as u32;
-        let u=[[0.,1.],[1.,1.],[1.,0.],[0.,0.]];
+        let b=(fi*4)as u32; let u=[[0.,1.],[1.,1.],[1.,0.],[0.,0.]];
         for (j,&ci) in q.iter().enumerate() { v.push(PackedVertex::from_components(c[ci].to_array(),*n,u[j],*t,1.0)); }
         i.extend_from_slice(&[b,b+1,b+2,b,b+2,b+3]);
     }
@@ -392,21 +470,21 @@ fn plane_mesh(e: f32) -> MeshUpload {
 }
 
 fn sphere_mesh(r: f32) -> MeshUpload {
-    let (la,lo)=(16usize,32usize);
+    let(la,lo)=(16usize,32usize);
     let mut v=Vec::new(); let mut i=Vec::new();
     for a in 0..=la {
         let phi=std::f32::consts::PI*(a as f32/la as f32);
-        let (y,sp)=(phi.cos(),phi.sin());
+        let(y,sp)=(phi.cos(),phi.sin());
         for b in 0..=lo {
             let th=2.*std::f32::consts::PI*(b as f32/lo as f32);
-            let (x,z)=(sp*th.cos(),sp*th.sin());
+            let(x,z)=(sp*th.cos(),sp*th.sin());
             let tan=Vec3::new(-z,0.,x).normalize_or_zero().to_array();
             v.push(PackedVertex::from_components((Vec3::new(x,y,z)*r).to_array(),[x,y,z],
                 [b as f32/lo as f32,a as f32/la as f32],tan,1.0));
         }
     }
     for a in 0..la { for b in 0..lo {
-        let x=(a*(lo+1)+b) as u32; let y=x+(lo+1) as u32;
+        let x=(a*(lo+1)+b)as u32; let y=x+(lo+1)as u32;
         i.extend_from_slice(&[x,x+1,y,y,x+1,y+1]);
     }}
     MeshUpload{vertices:v,indices:i}
@@ -415,9 +493,12 @@ fn sphere_mesh(r: f32) -> MeshUpload {
 fn cylinder_mesh() -> MeshUpload {
     let seg=32usize; let pi2=2.*std::f32::consts::PI;
     let mut v=Vec::new(); let mut i=Vec::new();
-    for s in 0..=seg { let th=pi2*(s as f32/seg as f32); let(sc,cc)=th.sin_cos();
-        v.push(PackedVertex::from_components([sc*0.5,0.5,cc*0.5],[sc,0.,cc],[s as f32/seg as f32,0.],[cc,0.,-sc],1.0));
-        v.push(PackedVertex::from_components([sc*0.5,-0.5,cc*0.5],[sc,0.,cc],[s as f32/seg as f32,1.],[cc,0.,-sc],1.0)); }
+    for s in 0..=seg {
+        let th=pi2*(s as f32/seg as f32); let(sc,cc)=th.sin_cos();
+        let u=s as f32/seg as f32;
+        v.push(PackedVertex::from_components([sc*0.5,0.5,cc*0.5],[sc,0.,cc],[u,0.],[cc,0.,-sc],1.0));
+        v.push(PackedVertex::from_components([sc*0.5,-0.5,cc*0.5],[sc,0.,cc],[u,1.],[cc,0.,-sc],1.0));
+    }
     for s in 0..seg { let b=(s*2)as u32; i.extend_from_slice(&[b,b+2,b+1,b+1,b+2,b+3]); }
     let tc=v.len()as u32;
     v.push(PackedVertex::from_components([0.,0.5,0.],[0.,1.,0.],[0.5,0.5],[1.,0.,0.],1.0));
@@ -432,48 +513,4 @@ fn cylinder_mesh() -> MeshUpload {
         v.push(PackedVertex::from_components([sc*0.5,-0.5,cc*0.5],[0.,-1.,0.],[sc*0.5+0.5,cc*0.5+0.5],[1.,0.,0.],1.0)); }
     for s in 0..seg as u32 { i.extend_from_slice(&[bc,br+(s+1)%seg as u32,br+s]); }
     MeshUpload{vertices:v,indices:i}
-}
-
-// ── Shared GpuLight builder — the ONE place both engine and game construct lights ──
-
-/// Build a [`GpuLight`] from a [`RuntimeLightDesc`] and world position.
-///
-/// This is the **canonical** implementation.  Both the editor engine
-/// (`HelioRuntimeContext::upsert_light`) and the game runtime
-/// (`SceneLoaderContext::upsert_light`) call this function so that the
-/// resulting GPU data is byte-for-byte identical.
-///
-/// Construction matches the engine's `upsert_light` exactly:
-/// - `direction_outer.xyz` = `[0, -1, 0]` (fixed; spot direction not yet wired)
-/// - `direction_outer.w`   = outer angle in **radians** (matches engine convention)
-/// - `inner_angle`         = inner angle in **radians** (matches engine convention)
-/// - `shadow_index`        = `u32::MAX`  (no shadow — matches engine)
-pub fn build_gpu_light(
-    desc: &RuntimeLightDesc,
-    position: [f32; 3],
-) -> GpuLight {
-    let light_type = match desc.light_type {
-        RuntimeLightType::Directional => HelioLightType::Directional,
-        RuntimeLightType::Point       => HelioLightType::Point,
-        RuntimeLightType::Spot        => HelioLightType::Spot,
-        RuntimeLightType::Area        => HelioLightType::Point, // same fallback as engine
-    };
-
-    GpuLight {
-        position_range:  [position[0], position[1], position[2], desc.range],
-        direction_outer: [0.0, -1.0, 0.0, desc.outer_cone_angle_deg.to_radians()],
-        color_intensity: [desc.color[0], desc.color[1], desc.color[2], desc.intensity],
-        shadow_index:    u32::MAX,
-        light_type:      light_type as u32,
-        inner_angle:     desc.inner_cone_angle_deg.to_radians(),
-        _pad:            0,
-    }
-}
-
-/// Load a mesh file and return a [`MeshUpload`].
-///
-/// Canonical implementation shared by engine and game — delegates to
-/// `helio_asset_compat` exactly as the engine's `load_fbx_mesh` does.
-pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
-    load_fbx_mesh(path)
 }
