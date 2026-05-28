@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_state;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use ui::{notification::Notification, ActiveTheme as _, ContextModal};
@@ -162,12 +163,22 @@ impl HelioViewport {
                     .to_string();
                 let script_path = path.to_string_lossy().replace('\\', "/");
 
+                // Compute a path relative to the project root so the reference
+                // stays valid when the project is moved or opened on another machine.
+                let relative_path = engine_state::get_project_path()
+                    .and_then(|root| {
+                        path.strip_prefix(&root).ok()
+                            .map(|p| p.to_string_lossy().replace('\\', "/"))
+                    })
+                    .unwrap_or(script_path);
+
+                // The ScriptComponent is injected by SceneDatabase::add_object —
+                // callers only need to declare the type and the asset path.
                 let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), serde_json::json!([{
-                    "class_name": "ScriptComponent",
-                    "enabled": true,
-                    "data": { "script_asset": script_path }
-                }]));
+                props.insert(
+                    "script_asset".to_string(),
+                    serde_json::Value::String(relative_path),
+                );
 
                 let mut state = shared_state.write();
                 let blueprint_object = SceneObjectData {
