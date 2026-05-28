@@ -34,5 +34,10 @@ wgpu    = { workspace = true }
 glam    = { workspace = true }
 pollster = "0.3"
 
+# Scene loading + settings
+pulsar_scene    = { workspace = true }
+engine_state    = { workspace = true }
+pulsar_settings = { workspace = true }
+
 [lints]
 workspace = true

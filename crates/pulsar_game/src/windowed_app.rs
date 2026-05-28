@@ -7,11 +7,12 @@
 //! thread to the winit event loop.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use winit::{
     application::ApplicationHandler,
-    event::{WindowEvent},
+    event::WindowEvent,
     event_loop::ActiveEventLoop,
     window::{Window, WindowId},
 };
@@ -234,6 +235,12 @@ pub struct PulsarApp {
     winit_to_handle: HashMap<WindowId, WindowHandle>,
     /// The live game windows, keyed by our stable handle.
     windows: HashMap<WindowHandle, GameWindow>,
+
+    /// Project root used to resolve asset / scene paths.
+    project_root: PathBuf,
+
+    /// Path to the scene file to load into the first window, if any.
+    default_scene: Option<PathBuf>,
 }
 
 impl PulsarApp {
@@ -241,6 +248,8 @@ impl PulsarApp {
         bridge: Arc<WindowBridge>,
         tick_loop: crate::tick::TickLoop,
         initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
+        project_root: PathBuf,
+        default_scene: Option<PathBuf>,
     ) -> Self {
         Self {
             bridge,
@@ -249,6 +258,8 @@ impl PulsarApp {
             initial_windows,
             winit_to_handle: HashMap::new(),
             windows: HashMap::new(),
+            project_root,
+            default_scene,
         }
     }
 
@@ -259,6 +270,16 @@ impl PulsarApp {
         event_loop: &ActiveEventLoop,
         handle: WindowHandle,
         desc: WindowDescriptor,
+    ) {
+        self.open_window_with_scene(event_loop, handle, desc, None);
+    }
+
+    fn open_window_with_scene(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        handle: WindowHandle,
+        desc: WindowDescriptor,
+        scene_path: Option<PathBuf>,
     ) {
         let attrs = Window::default_attributes()
             .with_title(&desc.title)
@@ -284,7 +305,7 @@ impl PulsarApp {
         }
 
         let winit_id = window.id();
-        let game_window = GameWindow::new(
+        let mut game_window = GameWindow::new(
             handle,
             window,
             &self.gpu.instance,
@@ -295,8 +316,27 @@ impl PulsarApp {
         );
 
         self.winit_to_handle.insert(winit_id, handle);
-        self.windows.insert(handle, game_window);
 
+        // Load the scene into this window's renderer before inserting so the
+        // first frame already has content.
+        if let Some(ref path) = scene_path {
+            match pulsar_scene::SceneLoader::load_file(path, &self.project_root, &mut game_window.renderer) {
+                Ok(loaded) => tracing::info!(
+                    window = handle.id(),
+                    scene = %path.display(),
+                    meshes = loaded.meshes.len(),
+                    lights = loaded.lights.len(),
+                    "Scene loaded into window"
+                ),
+                Err(e) => tracing::warn!(
+                    window = handle.id(),
+                    scene = %path.display(),
+                    "Failed to load scene: {e}"
+                ),
+            }
+        }
+
+        self.windows.insert(handle, game_window);
         tracing::info!(id = handle.id(), title = %desc.title, "Window opened");
     }
 
@@ -328,12 +368,17 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
     /// This means the primary window's GPU context exists before `begin_play`
     /// fires on any actor.
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // Open all pre-queued windows (primary window first).
-        for (handle, desc) in std::mem::take(&mut self.initial_windows) {
-            self.open_window(event_loop, handle, desc);
+        // Open all pre-queued windows.  The *first* one gets the default scene
+        // loaded into its renderer before the ECS thread starts.
+        let initial = std::mem::take(&mut self.initial_windows);
+        let default_scene = self.default_scene.take();
+
+        for (i, (handle, desc)) in initial.into_iter().enumerate() {
+            let scene = if i == 0 { default_scene.clone() } else { None };
+            self.open_window_with_scene(event_loop, handle, desc, scene);
         }
 
-        // Now that the window(s) are live, start the ECS.
+        // Windows are live — start the ECS tick thread.
         self.spawn_ecs_thread();
     }
 

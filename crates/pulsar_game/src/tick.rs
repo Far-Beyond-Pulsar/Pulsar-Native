@@ -206,9 +206,43 @@ impl TickLoop {
         // Capture running_flag so the app can stop the ECS after exit.
         let running_flag = Arc::clone(&self.running_flag);
 
+        // ── Load settings to find the default scene ───────────────────────────
+        //
+        // The project root is the directory containing the project's Cargo.toml,
+        // which is available at compile time via CARGO_MANIFEST_DIR.  Shipped
+        // games should override this with the executable's directory at runtime.
+        let project_root = std::path::PathBuf::from(
+            std::env::var("CARGO_MANIFEST_DIR")
+                .unwrap_or_else(|_| ".".into())
+        );
+
+        // Register all schema definitions so the config manager knows about them.
+        pulsar_settings::register_all_settings(engine_state::settings::global_config());
+
+        // Load persisted project settings from <project_root>/.pulsar/
+        let default_scene: Option<std::path::PathBuf> =
+            engine_state::settings::ProjectSettings::new(&project_root)
+                .and_then(|ps| {
+                    ps.load_all();
+                    ps.get("project", "default_map")
+                })
+                .and_then(|v| v.as_str().ok().map(|s| project_root.join(s)))
+                .and_then(|p| {
+                    if p.exists() {
+                        tracing::info!(scene = %p.display(), "Default scene found");
+                        Some(p)
+                    } else {
+                        tracing::debug!(
+                            scene = %p.display(),
+                            "Default scene not found — starting with empty world"
+                        );
+                        None
+                    }
+                });
+
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open.
-        let mut app = PulsarApp::new(bridge, self, initial_windows);
+        let mut app = PulsarApp::new(bridge, self, initial_windows, project_root, default_scene);
 
         // Main thread: drive the winit event loop (required on macOS).
         event_loop

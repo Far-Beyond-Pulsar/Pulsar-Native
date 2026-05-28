@@ -8609,6 +8609,7 @@ version = "0.1.0"
 dependencies = [
  "ahash 0.8.12",
  "blueprint_compiler",
+ "engine_state",
  "glam 0.33.0",
  "helio",
  "notify",
@@ -8618,6 +8619,8 @@ dependencies = [
  "pulsar_bp_executor",
  "pulsar_graph",
  "pulsar_reflection",
+ "pulsar_scene",
+ "pulsar_settings",
  "pulsar_std_bundle",
  "serde",
  "serde_json",
@@ -8719,6 +8722,17 @@ version = "0.1.0"
 dependencies = [
  "gpui-ce",
  "parking_lot",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_scene"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.0",
+ "helio",
  "serde",
  "serde_json",
  "tracing",
