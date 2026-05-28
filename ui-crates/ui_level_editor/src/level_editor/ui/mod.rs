@@ -4,7 +4,7 @@ pub mod add_object_dialog;
 mod bound_field;
 mod component_hierarchy;
 mod field_bindings;
-mod hierarchy;
+pub(crate) mod hierarchy;
 mod material_section;
 mod object_header_section;
 mod object_type_fields_section;

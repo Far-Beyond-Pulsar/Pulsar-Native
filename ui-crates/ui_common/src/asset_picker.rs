@@ -255,21 +255,35 @@ impl Render for MeshAssetPicker {
 }
 
 fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
-    let mut out = BTreeSet::new();
-
-    let extension_queries = queries
+    let extensions: std::collections::HashSet<String> = queries
         .iter()
         .filter_map(|q| match q {
             AssetQuery::Extension(ext) => Some(ext.trim_start_matches('.').to_ascii_lowercase()),
             _ => None,
         })
-        .collect::<Vec<_>>();
+        .collect();
 
-    for ext in &extension_queries {
-        for path in engine_fs::virtual_fs::find_by_extension(project_root, ext) {
-            if let Ok(rel) = path.strip_prefix(project_root) {
-                out.insert(normalize_asset_path(rel.to_string_lossy()));
-            }
+    if extensions.is_empty() {
+        return vec![];
+    }
+
+    // Single manifest walk — far cheaper than one walk per extension.
+    let Ok(entries) = engine_fs::virtual_fs::manifest(project_root) else {
+        return vec![];
+    };
+
+    let mut out = BTreeSet::new();
+    for entry in entries {
+        if entry.is_dir {
+            continue;
+        }
+        let matches = std::path::Path::new(&entry.path)
+            .extension()
+            .and_then(|x| x.to_str())
+            .map(|x| extensions.contains(x.to_ascii_lowercase().as_str()))
+            .unwrap_or(false);
+        if matches {
+            out.insert(normalize_asset_path(&entry.path));
         }
     }
 

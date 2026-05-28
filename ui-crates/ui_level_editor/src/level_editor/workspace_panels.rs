@@ -121,25 +121,17 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t_wrapper = std::time::Instant::now();
-        tracing::info!("[HIER WRAPPER] render entered");
         let self_entity_id = cx.entity().entity_id();
 
-        let t0 = std::time::Instant::now();
         let state = self.state.read();
-        tracing::info!("[HIER WRAPPER] read lock #1 acquired in {:?}", t0.elapsed());
-
         let current_revision = state.scene_revision;
         if current_revision != self.last_scene_revision {
             self.last_scene_revision = current_revision;
             cx.notify();
         }
         drop(state);
-        tracing::info!("[HIER WRAPPER] read lock #1 released at {:?}", t_wrapper.elapsed());
 
-        let t1 = std::time::Instant::now();
         let state = self.state.read();
-        tracing::info!("[HIER WRAPPER] read lock #2 acquired in {:?}", t1.elapsed());
         let state_clone = self.state.clone();
 
         let add_button = Button::new("add_object")
@@ -176,18 +168,14 @@ impl Render for HierarchyPanelWrapper {
 
         let wrapper_entity = cx.entity().downgrade();
 
-        let t2 = std::time::Instant::now();
-        let result = v_flex()
+        v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
             .child(
                 self.hierarchy
                     .render(&state, self.state.clone(), wrapper_entity, add_button, cx),
-            );
-        tracing::info!("[HIER WRAPPER] hierarchy.render returned in {:?}; read lock #2 still held; total {:?}", t2.elapsed(), t_wrapper.elapsed());
-        // NOTE: read lock #2 (state) is dropped here when render() returns.
-        result
+            )
     }
 }
 
@@ -332,7 +320,6 @@ ui_common::panel_boilerplate!(PropertiesPanelWrapper);
 
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let t_props = std::time::Instant::now();
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         let selected_object_id = state.selected_object();
@@ -347,24 +334,16 @@ impl Render for PropertiesPanelWrapper {
             || (selected_object_id.is_some() && self.object_type_fields_section.is_none());
 
         if selection_changed {
-            tracing::info!("[PROPS RENDER] selection changed to {:?} — rebuilding sections", selected_object_id);
             if let Some(ref object_id) = selected_object_id {
                 let scene_db = state.scene_database.clone();
                 let object_id_clone = object_id.clone();
 
-                let t0 = std::time::Instant::now();
                 self.object_header_section = Some(cx.new(|cx| {
                     ObjectHeaderSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
-                tracing::info!("[PROPS RENDER] ObjectHeaderSection::new in {:?}", t0.elapsed());
-
-                let t1 = std::time::Instant::now();
                 self.transform_section = Some(cx.new(|cx| {
                     TransformSection::new(object_id_clone.clone(), scene_db.clone(), window, cx)
                 }));
-                tracing::info!("[PROPS RENDER] TransformSection::new in {:?}", t1.elapsed());
-
-                let t2 = std::time::Instant::now();
                 self.object_type_fields_section = Some(cx.new(|cx| {
                     ObjectTypeFieldsSection::new(
                         object_id_clone.clone(),
@@ -374,10 +353,7 @@ impl Render for PropertiesPanelWrapper {
                         cx,
                     )
                 }));
-                tracing::info!("[PROPS RENDER] ObjectTypeFieldsSection::new in {:?}", t2.elapsed());
-
                 self.current_object_id = Some(object_id.clone());
-                tracing::info!("[PROPS RENDER] section rebuild total {:?}", t_props.elapsed());
             } else {
                 self.object_header_section = None;
                 self.transform_section = None;

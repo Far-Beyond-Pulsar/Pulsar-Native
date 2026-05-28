@@ -252,6 +252,7 @@ impl Render for HelioViewport {
             if !surface.is_resize_pending() {
                 if let Some((view, (w, h))) = surface.back_view_with_size() {
                     if let Ok(mut engine) = self.gpu_engine.try_lock() {
+                        let t_frame = std::time::Instant::now();
                         engine.render_frame_to_surface(
                             surface.device(),
                             surface.queue(),
@@ -260,6 +261,10 @@ impl Render for HelioViewport {
                             h,
                             surface.format(),
                         );
+                        let frame_ms = t_frame.elapsed().as_secs_f64() * 1000.0;
+                        if frame_ms > 16.0 {
+                            tracing::warn!("[VIEWPORT] render_frame_to_surface took {:.1}ms", frame_ms);
+                        }
                         for err in engine.drain_pending_errors() {
                             window.push_notification(
                                 Notification::error("Mesh Load Failed").message(err),

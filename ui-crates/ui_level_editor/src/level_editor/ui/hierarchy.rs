@@ -220,18 +220,12 @@ impl HierarchyPanel {
     where
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
-        let t_render = std::time::Instant::now();
-        let t0 = std::time::Instant::now();
         let all_objects = state.scene_database.get_all_objects();
-        tracing::info!("[HIER RENDER] get_all_objects ({} items) in {:?}", all_objects.len(), t0.elapsed());
-
-        let t1 = std::time::Instant::now();
         let items = Self::build_items(
             &all_objects,
             state.selected_object().as_ref(),
             &state_arc,
         );
-        tracing::info!("[HIER RENDER] build_items ({} items) in {:?}", items.len(), t1.elapsed());
 
         // Root-level objects (those without parents)
         let root_ids: Vec<String> = state
@@ -364,20 +358,13 @@ impl HierarchyPanel {
                 let id = id.clone();
                 let state = state_arc_for_select.clone();
                 let wrapper = wrapper_for_select.clone();
-                tracing::info!("[HIER SELECT] on_select fired for id={}", id);
                 cx.defer(move |cx| {
-                    tracing::info!("[HIER SELECT] cx.defer executing");
-                    let t0 = std::time::Instant::now();
-                    let mut guard = state.write();
-                    tracing::info!("[HIER SELECT] write lock acquired in {:?}", t0.elapsed());
-                    let t1 = std::time::Instant::now();
-                    guard.select_object(Some(id));
-                    tracing::info!("[HIER SELECT] select_object done in {:?}", t1.elapsed());
-                    drop(guard);
-                    tracing::info!("[HIER SELECT] write lock released; total so far {:?}", t0.elapsed());
+                    {
+                        let mut guard = state.write();
+                        guard.select_object(Some(id));
+                    }
                     if let Some(wrapper) = wrapper.upgrade() {
                         cx.notify(wrapper.entity_id());
-                        tracing::info!("[HIER SELECT] cx.notify(hierarchy) called; total {:?}", t0.elapsed());
                     }
                 });
             }),
@@ -431,10 +418,7 @@ impl HierarchyPanel {
             ),
         };
 
-        let t_tree = std::time::Instant::now();
-        let result = HierarchicalTreeView::new(config).render(cx);
-        tracing::info!("[HIER RENDER] HierarchicalTreeView::render in {:?}; total render {:?}", t_tree.elapsed(), t_render.elapsed());
-        result
+        HierarchicalTreeView::new(config).render(cx)
     }
 
     pub fn get_icon_for_object_type(object_type: ObjectType) -> IconName {

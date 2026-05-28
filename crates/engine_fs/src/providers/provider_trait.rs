@@ -115,6 +115,16 @@ pub trait FsProvider: Send + Sync + 'static {
         out: &mut Vec<ManifestEntry>,
     ) -> Result<()> {
         for entry in self.list_dir(dir)? {
+            // Skip build artifacts, VCS metadata, and other non-asset directories.
+            // These can contain tens of thousands of files and have no assets.
+            if entry.is_dir
+                && matches!(
+                    entry.name.as_str(),
+                    "target" | ".git" | ".svn" | ".hg" | "node_modules" | ".cache" | ".gradle"
+                )
+            {
+                continue;
+            }
             let child_path = dir.join(&entry.name);
             let rel = child_path
                 .strip_prefix(root)
