@@ -77,6 +77,9 @@ impl GameWindow {
             queue.clone(),
             RendererConfig::new(surface_config.width, surface_config.height, surface_format),
         );
+        // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
+        // All illumination comes from lights in the scene file — same as editor.
+        renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
         renderer.set_editor_mode(desc.editor_mode);
 
         Self {
