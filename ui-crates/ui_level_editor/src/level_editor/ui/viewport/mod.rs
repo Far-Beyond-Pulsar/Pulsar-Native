@@ -130,7 +130,6 @@ impl ViewportPanel {
     /// Render the viewport panel.
     pub fn render<V>(
         &mut self,
-        state: &LevelEditorState,
         state_arc: crate::level_editor::StateEntity,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
@@ -147,11 +146,10 @@ impl ViewportPanel {
         self.update_performance_metrics(gpu_engine, game_thread);
 
         // Send input to GPU
-        self.send_input_to_gpu(gpu_engine, state);
+        // input sent via separate mechanism (state not needed here)
 
         // Build the viewport UI
         self.build_viewport_ui(
-            state,
             state_arc,
             fps_graph_state,
             gpu_engine,
@@ -447,7 +445,6 @@ impl ViewportPanel {
     /// Build the complete viewport UI.
     fn build_viewport_ui<V>(
         &mut self,
-        state: &LevelEditorState,
         state_arc: crate::level_editor::StateEntity,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
@@ -566,7 +563,7 @@ impl ViewportPanel {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
 
-                move |event, window, _cx| {
+                move |event, window, cx| {
                     let is_rotating = mouse_right_captured.load(Ordering::Acquire);
                     let is_panning = mouse_middle_captured.load(Ordering::Acquire);
 
@@ -600,7 +597,7 @@ impl ViewportPanel {
 
                     // Handle overlay dragging
                     let (cam_dragging, cam_drag_start, vp_dragging, vp_drag_start) = {
-                        let s = state_arc_move.read(cx);
+                        let s = state_arc_move.read(&*cx);
                         (s.is_dragging_camera_overlay, s.camera_overlay_drag_start,
                          s.is_dragging_viewport_overlay, s.viewport_overlay_drag_start)
                     };
@@ -635,7 +632,6 @@ impl ViewportPanel {
                         }
                         return;
                     }
-                    drop(state);
 
                     // Update Helio mouse input
                     let bounds_opt = element_bounds_move.borrow();
@@ -680,7 +676,7 @@ impl ViewportPanel {
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
                 let input_state_clone = self.input_state.clone();
 
-                move |event, window, _cx| {
+                move |event, window, cx| {
                     if !crate::level_editor::ui::viewport::platform::prepare_relative_mouse_mode() {
                         window.set_window_cursor_style(CursorStyle::Arrow);
                         return;
@@ -847,25 +843,28 @@ impl ViewportPanel {
             })
             .child(viewport_entity)
             // Overlays
-            .child(self.render_overlays(
-                state,
-                state_arc,
-                fps_graph_state,
-                ui_fps,
-                helio_fps,
-                render_fps,
-                renderer_ready,
-                fps_data,
-                tps_data,
-                frame_time_data,
-                memory_data,
-                draw_calls_data,
-                vertices_data,
-                input_latency_data,
-                ui_consistency_data,
-                gpu_engine,
-                cx,
-            ))
+            .child({
+                let s = state_arc.read(cx).clone();  // owned clone, no lifetime tie
+                self.render_overlays(
+                    &s,
+                    state_arc,
+                    fps_graph_state,
+                    ui_fps,
+                    helio_fps,
+                    render_fps,
+                    renderer_ready,
+                    fps_data,
+                    tps_data,
+                    frame_time_data,
+                    memory_data,
+                    draw_calls_data,
+                    vertices_data,
+                    input_latency_data,
+                    ui_consistency_data,
+                    gpu_engine,
+                    cx,
+                )
+            })
     }
 
     /// Render all viewport overlays.

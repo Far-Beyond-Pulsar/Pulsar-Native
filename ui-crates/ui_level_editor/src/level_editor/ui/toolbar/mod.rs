@@ -193,7 +193,7 @@ impl ToolbarPanel {
             .on_click(move |_, window, cx| {
                 // Resolve the target path: <workspace_root>/assets/default.level
                 let target_path = engine_state::EngineContext::global()
-                    .and_then(|ctx| ctx.dev.try_read().ok().and_then(|g| g.source_path.clone()))
+                    .and_then(|ctx| ctx.dev.read().source_path.clone())
                     .map(|root| root.join("assets").join("default.level"));
 
                 let Some(path) = target_path else {

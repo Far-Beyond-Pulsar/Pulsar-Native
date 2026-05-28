@@ -60,7 +60,7 @@ impl HelioViewport {
             cx,
         );
 
-        let result = Self::import_asset(path, kind, self.shared_state.clone());
+        let result = Self::import_asset(path, kind, self.shared_state.clone(), cx);
         match result {
             Ok(()) => {
                 window.push_notification(
@@ -90,118 +90,69 @@ impl HelioViewport {
         path: PathBuf,
         kind: AssetKind,
         shared_state: crate::level_editor::StateEntity,
+        cx: &mut gpui::App,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         if !path.exists() {
             return Err(format!("File not found: {}", path.display()).into());
         }
 
-        match kind {
+        let object_data: SceneObjectData = match kind {
             AssetKind::Mesh | AssetKind::Scene => {
                 let asset_path = path.to_string_lossy().replace('\\', "/");
-                let imported_name = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Imported Asset")
-                    .to_string();
-
-                // Build a __component_instances entry for StaticMeshComponent so the
-                // renderer's sync_scene() loop loads the FBX via the component path.
+                let name = path.file_stem().and_then(|s| s.to_str())
+                    .unwrap_or("Imported Asset").to_string();
                 let mut props = std::collections::HashMap::new();
                 props.insert("__component_instances".to_string(), serde_json::json!([{
                     "class_name": "StaticMeshComponent",
                     "enabled": true,
                     "data": { "mesh_asset": asset_path }
                 }]));
-
-                let mut state = shared_state.write();
-                let mesh_object = SceneObjectData {
-                    id: String::new(),
-                    name: imported_name,
+                SceneObjectData {
+                    id: String::new(), name,
                     object_type: ObjectType::Mesh(MeshType::Custom),
                     transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: vec![],
-                    props,
-                    scene_path: path.display().to_string(),
-                };
-
-                let add_result = execute_command(
-                    &mut state,
-                    SceneCommand::AddObject {
-                        data: mesh_object,
-                        parent_id: None,
-                    },
-                );
-
-                if let Some(id) = add_result.affected_ids.first() {
-                    let _ = execute_command(
-                        &mut state,
-                        SceneCommand::SelectObject { id: Some(id.clone()) },
-                    );
+                    visible: true, locked: false,
+                    parent: None, children: vec![],
+                    props, scene_path: path.display().to_string(),
                 }
             }
             AssetKind::Blueprint => {
                 if !path.is_dir() {
-                    return Err(format!(
-                        "Blueprint path is not a directory: {}", path.display()
-                    ).into());
+                    return Err(format!("Blueprint path is not a directory: {}", path.display()).into());
                 }
                 if !path.join("graph_save.json").exists() {
-                    return Err(format!(
-                        "Not a valid blueprint class (missing graph_save.json): {}",
-                        path.display()
-                    ).into());
+                    return Err(format!("Not a valid blueprint class (missing graph_save.json): {}", path.display()).into());
                 }
-
-                let class_name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("Unknown")
-                    .to_string();
-                let script_path = path.to_string_lossy().replace('\\', "/");
-
+                let name = path.file_name().and_then(|n| n.to_str())
+                    .unwrap_or("Unknown").to_string();
+                let script_path = engine_state::get_project_path()
+                    .and_then(|root| path.strip_prefix(&root).ok()
+                        .map(|p| p.to_string_lossy().replace('\\', "/")))
+                    .unwrap_or_else(|| path.to_string_lossy().replace('\\', "/"));
                 let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), serde_json::json!([{
-                    "class_name": "ScriptComponent",
-                    "enabled": true,
-                    "data": { "script_asset": script_path }
-                }]));
-
-                let mut state = shared_state.write();
-                let blueprint_object = SceneObjectData {
-                    id: String::new(),
-                    name: class_name,
+                props.insert("script_asset".to_string(), serde_json::Value::String(script_path));
+                SceneObjectData {
+                    id: String::new(), name,
                     object_type: ObjectType::Blueprint,
                     transform: Transform::default(),
-                    visible: true,
-                    locked: false,
-                    parent: None,
-                    children: vec![],
-                    props,
-                    scene_path: path.display().to_string(),
-                };
-
-                let add_result = execute_command(
-                    &mut state,
-                    SceneCommand::AddObject {
-                        data: blueprint_object,
-                        parent_id: None,
-                    },
-                );
-
-                if let Some(id) = add_result.affected_ids.first() {
-                    let _ = execute_command(
-                        &mut state,
-                        SceneCommand::SelectObject { id: Some(id.clone()) },
-                    );
+                    visible: true, locked: false,
+                    parent: None, children: vec![],
+                    props, scene_path: path.display().to_string(),
                 }
             }
-            _ => {
-                return Err(format!("Unsupported asset type: {:?}", kind).into());
+            _ => return Err(format!("Unsupported asset type: {:?}", kind).into()),
+        };
+
+        shared_state.update(cx, |state, cx| {
+            let result = execute_command(state, SceneCommand::AddObject {
+                data: object_data,
+                parent_id: None,
+            });
+            if let Some(id) = result.affected_ids.first() {
+                execute_command(state, SceneCommand::SelectObject { id: Some(id.clone()) });
             }
-        }
+            cx.notify();
+        });
 
         Ok(())
     }

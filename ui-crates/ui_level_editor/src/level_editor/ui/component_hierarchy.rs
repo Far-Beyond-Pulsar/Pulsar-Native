@@ -310,12 +310,12 @@ impl ComponentHierarchyPanel {
             disable_nesting: false, // Allow component nesting
 
             // Callbacks
-            is_expanded: Arc::new(move |idx: &usize| {
-                state_arc_for_expand
-                    .read(cx)
-                    .expanded_components
-                    .contains(&(object_id.clone(), *idx))
-            }),
+            is_expanded: {
+                let expanded = state_arc_for_expand.read(cx).expanded_components.clone();
+                Arc::new(move |idx: &usize| {
+                    expanded.contains(&(object_id.clone(), *idx))
+                })
+            },
             on_toggle_expand: Arc::new({
                 let object_id = self.object_id.clone();
                 move |idx: &usize, _window, cx| {

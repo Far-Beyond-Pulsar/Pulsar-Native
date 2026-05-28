@@ -437,9 +437,7 @@ ui_common::panel_boilerplate!(ViewportPanelWrapper);
 
 impl Render for ViewportPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.state.read(cx).clone();
         self.viewport_panel.render(
-            &state,
             self.state.clone(),
             self.fps_graph_is_line.clone(),
             &self.gpu_engine,
