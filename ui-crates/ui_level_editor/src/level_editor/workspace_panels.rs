@@ -121,19 +121,25 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let t_wrapper = std::time::Instant::now();
+        tracing::info!("[HIER WRAPPER] render entered");
         let self_entity_id = cx.entity().entity_id();
-        let state = self.state.read();
 
-        // Track all scene changes (including edits that do not change object count)
-        // through the shared scene revision counter.
+        let t0 = std::time::Instant::now();
+        let state = self.state.read();
+        tracing::info!("[HIER WRAPPER] read lock #1 acquired in {:?}", t0.elapsed());
+
         let current_revision = state.scene_revision;
         if current_revision != self.last_scene_revision {
             self.last_scene_revision = current_revision;
             cx.notify();
         }
         drop(state);
+        tracing::info!("[HIER WRAPPER] read lock #1 released at {:?}", t_wrapper.elapsed());
 
+        let t1 = std::time::Instant::now();
         let state = self.state.read();
+        tracing::info!("[HIER WRAPPER] read lock #2 acquired in {:?}", t1.elapsed());
         let state_clone = self.state.clone();
 
         let add_button = Button::new("add_object")
@@ -170,14 +176,18 @@ impl Render for HierarchyPanelWrapper {
 
         let wrapper_entity = cx.entity().downgrade();
 
-        v_flex()
+        let t2 = std::time::Instant::now();
+        let result = v_flex()
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
             .child(
                 self.hierarchy
                     .render(&state, self.state.clone(), wrapper_entity, add_button, cx),
-            )
+            );
+        tracing::info!("[HIER WRAPPER] hierarchy.render returned in {:?}; read lock #2 still held; total {:?}", t2.elapsed(), t_wrapper.elapsed());
+        // NOTE: read lock #2 (state) is dropped here when render() returns.
+        result
     }
 }
 
