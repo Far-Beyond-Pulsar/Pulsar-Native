@@ -12,6 +12,7 @@ use ui::{
 
 mod actions;
 mod build_core;
+mod cargo_progress;
 mod build_dropdowns;
 mod feature_toggles;
 mod mode_indicator;

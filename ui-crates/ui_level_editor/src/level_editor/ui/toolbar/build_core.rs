@@ -455,43 +455,7 @@ fn run_cargo_build(project_root: &PathBuf, progress: Arc<AtomicU32>) -> Result<(
         tracing::warn!("cargo update returned non-zero; proceeding with build anyway");
     }
 
-    let total = estimate_package_count(project_root);
-
-    let mut child = std::process::Command::new("cargo")
-        .args(["build", "--release", "--message-format=json"])
-        .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
-
-    let stdout = BufReader::new(
-        child
-            .stdout
-            .take()
-            .ok_or_else(|| "Failed to capture cargo stdout".to_string())?,
-    );
-
-    let mut compiled: u32 = 0;
-    for line in stdout.lines() {
-        let Ok(line) = line else { continue };
-        if line.contains(r#""compiler-artifact""#) {
-            compiled += 1;
-            let pct = ((compiled as f32 / total as f32) * 95.0).min(95.0) as u32;
-            progress.store(pct, Ordering::Relaxed);
-        }
-    }
-
-    let status = child
-        .wait()
-        .map_err(|e| format!("Failed to wait on cargo build: {e}"))?;
-
-    if !status.success() {
-        return Err("cargo build failed — check the editor output for details".into());
-    }
-
-    progress.store(100, Ordering::Relaxed);
-    Ok(())
+    super::cargo_progress::run_cargo_build(project_root, progress)
 }
 
 fn save_crash_report(project_root: &PathBuf, stderr: &str) -> Option<PathBuf> {
@@ -552,17 +516,3 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
     (year, month, days + 1)
 }
 
-fn estimate_package_count(project_root: &PathBuf) -> f32 {
-    let output = std::process::Command::new("cargo")
-        .args(["metadata", "--format-version=1", "--no-deps"])
-        .current_dir(project_root)
-        .output();
-
-    let workspace_members = output
-        .ok()
-        .and_then(|o| serde_json::from_slice::<serde_json::Value>(&o.stdout).ok())
-        .and_then(|v| v["packages"].as_array().map(|a| a.len()))
-        .unwrap_or(5) as f32;
-
-    (workspace_members * 30.0).max(50.0)
-}
