@@ -80,6 +80,10 @@ pub struct Config {
 
     /// Client CA certificate path for mTLS
     pub client_ca_path: Option<PathBuf>,
+
+    /// Allow skipping TLS certificate verification for P2P connections (DANGEROUS)
+    /// Set to true only in trusted development environments.
+    pub p2p_allow_insecure: bool,
 }
 
 impl Default for Config {
@@ -104,6 +108,7 @@ impl Default for Config {
             server_ed25519_key: None,
             mtls_enabled: false,
             client_ca_path: None,
+            p2p_allow_insecure: false,
         }
     }
 }

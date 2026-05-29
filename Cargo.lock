@@ -5067,7 +5067,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -7981,6 +7981,7 @@ dependencies = [
  "once_cell",
  "plugin_editor_api",
  "serde_json",
+ "sha2 0.11.0",
  "tracing",
  "ui",
  "walkdir",
@@ -8512,6 +8513,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
@@ -8523,6 +8525,7 @@ dependencies = [
  "pbgc",
  "pulsar_std_bundle",
  "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -8777,10 +8780,12 @@ name = "pulsar_std_bundle"
 version = "0.1.0"
 dependencies = [
  "graphy",
+ "once_cell",
  "pbgc",
  "pulsar_bp_executor",
  "pulsar_std",
  "serde_json",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -9362,7 +9367,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -10863,7 +10868,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -13245,7 +13250,7 @@ dependencies = [
  "serde_json",
  "ureq-proto",
  "utf8-zero",
- "webpki-roots",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -13766,6 +13771,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31141ce3fc3e300ae89b78c0dd67f9708061d1d2eda54b8209346fd6be9a92c"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]

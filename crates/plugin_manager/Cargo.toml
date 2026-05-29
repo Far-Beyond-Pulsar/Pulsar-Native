@@ -18,5 +18,8 @@ ui.workspace = true
 # File system operations
 walkdir = { workspace = true }
 
+# Cryptographic hash verification
+sha2 = { workspace = true }
+
 [dev-dependencies]
 env_logger = "=0.11.10"
