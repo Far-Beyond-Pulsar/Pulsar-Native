@@ -256,7 +256,46 @@ fn main() {{
     // ── Pulsar/level.json — default level configuration ───────────────────────
     ensure_level_json(project_root)?;
 
+    // ── Engine primitive assets ───────────────────────────────────────────────
+    // Copy engine-bundled primitives (SM_Cube.fbx etc.) into the game project's
+    // assets directory so they're available at runtime without the source tree.
+    ensure_engine_primitives(project_root);
+
     Ok(())
+}
+
+/// Copy engine primitive meshes into `<project>/assets/meshes/primitives/`.
+///
+/// The source is the engine's own `assets/` directory, located relative to this
+/// crate at compile time.  Missing files are copied; existing files are skipped
+/// so user-overrides aren't clobbered.
+fn ensure_engine_primitives(project_root: &Path) {
+    const ENGINE_ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
+
+    let src_prims = std::path::Path::new(ENGINE_ASSETS).join("meshes/primitives");
+    if !src_prims.exists() {
+        tracing::debug!("Engine primitives source not found at {}", src_prims.display());
+        return;
+    }
+
+    let dst_prims = project_root.join("assets/meshes/primitives");
+    if let Err(e) = std::fs::create_dir_all(&dst_prims) {
+        tracing::warn!("Could not create primitives dir: {e}");
+        return;
+    }
+
+    let Ok(entries) = std::fs::read_dir(&src_prims) else { return };
+    for entry in entries.flatten() {
+        let src = entry.path();
+        if src.extension().and_then(|e| e.to_str()) != Some("fbx") { continue; }
+        let dst = dst_prims.join(entry.file_name());
+        if dst.exists() { continue; } // don't overwrite user assets
+        if let Err(e) = std::fs::copy(&src, &dst) {
+            tracing::warn!("Failed to copy primitive {}: {e}", src.display());
+        } else {
+            tracing::debug!("Copied engine primitive → {}", dst.display());
+        }
+    }
 }
 
 // ── engine_main.rs ────────────────────────────────────────────────────────────
