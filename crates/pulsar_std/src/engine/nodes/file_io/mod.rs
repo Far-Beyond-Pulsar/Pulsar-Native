@@ -7,8 +7,110 @@
 //! - File metadata (size, permissions, modification time, type checks)
 //! - Directory operations (create, remove, list, walk)
 //! - Path manipulation (join, absolute, parent, filename, extension, stem)
+//!
+//! # Security
+//!
+//! All file I/O operations are sandboxed to a project directory root set via
+//! [`set_sandbox_root`]. Operations that attempt to escape the sandbox
+//! (e.g. via `../` path traversal) are rejected at runtime.
 
 use crate::blueprint;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+// ── Path sandbox ──────────────────────────────────────────────────────────────
+
+/// Global sandbox root for blueprint file I/O.
+///
+/// Must be set during engine initialisation via [`set_sandbox_root`].
+/// Once set, every file_io node will reject paths that escape this directory.
+static BP_FILE_SANDBOX_ROOT: OnceLock<PathBuf> = OnceLock::new();
+
+/// Set the project root that all blueprint file I/O is restricted to.
+///
+/// If the sandbox root has already been set this call is a no-op (a warning
+/// is printed and the new value is ignored).
+pub fn set_sandbox_root(root: PathBuf) {
+    if BP_FILE_SANDBOX_ROOT.set(root).is_err() {
+        eprintln!(
+            "[pulsar_std] warning: BP_FILE_SANDBOX_ROOT already initialised — \
+             refusing to change the sandbox root"
+        );
+    }
+}
+
+/// Resolve a user-supplied blueprint path against the sandbox root.
+///
+/// For *read* operations the resolved path must exist and must canonically
+/// sit under the sandbox root.
+fn resolve_read_path(user_path: &str) -> Result<PathBuf, String> {
+    let root = BP_FILE_SANDBOX_ROOT.get().ok_or_else(|| {
+        "File I/O sandbox root not set — call set_sandbox_root during startup".to_string()
+    })?;
+
+    let raw = if Path::new(user_path).is_relative() {
+        root.join(user_path)
+    } else {
+        PathBuf::from(user_path)
+    };
+
+    let canonical = raw
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve path '{}': {}", user_path, e))?;
+
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|_| "Sandbox root does not exist".to_string())?;
+
+    if !canonical.starts_with(&canonical_root) {
+        return Err(format!(
+            "Security: path '{}' resolves outside the sandbox root",
+            user_path
+        ));
+    }
+    Ok(canonical)
+}
+
+/// Resolve a user-supplied blueprint path for *write* operations.
+///
+/// The path need not exist yet, but every existing ancestor must sit inside
+/// the sandbox root.
+fn resolve_write_path(user_path: &str) -> Result<PathBuf, String> {
+    let root = BP_FILE_SANDBOX_ROOT.get().ok_or_else(|| {
+        "File I/O sandbox root not set — call set_sandbox_root during startup".to_string()
+    })?;
+
+    let raw = if Path::new(user_path).is_relative() {
+        root.join(user_path)
+    } else {
+        PathBuf::from(user_path)
+    };
+
+    // Walk up the ancestor chain until we find a path that exists.
+    // The existing ancestor must be inside the sandbox root.
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|_| "Sandbox root does not exist".to_string())?;
+
+    let existing_ancestor = raw
+        .ancestors()
+        .find(|a| a.exists())
+        .unwrap_or(root.as_path());
+
+    if existing_ancestor != root.as_path() {
+        let canonical_ancestor = existing_ancestor
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve path '{}': {}", user_path, e))?;
+        if !canonical_ancestor.starts_with(&canonical_root) {
+            return Err(format!(
+                "Security: path '{}' resolves outside the sandbox root",
+                user_path
+            ));
+        }
+    }
+
+    Ok(raw)
+}
 
 // =============================================================================
 // File Operations
@@ -31,6 +133,7 @@ use crate::blueprint;
 /// Reads the contents of a file as a string.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read(path: String) -> Result<String, String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::read_to_string(path) {
         Ok(content) => Ok(content),
         Err(e) => Err(format!("Failed to read file: {}", e)),
@@ -55,6 +158,7 @@ pub fn file_read(path: String) -> Result<String, String> {
 /// Writes content to a file, overwriting existing content.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_write(path: String, content: String) -> Result<(), String> {
+    let path = resolve_write_path(&path)?;
     match std::fs::write(path, content) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to write file: {}", e)),
@@ -80,6 +184,7 @@ pub fn file_write(path: String, content: String) -> Result<(), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_append(path: String, content: String) -> Result<(), String> {
     use std::io::Write;
+    let path = resolve_write_path(&path)?;
     match std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -107,7 +212,15 @@ pub fn file_append(path: String, content: String) -> Result<(), String> {
 /// Checks if a file exists at the specified path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_exists(path: String) -> bool {
-    std::path::Path::new(&path).exists()
+    // We still need to check if the resolved path is inside the sandbox root
+    // before reporting that it exists.
+    if let Ok(resolved) = resolve_read_path(&path) {
+        resolved.exists()
+    } else {
+        // Sandboxed: a path that escapes the sandbox is treated as non-existent
+        // to avoid leaking information about files outside the project.
+        false
+    }
 }
 
 /// Delete a file.
@@ -127,6 +240,7 @@ pub fn file_exists(path: String) -> bool {
 /// Deletes a file at the specified path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_delete(path: String) -> Result<(), String> {
+    let path = resolve_write_path(&path)?;
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to delete file: {}", e)),
@@ -151,6 +265,8 @@ pub fn file_delete(path: String) -> Result<(), String> {
 /// Copies a file from source to destination path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_copy(source: String, destination: String) -> Result<(), String> {
+    let source = resolve_read_path(&source)?;
+    let destination = resolve_write_path(&destination)?;
     match std::fs::copy(source, destination) {
         Ok(_) => Ok(()),
         Err(e) => Err(format!("Failed to copy file: {}", e)),
@@ -175,6 +291,8 @@ pub fn file_copy(source: String, destination: String) -> Result<(), String> {
 /// Moves or renames a file from source to destination.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_move(source: String, destination: String) -> Result<(), String> {
+    let source = resolve_write_path(&source)?;
+    let destination = resolve_write_path(&destination)?;
     match std::fs::rename(source, destination) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to move file: {}", e)),
@@ -195,6 +313,7 @@ pub fn file_move(source: String, destination: String) -> Result<(), String> {
 /// Returns the size of a file in bytes.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_size(path: String) -> Result<u64, String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::metadata(path) {
         Ok(metadata) => Ok(metadata.len()),
         Err(e) => Err(format!("Failed to get file size: {}", e)),
@@ -218,6 +337,7 @@ pub fn file_size(path: String) -> Result<u64, String> {
 /// Checks file permissions (writable, readable, executable).
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::metadata(path) {
         Ok(metadata) => {
             let permissions = metadata.permissions();
@@ -248,6 +368,7 @@ pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
 /// Returns the last modified time of a file as Unix timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_modified_time(path: String) -> Result<u64, String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::metadata(path) {
         Ok(metadata) => match metadata.modified() {
             Ok(time) => match time.duration_since(std::time::UNIX_EPOCH) {
@@ -274,7 +395,7 @@ pub fn file_modified_time(path: String) -> Result<u64, String> {
 /// Checks if a path exists and is a file.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_file(path: String) -> bool {
-    std::path::Path::new(&path).is_file()
+    resolve_read_path(&path).map_or(false, |p| p.is_file())
 }
 
 /// Check if a path is a directory.
@@ -291,7 +412,7 @@ pub fn file_is_file(path: String) -> bool {
 /// Checks if a path exists and is a directory.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_dir(path: String) -> bool {
-    std::path::Path::new(&path).is_dir()
+    resolve_read_path(&path).map_or(false, |p| p.is_dir())
 }
 
 /// Read a file and return its lines as a vector.
@@ -311,6 +432,7 @@ pub fn file_is_dir(path: String) -> bool {
 /// Reads a file and returns its lines as a vector of strings.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::read_to_string(path) {
         Ok(content) => Ok(content.lines().map(|s| s.to_string()).collect()),
         Err(e) => Err(format!("Failed to read file: {}", e)),
@@ -335,6 +457,7 @@ pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
 /// Writes lines to a file, with each string as a separate line.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> {
+    let path = resolve_write_path(&path)?;
     let content = lines.join("\n");
     match std::fs::write(path, content) {
         Ok(()) => Ok(()),
@@ -363,6 +486,7 @@ pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> 
 /// Creates a directory, including any necessary parent directories.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_create(path: String) -> Result<(), String> {
+    let path = resolve_write_path(&path)?;
     match std::fs::create_dir_all(path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to create directory: {}", e)),
@@ -386,6 +510,7 @@ pub fn dir_create(path: String) -> Result<(), String> {
 /// Removes a directory and all its contents recursively.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_remove(path: String) -> Result<(), String> {
+    let path = resolve_write_path(&path)?;
     match std::fs::remove_dir_all(path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to remove directory: {}", e)),
@@ -406,7 +531,7 @@ pub fn dir_remove(path: String) -> Result<(), String> {
 /// Checks if a directory exists at the specified path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn dir_exists(path: String) -> bool {
-    std::path::Path::new(&path).is_dir()
+    resolve_read_path(&path).map_or(false, |p| p.is_dir())
 }
 
 /// List the contents of a directory.
@@ -426,6 +551,7 @@ pub fn dir_exists(path: String) -> bool {
 /// Lists the contents of a directory (file and folder names).
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_list(path: String) -> Result<Vec<String>, String> {
+    let path = resolve_read_path(&path)?;
     match std::fs::read_dir(path) {
         Ok(entries) => {
             let mut files = Vec::new();
@@ -461,6 +587,9 @@ pub fn dir_list(path: String) -> Result<Vec<String>, String> {
 pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
     use std::fs;
 
+    let path = resolve_read_path(&path)?;
+    let path_str = path.to_string_lossy().to_string();
+
     fn walk_dir(dir: &str, files: &mut Vec<String>) -> Result<(), std::io::Error> {
         for entry in fs::read_dir(dir)? {
             let entry = entry?;
@@ -477,7 +606,7 @@ pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
     }
 
     let mut files = Vec::new();
-    match walk_dir(&path, &mut files) {
+    match walk_dir(&path_str, &mut files) {
         Ok(()) => Ok(files),
         Err(e) => Err(format!("Failed to walk directory: {}", e)),
     }
@@ -526,10 +655,8 @@ pub fn path_join(base: String, component: String) -> String {
 /// Converts a relative path to an absolute path.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn path_absolute(path: String) -> Result<String, String> {
-    match std::fs::canonicalize(path) {
-        Ok(path) => Ok(path.to_string_lossy().to_string()),
-        Err(e) => Err(format!("Failed to get absolute path: {}", e)),
-    }
+    let path = resolve_read_path(&path)?;
+    Ok(path.to_string_lossy().to_string())
 }
 
 /// Get the parent directory of a path.

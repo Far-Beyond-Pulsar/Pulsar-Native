@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -110,7 +110,18 @@ impl AuthService {
 
     /// Verify and decode a JWT token
     pub fn verify_token(&self, token: &str) -> Result<Claims> {
-        let token_data = decode::<Claims>(token, &self.jwt_decoding_key, &Validation::default())
+        // Use explicit HS256 algorithm and require standard validation.
+        // Validation::default() accepts any algorithm including "none",
+        // which would allow signature bypass (CWE-347).
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.leeway = 0;
+        validation.validate_exp = true;
+        validation.required_spec_claims = std::collections::HashSet::from([
+            "exp".to_string(),
+            "iat".to_string(),
+        ]);
+
+        let token_data = decode::<Claims>(token, &self.jwt_decoding_key, &validation)
             .context("Failed to decode JWT")?;
 
         Ok(token_data.claims)

@@ -47,6 +47,7 @@
 //! ```
 
 use libloading::{Library, Symbol};
+use sha2::{Digest, Sha256};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 
@@ -94,6 +95,10 @@ pub struct PermanentLibrary {
 
     /// Path to the library (for debugging/logging).
     path: PathBuf,
+
+    /// SHA-256 digest of the library file at load time.
+    /// Used for integrity verification; checked against manifests.
+    sha256: [u8; 32],
 }
 
 impl PermanentLibrary {
@@ -147,6 +152,14 @@ impl PermanentLibrary {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, libloading::Error> {
         let path = path.as_ref();
 
+        // Compute SHA-256 digest of the library file before loading.
+        // This is used for runtime integrity verification — callers can
+        // check that the loaded library matches an expected manifest hash.
+        let sha256 = Self::compute_file_hash(path).map_err(|e| {
+            tracing::warn!("Failed to hash library '{}': {}", path.display(), e);
+            libloading::Error::IncompatibleSize
+        })?;
+
         // SAFETY: We load the library normally using libloading::Library.
         // The library must be a valid dynamic library for the current platform
         // and architecture. libloading will return an error if it's not.
@@ -157,12 +170,23 @@ impl PermanentLibrary {
         // 3. The library dependencies are available
         let library = unsafe { Library::new(path)? };
 
-        tracing::info!("Loaded permanent library: {:?} (will never unload)", path);
+        tracing::info!(
+            "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",
+            path,
+            sha256.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+        );
 
         Ok(Self {
             library: ManuallyDrop::new(library),
             path: path.to_path_buf(),
+            sha256,
         })
+    }
+
+    /// Compute the SHA-256 digest of a file on disk.
+    fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
+        let bytes = std::fs::read(path)?;
+        Ok(Sha256::digest(&bytes).into())
     }
 
     /// Get a symbol from the library.
@@ -230,6 +254,71 @@ impl PermanentLibrary {
     /// Useful for logging and debugging.
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    /// Return the SHA-256 digest of the library file at load time.
+    pub fn sha256(&self) -> &[u8; 32] {
+        &self.sha256
+    }
+
+    /// Verify the library file's current on-disk hash matches the hash
+    /// that was computed when the library was first loaded.
+    ///
+    /// A mismatch indicates the file has been tampered with since loading
+    /// (e.g. a TOCTOU replacement on disk).
+    pub fn verify_integrity(&self) -> Result<(), IntegrityError> {
+        let current = Self::compute_file_hash(&self.path)
+            .map_err(|e| IntegrityError::Io(self.path.clone(), e))?;
+        if current != self.sha256 {
+            return Err(IntegrityError::HashMismatch {
+                path: self.path.clone(),
+                expected: self.sha256,
+                actual: current,
+            });
+        }
+        Ok(())
+    }
+}
+
+/// Errors produced by [`PermanentLibrary::verify_integrity`].
+#[derive(Debug)]
+pub enum IntegrityError {
+    /// Could not read the library file from disk.
+    Io(PathBuf, std::io::Error),
+    /// The on-disk hash differs from the load-time hash —
+    /// the file was modified after loading.
+    HashMismatch {
+        path: PathBuf,
+        expected: [u8; 32],
+        actual: [u8; 32],
+    },
+}
+
+impl std::fmt::Display for IntegrityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IntegrityError::Io(path, e) => {
+                write!(f, "Failed to read '{}': {}", path.display(), e)
+            }
+            IntegrityError::HashMismatch { path, expected, actual } => {
+                write!(
+                    f,
+                    "Integrity check failed for '{}': expected {:02x?}, got {:02x?}",
+                    path.display(),
+                    expected.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                    actual.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for IntegrityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            IntegrityError::Io(_, e) => Some(e),
+            IntegrityError::HashMismatch { .. } => None,
+        }
     }
 }
 

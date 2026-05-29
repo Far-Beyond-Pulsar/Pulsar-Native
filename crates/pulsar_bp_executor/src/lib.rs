@@ -5,6 +5,7 @@
 /// inside the program. After that, `pbgc::vm::run(&program)` executes with zero
 /// table lookups — each Call is one `transmute` + one direct function call.
 pub use libloading;
+use sha2::{Digest, Sha256};
 
 // ── Error ─────────────────────────────────────────────────────────────────────
 
@@ -12,6 +13,17 @@ pub use libloading;
 pub enum ExecutorError {
     Dylib(libloading::Error),
     MissingSymbol(String),
+
+    /// The library file could not be read for hash verification.
+    Io(std::io::Error),
+
+    /// The library's SHA-256 digest did not match the expected hash.
+    /// This indicates the file was tampered with between extraction and load
+    /// (TOCTOU attack) or the file is not the expected trusted library.
+    HashMismatch {
+        expected: [u8; 32],
+        actual: [u8; 32],
+    },
 }
 
 impl std::fmt::Display for ExecutorError {
@@ -19,6 +31,16 @@ impl std::fmt::Display for ExecutorError {
         match self {
             ExecutorError::Dylib(e) => write!(f, "dylib error: {}", e),
             ExecutorError::MissingSymbol(s) => write!(f, "missing symbol: {}", s),
+            ExecutorError::Io(e) => write!(f, "I/O error during hash verification: {}", e),
+            ExecutorError::HashMismatch { expected, actual } => {
+                let exp_hex = expected.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                let act_hex = actual.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                write!(
+                    f,
+                    "SHA-256 mismatch: expected {exp_hex}, got {act_hex}. \
+                     The library may have been tampered with.",
+                )
+            }
         }
     }
 }
@@ -38,16 +60,38 @@ pub struct BpExecutor {
 impl BpExecutor {
     /// Load the native `pulsar_std` cdylib from `path`.
     ///
+    /// When `expected_hash` is `Some`, the file's SHA-256 digest is verified
+    /// *before* the library is loaded (mitigating TOCTOU races between write
+    /// and load).
+    ///
     /// # Example
     ///
     /// ```rust,no_run
     /// use pulsar_bp_executor::BpExecutor;
-    /// use pulsar_std_bundle::extract_to_tempfile;
+    /// use pulsar_std_bundle::{extract_to_tempfile, expected_sha256};
     ///
     /// let tmp = extract_to_tempfile().unwrap();
-    /// let executor = BpExecutor::load(&tmp.path).unwrap();
+    /// let executor = BpExecutor::load(&tmp.path, Some(expected_sha256())).unwrap();
     /// ```
-    pub fn load(path: &std::path::Path) -> Result<Self, ExecutorError> {
+    pub fn load(
+        path: &std::path::Path,
+        expected_hash: Option<&[u8; 32]>,
+    ) -> Result<Self, ExecutorError> {
+        // Verify file integrity before passing to unsafe Library::new.
+        // This prevents TOCTOU attacks where a temp file is replaced between
+        // write and load.
+        if let Some(expected) = expected_hash {
+            let bytes =
+                std::fs::read(path).map_err(ExecutorError::Io)?;
+            let actual: [u8; 32] = Sha256::digest(&bytes).into();
+            if &actual != expected {
+                return Err(ExecutorError::HashMismatch {
+                    expected: *expected,
+                    actual,
+                });
+            }
+        }
+
         let lib = unsafe { libloading::Library::new(path)? };
         Ok(Self { _lib: lib })
     }

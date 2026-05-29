@@ -8,12 +8,25 @@
 /// # Usage
 ///
 /// ```rust,no_run
-/// use pulsar_std_bundle::{PULSAR_STD_LIB_BYTES, extract_to_tempfile};
+/// use pulsar_std_bundle::{PULSAR_STD_LIB_BYTES, extract_to_tempfile, expected_sha256};
 ///
 /// let lib = extract_to_tempfile().unwrap();
-/// println!("lib path: {}", lib.path.display());
+/// let executor = pulsar_bp_executor::BpExecutor::load(&lib.path, Some(expected_sha256()));
 /// ```
 pub const PULSAR_STD_LIB_BYTES: &[u8] = include_bytes!(env!("PULSAR_STD_LIB_PATH"));
+
+/// Return the expected SHA-256 digest of the embedded `pulsar_std` library.
+///
+/// This is computed lazily from the embeded bytes and cached for the
+/// process lifetime. Pass the result to [`BpExecutor::load`] to guard
+/// against TOCTOU replacement of the extracted temp file.
+pub fn expected_sha256() -> &'static [u8; 32] {
+    use once_cell::sync::OnceCell;
+    use sha2::{Digest, Sha256};
+
+    static HASH: OnceCell<[u8; 32]> = OnceCell::new();
+    HASH.get_or_init(|| Sha256::digest(PULSAR_STD_LIB_BYTES).into())
+}
 
 /// Platform file extension of the embedded library (`"dylib"`, `"so"`, or `"dll"`).
 pub const PULSAR_STD_LIB_EXT: &str = env!("PULSAR_STD_LIB_EXT");

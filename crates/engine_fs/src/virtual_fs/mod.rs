@@ -22,7 +22,9 @@ pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
 static VIRTUAL_FS: OnceLock<Arc<RwLock<Arc<dyn FsProvider>>>> = OnceLock::new();
 
 fn global() -> &'static Arc<RwLock<Arc<dyn FsProvider>>> {
-    VIRTUAL_FS.get_or_init(|| Arc::new(RwLock::new(Arc::new(LocalFsProvider))))
+    VIRTUAL_FS.get_or_init(|| {
+        Arc::new(RwLock::new(Arc::new(LocalFsProvider::new())))
+    })
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
@@ -37,7 +39,7 @@ pub fn set_provider(provider: Arc<dyn FsProvider>) {
 
 /// Restore the default local-disk provider (e.g. when disconnecting).
 pub fn reset_to_local() {
-    set_provider(Arc::new(LocalFsProvider));
+    set_provider(Arc::new(LocalFsProvider::new()));
 }
 
 /// Return the currently active provider (cloned `Arc` — cheap).
