@@ -285,14 +285,56 @@ fn resolve_asset(project_root: &Path, asset: &str) -> PathBuf {
     proj
 }
 
+// ── Engine primitive meshes embedded directly in the binary ──────────────────
+// These are always available regardless of what's on the project filesystem.
+
+macro_rules! prim_bytes {
+    ($name:literal) => {
+        include_bytes!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../assets/meshes/primitives/",
+            $name,
+            ".fbx"
+        ))
+    };
+}
+
+fn embedded_primitive(stem: &str) -> Option<&'static [u8]> {
+    match stem {
+        "SM_Cube"     => Some(prim_bytes!("SM_Cube")),
+        "SM_Sphere"   => Some(prim_bytes!("SM_Sphere")),
+        "SM_Cylinder" => Some(prim_bytes!("SM_Cylinder")),
+        "SM_Plane"    => Some(prim_bytes!("SM_Plane")),
+        "SM_Torus"    => Some(prim_bytes!("SM_Torus")),
+        _ => None,
+    }
+}
+
 fn load_fbx(path: &Path) -> Result<MeshUpload, String> {
     let cfg = helio_asset_compat::LoadConfig {
         flip_uv_y: true, merge_meshes: false, import_scale: glam::Vec3::ONE,
     };
-    helio_asset_compat::load_scene_file_with_config(path, cfg)
-        .map_err(|e| format!("{}: {}", path.display(), e))?
-        .meshes.into_iter().next()
-        .map(|m| MeshUpload { vertices: m.vertices, indices: m.indices })
-        .ok_or_else(|| format!("{}: no geometry", path.display()))
+
+    // Fast path: try loading from disk first.
+    if path.exists() {
+        return helio_asset_compat::load_scene_file_with_config(path, cfg)
+            .map_err(|e| format!("{}: {}", path.display(), e))?
+            .meshes.into_iter().next()
+            .map(|m| MeshUpload { vertices: m.vertices, indices: m.indices })
+            .ok_or_else(|| format!("{}: no geometry", path.display()));
+    }
+
+    // Fallback: check if the filename stem matches a bundled engine primitive.
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+    if let Some(bytes) = embedded_primitive(stem) {
+        tracing::debug!("Loading engine primitive '{}' from embedded bytes", stem);
+        return helio_asset_compat::load_scene_bytes_with_config(bytes, "fbx", None, cfg)
+            .map_err(|e| format!("{stem} (embedded): {e}"))?
+            .meshes.into_iter().next()
+            .map(|m| MeshUpload { vertices: m.vertices, indices: m.indices })
+            .ok_or_else(|| format!("{stem} (embedded): no geometry"));
+    }
+
+    Err(format!("{}: file not found", path.display()))
 }
 
