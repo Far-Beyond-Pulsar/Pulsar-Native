@@ -512,6 +512,33 @@ impl NotificationList {
         cx.notify();
     }
 
+    /// Update an existing notification's message and progress in-place without
+    /// removing and re-inserting it.  This avoids re-triggering the entrance
+    /// animation on every progress tick.
+    ///
+    /// If no notification with `id` exists the call is a no-op (the caller
+    /// should have pushed the notification first).
+    pub fn update_in_place(
+        &mut self,
+        id: impl Into<NotificationId>,
+        message: Option<SharedString>,
+        progress: Option<f32>,
+        cx: &mut Context<Self>,
+    ) {
+        let id: NotificationId = id.into();
+        if let Some(entity) = self.notifications.iter().find(|n| n.read(cx).id == id) {
+            entity.update(cx, |note, _| {
+                if let Some(msg) = message {
+                    note.message = Some(msg);
+                }
+                if let Some(p) = progress {
+                    note.progress = Some(p);
+                }
+            });
+            cx.notify();
+        }
+    }
+
     pub(crate) fn close(
         &mut self,
         id: impl Into<NotificationId>,

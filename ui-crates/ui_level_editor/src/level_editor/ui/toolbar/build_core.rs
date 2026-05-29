@@ -309,13 +309,8 @@ fn run_scratch(
                             format!("{status} ({pct}%)")
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
-                            window.push_notification(
-                                Notification::info(msg)
-                                    .id::<BuildCoreNotification>()
-                                    .title(title)
-                                    .progress(pct as f32 / 100.0)
-                                    .autohide(false),
-                                cx,
+                            window.update_notification::<BuildCoreNotification>(
+                                msg, pct as f32 / 100.0, cx,
                             );
                         });
                     }
@@ -390,13 +385,8 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                             format!("{status} ({pct}%)")
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
-                            window.push_notification(
-                                Notification::info(msg)
-                                    .id::<BuildCoreNotification>()
-                                    .title("Check")
-                                    .progress(pct as f32 / 100.0)
-                                    .autohide(false),
-                                cx,
+                            window.update_notification::<BuildCoreNotification>(
+                                msg, pct as f32 / 100.0, cx,
                             );
                         });
                     }
@@ -474,13 +464,8 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                             format!("{status} ({pct}%)")
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
-                            window.push_notification(
-                                Notification::info(msg)
-                                    .id::<BuildCoreNotification>()
-                                    .title("Update")
-                                    .progress(pct as f32 / 100.0)
-                                    .autohide(false),
-                                cx,
+                            window.update_notification::<BuildCoreNotification>(
+                                msg, pct as f32 / 100.0, cx,
                             );
                         });
                     }
@@ -590,13 +575,8 @@ fn run_build_pipeline(
                             format!("{status} ({pct}%)")
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
-                            window.push_notification(
-                                Notification::info(msg)
-                                    .id::<BuildCoreNotification>()
-                                    .title(title)
-                                    .progress(pct as f32 / 100.0)
-                                    .autohide(false),
-                                cx,
+                            window.update_notification::<BuildCoreNotification>(
+                                msg, pct as f32 / 100.0, cx,
                             );
                         });
                     }

@@ -8,7 +8,7 @@ use crate::{
 use gpui::{
     actions, canvas, div, prelude::FluentBuilder as _, AnyView, App, AppContext, Context,
     DefiniteLength, Entity, FocusHandle, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement as _, Render, Styled, Window,
+    ParentElement as _, Render, SharedString, Styled, Window,
 };
 use std::{any::TypeId, rc::Rc};
 
@@ -57,6 +57,18 @@ pub trait ContextModal: Sized {
 
     /// Pushes a notification to the notification list.
     fn push_notification(&mut self, note: impl Into<Notification>, cx: &mut App);
+
+    /// Update the message and/or progress of an existing notification in-place.
+    ///
+    /// Unlike `push_notification`, this mutates the existing entity without
+    /// removing and re-inserting it, so the notification does not re-animate.
+    /// If no notification with the given type-tag exists the call is a no-op.
+    fn update_notification<T: Sized + 'static>(
+        &mut self,
+        message: impl Into<SharedString>,
+        progress: f32,
+        cx: &mut App,
+    );
 
     /// Removes the notification with the given id.
     fn remove_notification<T: Sized + 'static>(&mut self, cx: &mut App);
@@ -172,6 +184,21 @@ impl ContextModal for Window {
             root.notification
                 .update(cx, |view, cx| view.push(note, window, cx));
             cx.notify();
+        })
+    }
+
+    fn update_notification<T: Sized + 'static>(
+        &mut self,
+        message: impl Into<SharedString>,
+        progress: f32,
+        cx: &mut App,
+    ) {
+        let message: SharedString = message.into();
+        let id = TypeId::of::<T>();
+        Root::update(self, cx, move |root, _window, cx| {
+            root.notification.update(cx, |view, cx| {
+                view.update_in_place(id, Some(message), Some(progress), cx);
+            });
         })
     }
 
