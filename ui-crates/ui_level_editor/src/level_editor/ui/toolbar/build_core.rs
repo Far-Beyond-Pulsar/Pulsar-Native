@@ -163,21 +163,13 @@ fn trigger_build(
 // ── cargo check ──────────────────────────────────────────────────────────────
 
 fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
+    let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
+    let progress_for_thread = Arc::clone(&progress_atomic);
+    let progress_for_ui = Arc::clone(&progress_atomic);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     std::thread::spawn(move || {
-        let result = std::process::Command::new("cargo")
-            .args(["check"])
-            .current_dir(&project_root)
-            .status()
-            .map_err(|e| format!("Failed to spawn cargo check: {e}"))
-            .and_then(|s| {
-                if s.success() {
-                    Ok(())
-                } else {
-                    Err("cargo check failed — check the editor output for details".into())
-                }
-            });
+        let result = super::cargo_progress::run_cargo_check(&project_root, progress_for_thread);
         smol::block_on(result_tx.send(result)).ok();
     });
 
@@ -185,26 +177,56 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
         Notification::info("Checking project…")
             .id::<BuildCoreNotification>()
             .title("Check")
+            .progress(0.0)
             .autohide(false),
         cx,
     );
 
     let window_handle = window.window_handle();
     cx.spawn(async move |async_app: &mut AsyncApp| {
-        let Ok(result) = result_rx.recv().await else { return };
-        let _ = async_app.update_window(window_handle, |_, window, cx| match result {
-            Ok(()) => window.push_notification(
-                Notification::success("Check passed.")
-                    .id::<BuildCoreNotification>()
-                    .title("Check")
-                    .autohide_delay(Duration::from_secs(3)),
-                cx,
-            ),
-            Err(msg) => window.push_notification(
-                Notification::error(msg).id::<BuildCoreNotification>().title("Check"),
-                cx,
-            ),
-        });
+        let mut last_pct: u32 = 0;
+        loop {
+            match result_rx.try_recv() {
+                Ok(result) => {
+                    let _ = async_app.update_window(window_handle, |_, window, cx| match result {
+                        Ok(()) => window.push_notification(
+                            Notification::success("Check passed.")
+                                .id::<BuildCoreNotification>()
+                                .title("Check")
+                                .progress(1.0)
+                                .autohide_delay(Duration::from_secs(3)),
+                            cx,
+                        ),
+                        Err(msg) => window.push_notification(
+                            Notification::error(msg).id::<BuildCoreNotification>().title("Check"),
+                            cx,
+                        ),
+                    });
+                    return;
+                }
+                Err(smol::channel::TryRecvError::Closed) => return,
+                Err(smol::channel::TryRecvError::Empty) => {
+                    let pct = progress_for_ui.load(Ordering::Relaxed);
+                    if pct != last_pct {
+                        last_pct = pct;
+                        let _ = async_app.update_window(window_handle, |_, window, cx| {
+                            window.push_notification(
+                                Notification::info(format!("Checking… ({pct}%)"))
+                                    .id::<BuildCoreNotification>()
+                                    .title("Check")
+                                    .progress(pct as f32 / 100.0)
+                                    .autohide(false),
+                                cx,
+                            );
+                        });
+                    }
+                }
+            }
+            async_app
+                .background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+        }
     })
     .detach();
 }
