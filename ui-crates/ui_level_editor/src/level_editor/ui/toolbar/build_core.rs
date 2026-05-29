@@ -132,6 +132,10 @@ fn mode_label_icon_tooltip(mode: BuildMode) -> (&'static str, IconName, &'static
     }
 }
 
+fn project_root() -> Option<PathBuf> {
+    engine_state::get_project_path().map(PathBuf::from)
+}
+
 fn trigger_build(
     mode: BuildMode,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -139,7 +143,7 @@ fn trigger_build(
     window: &mut Window,
     cx: &mut App,
 ) {
-    let Some(project_root) = engine_state::get_project_path().map(PathBuf::from) else {
+    let Some(root) = project_root() else {
         window.push_notification(
             Notification::warning("No project open — open a project first."),
             cx,
@@ -148,10 +152,10 @@ fn trigger_build(
     };
 
     match mode {
-        BuildMode::Check => run_check(project_root, window, cx),
-        BuildMode::Build => run_build_pipeline(project_root, mode, None, entity_id, window, cx),
+        BuildMode::Check => run_check(root, window, cx),
+        BuildMode::Build => run_build_pipeline(root, mode, None, entity_id, window, cx),
         BuildMode::BuildAndRun => {
-            run_build_pipeline(project_root, mode, Some(state_arc), entity_id, window, cx)
+            run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx)
         }
     }
 }
@@ -163,7 +167,7 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
 
     std::thread::spawn(move || {
         let result = std::process::Command::new("cargo")
-            .arg("check")
+            .args(["check"])
             .current_dir(&project_root)
             .status()
             .map_err(|e| format!("Failed to spawn cargo check: {e}"))
@@ -324,7 +328,7 @@ async fn launch_and_monitor(
     // Pipe stderr so we can capture crash output and surface it as a notification.
     // stdout is inherited so any game console output goes to the editor's terminal.
     let mut child = match std::process::Command::new("cargo")
-        .arg("run")
+        .args(["run", "--release"])
         .current_dir(&project_root)
         .env("RUST_BACKTRACE", "1")
         .stdin(Stdio::null())
@@ -454,7 +458,7 @@ fn run_cargo_build(project_root: &PathBuf, progress: Arc<AtomicU32>) -> Result<(
     let total = estimate_package_count(project_root);
 
     let mut child = std::process::Command::new("cargo")
-        .args(["build", "--message-format=json"])
+        .args(["build", "--release", "--message-format=json"])
         .current_dir(project_root)
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
