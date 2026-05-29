@@ -107,6 +107,10 @@ pub struct LevelEditorState {
     pub build_config: BuildConfig,
     pub target_platform: TargetPlatform,
     pub build_mode: BuildMode,
+    /// Whether the game is currently running (started via Build + Run).
+    pub game_running: bool,
+    /// Handle to the running game process, shared so the stop button can kill it.
+    pub game_process: Arc<parking_lot::Mutex<Option<std::process::Child>>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -290,6 +294,8 @@ impl Default for LevelEditorState {
             build_config: BuildConfig::Debug,
             target_platform: TargetPlatform::WindowsX86_64Msvc,
             build_mode: BuildMode::Build,
+            game_running: false,
+            game_process: Arc::new(parking_lot::Mutex::new(None)),
         }
     }
 }

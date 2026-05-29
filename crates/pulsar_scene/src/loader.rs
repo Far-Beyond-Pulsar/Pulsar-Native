@@ -28,7 +28,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
-use helio::{MeshUpload, Renderer};
+use helio::{
+    GpuMaterial, GroupMask, MeshId, MaterialId, MeshUpload,
+    Movability, ObjectDescriptor, Renderer, SceneActor,
+};
 use serde_json::Value;
 
 use pulsar_reflection::{
@@ -85,6 +88,10 @@ impl SceneLoader {
     ) {
         tracing::info!(total = objects.len(), "Loading scene objects");
 
+        // Shared per-load cache: avoid re-uploading the same mesh geometry for
+        // every object that references it (e.g. many cubes using SM_Cube.fbx).
+        let mut mesh_cache: HashMap<String, (MeshId, MaterialId)> = HashMap::new();
+
         for obj in objects {
             if !obj.visible { continue; }
             tracing::debug!(id = obj.id, name = obj.name, "Scene object");
@@ -99,7 +106,12 @@ impl SceneLoader {
 
             let instances = component_instances_from_props(&obj.props);
             {
-                let mut ctx = SceneObjectContext { obj_id: &obj.id, project_root, renderer };
+                let mut ctx = SceneObjectContext {
+                    obj_id: &obj.id,
+                    project_root,
+                    renderer,
+                    mesh_cache: &mut mesh_cache,
+                };
                 for (idx, class_name, data) in &instances {
                     let handled = apply_runtime_behavior_for_class(class_name, &owner, *idx, data, &mut ctx);
                     if !handled {
@@ -115,13 +127,15 @@ impl SceneLoader {
 
 // ── SceneObjectContext — ComponentRuntimeContext impl ─────────────────────────
 
-struct SceneObjectContext<'r, 'p> {
+struct SceneObjectContext<'r, 'p, 'c> {
     obj_id:       &'p str,
     project_root: &'p Path,
     renderer:     &'r mut Renderer,
+    /// Geometry/material cache shared across all objects in one load pass.
+    mesh_cache:   &'c mut HashMap<String, (MeshId, MaterialId)>,
 }
 
-impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
+impl ComponentRuntimeContext for SceneObjectContext<'_, '_, '_> {
     fn renderer_mut(&mut self) -> &mut Renderer { self.renderer }
 
     fn project_root(&self) -> &std::path::Path { self.project_root }
@@ -133,8 +147,69 @@ impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
         load_fbx(full.as_path()).ok()
     }
 
+    fn sync_mesh_object(
+        &mut self,
+        tag: u64,
+        mesh_asset: &str,
+        transform: glam::Mat4,
+        bounds: [f32; 4],
+    ) {
+        if mesh_asset.is_empty() { return; }
+
+        let (mesh_id, mat_id) = if let Some(&ids) = self.mesh_cache.get(mesh_asset) {
+            ids
+        } else {
+            let path = resolve_asset(self.project_root, mesh_asset);
+            let upload = match load_fbx(&path) {
+                Ok(u)  => u,
+                Err(e) => {
+                    tracing::warn!(id = self.obj_id, "Mesh load failed for '{mesh_asset}': {e}");
+                    return;
+                }
+            };
+            let mid = match self.renderer.scene_mut()
+                .insert_actor(SceneActor::mesh(upload))
+                .as_mesh()
+            {
+                Some(m) => m,
+                None    => return,
+            };
+            let mat = default_material();
+            let matid = self.renderer.scene_mut().insert_material(mat);
+            self.mesh_cache.insert(mesh_asset.to_string(), (mid, matid));
+            (mid, matid)
+        };
+
+        self.renderer.scene_mut().insert_actor(SceneActor::object(ObjectDescriptor {
+            mesh: mesh_id,
+            material: mat_id,
+            transform,
+            bounds,
+            flags: 0,
+            groups: GroupMask::NONE,
+            movability: Some(Movability::Movable),
+            user_tag: tag,
+        }));
+    }
+
     fn report_error(&mut self, message: String) {
         tracing::warn!(id = self.obj_id, "{message}");
+    }
+}
+
+fn default_material() -> GpuMaterial {
+    GpuMaterial {
+        base_color: [0.6, 0.6, 0.65, 1.0],
+        emissive: [0.0, 0.0, 0.0, 0.0],
+        roughness_metallic: [0.7, 0.0, 1.5, 0.5],
+        tex_base_color: GpuMaterial::NO_TEXTURE,
+        tex_normal: GpuMaterial::NO_TEXTURE,
+        tex_roughness: GpuMaterial::NO_TEXTURE,
+        tex_emissive: GpuMaterial::NO_TEXTURE,
+        tex_occlusion: GpuMaterial::NO_TEXTURE,
+        workflow: 0,
+        flags: 0,
+        _pad: 0,
     }
 }
 

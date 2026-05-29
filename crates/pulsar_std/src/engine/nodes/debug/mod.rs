@@ -15,6 +15,32 @@
 
 use crate::blueprint;
 
+/// Convert a PBGC-VM-supplied `String` into a valid Rust `String`.
+///
+/// The PBGC VM allocates function arguments in a zero-initialised arena.
+/// A zero-initialised `String` has `ptr = null, len = 0, cap = 0`.
+/// Rust 1.79+ rejects `slice::from_raw_parts(null, 0)`, so *any* operation
+/// on such a value — including `{}` formatting — immediately panics.
+///
+/// This helper detects the null data-pointer and replaces the invalid value
+/// with a proper empty `String::new()` (non-null dangling pointer, len=0).
+#[inline]
+fn sanitize_string(s: String) -> String {
+    // Safety: We read the first pointer-sized word of `s` without dereferencing
+    // it.  `String` is repr(transparent) over `Vec<u8>`; the first field is the
+    // data pointer.  When cap == 0 (as it is for a zero-init'd value) the Vec
+    // destructor performs no deallocation, so `forget` is safe to call here.
+    unsafe {
+        let first_word = *(&s as *const String).cast::<usize>();
+        if first_word == 0 {
+            std::mem::forget(s);
+            String::new()
+        } else {
+            s
+        }
+    }
+}
+
 // =============================================================================
 // Print Operations
 // =============================================================================
@@ -124,6 +150,7 @@ pub fn print_bool(value: bool) {
 /// Prints a message to the console.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn println(message: String) {
+    let message = sanitize_string(message);
     tracing::debug!("{}", message);
 }
 
@@ -156,6 +183,10 @@ pub fn println(message: String) {
 /// Prints a formatted message with placeholder replacements ({0}, {1}, {2}).
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_formatted(format: String, value0: String, value1: String, value2: String) {
+    let format = sanitize_string(format);
+    let value0 = sanitize_string(value0);
+    let value1 = sanitize_string(value1);
+    let value2 = sanitize_string(value2);
     let message = format
         .replace("{0}", &value0)
         .replace("{1}", &value1)
@@ -188,6 +219,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
 /// Prints a message only if the condition is true.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn conditional_print(condition: bool, message: String) {
+    let message = sanitize_string(message);
     if condition {
         tracing::debug!("[CONDITIONAL] {}", message);
     }
@@ -220,6 +252,7 @@ pub fn conditional_print(condition: bool, message: String) {
 /// Inspects and prints a value with detailed type information.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_inspect_value(value: String) {
+    let value = sanitize_string(value);
     tracing::debug!(
         "[INSPECT] Value: '{}', Length: {}, Type: String",
         value,
@@ -252,6 +285,7 @@ pub fn debug_inspect_value(value: String) {
 /// Prints a simple stack trace with function name, thread ID, and timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn debug_stack_trace(function_name: String) {
+    let function_name = sanitize_string(function_name);
     tracing::debug!("[STACK_TRACE] Current function: {}", function_name);
     tracing::debug!("[STACK_TRACE] Thread: {:?}", std::thread::current().id());
     tracing::debug!("[STACK_TRACE] Time: {:?}", std::time::SystemTime::now());
@@ -325,6 +359,7 @@ pub fn debug_memory_usage() {
 /// Logs an informational message with timestamp.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_info(message: String) {
+    let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -357,6 +392,7 @@ pub fn log_info(message: String) {
 /// Logs a warning message with timestamp to stderr.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_warn(message: String) {
+    let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -389,6 +425,7 @@ pub fn log_warn(message: String) {
 /// Logs an error message with timestamp to stderr.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn log_error(message: String) {
+    let message = sanitize_string(message);
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
@@ -422,6 +459,7 @@ pub fn log_error(message: String) {
 /// Asserts that a condition is true; panics with message if false.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn assert_true_msg(condition: bool, message: String) {
+    let message = sanitize_string(message);
     if !condition {
         panic!("Assertion failed: {}", message);
     }
@@ -450,6 +488,9 @@ pub fn assert_true_msg(condition: bool, message: String) {
 /// Asserts that two values are equal; panics with message if not.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn assert_equals(a: String, b: String, message: String) {
+    let a = sanitize_string(a);
+    let b = sanitize_string(b);
+    let message = sanitize_string(message);
     if a != b {
         panic!("Assertion failed: '{}' != '{}'. {}", a, b, message);
     }
@@ -483,6 +524,7 @@ pub fn assert_equals(a: String, b: String, message: String) {
 /// Simulates a breakpoint by printing a message and waiting for user input.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn breakpoint(message: String) {
+    let message = sanitize_string(message);
     tracing::debug!("BREAKPOINT: {}", message);
     tracing::debug!("Press Enter to continue...");
     let mut input = String::new();
@@ -521,6 +563,7 @@ pub fn breakpoint(message: String) {
 /// Measures execution time of a code block in milliseconds.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn benchmark_function(name: String) -> u64 {
+    let name = sanitize_string(name);
     let start = std::time::Instant::now();
     // Note: In the actual implementation, the code block would be executed here
     // via the exec_code mechanism. For now, we just measure the overhead.
