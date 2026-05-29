@@ -139,6 +139,12 @@ pub enum BuildMode {
     Check,
     /// Run `cargo update` to refresh all git and registry deps.
     Update,
+    /// `cargo clean` then `cargo build --release`.
+    BuildScratch,
+    /// `cargo clean` then `cargo build --release` then `cargo run --release`.
+    BuildAndRunScratch,
+    /// `cargo clean` then `cargo check`.
+    CheckScratch,
 }
 
 /// Complete Rust target platform and architecture support (excluding WASM)

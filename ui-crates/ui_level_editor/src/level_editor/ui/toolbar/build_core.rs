@@ -90,6 +90,23 @@ impl BuildCoreButton {
                             current == BuildMode::Update,
                             Box::new(SetBuildMode(BuildMode::Update)),
                         )
+                        .separator()
+                        .label("Scratch (clean first)")
+                        .menu_with_check(
+                            "Build (Scratch)",
+                            current == BuildMode::BuildScratch,
+                            Box::new(SetBuildMode(BuildMode::BuildScratch)),
+                        )
+                        .menu_with_check(
+                            "Build + Run (Scratch)",
+                            current == BuildMode::BuildAndRunScratch,
+                            Box::new(SetBuildMode(BuildMode::BuildAndRunScratch)),
+                        )
+                        .menu_with_check(
+                            "Check (Scratch)",
+                            current == BuildMode::CheckScratch,
+                            Box::new(SetBuildMode(BuildMode::CheckScratch)),
+                        )
                 })
             });
 
@@ -139,6 +156,21 @@ fn mode_label_icon_tooltip(mode: BuildMode) -> (&'static str, IconName, &'static
             IconName::Refresh,
             "Run cargo update — refresh all git and registry dependencies",
         ),
+        BuildMode::BuildScratch => (
+            "Build (Scratch)",
+            IconName::Hammer,
+            "Clean then build from scratch — cargo clean + cargo build --release",
+        ),
+        BuildMode::BuildAndRunScratch => (
+            "Build + Run (Scratch)",
+            IconName::Play,
+            "Clean, build from scratch, then launch — cargo clean + cargo build + cargo run",
+        ),
+        BuildMode::CheckScratch => (
+            "Check (Scratch)",
+            IconName::Check,
+            "Clean then check from scratch — cargo clean + cargo check",
+        ),
     }
 }
 
@@ -162,13 +194,137 @@ fn trigger_build(
     };
 
     match mode {
-        BuildMode::Check => run_check(root, window, cx),
-        BuildMode::Update => run_update(root, window, cx),
-        BuildMode::Build => run_build_pipeline(root, mode, None, entity_id, window, cx),
-        BuildMode::BuildAndRun => {
-            run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx)
-        }
+        BuildMode::Check      => run_check(root, window, cx),
+        BuildMode::Update     => run_update(root, window, cx),
+        BuildMode::Build      => run_build_pipeline(root, mode, None, entity_id, window, cx),
+        BuildMode::BuildAndRun => run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx),
+        BuildMode::BuildScratch       => run_scratch(root, BuildMode::Build, None, entity_id, window, cx),
+        BuildMode::BuildAndRunScratch => run_scratch(root, BuildMode::BuildAndRun, Some(state_arc), entity_id, window, cx),
+        BuildMode::CheckScratch       => run_scratch(root, BuildMode::Check, None, entity_id, window, cx),
     }
+}
+
+// ── scratch (clean + build/check) ────────────────────────────────────────────
+
+fn run_scratch(
+    project_root: PathBuf,
+    inner_mode: BuildMode, // Build, BuildAndRun, or Check
+    state_arc: Option<Arc<parking_lot::RwLock<LevelEditorState>>>,
+    entity_id: EntityId,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
+    let status_cell = super::cargo_progress::StatusCell::default();
+    let progress_for_thread = Arc::clone(&progress_atomic);
+    let progress_for_ui    = Arc::clone(&progress_atomic);
+    let status_for_thread  = Arc::clone(&status_cell);
+    let status_for_ui      = Arc::clone(&status_cell);
+    let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
+
+    let project_root_thread = project_root.clone();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<(), String> {
+            engine_backend::services::ensure_core_bootstrap(&project_root_thread)?;
+            // Clean occupies 0–20 %.
+            super::cargo_progress::run_cargo_clean(
+                &project_root_thread, Arc::clone(&progress_for_thread),
+                Arc::clone(&status_for_thread), 20,
+            )?;
+            // Main command occupies 20–100 %.
+            match inner_mode {
+                BuildMode::Check | BuildMode::CheckScratch =>
+                    super::cargo_progress::run_cargo_check_from(
+                        &project_root_thread, Arc::clone(&progress_for_thread),
+                        Arc::clone(&status_for_thread), 20,
+                    ),
+                _ =>
+                    super::cargo_progress::run_cargo_build_from(
+                        &project_root_thread, Arc::clone(&progress_for_thread),
+                        Arc::clone(&status_for_thread), 20,
+                    ),
+            }
+        })();
+        smol::block_on(result_tx.send(result)).ok();
+    });
+
+    let title = match inner_mode {
+        BuildMode::Check => "Check (Scratch)",
+        BuildMode::BuildAndRun => "Build + Run (Scratch)",
+        _ => "Build (Scratch)",
+    };
+
+    window.push_notification(
+        Notification::info("Cleaning build artifacts…")
+            .id::<BuildCoreNotification>()
+            .title(title)
+            .progress(0.0)
+            .autohide(false),
+        cx,
+    );
+
+    let window_handle = window.window_handle();
+    cx.spawn(async move |async_app: &mut AsyncApp| {
+        let mut last_pct: u32 = u32::MAX;
+        let mut last_status = String::new();
+        loop {
+            match result_rx.try_recv() {
+                Ok(Ok(())) => {
+                    let _ = async_app.update_window(window_handle, |_, window, cx| {
+                        window.push_notification(
+                            Notification::success("Build succeeded.")
+                                .id::<BuildCoreNotification>()
+                                .title(title)
+                                .progress(1.0)
+                                .autohide_delay(Duration::from_secs(3)),
+                            cx,
+                        );
+                    });
+                    if matches!(inner_mode, BuildMode::BuildAndRun) {
+                        if let Some(state) = state_arc {
+                            launch_and_monitor(project_root, state, entity_id, window_handle, async_app).await;
+                        }
+                    }
+                    return;
+                }
+                Ok(Err(msg)) => {
+                    let _ = async_app.update_window(window_handle, |_, window, cx| {
+                        window.push_notification(
+                            Notification::error(msg).id::<BuildCoreNotification>().title(title),
+                            cx,
+                        );
+                    });
+                    return;
+                }
+                Err(smol::channel::TryRecvError::Closed) => return,
+                Err(smol::channel::TryRecvError::Empty) => {
+                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let status = status_for_ui.lock().clone();
+                    if pct != last_pct || status != last_status {
+                        last_pct    = pct;
+                        last_status = status.clone();
+                        let msg = if status.is_empty() {
+                            format!("Building… ({pct}%)")
+                        } else {
+                            format!("{status} ({pct}%)")
+                        };
+                        let _ = async_app.update_window(window_handle, |_, window, cx| {
+                            window.push_notification(
+                                Notification::info(msg)
+                                    .id::<BuildCoreNotification>()
+                                    .title(title)
+                                    .progress(pct as f32 / 100.0)
+                                    .autohide(false),
+                                cx,
+                            );
+                        });
+                    }
+                }
+            }
+            async_app.background_executor().timer(Duration::from_millis(250)).await;
+        }
+    })
+    .detach();
 }
 
 // ── cargo check ──────────────────────────────────────────────────────────────
