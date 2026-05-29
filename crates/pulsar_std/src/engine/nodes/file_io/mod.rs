@@ -28,13 +28,15 @@ static BP_FILE_SANDBOX_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 /// Set the project root that all blueprint file I/O is restricted to.
 ///
-/// # Panics
-///
-/// Panics if the sandbox has already been initialised (set at most once).
+/// If the sandbox root has already been set this call is a no-op (a warning
+/// is printed and the new value is ignored).
 pub fn set_sandbox_root(root: PathBuf) {
-    BP_FILE_SANDBOX_ROOT.set(root).unwrap_or_else(|_| {
-        panic!("BP_FILE_SANDBOX_ROOT already initialised");
-    });
+    if BP_FILE_SANDBOX_ROOT.set(root).is_err() {
+        eprintln!(
+            "[pulsar_std] warning: BP_FILE_SANDBOX_ROOT already initialised — \
+             refusing to change the sandbox root"
+        );
+    }
 }
 
 /// Resolve a user-supplied blueprint path against the sandbox root.
