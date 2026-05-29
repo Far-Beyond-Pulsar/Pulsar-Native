@@ -137,6 +137,8 @@ pub enum BuildMode {
     BuildAndRun,
     /// Run `cargo check` only — no codegen.
     Check,
+    /// Run `cargo update` to refresh all git and registry deps.
+    Update,
 }
 
 /// Complete Rust target platform and architecture support (excluding WASM)

@@ -1,20 +1,3 @@
-//! Real-time cargo build progress via JSON message parsing.
-//!
-//! ## How progress is tracked
-//!
-//! Cargo's `--message-format=json` flag splits output:
-//!   stdout → machine-readable JSON (what we parse)
-//!   stderr → human-readable `Compiling …` lines (visible in the editor terminal)
-//!
-//! We use `--unit-graph` (stable since 1.65) for a fast pre-flight that returns
-//! the exact set of compilation units cargo will process for this invocation.
-//! That count becomes the denominator so the bar reflects real work.
-//!
-//! If `--unit-graph` is unavailable or fails we fall back to counting artifacts
-//! as they arrive and scaling dynamically: each new artifact extends the
-//! "expected total" slightly, so the bar always reaches 100 % at `build-finished`
-//! without stalling or jumping.
-
 use std::io::{BufRead as _, BufReader};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -23,160 +6,195 @@ use std::sync::{
     Arc,
 };
 
-/// Run `cargo build --release` in `project_root` and update `progress` (0–100).
-///
-/// Returns `Ok(())` on success or an error string on failure.  Human-readable
-/// cargo output (stderr) is forwarded to the process so it appears in the
-/// editor terminal; the JSON stream on stdout is consumed internally.
+/// Shared live status — current crate/repo name being processed.
+pub type StatusCell = Arc<parking_lot::Mutex<String>>;
+
 pub fn run_cargo_build(
     project_root: &Path,
     progress: Arc<AtomicU32>,
+    status: StatusCell,
 ) -> Result<(), String> {
-    // Fast pre-flight: ask cargo exactly how many units it will compile.
-    // This is the same invocation as the real build minus `--message-format`.
-    let total = unit_graph_count_for(project_root, &["build", "--release"])
-        .unwrap_or(0)
-        .max(1) as f32;
-
-    let mut child = Command::new("cargo")
-        .args(["build", "--release", "--message-format=json"])
-        .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit()) // human lines stay visible in the terminal
-        .spawn()
-        .map_err(|e| format!("Failed to spawn cargo build: {e}"))?;
-
-    let stdout = BufReader::new(
-        child
-            .stdout
-            .take()
-            .ok_or_else(|| "Failed to capture cargo stdout".to_string())?,
-    );
-
-    let mut seen: u32 = 0;
-    // Rolling total used when unit-graph count was unavailable (fallback mode).
-    // In fallback mode we keep the denominator slightly ahead of seen so the
-    // bar never reaches 100 % prematurely — `build-finished` sets it to 100.
-    let mut rolling_total = total;
-
-    for line in stdout.lines() {
-        let Ok(line) = line else { continue };
-
-        if !line.contains(r#""reason""#) {
-            continue;
-        }
-
-        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
-        };
-
-        match msg["reason"].as_str() {
-            Some("compiler-artifact") => {
-                seen += 1;
-
-                // In fallback mode (total == 1 placeholder), grow the denominator
-                // so the bar stays believable without stalling.
-                if rolling_total < seen as f32 + 2.0 {
-                    rolling_total = seen as f32 + 2.0;
-                }
-
-                // Reserve 5 % for the linker — it produces no JSON events.
-                let pct = ((seen as f32 / rolling_total) * 95.0).min(94.0) as u32;
-                progress.store(pct, Ordering::Relaxed);
-            }
-
-            Some("build-finished") => {
-                // The JSON stream is done.  Exit status determines success/failure.
-                // Don't touch `progress` here — let the caller set 100 on success.
-            }
-
-            _ => {}
-        }
-    }
-
-    let status = child
-        .wait()
-        .map_err(|e| format!("Failed to wait for cargo: {e}"))?;
-
-    if status.success() {
-        progress.store(100, Ordering::Relaxed);
-        Ok(())
-    } else {
-        Err("cargo build failed — check the editor output for details".into())
-    }
+    run_cargo(project_root, &["build", "--release"], progress, status)
 }
 
-/// Run `cargo check` in `project_root` with JSON progress tracking.
 pub fn run_cargo_check(
     project_root: &Path,
     progress: Arc<AtomicU32>,
+    status: StatusCell,
 ) -> Result<(), String> {
-    let total = unit_graph_count_for(project_root, &["check"])
-        .unwrap_or(0)
-        .max(1) as f32;
+    run_cargo(project_root, &["check"], progress, status)
+}
+
+/// Run `cargo update` and drive progress via stderr "Updating …" lines.
+/// cargo update has no JSON format — all output is human-readable on stderr.
+pub fn run_cargo_update(
+    project_root: &Path,
+    progress: Arc<AtomicU32>,
+    status: StatusCell,
+) -> Result<(), String> {
+    tracing::info!("[CARGO-PROGRESS] spawning: cargo update in {}", project_root.display());
 
     let mut child = Command::new("cargo")
-        .args(["check", "--message-format=json"])
+        .arg("update")
         .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("Failed to spawn cargo check: {e}"))?;
+        .map_err(|e| format!("Failed to spawn cargo update: {e}"))?;
 
-    let stdout = BufReader::new(
-        child
-            .stdout
-            .take()
-            .ok_or_else(|| "Failed to capture cargo stdout".to_string())?,
+    let stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut updates_seen: u32 = 0;
+
+    for line in stderr.lines() {
+        let Ok(line) = line else { break };
+        eprintln!("{line}");
+
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("Updating ") || trimmed.starts_with("Locking ") {
+            updates_seen += 1;
+            let pct = (updates_seen * 3).min(95) as u32;
+            progress.store(pct, Ordering::Relaxed);
+
+            let what = trimmed
+                .trim_start_matches("Updating ")
+                .trim_start_matches("Locking ")
+                .trim_matches('`');
+            let short = what.split('/').last().unwrap_or(what);
+            *status.lock() = format!("Updating {short}");
+            tracing::info!("[CARGO-PROGRESS] {trimmed} → {pct}%");
+        }
+    }
+
+    let exit = child.wait().map_err(|e| format!("Failed to wait for cargo update: {e}"))?;
+    if exit.success() {
+        progress.store(100, Ordering::Relaxed);
+        tracing::info!("[CARGO-PROGRESS] update success → 100%");
+        Ok(())
+    } else {
+        Err("cargo update failed — check the editor output for details".into())
+    }
+}
+
+fn run_cargo(
+    project_root: &Path,
+    subcommand: &[&str],
+    progress: Arc<AtomicU32>,
+    status: StatusCell,
+) -> Result<(), String> {
+    let mut args: Vec<&str> = subcommand.to_vec();
+    args.push("--message-format=json");
+
+    tracing::info!(
+        "[CARGO-PROGRESS] spawning: cargo {} in {}",
+        args.join(" "),
+        project_root.display()
     );
 
+    let mut child = Command::new("cargo")
+        .args(&args)
+        .current_dir(project_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped()) // pipe stderr so we can parse "Updating" lines
+        .spawn()
+        .map_err(|e| format!("Failed to spawn cargo {}: {e}", subcommand[0]))?;
+
+    let stdout = BufReader::new(child.stdout.take().unwrap());
+    let stderr = BufReader::new(child.stderr.take().unwrap());
+
+    // ── stderr thread: parse "Updating …" lines → 0–10 % ────────────────────
+    let progress_stderr = Arc::clone(&progress);
+    let status_stderr   = Arc::clone(&status);
+    let stderr_thread = std::thread::spawn(move || {
+        // Count unique repos/registries being updated so we can estimate 0–10 %.
+        let mut updates_seen: u32 = 0;
+
+        for line in stderr.lines() {
+            let Ok(line) = line else { break };
+
+            // Forward to terminal so the user can still see full cargo output.
+            eprintln!("{line}");
+
+            // "    Updating git repository `https://…`"
+            // "    Updating crates.io index"
+            // "    Locking N packages"
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("Updating ") || trimmed.starts_with("Locking ") {
+                updates_seen += 1;
+                // Each update nudges us from 0 → max 9 %.
+                let pct = (updates_seen * 2).min(9) as u32;
+                progress_stderr.store(pct, Ordering::Relaxed);
+
+                // Extract what's being updated for the status line.
+                let what = trimmed
+                    .trim_start_matches("Updating ")
+                    .trim_start_matches("Locking ")
+                    .trim_matches('`');
+                // Keep only the meaningful part (strip long URLs).
+                let short = what.split('/').last().unwrap_or(what);
+                *status_stderr.lock() = format!("Updating {short}");
+
+                tracing::info!("[CARGO-PROGRESS] stderr: {trimmed} → {}%", pct);
+            }
+        }
+    });
+
+    // ── stdout: parse JSON compiler-artifact lines → 10–95 % ────────────────
     let mut seen: u32 = 0;
-    let mut rolling_total = total;
+    let mut rolling_total: f32 = 4.0;
 
     for line in stdout.lines() {
         let Ok(line) = line else { continue };
         if !line.contains(r#""reason""#) { continue }
+
         let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-        if matches!(msg["reason"].as_str(), Some("compiler-artifact")) {
-            seen += 1;
-            if rolling_total < seen as f32 + 2.0 { rolling_total = seen as f32 + 2.0; }
-            let pct = ((seen as f32 / rolling_total) * 95.0).min(94.0) as u32;
-            progress.store(pct, Ordering::Relaxed);
+
+        match msg["reason"].as_str() {
+            Some("compiler-artifact") => {
+                seen += 1;
+                if rolling_total < seen as f32 + 4.0 {
+                    rolling_total = seen as f32 + 4.0;
+                }
+                // Scale artifact progress over 10–95 %, leaving 5 % for linker.
+                let artifact_frac = (seen as f32 / rolling_total) * 85.0; // 85 % of range
+                let pct = (10 + artifact_frac as u32).min(94);
+                progress.store(pct, Ordering::Relaxed);
+
+                let name  = msg["target"]["name"].as_str().unwrap_or("?");
+                let fresh = msg["fresh"].as_bool().unwrap_or(false);
+                let kind  = msg["target"]["kind"].as_array()
+                    .and_then(|a| a.first()).and_then(|v| v.as_str()).unwrap_or("lib");
+
+                if !fresh {
+                    *status.lock() = format!("Compiling {name}");
+                }
+
+                tracing::info!(
+                    "[CARGO-PROGRESS] #{seen} {name} ({kind}) fresh={fresh} → {pct}%"
+                );
+            }
+            Some("build-finished") => {
+                tracing::info!("[CARGO-PROGRESS] build-finished seen={seen}");
+            }
+            _ => {}
         }
     }
 
-    let status = child.wait().map_err(|e| format!("Failed to wait for cargo: {e}"))?;
-    if status.success() {
+    let _ = stderr_thread.join();
+
+    tracing::info!("[CARGO-PROGRESS] stdout closed seen={seen}");
+
+    let status_val = child.wait()
+        .map_err(|e| format!("Failed to wait for cargo: {e}"))?;
+
+    if status_val.success() {
         progress.store(100, Ordering::Relaxed);
+        tracing::info!("[CARGO-PROGRESS] success → 100%");
         Ok(())
     } else {
-        Err("cargo check failed — check the editor output for details".into())
+        tracing::error!("[CARGO-PROGRESS] cargo exited non-zero");
+        Err(format!(
+            "cargo {} failed — check the editor output for details",
+            subcommand[0]
+        ))
     }
-}
-
-/// Ask cargo how many compilation units a given subcommand will touch, without
-/// actually running it.  Returns `None` if the flag is unsupported or the
-/// project hasn't been fetched yet.
-///
-/// `subcommand` is e.g. `&["build", "--release"]` or `&["check"]`.
-fn unit_graph_count_for(project_root: &Path, subcommand: &[&str]) -> Option<usize> {
-    let mut args: Vec<&str> = subcommand.to_vec();
-    args.extend_from_slice(&["--unit-graph", "-Z", "unstable-options"]);
-
-    let out = Command::new("cargo")
-        .args(&args)
-        .current_dir(project_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-
-    if !out.status.success() {
-        // Stable toolchain without -Z unstable-options — use fallback.
-        return None;
-    }
-
-    let graph: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
-    // `units` array: one entry per compilation unit cargo will process.
-    graph["units"].as_array().map(|a| a.len())
 }

@@ -85,6 +85,11 @@ impl BuildCoreButton {
                             current == BuildMode::Check,
                             Box::new(SetBuildMode(BuildMode::Check)),
                         )
+                        .menu_with_check(
+                            "Update",
+                            current == BuildMode::Update,
+                            Box::new(SetBuildMode(BuildMode::Update)),
+                        )
                 })
             });
 
@@ -129,6 +134,11 @@ fn mode_label_icon_tooltip(mode: BuildMode) -> (&'static str, IconName, &'static
             IconName::Check,
             "Run cargo check — fast type-check with no codegen",
         ),
+        BuildMode::Update => (
+            "Update",
+            IconName::Refresh,
+            "Run cargo update — refresh all git and registry dependencies",
+        ),
     }
 }
 
@@ -153,6 +163,7 @@ fn trigger_build(
 
     match mode {
         BuildMode::Check => run_check(root, window, cx),
+        BuildMode::Update => run_update(root, window, cx),
         BuildMode::Build => run_build_pipeline(root, mode, None, entity_id, window, cx),
         BuildMode::BuildAndRun => {
             run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx)
@@ -164,17 +175,22 @@ fn trigger_build(
 
 fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
+    let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui = Arc::clone(&progress_atomic);
+    let progress_for_ui    = Arc::clone(&progress_atomic);
+    let status_for_thread  = Arc::clone(&status_cell);
+    let status_for_ui      = Arc::clone(&status_cell);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     std::thread::spawn(move || {
-        let result = super::cargo_progress::run_cargo_check(&project_root, progress_for_thread);
+        let result = super::cargo_progress::run_cargo_check(
+            &project_root, progress_for_thread, status_for_thread,
+        );
         smol::block_on(result_tx.send(result)).ok();
     });
 
     window.push_notification(
-        Notification::info("Checking project…")
+        Notification::info("Starting check…")
             .id::<BuildCoreNotification>()
             .title("Check")
             .progress(0.0)
@@ -184,7 +200,8 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
 
     let window_handle = window.window_handle();
     cx.spawn(async move |async_app: &mut AsyncApp| {
-        let mut last_pct: u32 = 0;
+        let mut last_pct: u32 = u32::MAX;
+        let mut last_status = String::new();
         loop {
             match result_rx.try_recv() {
                 Ok(result) => {
@@ -206,14 +223,105 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct = progress_for_ui.load(Ordering::Relaxed);
-                    if pct != last_pct {
-                        last_pct = pct;
+                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let status = status_for_ui.lock().clone();
+                    if pct != last_pct || status != last_status {
+                        last_pct    = pct;
+                        last_status = status.clone();
+                        let msg = if status.is_empty() {
+                            format!("Checking… ({pct}%)")
+                        } else {
+                            format!("{status} ({pct}%)")
+                        };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.push_notification(
-                                Notification::info(format!("Checking… ({pct}%)"))
+                                Notification::info(msg)
                                     .id::<BuildCoreNotification>()
                                     .title("Check")
+                                    .progress(pct as f32 / 100.0)
+                                    .autohide(false),
+                                cx,
+                            );
+                        });
+                    }
+                }
+            }
+            async_app
+                .background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
+        }
+    })
+    .detach();
+}
+
+// ── cargo update ─────────────────────────────────────────────────────────────
+
+fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
+    let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
+    let status_cell = super::cargo_progress::StatusCell::default();
+    let progress_for_thread = Arc::clone(&progress_atomic);
+    let progress_for_ui    = Arc::clone(&progress_atomic);
+    let status_for_thread  = Arc::clone(&status_cell);
+    let status_for_ui      = Arc::clone(&status_cell);
+    let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
+
+    std::thread::spawn(move || {
+        let result = super::cargo_progress::run_cargo_update(
+            &project_root, progress_for_thread, status_for_thread,
+        );
+        smol::block_on(result_tx.send(result)).ok();
+    });
+
+    window.push_notification(
+        Notification::info("Updating dependencies…")
+            .id::<BuildCoreNotification>()
+            .title("Update")
+            .progress(0.0)
+            .autohide(false),
+        cx,
+    );
+
+    let window_handle = window.window_handle();
+    cx.spawn(async move |async_app: &mut AsyncApp| {
+        let mut last_pct: u32 = u32::MAX;
+        let mut last_status = String::new();
+        loop {
+            match result_rx.try_recv() {
+                Ok(result) => {
+                    let _ = async_app.update_window(window_handle, |_, window, cx| match result {
+                        Ok(()) => window.push_notification(
+                            Notification::success("Dependencies updated.")
+                                .id::<BuildCoreNotification>()
+                                .title("Update")
+                                .progress(1.0)
+                                .autohide_delay(Duration::from_secs(3)),
+                            cx,
+                        ),
+                        Err(msg) => window.push_notification(
+                            Notification::error(msg).id::<BuildCoreNotification>().title("Update"),
+                            cx,
+                        ),
+                    });
+                    return;
+                }
+                Err(smol::channel::TryRecvError::Closed) => return,
+                Err(smol::channel::TryRecvError::Empty) => {
+                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let status = status_for_ui.lock().clone();
+                    if pct != last_pct || status != last_status {
+                        last_pct    = pct;
+                        last_status = status.clone();
+                        let msg = if status.is_empty() {
+                            format!("Updating dependencies… ({pct}%)")
+                        } else {
+                            format!("{status} ({pct}%)")
+                        };
+                        let _ = async_app.update_window(window_handle, |_, window, cx| {
+                            window.push_notification(
+                                Notification::info(msg)
+                                    .id::<BuildCoreNotification>()
+                                    .title("Update")
                                     .progress(pct as f32 / 100.0)
                                     .autohide(false),
                                 cx,
@@ -243,21 +351,24 @@ fn run_build_pipeline(
     cx: &mut App,
 ) {
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
+    let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui = Arc::clone(&progress_atomic);
+    let progress_for_ui    = Arc::clone(&progress_atomic);
+    let status_for_thread  = Arc::clone(&status_cell);
+    let status_for_ui      = Arc::clone(&status_cell);
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     let project_root_thread = project_root.clone();
     std::thread::spawn(move || {
-        let result = run_cargo_build(&project_root_thread, progress_for_thread);
+        let result = run_cargo_build(&project_root_thread, progress_for_thread, status_for_thread);
         smol::block_on(result_tx.send(result)).ok();
     });
 
     let title = if mode == BuildMode::BuildAndRun { "Build + Run" } else { "Build Core" };
 
     window.push_notification(
-        Notification::info("Building project…")
+        Notification::info("Starting build…")
             .id::<BuildCoreNotification>()
             .title(title)
             .progress(0.0)
@@ -268,12 +379,12 @@ fn run_build_pipeline(
     let window_handle = window.window_handle();
 
     cx.spawn(async move |async_app: &mut AsyncApp| {
-        let mut last_pct: u32 = 0;
+        let mut last_pct: u32 = u32::MAX;
+        let mut last_status = String::new();
 
         loop {
             match result_rx.try_recv() {
                 Ok(Ok(())) => {
-                    // Build succeeded.
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
                         window.push_notification(
                             Notification::success("Build succeeded.")
@@ -312,12 +423,19 @@ fn run_build_pipeline(
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct = progress_for_ui.load(Ordering::Relaxed);
-                    if pct != last_pct {
-                        last_pct = pct;
+                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let status = status_for_ui.lock().clone();
+                    if pct != last_pct || status != last_status {
+                        last_pct    = pct;
+                        last_status = status.clone();
+                        let msg = if status.is_empty() {
+                            format!("Building… ({pct}%)")
+                        } else {
+                            format!("{status} ({pct}%)")
+                        };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.push_notification(
-                                Notification::info(format!("Building project… ({pct}%)"))
+                                Notification::info(msg)
                                     .id::<BuildCoreNotification>()
                                     .title(title)
                                     .progress(pct as f32 / 100.0)
@@ -463,21 +581,13 @@ async fn launch_and_monitor(
 
 // ── cargo build (blocking, called on a thread) ────────────────────────────────
 
-fn run_cargo_build(project_root: &PathBuf, progress: Arc<AtomicU32>) -> Result<(), String> {
+fn run_cargo_build(
+    project_root: &PathBuf,
+    progress: Arc<AtomicU32>,
+    status: super::cargo_progress::StatusCell,
+) -> Result<(), String> {
     engine_backend::services::ensure_core_bootstrap(project_root)?;
-
-    let update_ok = std::process::Command::new("cargo")
-        .arg("update")
-        .current_dir(project_root)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    if !update_ok {
-        tracing::warn!("cargo update returned non-zero; proceeding with build anyway");
-    }
-
-    super::cargo_progress::run_cargo_build(project_root, progress)
+    super::cargo_progress::run_cargo_build(project_root, progress, status)
 }
 
 fn save_crash_report(project_root: &PathBuf, stderr: &str) -> Option<PathBuf> {
