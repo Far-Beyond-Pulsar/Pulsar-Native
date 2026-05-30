@@ -182,7 +182,6 @@ impl CompletionProvider for GlobalRustAnalyzerCompletionProvider {
                     analyzer.send_request_async("textDocument/completion", params)
                 })
                 .ok()
-                .and_then(|r| r.ok())
             {
                 Some(rx) => rx,
                 None => {

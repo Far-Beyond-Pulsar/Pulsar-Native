@@ -252,7 +252,7 @@ pub fn render_flamegraph_canvas(
                                     let text_run = TextRun {
                                         len: text.len(),
                                         font: window.text_style().font(),
-                                        color: hsla(0.0, 0.0, 0.0, 0.92),
+                                        color: TextColor::from(hsla(0.0, 0.0, 0.0, 0.92)),
                                         background_color: None,
                                         underline: None,
                                         strikethrough: None,

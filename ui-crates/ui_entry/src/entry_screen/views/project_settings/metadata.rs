@@ -82,13 +82,14 @@ pub fn render_metadata_tab(
 
     // Try to read and parse the config file
     let (config_result, _config_content) = if has_config {
-        let content = std::fs::read_to_string(&config_path).ok();
+        let content = std::fs::read_to_string(&config_path);
         let config = content
             .as_ref()
+            .ok()
             .and_then(|c| ProjectConfig::from_toml(c).ok());
         (config, content)
     } else {
-        (None, None)
+        (None, Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Config file not found")))
     };
 
     v_flex()

@@ -240,7 +240,8 @@ use pulsar_std::{blueprint, NodeTypes};
 pub fn create_sword() -> GameItem {
     GameItem {
         name: "Iron Sword".to_string(),
-        icon_path: "assets/icons/iron_sword.png".to_string(),
+        // Icons are provided by WGPUI-Component in ../WGPUI-Component/assets/icons/
+        icon_path: "icons/iron_sword.png".to_string(),
         value: 100,
         weight: 2.5,
         rarity: ItemRarity::Common,

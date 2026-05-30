@@ -10,7 +10,7 @@ workspace = true
 
 [dependencies]
 gpui-ce.workspace = true
-pulsar_diagnostics.workspace = true
+ui.workspace = true
 lsp-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true

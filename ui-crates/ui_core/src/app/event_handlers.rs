@@ -330,7 +330,7 @@ pub fn on_analyzer_event(
                     });
 
                     let hints = match rx_result {
-                        Ok(Ok(rx)) => {
+                        Ok(rx) => {
                             // Wait for response with async timeout
                             let recv_future = rx.recv_async();
                             let timeout_future = Timer::after(Duration::from_secs(5));
@@ -364,7 +364,7 @@ pub fn on_analyzer_event(
                                             rust_analyzer.read(cx).resolve_code_action_async(&unresolved_action)
                                         });
 
-                                        if let Ok(Ok(resolve_rx)) = resolve_rx {
+                                        if let Ok(resolve_rx) = resolve_rx {
                                             // Async timeout for resolve
                                             let resolve_future = resolve_rx.recv_async();
                                             let resolve_timeout = Timer::after(Duration::from_secs(2));
@@ -429,12 +429,8 @@ pub fn on_analyzer_event(
                                 },
                             }
                         }
-                        Ok(Err(e)) => {
-                            tracing::warn!("⚠️ Failed to request code actions: {:?}", e);
-                            Vec::new()
-                        }
                         Err(e) => {
-                            tracing::warn!("⚠️ Context update failed: {:?}", e);
+                            tracing::warn!("⚠️ Failed to request code actions: {:?}", e);
                             Vec::new()
                         }
                     };

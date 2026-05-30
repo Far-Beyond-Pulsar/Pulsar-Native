@@ -219,7 +219,7 @@ impl PulsarApp {
                             cx.update_window(originating_window_handle, |_, win, _| {
                                 win.remove_window()
                             })
-                            .ok();
+                            ;
                         });
 
                         cx.defer({
@@ -237,7 +237,7 @@ impl PulsarApp {
 
                     this.state.project_switcher_open = false;
                     this.state.project_switcher_view = None;
-                    this.state.focus_handle.focus(window);
+                    this.state.focus_handle.focus(window, cx);
                     cx.notify();
                 },
             )

@@ -5,12 +5,4 @@ edition = "2021"
 description = "Blueprint graph data model for Pulsar (BlueprintAsset, GraphDescription, type system)"
 
 [dependencies]
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-chrono = { workspace = true }
-tracing = { workspace = true }
-pulsar_reflection = { workspace = true, optional = true }
-
-[features]
-default = ["reflection"]
-reflection = ["pulsar_reflection"]
+ui.workspace = true

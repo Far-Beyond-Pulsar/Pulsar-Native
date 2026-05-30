@@ -12,3 +12,4 @@ pub mod types;
 
 pub use rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 pub use traits::{DefinitionProvider, HoverProvider, LspBackend};
+// DefinitionProvider and HoverProvider are re-exported from ui::input::lsp via traits.

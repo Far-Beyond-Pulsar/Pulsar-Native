@@ -1119,7 +1119,7 @@ macro_rules! export_plugin {
             // OnceLock.set() will fail if already set, which is fine.
             // The theme pointer should remain stable across the plugin lifetime.
             if SYNCED_THEME.get().is_none() {
-                SYNCED_THEME.set(theme_ptr as usize).ok();
+                SYNCED_THEME.set(theme_ptr as usize);
             }
         }
     };

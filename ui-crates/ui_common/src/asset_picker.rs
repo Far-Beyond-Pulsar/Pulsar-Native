@@ -211,7 +211,7 @@ impl MeshAssetPicker {
         let (tx, rx) = smol::channel::bounded::<Option<Arc<image::RgbaImage>>>(1);
 
         engine_fs::thumbnails::service().request(abs_path, cache_root, move |rgba| {
-            smol::block_on(tx.send(rgba)).ok();
+            smol::block_on(tx.send(rgba));
         });
 
         let path_key = path.clone();
@@ -222,7 +222,7 @@ impl MeshAssetPicker {
                 smallvec::smallvec![image::Frame::new((*rgba).clone().into())],
             ));
 
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 this.update(cx, |picker, cx| {
                     if let Some(item) = picker.items.iter_mut().find(|i| i.path == path_key) {
                         item.thumbnail = Some(render_image);
@@ -233,9 +233,7 @@ impl MeshAssetPicker {
                     });
                     cx.notify();
                 })
-                .ok();
-            })
-            .ok();
+            });
         })
         .detach();
     }

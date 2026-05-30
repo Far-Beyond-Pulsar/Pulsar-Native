@@ -151,7 +151,7 @@ impl FileItem {
             } else {
                 let meta = std::fs::metadata(path).ok();
                 let s = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                let m = meta.and_then(|m| m.modified().ok());
+                let m = meta.as_ref().and_then(|m| m.modified().ok());
                 let d = path.is_dir() && file_type_def.is_none();
                 (s, m, d)
             };

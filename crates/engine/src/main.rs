@@ -42,14 +42,13 @@ static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
 
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
-// Re-export compiler and graph from ui crate (canonical location)
-pub use ui::compiler;
+// Re-export graph from ui crate (canonical location)
 pub use ui::graph;
 // Re-export themes from ui crate (where it belongs)
 pub use ui::themes;
 // Re-export engine state
 pub use engine_state;
-// Re-export Assets type for convenience
+// Re-export Combined Assets (includes icons from WGPUI-Component + engine assets)
 pub use assets::Assets;
 // Re-export OpenSettings from ui crate
 pub use ui::OpenSettings;
@@ -419,7 +418,7 @@ fn main() {
     profiling::enable_profiling();
 
     // Parse arguments first (needed for init context)
-    dotenv::dotenv().ok();
+    dotenv::dotenv();
     let parsed = args::parse_args();
 
     // Create initialization context

@@ -341,7 +341,6 @@ fn run_setup_script(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) {
                             false
                         }
                     })
-                    .unwrap_or(false)
                 })
                 .unwrap_or(false);
 
@@ -351,9 +350,9 @@ fn run_setup_script(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) {
                     this.update(cx, |screen, cx| {
                         screen.check_dependencies_async(cx);
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
                 break;
             }
         }

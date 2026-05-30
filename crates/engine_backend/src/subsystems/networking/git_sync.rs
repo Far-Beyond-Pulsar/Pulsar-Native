@@ -123,7 +123,7 @@ build/
 .DS_Store
 Thumbs.db
 ";
-                std::fs::write(gitignore_path, default_ignore).ok();
+                std::fs::write(gitignore_path, default_ignore);
             }
 
             Ok(repo)
@@ -391,7 +391,7 @@ fn serialize_tree(
         } else if let Some(git2::ObjectType::Tree) = entry.kind() {
             // Recurse into subdirectory
             if let Ok(subtree) = repo.find_tree(entry.id()) {
-                serialize_tree(repo, &subtree, objects).ok();
+                serialize_tree(repo, &subtree, objects);
             }
         }
         git2::TreeWalkResult::Ok
@@ -509,9 +509,9 @@ pub fn create_commit_from_files(
     // Add files to working directory
     for (path, content) in &files {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).ok();
+            std::fs::create_dir_all(parent);
         }
-        std::fs::write(path, content).ok();
+        std::fs::write(path, content);
     }
 
     // Stage and commit

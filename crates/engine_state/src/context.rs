@@ -402,7 +402,7 @@ impl EngineContext {
 
     /// Set as global instance (for GPUI views that need global access)
     pub fn set_global(self) {
-        GLOBAL_CONTEXT.set(self).ok();
+        GLOBAL_CONTEXT.set(self);
     }
 
     /// Get global instance

@@ -163,7 +163,7 @@ impl AgentChatPanel {
                             });
 
                             match poll {
-                                Ok(Some(Ok(Some(token)))) => {
+                                Some(Ok(Some(token))) => {
                                     cx.update(|cx| {
                                         this.update(cx, |panel, cx| {
                                             panel.provider_tokens.insert(provider_id, token);
@@ -182,14 +182,12 @@ impl AgentChatPanel {
                                             panel.refresh_chat_history_list(cx);
                                             panel.scroll_messages_to_bottom();
                                             cx.notify();
-                                        })
-                                        .ok();
-                                    })
-                                    .ok();
+                                        });
+                                    });
                                     break;
                                 }
                                 // authorization_pending or slow_down — keep polling
-                                Ok(Some(Ok(None))) => {}
+                                Some(Ok(None)) => {}
                                 // error or the entity/context was dropped
                                 _ => {
                                     cx.update(|cx| {
@@ -203,10 +201,8 @@ impl AgentChatPanel {
                                             });
                                             panel.scroll_messages_to_bottom();
                                             cx.notify();
-                                        })
-                                        .ok();
-                                    })
-                                    .ok();
+                                        });
+                                    });
                                     break;
                                 }
                             }

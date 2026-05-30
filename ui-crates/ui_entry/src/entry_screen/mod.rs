@@ -353,9 +353,9 @@ impl EntryScreen {
                     screen.show_dependency_setup = missing;
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -418,9 +418,9 @@ impl EntryScreen {
 
                 // Notify UI update
                 cx.update(|cx| {
-                    this.update(cx, |_, cx| cx.notify()).ok();
+                    this.update(cx, |_, cx| cx.notify());
                 })
-                .ok();
+                ;
             }
 
             // Mark fetch complete
@@ -429,9 +429,9 @@ impl EntryScreen {
                     screen.is_fetching_updates = false;
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -460,9 +460,9 @@ impl EntryScreen {
             }
 
             cx.update(|cx| {
-                this.update(cx, |_, cx| cx.notify()).ok();
+                this.update(cx, |_, cx| cx.notify());
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -523,9 +523,9 @@ impl EntryScreen {
                         screen.recent_projects.save(&recent_projects_path);
                         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path });
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -568,9 +568,9 @@ impl EntryScreen {
                 }
 
                 cx.update(|cx| {
-                    this.update(cx, |_, cx| cx.notify()).ok();
+                    this.update(cx, |_, cx| cx.notify());
                 })
-                .ok();
+                ;
 
                 let repo_url_clone = repo_url.clone();
                 let progress_clone = progress.clone();
@@ -624,9 +624,9 @@ impl EntryScreen {
 
                                 cx.notify();
                             })
-                            .ok();
+                            ;
                         })
-                        .ok();
+                        ;
                     }
                     Ok(Err(e)) => {
                         let mut prog = progress.lock();
@@ -640,18 +640,18 @@ impl EntryScreen {
                 }
 
                 cx.update(|cx| {
-                    this.update(cx, |_, cx| cx.notify()).ok();
+                    this.update(cx, |_, cx| cx.notify());
                 })
-                .ok();
+                ;
             } else {
                 cx.update(|cx| {
                     this.update(cx, |screen, cx| {
                         screen.clone_progress = None;
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -784,9 +784,9 @@ impl EntryScreen {
                         temp_settings
                     })
                     .join()
-                    .ok();
+                    ;
 
-                    if let Some(loaded) = loaded_data {
+                    if let Ok(loaded) = loaded_data {
                         let _ = cx.update(|cx| {
                             let _ = this.update(cx, |screen, cx| {
                                 if let Some(ref mut settings) = screen.project_settings {
@@ -845,9 +845,9 @@ impl EntryScreen {
                     views::ProjectSettings::load_all_data_async(project_path)
                 })
                 .join()
-                .ok();
+                ;
 
-                if let Some(new_settings) = loaded_settings {
+                if let Ok(new_settings) = loaded_settings {
                     let _ = cx.update(|cx| {
                         let _ = this.update(cx, |screen, cx| {
                             if let Some(ref mut settings) = screen.project_settings {
@@ -877,9 +877,9 @@ impl EntryScreen {
                         screen.new_project_path = Some(folder.path().to_path_buf());
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -947,9 +947,9 @@ default_scene = "scenes/main.scene"
                         path: project_path,
                     });
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -1046,7 +1046,7 @@ default_scene = "scenes/main.scene"
         let (tx, rx) = smol::channel::bounded::<Option<(CloudServerStatus, Vec<CloudProject>)>>(1);
         std::thread::spawn(move || {
             let result = fetch_cloud_server_info(base_url, token);
-            smol::block_on(tx.send(result)).ok();
+            smol::block_on(tx.send(result));
         });
 
         cx.spawn(async move |this, cx| {
@@ -1067,9 +1067,9 @@ default_scene = "scenes/main.scene"
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -1145,19 +1145,19 @@ default_scene = "scenes/main.scene"
                     let _ = req.send().await;
                 });
             }
-            smol::block_on(tx.send(())).ok();
+            smol::block_on(tx.send(()));
         });
 
         cx.spawn(async move |this, cx| {
-            rx.recv().await.ok();
+            rx.recv().await;
             // Refresh server state after prepare to pick up new status.
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -1213,19 +1213,19 @@ default_scene = "scenes/main.scene"
                     let _ = req.send().await;
                 });
             }
-            smol::block_on(tx.send(())).ok();
+            smol::block_on(tx.send(()));
         });
 
         cx.spawn(async move |this, cx| {
-            rx.recv().await.ok();
+            rx.recv().await;
             // Refresh to surface the newly created project.
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -1275,18 +1275,18 @@ default_scene = "scenes/main.scene"
                     let _ = req.send().await;
                 });
             }
-            smol::block_on(tx.send(())).ok();
+            smol::block_on(tx.send(()));
         });
 
         cx.spawn(async move |this, cx| {
-            rx.recv().await.ok();
+            rx.recv().await;
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -1345,18 +1345,18 @@ default_scene = "scenes/main.scene"
                     let _ = req.send().await;
                 });
             }
-            smol::block_on(tx.send(())).ok();
+            smol::block_on(tx.send(()));
         });
 
         cx.spawn(async move |this, cx| {
-            rx.recv().await.ok();
+            rx.recv().await;
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
