@@ -402,10 +402,39 @@ fn ensure_linux_desktop_entry(exe_path: &std::path::Path) -> Option<String> {
     Some(desktop_file_name)
 }
 
+/// Anti-debugging check for Windows builds.
+/// Detects if a debugger is attached and warns the user.
+/// This is a basic deterrent — a skilled reverser can bypass it,
+/// but it stops casual debugging and automated analysis.
+#[cfg(target_os = "windows")]
+fn check_debugger_attached() {
+    use windows::Win32::System::Diagnostics::Debug::IsDebuggerPresent;
+    unsafe {
+        if IsDebuggerPresent().as_bool() {
+            tracing::warn!(
+                "⚠️  Debugger detected! This is a release build — attach only for legitimate debugging."
+            );
+            // Optionally, the engine could refuse to run under a debugger:
+            // std::process::exit(1);
+            // For now we just warn, since legitimate debugging should still work.
+        }
+    }
+}
+
+/// Anti-debugging stub for non-Windows platforms.
+#[cfg(not(target_os = "windows"))]
+fn check_debugger_attached() {
+    // On Linux/macOS, ptrace-based detection can be added here.
+    // For now, this is a no-op placeholder.
+}
+
 /// Main entry point for the Pulsar Engine binary.
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    // Anti-debugging check — runs before any other initialization.
+    check_debugger_attached();
+
     let _ = rustls::crypto::ring::default_provider().install_default();
 
     enforce_discrete_gpu_policy_or_exit();

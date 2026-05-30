@@ -96,6 +96,46 @@ impl BpExecutor {
         Ok(Self { _lib: lib })
     }
 
+    /// Whitelist of allowed dispatch node type prefixes.
+    /// Only symbols matching one of these prefixes will be resolved.
+    /// This prevents arbitrary code execution by limiting which functions
+    /// the blueprint VM can call.
+    const ALLOWED_DISPATCH_PREFIXES: &'static [&'static str] = &[
+        "__bp_dispatch_std_",
+        "__bp_dispatch_core_",
+        "__bp_dispatch_math_",
+        "__bp_dispatch_string_",
+        "__bp_dispatch_array_",
+        "__bp_dispatch_flow_",
+        "__bp_dispatch_debug_",
+        "__bp_dispatch_file_",
+        "__bp_dispatch_time_",
+        "__bp_dispatch_random_",
+        "__bp_dispatch_input_",
+        "__bp_dispatch_render_",
+        "__bp_dispatch_physics_",
+        "__bp_dispatch_scene_",
+        "__bp_dispatch_engine_",
+        "__bp_dispatch_game_",
+        "__bp_dispatch_crypto_",
+        "__bp_dispatch_ui_",
+        "__bp_dispatch_agent_",
+        "__bp_dispatch_network_",
+        "__bp_dispatch_audio_",
+        "__bp_dispatch_animation_",
+        "__bp_dispatch_transform_",
+        "__bp_dispatch_collision_",
+        "__bp_dispatch_events_",
+        "__bp_dispatch_blueprint_",
+    ];
+
+    /// Check if a dispatch symbol name is on the allowed whitelist.
+    fn is_allowed_dispatch(symbol_name: &str) -> bool {
+        Self::ALLOWED_DISPATCH_PREFIXES
+            .iter()
+            .any(|prefix| symbol_name.starts_with(prefix))
+    }
+
     /// Patch `fn_ptr` in every `Instruction::Call` by resolving
     /// `__bp_dispatch_<node_type>` from the native lib.
     ///
@@ -120,6 +160,16 @@ impl BpExecutor {
                 // Build a NUL-terminated key for libloading, but keep a clean
                 // copy without the NUL for use in error messages.
                 let display_name = format!("__bp_dispatch_{}", node_type);
+
+                // Whitelist check: only allow known dispatch prefixes.
+                if !Self::is_allowed_dispatch(&display_name) {
+                    return Err(ExecutorError::MissingSymbol(format!(
+                        "Dispatch '{}' is not on the allowed whitelist. \
+                         Only whitelisted blueprint node types can be executed.",
+                        display_name
+                    )));
+                }
+
                 let lookup_key = format!("{}\0", display_name);
                 let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
                     self._lib

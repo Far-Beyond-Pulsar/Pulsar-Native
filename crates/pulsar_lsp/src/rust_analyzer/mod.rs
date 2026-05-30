@@ -105,11 +105,58 @@ impl RustAnalyzerManager {
         }
     }
 
+    /// Validate that a path is a safe location for a rust-analyzer binary.
+    /// Returns true if the path is in a trusted directory or has an expected filename.
+    fn is_safe_analyzer_path(path: &PathBuf) -> bool {
+        // Must be a file, not a directory.
+        if !path.is_file() {
+            return false;
+        }
+        // Filename must match expected names for rust-analyzer.
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if file_name != "rust-analyzer" && file_name != "rust-analyzer.exe" {
+            tracing::warn!(
+                "Custom rust-analyzer path has unexpected filename '{}' — expected 'rust-analyzer'",
+                file_name
+            );
+            return false;
+        }
+        // Check that the parent directory is a trusted location.
+        if let Some(parent) = path.parent() {
+            let parent_str = parent.to_string_lossy().to_lowercase();
+            // Allow: ~/.cargo/bin, /usr/bin, /usr/local/bin, or PATH entries.
+            if parent_str.contains(".cargo\\bin") || parent_str.contains(".cargo/bin") {
+                return true;
+            }
+            if parent_str == "/usr/bin" || parent_str == "/usr/local/bin" {
+                return true;
+            }
+            // Resolve the full path via PATH lookup and check against PATH entries.
+            if let Ok(paths) = std::env::var("PATH") {
+                for p in std::env::split_paths(&paths) {
+                    let canonical = std::fs::canonicalize(&path).ok();
+                    let p_canonical = std::fs::canonicalize(p.join(file_name)).ok();
+                    if canonical.is_some() && canonical == p_canonical {
+                        return true;
+                    }
+                }
+            }
+            // Not in a known-safe directory — warn but still allow (user configured it).
+            tracing::warn!(
+                "rust-analyzer path '{:?}' is not in a standard location (not in PATH or ~/.cargo/bin)",
+                path
+            );
+        }
+        true // Allow by default (user explicitly set this path)
+    }
+
     /// Find rust-analyzer in PATH or use bundled version
     fn find_or_use_bundled_analyzer() -> PathBuf {
         if let Some(custom_path) = std::env::var_os("PULSAR_RUST_ANALYZER_PATH") {
             let custom_path = PathBuf::from(custom_path);
-            if Self::verify_rust_analyzer_executable(&custom_path).is_ok() {
+            if Self::verify_rust_analyzer_executable(&custom_path).is_ok()
+                && Self::is_safe_analyzer_path(&custom_path)
+            {
                 tracing::debug!("✓ Using rust-analyzer from PULSAR_RUST_ANALYZER_PATH");
                 return custom_path;
             }

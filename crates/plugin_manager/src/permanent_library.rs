@@ -152,23 +152,48 @@ impl PermanentLibrary {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, libloading::Error> {
         let path = path.as_ref();
 
-        // Compute SHA-256 digest of the library file before loading.
-        // This is used for runtime integrity verification — callers can
-        // check that the loaded library matches an expected manifest hash.
-        let sha256 = Self::compute_file_hash(path).map_err(|e| {
+        // Open the file, hash it while holding the handle, then load from the
+        // same handle.  This prevents a TOCTOU race where the file is swapped
+        // between hash computation and dlopen/LoadLibrary.
+        //
+        // On Linux we use /proc/self/fd/N to load from the open fd so that
+        // the kernel guarantees we load the same bytes we hashed.  On other
+        // platforms we fall back to the path (which is still better than
+        // hashing then loading from the path with no locking at all).
+        let file = std::fs::File::open(path).map_err(|e| {
+            tracing::warn!("Failed to open library '{}': {}", path.display(), e);
+            libloading::Error::IncompatibleSize
+        })?;
+
+        // Hash from the open file handle.
+        let sha256 = Self::compute_file_hash_from_handle(&file).map_err(|e| {
             tracing::warn!("Failed to hash library '{}': {}", path.display(), e);
             libloading::Error::IncompatibleSize
         })?;
+
+        // Drop the file handle on Windows before loading (LoadLibraryW needs
+        // exclusive access).  On Unix we keep the fd open and use /proc/self/fd.
+        #[cfg(target_os = "linux")]
+        let fd_path = {
+            use std::os::fd::AsRawFd;
+            let fd = file.as_raw_fd();
+            std::path::PathBuf::from(format!("/proc/self/fd/{}", fd))
+        };
+        // Keep `file` alive on Linux, drop it everywhere else.
+        #[cfg(not(target_os = "linux"))]
+        drop(file);
 
         // SAFETY: We load the library normally using libloading::Library.
         // The library must be a valid dynamic library for the current platform
         // and architecture. libloading will return an error if it's not.
         //
-        // We trust that:
-        // 1. The library was compiled with compatible ABI (checked later via version)
-        // 2. The library code is safe to execute (we trust internal plugins)
-        // 3. The library dependencies are available
-        let library = unsafe { Library::new(path)? };
+        // On Linux we load from /proc/self/fd/N so the kernel uses the same
+        // inode that we hashed, preventing TOCTOU.
+        let load_path: &std::path::Path = path;
+        #[cfg(target_os = "linux")]
+        let load_path: &std::path::Path = &fd_path;
+
+        let library = unsafe { Library::new(load_path)? };
 
         tracing::info!(
             "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",
@@ -187,6 +212,23 @@ impl PermanentLibrary {
     fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
         let bytes = std::fs::read(path)?;
         Ok(Sha256::digest(&bytes).into())
+    }
+
+    /// Compute the SHA-256 digest from an open file handle.
+    /// Used by `new()` to hash the file before loading, preventing TOCTOU races.
+    fn compute_file_hash_from_handle(file: &std::fs::File) -> Result<[u8; 32], std::io::Error> {
+        use std::io::Read;
+        let mut reader = std::io::BufReader::new(file);
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 8192];
+        loop {
+            let n = reader.read(&mut buffer)?;
+            if n == 0 {
+                break;
+            }
+            hasher.update(&buffer[..n]);
+        }
+        Ok(hasher.finalize().into())
     }
 
     /// Get a symbol from the library.
