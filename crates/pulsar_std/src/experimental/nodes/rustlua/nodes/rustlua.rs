@@ -6,7 +6,7 @@ fn create_sandboxed_lua() -> Lua {
     let globals = lua.globals().expect("Failed to get Lua globals");
     let os_table: Table = globals
         .get("os")
-        .unwrap_or_else(|_| lua.create_table().expect("Failed to create table");
+        .unwrap_or_else(|_| lua.create_table().expect("Failed to create table")); 
     let safe_os = lua.create_table().expect("Failed to create table");
     if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
         safe_os.set("time", time_fn).ok();
@@ -15,7 +15,6 @@ fn create_sandboxed_lua() -> Lua {
         safe_os.set("date", date_fn).ok();
     }
     globals.set("os", safe_os).expect("Failed to set os");
-
     globals.set("io", rlua::Nil).expect("Failed to block io");
     globals.set("debug", rlua::Nil).expect("Failed to block debug");
     globals.set("require", rlua::Nil).expect("Failed to block require");
@@ -23,14 +22,13 @@ fn create_sandboxed_lua() -> Lua {
     globals.set("dofile", rlua::Nil).expect("Failed to block dofile");
     globals.set("loadfile", rlua::Nil).expect("Failed to block loadfile");
     globals.set("collectgarbage", rlua::Nil).expect("Failed to block collectgarbage");
-
     lua
 }
 
 #[blueprint(type:NodeTypes::control_flow, category:"RLua (Experimental)", color="#003cff5d")]
 pub fn runlua(code: String) -> String {
-    let lua_runtime = create_sandboxed_lua()
-    let output: Result<String> = lua_runtime.load(&code).eval()
+    let lua_runtime = create_sandboxed_lua(); 
+    let output: Result<String> = lua_runtime.load(&code).eval(); 
     match output {
         Ok(res) => res,
         Err(e) => format!("Lua Error: {}", e),
