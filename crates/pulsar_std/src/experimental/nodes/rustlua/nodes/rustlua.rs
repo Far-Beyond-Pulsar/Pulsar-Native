@@ -6,8 +6,8 @@ fn create_sandboxed_lua() -> Lua {
     let globals = lua.globals().expect("Failed to get Lua globals");
     let os_table: Table = globals
         .get("os")
-        .unwrap_or_else(|_| lua.create_table().expect("Failed to create table")); 
-    let safe_os = lua.create_table().expect("Failed to create table");
+        .unwrap_or_else(|_| lua.create_table()); 
+    let safe_os = lua.create_table(); 
     if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
         safe_os.set("time", time_fn).ok();
     }
@@ -27,8 +27,8 @@ fn create_sandboxed_lua() -> Lua {
 
 #[blueprint(type:NodeTypes::control_flow, category:"RLua (Experimental)", color="#003cff5d")]
 pub fn runlua(code: String) -> String {
-    let lua_runtime = create_sandboxed_lua(); 
-    let output: Result<String> = lua_runtime.load(&code).eval(); 
+    let lua_runtime = create_sandboxed_lua();
+    let output: Result<String> = lua_runtime.load(&code).eval();
     match output {
         Ok(res) => res,
         Err(e) => format!("Lua Error: {}", e),
