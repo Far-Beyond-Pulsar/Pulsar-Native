@@ -3,25 +3,27 @@ use rlua::{Lua, Result, Table};
 
 fn create_sandboxed_lua() -> Lua {
     let lua = Lua::new();
-    let globals = lua.globals().expect("Failed to get Lua globals");
-    let os_table: Table = globals
-        .get("os")
-        .unwrap_or_else(|_| lua.create_table().expect("Failed to create table"));
-    let safe_os: Table = lua.create_table().expect("Failed to create table");
-    if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
-        safe_os.set("time", time_fn).ok();
+    {
+        let globals = lua.globals();
+        let os_table: Table = globals
+            .get("os")
+            .unwrap_or_else(|_| lua.create_table().expect("Failed to create table"));
+        let safe_os: Table = lua.create_table().expect("Failed to create table");
+        if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
+            safe_os.set("time", time_fn).ok();
+        }
+        if let Ok(date_fn) = os_table.get::<_, rlua::Function>("date") {
+            safe_os.set("date", date_fn).ok();
+        }
+        globals.set("os", safe_os).expect("Failed to set os");
+        globals.set("io", rlua::Nil).expect("Failed to block io");
+        globals.set("debug", rlua::Nil).expect("Failed to block debug");
+        globals.set("require", rlua::Nil).expect("Failed to block require");
+        globals.set("package", rlua::Nil).expect("Failed to block package");
+        globals.set("dofile", rlua::Nil).expect("Failed to block dofile");
+        globals.set("loadfile", rlua::Nil).expect("Failed to block loadfile");
+        globals.set("collectgarbage", rlua::Nil).expect("Failed to block collectgarbage");
     }
-    if let Ok(date_fn) = os_table.get::<_, rlua::Function>("date") {
-        safe_os.set("date", date_fn).ok();
-    }
-    globals.set("os", safe_os).expect("Failed to set os");
-    globals.set("io", rlua::Nil).expect("Failed to block io");
-    globals.set("debug", rlua::Nil).expect("Failed to block debug");
-    globals.set("require", rlua::Nil).expect("Failed to block require");
-    globals.set("package", rlua::Nil).expect("Failed to block package");
-    globals.set("dofile", rlua::Nil).expect("Failed to block dofile");
-    globals.set("loadfile", rlua::Nil).expect("Failed to block loadfile");
-    globals.set("collectgarbage", rlua::Nil).expect("Failed to block collectgarbage");
     lua
 }
 
