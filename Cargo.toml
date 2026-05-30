@@ -33,7 +33,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "c7e7728fade741ef5c14f6a646fab9da9bdd797b" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "53872e17a0e2f306ce4d9760ff2bdfa965b41337" }
 
 # ---------- Core Engine ----------
 ui                                 = { path = "../WGPUI-Component/crates/ui" }
@@ -237,7 +237,7 @@ files.extend-exclude = ["**/fixtures/*"]
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
-ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "5f91699a5abca4675d27567ba7e94b2bc6bf037e" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0493afe2c9e509d0cbb5d043ed69202ef6c601a5" }
 pulsar_std            = { path = "crates/pulsar_std" }
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
 engine_backend        = { path = "crates/engine_backend" }
