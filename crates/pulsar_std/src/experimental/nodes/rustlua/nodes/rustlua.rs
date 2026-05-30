@@ -6,8 +6,8 @@ fn create_sandboxed_lua() -> Lua {
     let globals = lua.globals().expect("Failed to get Lua globals");
     let os_table: Table = globals
         .get("os")
-        .unwrap_or_else(|_| lua.create_table()); 
-    let safe_os = lua.create_table(); 
+        .unwrap_or_else(|_| lua.create_table().expect("Failed to create table"));
+    let safe_os: Table = lua.create_table().expect("Failed to create table");
     if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
         safe_os.set("time", time_fn).ok();
     }
