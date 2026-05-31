@@ -97,7 +97,10 @@ impl FileItem {
         let name = path.file_name()?.to_str()?.to_string();
 
         let file_type_def = if path.is_dir() {
-            // Check registry for folder-based file types
+            // Check registry for folder-based file types.
+            // Prefer marker-file detection, but also allow extension matching so
+            // typed bundles (e.g. `*.pif`) still get their file-type icon if
+            // the marker is missing or not yet written.
             file_types
                 .iter()
                 .find(|def| {
@@ -105,6 +108,9 @@ impl FileItem {
                         &def.structure
                     {
                         path.join(marker_file).exists()
+                            || name.ends_with(&format!(".{}", def.extension))
+                            || path.extension().and_then(|x| x.to_str())
+                                == Some(def.extension.as_str())
                     } else {
                         false
                     }

@@ -1,8 +1,23 @@
 impl FileManagerDrawer {
     pub fn handle_create_asset(&mut self, action: &CreateAsset, cx: &mut Context<Self>) {
         if let Some(folder) = &self.selected_folder {
+            let file_type_def = self
+                .registered_file_types
+                .iter()
+                .find(|def| def.id.as_str() == action.file_type_id)
+                .cloned();
+
+            let display_name = file_type_def
+                .as_ref()
+                .map(|def| def.display_name.as_str())
+                .unwrap_or(action.display_name.as_str());
+            let extension = file_type_def
+                .as_ref()
+                .map(|def| def.extension.as_str())
+                .unwrap_or(action.extension.as_str());
+
             // Create file name with extension
-            let file_name = format!("New{}.{}", action.display_name.replace(" ", ""), action.extension);
+            let file_name = format!("New{}.{}", display_name.replace(" ", ""), extension);
             let file_path = cloud_join(folder, &file_name);
 
             // Check if file already exists and generate unique name
@@ -11,36 +26,122 @@ impl FileManagerDrawer {
             while engine_fs::virtual_fs::is_remote() && engine_fs::virtual_fs::exists(&final_path).unwrap_or(false)
                 || !engine_fs::virtual_fs::is_remote() && final_path.exists()
             {
-                let file_name = format!("New{}_{}.{}", action.display_name.replace(" ", ""), counter, action.extension);
+                let file_name = format!(
+                    "New{}_{}.{}",
+                    display_name.replace(" ", ""),
+                    counter,
+                    extension
+                );
                 final_path = cloud_join(folder, &file_name);
                 counter += 1;
             }
 
-            // Create the file with default content from the file type definition
-            let content = if action.default_content.is_null() {
-                // For SQLite databases, create an empty database file
-                if action.extension == "db" || action.extension == "sqlite" || action.extension == "sqlite3" {
-                    // SQLite databases need proper initialization, which will be handled by the editor
-                    // For now, create an empty file that the editor will initialize
-                    vec![]
+            let write_file = |path: &std::path::Path, content: &[u8]| {
+                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+                    engine_fs::virtual_fs::write_file(path, content)
                 } else {
-                    // For other files, use empty content
-                    vec![]
+                    std::fs::write(path, content).map_err(Into::into)
                 }
-            } else {
-                // Use the default content from the file type definition
-                action.default_content.to_string().into_bytes()
+            };
+            let create_dir_all = |path: &std::path::Path| {
+                if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+                    engine_fs::virtual_fs::create_dir_all(path)
+                } else {
+                    std::fs::create_dir_all(path).map_err(Into::into)
+                }
             };
 
-            let write_result = if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(&final_path) {
-                engine_fs::virtual_fs::write_file(&final_path, &content)
+            let create_result = if let Some(def) = file_type_def {
+                match def.structure {
+                    plugin_editor_api::FileStructure::Standalone => {
+                        let content = if def.default_content.is_null() {
+                            vec![]
+                        } else {
+                            match serde_json::to_string_pretty(&def.default_content) {
+                                Ok(s) => s.into_bytes(),
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to serialize default content for {}: {}",
+                                        def.id,
+                                        e
+                                    );
+                                    return;
+                                }
+                            }
+                        };
+
+                        write_file(&final_path, &content)
+                    }
+                    plugin_editor_api::FileStructure::FolderBased {
+                        marker_file,
+                        template_structure,
+                    } => {
+                        if let Err(e) = create_dir_all(&final_path) {
+                            Err(e)
+                        } else {
+                            let marker_path = final_path.join(marker_file);
+                            let marker_content = match serde_json::to_string_pretty(&def.default_content) {
+                                Ok(s) => s.into_bytes(),
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to serialize marker content for {}: {}",
+                                        def.id,
+                                        e
+                                    );
+                                    return;
+                                }
+                            };
+
+                            if let Err(e) = write_file(&marker_path, &marker_content) {
+                                Err(e)
+                            } else {
+                                let mut template_error = None;
+                                for template in template_structure {
+                                    match template {
+                                        plugin_editor_api::PathTemplate::File { path, content } => {
+                                            let template_path = final_path.join(path);
+                                            if let Some(parent) = template_path.parent() {
+                                                if let Err(e) = create_dir_all(parent) {
+                                                    template_error = Some(e);
+                                                    break;
+                                                }
+                                            }
+                                            if let Err(e) = write_file(&template_path, content.as_bytes()) {
+                                                template_error = Some(e);
+                                                break;
+                                            }
+                                        }
+                                        plugin_editor_api::PathTemplate::Folder { path } => {
+                                            let folder_path = final_path.join(path);
+                                            if let Err(e) = create_dir_all(&folder_path) {
+                                                template_error = Some(e);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if let Some(e) = template_error {
+                                    Err(e)
+                                } else {
+                                    Ok(())
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
-                std::fs::write(&final_path, &content).map_err(Into::into)
+                // Fallback to legacy action payload if this file type is no longer registered.
+                let content = if action.default_content.is_null() {
+                    vec![]
+                } else {
+                    action.default_content.to_string().into_bytes()
+                };
+                write_file(&final_path, &content)
             };
-            if let Err(e) = write_result {
-                tracing::error!("Failed to create file {:?}: {}", final_path, e);
+
+            if let Err(e) = create_result {
+                tracing::error!("Failed to create asset {:?}: {}", final_path, e);
             } else {
-                // Refresh the folder tree
                 if let Some(ref path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(path);
                 }

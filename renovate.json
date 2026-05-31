@@ -15,6 +15,46 @@
       "matchPackageNames": [
       "/^tree-sitter/"
      ]
+    },
+    {
+      "description": "Silence abandonment alerts for mature, stable crates",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "ahash",
+        "base64",
+        "hex",
+        "itertools",
+        "lazy_static",
+        "walkdir",
+        "winapi"
+      ],
+      "abandonmentThreshold": null
+    },
+    {
+      "description": "Group serde ecosystem updates",
+      "matchManagers": ["cargo"],
+      "groupName": "serde",
+      "groupSlug": "serde",
+      "matchPackageNames": ["/^serde/"]
+    },
+    {
+      "description": "Group tokio ecosystem updates",
+      "matchManagers": ["cargo"],
+      "groupName": "tokio",
+      "groupSlug": "tokio",
+      "matchPackageNames": ["/^tokio/"]
+    },
+    {
+      "description": "Pin major updates that require manual migration",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": [
+        "rusqlite",
+        "bincode",
+        "keyring",
+        "webpki-roots"
+      ],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }

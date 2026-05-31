@@ -377,6 +377,132 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Matter Editor — built-in provider (Pulsar Image Format / texture painter)
+// ---------------------------------------------------------------------------
+
+/// Opens `.pif` files in the Matter texture-painting editor.
+pub struct MatterEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.matter-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        // default_content is written verbatim (via serde_json::to_string_pretty) to
+        // manifest.json, so it must be a valid PifManifest as defined in PIF-rs:
+        //   pif_version + canvas (width/height/color_space) + layers array.
+        // The "type":"raster" tag and "sRGB" colour-space rename come from PIF-rs serde attrs.
+        vec![FileTypeDefinition {
+            id: FileTypeId::new("pif"),
+            extension: "pif".to_string(),
+            display_name: "Pulsar Image Format".to_string(),
+            icon: ui::IconName::EditPencil,
+            color: gpui::rgb(0xE91E63).into(),
+            structure: FileStructure::FolderBased {
+                marker_file: "manifest.json".to_string(),
+                // PIF directory bundle layout requires a `.raster/` subdirectory
+                // for QOI-encoded tile shards (created on demand but must exist).
+                template_structure: vec![PathTemplate::Folder {
+                    path: ".raster".into(),
+                }],
+            },
+            default_content: serde_json::json!({
+                "pif_version": "1.0",
+                "canvas": {
+                    "width": 1024,
+                    "height": 1024,
+                    "color_space": "sRGB"
+                },
+                "layers": [
+                    {
+                        "type": "raster",
+                        "id": "background",
+                        "name": "Background",
+                        "visible": true,
+                        "opacity": 1.0,
+                        "blend_mode": "normal",
+                        "tile_size": 256,
+                        "tiles": {}
+                    }
+                ]
+            }),
+            categories: vec!["Textures".to_string()],
+        }]
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        vec![EditorMetadata {
+            id: EditorId::new("matter-editor"),
+            display_name: "Matter Editor".into(),
+            supported_file_types: vec![FileTypeId::new("pif")],
+        }]
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "matter-editor"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        use plugin_matter::brush_engine::{BrushDropdownItem, BrushRegistry};
+        use plugin_matter::state::Document;
+        use ui::{color_picker::ColorPickerState, dropdown::DropdownState, IndexPath};
+        use gpui::Rgba;
+
+        let document = if file_path.exists() {
+            Document::open(file_path.clone()).map_err(|e| PluginError::Other {
+                message: format!("Failed to open PIF file {:?}: {}", file_path, e),
+            })?
+        } else {
+            Document::new(1024, 1024).map_err(|e| PluginError::Other {
+                message: format!("Failed to create new PIF document: {}", e),
+            })?
+        };
+
+        let fg = cx.new(|cx| {
+            ColorPickerState::new(window, cx)
+                .default_value(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }.into())
+        });
+        let bg = cx.new(|cx| {
+            ColorPickerState::new(window, cx)
+                .default_value(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }.into())
+        });
+
+        let brushes_dir = std::env::current_dir()
+            .unwrap_or_default()
+            .join("brushes");
+        let brush_registry = Arc::new(BrushRegistry::load_from_dir(&brushes_dir));
+        let items: Vec<BrushDropdownItem> = brush_registry.dropdown_items();
+
+        let active_brush_id = document.tool_state.active_brush_id.clone();
+        let initial = items
+            .iter()
+            .position(|item| item.id == active_brush_id)
+            .map(|idx| IndexPath::default().row(idx))
+            .or_else(|| (!items.is_empty()).then(|| IndexPath::default().row(0)));
+
+        let brush_dropdown = cx.new(|cx| DropdownState::new(items, initial, window, cx));
+        let panel = cx.new(|cx| {
+            plugin_matter::MatterEditorPanel::new(
+                document,
+                fg,
+                bg,
+                brush_dropdown,
+                brush_registry.clone(),
+                cx,
+            )
+        });
+        Ok(Arc::new(panel))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -395,6 +521,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
+
+    // Matter editor (opens .pif Pulsar Image Format texture files)
+    registry.register_provider(Arc::new(MatterEditorBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

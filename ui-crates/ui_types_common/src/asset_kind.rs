@@ -27,6 +27,8 @@ pub enum AssetKind {
     Shader,
     /// Raw data / config: .json .toml .yaml .csv
     Data,
+    /// Pulsar Image Format texture document: .pif
+    Pif,
     /// Plugin-defined custom kind. The string is an opaque identifier chosen
     /// by the plugin (e.g. `"com.myplugin.terrain_heightmap"`).
     Custom(String),
@@ -51,6 +53,7 @@ impl AssetKind {
             "ttf" | "otf" | "woff" | "woff2" => Self::Font,
             "wgsl" | "hlsl" | "glsl" | "spv" => Self::Shader,
             "json" | "toml" | "yaml" | "yml" | "csv" => Self::Data,
+            "pif" => Self::Pif,
             _ => Self::Unknown,
         }
     }
@@ -98,6 +101,7 @@ impl AssetKind {
             Self::Font => "Font",
             Self::Shader => "Shader",
             Self::Data => "Data",
+            Self::Pif => "Texture (PIF)",
             Self::Custom(s) => s.as_str(),
             Self::Unknown => "File",
         }
