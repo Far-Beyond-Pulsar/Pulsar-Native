@@ -128,20 +128,20 @@ impl MultiplayerWindow {
                                     tracing::debug!("JOIN_SESSION: Initialized replication bridge");
 
                                     cx.notify();
-                                }).ok();
-                            }).ok();
+                                });
+                            });
 
                             // Request file manifest from host (first participant)
                             if let Some(host_peer_id) = participants.first() {
                                 tracing::debug!("JOIN_SESSION: Requesting file manifest from host {}", host_peer_id);
 
-                                let our_peer_id_result = cx.update(|cx| {
+                                let our_peer_id = cx.update(|cx| {
                                     this.update(cx, |this, _cx| {
                                         this.current_peer_id.clone()
-                                    }).ok()
-                                }).ok().flatten().flatten();
+                                    })
+                                }).ok().flatten();
 
-                                if let Some(our_peer_id) = our_peer_id_result {
+                                if let Some(our_peer_id) = our_peer_id {
                                     let client_guard = client.read().await;
                                     let _ = client_guard.send(ClientMessage::RequestFileManifest {
                                         session_id: session_id.clone(),
@@ -157,7 +157,7 @@ impl MultiplayerWindow {
                                 let still_connected = cx.update(|cx| {
                                     this.update(cx, |this, _cx| {
                                         this.active_session.is_some()
-                                    }).unwrap_or(false)
+                                    })
                                 }).unwrap_or(false);
 
                                 if !still_connected {
@@ -205,8 +205,8 @@ impl MultiplayerWindow {
                                                         tracing::debug!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
                                                     }
                                                 }
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
                                     }
                                     ServerMessage::PeerLeft { peer_id: left_peer_id, .. } => {
                                         cx.update(|cx| {
@@ -219,8 +219,8 @@ impl MultiplayerWindow {
                                                     integration.remove_user(&left_peer_id, cx);
                                                     cx.notify();
                                                 }
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
                                     }
                                     ServerMessage::Kicked { reason, .. } => {
                                         tracing::warn!("JOIN_SESSION: You were kicked from the session: {}", reason);
@@ -234,8 +234,8 @@ impl MultiplayerWindow {
                                                 this.client = None;
                                                 this.user_presences.clear();
                                                 cx.notify();
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
                                         break; // Exit the message loop
                                     }
                                     ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
@@ -258,30 +258,30 @@ impl MultiplayerWindow {
                                                 });
                                                 tracing::debug!("JOIN_SESSION: Chat messages now: {}", this.chat_messages.len());
                                                 cx.notify();
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
                                     }
                                     ServerMessage::Error { message } => {
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
                                                 this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
                                                 cx.notify();
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
                                     }
                                     ServerMessage::FileManifest { from_peer_id, manifest_json, .. } => {
                                         tracing::debug!("JOIN_SESSION: Received file manifest from {} ({} bytes)",
                                             from_peer_id, manifest_json.len());
 
                                         // Parse manifest and compute diff
-                                        let project_root_result = cx.update(|cx| {
+                                        let project_root = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
-                                            }).ok()
-                                        }).ok().flatten().flatten();
+                                            })
+                                        }).ok().flatten();
 
-                                        if let Some(project_root) = project_root_result {
-                                            tracing::debug!("JOIN_SESSION: Project root is {:?}", project_root);
+                                        if let Some(project_root) = project_root {
+                                            tracing::debug!("JOIN_SESSION: Project root is {:?}", project_root.display());
 
                                             // Deserialize manifest
                                             match serde_json::from_str::<simple_sync::FileManifest>(&manifest_json) {
@@ -313,24 +313,20 @@ impl MultiplayerWindow {
                                                                         tracing::debug!("JOIN_SESSION: Set pending_file_sync and switched to FileSync tab");
                                                                         cx.notify();
                                                                     }).ok()
-                                                                }).ok();
+                                                                });
 
                                                                 // Request file contents for preview (don't write to disk yet)
                                                                 if !files_to_preview.is_empty() {
                                                                     tracing::debug!("JOIN_SESSION: Requesting {} files for preview", files_to_preview.len());
 
                                                                     let client_guard = client.read().await;
-                                                                    let session_id_result = cx.update(|cx| {
+                                                                    let (session_id_result, peer_id_result) = cx.update(|cx| {
                                                                         this.update(cx, |this, _cx| {
-                                                                            this.active_session.as_ref().map(|s| s.session_id.clone())
-                                                                        }).ok()
-                                                                    }).ok().flatten().flatten();
-
-                                                                    let peer_id_result = cx.update(|cx| {
-                                                                        this.update(cx, |this, _cx| {
-                                                                            this.current_peer_id.clone()
-                                                                        }).ok()
-                                                                    }).ok().flatten().flatten();
+                                                                            let session_id = this.active_session.as_ref().map(|s| s.session_id.clone());
+                                                                            let peer_id = this.current_peer_id.clone();
+                                                                            (session_id, peer_id)
+                                                                        })
+                                                                    }).unwrap_or((None, None));
 
                                                                     if let (Some(session_id), Some(peer_id)) = (session_id_result, peer_id_result) {
                                                                         let _ = client_guard.send(ClientMessage::RequestFiles {
@@ -362,13 +358,13 @@ impl MultiplayerWindow {
                                             file_path, from_peer_id, offset, is_last);
 
                                         // Write chunk to file
-                                        let project_root_result = cx.update(|cx| {
+                                        let project_root = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
-                                            }).ok()
-                                        }).ok().flatten().flatten();
+                                            })
+                                        }).ok().flatten();
 
-                                        if let Some(project_root) = project_root_result {
+                                        if let Some(project_root) = project_root {
                                             let full_path = project_root.join(&file_path);
 
                                             // Create parent directories if needed
@@ -402,27 +398,27 @@ impl MultiplayerWindow {
                                                 this.sync_progress_message = Some("Receiving files...".to_string());
                                                 this.sync_progress_percent = Some(0.1);
                                                 cx.notify();
-                                            }).ok();
-                                        }).ok();
+                                            });
+                                        });
 
                                         // For now, handle single chunk only
                                         // TODO: Handle multi-chunk transfers by buffering
                                         if chunk_index == 0 && total_chunks == 1 {
-                                            let project_root_result = cx.update(|cx| {
+                                            let project_root = cx.update(|cx| {
                                                 this.update(cx, |this, _cx| {
                                                     this.project_root.clone()
-                                                }).ok()
-                                            }).ok().flatten().flatten();
+                                                })
+                                            }).ok().flatten();
 
-                                            if let Some(project_root) = project_root_result {
+                                            if let Some(project_root) = project_root {
                                                 // Update progress - starting sync
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         this.sync_progress_message = Some("Processing files...".to_string());
                                                         this.sync_progress_percent = Some(0.2);
                                                         cx.notify();
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
 
                                                 // Deserialize and apply files synchronously (fast enough for most cases)
                                                 tracing::debug!("SYNC_TASK: Deserializing files from JSON ({} bytes)", files_json.len());
@@ -439,7 +435,7 @@ impl MultiplayerWindow {
                                                                     this.update(cx, |this, cx| {
                                                                         this.queue_file_content_update(file_path_clone, content_clone, cx);
                                                                     }).ok()
-                                                                }).ok();
+                                                                });
                                                             }
                                                         }
 
@@ -461,7 +457,7 @@ impl MultiplayerWindow {
                                                                             this.file_sync_in_progress, this.pending_file_sync.is_some());
                                                                         cx.notify();
                                                                     }).ok()
-                                                                }).ok();
+                                                                });
 
                                                                 tracing::debug!("SYNC_SUCCESS: File synchronization complete!");
                                                             }
@@ -475,7 +471,7 @@ impl MultiplayerWindow {
                                                                         this.sync_progress_percent = None;
                                                                         cx.notify();
                                                                     }).ok()
-                                                                }).ok();
+                                                                });
                                                             }
                                                         }
                                                     }
@@ -489,7 +485,7 @@ impl MultiplayerWindow {
                                                                 this.sync_progress_percent = None;
                                                                 cx.notify();
                                                             }).ok()
-                                                        }).ok();
+                                                        });
                                                     }
                                                 }
                                             }
@@ -499,20 +495,20 @@ impl MultiplayerWindow {
                                         tracing::debug!("JOIN_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
                                         // Create and send file manifest (same logic as in CREATE_SESSION)
-                                        let project_root_result = cx.update(|cx| {
+                                        let project_root = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
-                                            }).ok()
-                                        }).ok().flatten().flatten();
+                                            })
+                                        }).ok().flatten();
 
-                                        if let Some(project_root) = project_root_result {
-                                            let our_peer_id_result = cx.update(|cx| {
+                                        if let Some(project_root) = project_root {
+                                            let our_peer_id = cx.update(|cx| {
                                                 this.update(cx, |this, _cx| {
                                                     this.current_peer_id.clone()
-                                                }).ok()
-                                            }).ok().flatten().flatten();
+                                                })
+                                            }).ok().flatten();
 
-                                            if let Some(our_peer_id) = our_peer_id_result {
+                                            if let Some(our_peer_id) = our_peer_id {
                                                 // Create manifest in background thread
                                                 let client_clone = client.clone();
                                                 let session_id_clone = req_session_id.clone();
@@ -545,20 +541,20 @@ impl MultiplayerWindow {
                                         tracing::debug!("JOIN_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
 
                                         // Read and send requested files (same logic as in CREATE_SESSION)
-                                        let project_root_result = cx.update(|cx| {
+                                        let project_root = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
-                                            }).ok()
-                                        }).ok().flatten().flatten();
+                                            })
+                                        }).ok().flatten();
 
-                                        if let Some(project_root) = project_root_result {
-                                            let our_peer_id_result = cx.update(|cx| {
+                                        if let Some(project_root) = project_root {
+                                            let our_peer_id = cx.update(|cx| {
                                                 this.update(cx, |this, _cx| {
                                                     this.current_peer_id.clone()
-                                                }).ok()
-                                            }).ok().flatten().flatten();
+                                                })
+                                            }).ok().flatten();
 
-                                            if let Some(our_peer_id) = our_peer_id_result {
+                                            if let Some(our_peer_id) = our_peer_id {
                                                 // Read files in background thread
                                                 let client_clone = client.clone();
                                                 let session_id_clone = req_session_id.clone();
@@ -594,25 +590,25 @@ impl MultiplayerWindow {
                                         tracing::debug!("JOIN_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
 
                                         // Read and send file in chunks
-                                        let project_root_result = cx.update(|cx| {
+                                        let project_root = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.project_root.clone()
-                                            }).ok()
-                                        }).ok().flatten().flatten();
+                                            })
+                                        }).ok().flatten();
 
-                                        if let Some(project_root) = project_root_result {
+                                        if let Some(project_root) = project_root {
                                             let full_path = project_root.join(&file_path);
 
                                             if let Ok(data) = std::fs::read(&full_path) {
                                                 const CHUNK_SIZE: usize = 8192;
 
-                                                let our_peer_id_result = cx.update(|cx| {
+                                                let our_peer_id = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
                                                         this.current_peer_id.clone()
-                                                    }).ok()
-                                                }).ok().flatten().flatten();
+                                                    })
+                                                }).ok().flatten();
 
-                                                if let Some(our_peer_id) = our_peer_id_result {
+                                                if let Some(our_peer_id) = our_peer_id {
                                                     for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
                                                         let offset = i * CHUNK_SIZE;
                                                         let is_last = offset + chunk.len() >= data.len();
@@ -634,28 +630,24 @@ impl MultiplayerWindow {
                                     ServerMessage::ReplicationUpdate { from_peer_id, data, .. } => {
                                         tracing::debug!("JOIN_SESSION: Received ReplicationUpdate from {}", from_peer_id);
                                         // Handle replication message and get response
-                                        let response = cx.update(|cx| {
-                                            if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                        let response = if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                            cx.update(|cx| {
                                                 let integration = ui::replication::MultiuserIntegration::new(cx);
                                                 integration.handle_incoming_message(rep_msg, cx)
-                                            } else {
-                                                None
-                                            }
-                                        }).ok().flatten();
+                                            })
+                                        } else {
+                                            None
+                                        };
 
                                         // Send response if we got one
                                         if let Some(response) = response {
-                                            let session_id_result = cx.update(|cx| {
+                                            let (session_id_result, our_peer_id_result) = cx.update(|cx| {
                                                 this.update(cx, |this, _cx| {
-                                                    this.active_session.as_ref().map(|s| s.session_id.clone())
-                                                }).ok()
-                                            }).ok().flatten().flatten();
-
-                                            let our_peer_id_result = cx.update(|cx| {
-                                                this.update(cx, |this, _cx| {
-                                                    this.current_peer_id.clone()
-                                                }).ok()
-                                            }).ok().flatten().flatten();
+                                                    let session_id = this.active_session.as_ref().map(|s| s.session_id.clone());
+                                                    let peer_id = this.current_peer_id.clone();
+                                                    (session_id, peer_id)
+                                                })
+                                            }).unwrap_or((None, None));
 
                                             if let (Some(session_id), Some(our_peer_id)) = (session_id_result, our_peer_id_result) {
                                                 if let Ok(response_data) = serde_json::to_string(&response) {
@@ -678,24 +670,24 @@ impl MultiplayerWindow {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
                                     cx.notify();
-                                }).ok();
-                            }).ok();
+                                });
+                            });
                         }
                         Some(_) => {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
                                     cx.notify();
-                                }).ok();
-                            }).ok();
+                                });
+                            });
                         }
                         None => {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
                                     cx.notify();
-                                }).ok();
-                            }).ok();
+                                });
+                            });
                         }
                     }
                 }
@@ -704,8 +696,8 @@ impl MultiplayerWindow {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Error(format!("Connection failed: {}", e));
                             cx.notify();
-                        }).ok();
-                    }).ok();
+                        });
+                    });
                 }
             }
         }).detach();

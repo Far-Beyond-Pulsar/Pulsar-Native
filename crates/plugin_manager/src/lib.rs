@@ -1073,7 +1073,7 @@ impl PluginManager {
                         } => {
                             let file_path = path.join(rel_path);
                             if let Some(parent) = file_path.parent() {
-                                std::fs::create_dir_all(parent).ok();
+                                std::fs::create_dir_all(parent);
                             }
                             std::fs::write(&file_path, content).map_err(|e| {
                                 PluginManagerError::FileCreationError {

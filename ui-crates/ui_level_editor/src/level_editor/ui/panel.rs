@@ -290,9 +290,9 @@ impl LevelEditorPanel {
                             panel.notify_sub_panels(cx);
                             cx.notify();
                         })
-                        .ok();
+                        ;
                     })
-                    .ok();
+                    ;
                 }
             }
         });
@@ -978,9 +978,9 @@ impl LevelEditorPanel {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -1026,9 +1026,9 @@ impl LevelEditorPanel {
                         this.notify_sub_panels(cx);
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();

@@ -42,7 +42,7 @@ impl ProjectSelector {
                         cx.notify();
                     });
                 })
-                .ok();
+                ;
             }
         })
         .detach();

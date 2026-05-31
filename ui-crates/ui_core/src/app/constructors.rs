@@ -488,7 +488,7 @@ impl PulsarApp {
         // Without this, window.focused(cx) returns None when the first menu is opened,
         // action_context is never set, and menu item actions dispatch from PopupMenu's
         // own focus chain — which is a sibling of PulsarApp, not a descendant.
-        app.state.focus_handle.focus(window);
+        app.state.focus_handle.focus(window, cx);
 
         // Populate the open-editor snapshot so the AI can see tabs that were created
         // during construction (e.g. the default level editor) without waiting for a

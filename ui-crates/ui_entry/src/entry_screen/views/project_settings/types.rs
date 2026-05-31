@@ -137,7 +137,7 @@ impl AvailableTools {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(".pulsar")
             .join("launcher");
-        std::fs::create_dir_all(&cache_dir).ok();
+        std::fs::create_dir_all(&cache_dir);
         cache_dir.join("available_tools.json")
     }
 

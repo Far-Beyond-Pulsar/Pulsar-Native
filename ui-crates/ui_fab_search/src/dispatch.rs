@@ -266,7 +266,7 @@ impl FabSearchWindow {
 
         let (tx, rx) = smol::channel::bounded::<Result<Box<crate::parser::SketchfabMe>, String>>(1);
         std::thread::spawn(move || {
-            smol::block_on(tx.send(fetch_sketchfab_me(&token))).ok();
+            smol::block_on(tx.send(fetch_sketchfab_me(&token)));
         });
 
         cx.spawn(async move |this, cx| {
@@ -288,9 +288,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -417,7 +417,7 @@ impl FabSearchWindow {
                             total,
                             speed_bps: speed,
                         }))
-                        .ok();
+                        ;
                         last_sample = std::time::Instant::now();
                         bytes_since_sample = 0;
                     }
@@ -428,12 +428,12 @@ impl FabSearchWindow {
                     path: dest,
                     total: bytes_total,
                 }))
-                .ok();
+                ;
                 Ok(())
             };
 
             if let Err(e) = run() {
-                smol::block_on(tx.send(DownloadMsg::Error(e))).ok();
+                smol::block_on(tx.send(DownloadMsg::Error(e)));
             }
         });
 
@@ -465,9 +465,9 @@ impl FabSearchWindow {
                                 }
                                 cx.notify();
                             })
-                            .ok();
+                            ;
                         })
-                        .ok();
+                        ;
                     }
                     DownloadMsg::Done { path, total } => {
                         cx.update(|cx| {
@@ -487,9 +487,9 @@ impl FabSearchWindow {
                                 );
                                 cx.notify();
                             })
-                            .ok();
+                            ;
                         })
-                        .ok();
+                        ;
                         break;
                     }
                     DownloadMsg::Error(msg) => {
@@ -509,9 +509,9 @@ impl FabSearchWindow {
                                 );
                                 cx.notify();
                             })
-                            .ok();
+                            ;
                         })
-                        .ok();
+                        ;
                         break;
                     }
                 }
@@ -552,7 +552,7 @@ impl FabSearchWindow {
             } else {
                 sketchfab_like_model(&uid_thread, &token)
             };
-            smol::block_on(tx.send(result)).ok();
+            smol::block_on(tx.send(result));
         });
 
         cx.spawn(async move |this, cx| {
@@ -569,9 +569,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -597,7 +597,7 @@ impl FabSearchWindow {
         let url_thread = url.clone();
         std::thread::spawn(move || {
             let maybe = crate::image_loader::fetch_and_decode(&url_thread).ok();
-            smol::block_on(tx.send(maybe)).ok();
+            smol::block_on(tx.send(maybe));
         });
 
         cx.spawn(async move |this, cx| {
@@ -611,9 +611,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -637,7 +637,7 @@ impl FabSearchWindow {
             Result<Box<crate::parser::SketchfabModelDetail>, String>,
         )>(1);
         std::thread::spawn(move || {
-            smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid))).ok();
+            smol::block_on(tx.send(fetch_sketchfab_model_detail(&uid)));
         });
 
         cx.spawn(async move |this, cx| {
@@ -669,9 +669,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -719,7 +719,7 @@ impl FabSearchWindow {
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
         std::thread::spawn(move || {
-            smol::block_on(tx.send(fetch_sketchfab_models(&url))).ok();
+            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
         });
 
         cx.spawn(async move |this, cx| {
@@ -746,9 +746,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -764,7 +764,7 @@ impl FabSearchWindow {
 
         let (tx, rx) = smol::channel::bounded::<(Vec<String>, Result<SearchPage, String>)>(1);
         std::thread::spawn(move || {
-            smol::block_on(tx.send(fetch_sketchfab_models(&url))).ok();
+            smol::block_on(tx.send(fetch_sketchfab_models(&url)));
         });
 
         cx.spawn(async move |this, cx| {
@@ -791,9 +791,9 @@ impl FabSearchWindow {
                         }
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();

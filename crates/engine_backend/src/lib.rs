@@ -128,7 +128,7 @@ impl EngineBackend {
 
     /// Set as global instance (for access from other parts of the engine)
     pub fn set_global(backend: Arc<parking_lot::RwLock<Self>>) {
-        GLOBAL_BACKEND.set(backend).ok();
+        GLOBAL_BACKEND.set(backend);
     }
 
     /// Get global instance

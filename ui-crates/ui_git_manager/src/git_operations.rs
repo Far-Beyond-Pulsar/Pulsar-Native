@@ -259,7 +259,7 @@ pub fn discard_file_changes(repo_path: &Path, file_path: &str) -> Result<(), git
         index.remove_path(std::path::Path::new(&git_path))?;
         index.write()?;
         let full_path = repo_path.join(file_path);
-        std::fs::remove_file(&full_path).ok();
+        std::fs::remove_file(&full_path);
         return Ok(());
     }
 

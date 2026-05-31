@@ -485,9 +485,9 @@ impl AgentChatPanel {
                         panel.scroll_messages_to_bottom();
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
 
                 Timer::after(Duration::from_millis(14)).await;
             }
@@ -2119,9 +2119,9 @@ impl AgentChatPanel {
                             }
                         }
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
 
                 if should_break {
                     break;
@@ -2150,10 +2150,7 @@ impl AgentChatPanel {
                                 false
                             }
                         })
-                        .ok()
                     })
-                    .ok()
-                    .flatten()
                     .unwrap_or(false);
                 if !still_active {
                     break;

@@ -35,28 +35,25 @@
 // --- Global Allocator Setup ---
 use gpui::AppContext;
 use ui_log_viewer::TrackingAllocator;
-use wgpu::{Backends, DeviceType, Instance, InstanceDescriptor};
 
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
 
 // Re-export render from backend where it actually lives
 pub use engine_backend::subsystems::render;
-// Re-export compiler and graph from ui crate (canonical location)
-pub use ui::compiler;
+// Re-export graph from ui crate (canonical location)
 pub use ui::graph;
 // Re-export themes from ui crate (where it belongs)
 pub use ui::themes;
 // Re-export engine state
 pub use engine_state;
-// Re-export Assets type for convenience
+// Re-export Combined Assets (includes icons from WGPUI-Component + engine assets)
 pub use assets::Assets;
 // Re-export OpenSettings from ui crate
 pub use ui::OpenSettings;
 
 // --- External and engine imports ---
 use crate::settings::EngineSettings;
-use file_association_manager::{AssociationError, AssociationRequest, FileAssociationManager};
 
 // --- Internal modules ---
 
@@ -68,13 +65,12 @@ pub mod consts; // Engine constants (name, version, authors, etc.)
 pub mod discord; // Discord Rich Presence integration
 pub mod logging; // Logging setup and configuration
 pub mod macos_permissions;
-pub mod runtime;
-pub mod settings; // Engine settings loading and saving // Async runtime setup and management
-                  // Window integration was previously handled by the `window` module, but
-                  // GPUI now manages its own windows.  The event loop lives in
-                  // `event_loop.rs` and the engine no longer exposes a dedicated window API.
-pub mod init;
-pub mod uri; // URI scheme handling // Initialization dependency graph (Phase 1 - new)
+pub mod runtime; // Async runtime setup and management
+pub mod settings; // Engine settings loading and saving
+pub mod init; // Initialization dependency graph
+pub mod uri; // URI scheme handling
+pub mod gpu_policy; // GPU detection and policy enforcement
+pub mod file_association; // Project file association management
 
 // --- Engine context re-exports ---
 pub use engine_state::{
@@ -85,14 +81,6 @@ pub use engine_state::{
 };
 
 use init::{task_ids::*, InitContext, InitGraph, InitTask};
-
-const PROJECT_ASSOC_EXTENSION: &str = "Pulsar.toml";
-const PROJECT_ASSOC_MIME: &str = "application/x-pulsar-project";
-
-#[cfg(target_os = "macos")]
-const MACOS_BUNDLE_ID: &str = "dev.pulsar.engine";
-#[cfg(target_os = "macos")]
-const MACOS_ASSOC_QUERY_EXTENSION: &str = "toml";
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -437,7 +425,7 @@ fn main() {
 
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    enforce_discrete_gpu_policy_or_exit();
+    gpu_policy::enforce_discrete_gpu_policy_or_exit();
 
     macos_permissions::ensure_accessibility_permission_blocking();
 
@@ -448,7 +436,7 @@ fn main() {
     profiling::enable_profiling();
 
     // Parse arguments first (needed for init context)
-    dotenv::dotenv().ok();
+    dotenv::dotenv();
     let parsed = args::parse_args();
 
     // Create initialization context
@@ -693,7 +681,7 @@ fn main() {
             "Project File Association",
             vec![SET_GLOBAL],
             Box::new(|_ctx| {
-                maybe_prompt_project_file_association();
+                file_association::maybe_prompt_project_file_association();
                 Ok(())
             }),
         ))

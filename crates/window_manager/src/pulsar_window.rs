@@ -63,7 +63,7 @@ pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
 
     let app_icon = WindowIcon::from_png_bytes(ICON_PNG)
         .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
-        .ok();
+        ;
 
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
@@ -84,7 +84,7 @@ pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
             width: px(width * 0.5),
             height: px(height * 0.5),
         }),
-        app_icon,
+        app_icon: app_icon.ok(),
         ..Default::default()
     }
 }

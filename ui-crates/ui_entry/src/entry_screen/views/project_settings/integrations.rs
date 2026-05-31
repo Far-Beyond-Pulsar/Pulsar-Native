@@ -71,9 +71,9 @@ pub fn render_integrations_tab(
             });
 
             // Detect tools in background using std::thread (not tokio!)
-            let detected = std::thread::spawn(AvailableTools::detect).join().ok();
+            let detected = std::thread::spawn(AvailableTools::detect).join();
 
-            if let Some(tools) = detected {
+            if let Ok(tools) = detected {
                 // Save to cache file
                 tools.save_to_cache();
 

@@ -171,7 +171,7 @@ impl PulsarApp {
             if let Some(view) = &self.state.command_palette_view {
                 // Reuse existing view (already subscribed)
                 let input_handle = view.read(cx).search_input.read(cx).focus_handle(cx);
-                input_handle.focus(window);
+                input_handle.focus(window, cx);
             } else {
                 // Create new view with delegate
                 let delegate = PaletteViewDelegate::new(palette.clone(), &*cx);
@@ -194,7 +194,7 @@ impl PulsarApp {
                         }
 
                         this.state.command_palette_open = false;
-                        this.state.focus_handle.focus(window);
+                        this.state.focus_handle.focus(window, cx);
                         cx.notify();
                     },
                 )
@@ -202,12 +202,12 @@ impl PulsarApp {
 
                 // Focus input
                 let input_handle = view.read(cx).search_input.read(cx).focus_handle(cx);
-                input_handle.focus(window);
+                input_handle.focus(window, cx);
 
                 self.state.command_palette_view = Some(view);
             }
         } else {
-            self.state.focus_handle.focus(window);
+            self.state.focus_handle.focus(window, cx);
         }
 
         cx.notify();

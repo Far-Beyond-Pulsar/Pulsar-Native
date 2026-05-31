@@ -59,8 +59,8 @@ impl MultiplayerWindow {
                                 connected_users: vec!["You (Host)".to_string()],
                             });
                             cx.notify();
-                        }).ok();
-                    }).ok();
+                        });
+                    });
 
                     // Now connect via WebSocket
                     let event_rx_result = {
@@ -143,8 +143,8 @@ impl MultiplayerWindow {
                                             tracing::debug!("CREATE_SESSION: Initialized replication bridge");
 
                                             cx.notify();
-                                        }).ok();
-                                    }).ok();
+                                        });
+                                    });
 
                                     // Continue listening for PeerJoined/PeerLeft events
                                     while let Some(msg) = event_rx.recv().await {
@@ -152,7 +152,7 @@ impl MultiplayerWindow {
                                         let still_connected = cx.update(|cx| {
                                             this.update(cx, |this, _cx| {
                                                 this.active_session.is_some()
-                                            }).unwrap_or(false)
+                                            })
                                         }).unwrap_or(false);
 
                                         if !still_connected {
@@ -208,8 +208,8 @@ impl MultiplayerWindow {
                                                         } else {
                                                             tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
                                                         }
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
                                             }
                                             ServerMessage::PeerLeft { peer_id: left_peer_id, .. } => {
                                                 cx.update(|cx| {
@@ -222,8 +222,8 @@ impl MultiplayerWindow {
                                                             integration.remove_user(&left_peer_id, cx);
                                                             cx.notify();
                                                         }
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
                                             }
                                             ServerMessage::Kicked { reason, .. } => {
                                                 tracing::warn!("CREATE_SESSION: You were kicked from the session: {}", reason);
@@ -237,8 +237,8 @@ impl MultiplayerWindow {
                                                         this.client = None;
                                                         this.user_presences.clear();
                                                         cx.notify();
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
                                                 break; // Exit the message loop
                                             }
                                             ServerMessage::ChatMessage { peer_id: sender_peer_id, message, timestamp, .. } => {
@@ -261,37 +261,37 @@ impl MultiplayerWindow {
                                                         });
                                                         tracing::debug!("CREATE_SESSION: Chat messages now: {}", this.chat_messages.len());
                                                         cx.notify();
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
                                             }
                                             ServerMessage::Error { message } => {
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
                                                         cx.notify();
-                                                    }).ok();
-                                                }).ok();
+                                                    });
+                                                });
                                             }
                                             ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
                                                 tracing::debug!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
 
                                                 // Create and send file manifest
-                                                let project_root_result = cx.update(|cx| {
+                                                let project_root = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
                                                         this.project_root.clone()
-                                                    }).ok()
-                                                }).ok().flatten().flatten();
+                                                    })
+                                                }).ok().flatten();
 
-                                                if let Some(project_root) = project_root_result {
-                                                    tracing::debug!("CREATE_SESSION: Project root is {:?}", project_root);
+                                                if let Some(project_root) = project_root {
+                                                    tracing::debug!("CREATE_SESSION: Project root is {:?}", project_root.display());
 
-                                                    let our_peer_id_result = cx.update(|cx| {
+                                                    let our_peer_id = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
                                                             this.current_peer_id.clone()
-                                                        }).ok()
-                                                    }).ok().flatten().flatten();
+                                                        })
+                                                    }).ok().flatten();
 
-                                                    if let Some(our_peer_id) = our_peer_id_result {
+                                                    if let Some(our_peer_id) = our_peer_id {
                                                         // Create manifest in background thread
                                                         let client_clone = client.clone();
                                                         let session_id_clone = req_session_id.clone();
@@ -330,20 +330,20 @@ impl MultiplayerWindow {
                                                 tracing::debug!("CREATE_SESSION: Received RequestFiles for {} files from {}", file_paths.len(), from_peer_id);
 
                                                 // Read and send requested files
-                                                let project_root_result = cx.update(|cx| {
+                                                let project_root = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
                                                         this.project_root.clone()
-                                                    }).ok()
-                                                }).ok().flatten().flatten();
+                                                    })
+                                                }).ok().flatten();
 
-                                                if let Some(project_root) = project_root_result {
-                                                    let our_peer_id_result = cx.update(|cx| {
+                                                if let Some(project_root) = project_root {
+                                                    let our_peer_id = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
                                                             this.current_peer_id.clone()
-                                                        }).ok()
-                                                    }).ok().flatten().flatten();
+                                                        })
+                                                    }).ok().flatten();
 
-                                                    if let Some(our_peer_id) = our_peer_id_result {
+                                                    if let Some(our_peer_id) = our_peer_id {
                                                         // Read files in background thread
                                                         let client_clone = client.clone();
                                                         let session_id_clone = req_session_id.clone();
@@ -379,25 +379,25 @@ impl MultiplayerWindow {
                                                 tracing::debug!("CREATE_SESSION: Received RequestFile for {} from {}", file_path, from_peer_id);
 
                                                 // Read and send file in chunks
-                                                let project_root_result = cx.update(|cx| {
+                                                let project_root = cx.update(|cx| {
                                                     this.update(cx, |this, _cx| {
                                                         this.project_root.clone()
-                                                    }).ok()
-                                                }).ok().flatten().flatten();
+                                                    })
+                                                }).ok().flatten();
 
-                                                if let Some(project_root) = project_root_result {
+                                                if let Some(project_root) = project_root {
                                                     let full_path = project_root.join(&file_path);
 
                                                     if let Ok(data) = std::fs::read(&full_path) {
                                                         const CHUNK_SIZE: usize = 8192; // 8KB chunks
 
-                                                        let our_peer_id_result = cx.update(|cx| {
+                                                        let our_peer_id = cx.update(|cx| {
                                                             this.update(cx, |this, _cx| {
                                                                 this.current_peer_id.clone()
-                                                            }).ok()
-                                                        }).ok().flatten().flatten();
+                                                            })
+                                                        }).ok().flatten();
 
-                                                        if let Some(our_peer_id) = our_peer_id_result {
+                                                        if let Some(our_peer_id) = our_peer_id {
                                                             for (i, chunk) in data.chunks(CHUNK_SIZE).enumerate() {
                                                                 let offset = i * CHUNK_SIZE;
                                                                 let is_last = offset + chunk.len() >= data.len();
@@ -420,28 +420,24 @@ impl MultiplayerWindow {
                                             ServerMessage::ReplicationUpdate { from_peer_id, data, .. } => {
                                                 tracing::debug!("CREATE_SESSION: Received ReplicationUpdate from {}", from_peer_id);
                                                 // Handle replication message and get response
-                                                let response = cx.update(|cx| {
-                                                    if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                                let response = if let Ok(rep_msg) = serde_json::from_str(&data) {
+                                                    cx.update(|cx| {
                                                         let integration = ui::replication::MultiuserIntegration::new(cx);
                                                         integration.handle_incoming_message(rep_msg, cx)
-                                                    } else {
-                                                        None
-                                                    }
-                                                }).ok().flatten();
+                                                    })
+                                                } else {
+                                                    None
+                                                };
 
                                                 // Send response if we got one
                                                 if let Some(response) = response {
-                                                    let session_id_result = cx.update(|cx| {
+                                                    let (session_id_result, our_peer_id_result) = cx.update(|cx| {
                                                         this.update(cx, |this, _cx| {
-                                                            this.active_session.as_ref().map(|s| s.session_id.clone())
-                                                        }).ok()
-                                                    }).ok().flatten().flatten();
-
-                                                    let our_peer_id_result = cx.update(|cx| {
-                                                        this.update(cx, |this, _cx| {
-                                                            this.current_peer_id.clone()
-                                                        }).ok()
-                                                    }).ok().flatten().flatten();
+                                                            let session_id = this.active_session.as_ref().map(|s| s.session_id.clone());
+                                                            let peer_id = this.current_peer_id.clone();
+                                                            (session_id, peer_id)
+                                                        })
+                                                    }).unwrap_or((None, None));
 
                                                     if let (Some(session_id), Some(our_peer_id)) = (session_id_result, our_peer_id_result) {
                                                         if let Ok(response_data) = serde_json::to_string(&response) {
@@ -465,8 +461,8 @@ impl MultiplayerWindow {
                                             this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
                                             this.active_session = None;
                                             cx.notify();
-                                        }).ok();
-                                    }).ok();
+                                        });
+                                    });
                                 }
                                 Some(_) => {
                                     cx.update(|cx| {
@@ -474,8 +470,8 @@ impl MultiplayerWindow {
                                             this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
                                             this.active_session = None;
                                             cx.notify();
-                                        }).ok();
-                                    }).ok();
+                                        });
+                                    });
                                 }
                                 None => {
                                     cx.update(|cx| {
@@ -483,8 +479,8 @@ impl MultiplayerWindow {
                                             this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
                                             this.active_session = None;
                                             cx.notify();
-                                        }).ok();
-                                    }).ok();
+                                        });
+                                    });
                                 }
                             }
                         }
@@ -493,8 +489,8 @@ impl MultiplayerWindow {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error(format!("Connection failed: {}", e));
                                     cx.notify();
-                                }).ok();
-                            }).ok();
+                                });
+                            });
                         }
                     }
                 }
@@ -503,8 +499,8 @@ impl MultiplayerWindow {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Error(format!("Failed to create session: {}", e));
                             cx.notify();
-                        }).ok();
-                    }).ok();
+                        });
+                    });
                 }
             }
         }).detach();

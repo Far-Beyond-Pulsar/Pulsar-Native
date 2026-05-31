@@ -245,7 +245,7 @@ fn run_scratch(
                     ),
             }
         })();
-        smol::block_on(result_tx.send(result)).ok();
+        smol::block_on(result_tx.send(result));
     });
 
     let title = match inner_mode {
@@ -337,7 +337,7 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
         let result = super::cargo_progress::run_cargo_check(
             &project_root, progress_for_thread, status_for_thread,
         );
-        smol::block_on(result_tx.send(result)).ok();
+        smol::block_on(result_tx.send(result));
     });
 
     window.push_notification(
@@ -416,7 +416,7 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
         let result = super::cargo_progress::run_cargo_update(
             &project_root, progress_for_thread, status_for_thread,
         );
-        smol::block_on(result_tx.send(result)).ok();
+        smol::block_on(result_tx.send(result));
     });
 
     window.push_notification(
@@ -503,7 +503,7 @@ fn run_build_pipeline(
     let project_root_thread = project_root.clone();
     std::thread::spawn(move || {
         let result = run_cargo_build(&project_root_thread, progress_for_thread, status_for_thread);
-        smol::block_on(result_tx.send(result)).ok();
+        smol::block_on(result_tx.send(result));
     });
 
     let title = if mode == BuildMode::BuildAndRun { "Build + Run" } else { "Build Core" };
@@ -633,7 +633,7 @@ async fn launch_and_monitor(
         use std::io::Read as _;
         let mut buf = String::new();
         let _ = BufReader::new(pipe).read_to_string(&mut buf);
-        smol::block_on(stderr_tx.send(buf)).ok();
+        smol::block_on(stderr_tx.send(buf));
     });
 
     // Store the handle and mark running.

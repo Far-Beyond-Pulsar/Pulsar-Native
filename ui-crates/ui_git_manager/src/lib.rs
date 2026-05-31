@@ -229,9 +229,9 @@ impl GitManager {
                     git_manager.rebuild_changes_rows();
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
 
@@ -337,8 +337,8 @@ impl GitManager {
         let email_key = email.to_string();
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<gpui::RenderImage>>>(1);
         std::thread::spawn(move || {
-            let result = avatar_loader::fetch_avatar(&url).ok();
-            smol::block_on(tx.send(result)).ok();
+            let result = avatar_loader::fetch_avatar(&url);
+            let _ = smol::block_on(tx.send(result.ok()));
         });
         cx.spawn(async move |this, cx| {
             if let Ok(maybe) = rx.recv().await {
@@ -347,9 +347,9 @@ impl GitManager {
                         gm.avatar_cache.insert(email_key, maybe);
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -383,9 +383,9 @@ impl GitManager {
                     git_manager.rebuild_changes_rows();
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -408,9 +408,9 @@ impl GitManager {
                     this.update(cx, |git_manager, cx| {
                         git_manager.refresh_state(cx);
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -430,9 +430,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -451,9 +451,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -472,9 +472,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -493,9 +493,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -521,9 +521,9 @@ impl GitManager {
                         git_manager.selected_commit_files = files;
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             }
         })
         .detach();
@@ -564,9 +564,9 @@ impl GitManager {
                     }
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -599,9 +599,9 @@ impl GitManager {
                     }
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -721,9 +721,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -743,9 +743,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -770,9 +770,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }
@@ -791,9 +791,9 @@ impl GitManager {
                     }
                     gm.refresh_state(cx);
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }

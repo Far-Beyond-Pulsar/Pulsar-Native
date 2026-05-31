@@ -39,7 +39,7 @@ impl FileManagerDrawer {
         let (tx, rx) = smol::channel::bounded::<Option<std::sync::Arc<image::RgbaImage>>>(1);
 
         engine_fs::thumbnails::service().request(abs_path.clone(), cache_root, move |rgba| {
-            smol::block_on(tx.send(rgba)).ok();
+            smol::block_on(tx.send(rgba));
         });
 
         cx.spawn(async move |this, cx| {
@@ -60,9 +60,9 @@ impl FileManagerDrawer {
                     drawer.thumbnails.insert(abs_path, render_image);
                     cx.notify();
                 })
-                .ok();
+                ;
             })
-            .ok();
+            ;
         })
         .detach();
     }

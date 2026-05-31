@@ -63,9 +63,9 @@ impl MultiplayerWindow {
                         this.user_presences.retain(|p| p.peer_id != peer_id);
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             })
             .detach();
         }

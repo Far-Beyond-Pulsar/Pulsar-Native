@@ -43,10 +43,10 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "0b555af11e80565429af9405ffd9d17fa832e3fe" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "53872e17a0e2f306ce4d9760ff2bdfa965b41337" }
 
 # ---------- Core Engine ----------
-ui                                 = { path = "crates/ui" }
+ui                                 = { path = "../WGPUI-Component/crates/ui" }
 gpui-component-macros              = { path = "crates/macros" }
 type_db                            = { path = "crates/type_db" }
 profiling                          = { path = "crates/profiling" }
@@ -247,7 +247,7 @@ files.extend-exclude = ["**/fixtures/*"]
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
-ui                    = { path = "crates/ui" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0493afe2c9e509d0cbb5d043ed69202ef6c601a5" }
 pulsar_std            = { path = "crates/pulsar_std" }
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
 engine_backend        = { path = "crates/engine_backend" }
@@ -273,7 +273,7 @@ ui_types_common       = { path = "ui-crates/ui_types_common" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { path = "crates/ui" }
+ui                    = { path = "../WGPUI-Component/crates/ui" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
@@ -298,7 +298,7 @@ gpui-component-macros = { path = "crates/macros" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { path = "crates/ui" }
+ui                    = { path = "../WGPUI-Component/crates/ui" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }

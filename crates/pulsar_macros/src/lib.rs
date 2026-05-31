@@ -41,7 +41,9 @@ fn filename_to_pascal(filename: &str) -> String {
 /// # Example
 ///
 /// ```ignore
-/// generate_icon_enum!("../../assets/icons");
+/// // Note: Icons are now provided by WGPUI-Component
+/// // Use ui::assets::Assets to access icons from WGPUI-Component/assets/icons
+/// generate_icon_enum!("../../../WGPUI-Component/assets/icons");
 /// ```
 #[proc_macro]
 pub fn generate_icon_enum(input: TokenStream) -> TokenStream {

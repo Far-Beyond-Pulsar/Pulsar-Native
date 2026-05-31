@@ -37,8 +37,8 @@ plugin_manager = { workspace = true }
 plugin_editor_api = { workspace = true }
 
 # Built-in plugins
-blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "bff6d33202fa8e85b5adc2af9c7293ae6f4a2422" }
-script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "8190e6c13dbaf9a758ec6eb3a1070259afb70781" }
+blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "c156fa58a125bda5c187de760aff6fcad886235a" }
+script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "df6b6f8fe2aedc4c9db12401a7b5e674780b9603" }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

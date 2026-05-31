@@ -28,9 +28,9 @@ impl MultiplayerWindow {
                         this.current_tab = SessionTab::Info;
                         cx.notify();
                     })
-                    .ok();
+                    ;
                 })
-                .ok();
+                ;
             })
             .detach();
         } else {

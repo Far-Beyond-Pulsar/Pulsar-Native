@@ -10,7 +10,7 @@ pub use path_utils::path_to_uri;
 
 use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
-use pulsar_diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
+use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;

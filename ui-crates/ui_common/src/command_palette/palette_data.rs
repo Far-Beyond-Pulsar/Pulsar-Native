@@ -80,7 +80,7 @@ impl PaletteItem for PaletteItemData {
 ///             // New implementation
 ///         },
 ///         cx,
-///     ).ok();
+///     );
 /// });
 /// ```
 pub struct Palette {
