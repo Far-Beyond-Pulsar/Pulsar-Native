@@ -263,7 +263,7 @@ ui_types_common       = { path = "ui-crates/ui_types_common" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { path = "../WGPUI-Component/crates/ui" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "abd725c5a186e4cefa8aa947ff73ab9ae4c1a6de" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
@@ -288,7 +288,7 @@ gpui-component-macros = { path = "crates/macros" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { path = "../WGPUI-Component/crates/ui" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "abd725c5a186e4cefa8aa947ff73ab9ae4c1a6de" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
