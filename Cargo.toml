@@ -34,9 +34,9 @@ ttf-parser = { opt-level = 3 }
 
 # ---------- GPUI (WGPUI) ----------
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "53872e17a0e2f306ce4d9760ff2bdfa965b41337" }
+ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0493afe2c9e509d0cbb5d043ed69202ef6c601a5" }
 
 # ---------- Core Engine ----------
-ui                                 = { path = "../WGPUI-Component/crates/ui" }
 gpui-component-macros              = { path = "crates/macros" }
 type_db                            = { path = "crates/type_db" }
 profiling                          = { path = "crates/profiling" }
