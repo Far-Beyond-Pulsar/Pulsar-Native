@@ -450,8 +450,9 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
+        use plugin_matter::brush_engine::{BrushDropdownItem, BrushRegistry};
         use plugin_matter::state::Document;
-        use ui::color_picker::ColorPickerState;
+        use ui::{color_picker::ColorPickerState, dropdown::DropdownState, IndexPath};
         use gpui::Rgba;
 
         let document = if file_path.exists() {
@@ -473,7 +474,30 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
                 .default_value(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }.into())
         });
 
-        let panel = cx.new(|cx| plugin_matter::MatterEditorPanel::new(document, fg, bg, cx));
+        let brushes_dir = std::env::current_dir()
+            .unwrap_or_default()
+            .join("brushes");
+        let brush_registry = Arc::new(BrushRegistry::load_from_dir(&brushes_dir));
+        let items: Vec<BrushDropdownItem> = brush_registry.dropdown_items();
+
+        let active_brush_id = document.tool_state.active_brush_id.clone();
+        let initial = items
+            .iter()
+            .position(|item| item.id == active_brush_id)
+            .map(|idx| IndexPath::default().row(idx))
+            .or_else(|| (!items.is_empty()).then(|| IndexPath::default().row(0)));
+
+        let brush_dropdown = cx.new(|cx| DropdownState::new(items, initial, window, cx));
+        let panel = cx.new(|cx| {
+            plugin_matter::MatterEditorPanel::new(
+                document,
+                fg,
+                bg,
+                brush_dropdown,
+                brush_registry.clone(),
+                cx,
+            )
+        });
         Ok(Arc::new(panel))
     }
 }
