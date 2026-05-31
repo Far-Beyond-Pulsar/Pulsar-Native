@@ -75,28 +75,43 @@ impl FileManagerDrawer {
                         let path = PathBuf::from(format!("{}/{}", folder_s, name));
 
                         // Extension-based file-type lookup (no HTTP call needed).
-                        let file_type_def = if !e.is_dir {
-                            self.registered_file_types.iter().find(|def| {
-                                matches!(def.structure, plugin_editor_api::FileStructure::Standalone)
-                                    && (name.ends_with(&format!(".{}", def.extension))
-                                        || path
-                                            .extension()
-                                            .and_then(|x| x.to_str())
+                        let file_type_def = if e.is_dir {
+                            self.registered_file_types
+                                .iter()
+                                .find(|def| {
+                                    matches!(
+                                        def.structure,
+                                        plugin_editor_api::FileStructure::FolderBased { .. }
+                                    ) && (name.ends_with(&format!(".{}", def.extension))
+                                        || path.extension().and_then(|x| x.to_str())
                                             == Some(def.extension.as_str()))
-                            }).cloned()
+                                })
+                                .cloned()
                         } else {
-                            None
+                            self.registered_file_types
+                                .iter()
+                                .find(|def| {
+                                    matches!(
+                                        def.structure,
+                                        plugin_editor_api::FileStructure::Standalone
+                                    ) && (name.ends_with(&format!(".{}", def.extension))
+                                        || path.extension().and_then(|x| x.to_str())
+                                            == Some(def.extension.as_str()))
+                                })
+                                .cloned()
                         };
 
                         let modified = e.modified.map(|secs| {
                             std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)
                         });
 
+                        let is_folder = e.is_dir && file_type_def.is_none();
+
                         Some(FileItem {
                             path,
                             name: name.to_string(),
                             file_type_def,
-                            is_folder: e.is_dir,
+                            is_folder,
                             size: e.size,
                             modified,
                         })

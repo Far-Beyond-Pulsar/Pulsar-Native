@@ -7958,6 +7958,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_matter"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui-ce",
+ "parking_lot",
+ "pulsar_image_format",
+ "rustc_version 0.4.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "wgpu",
+]
+
+[[package]]
 name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8594,6 +8613,17 @@ name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
  "ui",
+]
+
+[[package]]
+name = "pulsar_image_format"
+version = "0.1.0"
+dependencies = [
+ "qoi",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "zip",
 ]
 
 [[package]]
@@ -12714,6 +12744,7 @@ dependencies = [
  "gpui-ce",
  "plugin_editor_api",
  "plugin_manager",
+ "plugin_matter",
  "rfd",
  "rust-i18n 4.1.0",
  "schemars",
