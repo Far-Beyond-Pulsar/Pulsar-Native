@@ -33,7 +33,7 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "62cb53f4a962af82f677bdc05be24133acf3ad2a" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "3458d987317e30f6cda800e03822292e27ef4a33" }
 ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "abd725c5a186e4cefa8aa947ff73ab9ae4c1a6de" }
 
 # ---------- Core Engine ----------
