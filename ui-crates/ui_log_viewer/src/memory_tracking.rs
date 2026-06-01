@@ -35,14 +35,7 @@ impl MemoryCategory {
     }
 }
 
-/// Detailed memory allocation entry
-#[derive(Debug, Clone)]
-pub struct MemoryAllocation {
-    pub category: MemoryCategory,
-    pub size: usize,
-    pub count: usize,
-    pub description: String,
-}
+
 
 /// Memory tracking statistics
 #[derive(Debug, Clone, Default)]

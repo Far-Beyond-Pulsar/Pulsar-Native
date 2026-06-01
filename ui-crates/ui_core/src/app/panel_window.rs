@@ -4,27 +4,9 @@ use gpui::*;
 use std::sync::Arc;
 use ui::{dock::TabPanel, v_flex, ActiveTheme as _, TitleBar};
 
-pub struct PanelWindow {
-    panel: Arc<dyn ui::dock::PanelView>,
-    center_tabs: Entity<TabPanel>,
-    parent_window_handle: AnyWindowHandle,
-}
 
-impl PanelWindow {
-    pub fn new(
-        panel: Arc<dyn ui::dock::PanelView>,
-        center_tabs: Entity<TabPanel>,
-        parent_window_handle: AnyWindowHandle,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) -> Self {
-        Self {
-            panel,
-            center_tabs,
-            parent_window_handle,
-        }
-    }
-}
+
+
 
 impl Render for PanelWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {

@@ -10,13 +10,7 @@
 use std::path::Path;
 use std::process::Command;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntegrationType {
-    Editor,
-    GitTool,
-    Terminal,
-    FileManager,
-}
+
 
 #[derive(Debug, Clone)]
 pub struct LaunchResult {

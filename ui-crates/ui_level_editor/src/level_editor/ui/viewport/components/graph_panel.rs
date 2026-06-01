@@ -9,24 +9,9 @@ use ui::{
     h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
 
-/// A reusable panel for displaying performance graphs.
-///
-/// Supports both bar chart and area chart modes with consistent styling.
-pub struct GraphPanel<T: Clone + 'static> {
-    title: SharedString,
-    icon: IconName,
-    subtitle: Option<SharedString>,
-    data: Vec<T>,
-    use_line_chart: bool,
-    height: Pixels,
-    chart_colors: ChartColors,
-}
 
-/// Color configuration for charts.
-pub struct ChartColors {
-    pub stroke: Hsla,
-    pub fill: Hsla,
-}
+
+
 
 impl<T: Clone + 'static> GraphPanel<T> {
     /// Create a new graph panel.
@@ -189,54 +174,6 @@ impl<T: Clone + 'static> GraphPanel<T> {
     }
 }
 
-/// Create a simple FPS-style colored bar chart.
-///
-/// Colors bars based on value ranges (green for high, yellow for mid, red for low).
-pub fn fps_colored_bar_chart<T: Clone + 'static, V>(
-    data: Vec<T>,
-    x_fn: impl Fn(&T) -> SharedString + 'static,
-    y_fn: impl Fn(&T) -> f64 + 'static + Clone,
-    high_threshold: f64,
-    low_threshold: f64,
-    cx: &Context<V>,
-) -> impl IntoElement
-where
-    V: 'static + Render,
-{
-    let theme = cx.theme();
-    let success = theme.success;
-    let warning = theme.warning;
-    let danger = theme.danger;
 
-    let y_fn_clone = y_fn.clone();
-    BarChart::new(data)
-        .x(x_fn)
-        .y(y_fn)
-        .fill(move |d| {
-            let value = y_fn_clone(d);
-            if value >= high_threshold {
-                success
-            } else if value >= low_threshold {
-                warning
-            } else {
-                danger
-            }
-        })
-        .tick_margin(10)
-}
 
-/// Create a standard area chart with theme colors.
-pub fn themed_area_chart<T: Clone + 'static>(
-    data: Vec<T>,
-    x_fn: impl Fn(&T) -> SharedString + 'static,
-    y_fn: impl Fn(&T) -> f64 + 'static,
-    color: Hsla,
-) -> impl IntoElement {
-    AreaChart::new(data)
-        .x(x_fn)
-        .y(y_fn)
-        .stroke(color)
-        .fill(color.opacity(0.2))
-        .linear()
-        .tick_margin(10)
-}
+

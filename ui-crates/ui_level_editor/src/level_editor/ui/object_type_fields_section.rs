@@ -15,7 +15,7 @@ use super::ComponentHierarchyPanel;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
 const OBJECT_ICON_PROP_KEY: &str = "icon_asset";
-const OBJECT_ICON_PICKER_SCOPE: &str = "__object__";
+
 
 pub struct ObjectTypeFieldsSection {
     object_id: String,

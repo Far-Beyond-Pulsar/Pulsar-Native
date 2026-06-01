@@ -56,14 +56,7 @@ impl Default for ViewState {
     }
 }
 
-/// Rectangle bounds for spatial queries
-#[derive(Clone, Copy, Debug)]
-pub struct Rect {
-    pub x_min: u64, // time in ns
-    pub x_max: u64,
-    pub y_min: f32, // pixel Y
-    pub y_max: f32,
-}
+
 
 impl Rect {
     fn intersects(&self, other: &Rect) -> bool {

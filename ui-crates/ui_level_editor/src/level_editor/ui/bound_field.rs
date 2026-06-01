@@ -347,13 +347,7 @@ impl Render for BoolBoundField {
 // Vec3 Bound Field - For [f32; 3] fields (position, rotation, scale)
 // ============================================================================
 
-/// A UI component that renders three F32 inputs for a Vec3 field
-pub struct Vec3BoundField {
-    x_field: Entity<F32BoundField>,
-    y_field: Entity<F32BoundField>,
-    z_field: Entity<F32BoundField>,
-    label: String,
-}
+
 
 impl Vec3BoundField {
     pub fn new(

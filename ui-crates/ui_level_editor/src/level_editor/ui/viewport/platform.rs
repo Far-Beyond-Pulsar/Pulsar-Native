@@ -65,36 +65,7 @@ pub fn lock_cursor_to_window(window: &Window) {
     }
 }
 
-/// Lock cursor to a small area around a specific point.
-///
-/// This prevents the cursor from escaping during fast mouse movements,
-/// which is critical for smooth camera rotation.
-///
-/// # Arguments
-/// * `screen_x` - X coordinate in screen space
-/// * `screen_y` - Y coordinate in screen space
-/// * `radius` - Size of the confinement area in pixels
-#[cfg(target_os = "windows")]
-pub fn lock_cursor_to_point(screen_x: i32, screen_y: i32, radius: i32) {
-    use winapi::shared::windef::RECT;
-    use winapi::um::winuser::ClipCursor;
 
-    unsafe {
-        let screen_rect = RECT {
-            left: screen_x - radius,
-            top: screen_y - radius,
-            right: screen_x + radius,
-            bottom: screen_y + radius,
-        };
-        ClipCursor(&screen_rect);
-        tracing::debug!(
-            "[VIEWPORT] 🔒 Cursor confined to {}px radius around ({}, {})",
-            radius,
-            screen_x,
-            screen_y
-        );
-    }
-}
 
 /// Release cursor confinement.
 #[cfg(target_os = "windows")]
@@ -107,32 +78,9 @@ pub fn unlock_cursor() {
     }
 }
 
-/// Hide the system cursor.
-///
-/// Windows uses a counter-based system, so we ensure the counter is negative.
-#[cfg(target_os = "windows")]
-pub fn hide_cursor() {
-    use winapi::shared::minwindef::FALSE;
-    use winapi::um::winuser::ShowCursor;
 
-    unsafe {
-        while ShowCursor(FALSE) >= 0 {}
-        tracing::debug!("[VIEWPORT] 👻 Cursor hidden (Win32 ShowCursor)");
-    }
-}
 
-/// Show the system cursor.
-///
-/// Windows uses a counter-based system, so we ensure the counter is non-negative.
-#[cfg(target_os = "windows")]
-pub fn show_cursor() {
-    use winapi::um::winuser::ShowCursor;
 
-    unsafe {
-        while ShowCursor(1) < 0 {}
-        tracing::debug!("[VIEWPORT] 👁️ Cursor shown (Win32 ShowCursor)");
-    }
-}
 
 /// Set cursor to absolute screen position.
 #[cfg(target_os = "windows")]
@@ -351,22 +299,7 @@ pub fn end_relative_mouse_mode() {
     let _ = CGDisplay::main().show_cursor();
 }
 
-#[cfg(target_os = "macos")]
-pub fn take_mouse_delta() -> (f32, f32) {
-    if !ensure_accessibility(false) {
-        return (0.0, 0.0);
-    }
 
-    use core_graphics2::direct_display::CGGetLastMouseDelta;
-
-    let mut delta_x = 0;
-    let mut delta_y = 0;
-    unsafe {
-        let _ = CGGetLastMouseDelta(&mut delta_x, &mut delta_y);
-    }
-
-    (delta_x as f32, delta_y as f32)
-}
 
 #[cfg(target_os = "macos")]
 pub fn window_to_screen_position(
