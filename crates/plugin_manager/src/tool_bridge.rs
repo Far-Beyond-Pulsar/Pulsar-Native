@@ -8,7 +8,7 @@
 use crate::builtin::BuiltinEditorProvider;
 use plugin_editor_api::*;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tracing::debug;
@@ -39,6 +39,12 @@ pub struct PluginToolBridge {
 
     /// Tool name -> (plugin_id, tool_name) mapping
     tool_to_plugin: HashMap<String, (PluginId, String)>,
+
+    /// Optional filesystem access context for sandboxing AI tool execution.
+    /// When set, every file access through the bridge is checked against this context.
+    /// Note: This only applies to tools executed through the bridge API — native code
+    /// plugins can still bypass this check by calling std::fs directly.
+    fs_context: Option<FsContext>,
 }
 
 impl PluginToolBridge {
@@ -47,7 +53,18 @@ impl PluginToolBridge {
         Self {
             tools: HashMap::new(),
             tool_to_plugin: HashMap::new(),
+            fs_context: None,
         }
+    }
+
+    /// Set the filesystem access context for sandboxing tool execution.
+    pub fn set_fs_context(&mut self, context: FsContext) {
+        self.fs_context = Some(context);
+    }
+
+    /// Get the current filesystem context, if any.
+    pub fn fs_context(&self) -> Option<&FsContext> {
+        self.fs_context.as_ref()
     }
 
     /// Discover all tools from a specific plugin
@@ -250,6 +267,7 @@ impl PluginToolBridge {
     }
 
     /// Execute using the closure captured during discovery, if available.
+    /// If an FsContext is set, the file path is checked for access permissions first.
     pub fn execute_tool_direct(
         &self,
         tool_name: &str,
@@ -258,6 +276,17 @@ impl PluginToolBridge {
     ) -> Option<Result<serde_json::Value, PluginError>> {
         let tool = self.tools.get(tool_name)?;
         let exec = tool.execute.as_ref()?;
+
+        // Check filesystem access permissions if FsContext is set.
+        if let Some(ctx) = &self.fs_context {
+            if !ctx.is_allowed(file_path) {
+                return Some(Err(PluginError::AccessDenied(format!(
+                    "Filesystem access denied for '{}': not within allowed root or extension not permitted",
+                    file_path.display()
+                ))));
+            }
+        }
+
         let started_at = Instant::now();
         debug!(tool = tool_name, plugin_id = %tool.plugin_id, file = %file_path.display(), "bridge direct execute start");
         let result = exec(file_path, tool_args);

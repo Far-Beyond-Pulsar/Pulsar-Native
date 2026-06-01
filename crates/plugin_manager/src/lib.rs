@@ -445,41 +445,41 @@ impl PluginManager {
                 message: e.to_string(),
             })?;
 
-        // Verify the plugin binary against the optional integrity manifest.
+        // Verify the plugin binary against the required integrity manifest.
         // The manifest is a sibling JSON file named "plugin_integrity.json" that
         // maps plugin filenames to their expected SHA-256 hex digests.
+        // If no manifest exists, plugins are rejected (manifest is mandatory).
         let plugin_dir = path.parent().unwrap_or(Path::new("."));
-        if let Some(manifest) = Self::load_plugin_manifest(plugin_dir) {
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
-            let expected_hex = manifest.get(file_name);
-            if let Some(expected_hex) = expected_hex {
-                let expected: [u8; 32] = Self::parse_hex_hash(expected_hex).map_err(|e| {
-                    PluginManagerError::LibraryLoadError {
-                        path: path.to_path_buf(),
-                        message: format!("Invalid hash in manifest for '{}': {}", file_name, e),
-                    }
-                })?;
-                if library.sha256() != &expected {
-                    return Err(PluginManagerError::IntegrityCheckFailed {
-                        path: path.to_path_buf(),
-                        expected: expected,
-                        actual: *library.sha256(),
-                    });
+        let manifest = Self::load_plugin_manifest(plugin_dir)?;
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        let expected_hex = manifest.get(file_name);
+        if let Some(expected_hex) = expected_hex {
+            let expected: [u8; 32] = Self::parse_hex_hash(expected_hex).map_err(|e| {
+                PluginManagerError::LibraryLoadError {
+                    path: path.to_path_buf(),
+                    message: format!("Invalid hash in manifest for '{}': {}", file_name, e),
                 }
-                tracing::debug!("Integrity check passed for plugin: {:?}", path);
-            } else {
-                // Plugin not listed in manifest — reject unless manifest explicitly
-                // allows unlisted plugins via the special "allow_unlisted": true key.
-                if !manifest.get("__allow_unlisted__").map_or(false, |v| v == "true") {
-                    return Err(PluginManagerError::IntegrityCheckFailed {
-                        path: path.to_path_buf(),
-                        expected: [0u8; 32],
-                        actual: *library.sha256(),
-                    });
-                }
+            })?;
+            if library.sha256() != &expected {
+                return Err(PluginManagerError::IntegrityCheckFailed {
+                    path: path.to_path_buf(),
+                    expected: expected,
+                    actual: *library.sha256(),
+                });
+            }
+            tracing::debug!("Integrity check passed for plugin: {:?}", path);
+        } else {
+            // Plugin not listed in manifest — reject unless manifest explicitly
+            // allows unlisted plugins via the special "allow_unlisted": true key.
+            if !manifest.get("__allow_unlisted__").map_or(false, |v| v == "true") {
+                return Err(PluginManagerError::IntegrityCheckFailed {
+                    path: path.to_path_buf(),
+                    expected: [0u8; 32],
+                    actual: *library.sha256(),
+                });
             }
         }
 
@@ -659,15 +659,30 @@ impl PluginManager {
     /// - `"__allow_unlisted__": "true"` allows plugins not in the manifest to load
     ///   (use with caution).
     ///
-    /// Returns `None` if no manifest file exists (verification is optional).
-    fn load_plugin_manifest(plugin_dir: &Path) -> Option<std::collections::HashMap<String, String>> {
+    /// Returns `Err` if no manifest file exists (verification is required).
+    fn load_plugin_manifest(
+        plugin_dir: &Path,
+    ) -> Result<std::collections::HashMap<String, String>, PluginManagerError> {
         let manifest_path = plugin_dir.join("plugin_integrity.json");
         if !manifest_path.exists() {
-            return None;
+            return Err(PluginManagerError::LibraryLoadError {
+                path: manifest_path,
+                message: "plugin_integrity.json not found — manifest is required for security. "
+                    .to_string(),
+            });
         }
-        let content = std::fs::read_to_string(&manifest_path).ok()?;
-        let map: std::collections::HashMap<String, String> = serde_json::from_str(&content).ok()?;
-        Some(map)
+        let content = std::fs::read_to_string(&manifest_path).map_err(|e| {
+            PluginManagerError::LibraryLoadError {
+                path: manifest_path.clone(),
+                message: format!("Failed to read manifest: {}", e),
+            }
+        })?;
+        let map: std::collections::HashMap<String, String> =
+            serde_json::from_str(&content).map_err(|e| PluginManagerError::LibraryLoadError {
+                path: manifest_path,
+                message: format!("Invalid manifest JSON: {}", e),
+            })?;
+        Ok(map)
     }
 
     /// Parse a hex-encoded SHA-256 digest string into a 32-byte array.
@@ -700,6 +715,11 @@ impl PluginManager {
             bridge.discover_builtin_tools(PluginId::new(provider.provider_id()), provider.clone());
         }
 
+        // Set filesystem context from project root, if available.
+        if let Some(root) = &self.project_root {
+            bridge.set_fs_context(FsContext::unrestricted(root.clone()));
+        }
+
         tracing::debug!(
             tool_count = bridge.tool_names().len(),
             "build_tool_bridge end"
@@ -725,6 +745,11 @@ impl PluginManager {
                 provider.clone(),
                 file_path,
             );
+        }
+
+        // Set filesystem context from project root, if available.
+        if let Some(root) = &self.project_root {
+            bridge.set_fs_context(FsContext::unrestricted(root.clone()));
         }
 
         tracing::debug!(file = %file_path.display(), tool_count = bridge.tool_names().len(), "build_tool_bridge_for_file end");

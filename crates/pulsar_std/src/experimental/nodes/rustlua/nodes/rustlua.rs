@@ -1,19 +1,48 @@
 use crate::{blueprint, exec_output, NodeTypes};
-use rlua::{Lua, Result};
+use rlua::{Lua, Result, Table};
 
-#[blueprint(type:NodeTypes::control_flow,category:"RLua (Experimental)",color="#003cff5d")]
-pub fn runlua(code: String) -> String {
-    let lua_runtime = Lua::new();
-    let output: Result<String> = lua_runtime.load(code).eval();
-    return output.unwrap();
+fn create_sandboxed_lua() -> Lua {
+    let lua = Lua::new();
+    {
+        let globals = lua.globals();
+        let os_table: Table = globals
+            .get("os")
+            .unwrap_or_else(|_| lua.create_table().expect("Failed to create table"));
+        let safe_os: Table = lua.create_table().expect("Failed to create table");
+        if let Ok(time_fn) = os_table.get::<_, rlua::Function>("time") {
+            safe_os.set("time", time_fn).ok();
+        }
+        if let Ok(date_fn) = os_table.get::<_, rlua::Function>("date") {
+            safe_os.set("date", date_fn).ok();
+        }
+        globals.set("os", safe_os).expect("Failed to set os");
+        globals.set("io", rlua::Nil).expect("Failed to block io");
+        globals.set("debug", rlua::Nil).expect("Failed to block debug");
+        globals.set("require", rlua::Nil).expect("Failed to block require");
+        globals.set("package", rlua::Nil).expect("Failed to block package");
+        globals.set("dofile", rlua::Nil).expect("Failed to block dofile");
+        globals.set("loadfile", rlua::Nil).expect("Failed to block loadfile");
+        globals.set("collectgarbage", rlua::Nil).expect("Failed to block collectgarbage");
+    }
+    lua
 }
 
-#[blueprint(type:NodeTypes::pure,category:"RLua (Experimental)",color="#003cff5d")]
+#[blueprint(type:NodeTypes::control_flow, category:"RLua (Experimental)", color="#003cff5d")]
+pub fn runlua(code: String) -> String {
+    let lua_runtime = create_sandboxed_lua();
+    let output: Result<String> = lua_runtime.load(&code).eval();
+    match output {
+        Ok(res) => res,
+        Err(e) => format!("Lua Error: {}", e),
+    }
+}
+
+#[blueprint(type:NodeTypes::pure, category:"RLua (Experimental)", color="#003cff5d")]
 pub fn templateLua() -> String {
-    return r#"
+    r#"
         local test = 20
-        test*=2
-        return test
+        test = test * 2
+        return tostring(test)
     "#
-    .to_string();
+    .to_string()
 }

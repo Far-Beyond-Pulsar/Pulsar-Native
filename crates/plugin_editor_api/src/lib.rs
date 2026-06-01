@@ -626,6 +626,9 @@ pub enum PluginError {
 
     /// Generic error
     Other { message: String },
+
+    /// Filesystem access denied by FsContext sandbox.
+    AccessDenied(String),
 }
 
 impl fmt::Display for PluginError {
@@ -654,6 +657,7 @@ impl fmt::Display for PluginError {
                 )
             }
             Self::Other { message } => write!(f, "{}", message),
+            Self::AccessDenied(reason) => write!(f, "Access denied: {}", reason),
         }
     }
 }
