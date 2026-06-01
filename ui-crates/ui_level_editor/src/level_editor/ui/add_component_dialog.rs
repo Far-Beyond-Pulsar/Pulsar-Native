@@ -83,7 +83,7 @@ impl AddComponentDialog {
         }
 
         // Build default values from reflection metadata
-        if let Some(mut instance) = REGISTRY.create_instance(class_name) {
+        if let Some(instance) = REGISTRY.create_instance(class_name) {
             let props = instance.get_properties();
             let mut map = serde_json::Map::new();
             for prop in &props {

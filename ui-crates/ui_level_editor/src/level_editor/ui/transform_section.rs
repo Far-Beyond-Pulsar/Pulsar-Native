@@ -325,7 +325,7 @@ impl TransformSection {
 
 impl Render for TransformSection {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let section_name = "Transform".to_string();
+        let _section_name = "Transform".to_string();
         let chevron_icon = if self.collapsed {
             IconName::ChevronRight
         } else {

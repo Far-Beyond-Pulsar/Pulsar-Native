@@ -1,10 +1,10 @@
 use gpui::{prelude::*, *};
-use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{TypeStructure, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 use ui_common::{
     AssetPickedEvent, AssetQuery, MeshAssetPicker, PropertyStateManager,
 };
@@ -49,7 +49,7 @@ impl ObjectTypeFieldsSection {
         // Subscribe to ComponentAddedEvent to refresh the UI
         cx.subscribe(
             &add_component_dialog,
-            |this, _dialog, event: &super::add_component_dialog::ComponentAddedEvent, cx| {
+            |_this, _dialog, event: &super::add_component_dialog::ComponentAddedEvent, cx| {
                 // Refresh the UI when a component is added
                 let _ = event; // Event contains class_name but we don't need it
                 cx.notify();

@@ -9,12 +9,12 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use std::rc::Rc;
 use ui::{
-    ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
+    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
     menu::context_menu::ContextMenuExt as _,
-    scroll::{Scrollbar, ScrollbarAxis},
+    scroll::Scrollbar,
     v_flex, v_virtual_list,
 };
 

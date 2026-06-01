@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use ui::{
-    button::{Button, ButtonVariants as _},
+    button::Button,
     h_flex,
     v_flex, ActiveTheme, Icon, IconName, Sizable,
 };

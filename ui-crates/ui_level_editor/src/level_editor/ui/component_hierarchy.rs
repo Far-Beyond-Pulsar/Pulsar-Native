@@ -112,7 +112,7 @@ impl HierarchyItem for ComponentItem {
         format!("comp-{}-{}", self.object_id, self.index)
     }
 
-    fn extra_row_content<V>(&self, cx: &mut Context<V>) -> Option<AnyElement>
+    fn extra_row_content<V>(&self, _cx: &mut Context<V>) -> Option<AnyElement>
     where
         V: Render,
     {
@@ -242,7 +242,7 @@ impl ComponentHierarchyPanel {
 
     pub fn render<V>(
         &self,
-        state: &LevelEditorState,
+        _state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         add_button: AnyElement,
         cx: &mut Context<V>,

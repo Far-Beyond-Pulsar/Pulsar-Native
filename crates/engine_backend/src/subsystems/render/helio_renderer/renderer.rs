@@ -1,7 +1,6 @@
 //! Main HelioRenderer — wgpu + Helio scene renderer with built-in editor state.
 
-use glam::{EulerRot, Mat4, Quat, Vec3};
-use std::collections::{HashMap, HashSet};
+use glam::{EulerRot, Mat4, Vec3};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::Instant;
@@ -9,7 +8,7 @@ use std::time::Instant;
 use helio::{
     Camera, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId,
     MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId,
-    Renderer, RendererConfig, SceneActor, SceneActorId, ScenePicker, SkyActor,
+    Renderer, RendererConfig, SceneActor, ScenePicker, SkyActor,
 };
 use engine_fs::virtual_fs;
 use pulsar_scene::{component_instances_from_props, build_transform_parts};
@@ -19,7 +18,7 @@ use pulsar_reflection::{
 };
 use pulsar_events::SCRIPT_REGISTRY;
 
-use crate::scene::{ObjectType, SceneObjectSnapshot};
+use crate::scene::SceneObjectSnapshot;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
 

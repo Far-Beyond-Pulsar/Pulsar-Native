@@ -6,7 +6,7 @@ use super::ui::{
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use engine_backend::GameThread;
-use gpui::{Corner, *};
+use gpui::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -69,7 +69,7 @@ ui_common::panel_boilerplate!(WorldSettingsPanel);
 
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let self_entity_id = cx.entity().entity_id();
+        let _self_entity_id = cx.entity().entity_id();
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         v_flex()
@@ -103,7 +103,7 @@ pub struct HierarchyPanelWrapper {
 impl HierarchyPanelWrapper {
     pub fn new(
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -383,7 +383,7 @@ impl Render for PropertiesPanelWrapper {
                 window,
                 cx,
             ))
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 if this.editing_property.is_some() {
                     match event.keystroke.key.as_str() {
                         "enter" => {

@@ -465,7 +465,7 @@ pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
 /// Build remote callbacks that try SSH-agent → credential_helper → explicit creds.
 fn make_callbacks(creds: Option<(String, String)>) -> git2::RemoteCallbacks<'static> {
     let mut callbacks = git2::RemoteCallbacks::new();
-    callbacks.credentials(move |url, username, allowed_types| {
+    callbacks.credentials(move |_url, username, allowed_types| {
         // Explicit credentials take priority (retry after auth failure)
         if let Some((ref user, ref pass)) = creds {
             return git2::Cred::userpass_plaintext(user, pass);

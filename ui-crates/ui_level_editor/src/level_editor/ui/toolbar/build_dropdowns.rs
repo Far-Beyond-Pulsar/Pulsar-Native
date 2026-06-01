@@ -117,7 +117,7 @@ impl BuildDropdowns {
         let platform_label = Self::get_platform_label(state.target_platform);
         let platform_icon = Self::get_platform_icon(state.target_platform);
 
-        let current_config = state.build_config;
+        let _current_config = state.build_config;
         let current_platform = state.target_platform;
 
         ui::h_flex()

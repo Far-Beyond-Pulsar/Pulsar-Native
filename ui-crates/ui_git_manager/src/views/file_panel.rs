@@ -5,7 +5,7 @@ use gpui::*;
 use std::rc::Rc;
 use ui::{
     ActiveTheme as _, Icon, IconName, h_flex,
-    scroll::{Scrollbar, ScrollbarAxis},
+    scroll::Scrollbar,
     v_flex, v_virtual_list,
 };
 

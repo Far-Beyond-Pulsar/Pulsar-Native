@@ -21,7 +21,7 @@ use super::actions::*;
 use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
-    LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
+    LevelEditorCameraState, ObjectType, SceneObjectData, Transform,
 };
 use engine_backend::scene::SceneDb;
 use engine_backend::subsystems::render::EditorCameraState;
@@ -186,7 +186,7 @@ impl LevelEditorPanel {
         Ok(panel)
     }
 
-    fn new_internal(window_id: Option<u64>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new_internal(window_id: Option<u64>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         let _horizontal_resizable_state = ResizableState::new(cx);
         let _vertical_resizable_state = ResizableState::new(cx);
 
@@ -248,7 +248,7 @@ impl LevelEditorPanel {
 
         // Build the level editor state with the default scene populated into the shared SceneDb.
         // The renderer and all panels now read/write the same Arc<SceneDb>.
-        let mut state = LevelEditorState::new_with_scene_db(scene_db);
+        let state = LevelEditorState::new_with_scene_db(scene_db);
 
         // Attach the GPU renderer to SceneDatabase so every add/remove/update
         // immediately writes to BOTH SceneDb AND Helio (unified write path).
@@ -943,7 +943,7 @@ impl LevelEditorPanel {
                     self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
                 }
-                Err(e) => {}
+                Err(_e) => {}
             }
         }
     }
@@ -1071,7 +1071,7 @@ impl LevelEditorPanel {
     fn on_focus_selected(
         &mut self,
         _: &FocusSelected,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         // TODO: Frame selected object in viewport (move camera to focus on selection)

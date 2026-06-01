@@ -28,5 +28,4 @@ pub use state::*;
 pub use toolbar::ToolbarPanel;
 pub use transform_section::TransformSection;
 pub use viewport::ViewportPanel;
-pub use world_settings::WorldSettings;
 pub use world_settings_replicated::WorldSettingsReplicated;

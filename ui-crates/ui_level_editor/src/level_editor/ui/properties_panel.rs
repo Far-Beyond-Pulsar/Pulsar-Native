@@ -26,14 +26,14 @@ impl PropertiesPanel {
     pub fn render(
         &self,
         state: &LevelEditorState,
-        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
-        editing_property: &Option<String>,
-        property_input: &Entity<InputState>,
-        collapsed_sections: &HashSet<String>,
+        _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        _editing_property: &Option<String>,
+        _property_input: &Entity<InputState>,
+        _collapsed_sections: &HashSet<String>,
         object_header_section: &Option<Entity<super::ObjectHeaderSection>>,
         transform_section: &Option<Entity<super::TransformSection>>,
         object_type_fields_section: &Option<Entity<super::ObjectTypeFieldsSection>>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
         v_flex()
@@ -691,7 +691,7 @@ impl PropertiesPanel {
         value: f32,
         editing_property: &Option<String>,
         property_input: &Entity<InputState>,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
         let value_str = format!("{:.2}", value);
@@ -830,7 +830,7 @@ impl PropertiesPanel {
     }
 
     fn render_rendering_section(
-        object: &super::state::SceneObject,
+        _object: &super::state::SceneObject,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
@@ -864,7 +864,7 @@ impl PropertiesPanel {
     }
 
     fn render_physics_section(
-        object: &super::state::SceneObject,
+        _object: &super::state::SceneObject,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {

@@ -7,10 +7,10 @@ use ui::{
     h_flex,
     hierarchical_tree::tree_colors,
     HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
-    ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    ActiveTheme, IconName, Sizable,
 };
 use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
-use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
+use crate::level_editor::scene_database::ObjectType;
 
 /// GPUI Render impl for the hierarchy drag ghost label.
 impl Render for HierarchyDragPayload {
@@ -101,7 +101,7 @@ impl HierarchyItem for SceneObjectItem {
         format!("hierarchy-{}", self.object.id)
     }
 
-    fn extra_row_content<V>(&self, cx: &mut Context<V>) -> Option<AnyElement>
+    fn extra_row_content<V>(&self, _cx: &mut Context<V>) -> Option<AnyElement>
     where
         V: Render,
     {
@@ -241,7 +241,7 @@ impl HierarchyPanel {
         let wrapper_for_select = wrapper_entity.clone();
         let state_arc_for_drop = state_arc.clone();
         let wrapper_for_drop = wrapper_entity.clone();
-        let state_arc_for_root_click = state_arc.clone();
+        let _state_arc_for_root_click = state_arc.clone();
 
         // Header buttons
         let header_buttons = vec![

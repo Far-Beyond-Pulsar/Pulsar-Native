@@ -148,7 +148,7 @@ impl ComponentRuntimeBehavior for LightComponent {
 
     fn sync_component(
         owner: &RuntimeComponentOwner,
-        component_index: usize,
+        _component_index: usize,
         component_data: &Value,
         context: &mut dyn ComponentRuntimeContext,
     ) {

@@ -4,15 +4,14 @@
 //! that is used by both the level editor and blueprint prefab editor.
 
 use gpui::{prelude::*, *};
-use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY};
+use pulsar_reflection::{RuntimeTypeInfo, TypeStructure};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::color_picker::{ColorPickerEvent, ColorPickerState};
 use ui::input::{InputEvent, InputState, NumberInputEvent, StepAction};
-use ui::popover::Popover;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
+use ui::{h_flex, ActiveTheme, Sizable};
 use crate::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 // ============================================================================

@@ -53,9 +53,9 @@ impl F32BoundField {
         }
 
         // Subscribe to input events for bidirectional sync
-        let binding_clone = binding.clone();
-        let object_id_clone = object_id.clone();
-        let scene_db_clone = scene_db.clone();
+        let _binding_clone = binding.clone();
+        let _object_id_clone = object_id.clone();
+        let _scene_db_clone = scene_db.clone();
 
         let subscription = cx.subscribe_in(
             &input,
@@ -147,7 +147,7 @@ impl F32BoundField {
 }
 
 impl Render for F32BoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -198,9 +198,9 @@ impl StringBoundField {
         }
 
         // Subscribe to input events
-        let binding_clone = binding.clone();
-        let object_id_clone = object_id.clone();
-        let scene_db_clone = scene_db.clone();
+        let _binding_clone = binding.clone();
+        let _object_id_clone = object_id.clone();
+        let _scene_db_clone = scene_db.clone();
 
         let subscription = cx.subscribe_in(
             &input,
@@ -260,7 +260,7 @@ impl StringBoundField {
 }
 
 impl Render for StringBoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         h_flex()
             .w_full()
             .gap_2()
@@ -295,8 +295,8 @@ impl BoolBoundField {
         label: impl Into<String>,
         object_id: String,
         scene_db: SceneDatabase,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) -> Self {
         let binding = Arc::new(binding);
 
@@ -326,7 +326,7 @@ impl BoolBoundField {
 }
 
 impl Render for BoolBoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Refresh checked state from scene database
         if let Some(value) = self.binding.get(&self.object_id, &self.scene_db) {
             self.checked = value;
@@ -463,7 +463,7 @@ impl Vec3BoundField {
 }
 
 impl Render for Vec3BoundField {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         v_flex()
             .w_full()
             .gap_2()

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use ui::{
     draggable::{DragHandlePosition, Draggable},
     drop_area::DropArea,
-    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
 
 /// Generic tree item configuration

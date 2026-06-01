@@ -49,7 +49,7 @@ fn mini_graph<T: Clone + 'static, V>(
     x_fn: impl Fn(&T) -> SharedString + 'static,
     y_fn: impl Fn(&T) -> f64 + 'static,
     color: Hsla,
-    cx: &Context<V>,
+    _cx: &Context<V>,
 ) -> impl IntoElement
 where
     V: 'static + Render,
@@ -72,13 +72,13 @@ pub fn render_performance_overlay<V>(
     ui_fps: f64,
     render_fps: f64,
     fps_data: Vec<FpsDataPoint>,
-    tps_data: Vec<TpsDataPoint>,
+    _tps_data: Vec<TpsDataPoint>,
     frame_time_data: Vec<FrameTimeDataPoint>,
     memory_data: Vec<MemoryDataPoint>,
     draw_calls_data: Vec<DrawCallsDataPoint>,
     vertices_data: Vec<VerticesDataPoint>,
     input_latency_data: Vec<InputLatencyDataPoint>,
-    ui_consistency_data: Vec<UiConsistencyDataPoint>,
+    _ui_consistency_data: Vec<UiConsistencyDataPoint>,
     _fps_graph_state: Rc<RefCell<bool>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement

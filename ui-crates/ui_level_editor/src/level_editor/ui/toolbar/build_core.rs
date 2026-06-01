@@ -11,7 +11,7 @@
 //! While a Build+Run process is alive the dropdown is disabled and a Stop
 //! button appears next to it.  Killing the process re-enables everything.
 
-use std::io::{BufRead as _, BufReader};
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::{
@@ -24,7 +24,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
-use ui::{h_flex, ContextModal as _, Disableable as _, IconName, Sizable as _};
+use ui::{h_flex, ContextModal as _, Disableable as _, IconName};
 
 use super::super::state::{BuildMode, EditorMode, LevelEditorState};
 use super::actions::SetBuildMode;

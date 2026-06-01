@@ -143,7 +143,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
 
     fn sync_component(
         owner: &RuntimeComponentOwner,
-        component_index: usize,
+        _component_index: usize,
         component_data: &Value,
         context: &mut dyn ComponentRuntimeContext,
     ) {
