@@ -50,6 +50,7 @@ use libloading::{Library, Symbol};
 use sha2::{Digest, Sha256};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
+use std::io::{BufReader, Read};
 
 /// A dynamically loaded library that is NEVER unloaded.
 ///
@@ -209,9 +210,26 @@ impl PermanentLibrary {
     }
 
     /// Compute the SHA-256 digest of a file on disk.
+    ///
+    /// This uses a streaming approach with `BufReader` to avoid reading the entire
+    /// file into memory at once, which prevents Out-Of-Memory (OOM) errors for large
+    /// plugin libraries.
     fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
-        let bytes = std::fs::read(path)?;
-        Ok(Sha256::digest(&bytes).into())
+
+        let file = std::fs::File::open(path)?;
+        let mut reader = BufReader::new(file);
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 8192]; // 8KB buffer
+
+        loop {
+            let count = reader.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+
+        Ok(hasher.finalize().into())
     }
 
     /// Compute the SHA-256 digest from an open file handle.
