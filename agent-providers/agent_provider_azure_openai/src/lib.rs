@@ -38,7 +38,9 @@ impl AzureOpenAIProvider {
         ]
     }
 
-
+    fn auth_token_from_env(env: &dyn ProviderEnvironment) -> Option<String> {
+        env.get_env("AZURE_OPENAI_API_KEY")
+    }
 }
 
 impl Default for AzureOpenAIProvider {

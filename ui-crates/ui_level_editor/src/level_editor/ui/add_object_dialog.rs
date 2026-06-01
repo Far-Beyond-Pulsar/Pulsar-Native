@@ -18,13 +18,22 @@ use crate::level_editor::ui::state::LevelEditorState;
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
+#[derive(Debug, Clone, Copy)]
+pub struct ObjectSpawnedEvent;
 
-
-
+#[derive(Clone)]
+struct ObjectMenuItem {
+    label: &'static str,
+    icon: IconName,
+}
 
 // ── Entity ────────────────────────────────────────────────────────────────────
 
-
+pub struct AddObjectDialog {
+    searchable_list: Entity<SearchableList<ObjectMenuItem>>,
+    _subscriptions: Vec<Subscription>,
+    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+}
 
 impl EventEmitter<DismissEvent> for AddObjectDialog {}
 impl EventEmitter<ObjectSpawnedEvent> for AddObjectDialog {}

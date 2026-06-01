@@ -47,7 +47,33 @@ pub struct F32FieldBinding {
     setter_db: Option<Arc<dyn Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync>>,
 }
 
+impl F32FieldBinding {
+    pub fn new<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&SceneObjectData) -> f32 + Send + Sync + 'static,
+        S: Fn(&mut SceneObjectData, f32) + Send + Sync + 'static,
+    {
+        Self {
+            getter: Some(Arc::new(getter)),
+            setter: Some(Arc::new(setter)),
+            getter_db: None,
+            setter_db: None,
+        }
+    }
 
+    pub fn new_with_db<G, S>(getter: G, setter: S) -> Self
+    where
+        G: Fn(&ObjectId, &SceneDatabase) -> Option<f32> + Send + Sync + 'static,
+        S: Fn(&ObjectId, f32, &SceneDatabase) -> bool + Send + Sync + 'static,
+    {
+        Self {
+            getter: None,
+            setter: None,
+            getter_db: Some(Arc::new(getter)),
+            setter_db: Some(Arc::new(setter)),
+        }
+    }
+}
 
 impl FieldBinding for F32FieldBinding {
     type Value = f32;
@@ -90,7 +116,11 @@ impl FieldBinding for F32FieldBinding {
 // Vec3 Field Binding ([f32; 3])
 // ============================================================================
 
-
+/// Binding for a [f32; 3] field (position, rotation, scale)
+pub struct Vec3FieldBinding {
+    getter: Arc<dyn Fn(&SceneObjectData) -> [f32; 3] + Send + Sync>,
+    setter: Arc<dyn Fn(&mut SceneObjectData, [f32; 3]) + Send + Sync>,
+}
 
 impl Vec3FieldBinding {
     pub fn new<G, S>(getter: G, setter: S) -> Self
@@ -258,7 +288,11 @@ impl FieldBinding for BoolFieldBinding {
 // Color Field Binding ([f32; 4] - RGBA)
 // ============================================================================
 
-
+/// Binding for a color field (RGBA)
+pub struct ColorFieldBinding {
+    getter: Arc<dyn Fn(&SceneObjectData) -> [f32; 4] + Send + Sync>,
+    setter: Arc<dyn Fn(&mut SceneObjectData, [f32; 4]) + Send + Sync>,
+}
 
 impl ColorFieldBinding {
     pub fn new<G, S>(getter: G, setter: S) -> Self
@@ -333,7 +367,12 @@ impl FieldBinding for ColorFieldBinding {
 // Enum Field Binding
 // ============================================================================
 
-
+/// Binding for an enum/dropdown field
+pub struct EnumFieldBinding {
+    getter: Arc<dyn Fn(&SceneObjectData) -> usize + Send + Sync>,
+    setter: Arc<dyn Fn(&mut SceneObjectData, usize) + Send + Sync>,
+    variants: Vec<String>,
+}
 
 impl EnumFieldBinding {
     pub fn new<G, S>(variants: Vec<String>, getter: G, setter: S) -> Self

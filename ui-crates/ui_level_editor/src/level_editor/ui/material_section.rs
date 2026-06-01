@@ -10,7 +10,21 @@ use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 use super::bound_field::F32BoundField;
 use crate::level_editor::scene_database::SceneDatabase;
 
+/// Material section for editing material component properties
+pub struct MaterialSection {
+    // Color RGBA components
+    color_r: Entity<F32BoundField>,
+    color_g: Entity<F32BoundField>,
+    color_b: Entity<F32BoundField>,
+    color_a: Entity<F32BoundField>,
 
+    // Material properties
+    metallic: Entity<F32BoundField>,
+    roughness: Entity<F32BoundField>,
+
+    object_id: String,
+    collapsed: bool,
+}
 
 impl MaterialSection {
     fn get_material_data(scene_db: &SceneDatabase, object_id: &str) -> Option<Value> {

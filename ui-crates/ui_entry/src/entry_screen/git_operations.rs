@@ -333,7 +333,48 @@ pub fn is_git_repo(path: &Path) -> bool {
     path.join(".git").exists()
 }
 
-
+/// Checks if a git repository has an 'origin' remote configured.
+///
+/// Opens the repository and checks for the existence of a remote named 'origin'.
+/// This is commonly used to determine if a repository is connected to an upstream
+/// source for pulling updates and pushing changes.
+///
+/// # Arguments
+///
+/// * `path` - Path to the git repository directory
+///
+/// # Returns
+///
+/// * `true` - If the repository has an 'origin' remote
+/// * `false` - If the repository doesn't exist, can't be opened, or has no 'origin' remote
+///
+/// # Note
+///
+/// This function returns `false` if the repository can't be opened, so a `false`
+/// result doesn't necessarily mean the remote doesn't exist—it could also indicate
+/// the path isn't a valid repository.
+///
+/// # Example
+///
+/// ```no_run
+/// use std::path::Path;
+///
+/// let project_path = Path::new("/path/to/project");
+/// if has_origin_remote(project_path) {
+///     tracing::trace!("Repository is connected to origin");
+///     // Can check for updates or push changes
+/// } else {
+///     tracing::trace!("No origin remote configured");
+///     // Might need to add one
+/// }
+/// ```
+pub fn has_origin_remote(path: &Path) -> bool {
+    if let Ok(repo) = git2::Repository::open(path) {
+        repo.find_remote("origin").is_ok()
+    } else {
+        false
+    }
+}
 
 /// Checks for available updates from the origin remote without applying them.
 ///

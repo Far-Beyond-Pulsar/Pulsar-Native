@@ -15,9 +15,22 @@ use ui::{
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
+/// Status of a file in the sync
+#[derive(Clone, Debug, PartialEq)]
+pub enum FileSyncStatus {
+    Added,
+    Modified,
+    Deleted,
+}
 
-
-
+/// A file entry in the sync list
+#[derive(Clone, Debug)]
+pub struct FileSyncEntry {
+    pub path: String,
+    pub status: FileSyncStatus,
+    pub local_content: Option<String>,
+    pub remote_content: Option<String>,
+}
 
 impl FileSyncEntry {
     pub fn new_added(path: String, remote_content: String) -> Self {
@@ -63,7 +76,23 @@ impl FileSyncEntry {
     }
 }
 
-
+/// The main file sync UI component
+pub struct FileSyncUI {
+    focus_handle: FocusHandle,
+    /// List of files to sync
+    pub files: Vec<FileSyncEntry>,
+    /// Currently selected file index
+    pub selected_file_index: Option<usize>,
+    /// Resizable state for the file list / diff split
+    file_list_split: Entity<ResizableState>,
+    /// Resizable state for before/after diff split
+    diff_split: Entity<ResizableState>,
+    /// Editor states for before/after views
+    before_editor: Entity<InputState>,
+    after_editor: Entity<InputState>,
+    /// Track whether editors have been initialized with content
+    editors_initialized: bool,
+}
 
 impl FileSyncUI {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {

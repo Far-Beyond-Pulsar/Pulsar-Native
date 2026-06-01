@@ -152,4 +152,27 @@ fn popup_row_improved(
         })
 }
 
+/// Helper function to create a popup info row (legacy)
+fn popup_row(
+    label: impl Into<SharedString>,
+    value: String,
+    label_color: Hsla,
+    value_color: Hsla,
+    bold_value: bool,
+) -> impl IntoElement {
+    let value_div = if bold_value {
+        div()
+            .text_xs()
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(value_color)
+            .child(value)
+    } else {
+        div().text_xs().text_color(value_color).child(value)
+    };
 
+    div()
+        .flex()
+        .justify_between()
+        .child(div().text_xs().text_color(label_color).child(label.into()))
+        .child(value_div)
+}

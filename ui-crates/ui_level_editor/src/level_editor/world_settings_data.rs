@@ -203,7 +203,15 @@ fn hsla_to_rgba(hsla: Hsla) -> [f32; 4] {
     [hsla.h / 360.0, hsla.s, hsla.l, hsla.a]
 }
 
-
+/// Convert RGBA array back to HSLA color
+pub fn rgba_to_hsla(rgba: [f32; 4]) -> Hsla {
+    Hsla {
+        h: rgba[0] * 360.0,
+        s: rgba[1],
+        l: rgba[2],
+        a: rgba[3],
+    }
+}
 
 #[cfg(test)]
 mod tests {

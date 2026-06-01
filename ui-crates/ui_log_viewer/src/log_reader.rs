@@ -6,9 +6,22 @@ use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+/// Represents a single log line with metadata
+#[derive(Clone, Debug)]
+pub struct LogLine {
+    pub line_number: usize,
+    pub content: String,
+    pub file_offset: u64,
+}
 
-
-
+/// Log reader that streams lines from disk with windowing
+pub struct LogReader {
+    file_path: PathBuf,
+    file: Arc<Mutex<BufReader<File>>>,
+    total_lines: usize,
+    line_index: Vec<u64>, // Byte offsets for each line
+    window_size: usize,
+}
 
 impl LogReader {
     /// Create a new log reader for the given file
@@ -162,4 +175,23 @@ impl LogReader {
     }
 }
 
+/// Find the latest log directory
+pub fn find_latest_log_dir() -> Result<PathBuf> {
+    use directories::ProjectDirs;
 
+    let proj_dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .context("Could not determine app data directory")?;
+    let logs_dir = proj_dirs.data_dir().join("logs");
+
+    let mut entries: Vec<_> = std::fs::read_dir(&logs_dir)
+        .with_context(|| format!("Failed to read logs directory: {}", logs_dir.display()))?
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|ft| ft.is_dir()).unwrap_or(false))
+        .collect();
+
+    entries.sort_by_key(|e| std::cmp::Reverse(e.file_name()));
+
+    let latest_dir = entries.first().context("No log directories found")?.path();
+
+    Ok(latest_dir)
+}

@@ -54,7 +54,15 @@ pub enum GitFetchStatus {
     Error(String),
 }
 
-
+/// Project with git fetch status
+#[derive(Clone)]
+pub struct ProjectWithGitStatus {
+    pub name: String,
+    pub path: String,
+    pub last_opened: Option<String>,
+    pub is_git: bool,
+    pub fetch_status: GitFetchStatus,
+}
 
 // ── Cloud Projects ─────────────────────────────────────────────────────────
 

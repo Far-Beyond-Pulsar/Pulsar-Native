@@ -9,7 +9,25 @@ use std::sync::Arc;
 use gpui::*;
 use ui::{h_flex, ActiveTheme};
 
-
+/// Builder for creating a floating toolbar with drag functionality.
+///
+/// # Example
+/// ```rust
+/// FloatingToolbar::new()
+///     .position(100.0, 50.0)
+///     .on_drag(|dx, dy| {
+///         // Handle drag
+///     })
+///     .child(Button::new("my_button").icon(IconName::Grid))
+///     .build(cx)
+/// ```
+pub struct FloatingToolbar<E: IntoElement> {
+    position: (f32, f32),
+    children: Vec<E>,
+    on_drag_start: Option<Box<dyn Fn(f32, f32)>>,
+    on_drag: Option<Box<dyn Fn(f32, f32)>>,
+    on_drag_end: Option<Box<dyn Fn()>>,
+}
 
 impl<E: IntoElement> FloatingToolbar<E> {
     /// Create a new floating toolbar.
@@ -121,7 +139,28 @@ where
         )
 }
 
-
+/// Create a simple floating toolbar with standard styling.
+///
+/// This is a convenience function for the common case of a toolbar with
+/// children elements and standard styling.
+///
+/// # Arguments
+/// * `children` - The content elements to display in the toolbar
+/// * `cx` - The window context
+pub fn simple_floating_toolbar<V>(children: impl IntoElement, cx: &Context<V>) -> impl IntoElement
+where
+    V: 'static + Render,
+{
+    h_flex()
+        .gap_2()
+        .p_2()
+        .bg(cx.theme().background.opacity(0.9))
+        .rounded(cx.theme().radius)
+        .border_1()
+        .border_color(cx.theme().border)
+        .items_center()
+        .child(children)
+}
 
 /// Create a toolbar with drag handle and content.
 ///

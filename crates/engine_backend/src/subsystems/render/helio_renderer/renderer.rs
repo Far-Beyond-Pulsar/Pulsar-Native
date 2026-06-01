@@ -55,7 +55,10 @@ fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMate
     }
 }
 
-
+/// Delegates to the shared implementation in `pulsar_scene`.
+fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
+    build_transform_parts(snap.position, snap.rotation, snap.scale)
+}
 
 /// Resolve a mesh asset path string to an absolute filesystem path.
 ///

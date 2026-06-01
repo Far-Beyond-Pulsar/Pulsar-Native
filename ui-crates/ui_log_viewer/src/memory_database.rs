@@ -115,7 +115,35 @@ fn save_allocation_sites(conn: &Connection, sites: &[AllocationSite]) -> rusqlit
     Ok(())
 }
 
+/// Query top N allocations from database
+pub fn query_top_allocations(
+    db_path: &Path,
+    limit: usize,
+) -> rusqlite::Result<Vec<AllocationSite>> {
+    let conn = Connection::open(db_path)?;
 
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT type_signature, size, align, count, total_bytes
+         FROM allocation_sites
+         WHERE timestamp = (SELECT MAX(timestamp) FROM allocation_sites)
+         ORDER BY total_bytes DESC
+         LIMIT ?",
+    )?;
+
+    let sites = stmt
+        .query_map([limit], |row| {
+            Ok(AllocationSite {
+                type_signature: row.get(0)?,
+                size: row.get::<_, i64>(1)? as usize,
+                align: row.get::<_, i64>(2)? as usize,
+                count: row.get::<_, i64>(3)? as usize,
+                total_bytes: row.get::<_, i64>(4)? as usize,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(sites)
+}
 
 /// Ensure memory database directory exists
 pub fn ensure_memory_db_dir() -> std::io::Result<PathBuf> {

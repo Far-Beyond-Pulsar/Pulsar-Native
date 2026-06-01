@@ -12,7 +12,9 @@ use ui::{
 use super::state::LevelEditorState;
 use crate::level_editor::WorldSettingsPanel;
 
-
+/// World Settings Panel - Configure global world/scene settings
+/// Styled to match the Properties (Details) panel
+pub struct WorldSettings;
 
 impl WorldSettings {
     pub fn new() -> Self {
@@ -676,6 +678,46 @@ impl WorldSettings {
     }
 }
 
+/// Helper function to convert HSLA to approximate RGB values
+fn hsla_to_rgb_approx(hsla: Hsla) -> (u8, u8, u8) {
+    let h = hsla.h / 360.0;
+    let s = hsla.s;
+    let l = hsla.l;
 
+    if s == 0.0 {
+        let v = (l * 255.0) as u8;
+        return (v, v, v);
+    }
 
+    let q = if l < 0.5 {
+        l * (1.0 + s)
+    } else {
+        l + s - l * s
+    };
+    let p = 2.0 * l - q;
 
+    let r = hue_to_rgb(p, q, h + 1.0 / 3.0);
+    let g = hue_to_rgb(p, q, h);
+    let b = hue_to_rgb(p, q, h - 1.0 / 3.0);
+
+    ((r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8)
+}
+
+fn hue_to_rgb(p: f32, q: f32, mut t: f32) -> f32 {
+    if t < 0.0 {
+        t += 1.0;
+    }
+    if t > 1.0 {
+        t -= 1.0;
+    }
+    if t < 1.0 / 6.0 {
+        return p + (q - p) * 6.0 * t;
+    }
+    if t < 1.0 / 2.0 {
+        return q;
+    }
+    if t < 2.0 / 3.0 {
+        return p + (q - p) * (2.0 / 3.0 - t) * 6.0;
+    }
+    p
+}
