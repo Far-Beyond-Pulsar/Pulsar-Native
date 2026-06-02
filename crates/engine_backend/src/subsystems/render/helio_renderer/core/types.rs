@@ -86,4 +86,22 @@ impl CameraInput {
             needs_resize: false,
         }
     }
+
+    pub fn clear_transient_deltas(&mut self) {
+        self.mouse_delta_x = 0.0;
+        self.mouse_delta_y = 0.0;
+        self.pan_delta_x = 0.0;
+        self.pan_delta_y = 0.0;
+        self.zoom_delta = 0.0;
+    }
+
+    pub fn accumulate_look_delta(&mut self, dx: f32, dy: f32) {
+        self.mouse_delta_x += dx;
+        self.mouse_delta_y += dy;
+    }
+
+    pub fn accumulate_pan_delta(&mut self, dx: f32, dy: f32) {
+        self.pan_delta_x += dx;
+        self.pan_delta_y += dy;
+    }
 }

@@ -172,7 +172,10 @@ impl ViewportPanel {
         self.input_thread_spawned.store(true, Ordering::Relaxed);
 
         let input_state = self.input_state.clone();
-        let gpu_engine_clone = gpu_engine.clone();
+        let camera_input = gpu_engine
+            .lock()
+            .ok()
+            .and_then(|engine| engine.camera_input());
         let mouse_right_captured = self.mouse_right_captured.clone();
         let mouse_middle_captured = self.mouse_middle_captured.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
@@ -183,6 +186,7 @@ impl ViewportPanel {
             tracing::debug!("[INPUT-THREAD] 🚀 Dedicated RAW INPUT processing thread started");
             let device_state = DeviceState::new();
             let mut _last_mouse_pos: Option<(i32, i32)> = None;
+            let mut was_capturing = false;
 
             loop {
                 profiling::profile_scope!("input_poll");
@@ -200,25 +204,23 @@ impl ViewportPanel {
                     input_state.set_up(0);
                     input_state.set_boost(false);
 
-                    // Clear GPU input
-                    if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(cam) = engine.camera_input() {
-                            if let Ok(mut input) = cam.try_lock() {
+                    if was_capturing {
+                        if let Some(cam) = &camera_input {
+                            if let Ok(mut input) = cam.lock() {
                                 input.forward = 0.0;
                                 input.right = 0.0;
                                 input.up = 0.0;
                                 input.boost = false;
-                                input.mouse_delta_x = 0.0;
-                                input.mouse_delta_y = 0.0;
-                                input.pan_delta_x = 0.0;
-                                input.pan_delta_y = 0.0;
-                                input.zoom_delta = 0.0;
+                                input.clear_transient_deltas();
                             }
                         }
+                        was_capturing = false;
                     }
 
                     continue;
                 }
+
+                was_capturing = true;
 
                 // Poll keyboard
                 {
@@ -277,17 +279,14 @@ impl ViewportPanel {
                                 let dy = point.y - locked_screen_y;
 
                                 if dx != 0 || dy != 0 {
-                                    // Send deltas DIRECTLY to renderer - zero latency path!
-                                    if let Ok(engine) = gpu_engine_clone.try_lock() {
-                                        if let Some(cam) = engine.camera_input() {
-                                            if let Ok(mut input) = cam.try_lock() {
-                                                if is_rotating {
-                                                    input.mouse_delta_x = dx as f32;
-                                                    input.mouse_delta_y = dy as f32;
-                                                } else if is_panning {
-                                                    input.pan_delta_x = dx as f32;
-                                                    input.pan_delta_y = dy as f32;
-                                                }
+                                    // Accumulate deltas so multiple input samples between render frames
+                                    // are preserved instead of being overwritten.
+                                    if let Some(cam) = &camera_input {
+                                        if let Ok(mut input) = cam.lock() {
+                                            if is_rotating {
+                                                input.accumulate_look_delta(dx as f32, dy as f32);
+                                            } else if is_panning {
+                                                input.accumulate_pan_delta(dx as f32, dy as f32);
                                             }
                                         }
                                     }
@@ -311,16 +310,12 @@ impl ViewportPanel {
                         let (dx, dy) = platform::take_mouse_delta();
 
                         if dx != 0.0 || dy != 0.0 {
-                            if let Ok(engine) = gpu_engine_clone.try_lock() {
-                                if let Some(cam) = engine.camera_input() {
-                                    if let Ok(mut input) = cam.try_lock() {
-                                        if is_rotating {
-                                            input.mouse_delta_x = dx;
-                                            input.mouse_delta_y = dy;
-                                        } else if is_panning {
-                                            input.pan_delta_x = dx;
-                                            input.pan_delta_y = dy;
-                                        }
+                            if let Some(cam) = &camera_input {
+                                if let Ok(mut input) = cam.lock() {
+                                    if is_rotating {
+                                        input.accumulate_look_delta(dx, dy);
+                                    } else if is_panning {
+                                        input.accumulate_pan_delta(dx, dy);
                                     }
                                 }
                             }
