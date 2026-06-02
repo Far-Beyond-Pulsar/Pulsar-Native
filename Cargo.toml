@@ -19,11 +19,11 @@ resolver = "2"
 # - lto="fat":            link-time optimization (faster binary, harder to RE)
 # - codegen-units=1:      better LLVM optimization across crate boundaries
 # - panic="abort":        abort on panic instead of unwinding (smaller, faster)
-debug = false
-strip = "symbols"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
+# debug = false
+# strip = "symbols"
+# lto = "fat"
+# codegen-units = 1
+# panic = "abort"
 
 [profile.dev]
 codegen-units = 16

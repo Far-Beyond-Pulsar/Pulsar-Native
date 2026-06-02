@@ -236,7 +236,7 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
             });
 
         // Keep plugin AI tools aligned with the currently opened blueprint panel state.
-        let graph_snapshot = panel.read(cx).get_graph().clone();
+        let graph_snapshot = panel.read(cx).graph.clone();
         blueprint_editor_plugin::upsert_ai_session(file_path.clone(), graph_snapshot);
 
         Ok(Arc::new(panel))
