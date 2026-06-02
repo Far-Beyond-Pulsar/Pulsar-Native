@@ -1244,6 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.6.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c28f7ae7e0a4c40468ff93f81d3604ef24121af2#c28f7ae7e0a4c40468ff93f81d3604ef24121af2"
 dependencies = [
  "anyhow",
  "arboard",
