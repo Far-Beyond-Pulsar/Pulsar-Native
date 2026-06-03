@@ -1527,7 +1527,6 @@ impl Render for AppTitleBar {
                     .gap_2()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(self.child.clone()(window, cx))
-                    .child(self.render_auth_identity(cx))
                     .when(
                         engine_state::EngineContext::global()
                             .map(|ctx| ctx.dev.read().is_source_build)
@@ -1582,7 +1581,8 @@ impl Render for AppTitleBar {
                                     .icon(IconName::Bell),
                             ),
                         ),
-                    ),
+                    )
+                    .child(self.render_auth_identity(cx)),
             )
     }
 }
