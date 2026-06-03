@@ -22,7 +22,11 @@ use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use ui::{ActiveTheme as _, TitleBar, VirtualListScrollHandle, h_flex, input::InputState, v_flex};
+use ui::{
+    ActiveTheme as _, TitleBar, VirtualListScrollHandle,
+    button::{Button, ButtonVariants as _},
+    h_flex, input::InputState, v_flex,
+};
 
 /// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
@@ -73,6 +77,10 @@ pub struct EntryScreen {
     pub(crate) auth_message: Option<String>,
     pub(crate) auth_avatar_image: Option<Arc<RenderImage>>,
     pub(crate) auth_avatar_url_loaded: Option<String>,
+    pub(crate) auth_device_code: Option<String>,
+    pub(crate) auth_device_verification_url: Option<String>,
+    pub(crate) auth_device_modal_visible: bool,
+    pub(crate) auth_device_copy_notice: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -185,6 +193,10 @@ impl EntryScreen {
             auth_message: None,
             auth_avatar_image: None,
             auth_avatar_url_loaded: None,
+            auth_device_code: None,
+            auth_device_verification_url: None,
+            auth_device_modal_visible: false,
+            auth_device_copy_notice: None,
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -1445,6 +1457,10 @@ default_scene = "scenes/main.scene"
 
         self.auth_loading = true;
         self.auth_message = Some("Starting GitHub sign-in…".to_string());
+        self.auth_device_code = None;
+        self.auth_device_verification_url = None;
+        self.auth_device_modal_visible = false;
+        self.auth_device_copy_notice = None;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
@@ -1468,9 +1484,12 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |this, cx| {
                     this.auth_message = Some(format!(
-                        "GitHub code: {} (opens browser)",
-                        flow.user_code
+                        "Complete sign-in in GitHub."
                     ));
+                    this.auth_device_code = Some(flow.user_code.clone());
+                    this.auth_device_verification_url = Some(flow.verification_uri.clone());
+                    this.auth_device_modal_visible = true;
+                    this.auth_device_copy_notice = None;
                     cx.open_url(&flow.verification_uri);
                     cx.notify();
                 });
@@ -1486,6 +1505,10 @@ default_scene = "scenes/main.scene"
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         this.auth_loading = false;
+                        this.auth_device_modal_visible = false;
+                        this.auth_device_code = None;
+                        this.auth_device_verification_url = None;
+                        this.auth_device_copy_notice = None;
                         this.auth_message = Some("GitHub sign-in timed out or failed.".to_string());
                         cx.notify();
                     });
@@ -1512,6 +1535,10 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |this, cx| {
                     this.auth_loading = false;
+                    this.auth_device_modal_visible = false;
+                    this.auth_device_code = None;
+                    this.auth_device_verification_url = None;
+                    this.auth_device_copy_notice = None;
                     match profile {
                         Ok(profile) => {
                             if let Some(ec) = engine_state::EngineContext::global() {
@@ -1543,6 +1570,10 @@ default_scene = "scenes/main.scene"
         }
         self.auth_avatar_image = None;
         self.auth_avatar_url_loaded = None;
+        self.auth_device_code = None;
+        self.auth_device_verification_url = None;
+        self.auth_device_modal_visible = false;
+        self.auth_device_copy_notice = None;
         self.auth_message = Some("Signed out".to_string());
         cx.notify();
     }
@@ -1635,6 +1666,107 @@ default_scene = "scenes/main.scene"
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
                     .child(name),
+            )
+            .into_any_element()
+    }
+
+    fn render_github_code_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(code) = self.auth_device_code.clone() else {
+            return div().into_any_element();
+        };
+        let verification_url = self.auth_device_verification_url.clone();
+
+        div()
+            .absolute()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(cx.theme().background.opacity(0.86))
+            .child(
+                v_flex()
+                    .w_full()
+                    .max_w(px(460.))
+                    .p_6()
+                    .gap_4()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child("GitHub Device Code"),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Paste this 8-digit code in the browser window GitHub opened."),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .py_3()
+                            .rounded_lg()
+                            .bg(cx.theme().accent.opacity(0.12))
+                            .border_1()
+                            .border_color(cx.theme().accent.opacity(0.35))
+                            .text_center()
+                            .text_2xl()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(cx.theme().foreground)
+                            .child(code.clone()),
+                    )
+                    .when_some(self.auth_device_copy_notice.clone(), |this, notice| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().success)
+                                .child(notice),
+                        )
+                    })
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            .justify_end()
+                            .child(
+                                Button::new("github-device-code-close")
+                                    .ghost()
+                                    .label("Close")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.auth_device_modal_visible = false;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("github-device-code-open")
+                                    .ghost()
+                                    .label("Open GitHub")
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        if let Some(url) = verification_url.clone() {
+                                            cx.open_url(&url);
+                                        }
+                                    })),
+                            )
+                            .child(
+                                Button::new("github-device-code-copy")
+                                    .primary()
+                                    .label("Copy Code")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                                            code.clone(),
+                                        ));
+                                        this.auth_device_copy_notice =
+                                            Some("Code copied.".to_string());
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
             )
             .into_any_element()
     }
@@ -1901,6 +2033,9 @@ impl Render for EntryScreen {
                             }),
                     ),
             )
+            .when(self.auth_device_modal_visible, |this| {
+                this.child(self.render_github_code_modal(cx))
+            })
             .into_any_element()
     }
 }
