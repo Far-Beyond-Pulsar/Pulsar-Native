@@ -7,6 +7,7 @@ use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use type_db::TypeDatabase;
+use crate::{events, FsChangeKind};
 
 /// Type alias operations handler
 pub struct TypeOperations {
@@ -89,6 +90,7 @@ impl TypeOperations {
         ) {
             tracing::warn!("Failed to update type alias '{}': {:?}", asset.name, e);
         }
+        events::emit(file_path.clone(), FsChangeKind::Modified);
 
         Ok(())
     }
@@ -100,6 +102,7 @@ impl TypeOperations {
 
         // Delete file
         std::fs::remove_file(file_path).context("Failed to delete alias file")?;
+        events::emit(file_path.clone(), FsChangeKind::Deleted);
 
         Ok(())
     }
@@ -155,6 +158,8 @@ impl TypeOperations {
                 e
             );
         }
+        events::emit(old_path.clone(), FsChangeKind::Deleted);
+        events::emit(new_path.clone(), FsChangeKind::Created);
 
         Ok(())
     }

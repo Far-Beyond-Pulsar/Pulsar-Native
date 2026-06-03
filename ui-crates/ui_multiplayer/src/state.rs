@@ -8,8 +8,14 @@ use ui::input::InputState;
 
 use super::diff_viewer::{DiffFileEntry, DiffViewer};
 use super::types::*;
-use engine_backend::subsystems::networking::multiuser::{MultiuserClient, PeerIdentity, PeerProfile};
+use engine_backend::subsystems::networking::multiuser::{
+    ClientMessage, MultiuserClient, PeerIdentity, PeerProfile,
+};
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
+use engine_fs::{
+    events::{FsChangeKind, FsEventSource},
+    subscribe,
+};
 use engine_state::{EngineContext, MultiuserContext, MultiuserParticipant, MultiuserStatus};
 
 /// Multiplayer collaboration window for connecting to multiuser servers
@@ -38,6 +44,7 @@ pub struct MultiplayerWindow {
     pub(super) pending_diff_populate: Option<SyncDiff>,
     /// Pending file content updates (path, content)
     pub(super) pending_file_updates: Vec<(String, String)>,
+    pub(super) fs_event_forwarder: Option<gpui::Task<()>>,
 }
 
 impl MultiplayerWindow {
@@ -99,6 +106,7 @@ impl MultiplayerWindow {
             diff_viewer,
             pending_diff_populate: None,
             pending_file_updates: Vec::new(),
+            fs_event_forwarder: None,
         }
     }
 
@@ -211,6 +219,42 @@ impl MultiplayerWindow {
         if let Some(ctx) = EngineContext::global() {
             ctx.set_multiuser_latency_ms(latency_ms);
         }
+    }
+
+    pub(super) fn start_fs_event_forwarder(
+        &mut self,
+        client: Arc<RwLock<MultiuserClient>>,
+        session_id: String,
+        peer_id: String,
+        cx: &mut Context<Self>,
+    ) {
+        self.fs_event_forwarder = Some(cx.spawn(async move |_this, _cx| {
+            let mut rx = subscribe();
+
+            while let Ok(event) = rx.recv().await {
+                if !matches!(event.source, FsEventSource::Local) {
+                    continue;
+                }
+
+                let kind = match event.kind {
+                    FsChangeKind::Created => "created",
+                    FsChangeKind::Modified => "modified",
+                    FsChangeKind::Deleted => "deleted",
+                }
+                .to_string();
+
+                let path = event.path.to_string_lossy().replace('\\', "/");
+                let client_guard = client.read().await;
+                let _ = client_guard
+                    .send(ClientMessage::FileChanged {
+                        session_id: session_id.clone(),
+                        peer_id: peer_id.clone(),
+                        path,
+                        kind,
+                    })
+                    .await;
+            }
+        }));
     }
 
     pub(super) fn current_peer_identity(&self) -> Option<PeerIdentity> {

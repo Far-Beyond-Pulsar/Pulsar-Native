@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
+use engine_fs::{events, FsChangeKind};
 
 /// File manifest entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -277,6 +278,7 @@ pub fn apply_files(
 
         // Write file
         fs::write(&full_path, &data)?;
+        events::emit_remote(full_path.clone(), FsChangeKind::Modified);
         tracing::debug!("SIMPLE_SYNC: Wrote {:?} ({} bytes)", full_path, data.len());
         written_count += 1;
     }
@@ -299,6 +301,7 @@ pub fn delete_files(project_root: &Path, file_paths: Vec<String>) -> Result<usiz
 
         if full_path.exists() {
             fs::remove_file(&full_path)?;
+            events::emit_remote(full_path.clone(), FsChangeKind::Deleted);
             tracing::debug!("SIMPLE_SYNC: Deleted {:?}", full_path);
             deleted_count += 1;
         }

@@ -68,6 +68,7 @@ pub struct FileManagerDrawer {
     // Cached content panel listing for the current folder
     directory_cache: Option<(PathBuf, Vec<FileItem>)>,
     directory_cache_dirty: bool,
+    fs_event_listener: Option<gpui::Task<()>>,
 
     // Clipboard
     clipboard: Option<(Vec<PathBuf>, bool)>, // (paths, is_cut)

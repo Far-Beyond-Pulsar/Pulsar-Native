@@ -3054,6 +3054,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "tool_registry",
  "tool_registry_macros",
  "tracing",
@@ -13140,6 +13141,7 @@ name = "ui_multiplayer"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "futures",
  "gpui-ce",

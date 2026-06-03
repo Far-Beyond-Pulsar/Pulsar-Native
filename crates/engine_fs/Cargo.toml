@@ -23,6 +23,7 @@ ureq = { version = "3.0", features = ["json"] }
 base64 = { workspace = true }
 tool_registry = { workspace = true }
 tool_registry_macros = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

@@ -221,6 +221,14 @@ impl RendezvousCoordinator {
                 self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
                     .await?;
             }
+            ClientMessage::FileChanged {
+                session_id: sid,
+                peer_id: pid,
+                path,
+                kind,
+            } => {
+                self.relay_file_changed(&sid, &pid, path, kind).await?;
+            }
             ClientMessage::P2PConnectionRequest {
                 session_id: sid,
                 peer_id: pid,
@@ -578,6 +586,34 @@ impl RendezvousCoordinator {
         METRICS
             .signaling_messages
             .with_label_values(&["files_chunk"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_file_changed(
+        &self,
+        sid: &str,
+        pid: &str,
+        path: String,
+        kind: String,
+    ) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::FileChanged {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            path,
+            kind,
+        };
+
+        for peer in session.list_peers() {
+            let _ = peer.tx.send(msg.clone()).await;
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["file_changed"])
             .inc();
 
         Ok(())

@@ -164,6 +164,12 @@ impl MultiplayerWindow {
                                                 &peer_id,
                                                 &participants,
                                             );
+                                            this.start_fs_event_forwarder(
+                                                client.clone(),
+                                                session_id.clone(),
+                                                peer_id.clone(),
+                                                cx,
+                                            );
                                             if let Some(profiles) = participant_profiles {
                                                 this.sync_engine_multiuser_profiles(profiles);
                                             }
@@ -340,6 +346,7 @@ impl MultiplayerWindow {
                                                         ));
                                                         this.active_session = None;
                                                         this.client = None;
+                                                        this.fs_event_forwarder = None;
                                                         this.user_presences.clear();
                                                         cx.notify();
                                                     });
@@ -377,9 +384,18 @@ impl MultiplayerWindow {
                                                             "Server error: {}",
                                                             message
                                                         ));
+                                                        this.fs_event_forwarder = None;
                                                         cx.notify();
                                                     });
                                                 });
+                                            }
+                                            ServerMessage::FileChanged { path, kind, .. } => {
+                                                let change_kind = match kind.as_str() {
+                                                    "created" => engine_fs::events::FsChangeKind::Created,
+                                                    "deleted" => engine_fs::events::FsChangeKind::Deleted,
+                                                    _ => engine_fs::events::FsChangeKind::Modified,
+                                                };
+                                                engine_fs::events::emit_remote(path, change_kind);
                                             }
                                             ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
                                                 tracing::debug!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
@@ -594,6 +610,7 @@ impl MultiplayerWindow {
                                             this.sync_engine_multiuser_error(
                                                 "Unexpected server response".to_string(),
                                             );
+                                            this.fs_event_forwarder = None;
                                             this.active_session = None;
                                             cx.notify();
                                         });
@@ -606,6 +623,7 @@ impl MultiplayerWindow {
                                             this.sync_engine_multiuser_error(
                                                 "Connection closed before response".to_string(),
                                             );
+                                            this.fs_event_forwarder = None;
                                             this.active_session = None;
                                             cx.notify();
                                         });

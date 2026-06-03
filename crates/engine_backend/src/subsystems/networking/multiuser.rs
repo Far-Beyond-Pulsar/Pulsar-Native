@@ -135,6 +135,12 @@ pub enum ClientMessage {
         chunk_index: usize,
         total_chunks: usize,
     },
+    FileChanged {
+        session_id: String,
+        peer_id: String,
+        path: String,
+        kind: String,
+    },
     // Legacy file-based messages (kept for backwards compatibility)
     RequestFile {
         session_id: String,
@@ -247,6 +253,12 @@ pub enum ServerMessage {
         files_json: String,
         chunk_index: usize,
         total_chunks: usize,
+    },
+    FileChanged {
+        session_id: String,
+        from_peer_id: String,
+        path: String,
+        kind: String,
     },
     // Legacy file messages
     RequestFile {

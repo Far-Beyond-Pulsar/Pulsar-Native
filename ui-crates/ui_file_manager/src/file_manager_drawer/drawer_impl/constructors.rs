@@ -42,7 +42,7 @@ impl FileManagerDrawer {
         let operations = FileOperations::new(project_path.clone());
         let fs_metadata = FsMetadataManager::new();
 
-        Self {
+        let mut this = Self {
             folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
             project_path: project_path.clone(),
             selected_folder: project_path.clone(),
@@ -66,6 +66,7 @@ impl FileManagerDrawer {
             file_filter_state,
             directory_cache: None,
             directory_cache_dirty: true,
+            fs_event_listener: None,
             show_hidden_files: false,
             clipboard: None,
             registered_file_types: Vec::new(), // Will be populated from plugin manager
@@ -76,7 +77,33 @@ impl FileManagerDrawer {
                 .as_deref()
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))),
-        }
+        };
+
+        this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
+            let mut rx = engine_fs::subscribe();
+
+            while let Ok(event) = rx.recv().await {
+                let _ = cx.update(|cx| {
+                    drawer.update(cx, |drawer, cx| {
+                        let Some(project_root) = drawer.project_path.clone() else {
+                            return;
+                        };
+
+                        if !event.path.starts_with(&project_root) {
+                            return;
+                        }
+
+                        drawer.mark_directory_cache_dirty();
+                        if !matches!(event.kind, engine_fs::FsChangeKind::Modified) {
+                            drawer.folder_tree = FolderNode::from_path(&project_root);
+                        }
+                        cx.notify();
+                    })
+                });
+            }
+        }));
+
+        this
     }
 
     pub fn new_in_window(project_path: Option<PathBuf>, window: &mut Window, cx: &mut Context<Self>) -> Self {
