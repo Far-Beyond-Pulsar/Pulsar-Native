@@ -138,6 +138,7 @@ impl MultiplayerWindow {
         }
 
         ctx.set_multiuser(session);
+        ctx.notify_multiuser_changed();
     }
 
     pub(super) fn sync_engine_multiuser_connected(
@@ -172,6 +173,7 @@ impl MultiplayerWindow {
         }
 
         ctx.set_multiuser(session);
+        ctx.notify_multiuser_changed();
     }
 
     pub(super) fn sync_engine_multiuser_error(&self, message: String) {
@@ -191,11 +193,13 @@ impl MultiplayerWindow {
             .with_status(MultiuserStatus::Error(message));
             ctx.set_multiuser(fallback);
         }
+        ctx.notify_multiuser_changed();
     }
 
     pub(super) fn sync_engine_multiuser_disconnected(&self) {
         if let Some(ctx) = EngineContext::global() {
             ctx.clear_multiuser();
+            ctx.notify_multiuser_changed();
         }
     }
 
@@ -212,12 +216,14 @@ impl MultiplayerWindow {
                 })
                 .collect();
             ctx.set_multiuser_participant_profiles(participants);
+            ctx.notify_multiuser_changed();
         }
     }
 
     pub(super) fn sync_engine_multiuser_latency(&self, latency_ms: Option<u32>) {
         if let Some(ctx) = EngineContext::global() {
             ctx.set_multiuser_latency_ms(latency_ms);
+            ctx.notify_multiuser_changed();
         }
     }
 

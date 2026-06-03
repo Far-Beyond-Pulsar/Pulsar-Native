@@ -272,7 +272,7 @@ impl PulsarApp {
 
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
             let rx = engine_state::subscribe_multiuser_updates();
-            while rx.recv().is_ok() {
+            while rx.recv().await.is_ok() {
                 this.update(cx, |_, cx| cx.notify());
             }
         });

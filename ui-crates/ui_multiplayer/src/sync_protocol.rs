@@ -286,6 +286,7 @@ impl MultiplayerWindow {
                                                                         });
                                                                     }
                                                                 });
+                                                                engine.notify_multiuser_changed();
                                                             }
                                                         }
                                                     });
@@ -328,6 +329,7 @@ impl MultiplayerWindow {
                                                                 mu.participant_profiles
                                                                     .retain(|p| p.peer_id != left_peer_id);
                                                             });
+                                                            engine.notify_multiuser_changed();
                                                         }
                                                     });
                                                 });

@@ -11,7 +11,7 @@ use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Mutex, OnceLock};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
@@ -457,6 +457,11 @@ impl EngineContext {
         let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
     }
 
+    /// Notify listeners that the multiuser snapshot changed.
+    pub fn notify_multiuser_changed(&self) {
+        emit_multiuser_update();
+    }
+
     /// Set as global instance (for GPUI views that need global access)
     pub fn set_global(self) {
         GLOBAL_CONTEXT.set(self);
@@ -474,28 +479,34 @@ impl Default for EngineContext {
     }
 }
 
-use std::sync::OnceLock;
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
-static MULTIUSER_UPDATE_BUS: OnceLock<Arc<RwLock<Vec<Sender<()>>>>> = OnceLock::new();
+static MULTIUSER_UPDATE_BUS: OnceLock<(
+    smol::channel::Sender<()>,
+    Mutex<Option<smol::channel::Receiver<()>>>,
+)> = OnceLock::new();
 
-fn multiuser_update_bus() -> Arc<RwLock<Vec<Sender<()>>>> {
-    MULTIUSER_UPDATE_BUS
-        .get_or_init(|| {
-            Arc::new(RwLock::new(Vec::new()))
-        })
-        .clone()
+fn multiuser_update_bus(
+) -> &'static (
+    smol::channel::Sender<()>,
+    Mutex<Option<smol::channel::Receiver<()>>>,
+) {
+    MULTIUSER_UPDATE_BUS.get_or_init(|| {
+        let (tx, rx) = smol::channel::unbounded();
+        (tx, Mutex::new(Some(rx)))
+    })
 }
 
-pub fn subscribe_multiuser_updates() -> Receiver<()> {
-    let (tx, rx) = channel();
-    multiuser_update_bus().write().push(tx);
-    rx
+pub fn subscribe_multiuser_updates() -> smol::channel::Receiver<()> {
+    multiuser_update_bus()
+        .1
+        .lock()
+        .expect("multiuser update bus poisoned")
+        .take()
+        .expect("multiuser updates already subscribed")
 }
 
 fn emit_multiuser_update() {
-    let bus = multiuser_update_bus();
-    let mut guard = bus.write();
-    guard.retain(|tx| tx.send(()).is_ok());
+    let _ = multiuser_update_bus().0.try_send(());
 }
 
 /// Migration helpers for transitioning from EngineState metadata to EngineContext

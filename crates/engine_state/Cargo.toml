@@ -13,6 +13,7 @@ window_manager.workspace = true
 # Thread-safe data structures
 dashmap = { workspace = true }
 parking_lot = { workspace = true }
+smol = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
