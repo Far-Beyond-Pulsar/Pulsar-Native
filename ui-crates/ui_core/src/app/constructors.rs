@@ -12,7 +12,6 @@ use ui_level_editor::LevelEditorPanel;
 use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
-use std::time::Duration;
 
 use super::{
     agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
@@ -273,11 +272,8 @@ impl PulsarApp {
 
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
             let rx = engine_state::subscribe_multiuser_updates();
-            loop {
-                while rx.try_recv().is_ok() {
-                    this.update(cx, |_, cx| cx.notify());
-                }
-                smol::Timer::after(Duration::from_millis(150)).await;
+            while rx.recv().is_ok() {
+                this.update(cx, |_, cx| cx.notify());
             }
         });
 
