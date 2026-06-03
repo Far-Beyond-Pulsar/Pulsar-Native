@@ -145,6 +145,7 @@ impl FileManagerDrawer {
                 if let Some(ref path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(path);
                 }
+                self.mark_directory_cache_dirty();
                 cx.notify();
             }
         }
@@ -193,6 +194,7 @@ impl FileManagerDrawer {
             // directory fresh each frame via `get_filtered_items`, so the new
             // folder appears automatically without wiping the tree expansion state.
             self.renaming_item = Some(folder_path);
+            self.mark_directory_cache_dirty();
             cx.notify();
         }
     }
@@ -219,6 +221,7 @@ impl FileManagerDrawer {
         if let Some(ref path) = self.project_path {
             self.folder_tree = FolderNode::from_path(path);
         }
+        self.mark_directory_cache_dirty();
 
         cx.notify();
     }
@@ -270,6 +273,7 @@ impl FileManagerDrawer {
         if let Some(ref path) = self.project_path {
             self.folder_tree = FolderNode::from_path(path);
         }
+        self.mark_directory_cache_dirty();
 
         cx.notify();
     }
@@ -328,7 +332,7 @@ impl FileManagerDrawer {
                 if let Some(ref path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(path);
                 }
-
+                self.mark_directory_cache_dirty();
                 cx.notify();
             }
         }
@@ -523,6 +527,7 @@ impl FileManagerDrawer {
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
         self.selected_folder = Some(path.clone());
+        self.mark_directory_cache_dirty();
 
         tracing::debug!("[FILE_MANAGER] folder_tree is_some: {}", self.folder_tree.is_some());
         tracing::debug!("[FILE_MANAGER] selected_folder: {:?}", self.selected_folder);

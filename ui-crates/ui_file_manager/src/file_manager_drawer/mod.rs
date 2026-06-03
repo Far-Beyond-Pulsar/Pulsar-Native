@@ -65,6 +65,10 @@ pub struct FileManagerDrawer {
     file_filter_query: String,
     file_filter_state: Entity<InputState>,
 
+    // Cached content panel listing for the current folder
+    directory_cache: Option<(PathBuf, Vec<FileItem>)>,
+    directory_cache_dirty: bool,
+
     // Clipboard
     clipboard: Option<(Vec<PathBuf>, bool)>, // (paths, is_cut)
 
@@ -136,6 +140,7 @@ impl Render for FileManagerDrawer {
                     if let Some(ref path) = this.project_path {
                         this.folder_tree = FolderNode::from_path(path);
                     }
+                    this.mark_directory_cache_dirty();
                     cx.notify();
                 }),
             )

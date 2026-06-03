@@ -64,6 +64,8 @@ impl FileManagerDrawer {
             folder_search_state,
             file_filter_query: String::new(),
             file_filter_state,
+            directory_cache: None,
+            directory_cache_dirty: true,
             show_hidden_files: false,
             clipboard: None,
             registered_file_types: Vec::new(), // Will be populated from plugin manager
