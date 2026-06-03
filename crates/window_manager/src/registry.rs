@@ -2,24 +2,11 @@ use dashmap::DashMap;
 use gpui::{App, Global};
 use std::sync::Arc;
 
-/// Submitted by each window crate via `inventory::submit!` so that
-/// [`register_all_windows`] can populate the [`WindowRegistry`] with a single call,
-/// without `main.rs` ever importing or naming individual window crates.
-///
-/// # Example (in a window crate)
-/// ```ignore
-/// inventory::submit! {
-///     window_manager::WindowRegistrant { register: |cx| {
-///         use ui_common::PulsarWindowExt as _;
-///         MyWindow::register(cx);
-///     }}
-/// }
-/// ```
-pub struct WindowRegistrant {
-    pub register: fn(&mut App),
-}
+/// Distributed slice populated by `#[window_manager::register_window]` in each window crate.
+/// `register_all_windows` iterates it once during app startup.
+#[linkme::distributed_slice]
+pub static WINDOW_REGISTRANTS: [fn(&mut App)];
 
-inventory::collect!(WindowRegistrant);
 
 type Opener = Arc<dyn Fn(&mut App) + Send + Sync>;
 

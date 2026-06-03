@@ -371,14 +371,20 @@ pub fn register_window(_attr: TokenStream, item: TokenStream) -> TokenStream {
         false
     });
 
+    // Generate a unique-ish identifier using the type name for the static.
+    let type_name = quote!(#self_ty).to_string().replace("::", "_").replace(" ", "");
+    let static_ident = syn::Ident::new(
+        &format!("__REGISTER_WINDOW_{}", type_name),
+        proc_macro2::Span::call_site(),
+    );
+
     let submit: TokenStream2 = if is_zero_param {
         quote! {
-            ::inventory::submit! {
-                ::window_manager::WindowRegistrant { register: |cx| {
-                    use ::ui_common::PulsarWindowExt as _;
-                    <#self_ty as ::ui_common::PulsarWindowExt>::register(cx);
-                }}
-            }
+            #[::linkme::distributed_slice(::window_manager::WINDOW_REGISTRANTS)]
+            static #static_ident: fn(&mut ::gpui::App) = |cx| {
+                use ::ui_common::PulsarWindowExt as _;
+                <#self_ty as ::ui_common::PulsarWindowExt>::register(cx);
+            };
         }
     } else {
         quote! {}
