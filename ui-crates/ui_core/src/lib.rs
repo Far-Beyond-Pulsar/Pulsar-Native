@@ -36,29 +36,28 @@ pub use ui::OpenSettings;
 /// which is necessary because popup menus render in a `deferred` layer that is
 /// disconnected from the `PulsarApp` dispatch tree on Windows / Linux.
 ///
-/// Each handler opens the corresponding window directly via `open_pulsar_window`,
-/// the same path used everywhere else in the codebase — fully decoupled from
-/// `PulsarApp` or any particular window hierarchy.
+/// Each handler opens the corresponding window via the `PulsarWindowExt::open` method,
+/// fully decoupled from `PulsarApp` or any particular window hierarchy.
 pub fn init(cx: &mut gpui::App) {
     use ui_about::AboutWindow;
     use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
-    use ui_common::open_pulsar_window;
+    use ui_common::PulsarWindowExt as _;
     use ui_documentation::DocumentationWindow;
     use ui_settings::SettingsWindow;
 
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] global: Settings → SettingsWindow");
-        open_pulsar_window::<SettingsWindow>((), cx);
+        SettingsWindow::open((), cx);
     });
     cx.on_action(|_: &Preferences, cx| {
         tracing::debug!("[MENU] global: Preferences → SettingsWindow");
-        open_pulsar_window::<SettingsWindow>((), cx);
+        SettingsWindow::open((), cx);
     });
     cx.on_action(|_: &AboutApp, cx| {
-        open_pulsar_window::<AboutWindow>((), cx);
+        AboutWindow::open((), cx);
     });
     cx.on_action(|_: &ShowDocumentation, cx| {
-        open_pulsar_window::<DocumentationWindow>((), cx);
+        DocumentationWindow::open((), cx);
     });
 }
 

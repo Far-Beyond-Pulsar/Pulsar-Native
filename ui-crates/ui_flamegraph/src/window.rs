@@ -47,11 +47,6 @@ impl FlamegraphWindow {
         })
     }
 
-    /// Convenience: open the flamegraph window via the PulsarWindow system.
-    pub fn open(cx: &mut App) {
-        ui_common::open_pulsar_window::<FlamegraphWindow>(Arc::new(TraceData::new()), cx);
-    }
-
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
         if self.is_profiling {
             return;

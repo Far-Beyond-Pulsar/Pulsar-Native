@@ -5,6 +5,7 @@
 //! into a GPUI application and used by any component or subsystem.
 
 pub mod commands;
+pub mod configs;
 pub mod hooks;
 pub mod manager;
 pub mod pulsar_window;
@@ -13,6 +14,7 @@ pub mod telemetry;
 pub mod validation;
 
 pub use commands::{CloseWindowCommand, CreateWindowCommand, WindowCommand, WindowCommandResult};
+pub use configs::WindowConfig;
 pub use hooks::{HookContext, HookRegistry, HookType, WindowHook};
 pub use pulsar_window::{default_window_options, PulsarWindow};
 pub use state::{WindowInfo, WindowState};

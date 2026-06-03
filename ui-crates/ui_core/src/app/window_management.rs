@@ -3,16 +3,13 @@
 //! Each method is a single call. Window size, chrome, and construction logic live
 //! in the respective window crate''s `PulsarWindow` impl - not here.
 
-use gpui::{
-    px, size, AppContext as _, Bounds, Context, Point, UpdateGlobal, Window, WindowBounds,
-    WindowKind, WindowOptions,
-};
+use gpui::{AppContext as _, Context, UpdateGlobal, Window};
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::DockPlacement;
 use ui::Root;
 use ui_about::AboutWindow;
-use ui_common::open_pulsar_window;
+use ui_common::PulsarWindowExt as _;
 use ui_documentation::DocumentationWindow;
 use ui_flamegraph::FlamegraphWindow;
 use ui_git_manager::GitManager;
@@ -22,6 +19,7 @@ use ui_plugin_manager::PluginManagerWindow;
 use ui_problems::ProblemsWindow;
 use ui_settings::SettingsWindow;
 use ui_type_debugger::TypeDebuggerWindow;
+use window_manager::WindowConfig;
 
 use super::panel_window::PanelWindow;
 use super::PulsarApp;
@@ -42,27 +40,6 @@ impl PulsarApp {
         );
         self.state.popped_out_panels.push(panel.clone());
 
-        let window_bounds = Bounds::new(
-            Point {
-                x: position.x - px(100.0),
-                y: position.y - px(30.0),
-            },
-            size(px(800.), px(600.)),
-        );
-        let window_options = WindowOptions {
-            window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: None,
-            window_min_size: Some(gpui::Size {
-                width: px(400.),
-                height: px(300.),
-            }),
-            kind: WindowKind::Normal,
-            is_resizable: true,
-            window_decorations: Some(gpui::WindowDecorations::Client),
-            window_background: gpui::WindowBackgroundAppearance::Opaque,
-            ..Default::default()
-        };
-
         let center_tabs = self.state.center_tabs.clone();
         let panel_for_popout = panel.clone();
         let parent_window_handle = parent_window.window_handle();
@@ -70,7 +47,7 @@ impl PulsarApp {
         let _ = window_manager::WindowManager::update_global(cx, |wm, cx| {
             wm.create_window(
                 window_manager::WindowRequest::DetachedPanel,
-                window_options,
+                WindowConfig::detached_panel(position),
                 move |window, cx| {
                     let panel_window = cx.new(|cx| {
                         PanelWindow::new(
@@ -108,17 +85,17 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<ProblemsWindow>(self.state.problems_drawer.clone(), cx);
+        ProblemsWindow::open(self.state.problems_drawer.clone(), cx);
     }
 
     pub(super) fn toggle_type_debugger(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<TypeDebuggerWindow>(self.state.type_debugger_drawer.clone(), cx);
+        TypeDebuggerWindow::open(self.state.type_debugger_drawer.clone(), cx);
     }
 
     pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.mission_control_open {
             self.state.mission_control_open = true;
-            open_pulsar_window::<MissionControlPanel>((), cx);
+            MissionControlPanel::open((), cx);
         } else {
             self.state.mission_control_open = false;
         }
@@ -131,11 +108,11 @@ impl PulsarApp {
             .project_path
             .clone()
             .unwrap_or_else(|| PathBuf::from("."));
-        open_pulsar_window::<GitManager>(path, cx);
+        GitManager::open(path, cx);
     }
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<MultiplayerWindow>(self.state.project_path.clone(), cx);
+        MultiplayerWindow::open(self.state.project_path.clone(), cx);
     }
 
     pub(super) fn toggle_agent_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -146,23 +123,23 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<PluginManagerWindow>((), cx);
+        PluginManagerWindow::open((), cx);
     }
 
     pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<SettingsWindow>((), cx);
+        SettingsWindow::open((), cx);
     }
 
     pub fn open_about(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<AboutWindow>((), cx);
+        AboutWindow::open((), cx);
     }
 
     pub fn open_documentation(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        open_pulsar_window::<DocumentationWindow>((), cx);
+        DocumentationWindow::open((), cx);
     }
 
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        FlamegraphWindow::open(cx);
+        FlamegraphWindow::open(std::sync::Arc::new(ui_flamegraph::TraceData::new()), cx);
     }
 
     pub(super) fn toggle_project_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -188,33 +165,7 @@ impl PulsarApp {
                         let on_complete: std::sync::Arc<
                             dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
                         > = std::sync::Arc::new(move |path, cx| {
-                            let opts = gpui::WindowOptions {
-                                window_bounds: Some(gpui::WindowBounds::Windowed(gpui::Bounds {
-                                    origin: gpui::point(gpui::px(50.0), gpui::px(50.0)),
-                                    size: gpui::size(gpui::px(1600.0), gpui::px(900.0)),
-                                })),
-                                window_min_size: Some(gpui::Size {
-                                    width: gpui::px(800.0),
-                                    height: gpui::px(600.0),
-                                }),
-                                titlebar: None,
-                                kind: gpui::WindowKind::Normal,
-                                is_resizable: true,
-                                window_decorations: Some(gpui::WindowDecorations::Client),
-                                window_background: gpui::WindowBackgroundAppearance::Opaque,
-                                ..Default::default()
-                            };
-
-                            let _ = cx.open_window(opts, move |window, cx| {
-                                let app = cx.new(|cx| {
-                                    PulsarApp::new_with_project(path.clone(), window, cx)
-                                });
-                                let root = cx.new(|cx| {
-                                    crate::PulsarRoot::new("Pulsar Engine", app, window, cx)
-                                });
-                                cx.new(|cx| ui::Root::new(root.into(), window, cx))
-                            });
-
+                            crate::PulsarRoot::open(path, cx);
                             // Close the originating window only after the target editor opens.
                             cx.update_window(originating_window_handle, |_, win, _| {
                                 win.remove_window()
@@ -225,11 +176,7 @@ impl PulsarApp {
                             let path = project_path.clone();
                             let callback = on_complete.clone();
                             move |cx| {
-                                use ui_common::open_window::open_pulsar_window;
-                                open_pulsar_window::<ui_loading_screen::LoadingScreen>(
-                                    (path, callback),
-                                    cx,
-                                );
+                                ui_loading_screen::LoadingScreen::open((path, callback), cx);
                             }
                         });
                     }

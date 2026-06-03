@@ -1,6 +1,7 @@
 //! Root wrapper component that contains the titlebar and app
 
 use gpui::{div, prelude::*, Context, Entity, IntoElement, Render, SharedString, Window, px, rgba};
+use std::path::PathBuf;
 use ui::{
     notification::Notification,
     v_flex,
@@ -15,6 +16,8 @@ use ui_common::menu::{
     AboutApp, AppTitleBar, DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets,
     DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings, ShowDocumentation,
 };
+
+use window_manager::{PulsarWindow, WindowConfig};
 
 use crate::app::PulsarApp;
 
@@ -201,5 +204,22 @@ impl Render for PulsarRoot {
                         ),
                 )
             })
+    }
+}
+
+impl PulsarWindow for PulsarRoot {
+    type Params = PathBuf;
+
+    fn window_name() -> &'static str {
+        "PulsarEditorWindow"
+    }
+
+    fn window_options(_path: &PathBuf) -> gpui::WindowOptions {
+        WindowConfig::editor()
+    }
+
+    fn build(path: PathBuf, window: &mut Window, cx: &mut gpui::App) -> Entity<Self> {
+        let app = cx.new(|cx| PulsarApp::new_with_project(path, window, cx));
+        cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx))
     }
 }

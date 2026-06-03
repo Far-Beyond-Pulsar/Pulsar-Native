@@ -12940,6 +12940,7 @@ dependencies = [
  "ui_common",
  "ui_git_manager",
  "ui_loading_screen",
+ "window_manager",
 ]
 
 [[package]]

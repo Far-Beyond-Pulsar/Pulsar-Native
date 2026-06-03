@@ -39,7 +39,7 @@ pub mod shared;
 pub mod shared_state;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
-pub use open_window::open_pulsar_window;
+pub use open_window::PulsarWindowExt;
 pub use property_editor_registry::{
     PropertyEditorArgs, PropertyEditorRenderFn, PROPERTY_EDITOR_REGISTRY,
 };
