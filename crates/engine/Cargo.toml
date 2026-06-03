@@ -40,6 +40,7 @@ ui_documentation.workspace = true
 ui_log_viewer.workspace = true
 ui_git_manager.workspace = true
 ui_fab_search.workspace = true
+ui_plugin_manager.workspace = true
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }

@@ -413,9 +413,18 @@ fn main() {
         ui_core::init(cx);
 
         {
-            use window_manager::WindowManager;
+            use window_manager::{WindowManager, WindowRegistry};
             cx.set_global(WindowManager::new());
+            cx.set_global(WindowRegistry::new());
         }
+
+        // Each crate registers its own windows. Order doesn't matter.
+        ui_settings::init(cx);
+        ui_about::init(cx);
+        ui_documentation::init(cx);
+        ui_plugin_manager::init(cx);
+        ui_log_viewer::init(cx);
+        ui_fab_search::init(cx);
 
         let mut launch = engine_context.launch.write();
 

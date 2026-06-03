@@ -688,11 +688,26 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_open_file))
             .on_action(cx.listener(Self::on_open_asset))
             .on_action(cx.listener(Self::on_activate_open_editor))
-            .on_action(cx.listener(Self::on_open_settings))
-            .on_action(cx.listener(Self::on_open_settings_menu))
-            .on_action(cx.listener(Self::on_open_preferences))
-            .on_action(cx.listener(Self::on_open_about))
-            .on_action(cx.listener(Self::on_open_documentation))
+            .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ui_common::menu::Settings, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ui_common::menu::Preferences, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ui_common::menu::AboutApp, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ui_common::menu::ShowDocumentation, _, cx| {
+                use gpui::UpdateGlobal as _;
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("DocumentationWindow", cx));
+            }))
             .child(
                 div()
                     .flex_1()

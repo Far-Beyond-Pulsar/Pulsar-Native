@@ -358,3 +358,8 @@ impl Render for FabSearchWindow {
             .children(Root::render_modal_layer(window, cx))
     }
 }
+
+pub fn init(cx: &mut gpui::App) {
+    use ui_common::PulsarWindowExt as _;
+    FabSearchWindow::register(cx);
+}

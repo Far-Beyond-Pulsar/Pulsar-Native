@@ -9,6 +9,7 @@ pub mod configs;
 pub mod hooks;
 pub mod manager;
 pub mod pulsar_window;
+pub mod registry;
 pub mod state;
 pub mod telemetry;
 pub mod validation;
@@ -23,3 +24,4 @@ pub use ui_types_common::window_types::WindowRequest;
 pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 
 pub use manager::WindowManager;
+pub use registry::WindowRegistry;

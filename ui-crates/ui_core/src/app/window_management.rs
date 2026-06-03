@@ -17,9 +17,8 @@ use ui_log_viewer::MissionControlPanel;
 use ui_multiplayer::MultiplayerWindow;
 use ui_plugin_manager::PluginManagerWindow;
 use ui_problems::ProblemsWindow;
-use ui_settings::SettingsWindow;
 use ui_type_debugger::TypeDebuggerWindow;
-use window_manager::WindowConfig;
+use window_manager::{WindowConfig, WindowRegistry};
 
 use super::panel_window::PanelWindow;
 use super::PulsarApp;
@@ -124,18 +123,6 @@ impl PulsarApp {
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         PluginManagerWindow::open((), cx);
-    }
-
-    pub fn open_settings(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        SettingsWindow::open((), cx);
-    }
-
-    pub fn open_about(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        AboutWindow::open((), cx);
-    }
-
-    pub fn open_documentation(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        DocumentationWindow::open((), cx);
     }
 
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

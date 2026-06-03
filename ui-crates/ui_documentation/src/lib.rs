@@ -549,3 +549,8 @@ pub fn create_documentation_window_with_project(
     let docs = cx.new(|cx| DocumentationWindow::new_with_project(window, cx, project_path));
     cx.new(|cx| Root::new(docs.into(), window, cx))
 }
+
+pub fn init(cx: &mut gpui::App) {
+    use ui_common::PulsarWindowExt as _;
+    DocumentationWindow::register(cx);
+}

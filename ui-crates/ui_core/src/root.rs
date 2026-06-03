@@ -12,12 +12,13 @@ use ui::{
     StyledExt as _,
     Root,
 };
+use gpui::UpdateGlobal as _;
 use ui_common::menu::{
     AboutApp, AppTitleBar, DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets,
     DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings, ShowDocumentation,
 };
 
-use window_manager::{PulsarWindow, WindowConfig};
+use window_manager::{PulsarWindow, WindowConfig, WindowRegistry};
 
 use crate::app::PulsarApp;
 
@@ -60,32 +61,21 @@ impl Render for PulsarRoot {
         // at the time the popup menu fires dispatch_action.
         div()
             .size_full()
-            .on_action(
-                cx.listener(|this: &mut PulsarRoot, _: &Settings, window, cx| {
-                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
-                }),
-            )
-            .on_action(
-                cx.listener(|this: &mut PulsarRoot, _: &ui::OpenSettings, window, cx| {
-                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
-                }),
-            )
-            .on_action(
-                cx.listener(|this: &mut PulsarRoot, _: &Preferences, window, cx| {
-                    this.app.update(cx, |app, cx| app.open_settings(window, cx));
-                }),
-            )
-            .on_action(
-                cx.listener(|this: &mut PulsarRoot, _: &AboutApp, window, cx| {
-                    this.app.update(cx, |app, cx| app.open_about(window, cx));
-                }),
-            )
-            .on_action(
-                cx.listener(|this: &mut PulsarRoot, _: &ShowDocumentation, window, cx| {
-                    this.app
-                        .update(cx, |app, cx| app.open_documentation(window, cx));
-                }),
-            )
+            .on_action(cx.listener(|_, _: &Settings, _, cx| {
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &Preferences, _, cx| {
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &AboutApp, _, cx| {
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
+            }))
+            .on_action(cx.listener(|_, _: &ShowDocumentation, _, cx| {
+                WindowRegistry::update_global(cx, |reg, cx| reg.open("DocumentationWindow", cx));
+            }))
             .on_action(cx.listener(
                 |_: &mut PulsarRoot, _: &DevSaveAsDefaultLevel, window, cx| {
                     window.push_notification(

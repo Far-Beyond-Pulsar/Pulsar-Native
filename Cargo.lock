@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.6.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=14c8bde549b944e23127cca159b48e48888b8e2c#14c8bde549b944e23127cca159b48e48888b8e2c"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=da358741b29f9e8f909f38420f4641dddf66d606#da358741b29f9e8f909f38420f4641dddf66d606"
 dependencies = [
  "anyhow",
  "arboard",
@@ -8661,6 +8661,7 @@ dependencies = [
  "ui_git_manager",
  "ui_loading_screen",
  "ui_log_viewer",
+ "ui_plugin_manager",
  "ui_settings",
  "urlencoding",
  "wgpu",
@@ -13177,6 +13178,7 @@ dependencies = [
  "plugin_manager",
  "tracing",
  "ui",
+ "ui_common",
  "window_manager",
 ]
 
@@ -13202,6 +13204,7 @@ dependencies = [
  "gpui-ce",
  "tracing",
  "ui",
+ "ui_common",
  "window_manager",
 ]
 

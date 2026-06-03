@@ -14,7 +14,6 @@ mod window_management;
 use gpui::{App, AppContext, Context, DismissEvent, Focusable, Window};
 
 use crate::actions::*;
-use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
 
 /// Main Pulsar application
 pub struct PulsarApp {
@@ -112,41 +111,6 @@ impl PulsarApp {
         }
 
         self.refresh_open_editor_snapshot(cx);
-    }
-
-    fn on_open_settings(
-        &mut self,
-        _: &ui::OpenSettings,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_settings(window, cx);
-    }
-
-    fn on_open_settings_menu(&mut self, _: &Settings, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_settings(window, cx);
-    }
-
-    fn on_open_preferences(
-        &mut self,
-        _: &Preferences,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_settings(window, cx);
-    }
-
-    fn on_open_about(&mut self, _: &AboutApp, window: &mut Window, cx: &mut Context<Self>) {
-        self.open_about(window, cx);
-    }
-
-    fn on_open_documentation(
-        &mut self,
-        _: &ShowDocumentation,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.open_documentation(window, cx);
     }
 
     fn on_toggle_command_palette(

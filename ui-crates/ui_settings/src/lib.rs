@@ -10,3 +10,10 @@ pub mod window;
 pub use settings::{SettingsScreen, SettingsScreenProps};
 pub use settings_modern::ModernSettingsScreen;
 pub use window::SettingsWindow;
+
+/// Register `SettingsWindow` in the global [`WindowRegistry`].
+/// Call from `main.rs` after the registry global is set.
+pub fn init(cx: &mut gpui::App) {
+    use ui_common::PulsarWindowExt as _;
+    SettingsWindow::register(cx);
+}
