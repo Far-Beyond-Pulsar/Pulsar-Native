@@ -25,6 +25,7 @@ pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator}
 
 pub use manager::WindowManager;
 pub use registry::{WindowRegistrant, WindowRegistry};
+pub use ui_gen_macros::register_window;
 
 /// Call once after [`WindowManager`] and [`WindowRegistry`] globals are installed.
 /// Runs every [`WindowRegistrant`] submitted via `inventory::submit!` across all

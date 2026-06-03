@@ -10,10 +10,3 @@ pub mod window;
 pub use settings::{SettingsScreen, SettingsScreenProps};
 pub use settings_modern::ModernSettingsScreen;
 pub use window::SettingsWindow;
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        SettingsWindow::register(cx);
-    }}
-}

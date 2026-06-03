@@ -136,6 +136,7 @@ impl Render for MultiplayerWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for MultiplayerWindow {
     type Params = ();
 

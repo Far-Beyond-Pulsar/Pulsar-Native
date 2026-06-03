@@ -78,6 +78,7 @@ pub struct FabSearchWindow {
     pub(crate) gallery_scroll_state: ScrollbarState,
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for FabSearchWindow {
     type Params = ();
 
@@ -357,11 +358,4 @@ impl Render for FabSearchWindow {
             })
             .children(Root::render_modal_layer(window, cx))
     }
-}
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        FabSearchWindow::register(cx);
-    }}
 }

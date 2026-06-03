@@ -5,10 +5,3 @@
 mod window;
 
 pub use window::PluginManagerWindow;
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        PluginManagerWindow::register(cx);
-    }}
-}

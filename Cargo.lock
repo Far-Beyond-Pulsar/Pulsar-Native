@@ -14169,6 +14169,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "tracing",
+ "ui_gen_macros",
  "ui_types_common",
 ]
 

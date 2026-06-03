@@ -243,6 +243,7 @@ impl Render for MissionControlPanel {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for MissionControlPanel {
     type Params = ();
 
@@ -263,10 +264,3 @@ impl window_manager::PulsarWindow for MissionControlPanel {
 
 /// Type alias for use in the PulsarWindow system.
 pub type LogViewerWindow = MissionControlPanel;
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        MissionControlPanel::register(cx);
-    }}
-}

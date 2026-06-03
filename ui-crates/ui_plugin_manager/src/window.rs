@@ -235,6 +235,7 @@ impl PluginManagerWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for PluginManagerWindow {
     type Params = ();
 

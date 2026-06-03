@@ -870,6 +870,7 @@ impl Render for GitManager {
 /// Type alias for use in the PulsarWindow system.
 pub type GitManagerWindow = GitManager;
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for GitManager {
     type Params = ();
 
@@ -887,11 +888,4 @@ impl window_manager::PulsarWindow for GitManager {
             .unwrap_or_default();
         cx.new(|cx| GitManager::new(path, window, cx))
     }
-}
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        GitManager::register(cx);
-    }}
 }

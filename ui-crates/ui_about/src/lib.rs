@@ -254,6 +254,7 @@ impl Render for AboutWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for AboutWindow {
     type Params = ();
 
@@ -274,11 +275,4 @@ impl window_manager::PulsarWindow for AboutWindow {
 pub fn create_about_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     let about = cx.new(|cx| AboutWindow::new(window, cx));
     cx.new(|cx| Root::new(about.into(), window, cx))
-}
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        AboutWindow::register(cx);
-    }}
 }

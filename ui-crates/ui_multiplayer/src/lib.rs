@@ -22,11 +22,4 @@ mod utils;
 pub use diff::*;
 pub use diff_viewer::{DiffFileEntry, DiffViewer};
 pub use state::MultiplayerWindow;
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        MultiplayerWindow::register(cx);
-    }}
-}
 pub use types::*;

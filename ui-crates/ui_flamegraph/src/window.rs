@@ -854,6 +854,7 @@ impl FlamegraphWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for FlamegraphWindow {
     type Params = ();
 

@@ -521,6 +521,7 @@ impl DocumentationWindow {
 // Public API
 // ============================================================================
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for DocumentationWindow {
     type Params = ();
 
@@ -548,11 +549,4 @@ pub fn create_documentation_window_with_project(
 ) -> Entity<Root> {
     let docs = cx.new(|cx| DocumentationWindow::new_with_project(window, cx, project_path));
     cx.new(|cx| Root::new(docs.into(), window, cx))
-}
-
-inventory::submit! {
-    window_manager::WindowRegistrant { register: |cx| {
-        use ui_common::PulsarWindowExt as _;
-        DocumentationWindow::register(cx);
-    }}
 }
