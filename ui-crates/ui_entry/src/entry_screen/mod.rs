@@ -11,8 +11,8 @@ use git_operations::{
     pull_updates, setup_template_remotes,
 };
 use types::{
-    get_default_templates, CloneProgress, CloudProject, CloudProjectStatus, CloudServer,
-    CloudServerStatus, EntryScreenView, GitFetchStatus, SharedCloneProgress, Template,
+    CloneProgress, CloudProject, CloudProjectStatus, CloudServer, CloudServerStatus,
+    EntryScreenView, GitFetchStatus, SharedCloneProgress, Template, get_default_templates,
 };
 
 use gpui::{prelude::*, *};
@@ -32,7 +32,11 @@ use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use ui::{h_flex, input::InputState, v_flex, ActiveTheme as _, TitleBar, VirtualListScrollHandle};
+use ui::{
+    ActiveTheme as _, TitleBar, VirtualListScrollHandle,
+    button::{Button, ButtonVariants as _},
+    h_flex, input::InputState, v_flex,
+};
 
 /// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
@@ -78,6 +82,16 @@ pub struct EntryScreen {
     pub(crate) create_project_description: String,
     pub(crate) create_project_name_input: Entity<InputState>,
     pub(crate) create_project_description_input: Entity<InputState>,
+    // Auth / identity
+    pub(crate) auth_loading: bool,
+    pub(crate) auth_message: Option<String>,
+    pub(crate) auth_avatar_image: Option<Arc<RenderImage>>,
+    pub(crate) auth_avatar_url_loaded: Option<String>,
+    pub(crate) auth_account_menu_open: bool,
+    pub(crate) auth_device_code: Option<String>,
+    pub(crate) auth_device_verification_url: Option<String>,
+    pub(crate) auth_device_modal_visible: bool,
+    pub(crate) auth_device_copy_notice: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -186,7 +200,26 @@ impl EntryScreen {
             create_project_description: String::new(),
             create_project_name_input: create_project_name_input.clone(),
             create_project_description_input: create_project_description_input.clone(),
+            auth_loading: false,
+            auth_message: None,
+            auth_avatar_image: None,
+            auth_avatar_url_loaded: None,
+            auth_account_menu_open: false,
+            auth_device_code: None,
+            auth_device_verification_url: None,
+            auth_device_modal_visible: false,
+            auth_device_copy_notice: None,
         };
+
+        // Restore persisted auth profile into engine context at launcher startup.
+        if let Some(ec) = engine_state::EngineContext::global() {
+            if ec.auth_profile().is_none() {
+                if let Some(profile) = pulsar_auth::load_cached_profile() {
+                    ec.set_auth_profile(profile);
+                }
+            }
+        }
+        screen.ensure_auth_avatar_loaded(cx);
 
         // Store own entity for virtualization helpers.
         screen.entity = Some(cx.entity().clone());
@@ -363,10 +396,8 @@ impl EntryScreen {
                     screen.dependency_status = Some(status);
                     screen.show_dependency_setup = missing;
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -430,8 +461,7 @@ impl EntryScreen {
                 // Notify UI update
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
             }
 
             // Mark fetch complete
@@ -439,10 +469,8 @@ impl EntryScreen {
                 this.update(cx, |screen, cx| {
                     screen.is_fetching_updates = false;
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -472,8 +500,7 @@ impl EntryScreen {
 
             cx.update(|cx| {
                 this.update(cx, |_, cx| cx.notify());
-            })
-            ;
+            });
         })
         .detach();
     }
@@ -533,10 +560,8 @@ impl EntryScreen {
                         screen.recent_projects.add_or_update(recent_project);
                         screen.recent_projects.save(&recent_projects_path);
                         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path });
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -580,8 +605,7 @@ impl EntryScreen {
 
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
 
                 let repo_url_clone = repo_url.clone();
                 let progress_clone = progress.clone();
@@ -634,10 +658,8 @@ impl EntryScreen {
                                     Some((target_path.clone(), template_url.unwrap_or_default()));
 
                                 cx.notify();
-                            })
-                            ;
-                        })
-                        ;
+                            });
+                        });
                     }
                     Ok(Err(e)) => {
                         let mut prog = progress.lock();
@@ -652,17 +674,14 @@ impl EntryScreen {
 
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
             } else {
                 cx.update(|cx| {
                     this.update(cx, |screen, cx| {
                         screen.clone_progress = None;
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -794,8 +813,7 @@ impl EntryScreen {
                         temp_settings.load_tab_data_sync(&tab_for_load);
                         temp_settings
                     })
-                    .join()
-                    ;
+                    .join();
 
                     if let Ok(loaded) = loaded_data {
                         let _ = cx.update(|cx| {
@@ -855,8 +873,7 @@ impl EntryScreen {
                 let loaded_settings = std::thread::spawn(move || {
                     views::ProjectSettings::load_all_data_async(project_path)
                 })
-                .join()
-                ;
+                .join();
 
                 if let Ok(new_settings) = loaded_settings {
                     let _ = cx.update(|cx| {
@@ -887,10 +904,8 @@ impl EntryScreen {
                     this.update(cx, |screen, cx| {
                         screen.new_project_path = Some(folder.path().to_path_buf());
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -957,10 +972,8 @@ default_scene = "scenes/main.scene"
                     cx.emit(crate::entry_screen::project_selector::ProjectSelected {
                         path: project_path,
                     });
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1077,10 +1090,8 @@ default_scene = "scenes/main.scene"
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -1165,10 +1176,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1233,10 +1242,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1294,10 +1301,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1364,10 +1369,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1397,11 +1400,7 @@ default_scene = "scenes/main.scene"
 
         let auth_token = {
             let t = self.cloud_servers[server_idx].auth_token.trim().to_string();
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
+            if t.is_empty() { None } else { Some(t) }
         };
 
         // ── Set up remote virtual filesystem ─────────────────────────────────
@@ -1420,11 +1419,11 @@ default_scene = "scenes/main.scene"
         );
 
         // ── Record connection details in engine state ─────────────────────────
-        let ctx = engine_state::MultiuserContext::new(
+        let ctx = engine_state::MultiuserContext::new_cloud_project(
             base_url.clone(),
-            project_id.clone(), // session_id == project_id on pulsar-host
-            "local",            // peer_id (populated later on WS connect)
-            "remote",           // host_peer_id
+            project_id.clone(),
+            "local",  // peer_id (populated later on WS connect)
+            "remote", // host_peer_id
         )
         .with_status(engine_state::MultiuserStatus::Connecting)
         .with_project_id(project_id.clone());
@@ -1451,6 +1450,440 @@ default_scene = "scenes/main.scene"
         ));
         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path: virtual_path });
     }
+
+    pub(crate) fn auth_profile(&self) -> Option<engine_state::AuthProfile> {
+        engine_state::EngineContext::global().and_then(|ec| ec.auth_profile())
+    }
+
+    pub(crate) fn begin_github_sign_in(&mut self, cx: &mut Context<Self>) {
+        if self.auth_loading {
+            return;
+        }
+
+        let Some(client_id) = pulsar_auth::github_client_id_from_env() else {
+            self.auth_message =
+                Some("Set PULSAR_GITHUB_CLIENT_ID to enable GitHub sign-in.".to_string());
+            cx.notify();
+            return;
+        };
+
+        self.auth_loading = true;
+        self.auth_message = Some("Starting GitHub sign-in…".to_string());
+        self.auth_account_menu_open = false;
+        self.auth_device_code = None;
+        self.auth_device_verification_url = None;
+        self.auth_device_modal_visible = false;
+        self.auth_device_copy_notice = None;
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let client_id_start = client_id.clone();
+            let flow = cx
+                .background_executor()
+                .spawn(async move { pulsar_auth::start_device_flow(&client_id_start) })
+                .await;
+
+            let Ok(flow) = flow else {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.auth_loading = false;
+                        this.auth_message = Some("Failed to start GitHub device flow.".to_string());
+                        cx.notify();
+                    });
+                });
+                return;
+            };
+
+            cx.update(|cx| {
+                this.update(cx, |this, cx| {
+                    this.auth_message = Some(format!(
+                        "Complete sign-in in GitHub."
+                    ));
+                    this.auth_device_code = Some(flow.user_code.clone());
+                    this.auth_device_verification_url = Some(flow.verification_uri.clone());
+                    this.auth_device_modal_visible = true;
+                    this.auth_device_copy_notice = None;
+                    cx.open_url(&flow.verification_uri);
+                    cx.notify();
+                });
+            });
+
+            let client_id_poll = client_id.clone();
+            let token = cx
+                .background_executor()
+                .spawn(async move { pulsar_auth::wait_for_device_flow_token(&client_id_poll, &flow) })
+                .await;
+
+            let Ok(token) = token else {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.auth_loading = false;
+                        this.auth_device_modal_visible = false;
+                        this.auth_device_code = None;
+                        this.auth_device_verification_url = None;
+                        this.auth_device_copy_notice = None;
+                        this.auth_message = Some("GitHub sign-in timed out or failed.".to_string());
+                        cx.notify();
+                    });
+                });
+                return;
+            };
+
+            let profile = cx
+                .background_executor()
+                .spawn({
+                    let token_for_profile = token.clone();
+                    async move {
+                        let profile = pulsar_auth::fetch_profile(&token_for_profile)
+                            .map_err(|e| e.to_string())?;
+                        pulsar_auth::store_access_token(&token_for_profile)
+                            .map_err(|e| e.to_string())?;
+                        pulsar_auth::save_cached_profile(&profile)
+                            .map_err(|e| e.to_string())?;
+                        Ok::<_, String>(profile)
+                    }
+                })
+                .await;
+
+            cx.update(|cx| {
+                this.update(cx, |this, cx| {
+                    this.auth_loading = false;
+                    this.auth_device_modal_visible = false;
+                    this.auth_device_code = None;
+                    this.auth_device_verification_url = None;
+                    this.auth_device_copy_notice = None;
+                    match profile {
+                        Ok(profile) => {
+                            if let Some(ec) = engine_state::EngineContext::global() {
+                                ec.set_auth_profile(profile.clone());
+                            }
+                            this.auth_message = Some(format!(
+                                "Signed in as @{}",
+                                profile.login
+                            ));
+                            this.auth_avatar_image = None;
+                            this.auth_avatar_url_loaded = None;
+                            this.ensure_auth_avatar_loaded(cx);
+                        }
+                        Err(err) => {
+                            this.auth_message = Some(format!("GitHub sign-in failed: {err}"));
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn sign_out_github(&mut self, cx: &mut Context<Self>) {
+        let _ = pulsar_auth::sign_out();
+        if let Some(ec) = engine_state::EngineContext::global() {
+            ec.clear_auth_profile();
+        }
+        self.auth_avatar_image = None;
+        self.auth_avatar_url_loaded = None;
+        self.auth_account_menu_open = false;
+        self.auth_device_code = None;
+        self.auth_device_verification_url = None;
+        self.auth_device_modal_visible = false;
+        self.auth_device_copy_notice = None;
+        self.auth_message = Some("Signed out".to_string());
+        cx.notify();
+    }
+
+    pub(crate) fn ensure_auth_avatar_loaded(&mut self, cx: &mut Context<Self>) {
+        let Some(profile) = self.auth_profile() else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+        let Some(url) = profile.avatar_url else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+
+        if self.auth_avatar_url_loaded.as_deref() == Some(url.as_str()) {
+            return;
+        }
+        self.auth_avatar_url_loaded = Some(url.clone());
+        self.auth_avatar_image = None;
+
+        let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
+        std::thread::spawn(move || {
+            let image = fetch_avatar_render_image(&url).ok();
+            let _ = smol::block_on(tx.send(image));
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(maybe_image) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.auth_avatar_image = maybe_image;
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn render_auth_titlebar_identity(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = self.auth_profile();
+        let name = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+        let initials = name
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_else(|| "?".to_string());
+
+        let avatar = if let Some(render_img) = self.auth_avatar_image.clone() {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(render_img))
+                        .w_full()
+                        .h_full()
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .bg(cx.theme().primary.opacity(0.16))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().primary)
+                        .child(initials),
+                )
+                .into_any_element()
+        };
+
+        div()
+            .id("entry-auth-avatar")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.auth_account_menu_open = !this.auth_account_menu_open;
+                cx.notify();
+            }))
+            .child(avatar)
+            .into_any_element()
+    }
+
+    fn render_auth_account_menu_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = self.auth_profile();
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+
+        div()
+            .absolute()
+            .size_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.auth_account_menu_open = false;
+                cx.notify();
+            }))
+            .child(
+                v_flex()
+                    .absolute()
+                    .top(px(34.))
+                    .right(px(8.))
+                    .w(px(240.))
+                    .p_2()
+                    .gap_1()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .px_2()
+                            .pb_1()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("@{login}")),
+                    )
+                    .when(profile.is_some(), |menu| {
+                        menu.child(
+                            Button::new("entry-auth-open-github")
+                                .w_full()
+                                .ghost()
+                                .label("Open GitHub Profile")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(login) = this.auth_profile().map(|p| p.login) {
+                                        cx.open_url(&format!("https://github.com/{login}"));
+                                    }
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("entry-auth-sign-out")
+                                .w_full()
+                                .ghost()
+                                .label("Sign Out")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.sign_out_github(cx);
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .when(profile.is_none(), |menu| {
+                        menu.child(
+                            Button::new("entry-auth-sign-in")
+                                .w_full()
+                                .ghost()
+                                .label("Sign In with GitHub")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.begin_github_sign_in(cx);
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
+    fn render_github_code_modal(&self, cx: &mut Context<Self>) -> AnyElement {
+        let Some(code) = self.auth_device_code.clone() else {
+            return div().into_any_element();
+        };
+        let verification_url = self.auth_device_verification_url.clone();
+
+        div()
+            .absolute()
+            .size_full()
+            .flex()
+            .items_center()
+            .justify_center()
+            .bg(cx.theme().background.opacity(0.86))
+            .child(
+                v_flex()
+                    .w_full()
+                    .max_w(px(460.))
+                    .p_6()
+                    .gap_4()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child("GitHub Device Code"),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Paste this 8-digit code in the browser window GitHub opened."),
+                    )
+                    .child(
+                        div()
+                            .w_full()
+                            .py_3()
+                            .rounded_lg()
+                            .bg(cx.theme().accent.opacity(0.12))
+                            .border_1()
+                            .border_color(cx.theme().accent.opacity(0.35))
+                            .text_center()
+                            .text_2xl()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(cx.theme().foreground)
+                            .child(code.clone()),
+                    )
+                    .when_some(self.auth_device_copy_notice.clone(), |this, notice| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .text_color(cx.theme().success)
+                                .child(notice),
+                        )
+                    })
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .gap_2()
+                            .justify_end()
+                            .child(
+                                Button::new("github-device-code-close")
+                                    .ghost()
+                                    .label("Close")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.auth_device_modal_visible = false;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("github-device-code-open")
+                                    .ghost()
+                                    .label("Open GitHub")
+                                    .on_click(cx.listener(move |_, _, _, cx| {
+                                        if let Some(url) = verification_url.clone() {
+                                            cx.open_url(&url);
+                                        }
+                                    })),
+                            )
+                            .child(
+                                Button::new("github-device-code-copy")
+                                    .primary()
+                                    .label("Copy Code")
+                                    .on_click(cx.listener(move |this, _, _, cx| {
+                                        cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                                            code.clone(),
+                                        ));
+                                        this.auth_device_copy_notice =
+                                            Some("Code copied.".to_string());
+                                        cx.notify();
+                                    })),
+                            ),
+                    ),
+            )
+            .into_any_element()
+    }
+}
+
+fn fetch_avatar_render_image(url: &str) -> Result<Arc<RenderImage>, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Pulsar-Native/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(url).send().map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
+    let rgba = image::load_from_memory(&bytes)
+        .map_err(|e| format!("decode: {e}"))?
+        .into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
 
 /// Synchronously fetch server connectivity info and project list.
@@ -1622,6 +2055,7 @@ impl Render for EntryScreen {
         let width: f32 = f32::from(bounds.width);
         let available_width: f32 = (width - 220.0 - 64.0).max(0.0);
         let view = self.view;
+        self.ensure_auth_avatar_loaded(cx);
 
         // Trigger git fetch when viewing recent projects
         if view == EntryScreenView::Recent && !self.is_fetching_updates {
@@ -1650,7 +2084,16 @@ impl Render for EntryScreen {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
-            .child(TitleBar::new())
+            .child(
+                TitleBar::new().child(
+                    h_flex()
+                        .w_full()
+                        .justify_end()
+                        .px_2()
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child(self.render_auth_titlebar_identity(cx)),
+                ),
+            )
             .child(
                 h_flex()
                     .flex_1()
@@ -1684,6 +2127,12 @@ impl Render for EntryScreen {
                             }),
                     ),
             )
+            .when(self.auth_device_modal_visible, |this| {
+                this.child(self.render_github_code_modal(cx))
+            })
+            .when(self.auth_account_menu_open, |this| {
+                this.child(self.render_auth_account_menu_overlay(cx))
+            })
             .into_any_element()
     }
 }

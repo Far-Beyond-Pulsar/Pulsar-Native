@@ -30,7 +30,6 @@ impl JsonSerializer {
     pub fn as_json(&self) -> &Value {
         &self.value
     }
-
 }
 
 impl Default for JsonSerializer {
@@ -94,11 +93,13 @@ impl JsonDeserializer {
             .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
         Ok(Self { value })
     }
-
 }
 
 impl TypeDeserializer for JsonDeserializer {
-    fn deserialize_registered(&mut self, type_info: &RuntimeTypeInfo) -> ReflectResult<Box<dyn Any>> {
+    fn deserialize_registered(
+        &mut self,
+        type_info: &RuntimeTypeInfo,
+    ) -> ReflectResult<Box<dyn Any>> {
         RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(type_info, self.value.clone())
     }
 
@@ -106,15 +107,16 @@ impl TypeDeserializer for JsonDeserializer {
         &mut self,
         element_type: &RuntimeTypeInfo,
     ) -> ReflectResult<Vec<Box<dyn Any>>> {
-        let arr = self.value.as_array().ok_or_else(|| ReflectError::TypeMismatch {
-            expected: "array",
-            found: format!("{:?}", self.value),
-        })?;
+        let arr = self
+            .value
+            .as_array()
+            .ok_or_else(|| ReflectError::TypeMismatch {
+                expected: "array",
+                found: format!("{:?}", self.value),
+            })?;
 
         arr.iter()
-            .map(|item| {
-                RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(element_type, item.clone())
-            })
+            .map(|item| RUNTIME_TYPE_REGISTRY.deserialize_json_for_type(element_type, item.clone()))
             .collect()
     }
 
@@ -122,18 +124,23 @@ impl TypeDeserializer for JsonDeserializer {
         &mut self,
         fields: &[FieldInfo],
     ) -> ReflectResult<HashMap<&'static str, Box<dyn Any>>> {
-        let obj = self.value.as_object().ok_or_else(|| ReflectError::TypeMismatch {
-            expected: "object",
-            found: format!("{:?}", self.value),
-        })?;
+        let obj = self
+            .value
+            .as_object()
+            .ok_or_else(|| ReflectError::TypeMismatch {
+                expected: "object",
+                found: format!("{:?}", self.value),
+            })?;
 
         let mut result = HashMap::new();
 
         for field in fields {
-            let field_value = obj.get(field.name).ok_or_else(|| ReflectError::MissingField {
-                struct_name: "unknown",
-                field_name: field.name,
-            })?;
+            let field_value = obj
+                .get(field.name)
+                .ok_or_else(|| ReflectError::MissingField {
+                    struct_name: "unknown",
+                    field_name: field.name,
+                })?;
 
             let value = RUNTIME_TYPE_REGISTRY
                 .deserialize_json_for_type(field.type_info, field_value.clone())?;

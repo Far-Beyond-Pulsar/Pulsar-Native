@@ -1,15 +1,19 @@
 use rust_i18n::t;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::{
-    actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
-    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
-    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
+    actions, div, img, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
+    Context, Corner, Entity, FocusHandle, ImageSource, InteractiveElement as _, IntoElement, Menu,
+    MenuItem, MouseButton, ObjectFit, ParentElement as _, Render, RenderImage, SharedString,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window,
 };
 use ui::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
+    h_flex,
     locale,
+    v_flex,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
@@ -1257,6 +1261,9 @@ pub struct AppTitleBar {
     title: SharedString,
     last_locale: String,
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
+    auth_avatar_image: Option<Arc<RenderImage>>,
+    auth_avatar_url_loaded: Option<String>,
+    auth_menu_open: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1291,6 +1298,9 @@ impl AppTitleBar {
             title: title_str,
             last_locale: locale().to_string(),
             child: Rc::new(|_, _| div().into_any_element()),
+            auth_avatar_image: None,
+            auth_avatar_url_loaded: None,
+            auth_menu_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -1312,10 +1322,197 @@ impl AppTitleBar {
 
         Theme::change(mode, None, cx);
     }
+
+    fn ensure_auth_avatar_loaded(&mut self, cx: &mut Context<Self>) {
+        let Some(profile) = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile()) else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+        let Some(url) = profile.avatar_url else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+        if self.auth_avatar_url_loaded.as_deref() == Some(url.as_str()) {
+            return;
+        }
+        self.auth_avatar_url_loaded = Some(url.clone());
+        self.auth_avatar_image = None;
+
+        let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
+        std::thread::spawn(move || {
+            let image = fetch_avatar_render_image(&url).ok();
+            let _ = smol::block_on(tx.send(image));
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(maybe_image) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.auth_avatar_image = maybe_image;
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn render_auth_identity(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+        let initials = login
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_else(|| "?".to_string());
+
+        let avatar = if let Some(render_img) = self.auth_avatar_image.clone() {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(render_img))
+                        .w_full()
+                        .h_full()
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .bg(cx.theme().primary.opacity(0.16))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().primary)
+                        .child(initials),
+                )
+                .into_any_element()
+        };
+
+        div()
+            .id("app-auth-avatar")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.auth_menu_open = !this.auth_menu_open;
+                cx.notify();
+            }))
+            .child(avatar)
+            .into_any_element()
+    }
+
+    fn render_auth_menu_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+
+        div()
+            .absolute()
+            .size_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.auth_menu_open = false;
+                cx.notify();
+            }))
+            .child(
+                v_flex()
+                    .absolute()
+                    .top(px(34.))
+                    .right(px(8.))
+                    .w(px(220.))
+                    .p_2()
+                    .gap_1()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .px_2()
+                            .pb_1()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("@{login}")),
+                    )
+                    .when(profile.is_some(), |menu| {
+                        menu.child(
+                            Button::new("auth-open-github-profile")
+                                .w_full()
+                                .ghost()
+                                .label("Open GitHub Profile")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(login) = engine_state::EngineContext::global()
+                                        .and_then(|ec| ec.auth_profile())
+                                        .map(|p| p.login)
+                                    {
+                                        cx.open_url(&format!("https://github.com/{login}"));
+                                    }
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("auth-sign-out")
+                                .w_full()
+                                .ghost()
+                                .label("Sign Out")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let _ = pulsar_auth::sign_out();
+                                    if let Some(ec) = engine_state::EngineContext::global() {
+                                        ec.clear_auth_profile();
+                                    }
+                                    this.auth_avatar_image = None;
+                                    this.auth_avatar_url_loaded = None;
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .when(profile.is_none(), |menu| {
+                        menu.child(
+                            Button::new("auth-sign-in-launcher")
+                                .w_full()
+                                .ghost()
+                                .label("Sign In with GitHub")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            div()
+                                .px_2()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Use launcher to complete sign-in."),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
 }
 
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_auth_avatar_loaded(cx);
+
         // Only rebuild menus if locale changed
         let current_locale = locale().to_string();
         if current_locale != self.last_locale {
@@ -1407,9 +1604,33 @@ impl Render for AppTitleBar {
                                     .icon(IconName::Bell),
                             ),
                         ),
-                    ),
+                    )
+                    .child(self.render_auth_identity(cx)),
             )
+            .when(self.auth_menu_open, |this| {
+                this.child(self.render_auth_menu_overlay(cx))
+            })
     }
+}
+
+fn fetch_avatar_render_image(url: &str) -> Result<Arc<RenderImage>, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Pulsar-Native/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(url).send().map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
+    let rgba = image::load_from_memory(&bytes)
+        .map_err(|e| format!("decode: {e}"))?
+        .into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
 
 struct LocaleSelector {

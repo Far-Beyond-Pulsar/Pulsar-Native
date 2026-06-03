@@ -51,9 +51,12 @@ impl LocalFsProvider {
         let root_canonical = root
             .canonicalize()
             .context("Failed to canonicalize sandbox root")?;
-        let path_canonical = path
-            .canonicalize()
-            .with_context(|| format!("Path '{}' does not exist or cannot be resolved", path.display()))?;
+        let path_canonical = path.canonicalize().with_context(|| {
+            format!(
+                "Path '{}' does not exist or cannot be resolved",
+                path.display()
+            )
+        })?;
         if !path_canonical.starts_with(&root_canonical) {
             anyhow::bail!(
                 "Path '{}' resolves outside the sandbox root '{}'",

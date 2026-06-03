@@ -78,7 +78,9 @@ impl CompiledBytecode {
 
     /// Calculate total arena size based on variables.
     pub fn calculate_arena_size(&mut self) {
-        self.arena_size = self.variables.iter()
+        self.arena_size = self
+            .variables
+            .iter()
             .map(|v| v.offset + v.size)
             .max()
             .unwrap_or(0)
@@ -123,26 +125,12 @@ impl VariableDescriptor {
 
     /// Create a descriptor for an f32 variable.
     pub fn f32(name: impl Into<String>, offset: usize, default: f32) -> Self {
-        Self::new(
-            name,
-            "f32",
-            4,
-            4,
-            offset,
-            default.to_le_bytes().to_vec(),
-        )
+        Self::new(name, "f32", 4, 4, offset, default.to_le_bytes().to_vec())
     }
 
     /// Create a descriptor for an i32 variable.
     pub fn i32(name: impl Into<String>, offset: usize, default: i32) -> Self {
-        Self::new(
-            name,
-            "i32",
-            4,
-            4,
-            offset,
-            default.to_le_bytes().to_vec(),
-        )
+        Self::new(name, "i32", 4, 4, offset, default.to_le_bytes().to_vec())
     }
 
     /// Create a descriptor for a bool variable.
@@ -201,7 +189,7 @@ mod tests {
             bytecode.add_variable(VariableDescriptor::f32(
                 format!("var_{}", i),
                 9 + (i * 4),
-                0.0
+                0.0,
             ));
         }
 

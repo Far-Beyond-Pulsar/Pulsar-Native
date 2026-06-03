@@ -50,6 +50,7 @@ use libloading::{Library, Symbol};
 use sha2::{Digest, Sha256};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
+use std::io::{BufReader, Read};
 
 // ── Safe DLL search path (Windows) ─────────────────────────────────────────────
 //
@@ -226,7 +227,10 @@ impl PermanentLibrary {
         tracing::info!(
             "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",
             path,
-            sha256.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            sha256
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
         );
 
         Ok(Self {
@@ -237,9 +241,26 @@ impl PermanentLibrary {
     }
 
     /// Compute the SHA-256 digest of a file on disk.
+    ///
+    /// This uses a streaming approach with `BufReader` to avoid reading the entire
+    /// file into memory at once, which prevents Out-Of-Memory (OOM) errors for large
+    /// plugin libraries.
     fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
-        let bytes = std::fs::read(path)?;
-        Ok(Sha256::digest(&bytes).into())
+
+        let file = std::fs::File::open(path)?;
+        let mut reader = BufReader::new(file);
+        let mut hasher = Sha256::new();
+        let mut buffer = [0u8; 8192]; // 8KB buffer
+
+        loop {
+            let count = reader.read(&mut buffer)?;
+            if count == 0 {
+                break;
+            }
+            hasher.update(&buffer[..count]);
+        }
+
+        Ok(hasher.finalize().into())
     }
 
     /// Compute the SHA-256 digest from an open file handle.
@@ -370,13 +391,23 @@ impl std::fmt::Display for IntegrityError {
             IntegrityError::Io(path, e) => {
                 write!(f, "Failed to read '{}': {}", path.display(), e)
             }
-            IntegrityError::HashMismatch { path, expected, actual } => {
+            IntegrityError::HashMismatch {
+                path,
+                expected,
+                actual,
+            } => {
                 write!(
                     f,
                     "Integrity check failed for '{}': expected {:02x?}, got {:02x?}",
                     path.display(),
-                    expected.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                    actual.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                    expected
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>(),
+                    actual
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>(),
                 )
             }
         }

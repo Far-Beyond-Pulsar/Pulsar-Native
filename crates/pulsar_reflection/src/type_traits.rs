@@ -60,15 +60,8 @@ impl fmt::Display for ReflectError {
                     field_name, struct_name
                 )
             }
-            Self::InvalidVariant {
-                enum_name,
-                variant,
-            } => {
-                write!(
-                    f,
-                    "Invalid variant '{}' for enum '{}'",
-                    variant, enum_name
-                )
+            Self::InvalidVariant { enum_name, variant } => {
+                write!(f, "Invalid variant '{}' for enum '{}'", variant, enum_name)
             }
             Self::SerializationFailed(msg) => write!(f, "Serialization failed: {}", msg),
             Self::DeserializationFailed(msg) => write!(f, "Deserialization failed: {}", msg),
@@ -129,7 +122,10 @@ pub trait TypeSerializer {
 /// (JSON, binary, etc.). Returns type-erased Box<dyn Any> for flexibility.
 pub trait TypeDeserializer {
     /// Deserialize one registered value from runtime type callbacks.
-    fn deserialize_registered(&mut self, type_info: &RuntimeTypeInfo) -> ReflectResult<Box<dyn Any>>;
+    fn deserialize_registered(
+        &mut self,
+        type_info: &RuntimeTypeInfo,
+    ) -> ReflectResult<Box<dyn Any>>;
 
     /// Deserialize an array of values
     fn deserialize_array(

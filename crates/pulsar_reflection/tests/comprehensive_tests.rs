@@ -17,7 +17,9 @@ use std::sync::Arc;
 
 #[test]
 fn test_primitive_type_info_f32() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<f32>().expect("f32 not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<f32>()
+        .expect("f32 not registered");
     assert_eq!(info.type_name, "f32");
     assert_eq!(info.size, 4);
     assert_eq!(info.align, 4);
@@ -26,7 +28,9 @@ fn test_primitive_type_info_f32() {
 
 #[test]
 fn test_primitive_type_info_i32() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<i32>().expect("i32 not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<i32>()
+        .expect("i32 not registered");
     assert_eq!(info.type_name, "i32");
     assert_eq!(info.size, 4);
     assert_eq!(info.align, 4);
@@ -35,7 +39,9 @@ fn test_primitive_type_info_i32() {
 
 #[test]
 fn test_primitive_type_info_u64() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<u64>().expect("u64 not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<u64>()
+        .expect("u64 not registered");
     assert_eq!(info.type_name, "u64");
     assert_eq!(info.size, 8);
     assert_eq!(info.align, 8);
@@ -44,7 +50,9 @@ fn test_primitive_type_info_u64() {
 
 #[test]
 fn test_primitive_type_info_bool() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<bool>().expect("bool not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<bool>()
+        .expect("bool not registered");
     assert_eq!(info.type_name, "bool");
     assert_eq!(info.size, 1);
     assert_eq!(info.align, 1);
@@ -53,7 +61,9 @@ fn test_primitive_type_info_bool() {
 
 #[test]
 fn test_string_type_info() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<String>().expect("String not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<String>()
+        .expect("String not registered");
     assert_eq!(info.type_name, "String");
     assert!(info.size > 0);
     assert!(info.align > 0);
@@ -61,7 +71,9 @@ fn test_string_type_info() {
 
 #[test]
 fn test_array_type_info_vec3() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<[f32; 3]>().expect("[f32; 3] not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<[f32; 3]>()
+        .expect("[f32; 3] not registered");
     assert_eq!(info.type_name, "[f32; 3]");
     assert_eq!(info.size, 12);
     assert_eq!(info.align, 4);
@@ -69,7 +81,9 @@ fn test_array_type_info_vec3() {
 
 #[test]
 fn test_array_type_info_color() {
-    let info = RUNTIME_TYPE_REGISTRY.get::<[f32; 4]>().expect("[f32; 4] not registered");
+    let info = RUNTIME_TYPE_REGISTRY
+        .get::<[f32; 4]>()
+        .expect("[f32; 4] not registered");
     assert_eq!(info.type_name, "[f32; 4]");
     assert_eq!(info.size, 16);
     assert_eq!(info.align, 4);
@@ -142,7 +156,11 @@ fn test_registry_get_by_name_existing() {
 
 #[test]
 fn test_registry_get_by_name_nonexistent() {
-    assert!(RUNTIME_TYPE_REGISTRY.get_by_name("NonExistentType").is_none());
+    assert!(
+        RUNTIME_TYPE_REGISTRY
+            .get_by_name("NonExistentType")
+            .is_none()
+    );
 }
 
 #[test]

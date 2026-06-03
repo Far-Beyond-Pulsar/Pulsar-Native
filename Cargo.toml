@@ -53,6 +53,7 @@ profiling                          = { path = "crates/profiling" }
 engine_fs                          = { path = "crates/engine_fs" }
 pulsar_std                         = { path = "crates/pulsar_std" }
 engine_state                       = { path = "crates/engine_state" }
+pulsar_auth                        = { path = "crates/pulsar_auth" }
 pulsar_settings                    = { path = "crates/pulsar_settings" }
 engine_backend                     = { path = "crates/engine_backend" }
 pulsar_diagnostics                 = { path = "crates/pulsar_diagnostics" }
@@ -116,6 +117,7 @@ ui_plugin_manager     = { path = "ui-crates/ui_plugin_manager" }
 ui_log_viewer         = { path = "ui-crates/ui_log_viewer" }
 ui_git_manager        = { path = "ui-crates/ui_git_manager" }
 ui_fab_search         = { path = "ui-crates/ui_fab_search" }
+ui_multiuser_status   = { path = "ui-crates/ui_multiuser_status" }
 
 # ---------- Plugin System ----------
 plugin_editor_api = { path = "crates/plugin_editor_api"}

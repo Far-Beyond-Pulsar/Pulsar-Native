@@ -104,7 +104,10 @@ impl ComponentStore {
     /// Returns `true` on success, `false` if the class is not in the registry.
     pub fn add_from_registry(&mut self, class_name: &str, data: &serde_json::Value) -> bool {
         let Some(mut instance) = REGISTRY.create_instance(class_name) else {
-            tracing::warn!("ComponentStore: unknown class '{}' — not in reflection registry", class_name);
+            tracing::warn!(
+                "ComponentStore: unknown class '{}' — not in reflection registry",
+                class_name
+            );
             return false;
         };
 
@@ -116,7 +119,9 @@ impl ComponentStore {
                 props
                     .into_iter()
                     .filter_map(|prop| {
-                        obj.get(prop.name).cloned().map(|jv| (prop.type_info, prop.setter, jv))
+                        obj.get(prop.name)
+                            .cloned()
+                            .map(|jv| (prop.type_info, prop.setter, jv))
                     })
                     .collect()
             };
@@ -189,10 +194,7 @@ impl ComponentStore {
         class_name: &str,
         prop_name: &str,
     ) -> Option<serde_json::Value> {
-        let (_, comp) = self
-            .entries
-            .iter()
-            .find(|(name, _)| name == class_name)?;
+        let (_, comp) = self.entries.iter().find(|(name, _)| name == class_name)?;
 
         let props = comp.get_properties();
         let prop = props.into_iter().find(|p| p.name == prop_name)?;
@@ -213,11 +215,7 @@ impl ComponentStore {
         value: serde_json::Value,
     ) -> bool {
         // Find entry index so we can split the borrow.
-        let Some(idx) = self
-            .entries
-            .iter()
-            .position(|(name, _)| name == class_name)
-        else {
+        let Some(idx) = self.entries.iter().position(|(name, _)| name == class_name) else {
             return false;
         };
 
@@ -288,7 +286,9 @@ impl ComponentStore {
         let result = (method.caller)(comp_mut, any_args);
 
         result.and_then(|rv| {
-            RUNTIME_TYPE_REGISTRY.serialize_json_for_any(rv.as_ref()).ok()
+            RUNTIME_TYPE_REGISTRY
+                .serialize_json_for_any(rv.as_ref())
+                .ok()
         })
     }
 

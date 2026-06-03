@@ -194,13 +194,22 @@ fn trigger_build(
     };
 
     match mode {
-        BuildMode::Check      => run_check(root, window, cx),
-        BuildMode::Update     => run_update(root, window, cx),
-        BuildMode::Build      => run_build_pipeline(root, mode, None, entity_id, window, cx),
-        BuildMode::BuildAndRun => run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx),
-        BuildMode::BuildScratch       => run_scratch(root, BuildMode::Build, None, entity_id, window, cx),
-        BuildMode::BuildAndRunScratch => run_scratch(root, BuildMode::BuildAndRun, Some(state_arc), entity_id, window, cx),
-        BuildMode::CheckScratch       => run_scratch(root, BuildMode::Check, None, entity_id, window, cx),
+        BuildMode::Check => run_check(root, window, cx),
+        BuildMode::Update => run_update(root, window, cx),
+        BuildMode::Build => run_build_pipeline(root, mode, None, entity_id, window, cx),
+        BuildMode::BuildAndRun => {
+            run_build_pipeline(root, mode, Some(state_arc), entity_id, window, cx)
+        }
+        BuildMode::BuildScratch => run_scratch(root, BuildMode::Build, None, entity_id, window, cx),
+        BuildMode::BuildAndRunScratch => run_scratch(
+            root,
+            BuildMode::BuildAndRun,
+            Some(state_arc),
+            entity_id,
+            window,
+            cx,
+        ),
+        BuildMode::CheckScratch => run_scratch(root, BuildMode::Check, None, entity_id, window, cx),
     }
 }
 
@@ -217,9 +226,9 @@ fn run_scratch(
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
     let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui    = Arc::clone(&progress_atomic);
-    let status_for_thread  = Arc::clone(&status_cell);
-    let status_for_ui      = Arc::clone(&status_cell);
+    let progress_for_ui = Arc::clone(&progress_atomic);
+    let status_for_thread = Arc::clone(&status_cell);
+    let status_for_ui = Arc::clone(&status_cell);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     let project_root_thread = project_root.clone();
@@ -228,21 +237,27 @@ fn run_scratch(
             engine_backend::services::ensure_core_bootstrap(&project_root_thread)?;
             // Clean occupies 0–20 %.
             super::cargo_progress::run_cargo_clean(
-                &project_root_thread, Arc::clone(&progress_for_thread),
-                Arc::clone(&status_for_thread), 20,
+                &project_root_thread,
+                Arc::clone(&progress_for_thread),
+                Arc::clone(&status_for_thread),
+                20,
             )?;
             // Main command occupies 20–100 %.
             match inner_mode {
-                BuildMode::Check | BuildMode::CheckScratch =>
+                BuildMode::Check | BuildMode::CheckScratch => {
                     super::cargo_progress::run_cargo_check_from(
-                        &project_root_thread, Arc::clone(&progress_for_thread),
-                        Arc::clone(&status_for_thread), 20,
-                    ),
-                _ =>
-                    super::cargo_progress::run_cargo_build_from(
-                        &project_root_thread, Arc::clone(&progress_for_thread),
-                        Arc::clone(&status_for_thread), 20,
-                    ),
+                        &project_root_thread,
+                        Arc::clone(&progress_for_thread),
+                        Arc::clone(&status_for_thread),
+                        20,
+                    )
+                }
+                _ => super::cargo_progress::run_cargo_build_from(
+                    &project_root_thread,
+                    Arc::clone(&progress_for_thread),
+                    Arc::clone(&status_for_thread),
+                    20,
+                ),
             }
         })();
         smol::block_on(result_tx.send(result));
@@ -282,7 +297,14 @@ fn run_scratch(
                     });
                     if matches!(inner_mode, BuildMode::BuildAndRun) {
                         if let Some(state) = state_arc {
-                            launch_and_monitor(project_root, state, entity_id, window_handle, async_app).await;
+                            launch_and_monitor(
+                                project_root,
+                                state,
+                                entity_id,
+                                window_handle,
+                                async_app,
+                            )
+                            .await;
                         }
                     }
                     return;
@@ -290,7 +312,9 @@ fn run_scratch(
                 Ok(Err(msg)) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
                         window.push_notification(
-                            Notification::error(msg).id::<BuildCoreNotification>().title(title),
+                            Notification::error(msg)
+                                .id::<BuildCoreNotification>()
+                                .title(title),
                             cx,
                         );
                     });
@@ -298,10 +322,10 @@ fn run_scratch(
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let pct = progress_for_ui.load(Ordering::Relaxed);
                     let status = status_for_ui.lock().clone();
                     if pct != last_pct || status != last_status {
-                        last_pct    = pct;
+                        last_pct = pct;
                         last_status = status.clone();
                         let msg = if status.is_empty() {
                             format!("Building… ({pct}%)")
@@ -310,13 +334,18 @@ fn run_scratch(
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.update_notification::<BuildCoreNotification>(
-                                msg, pct as f32 / 100.0, cx,
+                                msg,
+                                pct as f32 / 100.0,
+                                cx,
                             );
                         });
                     }
                 }
             }
-            async_app.background_executor().timer(Duration::from_millis(250)).await;
+            async_app
+                .background_executor()
+                .timer(Duration::from_millis(250))
+                .await;
         }
     })
     .detach();
@@ -328,14 +357,16 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
     let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui    = Arc::clone(&progress_atomic);
-    let status_for_thread  = Arc::clone(&status_cell);
-    let status_for_ui      = Arc::clone(&status_cell);
+    let progress_for_ui = Arc::clone(&progress_atomic);
+    let status_for_thread = Arc::clone(&status_cell);
+    let status_for_ui = Arc::clone(&status_cell);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     std::thread::spawn(move || {
         let result = super::cargo_progress::run_cargo_check(
-            &project_root, progress_for_thread, status_for_thread,
+            &project_root,
+            progress_for_thread,
+            status_for_thread,
         );
         smol::block_on(result_tx.send(result));
     });
@@ -366,7 +397,9 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                             cx,
                         ),
                         Err(msg) => window.push_notification(
-                            Notification::error(msg).id::<BuildCoreNotification>().title("Check"),
+                            Notification::error(msg)
+                                .id::<BuildCoreNotification>()
+                                .title("Check"),
                             cx,
                         ),
                     });
@@ -374,10 +407,10 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let pct = progress_for_ui.load(Ordering::Relaxed);
                     let status = status_for_ui.lock().clone();
                     if pct != last_pct || status != last_status {
-                        last_pct    = pct;
+                        last_pct = pct;
                         last_status = status.clone();
                         let msg = if status.is_empty() {
                             format!("Checking… ({pct}%)")
@@ -386,7 +419,9 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.update_notification::<BuildCoreNotification>(
-                                msg, pct as f32 / 100.0, cx,
+                                msg,
+                                pct as f32 / 100.0,
+                                cx,
                             );
                         });
                     }
@@ -407,14 +442,16 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
     let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui    = Arc::clone(&progress_atomic);
-    let status_for_thread  = Arc::clone(&status_cell);
-    let status_for_ui      = Arc::clone(&status_cell);
+    let progress_for_ui = Arc::clone(&progress_atomic);
+    let status_for_thread = Arc::clone(&status_cell);
+    let status_for_ui = Arc::clone(&status_cell);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
     std::thread::spawn(move || {
         let result = super::cargo_progress::run_cargo_update(
-            &project_root, progress_for_thread, status_for_thread,
+            &project_root,
+            progress_for_thread,
+            status_for_thread,
         );
         smol::block_on(result_tx.send(result));
     });
@@ -445,7 +482,9 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                             cx,
                         ),
                         Err(msg) => window.push_notification(
-                            Notification::error(msg).id::<BuildCoreNotification>().title("Update"),
+                            Notification::error(msg)
+                                .id::<BuildCoreNotification>()
+                                .title("Update"),
                             cx,
                         ),
                     });
@@ -453,10 +492,10 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let pct = progress_for_ui.load(Ordering::Relaxed);
                     let status = status_for_ui.lock().clone();
                     if pct != last_pct || status != last_status {
-                        last_pct    = pct;
+                        last_pct = pct;
                         last_status = status.clone();
                         let msg = if status.is_empty() {
                             format!("Updating dependencies… ({pct}%)")
@@ -465,7 +504,9 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.update_notification::<BuildCoreNotification>(
-                                msg, pct as f32 / 100.0, cx,
+                                msg,
+                                pct as f32 / 100.0,
+                                cx,
                             );
                         });
                     }
@@ -494,9 +535,9 @@ fn run_build_pipeline(
     let progress_atomic: Arc<AtomicU32> = Arc::new(AtomicU32::new(0));
     let status_cell = super::cargo_progress::StatusCell::default();
     let progress_for_thread = Arc::clone(&progress_atomic);
-    let progress_for_ui    = Arc::clone(&progress_atomic);
-    let status_for_thread  = Arc::clone(&status_cell);
-    let status_for_ui      = Arc::clone(&status_cell);
+    let progress_for_ui = Arc::clone(&progress_atomic);
+    let status_for_thread = Arc::clone(&status_cell);
+    let status_for_ui = Arc::clone(&status_cell);
 
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
@@ -506,7 +547,11 @@ fn run_build_pipeline(
         smol::block_on(result_tx.send(result));
     });
 
-    let title = if mode == BuildMode::BuildAndRun { "Build + Run" } else { "Build Core" };
+    let title = if mode == BuildMode::BuildAndRun {
+        "Build + Run"
+    } else {
+        "Build Core"
+    };
 
     window.push_notification(
         Notification::info("Starting build…")
@@ -564,10 +609,10 @@ fn run_build_pipeline(
                 }
                 Err(smol::channel::TryRecvError::Closed) => return,
                 Err(smol::channel::TryRecvError::Empty) => {
-                    let pct    = progress_for_ui.load(Ordering::Relaxed);
+                    let pct = progress_for_ui.load(Ordering::Relaxed);
                     let status = status_for_ui.lock().clone();
                     if pct != last_pct || status != last_status {
-                        last_pct    = pct;
+                        last_pct = pct;
                         last_status = status.clone();
                         let msg = if status.is_empty() {
                             format!("Building… ({pct}%)")
@@ -576,7 +621,9 @@ fn run_build_pipeline(
                         };
                         let _ = async_app.update_window(window_handle, |_, window, cx| {
                             window.update_notification::<BuildCoreNotification>(
-                                msg, pct as f32 / 100.0, cx,
+                                msg,
+                                pct as f32 / 100.0,
+                                cx,
                             );
                         });
                     }
@@ -616,8 +663,7 @@ async fn launch_and_monitor(
         Err(e) => {
             let _ = async_app.update_window(window_handle, |_, window, cx| {
                 window.push_notification(
-                    Notification::error(format!("Failed to launch game: {e}"))
-                        .title("Build + Run"),
+                    Notification::error(format!("Failed to launch game: {e}")).title("Build + Run"),
                     cx,
                 );
             });
@@ -696,16 +742,19 @@ async fn launch_and_monitor(
                         "Game exited with a non-zero status code.".to_string()
                     } else {
                         let tail = stderr.trim();
-                        let tail = if tail.len() > 600 { &tail[tail.len() - 600..] } else { tail };
+                        let tail = if tail.len() > 600 {
+                            &tail[tail.len() - 600..]
+                        } else {
+                            tail
+                        };
                         match &crash_report_path {
-                            Some(p) => format!("Game crashed.\nReport saved to: {}\n\n{tail}", p.display()),
+                            Some(p) => {
+                                format!("Game crashed.\nReport saved to: {}\n\n{tail}", p.display())
+                            }
                             None => format!("Game crashed:\n{tail}"),
                         }
                     };
-                    window.push_notification(
-                        Notification::error(msg).title("Build + Run"),
-                        cx,
-                    );
+                    window.push_notification(Notification::error(msg).title("Build + Run"), cx);
                 } else {
                     tracing::info!("[BUILD+RUN] game process exited cleanly");
                 }
@@ -769,18 +818,34 @@ fn days_to_ymd(mut days: u64) -> (u64, u64, u64) {
     loop {
         let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
         let days_in_year = if leap { 366 } else { 365 };
-        if days < days_in_year { break; }
+        if days < days_in_year {
+            break;
+        }
         days -= days_in_year;
         year += 1;
     }
     let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-    let days_in_month = [31u64, if leap { 29 } else { 28 }, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    let days_in_month = [
+        31u64,
+        if leap { 29 } else { 28 },
+        31,
+        30,
+        31,
+        30,
+        31,
+        31,
+        30,
+        31,
+        30,
+        31,
+    ];
     let mut month = 1u64;
     for dim in &days_in_month {
-        if days < *dim { break; }
+        if days < *dim {
+            break;
+        }
         days -= dim;
         month += 1;
     }
     (year, month, days + 1)
 }
-

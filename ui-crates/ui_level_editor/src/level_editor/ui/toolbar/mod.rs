@@ -12,8 +12,8 @@ use ui::{
 
 mod actions;
 mod build_core;
-mod cargo_progress;
 mod build_dropdowns;
+mod cargo_progress;
 mod feature_toggles;
 mod mode_indicator;
 mod multiplayer_dropdown;
@@ -95,10 +95,11 @@ impl ToolbarPanel {
             .child(self.render_separator(cx))
             .child(BuildCoreButton::render(state, state_arc.clone(), cx))
             .child(self.render_separator(cx))
-                .child(self.render_save_button(state_arc.clone(), gpu_engine.clone()))
+            .child(self.render_save_button(state_arc.clone(), gpu_engine.clone()))
             .when(Self::is_source_build(), |el| {
-                el.child(self.render_separator(cx))
-                    .child(self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()))
+                el.child(self.render_separator(cx)).child(
+                    self.render_save_as_default_button(state_arc.clone(), gpu_engine.clone()),
+                )
             })
             .child(self.render_separator(cx))
             .child(self.render_profiling_button(state, state_arc.clone(), cx))
@@ -150,10 +151,12 @@ impl ToolbarPanel {
                         .lock()
                         .ok()
                         .and_then(|engine| engine.editor_camera_state())
-                        .map(|camera| crate::level_editor::scene_database::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
+                        .map(|camera| {
+                            crate::level_editor::scene_database::LevelEditorCameraState {
+                                position: camera.position,
+                                yaw: camera.yaw,
+                                pitch: camera.pitch,
+                            }
                         });
                     state
                         .scene_database
@@ -221,10 +224,12 @@ impl ToolbarPanel {
                         .lock()
                         .ok()
                         .and_then(|engine| engine.editor_camera_state())
-                        .map(|camera| crate::level_editor::scene_database::LevelEditorCameraState {
-                            position: camera.position,
-                            yaw: camera.yaw,
-                            pitch: camera.pitch,
+                        .map(|camera| {
+                            crate::level_editor::scene_database::LevelEditorCameraState {
+                                position: camera.position,
+                                yaw: camera.yaw,
+                                pitch: camera.pitch,
+                            }
                         });
                     state
                         .scene_database

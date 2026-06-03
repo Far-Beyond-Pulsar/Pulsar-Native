@@ -2,8 +2,8 @@
 
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
 use gpui::{
-    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
-    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window,
+    Animation, AnimationExt as _, AnyElement, App, Context, FocusHandle, Focusable, Hsla,
+    IntoElement, MouseButton, MouseMoveEvent, Render, Window, div, prelude::*, px, relative, rgb,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -11,10 +11,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 use ui::notification::Notification;
 use ui::{
+    ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dock::DockPlacement,
-    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
+    h_flex, v_flex,
 };
+use ui_multiuser_status::render_status_bar_indicator;
 
 use super::PulsarApp;
 
@@ -433,6 +435,7 @@ impl PulsarApp {
                             .into_iter()
                             .map(|btn| btn.into_any_element()),
                     )
+                    .child(render_status_bar_indicator(cx))
                     .child(
                         div()
                             .flex()

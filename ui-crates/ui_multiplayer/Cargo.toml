@@ -10,6 +10,7 @@ gpui-ce.workspace = true
 ui.workspace = true
 window_manager.workspace = true
 engine_backend.workspace = true
+engine_state.workspace = true
 serde_json = { workspace = true }
 futures = { workspace = true }
 tracing.workspace = true

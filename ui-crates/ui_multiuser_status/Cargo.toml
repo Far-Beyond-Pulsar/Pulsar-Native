@@ -1,0 +1,12 @@
+[package]
+name = "ui_multiuser_status"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-ce.workspace = true
+ui.workspace = true
+engine_state.workspace = true
+
+[lints]
+workspace = true

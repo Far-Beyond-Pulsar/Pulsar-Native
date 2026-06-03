@@ -2,7 +2,6 @@ use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::collections::HashSet;
 use std::sync::Arc;
-use ui_common::properties_inspector;
 use ui::{
     button::Button,
     h_flex,
@@ -10,6 +9,7 @@ use ui::{
     scroll::ScrollbarAxis,
     v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
 };
+use ui_common::properties_inspector;
 
 use super::state::{LevelEditorState, Transform};
 use crate::level_editor::scene_database::ObjectType;

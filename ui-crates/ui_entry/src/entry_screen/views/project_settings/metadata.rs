@@ -2,9 +2,10 @@ use super::{helpers::render_info_section, types::ProjectSettings};
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    h_flex, v_flex,
 };
 
 #[derive(Clone, Debug)]
@@ -89,7 +90,13 @@ pub fn render_metadata_tab(
             .and_then(|c| ProjectConfig::from_toml(c).ok());
         (config, content)
     } else {
-        (None, Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Config file not found")))
+        (
+            None,
+            Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Config file not found",
+            )),
+        )
     };
 
     v_flex()

@@ -313,7 +313,6 @@ impl SceneMetadataDb {
         &self.components
     }
 
-
     /// Clear all components from an object.
     pub fn clear_components(&self, object_id: &EditorObjectId) {
         self.components.clear_components(object_id);

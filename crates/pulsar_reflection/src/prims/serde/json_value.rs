@@ -6,7 +6,9 @@ fn serialize_json_value_json(value: &serde_json::Value) -> crate::ReflectResult<
     Ok(value.clone())
 }
 
-fn deserialize_json_value_json(value: serde_json::Value) -> crate::ReflectResult<serde_json::Value> {
+fn deserialize_json_value_json(
+    value: serde_json::Value,
+) -> crate::ReflectResult<serde_json::Value> {
     Ok(value)
 }
 
@@ -20,7 +22,9 @@ type RegisteredJsonValue = serde_json::Value;
 
 #[cfg(test)]
 mod tests {
-    use crate::{JsonDeserializer, JsonSerializer, Reflectable, TypeStructure, RUNTIME_TYPE_REGISTRY};
+    use crate::{
+        JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable, TypeStructure,
+    };
 
     #[test]
     fn test_json_value_registered() {

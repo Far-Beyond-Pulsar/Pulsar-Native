@@ -26,7 +26,7 @@ type RegisteredI32 = i32;
 
 #[cfg(test)]
 mod tests {
-    use crate::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
 
     #[test]
     fn test_i32_registered() {

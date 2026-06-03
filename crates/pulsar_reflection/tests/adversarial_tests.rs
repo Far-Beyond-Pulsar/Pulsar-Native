@@ -208,7 +208,9 @@ fn test_infinity_value() {
     let retrieved = value.get_field_typed::<f32>("value").unwrap();
     assert!(retrieved.is_infinite() && retrieved.is_sign_positive());
 
-    value.set_field("value", Box::new(f32::NEG_INFINITY)).unwrap();
+    value
+        .set_field("value", Box::new(f32::NEG_INFINITY))
+        .unwrap();
     let retrieved = value.get_field_typed::<f32>("value").unwrap();
     assert!(retrieved.is_infinite() && retrieved.is_sign_negative());
 }
@@ -358,7 +360,11 @@ fn test_race_condition_field_access() {
         .build();
 
     let value = Arc::new(Mutex::new(DynamicValue::new(dynamic_type)));
-    value.lock().unwrap().set_field("counter", Box::new(0.0f32)).unwrap();
+    value
+        .lock()
+        .unwrap()
+        .set_field("counter", Box::new(0.0f32))
+        .unwrap();
 
     let handles: Vec<_> = (0..10)
         .map(|_| {
@@ -377,7 +383,11 @@ fn test_race_condition_field_access() {
         handle.join().unwrap();
     }
 
-    let final_value = value.lock().unwrap().get_field_typed::<f32>("counter").unwrap();
+    let final_value = value
+        .lock()
+        .unwrap()
+        .get_field_typed::<f32>("counter")
+        .unwrap();
     assert_eq!(final_value, 1000.0);
 }
 
@@ -486,7 +496,9 @@ fn test_huge_string_value() {
 
     let huge_string = "x".repeat(1_000_000);
     let mut value = DynamicValue::new(dynamic_type);
-    value.set_field("text", Box::new(huge_string.clone())).unwrap();
+    value
+        .set_field("text", Box::new(huge_string.clone()))
+        .unwrap();
 
     let retrieved = value.get_field_typed::<String>("text").unwrap();
     assert_eq!(retrieved.len(), 1_000_000);
@@ -510,7 +522,11 @@ fn test_stress_many_types() {
 
     // Verify all are accessible
     for i in 0..500 {
-        assert!(DYNAMIC_TYPE_REGISTRY.get_by_name(&format!("Stress_{}", i)).is_some());
+        assert!(
+            DYNAMIC_TYPE_REGISTRY
+                .get_by_name(&format!("Stress_{}", i))
+                .is_some()
+        );
     }
 }
 

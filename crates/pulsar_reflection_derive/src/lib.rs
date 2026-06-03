@@ -17,10 +17,10 @@
 //! ```
 
 use proc_macro::TokenStream;
-use quote::{quote, format_ident};
+use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, Data, DeriveInput, Expr, Field, Fields, Ident, Item, ItemType,
-    Meta, Path, Type,
+    Data, DeriveInput, Expr, Field, Fields, Ident, Item, ItemType, Meta, Path, Type,
+    parse_macro_input,
 };
 
 /// Derive macro for Reflectable trait
@@ -39,9 +39,13 @@ pub fn derive_reflectable(input: TokenStream) -> TokenStream {
 
     // Generate implementation based on data type
     let expanded = match &input.data {
-        Data::Struct(data_struct) => {
-            generate_struct_impl(name, &impl_generics, &ty_generics, &where_clause, data_struct)
-        }
+        Data::Struct(data_struct) => generate_struct_impl(
+            name,
+            &impl_generics,
+            &ty_generics,
+            &where_clause,
+            data_struct,
+        ),
         Data::Enum(data_enum) => {
             generate_enum_impl(name, &impl_generics, &ty_generics, &where_clause, data_enum)
         }
@@ -101,7 +105,10 @@ pub fn pulsar_type(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
 }
 
-fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result<proc_macro2::TokenStream> {
+fn expand_primitive_alias(
+    args: Vec<&Meta>,
+    item_type: &ItemType,
+) -> syn::Result<proc_macro2::TokenStream> {
     if !item_type.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &item_type.generics,
@@ -127,7 +134,8 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
                 override_serialize = Some(parse_ident_expr(&name_value.value, "serialize_method")?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("deserialize_method") => {
-                override_deserialize = Some(parse_ident_expr(&name_value.value, "deserialize_method")?);
+                override_deserialize =
+                    Some(parse_ident_expr(&name_value.value, "deserialize_method")?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("structure") => {
                 override_structure = Some(parse_ident_expr(&name_value.value, "structure")?);
@@ -148,16 +156,12 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
                 override_clone = Some(clone_mode);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("serialize_json_with") => {
-                override_serialize_json_with = Some(parse_path_expr(
-                    &name_value.value,
-                    "serialize_json_with",
-                )?);
+                override_serialize_json_with =
+                    Some(parse_path_expr(&name_value.value, "serialize_json_with")?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("deserialize_json_with") => {
-                override_deserialize_json_with = Some(parse_path_expr(
-                    &name_value.value,
-                    "deserialize_json_with",
-                )?);
+                override_deserialize_json_with =
+                    Some(parse_path_expr(&name_value.value, "deserialize_json_with")?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("editor") => {
                 override_editor = Some(parse_path_expr(&name_value.value, "editor")?);
@@ -179,7 +183,8 @@ fn expand_primitive_alias(args: Vec<&Meta>, item_type: &ItemType) -> syn::Result
     }
 
     // Only try to infer if we don't have custom serialize/deserialize functions
-    let needs_inference = override_serialize_json_with.is_none() || override_deserialize_json_with.is_none();
+    let needs_inference =
+        override_serialize_json_with.is_none() || override_deserialize_json_with.is_none();
 
     let (serialize_method, deserialize_method, structure, _clone_mode) = if needs_inference {
         let inferred = infer_primitive_alias_config(&item_type.ty)?;
@@ -461,18 +466,16 @@ fn primitive_serialize_value_expr(
 ) -> syn::Result<proc_macro2::TokenStream> {
     let method_name = method.to_string();
     match method_name.as_str() {
-        "serialize_f32" | "serialize_f64" | "serialize_i32" | "serialize_i64"
-        | "serialize_u32" | "serialize_u64" | "serialize_bool" => {
-            Ok(quote! { ::serde_json::json!(*#typed_expr) })
-        }
+        "serialize_f32" | "serialize_f64" | "serialize_i32" | "serialize_i64" | "serialize_u32"
+        | "serialize_u64" | "serialize_bool" => Ok(quote! { ::serde_json::json!(*#typed_expr) }),
         "serialize_string" => Ok(quote! { ::serde_json::json!(#typed_expr) }),
         "serialize_json_value" => Ok(quote! { #typed_expr.clone() }),
         "serialize_vec3" => {
             Ok(quote! { ::serde_json::json!([#typed_expr[0], #typed_expr[1], #typed_expr[2]]) })
         }
-        "serialize_color" => {
-            Ok(quote! { ::serde_json::json!([#typed_expr[0], #typed_expr[1], #typed_expr[2], #typed_expr[3]]) })
-        }
+        "serialize_color" => Ok(
+            quote! { ::serde_json::json!([#typed_expr[0], #typed_expr[1], #typed_expr[2], #typed_expr[3]]) },
+        ),
         _ => Err(syn::Error::new_spanned(
             method,
             "unsupported serialize_method for primitive JSON registration",
@@ -711,13 +714,11 @@ fn generate_struct_impl(
                 }
             }
         }
-        Fields::Unnamed(_) => {
-            syn::Error::new_spanned(
-                name,
-                "Reflectable only supports structs with named fields (tuple structs not supported yet)",
-            )
-            .to_compile_error()
-        }
+        Fields::Unnamed(_) => syn::Error::new_spanned(
+            name,
+            "Reflectable only supports structs with named fields (tuple structs not supported yet)",
+        )
+        .to_compile_error(),
         Fields::Unit => {
             // Unit struct - no fields
             let type_info_name = format_ident!("{}_TYPE_INFO", name);
@@ -954,10 +955,7 @@ fn generate_field_infos(
 fn _is_primitive_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {
         let type_str = quote!(#type_path).to_string();
-        matches!(
-            type_str.as_str(),
-            "f32" | "i32" | "u64" | "bool" | "String"
-        )
+        matches!(type_str.as_str(), "f32" | "i32" | "u64" | "bool" | "String")
     } else {
         false
     }

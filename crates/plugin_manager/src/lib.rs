@@ -451,10 +451,7 @@ impl PluginManager {
         // If no manifest exists, plugins are rejected (manifest is mandatory).
         let plugin_dir = path.parent().unwrap_or(Path::new("."));
         let manifest = Self::load_plugin_manifest(plugin_dir)?;
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         let expected_hex = manifest.get(file_name);
         if let Some(expected_hex) = expected_hex {
             let expected: [u8; 32] = Self::parse_hex_hash(expected_hex).map_err(|e| {
@@ -474,7 +471,10 @@ impl PluginManager {
         } else {
             // Plugin not listed in manifest — reject unless manifest explicitly
             // allows unlisted plugins via the special "allow_unlisted": true key.
-            if !manifest.get("__allow_unlisted__").map_or(false, |v| v == "true") {
+            if !manifest
+                .get("__allow_unlisted__")
+                .map_or(false, |v| v == "true")
+            {
                 return Err(PluginManagerError::IntegrityCheckFailed {
                     path: path.to_path_buf(),
                     expected: [0u8; 32],
@@ -677,8 +677,8 @@ impl PluginManager {
                 message: format!("Failed to read manifest: {}", e),
             }
         })?;
-        let map: std::collections::HashMap<String, String> =
-            serde_json::from_str(&content).map_err(|e| PluginManagerError::LibraryLoadError {
+        let map: std::collections::HashMap<String, String> = serde_json::from_str(&content)
+            .map_err(|e| PluginManagerError::LibraryLoadError {
                 path: manifest_path,
                 message: format!("Invalid manifest JSON: {}", e),
             })?;
@@ -1182,9 +1182,19 @@ impl std::fmt::Display for PluginManagerError {
             Self::LibraryLoadError { path, message } => {
                 write!(f, "Failed to load library {:?}: {}", path, message)
             }
-            Self::IntegrityCheckFailed { path, expected, actual } => {
-                let exp_hex = expected.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-                let act_hex = actual.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+            Self::IntegrityCheckFailed {
+                path,
+                expected,
+                actual,
+            } => {
+                let exp_hex = expected
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
+                let act_hex = actual
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
                 write!(
                     f,
                     "Integrity check failed for '{}': expected sha256={}, got sha256={}. \

@@ -63,7 +63,9 @@ pub fn init(verbose: bool) -> LogGuard {
     let rust_log = std::env::var("RUST_LOG");
     let env_filter = match rust_log {
         Ok(val) => tracing_subscriber::EnvFilter::new(val),
-        Err(_) => tracing_subscriber::EnvFilter::new("debug,wgpu_hal=warn,wgpu_core=warn,naga=warn"),
+        Err(_) => {
+            tracing_subscriber::EnvFilter::new("debug,wgpu_hal=warn,wgpu_core=warn,naga=warn")
+        }
     };
     // File log: plain formatting, no ANSI/color codes
     let file_layer = tracing_subscriber::fmt::layer()

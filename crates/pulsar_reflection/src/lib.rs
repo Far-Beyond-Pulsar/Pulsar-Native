@@ -25,12 +25,12 @@ extern crate self as pulsar_reflection;
 pub mod registry;
 
 // New runtime type reflection system
-pub mod runtime_types;
-pub mod runtime_registry;
-pub mod type_traits;
-pub mod json_codec;
 pub mod dynamic_types;
+pub mod json_codec;
+pub mod runtime_registry;
+pub mod runtime_types;
 pub mod type_renderer;
+pub mod type_traits;
 
 // Primitive type implementations
 pub mod prims;
@@ -41,31 +41,33 @@ use std::collections::HashMap;
 use std::fmt;
 
 // Re-export for convenience
-pub use registry::{ComponentMethodRegistration, EngineClassRegistration, EngineClassRegistry, REGISTRY};
+pub use registry::{
+    ComponentMethodRegistration, EngineClassRegistration, EngineClassRegistry, REGISTRY,
+};
 
 // Re-export inventory for derive macro
 pub use inventory;
 
 // Re-export runtime type system
-pub use runtime_types::{FieldInfo, RuntimeTypeInfo, TypeStructure, WrapperType};
-pub use runtime_registry::{RuntimeTypeRegistration, RuntimeTypeRegistry, RUNTIME_TYPE_REGISTRY};
-pub use type_traits::{Reflectable, ReflectError, ReflectResult, TypeDeserializer, TypeSerializer};
 pub use json_codec::{JsonDeserializer, JsonSerializer};
+pub use runtime_registry::{RUNTIME_TYPE_REGISTRY, RuntimeTypeRegistration, RuntimeTypeRegistry};
+pub use runtime_types::{FieldInfo, RuntimeTypeInfo, TypeStructure, WrapperType};
+pub use type_traits::{ReflectError, ReflectResult, Reflectable, TypeDeserializer, TypeSerializer};
 
 // Re-export dynamic type system
 pub use dynamic_types::{
-    DynamicFieldInfo, DynamicTypeBuilder, DynamicTypeInfo, DynamicTypeRegistry,
-    DynamicValue, TypeTag, DYNAMIC_TYPE_REGISTRY,
+    DYNAMIC_TYPE_REGISTRY, DynamicFieldInfo, DynamicTypeBuilder, DynamicTypeInfo,
+    DynamicTypeRegistry, DynamicValue, TypeTag,
 };
 
 // Re-export type renderer system
 pub use type_renderer::{
-    RenderResult, TypeRenderer, TypeRendererRegistration, TypeRendererRegistry,
-    register_type_renderer, TYPE_RENDERER_REGISTRY,
+    RenderResult, TYPE_RENDERER_REGISTRY, TypeRenderer, TypeRendererRegistration,
+    TypeRendererRegistry, register_type_renderer,
 };
 
 // Re-export derive macro
-pub use pulsar_reflection_derive::{pulsar_type, Reflectable};
+pub use pulsar_reflection_derive::{Reflectable, pulsar_type};
 
 // ── UI property-editor hint ───────────────────────────────────────────────────
 
@@ -255,7 +257,8 @@ pub trait ComponentRuntimeContext {
         _mesh_asset: &str,
         _transform: glam::Mat4,
         _bounds: [f32; 4],
-    ) {}
+    ) {
+    }
 
     /// Report a non-fatal component error.
     fn report_error(&mut self, message: String);
@@ -368,7 +371,6 @@ pub struct PropertyMetadata {
 
     /// Setter closure to write new value (accepts type-erased Any)
     pub setter: Box<dyn Fn(&mut dyn EngineClass, Box<dyn Any>) + Send + Sync>,
-
 }
 
 impl fmt::Debug for PropertyMetadata {
@@ -405,7 +407,8 @@ pub struct MethodReturnType {
 
 pub type MethodArgs = Vec<Box<dyn Any>>;
 pub type MethodReturnValue = Option<Box<dyn Any>>;
-pub type MethodCaller = Box<dyn Fn(&mut dyn EngineClass, MethodArgs) -> MethodReturnValue + Send + Sync>;
+pub type MethodCaller =
+    Box<dyn Fn(&mut dyn EngineClass, MethodArgs) -> MethodReturnValue + Send + Sync>;
 
 /// Metadata for a blueprint-callable method.
 pub struct MethodMetadata {

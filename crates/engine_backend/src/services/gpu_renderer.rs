@@ -73,7 +73,6 @@ impl GpuRenderer {
     ) {
         if let Some(ref mut r) = self.helio_renderer {
             r.render_frame(device, queue, view, width, height, format);
-
         }
         self.frame_count += 1;
     }
@@ -139,7 +138,9 @@ impl GpuRenderer {
     }
 
     pub fn editor_camera_state(&self) -> Option<EditorCameraState> {
-        self.helio_renderer.as_ref().map(|r| r.editor_camera_state())
+        self.helio_renderer
+            .as_ref()
+            .map(|r| r.editor_camera_state())
     }
 
     pub fn set_editor_camera_state(&mut self, state: EditorCameraState) {
@@ -242,7 +243,6 @@ impl GpuRenderer {
             let _ = r.command_sender.send(cmd);
         }
     }
-
 }
 
 unsafe impl Send for GpuRenderer {}

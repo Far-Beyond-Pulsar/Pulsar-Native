@@ -162,7 +162,8 @@ impl SceneDatabase {
         let object_id = self.scene_db.add_object(obj.into_snapshot(), parent);
 
         if let Some(script_path) = blueprint_script_path {
-            let already_has = self.metadata_db
+            let already_has = self
+                .metadata_db
                 .get_components(&object_id)
                 .iter()
                 .any(|c| c.class_name == "ScriptComponent");
@@ -422,12 +423,9 @@ impl SceneDatabase {
     }
 
     /// Add a fully specified component instance.
-    pub fn add_component_instance(
-        &self,
-        object_id: &EditorObjectId,
-        component: ComponentInstance,
-    ) {
-        self.metadata_db.add_component_instance(object_id, component);
+    pub fn add_component_instance(&self, object_id: &EditorObjectId, component: ComponentInstance) {
+        self.metadata_db
+            .add_component_instance(object_id, component);
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
@@ -489,7 +487,6 @@ impl SceneDatabase {
         self.metadata_db.replace_components(object_id, components);
         self.sync_registered_component_props_to_scene_db(object_id);
     }
-
 
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
         self.metadata_db.get_components(object_id)
@@ -724,7 +721,6 @@ impl SceneDatabase {
             Self::collect_descendant_ids(scene_db, &child_id, out);
         }
     }
-
 }
 
 impl Default for SceneDatabase {

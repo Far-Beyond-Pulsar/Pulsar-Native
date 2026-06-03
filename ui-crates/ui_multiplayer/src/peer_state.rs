@@ -13,6 +13,7 @@ use engine_backend::subsystems::networking::multiuser::{
     ClientMessage, MultiuserClient, ServerMessage,
 };
 use engine_backend::subsystems::networking::simple_sync;
+use engine_state::{EngineContext, MultiuserParticipant};
 
 impl MultiplayerWindow {
     pub(super) fn join_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -35,25 +36,34 @@ impl MultiplayerWindow {
         }
 
         self.connection_status = ConnectionStatus::Connecting;
+        self.sync_engine_multiuser_connecting(&server_address, &session_id);
         cx.notify();
 
         // Create client
         let client = Arc::new(RwLock::new(MultiuserClient::new(server_address.clone())));
         self.client = Some(client.clone());
+        let identity = self.current_peer_identity();
 
         cx.spawn(async move |this, cx| {
             let join_token_clone = join_token.clone();
 
             let event_rx_result = {
                 let mut client_guard = client.write().await;
-                client_guard.connect(session_id.clone(), join_token_clone).await
+                client_guard
+                    .connect(session_id.clone(), join_token_clone, identity)
+                    .await
             }; // client_guard dropped here, releasing the lock
 
             match event_rx_result {
                 Ok(mut event_rx) => {
                     // Wait for the initial response (Joined or Error)
                     match event_rx.recv().await {
-                        Some(ServerMessage::Joined { peer_id, participants, .. }) => {
+                        Some(ServerMessage::Joined {
+                            peer_id,
+                            participants,
+                            participant_profiles,
+                            ..
+                        }) => {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Connected;
@@ -126,6 +136,15 @@ impl MultiplayerWindow {
                                     }
 
                                     tracing::debug!("JOIN_SESSION: Initialized replication bridge");
+                                    this.sync_engine_multiuser_connected(
+                                        &server_address,
+                                        &session_id,
+                                        &peer_id,
+                                        &participants,
+                                    );
+                                    if let Some(profiles) = participant_profiles {
+                                        this.sync_engine_multiuser_profiles(profiles);
+                                    }
 
                                     cx.notify();
                                 });
@@ -166,7 +185,11 @@ impl MultiplayerWindow {
                                 }
 
                                 match msg {
-                                    ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
+                                    ServerMessage::PeerJoined {
+                                        peer_id: joined_peer_id,
+                                        profile,
+                                        ..
+                                    } => {
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
                                                 tracing::debug!(
@@ -205,6 +228,50 @@ impl MultiplayerWindow {
                                                         tracing::debug!("JOIN_SESSION: Peer {} already in list", joined_peer_id);
                                                     }
                                                 }
+
+                                                let session_snapshot =
+                                                    this.active_session.as_ref().map(|s| {
+                                                        (
+                                                            s.server_address.clone(),
+                                                            s.session_id.clone(),
+                                                            s.connected_users.clone(),
+                                                        )
+                                                    });
+                                                if let (
+                                                    Some(peer_id),
+                                                    Some((server_address, session_id, participants)),
+                                                ) = (this.current_peer_id.as_ref(), session_snapshot)
+                                                {
+                                                    this.sync_engine_multiuser_connected(
+                                                        &server_address,
+                                                        &session_id,
+                                                        peer_id,
+                                                        &participants,
+                                                    );
+                                                }
+                                                if let Some(profile) = profile {
+                                                    if let Some(engine) = EngineContext::global() {
+                                                        let _ = engine.update_multiuser(|mu| {
+                                                            if let Some(existing) = mu
+                                                                .participant_profiles
+                                                                .iter_mut()
+                                                                .find(|p| p.peer_id == profile.peer_id)
+                                                            {
+                                                                existing.display_name = profile.display_name.clone();
+                                                                existing.avatar_url = profile.avatar_url.clone();
+                                                                existing.github_login = profile.github_login.clone();
+                                                            } else {
+                                                                mu.participant_profiles.push(MultiuserParticipant {
+                                                                    peer_id: profile.peer_id.clone(),
+                                                                    display_name: profile.display_name.clone(),
+                                                                    avatar_url: profile.avatar_url.clone(),
+                                                                    github_login: profile.github_login.clone(),
+                                                                    ping_ms: None,
+                                                                });
+                                                            }
+                                                        });
+                                                    }
+                                                }
                                             });
                                         });
                                     }
@@ -219,6 +286,33 @@ impl MultiplayerWindow {
                                                     integration.remove_user(&left_peer_id, cx);
                                                     cx.notify();
                                                 }
+
+                                                let session_snapshot =
+                                                    this.active_session.as_ref().map(|s| {
+                                                        (
+                                                            s.server_address.clone(),
+                                                            s.session_id.clone(),
+                                                            s.connected_users.clone(),
+                                                        )
+                                                    });
+                                                if let (
+                                                    Some(peer_id),
+                                                    Some((server_address, session_id, participants)),
+                                                ) = (this.current_peer_id.as_ref(), session_snapshot)
+                                                {
+                                                    this.sync_engine_multiuser_connected(
+                                                        &server_address,
+                                                        &session_id,
+                                                        peer_id,
+                                                        &participants,
+                                                    );
+                                                }
+                                                if let Some(engine) = EngineContext::global() {
+                                                    let _ = engine.update_multiuser(|mu| {
+                                                        mu.participant_profiles
+                                                            .retain(|p| p.peer_id != left_peer_id);
+                                                    });
+                                                }
                                             });
                                         });
                                     }
@@ -230,6 +324,10 @@ impl MultiplayerWindow {
                                                 this.connection_status = ConnectionStatus::Error(
                                                     format!("Kicked from session: {}", reason)
                                                 );
+                                                this.sync_engine_multiuser_error(format!(
+                                                    "Kicked from session: {}",
+                                                    reason
+                                                ));
                                                 this.active_session = None;
                                                 this.client = None;
                                                 this.user_presences.clear();
@@ -265,6 +363,10 @@ impl MultiplayerWindow {
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
                                                 this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                                this.sync_engine_multiuser_error(format!(
+                                                    "Server error: {}",
+                                                    message
+                                                ));
                                                 cx.notify();
                                             });
                                         });
@@ -663,12 +765,26 @@ impl MultiplayerWindow {
                                     }
                                     _ => {}
                                 }
+
+                                let latency_ms = {
+                                    let client_guard = client.read().await;
+                                    client_guard.latency_ms().await
+                                };
+                                cx.update(|cx| {
+                                    this.update(cx, |this, _| {
+                                        this.sync_engine_multiuser_latency(latency_ms);
+                                    });
+                                });
                             }
                         }
                         Some(ServerMessage::Error { message }) => {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                    this.sync_engine_multiuser_error(format!(
+                                        "Server error: {}",
+                                        message
+                                    ));
                                     cx.notify();
                                 });
                             });
@@ -677,6 +793,9 @@ impl MultiplayerWindow {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
+                                    this.sync_engine_multiuser_error(
+                                        "Unexpected server response".to_string(),
+                                    );
                                     cx.notify();
                                 });
                             });
@@ -685,6 +804,9 @@ impl MultiplayerWindow {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
+                                    this.sync_engine_multiuser_error(
+                                        "Connection closed before response".to_string(),
+                                    );
                                     cx.notify();
                                 });
                             });
@@ -695,6 +817,10 @@ impl MultiplayerWindow {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Error(format!("Connection failed: {}", e));
+                            this.sync_engine_multiuser_error(format!(
+                                "Connection failed: {}",
+                                e
+                            ));
                             cx.notify();
                         });
                     });

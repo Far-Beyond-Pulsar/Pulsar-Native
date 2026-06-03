@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.6.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c28f7ae7e0a4c40468ff93f81d3604ef24121af2#c28f7ae7e0a4c40468ff93f81d3604ef24121af2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=14c8bde549b944e23127cca159b48e48888b8e2c#14c8bde549b944e23127cca159b48e48888b8e2c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -3073,6 +3073,7 @@ dependencies = [
  "gpui-ce",
  "parking_lot",
  "pulsar-config",
+ "pulsar_auth",
  "pulsar_settings",
  "rust-discord-activity",
  "serde",
@@ -5994,9 +5995,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.30"
+version = "0.4.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
+checksum = "113b30b4cd05f7c06868fdb2854f66a7b9fece9a48425351cd532e810d74024f"
 dependencies = [
  "serde_core",
  "value-bag",
@@ -8565,6 +8566,19 @@ dependencies = [
  "tracing-subscriber",
  "uuid",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "pulsar_auth"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories 6.0.0",
+ "dotenvy",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -12796,8 +12810,10 @@ dependencies = [
  "image",
  "parking_lot",
  "plugin_editor_api",
+ "pulsar_auth",
  "pulsar_reflection",
  "pulsar_rendering",
+ "reqwest 0.13.4",
  "rust-i18n 4.1.0",
  "serde",
  "serde_json",
@@ -12867,6 +12883,7 @@ dependencies = [
  "ui_loading_screen",
  "ui_log_viewer",
  "ui_multiplayer",
+ "ui_multiuser_status",
  "ui_plugin_manager",
  "ui_problems",
  "ui_settings",
@@ -12899,8 +12916,10 @@ dependencies = [
  "engine_state",
  "git2",
  "gpui-ce",
+ "image",
  "open",
  "parking_lot",
+ "pulsar_auth",
  "reqwest 0.13.4",
  "rfd",
  "rodio",
@@ -12908,6 +12927,7 @@ dependencies = [
  "rustup",
  "serde",
  "serde_json",
+ "smallvec",
  "smol",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
@@ -13118,6 +13138,7 @@ name = "ui_multiplayer"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_state",
  "futures",
  "gpui-ce",
  "serde_json",
@@ -13126,6 +13147,15 @@ dependencies = [
  "tracing",
  "ui",
  "window_manager",
+]
+
+[[package]]
+name = "ui_multiuser_status"
+version = "0.1.0"
+dependencies = [
+ "engine_state",
+ "gpui-ce",
+ "ui",
 ]
 
 [[package]]

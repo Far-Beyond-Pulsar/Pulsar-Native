@@ -88,7 +88,11 @@ impl MeshAssetPicker {
                     .file_name()
                     .map(|n| n.to_string_lossy().into_owned())
                     .unwrap_or_else(|| path.clone());
-                AssetItem { display_name, path, thumbnail: None }
+                AssetItem {
+                    display_name,
+                    path,
+                    thumbnail: None,
+                }
             })
             .collect();
 
@@ -98,9 +102,12 @@ impl MeshAssetPicker {
             .join("assets");
 
         // Thumbnail cache root: project root if available, else cwd.
-        let thumbnail_cache_root = project_root
-            .clone()
-            .unwrap_or_else(|| engine_assets_root.parent().map(PathBuf::from).unwrap_or_else(|| PathBuf::from(".")));
+        let thumbnail_cache_root = project_root.clone().unwrap_or_else(|| {
+            engine_assets_root
+                .parent()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."))
+        });
 
         let searchable_list = cx.new(|cx| {
             AssetSearchableList::new(
@@ -110,9 +117,7 @@ impl MeshAssetPicker {
                 |item| item.display_name.clone(),
                 |item| item.path.clone(),
             )
-            .with_image_getter(|item| {
-                item.thumbnail.clone().map(ImageSource::Render)
-            })
+            .with_image_getter(|item| item.thumbnail.clone().map(ImageSource::Render))
             .with_empty_text("No matching assets")
             .with_max_width(px(360.0))
             .with_max_height(px(420.0))
@@ -216,11 +221,13 @@ impl MeshAssetPicker {
 
         let path_key = path.clone();
         cx.spawn(async move |this, cx| {
-            let Ok(Some(rgba)) = rx.recv().await else { return };
+            let Ok(Some(rgba)) = rx.recv().await else {
+                return;
+            };
 
-            let render_image = Arc::new(gpui::RenderImage::new(
-                smallvec::smallvec![image::Frame::new((*rgba).clone().into())],
-            ));
+            let render_image = Arc::new(gpui::RenderImage::new(smallvec::smallvec![
+                image::Frame::new((*rgba).clone().into())
+            ]));
 
             let _ = cx.update(|cx| {
                 this.update(cx, |picker, cx| {
@@ -291,5 +298,3 @@ fn query_assets(project_root: &Path, queries: &[AssetQuery]) -> Vec<String> {
 fn normalize_asset_path(path: impl AsRef<str>) -> String {
     path.as_ref().replace('\\', "/")
 }
-
-

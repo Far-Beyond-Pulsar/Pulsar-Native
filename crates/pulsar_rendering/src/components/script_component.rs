@@ -1,10 +1,10 @@
 //! Script component — attaches a blueprint actor script to a scene object.
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
-use pulsar_events::{ScriptRegistration, SCRIPT_REGISTRY};
+use pulsar_events::{SCRIPT_REGISTRY, ScriptRegistration};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
-    ReflectError, ScenePropsProjector,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
+    ScenePropsProjector,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -47,11 +47,15 @@ impl std::fmt::Display for ScriptAssetPath {
 }
 
 impl From<String> for ScriptAssetPath {
-    fn from(s: String) -> Self { Self(s) }
+    fn from(s: String) -> Self {
+        Self(s)
+    }
 }
 
 impl From<&str> for ScriptAssetPath {
-    fn from(s: &str) -> Self { Self(s.to_string()) }
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
 }
 
 // ── Reflection registration ───────────────────────────────────────────────────

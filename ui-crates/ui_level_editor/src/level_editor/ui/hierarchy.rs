@@ -1,16 +1,16 @@
+use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
+use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    menu::popup_menu::PopupMenu,
     h_flex,
     hierarchical_tree::tree_colors,
-    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
-    ActiveTheme, Icon, IconName, Sizable, StyledExt,
+    menu::popup_menu::PopupMenu,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, Icon,
+    IconName, Sizable, StyledExt,
 };
-use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
-use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 
 /// GPUI Render impl for the hierarchy drag ghost label.
 impl Render for HierarchyDragPayload {
@@ -117,11 +117,18 @@ impl HierarchyItem for SceneObjectItem {
             } else {
                 IconName::EyeOff
             })
-            .tooltip(if is_visible { "Hide object" } else { "Show object" })
+            .tooltip(if is_visible {
+                "Hide object"
+            } else {
+                "Show object"
+            })
             .on_click(move |_, _, cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
 
-                tracing::info!("[HIER VIS] visibility click fired for id={}", visibility_object_id);
+                tracing::info!(
+                    "[HIER VIS] visibility click fired for id={}",
+                    visibility_object_id
+                );
                 let t0 = std::time::Instant::now();
                 let mut state = visibility_state.write();
                 tracing::info!("[HIER VIS] write lock acquired in {:?}", t0.elapsed());
@@ -167,7 +174,12 @@ impl HierarchyItem for SceneObjectItem {
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
             let _ = app;
             let mut state = delete_state.write();
-            execute_command(&mut state, SceneCommand::RemoveObject { id: delete_id.clone() });
+            execute_command(
+                &mut state,
+                SceneCommand::RemoveObject {
+                    id: delete_id.clone(),
+                },
+            );
         })
     }
 
@@ -221,11 +233,7 @@ impl HierarchyPanel {
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
         let all_objects = state.scene_database.get_all_objects();
-        let items = Self::build_items(
-            &all_objects,
-            state.selected_object().as_ref(),
-            &state_arc,
-        );
+        let items = Self::build_items(&all_objects, state.selected_object().as_ref(), &state_arc);
 
         // Root-level objects (those without parents)
         let root_ids: Vec<String> = state
@@ -369,7 +377,11 @@ impl HierarchyPanel {
                 });
             }),
             on_drop: Arc::new(
-                move |payload: HierarchyDragPayload, target_id: &String, modifiers: &Modifiers, _window, cx| {
+                move |payload: HierarchyDragPayload,
+                      target_id: &String,
+                      modifiers: &Modifiers,
+                      _window,
+                      cx| {
                     use crate::level_editor::commands::{execute_command, SceneCommand};
                     if payload.object_id == *target_id {
                         return;

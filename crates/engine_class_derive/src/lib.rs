@@ -252,10 +252,6 @@ fn generate_property_metadata(
     }
 }
 
-
-
-
-
 /// Capitalize first letter of a string
 fn capitalize_first(s: &str) -> String {
     let mut chars = s.chars();
@@ -295,7 +291,10 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
     for item in &impl_block.items {
         if let ImplItem::Fn(method) = item {
             // Check if method has #[method] attribute
-            let method_attr = method.attrs.iter().find(|attr| attr.path().is_ident("method"));
+            let method_attr = method
+                .attrs
+                .iter()
+                .find(|attr| attr.path().is_ident("method"));
 
             if let Some(attr) = method_attr {
                 // Parse the method
@@ -321,9 +320,7 @@ pub fn component_methods(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 // Extract return type
                 let return_type = match &method.sig.output {
                     ReturnType::Default => None,
-                    ReturnType::Type(_, ty) => {
-                        Some(ty.clone())
-                    }
+                    ReturnType::Type(_, ty) => Some(ty.clone()),
                 };
 
                 // Generate param metadata
@@ -467,7 +464,9 @@ fn parse_method_attribute(attr: &Attribute) -> (proc_macro2::TokenStream, Option
                 method_type = quote! { pulsar_reflection::MethodType::Pure };
             } else if tokens_str.contains("MethodType :: Fn") || tokens_str.contains("Fn") {
                 method_type = quote! { pulsar_reflection::MethodType::Fn };
-            } else if tokens_str.contains("MethodType :: ControlFlow") || tokens_str.contains("ControlFlow") {
+            } else if tokens_str.contains("MethodType :: ControlFlow")
+                || tokens_str.contains("ControlFlow")
+            {
                 method_type = quote! { pulsar_reflection::MethodType::ControlFlow };
             }
         }

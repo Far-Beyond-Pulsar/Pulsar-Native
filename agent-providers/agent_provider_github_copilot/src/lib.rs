@@ -194,9 +194,7 @@ impl GithubCopilotProvider {
             .filter(|s| !s.is_empty());
 
         match (reasoning, content) {
-            (Some(thinking), Some(body)) => {
-                Some(format!("<think>{}</think>{}", thinking, body))
-            }
+            (Some(thinking), Some(body)) => Some(format!("<think>{}</think>{}", thinking, body)),
             (Some(thinking), None) => Some(format!("<think>{}</think>", thinking)),
             (None, Some(body)) => Some(body),
             (None, None) => None,
@@ -352,7 +350,6 @@ impl GithubCopilotProvider {
         let response = builder
             .send()
             .context("failed to call GitHub Models catalog API")?;
-        
 
         if !response.status().is_success() {
             return Err(Self::format_http_error(response, "catalog API"));
@@ -362,11 +359,16 @@ impl GithubCopilotProvider {
             .json()
             .context("invalid JSON from GitHub Models catalog")?;
 
-        let items = match raw.as_array().or_else(|| {
-            raw.get("models").and_then(|v| v.as_array())
-        }) {
+        let items = match raw
+            .as_array()
+            .or_else(|| raw.get("models").and_then(|v| v.as_array()))
+        {
             Some(items) => items.clone(),
-            None => return Err(anyhow!("GitHub Models catalog returned unexpected shape: {raw}")),
+            None => {
+                return Err(anyhow!(
+                    "GitHub Models catalog returned unexpected shape: {raw}"
+                ))
+            }
         };
 
         let mut descriptors: Vec<ModelDescriptor> = items
@@ -428,7 +430,9 @@ impl GithubCopilotProvider {
             .collect();
 
         if descriptors.is_empty() {
-            return Err(anyhow!("GitHub Models catalog returned no text-capable models"));
+            return Err(anyhow!(
+                "GitHub Models catalog returned no text-capable models"
+            ));
         }
 
         // Best-effort compact_model assignment: pair large/reasoning models with
@@ -437,10 +441,7 @@ impl GithubCopilotProvider {
         // All string literals in preferred slices are 'static, so the cast is
         // sound.  We need the explicit type to satisfy the borrow checker.
         let pick_compact = |preferred: &[&'static str]| -> Option<&'static str> {
-            preferred
-                .iter()
-                .copied()
-                .find(|&id| ids.contains(&id))
+            preferred.iter().copied().find(|&id| ids.contains(&id))
         };
 
         for desc in &mut descriptors {
@@ -459,7 +460,10 @@ impl GithubCopilotProvider {
                     "openai/gpt-4o-mini",
                     "meta/llama-4-scout",
                 ])
-            } else if desc.id.contains("pro") || desc.id.contains("4.1\"") || desc.id.contains("opus") {
+            } else if desc.id.contains("pro")
+                || desc.id.contains("4.1\"")
+                || desc.id.contains("opus")
+            {
                 pick_compact(&[
                     "openai/gpt-4.1-mini",
                     "google/gemini-2.5-flash",
@@ -558,28 +562,27 @@ impl GithubCopilotProvider {
                     // ── Content tokens ────────────────────────────────────
                     // Handle both the common string form and the rarer
                     // array-of-parts form (some Claude-via-OpenAI proxies).
-                    let content_chunks: Vec<String> =
-                        if let Some(text) = delta.get("content").and_then(|v| v.as_str()) {
-                            if text.is_empty() {
-                                vec![]
-                            } else {
-                                vec![text.to_string()]
-                            }
-                        } else if let Some(parts) =
-                            delta.get("content").and_then(|v| v.as_array())
-                        {
-                            parts
-                                .iter()
-                                .filter_map(|part| {
-                                    part.get("text")
-                                        .and_then(|v| v.as_str())
-                                        .filter(|s| !s.is_empty())
-                                        .map(|s| s.to_string())
-                                })
-                                .collect()
-                        } else {
+                    let content_chunks: Vec<String> = if let Some(text) =
+                        delta.get("content").and_then(|v| v.as_str())
+                    {
+                        if text.is_empty() {
                             vec![]
-                        };
+                        } else {
+                            vec![text.to_string()]
+                        }
+                    } else if let Some(parts) = delta.get("content").and_then(|v| v.as_array()) {
+                        parts
+                            .iter()
+                            .filter_map(|part| {
+                                part.get("text")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.is_empty())
+                                    .map(|s| s.to_string())
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    };
 
                     for chunk in content_chunks {
                         // Close any open thinking block before emitting prose.

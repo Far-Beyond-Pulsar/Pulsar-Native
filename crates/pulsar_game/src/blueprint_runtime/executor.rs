@@ -127,7 +127,8 @@ impl BlueprintExecutor {
         let mut programs = HashMap::new();
 
         for (event_name, mut program) in bytecode.event_programs.clone() {
-            self.native_executor.prepare(&mut program)
+            self.native_executor
+                .prepare(&mut program)
                 .map_err(ExecutorError::Prepare)?;
 
             programs.insert(event_name, program);
@@ -191,22 +192,22 @@ impl BlueprintExecutor {
         arena: &mut ByteArena,
     ) -> Result<(), ExecutorError> {
         // Get loaded blueprint
-        let blueprint = self.loaded_blueprints.get(class_name)
+        let blueprint = self
+            .loaded_blueprints
+            .get(class_name)
             .ok_or_else(|| ExecutorError::BlueprintNotLoaded(class_name.to_string()))?;
 
         // Get event program
-        let program = blueprint.programs.get(event_name)
-            .ok_or_else(|| ExecutorError::Execution(
-                format!("Event '{}' not found in blueprint '{}'", event_name, class_name)
-            ))?;
+        let program = blueprint.programs.get(event_name).ok_or_else(|| {
+            ExecutorError::Execution(format!(
+                "Event '{}' not found in blueprint '{}'",
+                event_name, class_name
+            ))
+        })?;
 
         // Execute bytecode
         unsafe {
-            vm::run_with_external_arena(
-                program,
-                arena.as_mut_ptr(),
-                arena.size(),
-            )
+            vm::run_with_external_arena(program, arena.as_mut_ptr(), arena.size())
                 .map_err(|e| ExecutorError::Execution(format!("{:?}", e)))?;
         }
 
@@ -231,8 +232,10 @@ impl BlueprintExecutor {
 
 impl Drop for BlueprintExecutor {
     fn drop(&mut self) {
-        tracing::debug!("Dropping BlueprintExecutor with {} loaded blueprints",
-            self.loaded_blueprints.len());
+        tracing::debug!(
+            "Dropping BlueprintExecutor with {} loaded blueprints",
+            self.loaded_blueprints.len()
+        );
     }
 }
 
@@ -243,7 +246,11 @@ mod tests {
     #[test]
     fn test_executor_creation() {
         let result = BlueprintExecutor::new();
-        assert!(result.is_ok(), "Failed to create executor: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to create executor: {:?}",
+            result.err()
+        );
 
         let executor = result.unwrap();
         assert_eq!(executor.loaded_blueprints.len(), 0);
@@ -256,7 +263,11 @@ mod tests {
         let bytecode = CompiledBytecode::new("TestBlueprint");
 
         let result = executor.load_blueprint(bytecode);
-        assert!(result.is_ok(), "Failed to load blueprint: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to load blueprint: {:?}",
+            result.err()
+        );
 
         assert!(executor.is_loaded("TestBlueprint"));
         assert_eq!(executor.loaded_class_names(), vec!["TestBlueprint"]);
@@ -278,8 +289,12 @@ mod tests {
     fn test_unload_all() {
         let mut executor = BlueprintExecutor::new().unwrap();
 
-        executor.load_blueprint(CompiledBytecode::new("BP1")).unwrap();
-        executor.load_blueprint(CompiledBytecode::new("BP2")).unwrap();
+        executor
+            .load_blueprint(CompiledBytecode::new("BP1"))
+            .unwrap();
+        executor
+            .load_blueprint(CompiledBytecode::new("BP2"))
+            .unwrap();
 
         assert_eq!(executor.loaded_blueprints.len(), 2);
 

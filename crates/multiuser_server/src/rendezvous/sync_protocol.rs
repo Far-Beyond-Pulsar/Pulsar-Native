@@ -3,6 +3,14 @@
 use crate::nat::ConnectionCandidate;
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PeerProfile {
+    pub peer_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
@@ -11,6 +19,12 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
         join_token: String,
+        #[serde(default)]
+        display_name: Option<String>,
+        #[serde(default)]
+        avatar_url: Option<String>,
+        #[serde(default)]
+        github_login: Option<String>,
     },
     /// Leave a session
     Leave { session_id: String, peer_id: String },
@@ -103,9 +117,16 @@ pub enum ServerMessage {
         session_id: String,
         peer_id: String,
         participants: Vec<String>,
+        #[serde(default)]
+        participant_profiles: Option<Vec<PeerProfile>>,
     },
     /// Another peer joined
-    PeerJoined { session_id: String, peer_id: String },
+    PeerJoined {
+        session_id: String,
+        peer_id: String,
+        #[serde(default)]
+        profile: Option<PeerProfile>,
+    },
     /// A peer left
     PeerLeft { session_id: String, peer_id: String },
     /// You were kicked from the session

@@ -58,8 +58,14 @@ impl std::fmt::Display for ExecutorError {
             ExecutorError::MissingSymbol(s) => write!(f, "missing symbol: {}", s),
             ExecutorError::Io(e) => write!(f, "I/O error during hash verification: {}", e),
             ExecutorError::HashMismatch { expected, actual } => {
-                let exp_hex = expected.iter().map(|b| format!("{:02x}", b)).collect::<String>();
-                let act_hex = actual.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+                let exp_hex = expected
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
+                let act_hex = actual
+                    .iter()
+                    .map(|b| format!("{:02x}", b))
+                    .collect::<String>();
                 write!(
                     f,
                     "SHA-256 mismatch: expected {exp_hex}, got {act_hex}. \
@@ -106,8 +112,7 @@ impl BpExecutor {
         // This prevents TOCTOU attacks where a temp file is replaced between
         // write and load.
         if let Some(expected) = expected_hash {
-            let bytes =
-                std::fs::read(path).map_err(ExecutorError::Io)?;
+            let bytes = std::fs::read(path).map_err(ExecutorError::Io)?;
             let actual: [u8; 32] = Sha256::digest(&bytes).into();
             if &actual != expected {
                 return Err(ExecutorError::HashMismatch {

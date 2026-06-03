@@ -153,10 +153,8 @@ impl FlamegraphWindow {
                 cx.update(|cx| {
                     this.update(cx, |this, cx| {
                         this.load_from_database(db_path, cx);
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();

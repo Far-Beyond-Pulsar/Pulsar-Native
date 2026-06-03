@@ -9,7 +9,7 @@
 //! - **Fonts**: TrueType fonts in `assets/fonts/**/*.ttf`
 //! - **Images**: PNG files in `assets/images/**/*.png`
 //! - **Meshes**: All files in `assets/meshes/**`
-//! 
+//!
 //! Icons are loaded from the WGPUI-Component crate, while other assets come from the engine.
 //!
 //! ## Usage

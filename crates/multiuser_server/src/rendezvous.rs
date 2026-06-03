@@ -7,7 +7,7 @@ mod session_manager;
 mod sync_protocol;
 
 pub use session_manager::RendezvousCoordinator;
-pub use sync_protocol::{CandidateDto, ClientMessage, ServerMessage};
+pub use sync_protocol::{CandidateDto, ClientMessage, PeerProfile, ServerMessage};
 
 use anyhow::{Context, Result};
 use axum::{
@@ -135,8 +135,22 @@ impl RendezvousCoordinator {
                 session_id: sid,
                 peer_id: pid,
                 join_token,
+                display_name,
+                avatar_url,
+                github_login,
             } => {
-                self.handle_join(sid, pid, join_token, tx, peer_id, session_id)
+                self
+                    .handle_join(
+                        sid,
+                        pid,
+                        join_token,
+                        display_name,
+                        avatar_url,
+                        github_login,
+                        tx,
+                        peer_id,
+                        session_id,
+                    )
                     .await?;
             }
             ClientMessage::Leave {
@@ -296,6 +310,9 @@ impl RendezvousCoordinator {
         sid: String,
         pid: String,
         _join_token: String,
+        display_name: Option<String>,
+        avatar_url: Option<String>,
+        github_login: Option<String>,
         tx: mpsc::Sender<ServerMessage>,
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
@@ -323,7 +340,17 @@ impl RendezvousCoordinator {
             .clone();
 
         // Add the new peer FIRST
-        let peer = PeerSession::new(pid.clone(), sid.clone(), tx.clone());
+        let profile = if display_name.is_none() && avatar_url.is_none() && github_login.is_none() {
+            None
+        } else {
+            Some(PeerProfile {
+                peer_id: pid.clone(),
+                display_name,
+                avatar_url,
+                github_login,
+            })
+        };
+        let peer = PeerSession::new(pid.clone(), sid.clone(), tx.clone(), profile.clone());
         session.add_peer(peer);
         *peer_id = Some(pid.clone());
         *session_id = Some(sid.clone());
@@ -336,6 +363,11 @@ impl RendezvousCoordinator {
             .iter()
             .map(|p| p.peer_id.clone())
             .collect();
+        let participant_profiles: Vec<PeerProfile> = session
+            .list_peers()
+            .iter()
+            .filter_map(|p| p.profile.clone())
+            .collect();
 
         info!(session = %sid, "Sending Joined with {} participants: {:?}", participants.len(), participants);
 
@@ -344,11 +376,16 @@ impl RendezvousCoordinator {
             session_id: sid.clone(),
             peer_id: pid.clone(),
             participants,
+            participant_profiles: if participant_profiles.is_empty() {
+                None
+            } else {
+                Some(participant_profiles)
+            },
         })
         .await?;
 
         // Notify other peers about the new peer
-        self.broadcast_peer_joined(&sid, &pid).await?;
+        self.broadcast_peer_joined(&sid, &pid, profile).await?;
 
         Ok(())
     }
@@ -528,12 +565,18 @@ impl RendezvousCoordinator {
         Ok(())
     }
 
-    async fn broadcast_peer_joined(&self, sid: &str, pid: &str) -> Result<()> {
+    async fn broadcast_peer_joined(
+        &self,
+        sid: &str,
+        pid: &str,
+        profile: Option<PeerProfile>,
+    ) -> Result<()> {
         let session = self.sessions.get(sid).context("Session not found")?;
 
         let msg = ServerMessage::PeerJoined {
             session_id: sid.to_string(),
             peer_id: pid.to_string(),
+            profile,
         };
 
         for peer in session.list_peers() {

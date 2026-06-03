@@ -167,7 +167,11 @@ impl AnthropicProvider {
     }
 
     /// Build the full JSON request payload.  `stream: true` enables SSE.
-    fn build_request_payload(model: &str, request: &ChatRequest, stream: bool) -> (Vec<Value>, Option<String>, Value) {
+    fn build_request_payload(
+        model: &str,
+        request: &ChatRequest,
+        stream: bool,
+    ) -> (Vec<Value>, Option<String>, Value) {
         let (messages, system) = Self::build_messages_and_system(&request.messages);
 
         let mut payload = json!({
@@ -219,9 +223,7 @@ impl AnthropicProvider {
     /// `<think>…</think>` so the UI renders them as collapsible reasoning —
     /// identical to how Ollama and GitHub Models surface thinking tokens.
     fn parse_assistant_text(raw: &Value) -> Option<String> {
-        let content = raw
-            .get("content")
-            .and_then(|v| v.as_array())?;
+        let content = raw.get("content").and_then(|v| v.as_array())?;
 
         let mut thinking_parts: Vec<&str> = Vec::new();
         let mut text_parts: Vec<&str> = Vec::new();
@@ -254,7 +256,11 @@ impl AnthropicProvider {
         }
         result.push_str(&text_parts.join(""));
 
-        if result.is_empty() { None } else { Some(result) }
+        if result.is_empty() {
+            None
+        } else {
+            Some(result)
+        }
     }
 
     /// Extract tool calls from a non-streaming response content array.
@@ -270,11 +276,13 @@ impl AnthropicProvider {
                         }
                         let id = block.get("id")?.as_str()?.to_string();
                         let name = block.get("name")?.as_str()?.to_string();
-                        let arguments_json = block
-                            .get("input")
-                            .cloned()
-                            .unwrap_or_else(|| json!({}));
-                        Some(ToolCall { id, name, arguments_json })
+                        let arguments_json =
+                            block.get("input").cloned().unwrap_or_else(|| json!({}));
+                        Some(ToolCall {
+                            id,
+                            name,
+                            arguments_json,
+                        })
                     })
                     .collect()
             })
@@ -460,10 +468,7 @@ impl AnthropicProvider {
             match event.get("type").and_then(|v| v.as_str()) {
                 // ── New content block ────────────────────────────────────────
                 Some("content_block_start") => {
-                    let index = event
-                        .get("index")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as usize;
+                    let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                     let block_type = event
                         .get("content_block")
                         .and_then(|b| b.get("type"))
@@ -521,10 +526,7 @@ impl AnthropicProvider {
 
                 // ── Incremental content ──────────────────────────────────────
                 Some("content_block_delta") => {
-                    let index = event
-                        .get("index")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(0) as usize;
+                    let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
                     if let Some(delta) = event.get("delta") {
                         match delta.get("type").and_then(|v| v.as_str()) {
@@ -747,9 +749,7 @@ impl ChatProvider for AnthropicProvider {
             return Err(Self::format_http_error(response, "messages API"));
         }
 
-        let raw_response: Value = response
-            .json()
-            .context("invalid JSON from Anthropic API")?;
+        let raw_response: Value = response.json().context("invalid JSON from Anthropic API")?;
 
         let assistant_message = Self::parse_assistant_text(&raw_response);
         let tool_calls = Self::parse_tool_calls(&raw_response);

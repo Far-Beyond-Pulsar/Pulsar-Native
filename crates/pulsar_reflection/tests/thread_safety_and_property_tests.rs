@@ -209,10 +209,9 @@ fn test_concurrent_registry_updates() {
                 let f32_info = RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap();
 
                 for j in 0..10 {
-                    let dynamic_type =
-                        DynamicTypeBuilder::new(&format!("RegUpdate_{}_{}", i, j))
-                            .add_field("value", f32_info)
-                            .build();
+                    let dynamic_type = DynamicTypeBuilder::new(&format!("RegUpdate_{}_{}", i, j))
+                        .add_field("value", f32_info)
+                        .build();
 
                     DYNAMIC_TYPE_REGISTRY.register(dynamic_type);
 
@@ -315,9 +314,7 @@ fn property_test_set_get_roundtrip() {
 
     for test_val in test_values {
         let mut value = DynamicValue::new(Arc::clone(&dynamic_type));
-        value
-            .set_field("value", Box::new(test_val))
-            .unwrap();
+        value.set_field("value", Box::new(test_val)).unwrap();
         let retrieved = value.get_field_typed::<f32>("value").unwrap();
         assert_eq!(retrieved, test_val);
     }
@@ -398,14 +395,7 @@ fn property_test_empty_field_name_allowed() {
 #[test]
 fn property_test_unicode_names_preserved() {
     // Property: Unicode in names should be preserved exactly
-    let test_names = vec![
-        "中文",
-        "日本語",
-        "한국어",
-        "Русский",
-        "🦀🚀",
-        "مرحبا",
-    ];
+    let test_names = vec!["中文", "日本語", "한국어", "Русский", "🦀🚀", "مرحبا"];
 
     let f32_info = RUNTIME_TYPE_REGISTRY.get::<f32>().unwrap();
 
@@ -461,9 +451,7 @@ fn property_test_remove_field_returns_correct_value() {
 
     for test_val in test_values {
         let mut value = DynamicValue::new(Arc::clone(&dynamic_type));
-        value
-            .set_field("value", Box::new(test_val))
-            .unwrap();
+        value.set_field("value", Box::new(test_val)).unwrap();
 
         let removed = value.remove_field("value");
         assert!(removed.is_some());
@@ -489,9 +477,7 @@ fn property_test_has_value_consistency() {
     assert!(!value.has_value("value"));
 
     // After set, should have value
-    value
-        .set_field("value", Box::new(42.0f32))
-        .unwrap();
+    value.set_field("value", Box::new(42.0f32)).unwrap();
     assert!(value.has_value("value"));
 
     // After remove, should not have value
@@ -552,12 +538,8 @@ fn integration_test_complete_workflow() {
     let mut player = DynamicValue::new(Arc::clone(&player_type));
 
     // Set values
-    player
-        .set_field("health", Box::new(100.0f32))
-        .unwrap();
-    player
-        .set_field("max_health", Box::new(100.0f32))
-        .unwrap();
+    player.set_field("health", Box::new(100.0f32)).unwrap();
+    player.set_field("max_health", Box::new(100.0f32)).unwrap();
     player
         .set_field("name", Box::new("Hero".to_string()))
         .unwrap();
@@ -584,9 +566,7 @@ fn integration_test_schema_evolution() {
         .build();
 
     let mut data_v1 = DynamicValue::new(v1);
-    data_v1
-        .set_field("value", Box::new(42.0f32))
-        .unwrap();
+    data_v1.set_field("value", Box::new(42.0f32)).unwrap();
 
     // Version 2 with additional field
     let v2 = DynamicTypeBuilder::new("DataV2")
@@ -598,15 +578,11 @@ fn integration_test_schema_evolution() {
 
     // Migrate v1 data
     if let Ok(value) = data_v1.get_field_typed::<f32>("value") {
-        data_v2
-            .set_field("value", Box::new(value))
-            .unwrap();
+        data_v2.set_field("value", Box::new(value)).unwrap();
     }
 
     // Set default for new field
-    data_v2
-        .set_field("extra", Box::new(0.0f32))
-        .unwrap();
+    data_v2.set_field("extra", Box::new(0.0f32)).unwrap();
 
     // Verify migration
     assert_eq!(data_v2.get_field_typed::<f32>("value").unwrap(), 42.0);
@@ -627,12 +603,8 @@ fn integration_test_multiple_instances_same_type() {
     let mut entities = Vec::new();
     for i in 0..10 {
         let mut entity = DynamicValue::new(Arc::clone(&entity_type));
-        entity
-            .set_field("x", Box::new(i as f32))
-            .unwrap();
-        entity
-            .set_field("y", Box::new((i * 2) as f32))
-            .unwrap();
+        entity.set_field("x", Box::new(i as f32)).unwrap();
+        entity.set_field("y", Box::new((i * 2) as f32)).unwrap();
         entities.push(entity);
     }
 

@@ -3,8 +3,8 @@
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
 use helio::{GpuLight, LightType as HelioLightType, SceneActor};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
-    ScenePropsProjector, Reflectable, scene_id_to_tag,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, Reflectable, RuntimeComponentOwner,
+    ScenePropsProjector, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -156,9 +156,9 @@ impl ComponentRuntimeBehavior for LightComponent {
 
         let helio_type = match light.light_type {
             LightType::Directional => HelioLightType::Directional,
-            LightType::Point       => HelioLightType::Point,
-            LightType::Spot        => HelioLightType::Spot,
-            LightType::Area        => HelioLightType::Point, // helio has no Area; nearest equivalent
+            LightType::Point => HelioLightType::Point,
+            LightType::Spot => HelioLightType::Spot,
+            LightType::Area => HelioLightType::Point, // helio has no Area; nearest equivalent
         };
 
         let [px, py, pz] = owner.position;
@@ -167,22 +167,28 @@ impl ComponentRuntimeBehavior for LightComponent {
         // LightComponent maps to the GPU.  The context handles insert-vs-update
         // and all internal helio tracking.
         let gpu = GpuLight {
-            position_range:  [px, py, pz, light.range],
+            position_range: [px, py, pz, light.range],
             direction_outer: [0.0, -1.0, 0.0, light.outer_cone_angle.to_radians()],
-            color_intensity: [light.color[0], light.color[1], light.color[2], light.intensity],
+            color_intensity: [
+                light.color[0],
+                light.color[1],
+                light.color[2],
+                light.intensity,
+            ],
             // shadow_index 0 = shadows enabled (helio assigns the atlas slot in flush()).
             // u32::MAX = shadows disabled.
-            shadow_index:    if light.cast_shadows { 0 } else { u32::MAX },
-            light_type:      helio_type as u32,
-            inner_angle:     light.inner_cone_angle.to_radians(),
-            _pad:            0,
+            shadow_index: if light.cast_shadows { 0 } else { u32::MAX },
+            light_type: helio_type as u32,
+            inner_angle: light.inner_cone_angle.to_radians(),
+            _pad: 0,
         };
 
         // Tag the actor with a hash of the SceneDb ID so the picker can
         // identify it without any external reverse-lookup map.
         let tag = scene_id_to_tag(owner.scene_object_id);
-        context.renderer_mut().scene_mut()
+        context
+            .renderer_mut()
+            .scene_mut()
             .insert_actor(SceneActor::light_with_tag(gpu, tag));
     }
 }
-

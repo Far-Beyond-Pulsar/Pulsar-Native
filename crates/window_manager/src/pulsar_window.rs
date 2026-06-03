@@ -62,8 +62,7 @@ pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
     static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
 
     let app_icon = WindowIcon::from_png_bytes(ICON_PNG)
-        .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
-        ;
+        .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"));
 
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {

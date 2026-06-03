@@ -11,8 +11,7 @@ struct StdWrapperTypeInfo {
     entries: dashmap::DashMap<TypeId, &'static RuntimeTypeInfo>,
 }
 
-static STD_WRAPPER_TYPE_INFO: Lazy<StdWrapperTypeInfo> =
-    Lazy::new(StdWrapperTypeInfo::default);
+static STD_WRAPPER_TYPE_INFO: Lazy<StdWrapperTypeInfo> = Lazy::new(StdWrapperTypeInfo::default);
 
 fn get_or_insert_wrapper_type_info<Wrapper, Inner>(
     wrapper_kind: WrapperType,
@@ -114,7 +113,11 @@ where
     where
         Self: Sized,
     {
-        let has_value_fields = [FieldInfo::new("has_value", <bool as Reflectable>::type_info(), 0)];
+        let has_value_fields = [FieldInfo::new(
+            "has_value",
+            <bool as Reflectable>::type_info(),
+            0,
+        )];
         let has_value_map = deserializer.deserialize_struct(&has_value_fields)?;
 
         let has_value = has_value_map

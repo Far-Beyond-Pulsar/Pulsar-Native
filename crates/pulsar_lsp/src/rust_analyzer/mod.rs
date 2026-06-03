@@ -10,7 +10,6 @@ pub use path_utils::path_to_uri;
 
 use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
-use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -21,6 +20,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnalyzerStatus {

@@ -28,8 +28,8 @@ pub fn init_telemetry(config: &Config) -> Result<()> {
             .with_resource(
                 Resource::builder()
                     .with_attributes(vec![
-                    KeyValue::new("service.name", "pulsar-multiedit"),
-                    KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
+                        KeyValue::new("service.name", "pulsar-multiedit"),
+                        KeyValue::new("service.version", env!("CARGO_PKG_VERSION")),
                     ])
                     .build(),
             )

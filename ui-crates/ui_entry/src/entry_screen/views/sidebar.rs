@@ -1,7 +1,7 @@
 use crate::entry_screen::{EntryScreen, EntryScreenView};
 use crate::entry_screen::{FabSearchRequested, SettingsRequested};
 use gpui::{prelude::*, *};
-use ui::{h_flex, v_flex, ActiveTheme as _, Colorize as _, Icon, IconName};
+use ui::{ActiveTheme as _, Colorize as _, Icon, IconName, h_flex, v_flex};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -329,6 +329,16 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .pb_4()
                 .gap_0p5()
                 .child(div().w_full().h(px(1.0)).bg(border).mb_2())
+                .when_some(screen.auth_message.clone(), |this, msg| {
+                    this.child(
+                        div()
+                            .px_3()
+                            .pb_2()
+                            .text_xs()
+                            .text_color(muted_fg)
+                            .child(msg),
+                    )
+                })
                 .child(
                     h_flex()
                         .id("nav-open")

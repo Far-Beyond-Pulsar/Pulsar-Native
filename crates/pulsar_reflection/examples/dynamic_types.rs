@@ -7,7 +7,7 @@
 //! - Use dynamic types for modding/data-driven design
 
 use pulsar_reflection::{
-    DynamicTypeBuilder, DynamicValue, DYNAMIC_TYPE_REGISTRY, RUNTIME_TYPE_REGISTRY,
+    DYNAMIC_TYPE_REGISTRY, DynamicTypeBuilder, DynamicValue, RUNTIME_TYPE_REGISTRY,
 };
 
 fn main() {
@@ -33,9 +33,15 @@ fn example_custom_material() {
     println!("Example 1: Custom Material Type\n");
 
     // Get compile-time type info for the field types we'll use
-    let f32_info = RUNTIME_TYPE_REGISTRY.get::<f32>().expect("f32 not registered");
-    let color_info = RUNTIME_TYPE_REGISTRY.get::<[f32; 4]>().expect("[f32; 4] not registered");
-    let string_info = RUNTIME_TYPE_REGISTRY.get::<String>().expect("String not registered");
+    let f32_info = RUNTIME_TYPE_REGISTRY
+        .get::<f32>()
+        .expect("f32 not registered");
+    let color_info = RUNTIME_TYPE_REGISTRY
+        .get::<[f32; 4]>()
+        .expect("[f32; 4] not registered");
+    let string_info = RUNTIME_TYPE_REGISTRY
+        .get::<String>()
+        .expect("String not registered");
 
     // Build a new material type at runtime
     let material_type = DynamicTypeBuilder::new("CustomWoodMaterial")
@@ -79,7 +85,10 @@ fn example_custom_material() {
         .expect("Failed to set normal_strength");
 
     wood_material
-        .set_field("texture_path", Box::new("textures/wood_oak.png".to_string()))
+        .set_field(
+            "texture_path",
+            Box::new("textures/wood_oak.png".to_string()),
+        )
         .expect("Failed to set texture_path");
 
     println!("Created material instance with values:");
@@ -163,9 +172,7 @@ fn example_entity_definition() {
     // Create a goblin instance
     let mut goblin = DynamicValue::new(goblin_type);
     goblin.set_field("health", Box::new(50.0f32)).unwrap();
-    goblin
-        .set_field("max_health", Box::new(50.0f32))
-        .unwrap();
+    goblin.set_field("max_health", Box::new(50.0f32)).unwrap();
     goblin
         .set_field("attack_damage", Box::new(12.0f32))
         .unwrap();
@@ -205,7 +212,10 @@ fn example_schema_evolution() {
         .build();
 
     println!("Created PlayerStats v1:");
-    println!("  Fields: {:?}", stats_v1.fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+    println!(
+        "  Fields: {:?}",
+        stats_v1.fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
 
     // Create a v1 instance (simulating old save data)
     let mut old_stats = DynamicValue::new(stats_v1);
@@ -213,8 +223,14 @@ fn example_schema_evolution() {
     old_stats.set_field("mana", Box::new(50.0f32)).unwrap();
 
     println!("\nOld save data:");
-    println!("  Health: {}", old_stats.get_field_typed::<f32>("health").unwrap());
-    println!("  Mana: {}", old_stats.get_field_typed::<f32>("mana").unwrap());
+    println!(
+        "  Health: {}",
+        old_stats.get_field_typed::<f32>("health").unwrap()
+    );
+    println!(
+        "  Mana: {}",
+        old_stats.get_field_typed::<f32>("mana").unwrap()
+    );
 
     // Version 2: Extended stats with new fields
     let stats_v2 = DynamicTypeBuilder::new("PlayerStats_v2")
@@ -225,16 +241,17 @@ fn example_schema_evolution() {
         .build();
 
     println!("\n\nCreated PlayerStats v2 (with new fields):");
-    println!("  Fields: {:?}", stats_v2.fields.iter().map(|f| &f.name).collect::<Vec<_>>());
+    println!(
+        "  Fields: {:?}",
+        stats_v2.fields.iter().map(|f| &f.name).collect::<Vec<_>>()
+    );
 
     // Migrate v1 data to v2
     let mut new_stats = DynamicValue::new(stats_v2);
 
     // Copy common fields
     if let Ok(health) = old_stats.get_field_typed::<f32>("health") {
-        new_stats
-            .set_field("health", Box::new(health))
-            .unwrap();
+        new_stats.set_field("health", Box::new(health)).unwrap();
     }
     if let Ok(mana) = old_stats.get_field_typed::<f32>("mana") {
         new_stats.set_field("mana", Box::new(mana)).unwrap();
@@ -245,10 +262,22 @@ fn example_schema_evolution() {
     new_stats.set_field("shield", Box::new(0.0f32)).unwrap();
 
     println!("\nMigrated save data to v2:");
-    println!("  Health: {} (migrated)", new_stats.get_field_typed::<f32>("health").unwrap());
-    println!("  Mana: {} (migrated)", new_stats.get_field_typed::<f32>("mana").unwrap());
-    println!("  Stamina: {} (default)", new_stats.get_field_typed::<f32>("stamina").unwrap());
-    println!("  Shield: {} (default)", new_stats.get_field_typed::<f32>("shield").unwrap());
+    println!(
+        "  Health: {} (migrated)",
+        new_stats.get_field_typed::<f32>("health").unwrap()
+    );
+    println!(
+        "  Mana: {} (migrated)",
+        new_stats.get_field_typed::<f32>("mana").unwrap()
+    );
+    println!(
+        "  Stamina: {} (default)",
+        new_stats.get_field_typed::<f32>("stamina").unwrap()
+    );
+    println!(
+        "  Shield: {} (default)",
+        new_stats.get_field_typed::<f32>("shield").unwrap()
+    );
 
     println!("\n✅ Successfully evolved schema from v1 to v2!");
 }

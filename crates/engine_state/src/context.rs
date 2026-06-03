@@ -7,9 +7,10 @@
 use dashmap::DashMap;
 use gpui::AppContext;
 use parking_lot::RwLock;
+use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
@@ -170,6 +171,9 @@ pub struct EngineContext {
     /// Multiuser session context (if in a collaborative session)
     pub multiuser: Arc<RwLock<Option<crate::multiuser::MultiuserContext>>>,
 
+    /// Authenticated user profile (if signed in).
+    pub auth_profile: Arc<RwLock<Option<AuthProfile>>>,
+
     /// Global type database for reflection
     pub type_database: Arc<RwLock<Option<Arc<TypeDatabase>>>>,
 
@@ -210,6 +214,7 @@ impl EngineContext {
             launch: Arc::new(RwLock::new(LaunchContext::new())),
             discord: Arc::new(RwLock::new(None)),
             multiuser: Arc::new(RwLock::new(None)),
+            auth_profile: Arc::new(RwLock::new(None)),
             type_database: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             dev: Arc::new(RwLock::new(DevContext::default())),
@@ -328,6 +333,21 @@ impl EngineContext {
         *self.type_database.write() = Some(type_database);
     }
 
+    /// Set authenticated user profile.
+    pub fn set_auth_profile(&self, profile: AuthProfile) {
+        *self.auth_profile.write() = Some(profile);
+    }
+
+    /// Clear authenticated user profile.
+    pub fn clear_auth_profile(&self) {
+        *self.auth_profile.write() = None;
+    }
+
+    /// Get authenticated user profile.
+    pub fn auth_profile(&self) -> Option<AuthProfile> {
+        self.auth_profile.read().clone()
+    }
+
     /// Get global type database
     pub fn type_database(&self) -> Option<Arc<TypeDatabase>> {
         self.type_database.read().clone()
@@ -351,6 +371,22 @@ impl EngineContext {
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
         *self.multiuser.write() = Some(context);
+    }
+
+    /// Mutate multiuser context in place if active.
+    ///
+    /// Returns `true` when a context existed and was updated.
+    pub fn update_multiuser<F>(&self, update: F) -> bool
+    where
+        F: FnOnce(&mut crate::multiuser::MultiuserContext),
+    {
+        let mut guard = self.multiuser.write();
+        if let Some(ctx) = guard.as_mut() {
+            update(ctx);
+            true
+        } else {
+            false
+        }
     }
 
     /// Clear multiuser session context
@@ -381,23 +417,40 @@ impl EngineContext {
 
     /// Update multiuser connection status
     pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.set_status(status);
-        }
+        let _ = self.update_multiuser(|ctx| ctx.set_status(status));
     }
 
     /// Add a participant to the current multiuser session
     pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.add_participant(peer_id);
-        }
+        let peer_id = peer_id.into();
+        let _ = self.update_multiuser(|ctx| ctx.add_participant(peer_id));
+    }
+
+    /// Replace participant list for the active session.
+    pub fn set_multiuser_participants(&self, participants: Vec<String>) {
+        let _ = self.update_multiuser(|ctx| {
+            ctx.participants = participants;
+        });
+    }
+
+    pub fn set_multiuser_participant_profiles(
+        &self,
+        participants: Vec<crate::multiuser::MultiuserParticipant>,
+    ) {
+        let _ = self.update_multiuser(|ctx| {
+            ctx.participant_profiles = participants;
+        });
+    }
+
+    pub fn set_multiuser_latency_ms(&self, latency_ms: Option<u32>) {
+        let _ = self.update_multiuser(|ctx| {
+            ctx.latency_ms = latency_ms;
+        });
     }
 
     /// Remove a participant from the current multiuser session
     pub fn remove_multiuser_participant(&self, peer_id: &str) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.remove_participant(peer_id);
-        }
+        let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
     }
 
     /// Set as global instance (for GPUI views that need global access)

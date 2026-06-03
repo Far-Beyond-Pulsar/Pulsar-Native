@@ -287,10 +287,8 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -416,8 +414,7 @@ impl FabSearchWindow {
                             bytes_received: bytes_total,
                             total,
                             speed_bps: speed,
-                        }))
-                        ;
+                        }));
                         last_sample = std::time::Instant::now();
                         bytes_since_sample = 0;
                     }
@@ -427,8 +424,7 @@ impl FabSearchWindow {
                 smol::block_on(tx.send(DownloadMsg::Done {
                     path: dest,
                     total: bytes_total,
-                }))
-                ;
+                }));
                 Ok(())
             };
 
@@ -464,10 +460,8 @@ impl FabSearchWindow {
                                     }
                                 }
                                 cx.notify();
-                            })
-                            ;
-                        })
-                        ;
+                            });
+                        });
                     }
                     DownloadMsg::Done { path, total } => {
                         cx.update(|cx| {
@@ -486,10 +480,8 @@ impl FabSearchWindow {
                                     },
                                 );
                                 cx.notify();
-                            })
-                            ;
-                        })
-                        ;
+                            });
+                        });
                         break;
                     }
                     DownloadMsg::Error(msg) => {
@@ -508,10 +500,8 @@ impl FabSearchWindow {
                                     },
                                 );
                                 cx.notify();
-                            })
-                            ;
-                        })
-                        ;
+                            });
+                        });
                         break;
                     }
                 }
@@ -568,10 +558,8 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -610,10 +598,8 @@ impl FabSearchWindow {
                             view.start_image_fetch(next_url, cx);
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -668,10 +654,8 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -745,10 +729,8 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -790,10 +772,8 @@ impl FabSearchWindow {
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();

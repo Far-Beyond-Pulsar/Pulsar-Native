@@ -63,14 +63,14 @@ pub mod args; // Command-line argument parsing
 pub mod assets; // Asset embedding and management
 pub mod consts; // Engine constants (name, version, authors, etc.)
 pub mod discord; // Discord Rich Presence integration
+pub mod file_association;
+pub mod gpu_policy; // GPU detection and policy enforcement
+pub mod init; // Initialization dependency graph
 pub mod logging; // Logging setup and configuration
 pub mod macos_permissions;
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
-pub mod init; // Initialization dependency graph
-pub mod uri; // URI scheme handling
-pub mod gpu_policy; // GPU detection and policy enforcement
-pub mod file_association; // Project file association management
+pub mod uri; // URI scheme handling // Project file association management
 
 // --- Engine context re-exports ---
 pub use engine_state::{

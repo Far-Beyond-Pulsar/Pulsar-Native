@@ -1,12 +1,10 @@
 use gpui::{
-    prelude::FluentBuilder as _, px, Context, FontWeight,
-    IntoElement, ParentElement, Styled,
+    prelude::FluentBuilder as _, px, Context, FontWeight, IntoElement, ParentElement, Styled,
 };
 
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex,
-    v_flex, ActiveTheme, Icon, IconName, Sizable,
+    h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable,
 };
 
 pub fn render_header<V>(

@@ -95,31 +95,27 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
                 .text_color(cx.theme().muted_foreground)
                 .child(args.display_name.to_string()),
         )
-        .child(
-            h_flex()
-                .items_center()
-                .gap_2()
-                .child(pop)
-                .map(|el| match thumb {
-                    Some(img) => el.child(
-                        div()
-                            .w(px(40.0))
-                            .h(px(40.0))
-                            .rounded(px(4.0))
-                            .overflow_hidden()
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .flex_shrink_0()
-                            .child(
-                                gpui::img(ImageSource::Render(img))
-                                    .w(px(40.0))
-                                    .h(px(40.0))
-                                    .object_fit(ObjectFit::Cover),
-                            ),
-                    ),
-                    None => el,
-                }),
-        )
+        .child(h_flex().items_center().gap_2().child(pop).map(|el| {
+            match thumb {
+                Some(img) => el.child(
+                    div()
+                        .w(px(40.0))
+                        .h(px(40.0))
+                        .rounded(px(4.0))
+                        .overflow_hidden()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .flex_shrink_0()
+                        .child(
+                            gpui::img(ImageSource::Render(img))
+                                .w(px(40.0))
+                                .h(px(40.0))
+                                .object_fit(ObjectFit::Cover),
+                        ),
+                ),
+                None => el,
+            }
+        }))
         .into_any_element()
 }
 

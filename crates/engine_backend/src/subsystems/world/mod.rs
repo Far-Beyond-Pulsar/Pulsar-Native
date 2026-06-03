@@ -21,10 +21,10 @@
 //! - Unit tests for core functionalities
 
 use super::classes::actor::Actor;
-use std::sync::Arc;
-use uuid::Uuid;
 use pebble::spacial_store::sqlite_backend::SqliteDatabase;
 use pebble::SpatialObject;
+use std::sync::Arc;
+use uuid::Uuid;
 
 // NOTE: World cannot implement the Subsystem trait due to PebbleVault::VaultManager
 // not implementing Send + Sync (it contains Box<dyn PersistenceBackend> without bounds).

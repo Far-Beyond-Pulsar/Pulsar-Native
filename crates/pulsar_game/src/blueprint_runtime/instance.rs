@@ -253,7 +253,10 @@ impl BlueprintInstance {
             _ => {
                 // For complex types, return zero bytes
                 // In a production system, we'd implement proper serialization for String, Vec, etc.
-                tracing::warn!("Unsupported variable type for JSON serialization: {}", data_type);
+                tracing::warn!(
+                    "Unsupported variable type for JSON serialization: {}",
+                    data_type
+                );
                 Err(format!("Unsupported type: {}", data_type))
             }
         }

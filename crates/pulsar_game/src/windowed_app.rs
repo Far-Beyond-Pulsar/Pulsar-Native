@@ -18,7 +18,7 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use helio::{Camera, Renderer, RendererConfig, required_wgpu_features, required_wgpu_limits};
+use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
 
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
@@ -170,23 +170,20 @@ impl GpuContext {
             return;
         }
 
-        let adapter = pollster::block_on(self.instance.request_adapter(
-            &wgpu::RequestAdapterOptions {
+        let adapter =
+            pollster::block_on(self.instance.request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(surface),
                 force_fallback_adapter: false,
-            },
-        ))
-        .expect("No suitable GPU adapter found");
+            }))
+            .expect("No suitable GPU adapter found");
 
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Pulsar GPU Device"),
-                required_features: required_wgpu_features(adapter.features()),
-                required_limits: required_wgpu_limits(adapter.limits()),
-                ..Default::default()
-            },
-        ))
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("Pulsar GPU Device"),
+            required_features: required_wgpu_features(adapter.features()),
+            required_limits: required_wgpu_limits(adapter.limits()),
+            ..Default::default()
+        }))
         .expect("Failed to create GPU device");
 
         let info = adapter.get_info();
@@ -259,9 +256,13 @@ impl PulsarApp {
     // ── Cursor capture ────────────────────────────────────────────────────────
 
     fn capture_cursor(&mut self, handle: WindowHandle) {
-        let Some(gw) = self.windows.get(&handle) else { return };
+        let Some(gw) = self.windows.get(&handle) else {
+            return;
+        };
         // Try confined first (stays in window), fall back to locked (OS-locked).
-        let ok = gw.window.set_cursor_grab(CursorGrabMode::Confined)
+        let ok = gw
+            .window
+            .set_cursor_grab(CursorGrabMode::Confined)
             .or_else(|_| gw.window.set_cursor_grab(CursorGrabMode::Locked))
             .is_ok();
         if ok {
@@ -312,7 +313,9 @@ impl PulsarApp {
         };
 
         if self.gpu.device.is_none() {
-            let temp_surface = self.gpu.instance
+            let temp_surface = self
+                .gpu
+                .instance
                 .create_surface(window.clone())
                 .expect("Failed to create surface for GPU init");
             self.gpu.ensure_device(&temp_surface);
@@ -334,7 +337,11 @@ impl PulsarApp {
         // Load the scene into this window's renderer if one was requested.
         if let Some(ref path) = scene_path {
             tracing::info!(scene = %path.display(), window = handle.id(), "Loading scene into window");
-            match pulsar_scene::SceneLoader::load_file(path, &self.project_root, &mut game_window.renderer) {
+            match pulsar_scene::SceneLoader::load_file(
+                path,
+                &self.project_root,
+                &mut game_window.renderer,
+            ) {
                 Ok(()) => {
                     tracing::info!(
                         window = handle.id(),
@@ -478,7 +485,9 @@ impl ApplicationHandler<WindowCommand> for PulsarApp {
             }
 
             // ── Keyboard ──────────────────────────────────────────────────────
-            WindowEvent::KeyboardInput { event: key_event, .. } => {
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } => {
                 use winit::keyboard::Key;
 
                 let pressed = key_event.state == ElementState::Pressed;
@@ -545,7 +554,8 @@ fn editor_camera_from_file(path: &std::path::Path) -> Result<FreeCam, ()> {
 
     let cam = v.get("editor").and_then(|e| e.get("camera")).ok_or(())?;
 
-    let pos = cam.get("position")
+    let pos = cam
+        .get("position")
         .and_then(|p| p.as_array())
         .and_then(|a| {
             if a.len() >= 3 {
@@ -560,8 +570,16 @@ fn editor_camera_from_file(path: &std::path::Path) -> Result<FreeCam, ()> {
         })
         .ok_or(())?;
 
-    let yaw   = cam.get("yaw")  .and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(0.0);
-    let pitch = cam.get("pitch").and_then(|v| v.as_f64()).map(|v| v as f32).unwrap_or(0.0);
+    let yaw = cam
+        .get("yaw")
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+        .unwrap_or(0.0);
+    let pitch = cam
+        .get("pitch")
+        .and_then(|v| v.as_f64())
+        .map(|v| v as f32)
+        .unwrap_or(0.0);
 
     Ok(FreeCam::default().place(pos, yaw, pitch))
 }

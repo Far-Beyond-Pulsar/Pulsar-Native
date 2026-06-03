@@ -25,7 +25,13 @@ pub fn run_cargo_build_from(
     status: StatusCell,
     from_pct: u32,
 ) -> Result<(), String> {
-    run_cargo(project_root, &["build", "--release"], progress, status, from_pct)
+    run_cargo(
+        project_root,
+        &["build", "--release"],
+        progress,
+        status,
+        from_pct,
+    )
 }
 
 /// Run `cargo check`, occupying the full 0–100 % range.
@@ -55,7 +61,10 @@ pub fn run_cargo_clean(
     status: StatusCell,
     up_to_pct: u32,
 ) -> Result<(), String> {
-    tracing::info!("[CARGO-PROGRESS] spawning: cargo clean in {}", project_root.display());
+    tracing::info!(
+        "[CARGO-PROGRESS] spawning: cargo clean in {}",
+        project_root.display()
+    );
     *status.lock() = "Cleaning build artifacts…".to_string();
     progress.store(2, Ordering::Relaxed);
 
@@ -74,7 +83,9 @@ pub fn run_cargo_clean(
         tracing::debug!("[CARGO-PROGRESS] clean: {line}");
     }
 
-    let exit = child.wait().map_err(|e| format!("Failed to wait for cargo clean: {e}"))?;
+    let exit = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for cargo clean: {e}"))?;
     if exit.success() {
         progress.store(up_to_pct, Ordering::Relaxed);
         *status.lock() = String::new();
@@ -92,7 +103,10 @@ pub fn run_cargo_update(
     progress: Arc<AtomicU32>,
     status: StatusCell,
 ) -> Result<(), String> {
-    tracing::info!("[CARGO-PROGRESS] spawning: cargo update in {}", project_root.display());
+    tracing::info!(
+        "[CARGO-PROGRESS] spawning: cargo update in {}",
+        project_root.display()
+    );
 
     let mut child = Command::new("cargo")
         .arg("update")
@@ -125,7 +139,9 @@ pub fn run_cargo_update(
         }
     }
 
-    let exit = child.wait().map_err(|e| format!("Failed to wait for cargo update: {e}"))?;
+    let exit = child
+        .wait()
+        .map_err(|e| format!("Failed to wait for cargo update: {e}"))?;
     if exit.success() {
         progress.store(100, Ordering::Relaxed);
         tracing::info!("[CARGO-PROGRESS] update success → 100%");
@@ -169,7 +185,7 @@ fn run_cargo(
 
     // ── stderr thread: parse "Updating …" lines → from_pct..(from_pct+10) ────
     let progress_stderr = Arc::clone(&progress);
-    let status_stderr   = Arc::clone(&status);
+    let status_stderr = Arc::clone(&status);
     let stderr_thread = std::thread::spawn(move || {
         let mut updates_seen: u32 = 0;
         for line in stderr.lines() {
@@ -203,8 +219,12 @@ fn run_cargo(
 
     for line in stdout.lines() {
         let Ok(line) = line else { continue };
-        if !line.contains(r#""reason""#) { continue }
-        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
+        if !line.contains(r#""reason""#) {
+            continue;
+        }
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
 
         match msg["reason"].as_str() {
             Some("compiler-artifact") => {
@@ -217,10 +237,13 @@ fn run_cargo(
                 let pct = (artifact_start + frac as u32).min(94);
                 progress.store(pct, Ordering::Relaxed);
 
-                let name  = msg["target"]["name"].as_str().unwrap_or("?");
+                let name = msg["target"]["name"].as_str().unwrap_or("?");
                 let fresh = msg["fresh"].as_bool().unwrap_or(false);
-                let kind  = msg["target"]["kind"].as_array()
-                    .and_then(|a| a.first()).and_then(|v| v.as_str()).unwrap_or("lib");
+                let kind = msg["target"]["kind"]
+                    .as_array()
+                    .and_then(|a| a.first())
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("lib");
                 if !fresh {
                     *status.lock() = format!("Compiling {name}");
                 }
@@ -236,7 +259,8 @@ fn run_cargo(
     let _ = stderr_thread.join();
     tracing::info!("[CARGO-PROGRESS] stdout closed seen={seen}");
 
-    let status_val = child.wait()
+    let status_val = child
+        .wait()
         .map_err(|e| format!("Failed to wait for cargo: {e}"))?;
 
     if status_val.success() {

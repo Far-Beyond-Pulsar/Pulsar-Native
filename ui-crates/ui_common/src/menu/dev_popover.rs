@@ -1,12 +1,14 @@
 use std::time::Duration;
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::*;
-use engine_state::EngineContext;
-use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt};
 use super::{
     DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets, DevSaveAsDefaultLevel,
     DevShowBuildInfo, ToggleProblems,
+};
+use engine_state::EngineContext;
+use gpui::prelude::FluentBuilder as _;
+use gpui::*;
+use ui::{
+    button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt,
 };
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -19,14 +21,12 @@ pub struct DevPopover {
 impl DevPopover {
     pub fn new(cx: &mut Context<Self>) -> Self {
         let focus_handle = cx.focus_handle();
-        let refresh_task = cx.spawn(async move |this, cx| {
-            loop {
-                Timer::after(Duration::from_secs(1)).await;
-                if let Some(this) = this.upgrade() {
-                    let _ = this.update(cx, |_, cx| cx.notify());
-                } else {
-                    break;
-                }
+        let refresh_task = cx.spawn(async move |this, cx| loop {
+            Timer::after(Duration::from_secs(1)).await;
+            if let Some(this) = this.upgrade() {
+                let _ = this.update(cx, |_, cx| cx.notify());
+            } else {
+                break;
             }
         });
         Self {
@@ -81,21 +81,61 @@ fn kv(label: &str, value: &str, label_color: Hsla, value_color: Hsla) -> Div {
         )
 }
 
-fn status_row(label: &str, active: bool, on_label: &str, off_label: &str, label_color: Hsla, on_color: Hsla, off_color: Hsla) -> Div {
-    let (dot_color, text) = if active { (on_color, on_label) } else { (off_color, off_label) };
+fn status_row(
+    label: &str,
+    active: bool,
+    on_label: &str,
+    off_label: &str,
+    label_color: Hsla,
+    on_color: Hsla,
+    off_color: Hsla,
+) -> Div {
+    let (dot_color, text) = if active {
+        (on_color, on_label)
+    } else {
+        (off_color, off_label)
+    };
     h_flex()
         .gap_2()
         .py(px(1.))
-        .child(div().text_xs().text_color(label_color).w(px(104.)).flex_shrink_0().child(label.to_string()))
-        .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(dot_color).flex_shrink_0().mt(px(1.)))
-        .child(div().text_xs().text_color(dot_color).child(text.to_string()))
+        .child(
+            div()
+                .text_xs()
+                .text_color(label_color)
+                .w(px(104.))
+                .flex_shrink_0()
+                .child(label.to_string()),
+        )
+        .child(
+            div()
+                .w(px(6.))
+                .h(px(6.))
+                .rounded_full()
+                .bg(dot_color)
+                .flex_shrink_0()
+                .mt(px(1.)),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(dot_color)
+                .child(text.to_string()),
+        )
 }
 
 fn peer_row(peer_id: &str, fg: Hsla, muted: Hsla) -> Div {
     h_flex()
         .gap_2()
         .py(px(1.))
-        .child(div().w(px(4.)).h(px(4.)).rounded_full().bg(muted).flex_shrink_0().mt(px(2.)))
+        .child(
+            div()
+                .w(px(4.))
+                .h(px(4.))
+                .rounded_full()
+                .bg(muted)
+                .flex_shrink_0()
+                .mt(px(2.)),
+        )
         .child(div().text_xs().text_color(fg).child(peer_id.to_string()))
 }
 
@@ -115,16 +155,16 @@ impl Render for DevPopover {
         let theme = cx.theme();
 
         // Snapshot all theme colors up front (Hsla is Copy).
-        let fg        = theme.foreground;
-        let muted     = theme.muted_foreground;
-        let accent    = theme.accent;
-        let success   = theme.success;
-        let warning   = theme.warning;
-        let info      = theme.info;
-        let danger    = theme.danger;
-        let card_bg   = theme.muted;
-        let border    = theme.border;
-        let bg        = theme.background;
+        let fg = theme.foreground;
+        let muted = theme.muted_foreground;
+        let accent = theme.accent;
+        let success = theme.success;
+        let warning = theme.warning;
+        let info = theme.info;
+        let danger = theme.danger;
+        let card_bg = theme.muted;
+        let border = theme.border;
+        let bg = theme.background;
 
         // ── Snapshot all engine state into plain owned values ──────────────────
         // All Strings / bools / usizes — no borrows escape this block.
@@ -164,107 +204,157 @@ impl Render for DevPopover {
 
         if let Some(ctx) = EngineContext::global() {
             engine_version = env!("CARGO_PKG_VERSION").to_string();
-            build_info     = option_env!("BUILD_INFO").unwrap_or("dev").to_string();
+            build_info = option_env!("BUILD_INFO").unwrap_or("dev").to_string();
 
             let dev = ctx.dev.read();
             is_source_build = dev.is_source_build;
-            source_path = dev.source_path.as_ref()
+            source_path = dev
+                .source_path
+                .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "—".to_string());
             drop(dev);
 
-            let (pp, pw) = ctx.project.read().as_ref().map(|p| (
-                p.path.display().to_string(),
-                p.window_id.map(|id| id.to_string()).unwrap_or_else(|| "—".to_string()),
-            )).unwrap_or_else(|| ("—".to_string(), "—".to_string()));
-            project_path      = pp;
+            let (pp, pw) = ctx
+                .project
+                .read()
+                .as_ref()
+                .map(|p| {
+                    (
+                        p.path.display().to_string(),
+                        p.window_id
+                            .map(|id| id.to_string())
+                            .unwrap_or_else(|| "—".to_string()),
+                    )
+                })
+                .unwrap_or_else(|| ("—".to_string(), "—".to_string()));
+            project_path = pp;
             project_window_id = pw;
 
             let launch = ctx.launch.read();
-            uri_project_path = launch.uri_project_path.as_ref()
+            uri_project_path = launch
+                .uri_project_path
+                .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_else(|| "—".to_string());
             verbose_launch = launch.verbose;
             drop(launch);
 
-            default_level_size = ctx.default_level_bytes.read().as_ref()
+            default_level_size = ctx
+                .default_level_bytes
+                .read()
+                .as_ref()
                 .map(|b| {
                     let n = b.len();
-                    if n >= 1_048_576 { format!("{:.1} MB", n as f64 / 1_048_576.0) }
-                    else if n >= 1_024 { format!("{:.1} KB", n as f64 / 1_024.0) }
-                    else { format!("{} B", n) }
+                    if n >= 1_048_576 {
+                        format!("{:.1} MB", n as f64 / 1_048_576.0)
+                    } else if n >= 1_024 {
+                        format!("{:.1} KB", n as f64 / 1_024.0)
+                    } else {
+                        format!("{} B", n)
+                    }
                 })
                 .unwrap_or_else(|| "—".to_string());
 
-            has_discord      = ctx.discord.read().is_some();
+            has_discord = ctx.discord.read().is_some();
             has_window_manager = ctx.window_manager.read().is_some();
-            has_type_db      = ctx.type_database.read().is_some();
+            has_type_db = ctx.type_database.read().is_some();
 
             {
                 let mu_guard = ctx.multiuser.read();
                 if let Some(mu) = mu_guard.as_ref() {
-                    mu_active    = true;
+                    mu_active = true;
                     mu_is_connected = mu.is_connected();
-                    mu_status    = match &mu.status {
-                        engine_state::MultiuserStatus::Connected    => "Connected".to_string(),
-                        engine_state::MultiuserStatus::Connecting   => "Connecting…".to_string(),
+                    mu_status = match &mu.status {
+                        engine_state::MultiuserStatus::Connected => "Connected".to_string(),
+                        engine_state::MultiuserStatus::Connecting => "Connecting…".to_string(),
                         engine_state::MultiuserStatus::Disconnected => "Disconnected".to_string(),
-                        engine_state::MultiuserStatus::Error(e)     => format!("Error: {}", e),
+                        engine_state::MultiuserStatus::Error(e) => format!("Error: {}", e),
                     };
-                    mu_is_host       = mu.is_host;
-                    mu_server_url    = mu.server_url.clone();
-                    mu_session_id    = mu.session_id.clone();
-                    mu_peer_id       = mu.peer_id.clone();
-                    mu_host_peer_id  = mu.host_peer_id.clone();
-                    mu_join_token    = mu.join_token.clone().unwrap_or_else(|| "—".to_string());
-                    mu_project_id    = mu.project_id.clone().unwrap_or_else(|| "—".to_string());
-                    mu_participants  = mu.participants.clone();
+                    mu_is_host = mu.is_host;
+                    mu_server_url = mu.server_url.clone();
+                    mu_session_id = mu.session_id.clone();
+                    mu_peer_id = mu.peer_id.clone();
+                    mu_host_peer_id = mu.host_peer_id.clone();
+                    mu_join_token = mu.join_token.clone().unwrap_or_else(|| "—".to_string());
+                    mu_project_id = mu.project_id.clone().unwrap_or_else(|| "—".to_string());
+                    mu_participants = mu.participants.clone();
                 } else {
-                    mu_active = false; mu_is_connected = false; mu_is_host = false;
+                    mu_active = false;
+                    mu_is_connected = false;
+                    mu_is_host = false;
                     mu_status = "Not enabled".to_string();
-                    mu_server_url = "—".to_string(); mu_session_id = "—".to_string();
-                    mu_peer_id = "—".to_string(); mu_host_peer_id = "—".to_string();
-                    mu_join_token = "—".to_string(); mu_project_id = "—".to_string();
+                    mu_server_url = "—".to_string();
+                    mu_session_id = "—".to_string();
+                    mu_peer_id = "—".to_string();
+                    mu_host_peer_id = "—".to_string();
+                    mu_join_token = "—".to_string();
+                    mu_project_id = "—".to_string();
                     mu_participants = Vec::new();
                 }
             }
 
-            window_count   = ctx.windows.len();
+            window_count = ctx.windows.len();
             renderer_count = ctx.renderers.window_ids().len();
 
-            let mut wr: Vec<String> = ctx.windows.iter()
+            let mut wr: Vec<String> = ctx
+                .windows
+                .iter()
                 .map(|e| format!("#{:<4} {:?}", e.key(), e.value().window_type))
                 .collect();
             wr.sort();
             window_rows = wr;
 
-            let mut rr: Vec<String> = ctx.renderers.window_ids().into_iter()
+            let mut rr: Vec<String> = ctx
+                .renderers
+                .window_ids()
+                .into_iter()
                 .map(|id| format!("#{}", id))
                 .collect();
             rr.sort();
             renderer_rows = rr;
         } else {
-            engine_version = "?".to_string(); build_info = "?".to_string();
-            is_source_build = false; source_path = "—".to_string();
-            project_path = "—".to_string(); project_window_id = "—".to_string();
-            uri_project_path = "—".to_string(); verbose_launch = false;
-            default_level_size = "—".to_string(); has_discord = false;
-            has_window_manager = false; has_type_db = false;
-            window_count = 0; renderer_count = 0;
-            mu_active = false; mu_is_connected = false; mu_is_host = false;
+            engine_version = "?".to_string();
+            build_info = "?".to_string();
+            is_source_build = false;
+            source_path = "—".to_string();
+            project_path = "—".to_string();
+            project_window_id = "—".to_string();
+            uri_project_path = "—".to_string();
+            verbose_launch = false;
+            default_level_size = "—".to_string();
+            has_discord = false;
+            has_window_manager = false;
+            has_type_db = false;
+            window_count = 0;
+            renderer_count = 0;
+            mu_active = false;
+            mu_is_connected = false;
+            mu_is_host = false;
             mu_status = "No engine context".to_string();
-            mu_server_url = "—".to_string(); mu_session_id = "—".to_string();
-            mu_peer_id = "—".to_string(); mu_host_peer_id = "—".to_string();
-            mu_join_token = "—".to_string(); mu_project_id = "—".to_string();
-            mu_participants = Vec::new(); window_rows = Vec::new(); renderer_rows = Vec::new();
+            mu_server_url = "—".to_string();
+            mu_session_id = "—".to_string();
+            mu_peer_id = "—".to_string();
+            mu_host_peer_id = "—".to_string();
+            mu_join_token = "—".to_string();
+            mu_project_id = "—".to_string();
+            mu_participants = Vec::new();
+            window_rows = Vec::new();
+            renderer_rows = Vec::new();
         }
 
         // Determine multiuser status dot color.
-        let mu_color = if !mu_active { muted }
-            else if mu_is_connected { success }
-            else if mu_status.starts_with("Error") { danger }
-            else if mu_status.starts_with("Connecting") { warning }
-            else { muted };
+        let mu_color = if !mu_active {
+            muted
+        } else if mu_is_connected {
+            success
+        } else if mu_status.starts_with("Error") {
+            danger
+        } else if mu_status.starts_with("Connecting") {
+            warning
+        } else {
+            muted
+        };
 
         // ── Build UI ───────────────────────────────────────────────────────────
         v_flex()
@@ -275,7 +365,6 @@ impl Render for DevPopover {
             .rounded_lg()
             .shadow_xl()
             .track_focus(&self.focus_handle)
-
             // Header
             .child(
                 h_flex()
@@ -286,7 +375,13 @@ impl Render for DevPopover {
                             .gap_2()
                             .items_center()
                             .child(Icon::new(IconName::Bug).text_color(accent))
-                            .child(div().text_sm().text_color(fg).font_semibold().child("Dev Menu")),
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(fg)
+                                    .font_semibold()
+                                    .child("Dev Menu"),
+                            ),
                     )
                     .child(
                         h_flex()
@@ -300,11 +395,7 @@ impl Render for DevPopover {
                 h_flex()
                     .gap_2()
                     .items_center()
-                    .child(pill(
-                        &format!("v{}", engine_version),
-                        fg,
-                        card_bg,
-                    ))
+                    .child(pill(&format!("v{}", engine_version), fg, card_bg))
                     .child(pill(&build_info, muted, card_bg))
                     .child(pill(
                         if is_source_build { "source" } else { "release" },
@@ -312,7 +403,6 @@ impl Render for DevPopover {
                         card_bg,
                     )),
             )
-
             // Quick actions first.
             .child(
                 card(card_bg)
@@ -357,18 +447,21 @@ impl Render for DevPopover {
                                     .label("Inspect State")
                                     .icon(IconName::Code)
                                     .small()
-                                    .on_click(|_, _, cx| cx.dispatch_action(&DevInspectEngineState)),
+                                    .on_click(|_, _, cx| {
+                                        cx.dispatch_action(&DevInspectEngineState)
+                                    }),
                             )
                             .child(
                                 Button::new("save-default-level")
                                     .label("Save Level")
                                     .icon(IconName::Database)
                                     .small()
-                                    .on_click(|_, _, cx| cx.dispatch_action(&DevSaveAsDefaultLevel)),
+                                    .on_click(|_, _, cx| {
+                                        cx.dispatch_action(&DevSaveAsDefaultLevel)
+                                    }),
                             ),
                     ),
             )
-
             // Top-level status summary.
             .child(
                 card(card_bg)
@@ -380,12 +473,20 @@ impl Render for DevPopover {
                             .child(pill(&format!("Windows {}", window_count), fg, bg))
                             .child(pill(&format!("Renderers {}", renderer_count), fg, bg))
                             .child(pill(
-                                if has_type_db { "Type DB loaded" } else { "Type DB missing" },
+                                if has_type_db {
+                                    "Type DB loaded"
+                                } else {
+                                    "Type DB missing"
+                                },
                                 if has_type_db { success } else { warning },
                                 bg,
                             ))
                             .child(pill(
-                                if verbose_launch { "Verbose on" } else { "Verbose off" },
+                                if verbose_launch {
+                                    "Verbose on"
+                                } else {
+                                    "Verbose off"
+                                },
                                 if verbose_launch { warning } else { muted },
                                 bg,
                             )),
@@ -395,24 +496,35 @@ impl Render for DevPopover {
                             .gap_2()
                             .items_center()
                             .child(pill(
-                                if has_discord { "Discord active" } else { "Discord none" },
+                                if has_discord {
+                                    "Discord active"
+                                } else {
+                                    "Discord none"
+                                },
                                 if has_discord { success } else { muted },
                                 bg,
                             ))
                             .child(pill(
-                                if has_window_manager { "Window mgr active" } else { "Window mgr none" },
+                                if has_window_manager {
+                                    "Window mgr active"
+                                } else {
+                                    "Window mgr none"
+                                },
                                 if has_window_manager { success } else { muted },
                                 bg,
                             ))
                             .child(pill(
-                                if mu_active { "Multiuser enabled" } else { "Multiuser disabled" },
+                                if mu_active {
+                                    "Multiuser enabled"
+                                } else {
+                                    "Multiuser disabled"
+                                },
                                 if mu_active { info } else { muted },
                                 bg,
                             )),
                     )
                     .child(kv("Default Level", &default_level_size, muted, fg)),
             )
-
             .child(
                 h_flex()
                     .gap_3()
@@ -441,7 +553,6 @@ impl Render for DevPopover {
                             .child(kv("URI Path", &uri_project_path, muted, fg)),
                     ),
             )
-
             // Multiuser details stay visible for diagnostics.
             .child(
                 card(card_bg)
@@ -467,7 +578,12 @@ impl Render for DevPopover {
                                     .flex_shrink_0()
                                     .mt(px(1.)),
                             )
-                            .child(div().text_xs().text_color(mu_color).child(mu_status.clone())),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(mu_color)
+                                    .child(mu_status.clone()),
+                            ),
                     )
                     .child(status_row(
                         "Role",
@@ -478,12 +594,42 @@ impl Render for DevPopover {
                         accent,
                         fg,
                     ))
-                    .child(kv("Server URL", &mu_server_url, muted, if mu_active { fg } else { muted }))
-                    .child(kv("Session ID", &mu_session_id, muted, if mu_active { fg } else { muted }))
-                    .child(kv("Our Peer ID", &mu_peer_id, muted, if mu_active { fg } else { muted }))
-                    .child(kv("Host Peer", &mu_host_peer_id, muted, if mu_active { fg } else { muted }))
-                    .child(kv("Join Token", &mu_join_token, muted, if mu_join_token != "—" { fg } else { muted }))
-                    .child(kv("Project ID", &mu_project_id, muted, if mu_project_id != "—" { fg } else { muted }))
+                    .child(kv(
+                        "Server URL",
+                        &mu_server_url,
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv(
+                        "Session ID",
+                        &mu_session_id,
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv(
+                        "Our Peer ID",
+                        &mu_peer_id,
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv(
+                        "Host Peer",
+                        &mu_host_peer_id,
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv(
+                        "Join Token",
+                        &mu_join_token,
+                        muted,
+                        if mu_join_token != "—" { fg } else { muted },
+                    ))
+                    .child(kv(
+                        "Project ID",
+                        &mu_project_id,
+                        muted,
+                        if mu_project_id != "—" { fg } else { muted },
+                    ))
                     .when(!mu_participants.is_empty(), |el| {
                         let peers = mu_participants.clone();
                         let overflow = peers.len().saturating_sub(8);
@@ -498,26 +644,47 @@ impl Render for DevPopover {
                                         .pb_1()
                                         .child(format!("Participants ({})", peers.len())),
                                 )
-                                .children(peers.into_iter().take(8).map(|p| peer_row(&p, fg, muted)))
+                                .children(
+                                    peers.into_iter().take(8).map(|p| peer_row(&p, fg, muted)),
+                                )
                                 .when(overflow > 0, |el| {
-                                    el.child(div().text_xs().text_color(muted).child(format!("+ {} more", overflow)))
+                                    el.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .child(format!("+ {} more", overflow)),
+                                    )
                                 }),
                         )
                     })
                     .when(mu_participants.is_empty() && mu_active, |el| {
-                        el.child(div().text_xs().text_color(muted).py(px(1.)).child("No participants yet"))
+                        el.child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .py(px(1.))
+                                .child("No participants yet"),
+                        )
                     }),
             )
-
             .child(
                 h_flex()
                     .gap_3()
                     .child(
                         card(card_bg)
                             .flex_1()
-                            .child(section_header(&format!("WINDOWS ({})", window_count), fg, border))
+                            .child(section_header(
+                                &format!("WINDOWS ({})", window_count),
+                                fg,
+                                border,
+                            ))
                             .when(window_rows.is_empty(), |el| {
-                                el.child(div().text_xs().text_color(muted).child("No windows registered"))
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child("No windows registered"),
+                                )
                             })
                             .children(window_rows.iter().take(8).map(|r| {
                                 div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
@@ -540,7 +707,12 @@ impl Render for DevPopover {
                                 border,
                             ))
                             .when(renderer_rows.is_empty(), |el| {
-                                el.child(div().text_xs().text_color(muted).child("No renderers registered"))
+                                el.child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child("No renderers registered"),
+                                )
                             })
                             .children(renderer_rows.iter().take(8).map(|r| {
                                 div().text_xs().text_color(fg).py(px(1.)).child(r.clone())
@@ -555,7 +727,11 @@ impl Render for DevPopover {
                             }),
                     ),
             )
-
-            .child(div().text_xs().text_color(muted).child("Pulsar Engine · toolbar dev menu · auto-refreshes every 1s"))
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child("Pulsar Engine · toolbar dev menu · auto-refreshes every 1s"),
+            )
     }
 }

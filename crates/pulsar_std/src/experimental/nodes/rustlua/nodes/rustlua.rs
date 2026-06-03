@@ -17,12 +17,24 @@ fn create_sandboxed_lua() -> Lua {
         }
         globals.set("os", safe_os).expect("Failed to set os");
         globals.set("io", rlua::Nil).expect("Failed to block io");
-        globals.set("debug", rlua::Nil).expect("Failed to block debug");
-        globals.set("require", rlua::Nil).expect("Failed to block require");
-        globals.set("package", rlua::Nil).expect("Failed to block package");
-        globals.set("dofile", rlua::Nil).expect("Failed to block dofile");
-        globals.set("loadfile", rlua::Nil).expect("Failed to block loadfile");
-        globals.set("collectgarbage", rlua::Nil).expect("Failed to block collectgarbage");
+        globals
+            .set("debug", rlua::Nil)
+            .expect("Failed to block debug");
+        globals
+            .set("require", rlua::Nil)
+            .expect("Failed to block require");
+        globals
+            .set("package", rlua::Nil)
+            .expect("Failed to block package");
+        globals
+            .set("dofile", rlua::Nil)
+            .expect("Failed to block dofile");
+        globals
+            .set("loadfile", rlua::Nil)
+            .expect("Failed to block loadfile");
+        globals
+            .set("collectgarbage", rlua::Nil)
+            .expect("Failed to block collectgarbage");
     }
     lua
 }
