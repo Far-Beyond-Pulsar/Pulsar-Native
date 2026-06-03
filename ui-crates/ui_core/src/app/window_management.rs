@@ -8,16 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::DockPlacement;
 use ui::Root;
-use ui_about::AboutWindow;
 use ui_common::PulsarWindowExt as _;
-use ui_documentation::DocumentationWindow;
-use ui_flamegraph::FlamegraphWindow;
-use ui_git_manager::GitManager;
-use ui_log_viewer::MissionControlPanel;
-use ui_multiplayer::MultiplayerWindow;
-use ui_plugin_manager::PluginManagerWindow;
-use ui_problems::ProblemsWindow;
-use ui_type_debugger::TypeDebuggerWindow;
 use window_manager::{WindowConfig, WindowRegistry};
 
 use super::panel_window::PanelWindow;
@@ -84,17 +75,17 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_problems(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        ProblemsWindow::open(self.state.problems_drawer.clone(), cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("ProblemsWindow", cx));
     }
 
     pub(super) fn toggle_type_debugger(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        TypeDebuggerWindow::open(self.state.type_debugger_drawer.clone(), cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("TypeDebuggerWindow", cx));
     }
 
     pub(super) fn toggle_log_viewer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.state.mission_control_open {
             self.state.mission_control_open = true;
-            MissionControlPanel::open((), cx);
+            WindowRegistry::update_global(cx, |reg, cx| reg.open("MissionControlPanel", cx));
         } else {
             self.state.mission_control_open = false;
         }
@@ -102,16 +93,11 @@ impl PulsarApp {
 
     pub(super) fn open_git_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         self.state.git_manager_open = true;
-        let path = self
-            .state
-            .project_path
-            .clone()
-            .unwrap_or_else(|| PathBuf::from("."));
-        GitManager::open(path, cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
     }
 
     pub(super) fn toggle_multiplayer(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        MultiplayerWindow::open(self.state.project_path.clone(), cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("MultiplayerWindow", cx));
     }
 
     pub(super) fn toggle_agent_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -122,11 +108,11 @@ impl PulsarApp {
     }
 
     pub(super) fn toggle_plugin_manager(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        PluginManagerWindow::open((), cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("PluginManagerWindow", cx));
     }
 
     pub(super) fn toggle_flamegraph(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        FlamegraphWindow::open(std::sync::Arc::new(ui_flamegraph::TraceData::new()), cx);
+        WindowRegistry::update_global(cx, |reg, cx| reg.open("FlamegraphWindow", cx));
     }
 
     pub(super) fn toggle_project_switcher(&mut self, window: &mut Window, cx: &mut Context<Self>) {

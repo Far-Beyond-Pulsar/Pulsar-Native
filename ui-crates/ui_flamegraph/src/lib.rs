@@ -36,3 +36,10 @@ pub fn locale() -> String {
 pub fn set_locale(locale: &str) {
     rust_i18n::set_locale(locale);
 }
+
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        crate::FlamegraphWindow::register(cx);
+    }}
+}

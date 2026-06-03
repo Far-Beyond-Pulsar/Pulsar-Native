@@ -32,15 +32,8 @@ profiling = { workspace = true }
 ui_core.workspace = true
 ui_common.workspace = true
 ui_entry.workspace = true
-# ui_daw_editor.workspace = true
-ui_settings.workspace = true
 ui_loading_screen.workspace = true
-ui_about.workspace = true
-ui_documentation.workspace = true
 ui_log_viewer.workspace = true
-ui_git_manager.workspace = true
-ui_fab_search.workspace = true
-ui_plugin_manager.workspace = true
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }

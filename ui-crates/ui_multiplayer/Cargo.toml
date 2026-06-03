@@ -8,7 +8,9 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
+ui_common.workspace = true
 window_manager.workspace = true
+inventory.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
 engine_fs.workspace = true

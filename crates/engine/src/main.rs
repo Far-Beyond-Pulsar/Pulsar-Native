@@ -418,13 +418,8 @@ fn main() {
             cx.set_global(WindowRegistry::new());
         }
 
-        // Each crate registers its own windows. Order doesn't matter.
-        ui_settings::init(cx);
-        ui_about::init(cx);
-        ui_documentation::init(cx);
-        ui_plugin_manager::init(cx);
-        ui_log_viewer::init(cx);
-        ui_fab_search::init(cx);
+        // Runs every inventory::submit! registrant from all linked crates automatically.
+        window_manager::register_all_windows(cx);
 
         let mut launch = engine_context.launch.write();
 
@@ -438,24 +433,24 @@ fn main() {
                 WindowRequest::Entry,
                 window_manager::WindowConfig::entry(),
                 move |window, cx| {
-                    use ui_common::PulsarWindowExt as _;
+                    use gpui::UpdateGlobal as _;
 
                     let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|pathbuf, cx| open_via_loading_screen(pathbuf, cx));
+                        std::sync::Arc::new(|path, cx| open_via_loading_screen(path, cx));
 
                     let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|pathbuf, cx| {
-                            ui_git_manager::GitManager::open(pathbuf, cx);
+                        std::sync::Arc::new(|_path, cx| {
+                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
                         });
 
                     let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
                         std::sync::Arc::new(|cx| {
-                            ui_settings::SettingsWindow::open((), cx);
+                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
                         });
 
                     let fab_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
                         std::sync::Arc::new(|cx| {
-                            ui_fab_search::FabSearchWindow::open((), cx);
+                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("FabSearchWindow", cx));
                         });
 
                     ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb, fab_cb)

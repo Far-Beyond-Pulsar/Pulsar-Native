@@ -871,21 +871,27 @@ impl Render for GitManager {
 pub type GitManagerWindow = GitManager;
 
 impl window_manager::PulsarWindow for GitManager {
-    type Params = std::path::PathBuf;
+    type Params = ();
 
     fn window_name() -> &'static str {
         "GitManagerWindow"
     }
 
-    fn window_options(_: &std::path::PathBuf) -> gpui::WindowOptions {
+    fn window_options(_: &()) -> gpui::WindowOptions {
         window_manager::default_window_options(1280.0, 800.0)
     }
 
-    fn build(
-        params: std::path::PathBuf,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> gpui::Entity<Self> {
-        cx.new(|cx| GitManager::new(params, window, cx))
+    fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        let path = engine_state::get_project_path()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_default();
+        cx.new(|cx| GitManager::new(path, window, cx))
     }
+}
+
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        GitManager::register(cx);
+    }}
 }

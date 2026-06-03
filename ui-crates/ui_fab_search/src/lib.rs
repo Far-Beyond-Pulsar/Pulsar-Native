@@ -359,7 +359,9 @@ impl Render for FabSearchWindow {
     }
 }
 
-pub fn init(cx: &mut gpui::App) {
-    use ui_common::PulsarWindowExt as _;
-    FabSearchWindow::register(cx);
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        FabSearchWindow::register(cx);
+    }}
 }

@@ -24,4 +24,13 @@ pub use ui_types_common::window_types::WindowRequest;
 pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 
 pub use manager::WindowManager;
-pub use registry::WindowRegistry;
+pub use registry::{WindowRegistrant, WindowRegistry};
+
+/// Call once after [`WindowManager`] and [`WindowRegistry`] globals are installed.
+/// Runs every [`WindowRegistrant`] submitted via `inventory::submit!` across all
+/// linked crates — no per-crate `init()` calls needed in `main.rs`.
+pub fn register_all_windows(cx: &mut gpui::App) {
+    for registrant in inventory::iter::<WindowRegistrant>() {
+        (registrant.register)(cx);
+    }
+}

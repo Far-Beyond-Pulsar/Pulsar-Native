@@ -264,7 +264,9 @@ impl window_manager::PulsarWindow for MissionControlPanel {
 /// Type alias for use in the PulsarWindow system.
 pub type LogViewerWindow = MissionControlPanel;
 
-pub fn init(cx: &mut gpui::App) {
-    use ui_common::PulsarWindowExt as _;
-    MissionControlPanel::register(cx);
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        MissionControlPanel::register(cx);
+    }}
 }

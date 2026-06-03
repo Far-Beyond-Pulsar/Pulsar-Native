@@ -6,7 +6,9 @@ mod window;
 
 pub use window::PluginManagerWindow;
 
-pub fn init(cx: &mut gpui::App) {
-    use ui_common::PulsarWindowExt as _;
-    PluginManagerWindow::register(cx);
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        PluginManagerWindow::register(cx);
+    }}
 }

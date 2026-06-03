@@ -550,7 +550,9 @@ pub fn create_documentation_window_with_project(
     cx.new(|cx| Root::new(docs.into(), window, cx))
 }
 
-pub fn init(cx: &mut gpui::App) {
-    use ui_common::PulsarWindowExt as _;
-    DocumentationWindow::register(cx);
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        DocumentationWindow::register(cx);
+    }}
 }

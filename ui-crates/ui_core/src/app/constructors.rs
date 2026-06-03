@@ -171,6 +171,27 @@ impl PulsarApp {
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
 
+        // Register entity-capturing openers so the registry can open these windows
+        // without callers knowing the concrete types or holding the entities.
+        {
+            use gpui::UpdateGlobal as _;
+            use ui_common::PulsarWindowExt as _;
+
+            let pd = problems_drawer.clone();
+            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
+                reg.register("ProblemsWindow", move |cx| {
+                    ui_problems::ProblemsWindow::open(pd.clone(), cx);
+                });
+            });
+
+            let td = type_debugger_drawer.clone();
+            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
+                reg.register("TypeDebuggerWindow", move |cx| {
+                    ui_type_debugger::TypeDebuggerWindow::open(td.clone(), cx);
+                });
+            });
+        }
+
         // Subscribe to drawer events
         cx.subscribe_in(
             &file_manager_drawer,

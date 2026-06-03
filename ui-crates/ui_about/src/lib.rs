@@ -276,9 +276,9 @@ pub fn create_about_window(window: &mut Window, cx: &mut App) -> Entity<Root> {
     cx.new(|cx| Root::new(about.into(), window, cx))
 }
 
-/// Register `AboutWindow` in the global [`WindowRegistry`].
-/// Call from `main.rs` after the registry global is set.
-pub fn init(cx: &mut gpui::App) {
-    use ui_common::PulsarWindowExt as _;
-    AboutWindow::register(cx);
+inventory::submit! {
+    window_manager::WindowRegistrant { register: |cx| {
+        use ui_common::PulsarWindowExt as _;
+        AboutWindow::register(cx);
+    }}
 }
