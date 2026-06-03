@@ -6,7 +6,7 @@ use gpui::{
     actions, div, img, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
     Context, Corner, Entity, FocusHandle, ImageSource, InteractiveElement as _, IntoElement, Menu,
     MenuItem, MouseButton, ObjectFit, ParentElement as _, Render, RenderImage, SharedString,
-    Styled as _, StyledImage as _, Subscription, Window,
+    StatefulInteractiveElement as _, Styled as _, StyledImage as _, Subscription, Window,
 };
 use ui::{
     badge::Badge,
@@ -1262,6 +1262,7 @@ pub struct AppTitleBar {
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
     auth_avatar_image: Option<Arc<RenderImage>>,
     auth_avatar_url_loaded: Option<String>,
+    auth_menu_open: bool,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1298,6 +1299,7 @@ impl AppTitleBar {
             child: Rc::new(|_, _| div().into_any_element()),
             auth_avatar_image: None,
             auth_avatar_url_loaded: None,
+            auth_menu_open: false,
             _subscriptions: subscriptions,
         }
     }
@@ -1368,47 +1370,118 @@ impl AppTitleBar {
             .map(|c| c.to_ascii_uppercase().to_string())
             .unwrap_or_else(|| "?".to_string());
 
-        h_flex()
-            .items_center()
-            .gap_1p5()
-            .px_2()
-            .child(if let Some(render_img) = self.auth_avatar_image.clone() {
-                div()
-                    .w(px(20.))
-                    .h(px(20.))
-                    .rounded_full()
-                    .overflow_hidden()
-                    .child(
-                        img(ImageSource::Render(render_img))
-                            .w_full()
-                            .h_full()
-                            .object_fit(ObjectFit::Cover),
-                    )
-                    .into_any_element()
-            } else {
-                div()
-                    .w(px(20.))
-                    .h(px(20.))
-                    .rounded_full()
-                    .bg(cx.theme().primary.opacity(0.16))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .child(
-                        div()
-                            .text_xs()
-                            .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(cx.theme().primary)
-                            .child(initials),
-                    )
-                    .into_any_element()
-            })
+        let avatar = if let Some(render_img) = self.auth_avatar_image.clone() {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(render_img))
+                        .w_full()
+                        .h_full()
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .bg(cx.theme().primary.opacity(0.16))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().primary)
+                        .child(initials),
+                )
+                .into_any_element()
+        };
+
+        div()
+            .relative()
             .child(
                 div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(login),
+                    .id("app-auth-avatar")
+                    .cursor_pointer()
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.auth_menu_open = !this.auth_menu_open;
+                        cx.notify();
+                    }))
+                    .child(avatar),
             )
+            .when(self.auth_menu_open, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top(px(28.))
+                        .right_0()
+                        .w(px(220.))
+                        .p_2()
+                        .rounded_lg()
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .bg(cx.theme().background)
+                        .shadow_lg()
+                        .child(
+                            div()
+                                .px_2()
+                                .pb_2()
+                                .text_xs()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(format!("@{login}")),
+                        )
+                        .when(profile.is_some(), |menu| {
+                            menu.child(
+                                Button::new("auth-open-github-profile")
+                                    .w_full()
+                                    .ghost()
+                                    .label("Open GitHub Profile")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        if let Some(login) = engine_state::EngineContext::global()
+                                            .and_then(|ec| ec.auth_profile())
+                                            .map(|p| p.login)
+                                        {
+                                            cx.open_url(&format!("https://github.com/{login}"));
+                                        }
+                                        this.auth_menu_open = false;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Button::new("auth-sign-out")
+                                    .w_full()
+                                    .ghost()
+                                    .label("Sign Out")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        let _ = pulsar_auth::sign_out();
+                                        if let Some(ec) = engine_state::EngineContext::global() {
+                                            ec.clear_auth_profile();
+                                        }
+                                        this.auth_avatar_image = None;
+                                        this.auth_avatar_url_loaded = None;
+                                        this.auth_menu_open = false;
+                                        cx.notify();
+                                    })),
+                            )
+                        })
+                        .when(profile.is_none(), |menu| {
+                            menu.child(
+                                div()
+                                    .px_2()
+                                    .py_1()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Sign in from the launcher."),
+                            )
+                        }),
+                )
+            })
             .into_any_element()
     }
 }

@@ -77,6 +77,7 @@ pub struct EntryScreen {
     pub(crate) auth_message: Option<String>,
     pub(crate) auth_avatar_image: Option<Arc<RenderImage>>,
     pub(crate) auth_avatar_url_loaded: Option<String>,
+    pub(crate) auth_account_menu_open: bool,
     pub(crate) auth_device_code: Option<String>,
     pub(crate) auth_device_verification_url: Option<String>,
     pub(crate) auth_device_modal_visible: bool,
@@ -193,6 +194,7 @@ impl EntryScreen {
             auth_message: None,
             auth_avatar_image: None,
             auth_avatar_url_loaded: None,
+            auth_account_menu_open: false,
             auth_device_code: None,
             auth_device_verification_url: None,
             auth_device_modal_visible: false,
@@ -1457,6 +1459,7 @@ default_scene = "scenes/main.scene"
 
         self.auth_loading = true;
         self.auth_message = Some("Starting GitHub sign-in…".to_string());
+        self.auth_account_menu_open = false;
         self.auth_device_code = None;
         self.auth_device_verification_url = None;
         self.auth_device_modal_visible = false;
@@ -1570,6 +1573,7 @@ default_scene = "scenes/main.scene"
         }
         self.auth_avatar_image = None;
         self.auth_avatar_url_loaded = None;
+        self.auth_account_menu_open = false;
         self.auth_device_code = None;
         self.auth_device_verification_url = None;
         self.auth_device_modal_visible = false;
@@ -1627,45 +1631,125 @@ default_scene = "scenes/main.scene"
             .map(|c| c.to_ascii_uppercase().to_string())
             .unwrap_or_else(|| "?".to_string());
 
-        h_flex()
-            .items_center()
-            .gap_2()
-            .child(if let Some(render_img) = self.auth_avatar_image.clone() {
-                div()
-                    .w(px(22.))
-                    .h(px(22.))
-                    .rounded_full()
-                    .overflow_hidden()
-                    .child(
-                        img(ImageSource::Render(render_img))
-                            .w_full()
-                            .h_full()
-                            .object_fit(ObjectFit::Cover),
-                    )
-                    .into_any_element()
-            } else {
-                div()
-                    .w(px(22.))
-                    .h(px(22.))
-                    .rounded_full()
-                    .bg(cx.theme().primary.opacity(0.16))
-                    .flex()
-                    .items_center()
-                    .justify_center()
+        let avatar = if let Some(render_img) = self.auth_avatar_image.clone() {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .overflow_hidden()
+                .child(
+                    img(ImageSource::Render(render_img))
+                        .w_full()
+                        .h_full()
+                        .rounded_full()
+                        .object_fit(ObjectFit::Cover),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .w(px(22.))
+                .h(px(22.))
+                .rounded_full()
+                .bg(cx.theme().primary.opacity(0.16))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::BOLD)
+                        .text_color(cx.theme().primary)
+                        .child(initials),
+                )
+                .into_any_element()
+        };
+
+        div()
+            .id("entry-auth-avatar")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.auth_account_menu_open = !this.auth_account_menu_open;
+                cx.notify();
+            }))
+            .child(avatar)
+            .into_any_element()
+    }
+
+    fn render_auth_account_menu_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = self.auth_profile();
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+
+        div()
+            .absolute()
+            .size_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.auth_account_menu_open = false;
+                cx.notify();
+            }))
+            .child(
+                v_flex()
+                    .absolute()
+                    .top(px(34.))
+                    .right(px(8.))
+                    .w(px(240.))
+                    .p_2()
+                    .gap_1()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(
                         div()
+                            .px_2()
+                            .pb_1()
                             .text_xs()
-                            .font_weight(gpui::FontWeight::BOLD)
-                            .text_color(cx.theme().primary)
-                            .child(initials),
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("@{login}")),
                     )
-                    .into_any_element()
-            })
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(name),
+                    .when(profile.is_some(), |menu| {
+                        menu.child(
+                            Button::new("entry-auth-open-github")
+                                .w_full()
+                                .ghost()
+                                .label("Open GitHub Profile")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(login) = this.auth_profile().map(|p| p.login) {
+                                        cx.open_url(&format!("https://github.com/{login}"));
+                                    }
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("entry-auth-sign-out")
+                                .w_full()
+                                .ghost()
+                                .label("Sign Out")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.sign_out_github(cx);
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .when(profile.is_none(), |menu| {
+                        menu.child(
+                            Button::new("entry-auth-sign-in")
+                                .w_full()
+                                .ghost()
+                                .label("Sign In with GitHub")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.begin_github_sign_in(cx);
+                                    this.auth_account_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    }),
             )
             .into_any_element()
     }
@@ -2035,6 +2119,9 @@ impl Render for EntryScreen {
             )
             .when(self.auth_device_modal_visible, |this| {
                 this.child(self.render_github_code_modal(cx))
+            })
+            .when(self.auth_account_menu_open, |this| {
+                this.child(self.render_auth_account_menu_overlay(cx))
             })
             .into_any_element()
     }

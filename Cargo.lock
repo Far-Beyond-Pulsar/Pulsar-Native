@@ -12810,6 +12810,7 @@ dependencies = [
  "image",
  "parking_lot",
  "plugin_editor_api",
+ "pulsar_auth",
  "pulsar_reflection",
  "pulsar_rendering",
  "reqwest 0.13.4",
