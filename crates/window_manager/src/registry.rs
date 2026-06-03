@@ -47,12 +47,19 @@ impl WindowRegistry {
         tracing::debug!("[WindowRegistry] registered '{}'", name);
     }
 
-    /// Open the window registered under `name`. Logs a warning if not found.
+    /// Open the window registered under `name`. Logs timing at INFO level.
     pub fn open(&self, name: &'static str, cx: &mut App) {
         match self.openers.get(name) {
             Some(opener) => {
-                tracing::debug!("[WindowRegistry] opening '{}'", name);
+                let t0 = std::time::Instant::now();
+                tracing::info!("[WindowRegistry] opening '{}'", name);
                 opener(cx);
+                let elapsed = t0.elapsed();
+                if elapsed.as_millis() > 50 {
+                    tracing::warn!("[WindowRegistry] '{}' opener took {:?} (slow)", name, elapsed);
+                } else {
+                    tracing::info!("[WindowRegistry] '{}' opened in {:?}", name, elapsed);
+                }
             }
             None => tracing::warn!("[WindowRegistry] no opener registered for '{}'", name),
         }
