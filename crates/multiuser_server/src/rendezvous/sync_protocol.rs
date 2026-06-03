@@ -118,6 +118,8 @@ pub enum ServerMessage {
         peer_id: String,
         participants: Vec<String>,
         #[serde(default)]
+        join_token: Option<String>,
+        #[serde(default)]
         participant_profiles: Option<Vec<PeerProfile>>,
     },
     /// Another peer joined

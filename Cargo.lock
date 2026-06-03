@@ -3010,6 +3010,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scene",
  "rapier3d",
+ "reqwest 0.13.4",
  "ropey",
  "serde",
  "serde_json",
@@ -8527,6 +8528,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "base64",
  "bincode",
  "bytes",
  "chrono",
@@ -13155,6 +13157,10 @@ version = "0.1.0"
 dependencies = [
  "engine_state",
  "gpui-ce",
+ "image",
+ "reqwest 0.13.4",
+ "smallvec",
+ "tracing",
  "ui",
 ]
 

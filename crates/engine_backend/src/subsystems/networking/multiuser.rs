@@ -20,6 +20,19 @@ fn tokio_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+fn http_base_url(server_url: &str) -> String {
+    let trimmed = server_url.trim().trim_end_matches('/');
+    let base = if let Some(rest) = trimmed.strip_prefix("ws://") {
+        format!("http://{rest}")
+    } else if let Some(rest) = trimmed.strip_prefix("wss://") {
+        format!("https://{rest}")
+    } else {
+        trimmed.to_string()
+    };
+
+    base.trim_end_matches("/ws").to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct PeerProfile {
     pub peer_id: String,
@@ -153,6 +166,8 @@ pub enum ServerMessage {
         session_id: String,
         peer_id: String,
         participants: Vec<String>,
+        #[serde(default)]
+        join_token: Option<String>,
         #[serde(default)]
         participant_profiles: Option<Vec<PeerProfile>>,
     },
@@ -300,13 +315,47 @@ impl MultiuserClient {
     }
 
     /// Create a new session (generates local credentials)
-    /// The server will create the actual session on WebSocket connect
+    /// The server creates the session via HTTP and returns the join token.
     pub async fn create_session(&self) -> Result<(String, String)> {
-        // Generate session credentials locally
-        let session_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
-        let join_token = uuid::Uuid::new_v4().to_string()[..16].to_string();
+        let base_url = http_base_url(&self.server_url);
+        let host_id = uuid::Uuid::new_v4().to_string();
+        let request_url = format!("{}/v1/sessions", base_url);
 
-        info!("Generated session credentials: {}", session_id);
+        info!("Creating session via HTTP: {}", request_url);
+
+        let response = reqwest::blocking::Client::builder()
+            .build()
+            .context("Failed to build create-session client")?
+            .post(&request_url)
+            .json(&serde_json::json!({
+                "host_id": host_id,
+                "metadata": {},
+            }))
+            .send()
+            .context("Failed to send create-session request")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            anyhow::bail!("Create session failed: {} {}", status, body);
+        }
+
+        let payload: serde_json::Value = response
+            .json()
+            .context("Failed to decode create-session response")?;
+
+        let session_id = payload
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .context("Create-session response missing session_id")?
+            .to_string();
+        let join_token = payload
+            .get("join_token")
+            .and_then(|v| v.as_str())
+            .context("Create-session response missing join_token")?
+            .to_string();
+
+        info!("Created session {} via server API", session_id);
         Ok((session_id, join_token))
     }
 

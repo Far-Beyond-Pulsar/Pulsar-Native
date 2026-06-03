@@ -22,6 +22,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+use crate::auth::Role;
 
 use crate::metrics::METRICS;
 use peer_discovery::PeerSession;
@@ -307,9 +310,9 @@ impl RendezvousCoordinator {
 
     async fn handle_join(
         &self,
-        sid: String,
+        mut sid: String,
         pid: String,
-        _join_token: String,
+        join_token: String,
         display_name: Option<String>,
         avatar_url: Option<String>,
         github_login: Option<String>,
@@ -317,8 +320,22 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
-        // Validate JWT token
-        if let Err(e) = self.validate_jwt_token(&_join_token) {
+        let creating_session = join_token.trim().is_empty();
+        let mut created_join_token = None;
+
+        if creating_session {
+            info!("No join token provided; creating a new session");
+            if sid.trim().is_empty() {
+                sid = Uuid::new_v4().to_string()[..8].to_string();
+            }
+            if !self.sessions.contains_key(&sid) {
+                self.create_session(sid.clone(), pid.clone())?;
+            }
+            created_join_token = Some(
+                self.auth
+                    .create_join_token(sid.clone(), Role::Host, Duration::from_secs(3600))?,
+            );
+        } else if let Err(e) = self.auth.verify_join_token(&join_token) {
             error!(error = %e, "Invalid join token");
             tx.send(ServerMessage::Error {
                 message: "Invalid join token".to_string(),
@@ -376,6 +393,7 @@ impl RendezvousCoordinator {
             session_id: sid.clone(),
             peer_id: pid.clone(),
             participants,
+            join_token: created_join_token,
             participant_profiles: if participant_profiles.is_empty() {
                 None
             } else {

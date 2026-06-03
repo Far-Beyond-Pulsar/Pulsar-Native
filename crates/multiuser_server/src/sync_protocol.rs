@@ -22,6 +22,15 @@ use crate::config::Config;
 use crate::metrics::METRICS;
 use crate::nat::{ConnectionCandidate, NatType};
 
+/// Peer profile information for collaborative sessions
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PeerProfile {
+    pub peer_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
+}
+
 /// Messages sent FROM client TO server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -31,6 +40,12 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
         join_token: String,
+        #[serde(default)]
+        display_name: Option<String>,
+        #[serde(default)]
+        avatar_url: Option<String>,
+        #[serde(default)]
+        github_login: Option<String>,
     },
     /// Leave a session
     Leave {
@@ -135,11 +150,17 @@ pub enum ServerMessage {
         session_id: String,
         peer_id: String,
         participants: Vec<String>,
+        #[serde(default)]
+        join_token: Option<String>,
+        #[serde(default)]
+        participant_profiles: Option<Vec<PeerProfile>>,
     },
     /// Another peer joined
     PeerJoined {
         session_id: String,
         peer_id: String,
+        #[serde(default)]
+        profile: Option<PeerProfile>,
     },
     /// A peer left
     PeerLeft {
@@ -258,4 +279,3 @@ impl From<ConnectionCandidate> for CandidateDto {
         }
     }
 }
-

@@ -154,7 +154,9 @@ impl MultiplayerWindow {
             our_peer_id.to_string(),
             host_peer_id,
         )
-        .with_status(MultiuserStatus::Connected)
+        .with_status(MultiuserStatus::Connected {
+            relay_mode: None, // Will be set when P2P/relay negotiation completes
+        })
         .with_participants(participants.to_vec());
 
         if let Some(active_session) = &self.active_session {

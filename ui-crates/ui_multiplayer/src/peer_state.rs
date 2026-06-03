@@ -61,6 +61,7 @@ impl MultiplayerWindow {
                         Some(ServerMessage::Joined {
                             peer_id,
                             participants,
+                            join_token: server_join_token,
                             participant_profiles,
                             ..
                         }) => {
@@ -78,7 +79,9 @@ impl MultiplayerWindow {
 
                                     this.active_session = Some(ActiveSession {
                                         session_id: session_id.clone(),
-                                        join_token: join_token.clone(),
+                                        join_token: server_join_token
+                                            .clone()
+                                            .unwrap_or_else(|| join_token.clone()),
                                         server_address: server_address.clone(),
                                         // Store raw participant list
                                         connected_users: participants.clone(),

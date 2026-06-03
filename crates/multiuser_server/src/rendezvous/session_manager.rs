@@ -2,76 +2,33 @@
 
 use anyhow::{Context, Result};
 use dashmap::DashMap;
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tracing::info;
 
 use super::peer_discovery::RendezvousSession;
 use super::sync_protocol::ServerMessage;
+use crate::auth::AuthService;
 use crate::config::Config;
 use crate::metrics::METRICS;
 
 /// Rendezvous coordinator state
 #[derive(Clone)]
 pub struct RendezvousCoordinator {
+    pub(super) auth: Arc<AuthService>,
     pub(super) config: Config,
     pub(super) sessions: Arc<DashMap<String, Arc<RendezvousSession>>>,
-    pub(super) jwt_encoding_key: EncodingKey,
-    pub(super) jwt_decoding_key: DecodingKey,
-}
-
-/// JWT Claims structure for session tokens
-#[derive(Debug, Serialize, Deserialize)]
-pub(super) struct TokenClaims {
-    pub(super) sub: String,
-    pub(super) session: String,
-    exp: usize,
-    iat: usize,
 }
 
 impl RendezvousCoordinator {
     /// Create a new rendezvous coordinator
-    pub fn new(config: Config) -> Self {
-        let jwt_secret = config.jwt_secret.as_bytes();
+    pub fn new(auth: Arc<AuthService>, config: Config) -> Self {
         Self {
-            jwt_encoding_key: EncodingKey::from_secret(jwt_secret),
-            jwt_decoding_key: DecodingKey::from_secret(jwt_secret),
+            auth,
             config,
             sessions: Arc::new(DashMap::new()),
         }
-    }
-
-    /// Validate JWT token
-    pub(super) fn validate_jwt_token(&self, token: &str) -> Result<TokenClaims> {
-        let mut validation = Validation::new(Algorithm::HS256);
-        validation.validate_exp = true;
-
-        let token_data = decode::<TokenClaims>(token, &self.jwt_decoding_key, &validation)
-            .context("Failed to decode JWT token")?;
-
-        Ok(token_data.claims)
-    }
-
-    /// Generate JWT token for a peer joining a session
-    pub fn generate_join_token(
-        &self,
-        peer_id: &str,
-        session_id: &str,
-        ttl_secs: u64,
-    ) -> Result<String> {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() as usize;
-
-        let claims = TokenClaims {
-            sub: peer_id.to_string(),
-            session: session_id.to_string(),
-            iat: now,
-            exp: now + ttl_secs as usize,
-        };
-
-        encode(&Header::default(), &claims, &self.jwt_encoding_key)
-            .context("Failed to encode JWT token")
     }
 
     /// Create a new rendezvous session

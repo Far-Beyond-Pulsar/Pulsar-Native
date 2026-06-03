@@ -53,7 +53,9 @@ pub use pulsar_auth::AuthProfile;
 pub use discord::DiscordPresence;
 
 // Re-export multiuser types
-pub use multiuser::{MultiuserContext, MultiuserMode, MultiuserParticipant, MultiuserStatus};
+pub use multiuser::{
+    MultiuserContext, MultiuserMode, MultiuserParticipant, MultiuserStatus, RelayConnectionMode,
+};
 
 // Re-export typed systems as primary API
 pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};

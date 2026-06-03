@@ -50,10 +50,10 @@ impl MultiplayerWindow {
                     let session_id_for_display = session_id.clone();
                     let join_token_for_display = join_token.clone();
 
-                    // Update UI state
+                    // Update UI state - still connecting, not yet fully connected
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
-                            this.connection_status = ConnectionStatus::Connected;
+                            this.connection_status = ConnectionStatus::Connecting;
                             this.active_session = Some(ActiveSession {
                                 session_id: session_id_for_display.clone(),
                                 join_token: join_token_for_display.clone(),
@@ -83,6 +83,7 @@ impl MultiplayerWindow {
                                 Some(ServerMessage::Joined {
                                     peer_id,
                                     participants,
+                                    join_token,
                                     participant_profiles,
                                     ..
                                 }) => {
@@ -100,6 +101,9 @@ impl MultiplayerWindow {
                                             if let Some(session) = &mut this.active_session {
                                                 // Store raw participant list
                                                 session.connected_users = participants.clone();
+                                                if let Some(join_token) = join_token.clone() {
+                                                    session.join_token = join_token;
+                                                }
                                             }
 
                                             // Initialize presence for all participants
