@@ -13,6 +13,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     locale,
+    v_flex,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
@@ -1404,84 +1405,106 @@ impl AppTitleBar {
         };
 
         div()
-            .relative()
+            .id("app-auth-avatar")
+            .cursor_pointer()
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.auth_menu_open = !this.auth_menu_open;
+                cx.notify();
+            }))
+            .child(avatar)
+            .into_any_element()
+    }
+
+    fn render_auth_menu_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+
+        div()
+            .absolute()
+            .size_full()
+            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
+                this.auth_menu_open = false;
+                cx.notify();
+            }))
             .child(
-                div()
-                    .id("app-auth-avatar")
-                    .cursor_pointer()
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.auth_menu_open = !this.auth_menu_open;
-                        cx.notify();
-                    }))
-                    .child(avatar),
-            )
-            .when(self.auth_menu_open, |this| {
-                this.child(
-                    div()
-                        .absolute()
-                        .top(px(28.))
-                        .right_0()
-                        .w(px(220.))
-                        .p_2()
-                        .rounded_lg()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .bg(cx.theme().background)
-                        .shadow_lg()
+                v_flex()
+                    .absolute()
+                    .top(px(34.))
+                    .right(px(8.))
+                    .w(px(220.))
+                    .p_2()
+                    .gap_1()
+                    .rounded_lg()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .bg(cx.theme().background)
+                    .shadow_lg()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .child(
+                        div()
+                            .px_2()
+                            .pb_1()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(format!("@{login}")),
+                    )
+                    .when(profile.is_some(), |menu| {
+                        menu.child(
+                            Button::new("auth-open-github-profile")
+                                .w_full()
+                                .ghost()
+                                .label("Open GitHub Profile")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    if let Some(login) = engine_state::EngineContext::global()
+                                        .and_then(|ec| ec.auth_profile())
+                                        .map(|p| p.login)
+                                    {
+                                        cx.open_url(&format!("https://github.com/{login}"));
+                                    }
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            Button::new("auth-sign-out")
+                                .w_full()
+                                .ghost()
+                                .label("Sign Out")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    let _ = pulsar_auth::sign_out();
+                                    if let Some(ec) = engine_state::EngineContext::global() {
+                                        ec.clear_auth_profile();
+                                    }
+                                    this.auth_avatar_image = None;
+                                    this.auth_avatar_url_loaded = None;
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
+                    })
+                    .when(profile.is_none(), |menu| {
+                        menu.child(
+                            Button::new("auth-sign-in-launcher")
+                                .w_full()
+                                .ghost()
+                                .label("Sign In with GitHub")
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.auth_menu_open = false;
+                                    cx.notify();
+                                })),
+                        )
                         .child(
                             div()
                                 .px_2()
-                                .pb_2()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child(format!("@{login}")),
+                                .child("Use launcher to complete sign-in."),
                         )
-                        .when(profile.is_some(), |menu| {
-                            menu.child(
-                                Button::new("auth-open-github-profile")
-                                    .w_full()
-                                    .ghost()
-                                    .label("Open GitHub Profile")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        if let Some(login) = engine_state::EngineContext::global()
-                                            .and_then(|ec| ec.auth_profile())
-                                            .map(|p| p.login)
-                                        {
-                                            cx.open_url(&format!("https://github.com/{login}"));
-                                        }
-                                        this.auth_menu_open = false;
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(
-                                Button::new("auth-sign-out")
-                                    .w_full()
-                                    .ghost()
-                                    .label("Sign Out")
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        let _ = pulsar_auth::sign_out();
-                                        if let Some(ec) = engine_state::EngineContext::global() {
-                                            ec.clear_auth_profile();
-                                        }
-                                        this.auth_avatar_image = None;
-                                        this.auth_avatar_url_loaded = None;
-                                        this.auth_menu_open = false;
-                                        cx.notify();
-                                    })),
-                            )
-                        })
-                        .when(profile.is_none(), |menu| {
-                            menu.child(
-                                div()
-                                    .px_2()
-                                    .py_1()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Sign in from the launcher."),
-                            )
-                        }),
-                )
-            })
+                    }),
+            )
             .into_any_element()
     }
 }
@@ -1584,6 +1607,9 @@ impl Render for AppTitleBar {
                     )
                     .child(self.render_auth_identity(cx)),
             )
+            .when(self.auth_menu_open, |this| {
+                this.child(self.render_auth_menu_overlay(cx))
+            })
     }
 }
 
