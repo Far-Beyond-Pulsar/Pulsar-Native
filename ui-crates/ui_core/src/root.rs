@@ -1,42 +1,51 @@
 //! Root wrapper component that contains the titlebar and app
 
-use gpui::{div, prelude::*, Context, Entity, IntoElement, Render, SharedString, Window, px, rgba};
+use gpui::UpdateGlobal as _;
+use gpui::{
+    div, prelude::*, px, rgba, AnyView, Context, Entity, IntoElement, Render, SharedString, Window,
+};
 use std::path::PathBuf;
 use ui::{
-    notification::Notification,
-    v_flex,
-    ActiveTheme as _,
-    ContextModal as _,
-    Icon,
-    IconName,
+    notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
     StyledExt as _,
-    Root,
 };
-use gpui::UpdateGlobal as _;
 use ui_common::menu::{
     AboutApp, AppTitleBar, DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets,
     DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings, ShowDocumentation,
 };
 
-use window_manager::{PulsarWindow, WindowConfig, WindowRegistry};
+use window_manager::{
+    register_window_wrapper, PulsarWindow, WindowConfig, WindowContentWrapper, WindowRegistry,
+    WindowRequest,
+};
 
 use crate::app::PulsarApp;
 
 /// Root wrapper that contains the titlebar, matching gpui-component storybook structure
 pub struct PulsarRoot {
-    title_bar: Entity<AppTitleBar>,
     app: Entity<PulsarApp>,
 }
 
-impl PulsarRoot {
-    pub fn new(
+struct EditorWindowShell {
+    title_bar: Entity<AppTitleBar>,
+    content: AnyView,
+}
+
+impl EditorWindowShell {
+    fn new(
         title: impl Into<SharedString>,
-        app: Entity<PulsarApp>,
+        content: AnyView,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
-        Self { title_bar, app }
+        Self { title_bar, content }
+    }
+}
+
+impl PulsarRoot {
+    pub fn new(app: Entity<PulsarApp>, _window: &mut Window, _cx: &mut Context<Self>) -> Self {
+        Self { app }
     }
 }
 
@@ -46,14 +55,15 @@ impl Render for PulsarRoot {
         let modal_layer = Root::render_modal_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
         let kicked_reason = engine_state::EngineContext::global().and_then(|ctx| {
-            ctx.multiuser().and_then(|multiuser| match multiuser.status {
-                engine_state::MultiuserStatus::Error(ref message)
-                    if message.contains("Kicked from session") =>
-                {
-                    Some(message.clone())
-                }
-                _ => None,
-            })
+            ctx.multiuser()
+                .and_then(|multiuser| match multiuser.status {
+                    engine_state::MultiuserStatus::Error(ref message)
+                        if message.contains("Kicked from session") =>
+                    {
+                        Some(message.clone())
+                    }
+                    _ => None,
+                })
         });
 
         // Belt-and-suspenders action handlers at the root level so that menu
@@ -142,8 +152,7 @@ impl Render for PulsarRoot {
             .child(
                 v_flex()
                     .size_full()
-                    .child(self.title_bar.clone())
-                    .child(div().flex_1().overflow_hidden().child(self.app.clone())),
+                    .child(div().size_full().overflow_hidden().child(self.app.clone())),
             )
             .children(drawer_layer)
             .children(modal_layer)
@@ -197,6 +206,28 @@ impl Render for PulsarRoot {
     }
 }
 
+impl Render for EditorWindowShell {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(
+                v_flex()
+                    .size_full()
+                    .child(self.title_bar.clone())
+                    .child(div().flex_1().overflow_hidden().child(self.content.clone()))
+            )
+    }
+}
+
+pub fn register_window_wrappers(_cx: &mut gpui::App) {
+    register_window_wrapper(WindowContentWrapper::Editor, |content, window, cx| {
+        let wrapped_shell =
+            cx.new(|cx| EditorWindowShell::new("Pulsar Engine", content, window, cx));
+        let wrapped_root = cx.new(|cx| Root::new(wrapped_shell.into(), window, cx));
+        wrapped_root.into()
+    });
+}
+
 impl PulsarWindow for PulsarRoot {
     type Params = PathBuf;
 
@@ -208,8 +239,18 @@ impl PulsarWindow for PulsarRoot {
         WindowConfig::editor()
     }
 
+    fn window_profile(_path: &PathBuf) -> Option<window_manager::WindowProfile> {
+        Some(WindowConfig::editor_profile())
+    }
+
+    fn window_request(path: &PathBuf) -> WindowRequest {
+        WindowRequest::ProjectEditor {
+            project_path: path.to_string_lossy().to_string(),
+        }
+    }
+
     fn build(path: PathBuf, window: &mut Window, cx: &mut gpui::App) -> Entity<Self> {
         let app = cx.new(|cx| PulsarApp::new_with_project(path, window, cx));
-        cx.new(|cx| PulsarRoot::new("Pulsar Engine", app, window, cx))
+        cx.new(|cx| PulsarRoot::new(app, window, cx))
     }
 }

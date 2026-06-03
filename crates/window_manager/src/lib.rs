@@ -13,9 +13,10 @@ pub mod registry;
 pub mod state;
 pub mod telemetry;
 pub mod validation;
+pub mod wrappers;
 
 pub use commands::{CloseWindowCommand, CreateWindowCommand, WindowCommand, WindowCommandResult};
-pub use configs::WindowConfig;
+pub use configs::{WindowConfig, WindowProfile};
 pub use hooks::{HookContext, HookRegistry, HookType, WindowHook};
 pub use pulsar_window::{default_window_options, PulsarWindow};
 pub use state::{WindowInfo, WindowState};
@@ -26,6 +27,7 @@ pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator}
 pub use manager::WindowManager;
 pub use registry::{WindowRegistry, WINDOW_REGISTRANTS};
 pub use ui_gen_macros::register_window;
+pub use wrappers::{apply_window_wrapper, register_window_wrapper, WindowContentWrapper};
 
 /// Call once after [`WindowManager`] and [`WindowRegistry`] globals are installed.
 /// Iterates every element contributed to [`WINDOW_REGISTRANTS`] via

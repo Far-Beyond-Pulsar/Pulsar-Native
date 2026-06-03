@@ -1,14 +1,13 @@
 use super::{
     helpers::{render_info_section, render_size_bar},
-    types::{ProjectSettings, format_size},
+    types::{format_size, ProjectSettings},
 };
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme as _, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    v_flex,
+    v_flex, ActiveTheme as _, IconName,
 };
 
 pub fn render_disk_info_tab(

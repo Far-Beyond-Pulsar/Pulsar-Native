@@ -49,8 +49,8 @@ pub mod renderers_typed;
 pub mod settings;
 pub mod settings_defaults;
 
-pub use pulsar_auth::AuthProfile;
 pub use discord::DiscordPresence;
+pub use pulsar_auth::AuthProfile;
 
 // Re-export multiuser types
 pub use multiuser::{
@@ -58,12 +58,13 @@ pub use multiuser::{
 };
 
 // Re-export typed systems as primary API
-pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
 pub use context::subscribe_multiuser_updates;
+pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
 pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 
 // Re-export settings system (PulsarConfig surface)
 pub use settings::{
+    global_config,
     // PulsarConfig types
     ChangeEvent,
     Color,
@@ -75,8 +76,6 @@ pub use settings::{
     FieldType,
     GlobalSettings,
     ListenerId,
-    NS_EDITOR,
-    NS_PROJECT,
     NamespaceSchema,
     OwnerHandle,
     PersistError,
@@ -85,7 +84,8 @@ pub use settings::{
     SearchResult,
     SettingInfo,
     Validator,
-    global_config,
+    NS_EDITOR,
+    NS_PROJECT,
 };
 pub use settings_defaults::register_default_settings;
 

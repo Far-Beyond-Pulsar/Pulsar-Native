@@ -62,16 +62,21 @@ impl MissionControlPanel {
         // Populate sysinfo data on the background executor so it never blocks the UI.
         let metrics_bg = metrics.clone();
         let sysinfo_bg = system_info.clone();
-        cx.background_executor().spawn(async move {
-            let t = std::time::Instant::now();
-            let full_metrics = crate::performance_metrics::PerformanceMetrics::new();
-            let full_sysinfo = crate::system_info::SystemInfo::gather();
-            tracing::info!("[MissionControlPanel] sysinfo init took {:?}", t.elapsed());
-            *metrics_bg.write() = full_metrics;
-            *sysinfo_bg.write() = full_sysinfo;
-        }).detach();
+        cx.background_executor()
+            .spawn(async move {
+                let t = std::time::Instant::now();
+                let full_metrics = crate::performance_metrics::PerformanceMetrics::new();
+                let full_sysinfo = crate::system_info::SystemInfo::gather();
+                tracing::info!("[MissionControlPanel] sysinfo init took {:?}", t.elapsed());
+                *metrics_bg.write() = full_metrics;
+                *sysinfo_bg.write() = full_sysinfo;
+            })
+            .detach();
 
-        tracing::info!("[MissionControlPanel] new() completed in {:?}", t0.elapsed());
+        tracing::info!(
+            "[MissionControlPanel] new() completed in {:?}",
+            t0.elapsed()
+        );
 
         Self {
             focus_handle: cx.focus_handle(),

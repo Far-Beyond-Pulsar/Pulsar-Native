@@ -43,8 +43,8 @@ pub use providers::{
 };
 
 // Re-export operations
-pub use operations::AssetOperations;
 pub use events::{emit, subscribe, FsChangeKind, FsEvent};
+pub use operations::AssetOperations;
 
 // Re-export template types
 pub use templates::{AssetCategory, AssetKind};

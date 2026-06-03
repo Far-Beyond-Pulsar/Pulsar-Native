@@ -81,7 +81,10 @@ pub fn start_device_flow(client_id: &str) -> Result<DeviceCodeResponse> {
         .context("Failed to request GitHub device code")?;
 
     if !response.status().is_success() {
-        anyhow::bail!("GitHub device-code request failed: HTTP {}", response.status());
+        anyhow::bail!(
+            "GitHub device-code request failed: HTTP {}",
+            response.status()
+        );
     }
 
     response
@@ -199,8 +202,12 @@ pub fn clear_access_token() -> Result<()> {
 pub fn save_cached_profile(profile: &AuthProfile) -> Result<()> {
     let path = profile_cache_path()?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("Failed to create auth cache directory: {}", parent.display()))?;
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Failed to create auth cache directory: {}",
+                parent.display()
+            )
+        })?;
     }
     let json = serde_json::to_string_pretty(profile).context("Failed to serialize auth profile")?;
     std::fs::write(&path, json)

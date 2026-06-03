@@ -3,14 +3,7 @@
 use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{
-    button::Button,
-    h_flex,
-    v_flex,
-    ActiveTheme as _,
-    Icon,
-    IconName,
-    StyledExt as _,
-    TitleBar,
+    button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt as _, TitleBar,
 };
 
 use super::state::MultiplayerWindow;
@@ -27,14 +20,15 @@ impl Render for MultiplayerWindow {
         self.process_pending_updates(window, cx);
 
         let kick_reason = engine_state::EngineContext::global().and_then(|ctx| {
-            ctx.multiuser().and_then(|multiuser| match multiuser.status {
-                engine_state::MultiuserStatus::Error(ref message)
-                    if message.contains("Kicked from session") =>
-                {
-                    Some(message.clone())
-                }
-                _ => None,
-            })
+            ctx.multiuser()
+                .and_then(|multiuser| match multiuser.status {
+                    engine_state::MultiuserStatus::Error(ref message)
+                        if message.contains("Kicked from session") =>
+                    {
+                        Some(message.clone())
+                    }
+                    _ => None,
+                })
         });
 
         if self.pending_file_sync.is_some() {
@@ -124,7 +118,8 @@ impl Render for MultiplayerWindow {
                                         .label("Close")
                                         .w_full()
                                         .on_click(cx.listener(|_, _, _window, cx| {
-                                            if let Some(ctx) = engine_state::EngineContext::global() {
+                                            if let Some(ctx) = engine_state::EngineContext::global()
+                                            {
                                                 ctx.clear_multiuser();
                                             }
                                             cx.notify();

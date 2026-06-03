@@ -7,13 +7,13 @@
 //! 4. Host sends file contents
 //! 5. Joiner writes files to disk
 
+use engine_fs::{events, FsChangeKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use walkdir::WalkDir;
-use engine_fs::{events, FsChangeKind};
 
 /// File manifest entry
 #[derive(Debug, Clone, Serialize, Deserialize)]

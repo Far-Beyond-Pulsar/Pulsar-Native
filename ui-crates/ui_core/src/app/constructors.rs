@@ -265,7 +265,10 @@ impl PulsarApp {
         // Register built-in editors
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
         plugin_manager.register_builtin_editors();
-        tracing::info!("[PulsarApp] built-in editors registered in {:?}", t_plugins.elapsed());
+        tracing::info!(
+            "[PulsarApp] built-in editors registered in {:?}",
+            t_plugins.elapsed()
+        );
 
         let plugins_dir = std::path::Path::new("plugins/editor");
         let t_load = std::time::Instant::now();

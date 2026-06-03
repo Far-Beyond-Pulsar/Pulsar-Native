@@ -46,6 +46,8 @@ pub fn init(cx: &mut gpui::App) {
     use gpui::UpdateGlobal as _;
     use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
 
+    root::register_window_wrappers(cx);
+
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
@@ -58,7 +60,9 @@ pub fn init(cx: &mut gpui::App) {
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
     });
     cx.on_action(|_: &ShowDocumentation, cx| {
-        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("DocumentationWindow", cx));
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("DocumentationWindow", cx)
+        });
     });
 }
 

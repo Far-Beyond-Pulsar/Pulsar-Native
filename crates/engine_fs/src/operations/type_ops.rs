@@ -2,12 +2,12 @@
 //!
 //! Handles create, update, delete, and move operations for type alias files.
 
+use crate::{events, FsChangeKind};
 use anyhow::{Context, Result};
 use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::Arc;
 use type_db::TypeDatabase;
-use crate::{events, FsChangeKind};
 
 /// Type alias operations handler
 pub struct TypeOperations {

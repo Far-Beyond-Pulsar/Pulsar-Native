@@ -12,12 +12,11 @@ use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 pub use types::{ProjectSettings, ProjectSettingsTab};
 use ui::{
-    ActiveTheme as _, Icon, IconName, StyledExt,
     button::{Button, ButtonVariants as _},
     divider::Divider,
     h_flex,
     scroll::ScrollbarAxis,
-    v_flex,
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
 
 pub fn render_project_settings(

@@ -9,8 +9,8 @@ use gpui::AppContext;
 use parking_lot::RwLock;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
@@ -196,7 +196,6 @@ pub struct EngineContext {
     /// Optional window manager instance (enabled via feature)
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
-
 
 impl EngineContext {
     /// Create a new engine context
@@ -450,8 +449,7 @@ static MULTIUSER_UPDATE_BUS: OnceLock<(
     Mutex<Option<smol::channel::Receiver<()>>>,
 )> = OnceLock::new();
 
-fn multiuser_update_bus(
-) -> &'static (
+fn multiuser_update_bus() -> &'static (
     smol::channel::Sender<()>,
     Mutex<Option<smol::channel::Receiver<()>>>,
 ) {

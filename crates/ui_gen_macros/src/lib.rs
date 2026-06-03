@@ -372,7 +372,10 @@ pub fn register_window(_attr: TokenStream, item: TokenStream) -> TokenStream {
     });
 
     // Generate a unique-ish identifier using the type name for the static.
-    let type_name = quote!(#self_ty).to_string().replace("::", "_").replace(" ", "");
+    let type_name = quote!(#self_ty)
+        .to_string()
+        .replace("::", "_")
+        .replace(" ", "");
     let static_ident = syn::Ident::new(
         &format!("__REGISTER_WINDOW_{}", type_name),
         proc_macro2::Span::call_site(),

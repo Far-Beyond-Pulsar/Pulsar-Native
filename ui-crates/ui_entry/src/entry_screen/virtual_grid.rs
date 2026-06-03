@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use gpui::{prelude::*, *};
-use ui::{VirtualListScrollHandle, h_flex, v_virtual_list};
+use ui::{h_flex, v_virtual_list, VirtualListScrollHandle};
 
 /// Renders a responsive, virtualized grid of cards.
 ///

@@ -4,6 +4,7 @@
 //! repetition. Each crate declares its own window with max customization, min boilerplate.
 
 use gpui::{App, Entity, Render, Window, WindowOptions};
+use ui_types_common::window_types::WindowRequest;
 
 /// Implement this trait for any type you want to open as a top-level window.
 ///
@@ -42,6 +43,21 @@ pub trait PulsarWindow: Render + Sized + 'static {
     /// Window size, position, and chrome options.
     /// Override to customise; call `default_window_options(width, height)` for defaults.
     fn window_options(params: &Self::Params) -> WindowOptions;
+
+    /// Optional profile used by WindowManager to apply wrapper chrome around built content.
+    ///
+    /// Most windows can keep the default `None`.
+    fn window_profile(_params: &Self::Params) -> Option<crate::configs::WindowProfile> {
+        None
+    }
+
+    /// Window request metadata tracked by WindowManager state/telemetry.
+    /// Defaults to a custom window keyed by [`Self::window_name`].
+    fn window_request(_params: &Self::Params) -> WindowRequest {
+        WindowRequest::Custom {
+            type_name: Self::window_name(),
+        }
+    }
 
     /// Build and return the root entity for this window.
     /// Called inside the GPUI open_window callback; wrapped in `Root` automatically.

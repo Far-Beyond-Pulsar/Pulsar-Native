@@ -11,21 +11,22 @@ use git_operations::{
     pull_updates, setup_template_remotes,
 };
 use types::{
-    CloneProgress, CloudProject, CloudProjectStatus, CloudServer, CloudServerStatus,
-    EntryScreenView, GitFetchStatus, SharedCloneProgress, Template, get_default_templates,
+    get_default_templates, CloneProgress, CloudProject, CloudProjectStatus, CloudServer,
+    CloudServerStatus, EntryScreenView, GitFetchStatus, SharedCloneProgress, Template,
 };
 
-use gpui::{prelude::*, *};
 use gpui::StyledImage as _;
+use gpui::{prelude::*, *};
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
-    ActiveTheme as _, TitleBar, VirtualListScrollHandle,
     button::{Button, ButtonVariants as _},
-    h_flex, input::InputState, v_flex,
+    h_flex,
+    input::InputState,
+    v_flex, ActiveTheme as _, TitleBar, VirtualListScrollHandle,
 };
 
 /// EntryScreen: AAA-quality project manager
@@ -1390,7 +1391,11 @@ default_scene = "scenes/main.scene"
 
         let auth_token = {
             let t = self.cloud_servers[server_idx].auth_token.trim().to_string();
-            if t.is_empty() { None } else { Some(t) }
+            if t.is_empty() {
+                None
+            } else {
+                Some(t)
+            }
         };
 
         // ── Set up remote virtual filesystem ─────────────────────────────────
@@ -1486,9 +1491,7 @@ default_scene = "scenes/main.scene"
 
             cx.update(|cx| {
                 this.update(cx, |this, cx| {
-                    this.auth_message = Some(format!(
-                        "Complete sign-in in GitHub."
-                    ));
+                    this.auth_message = Some(format!("Complete sign-in in GitHub."));
                     this.auth_device_code = Some(flow.user_code.clone());
                     this.auth_device_verification_url = Some(flow.verification_uri.clone());
                     this.auth_device_modal_visible = true;
@@ -1501,7 +1504,9 @@ default_scene = "scenes/main.scene"
             let client_id_poll = client_id.clone();
             let token = cx
                 .background_executor()
-                .spawn(async move { pulsar_auth::wait_for_device_flow_token(&client_id_poll, &flow) })
+                .spawn(
+                    async move { pulsar_auth::wait_for_device_flow_token(&client_id_poll, &flow) },
+                )
                 .await;
 
             let Ok(token) = token else {
@@ -1528,8 +1533,7 @@ default_scene = "scenes/main.scene"
                             .map_err(|e| e.to_string())?;
                         pulsar_auth::store_access_token(&token_for_profile)
                             .map_err(|e| e.to_string())?;
-                        pulsar_auth::save_cached_profile(&profile)
-                            .map_err(|e| e.to_string())?;
+                        pulsar_auth::save_cached_profile(&profile).map_err(|e| e.to_string())?;
                         Ok::<_, String>(profile)
                     }
                 })
@@ -1547,10 +1551,7 @@ default_scene = "scenes/main.scene"
                             if let Some(ec) = engine_state::EngineContext::global() {
                                 ec.set_auth_profile(profile.clone());
                             }
-                            this.auth_message = Some(format!(
-                                "Signed in as @{}",
-                                profile.login
-                            ));
+                            this.auth_message = Some(format!("Signed in as @{}", profile.login));
                             this.auth_avatar_image = None;
                             this.auth_avatar_url_loaded = None;
                             this.ensure_auth_avatar_loaded(cx);
@@ -1685,10 +1686,13 @@ default_scene = "scenes/main.scene"
         div()
             .absolute()
             .size_full()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.auth_account_menu_open = false;
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.auth_account_menu_open = false;
+                    cx.notify();
+                }),
+            )
             .child(
                 v_flex()
                     .absolute()
@@ -1806,12 +1810,7 @@ default_scene = "scenes/main.scene"
                             .child(code.clone()),
                     )
                     .when_some(self.auth_device_copy_notice.clone(), |this, notice| {
-                        this.child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().success)
-                                .child(notice),
-                        )
+                        this.child(div().text_xs().text_color(cx.theme().success).child(notice))
                     })
                     .child(
                         h_flex()

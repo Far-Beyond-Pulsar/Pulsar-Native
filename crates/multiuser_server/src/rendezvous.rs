@@ -142,19 +142,18 @@ impl RendezvousCoordinator {
                 avatar_url,
                 github_login,
             } => {
-                self
-                    .handle_join(
-                        sid,
-                        pid,
-                        join_token,
-                        display_name,
-                        avatar_url,
-                        github_login,
-                        tx,
-                        peer_id,
-                        session_id,
-                    )
-                    .await?;
+                self.handle_join(
+                    sid,
+                    pid,
+                    join_token,
+                    display_name,
+                    avatar_url,
+                    github_login,
+                    tx,
+                    peer_id,
+                    session_id,
+                )
+                .await?;
             }
             ClientMessage::Leave {
                 session_id: sid,
@@ -339,10 +338,11 @@ impl RendezvousCoordinator {
             if !self.sessions.contains_key(&sid) {
                 self.create_session(sid.clone(), pid.clone())?;
             }
-            created_join_token = Some(
-                self.auth
-                    .create_join_token(sid.clone(), Role::Host, Duration::from_secs(3600))?,
-            );
+            created_join_token = Some(self.auth.create_join_token(
+                sid.clone(),
+                Role::Host,
+                Duration::from_secs(3600),
+            )?);
         } else if let Err(e) = self.auth.verify_join_token(&join_token) {
             error!(error = %e, "Invalid join token");
             tx.send(ServerMessage::Error {

@@ -85,11 +85,15 @@ pub fn create_entry_component(
                         window_manager::WindowConfig::entry(),
                         move |window, cx| {
                             tracing::debug!("✅ [OOBE] Entry window opened, building component");
-                            create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
+                            create_entry_component(
+                                window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2,
+                            )
                         },
                         cx,
                     )
-                }).map(|_| ()).map_err(|e| format!("{:?}", e));
+                })
+                .map(|_| ())
+                .map_err(|e| format!("{:?}", e));
                 tracing::debug!("✅ [OOBE] open_window result: {:?}", result.is_ok());
                 // The OOBE window closes itself via should_close flag in render()
             },

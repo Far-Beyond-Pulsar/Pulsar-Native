@@ -141,7 +141,12 @@ impl PerformanceMetrics {
         Self::build(system, networks, components, current_pid)
     }
 
-    fn build(system: System, networks: Networks, components: Components, current_pid: sysinfo::Pid) -> Self {
+    fn build(
+        system: System,
+        networks: Networks,
+        components: Components,
+        current_pid: sysinfo::Pid,
+    ) -> Self {
         Self {
             cpu_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
             cpu_counter: 0,

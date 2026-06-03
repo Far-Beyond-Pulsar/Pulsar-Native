@@ -10,8 +10,8 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::debug;
 
-use crate::{events, FsChangeKind};
 use super::provider_trait::{FsEntry, FsMetadata, FsProvider, ManifestEntry};
+use crate::{events, FsChangeKind};
 
 // ── Wire types ─────────────────────────────────────────────────────────────────
 

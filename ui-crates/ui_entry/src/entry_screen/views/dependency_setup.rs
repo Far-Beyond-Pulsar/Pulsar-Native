@@ -4,9 +4,8 @@ use gpui::*;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ui::{
-    ActiveTheme, Icon, IconName,
     button::{Button, ButtonVariants},
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme, Icon, IconName,
 };
 
 #[cfg(target_os = "windows")]

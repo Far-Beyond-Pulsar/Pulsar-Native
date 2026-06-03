@@ -3,8 +3,8 @@
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
-use crate::{events, FsChangeKind};
 use super::provider_trait::{FsEntry, FsMetadata, FsProvider};
+use crate::{events, FsChangeKind};
 
 /// Standard local-disk implementation of [`FsProvider`].
 ///

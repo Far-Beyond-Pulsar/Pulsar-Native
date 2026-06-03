@@ -435,25 +435,42 @@ fn main() {
                 move |window, cx| {
                     use gpui::UpdateGlobal as _;
 
-                    let project_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|path, cx| open_via_loading_screen(path, cx));
+                    let project_cb: std::sync::Arc<
+                        dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
+                    > = std::sync::Arc::new(|path, cx| open_via_loading_screen(path, cx));
 
-                    let git_cb: std::sync::Arc<dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync> =
-                        std::sync::Arc::new(|_path, cx| {
-                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("GitManagerWindow", cx));
+                    let git_cb: std::sync::Arc<
+                        dyn Fn(std::path::PathBuf, &mut gpui::App) + Send + Sync,
+                    > = std::sync::Arc::new(|_path, cx| {
+                        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                            reg.open("GitManagerWindow", cx)
                         });
+                    });
 
                     let settings_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
                         std::sync::Arc::new(|cx| {
-                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                                reg.open("SettingsWindow", cx)
+                            });
                         });
 
                     let fab_cb: std::sync::Arc<dyn Fn(&mut gpui::App) + Send + Sync> =
                         std::sync::Arc::new(|cx| {
-                            window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("FabSearchWindow", cx));
+                            window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                                reg.open("FabSearchWindow", cx)
+                            });
                         });
 
-                    ui_entry::create_entry_component(window, cx, &ec, 0, project_cb, git_cb, settings_cb, fab_cb)
+                    ui_entry::create_entry_component(
+                        window,
+                        cx,
+                        &ec,
+                        0,
+                        project_cb,
+                        git_cb,
+                        settings_cb,
+                        fab_cb,
+                    )
                 },
                 cx,
             ) {

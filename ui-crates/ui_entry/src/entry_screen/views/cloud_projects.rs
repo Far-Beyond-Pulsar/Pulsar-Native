@@ -9,13 +9,12 @@ use crate::entry_screen::{CloudProject, CloudProjectStatus, CloudServerStatus, E
 use gpui::{prelude::*, *};
 use ui::popup_menu::PopupMenuExt as _;
 use ui::{
-    ActiveTheme as _, Colorize as _, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
     spinner::Spinner,
     tag::Tag,
-    v_flex,
+    v_flex, ActiveTheme as _, Colorize as _, Icon, IconName, Sizable,
 };
 
 // ── Entry point ──────────────────────────────────────────────────────────────

@@ -7,7 +7,6 @@ use std::sync::Arc;
 #[linkme::distributed_slice]
 pub static WINDOW_REGISTRANTS: [fn(&mut App)];
 
-
 type Opener = Arc<dyn Fn(&mut App) + Send + Sync>;
 
 /// Global registry mapping window names to their openers.
@@ -25,7 +24,9 @@ pub struct WindowRegistry {
 
 impl WindowRegistry {
     pub fn new() -> Self {
-        Self { openers: DashMap::new() }
+        Self {
+            openers: DashMap::new(),
+        }
     }
 
     /// Register an opener for `name`. Overwrites any previous registration.
@@ -43,7 +44,11 @@ impl WindowRegistry {
                 opener(cx);
                 let elapsed = t0.elapsed();
                 if elapsed.as_millis() > 50 {
-                    tracing::warn!("[WindowRegistry] '{}' opener took {:?} (slow)", name, elapsed);
+                    tracing::warn!(
+                        "[WindowRegistry] '{}' opener took {:?} (slow)",
+                        name,
+                        elapsed
+                    );
                 } else {
                     tracing::info!("[WindowRegistry] '{}' opened in {:?}", name, elapsed);
                 }

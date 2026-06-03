@@ -2,8 +2,8 @@
 
 use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Context, FocusHandle, Focusable, Hsla,
-    IntoElement, MouseButton, MouseMoveEvent, Render, Window, div, prelude::*, px, relative, rgb,
+    div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
+    FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window,
 };
 use plugin_editor_api::{StatusbarAction, StatusbarPosition};
 use rust_i18n::t;
@@ -11,10 +11,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 use ui::notification::Notification;
 use ui::{
-    ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
     button::{Button, ButtonVariants as _},
     dock::DockPlacement,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, StyledExt as _,
 };
 use ui_multiuser_status::render_status_bar_indicator;
 
@@ -690,24 +689,36 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_activate_open_editor))
             .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
                 use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                    reg.open("SettingsWindow", cx)
+                });
             }))
             .on_action(cx.listener(|_, _: &ui_common::menu::Settings, _, cx| {
                 use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                    reg.open("SettingsWindow", cx)
+                });
             }))
             .on_action(cx.listener(|_, _: &ui_common::menu::Preferences, _, cx| {
                 use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                    reg.open("SettingsWindow", cx)
+                });
             }))
             .on_action(cx.listener(|_, _: &ui_common::menu::AboutApp, _, cx| {
                 use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
+                window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                    reg.open("AboutWindow", cx)
+                });
             }))
-            .on_action(cx.listener(|_, _: &ui_common::menu::ShowDocumentation, _, cx| {
-                use gpui::UpdateGlobal as _;
-                window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("DocumentationWindow", cx));
-            }))
+            .on_action(
+                cx.listener(|_, _: &ui_common::menu::ShowDocumentation, _, cx| {
+                    use gpui::UpdateGlobal as _;
+                    window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+                        reg.open("DocumentationWindow", cx)
+                    });
+                }),
+            )
             .child(
                 div()
                     .flex_1()

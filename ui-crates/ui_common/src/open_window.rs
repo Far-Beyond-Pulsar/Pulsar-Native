@@ -5,7 +5,7 @@
 
 use gpui::{App, AppContext as _, UpdateGlobal as _};
 use ui::Root;
-use window_manager::{PulsarWindow, WindowManager, WindowRegistry, WindowRequest};
+use window_manager::{apply_window_wrapper, PulsarWindow, WindowManager, WindowRegistry};
 
 /// Extends every [`PulsarWindow`] with an `open` method that routes through
 /// the [`WindowManager`] and wraps the entity in [`Root`] for theming.
@@ -21,17 +21,34 @@ use window_manager::{PulsarWindow, WindowManager, WindowRegistry, WindowRequest}
 pub trait PulsarWindowExt: PulsarWindow {
     /// Open this window through the [`WindowManager`], wrapped in [`Root`] for theming.
     fn open(params: Self::Params, cx: &mut App) {
+        let request = Self::window_request(&params);
+        let profile = Self::window_profile(&params);
         let options = Self::window_options(&params);
         let _ = WindowManager::update_global(cx, |wm, cx| {
-            wm.create_window(
-                WindowRequest::Custom { type_name: Self::window_name() },
-                options,
-                move |window, cx| {
-                    let entity = Self::build(params, window, cx);
-                    cx.new(|cx| Root::new(entity.into(), window, cx))
-                },
-                cx,
-            )
+            if let Some(profile) = profile {
+                let wrapper_kind = profile.wrapper();
+                let profile_options = profile.options();
+                wm.create_window(
+                    request,
+                    profile_options,
+                    move |window, cx| {
+                        let entity = Self::build(params, window, cx);
+                        let wrapped = apply_window_wrapper(wrapper_kind, entity.into(), window, cx);
+                        cx.new(|cx| Root::new(wrapped, window, cx))
+                    },
+                    cx,
+                )
+            } else {
+                wm.create_window(
+                    request,
+                    options,
+                    move |window, cx| {
+                        let entity = Self::build(params, window, cx);
+                        cx.new(|cx| Root::new(entity.into(), window, cx))
+                    },
+                    cx,
+                )
+            }
         });
     }
 

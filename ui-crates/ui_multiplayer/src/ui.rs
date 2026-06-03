@@ -282,19 +282,16 @@ impl MultiplayerWindow {
                             .child("PASSWORD"),
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                Clipboard::new("copy-password")
-                                    .value_fn({
-                                        let token = join_token.clone();
-                                        move |_, _| SharedString::from(token.clone())
-                                    })
-                                    .on_copied(|_, _window, _cx| {
-                                        tracing::debug!("Password copied to clipboard");
-                                    }),
-                            ),
+                        h_flex().gap_2().items_center().child(
+                            Clipboard::new("copy-password")
+                                .value_fn({
+                                    let token = join_token.clone();
+                                    move |_, _| SharedString::from(token.clone())
+                                })
+                                .on_copied(|_, _window, _cx| {
+                                    tracing::debug!("Password copied to clipboard");
+                                }),
+                        ),
                     ),
             )
             .child(

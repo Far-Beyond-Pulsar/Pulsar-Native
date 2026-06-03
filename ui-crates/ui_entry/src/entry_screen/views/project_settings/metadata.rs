@@ -2,10 +2,9 @@ use super::{helpers::render_info_section, types::ProjectSettings};
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 #[derive(Clone, Debug)]

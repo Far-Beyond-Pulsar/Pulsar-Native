@@ -11,14 +11,12 @@ use gpui::{
 use ui::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
-    h_flex,
-    locale,
-    v_flex,
+    h_flex, locale,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
-    set_locale, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _, Theme,
-    ThemeMode, TitleBar,
+    set_locale, v_flex, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _,
+    Theme, ThemeMode, TitleBar,
 };
 
 mod dev_popover;
@@ -1324,7 +1322,8 @@ impl AppTitleBar {
     }
 
     fn ensure_auth_avatar_loaded(&mut self, cx: &mut Context<Self>) {
-        let Some(profile) = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile()) else {
+        let Some(profile) = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile())
+        else {
             self.auth_avatar_image = None;
             self.auth_avatar_url_loaded = None;
             return;
@@ -1425,10 +1424,13 @@ impl AppTitleBar {
         div()
             .absolute()
             .size_full()
-            .on_mouse_down(MouseButton::Left, cx.listener(|this, _, _, cx| {
-                this.auth_menu_open = false;
-                cx.notify();
-            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|this, _, _, cx| {
+                    this.auth_menu_open = false;
+                    cx.notify();
+                }),
+            )
             .child(
                 v_flex()
                     .absolute()

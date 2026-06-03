@@ -6,8 +6,8 @@ pub use avatar_cache::{AvatarCache, fetch_avatar_image};
 
 use engine_state::{EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode};
 use gpui::{
-    AnyElement, App, Hsla, IntoElement, ParentElement, Styled, div, 
-    img, prelude::FluentBuilder, px, ImageSource, ObjectFit, StyledImage,
+    AnyElement, App, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
+    div, img, prelude::FluentBuilder, px,
 };
 use std::sync::{Arc, OnceLock};
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt as _, h_flex};
@@ -39,7 +39,9 @@ pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
                     .collect()
             };
             if let Some(local) = engine.auth_profile() {
-                if !participants.iter().any(|p| p.github_login.as_deref() == Some(local.login.as_str()))
+                if !participants
+                    .iter()
+                    .any(|p| p.github_login.as_deref() == Some(local.login.as_str()))
                 {
                     participants.insert(
                         0,
@@ -75,7 +77,9 @@ pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
                     };
                     let role_label = if session.is_host { "Host" } else { "Joined" };
                     let label = format!("{mode} · Connected");
-                    let detail = format!("{relay_label} · {role_label} · {participant_count} members · {ping_label}");
+                    let detail = format!(
+                        "{relay_label} · {role_label} · {participant_count} members · {ping_label}"
+                    );
                     (
                         IconName::User,
                         cx.theme().success,
@@ -91,7 +95,8 @@ pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
                         RelayConnectionMode::JsonFallback => "JSON fallback",
                     };
                     let label = format!("{mode} · Degraded");
-                    let detail = format!("{relay_label} · {participant_count} members · {ping_label}");
+                    let detail =
+                        format!("{relay_label} · {participant_count} members · {ping_label}");
                     (
                         IconName::TriangleAlert,
                         cx.theme().warning,
@@ -165,11 +170,11 @@ pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
                 .child(detail),
         )
         .child(
-            h_flex()
-                .gap_0p5()
-                .children(participants.iter().map(|participant| {
-                    avatar_chip_with_image(participant, cx)
-                })),
+            h_flex().gap_0p5().children(
+                participants
+                    .iter()
+                    .map(|participant| avatar_chip_with_image(participant, cx)),
+            ),
         )
         .into_any_element()
 }
@@ -213,11 +218,11 @@ fn participant_avatar_url(participant: &MultiuserParticipant) -> Option<String> 
 /// Render avatar chip with profile picture if available, otherwise show initials
 fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyElement {
     let name = participant_label(participant);
-    
+
     // Try to fetch and render profile picture if URL is available
     if let Some(avatar_url) = participant_avatar_url(participant) {
         let cache = avatar_cache();
-        
+
         // Check if we have a cached image
         if let Some(cached_image) = cache.get(&avatar_url) {
             // Only render if it's a valid image (not the empty placeholder used for failed fetches)
@@ -244,13 +249,16 @@ fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyEl
                     Err(e) => {
                         tracing::debug!("Failed to fetch avatar from {}: {}", url, e);
                         // Mark as attempted (store empty to avoid retrying)
-                        cache_clone.insert(url.clone(), Arc::new(gpui::RenderImage::new(smallvec::smallvec![])));
+                        cache_clone.insert(
+                            url.clone(),
+                            Arc::new(gpui::RenderImage::new(smallvec::smallvec![])),
+                        );
                     }
                 }
             });
         }
     }
-    
+
     // Fallback to initials
     avatar_chip_initials(name, cx)
 }

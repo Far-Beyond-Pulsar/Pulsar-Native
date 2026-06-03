@@ -48,9 +48,9 @@
 
 use libloading::{Library, Symbol};
 use sha2::{Digest, Sha256};
+use std::io::{BufReader, Read};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
-use std::io::{BufReader, Read};
 
 /// A dynamically loaded library that is NEVER unloaded.
 ///
@@ -218,7 +218,6 @@ impl PermanentLibrary {
     /// file into memory at once, which prevents Out-Of-Memory (OOM) errors for large
     /// plugin libraries.
     fn compute_file_hash(path: &Path) -> Result<[u8; 32], std::io::Error> {
-
         let file = std::fs::File::open(path)?;
         let mut reader = BufReader::new(file);
         let mut hasher = Sha256::new();
