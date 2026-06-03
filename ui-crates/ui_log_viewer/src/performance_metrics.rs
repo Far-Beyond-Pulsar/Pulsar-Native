@@ -122,6 +122,15 @@ pub struct PerformanceMetrics {
 }
 
 impl PerformanceMetrics {
+    /// Returns an empty instance with no sysinfo calls — populate via [`Self::new`] off-thread.
+    pub fn empty() -> Self {
+        let system = System::new();
+        let networks = Networks::new();
+        let components = Components::new();
+        let current_pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from_u32(0));
+        Self::build(system, networks, components, current_pid)
+    }
+
     pub fn new() -> Self {
         let mut system = System::new_all();
         system.refresh_all();
@@ -129,7 +138,10 @@ impl PerformanceMetrics {
         let networks = Networks::new_with_refreshed_list();
         let components = Components::new_with_refreshed_list();
         let current_pid = sysinfo::get_current_pid().unwrap_or(sysinfo::Pid::from_u32(0));
+        Self::build(system, networks, components, current_pid)
+    }
 
+    fn build(system: System, networks: Networks, components: Components, current_pid: sysinfo::Pid) -> Self {
         Self {
             cpu_history: VecDeque::with_capacity(MAX_HISTORY_SIZE),
             cpu_counter: 0,
@@ -439,7 +451,8 @@ impl Default for PerformanceMetrics {
 /// Shared performance metrics accessible across the application
 pub type SharedPerformanceMetrics = SharedState<PerformanceMetrics>;
 
-/// Create a new shared performance metrics instance
+/// Create a new shared performance metrics instance starting empty.
+/// Callers must populate it off the main thread via [`PerformanceMetrics::new`].
 pub fn create_shared_metrics() -> SharedPerformanceMetrics {
-    SharedState::new(PerformanceMetrics::new())
+    SharedState::new(PerformanceMetrics::empty())
 }

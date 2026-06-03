@@ -51,12 +51,27 @@ pub struct MissionControlPanel {
 
 impl MissionControlPanel {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let t0 = std::time::Instant::now();
         let log_drawer = cx.new(LogDrawer::new);
+
+        // Start with empty/placeholder state — no blocking sysinfo calls on the main thread.
         let metrics = create_shared_metrics();
         let system_info = create_shared_info();
         let memory_tracker = create_memory_tracker();
 
-        // Using atomic counters now - no need to connect tracker
+        // Populate sysinfo data on the background executor so it never blocks the UI.
+        let metrics_bg = metrics.clone();
+        let sysinfo_bg = system_info.clone();
+        cx.background_executor().spawn(async move {
+            let t = std::time::Instant::now();
+            let full_metrics = crate::performance_metrics::PerformanceMetrics::new();
+            let full_sysinfo = crate::system_info::SystemInfo::gather();
+            tracing::info!("[MissionControlPanel] sysinfo init took {:?}", t.elapsed());
+            *metrics_bg.write() = full_metrics;
+            *sysinfo_bg.write() = full_sysinfo;
+        }).detach();
+
+        tracing::info!("[MissionControlPanel] new() completed in {:?}", t0.elapsed());
 
         Self {
             focus_handle: cx.focus_handle(),

@@ -139,7 +139,31 @@ impl SystemInfo {
 /// Shared system info accessible across the application
 pub type SharedSystemInfo = Arc<RwLock<SystemInfo>>;
 
-/// Create a new shared system info instance
+/// Create a new shared system info instance starting with empty data.
+/// Callers must populate it off the main thread via [`SystemInfo::gather`].
 pub fn create_shared_info() -> SharedSystemInfo {
-    Arc::new(RwLock::new(SystemInfo::gather()))
+    Arc::new(RwLock::new(SystemInfo::empty()))
+}
+
+impl SystemInfo {
+    /// Returns zeroed/placeholder data — no blocking sysinfo calls.
+    pub fn empty() -> Self {
+        Self {
+            os_name: String::new(),
+            os_version: String::new(),
+            kernel_version: String::new(),
+            host_name: String::new(),
+            cpu_brand: String::new(),
+            cpu_vendor: String::new(),
+            cpu_cores: 0,
+            cpu_frequency: 0,
+            total_memory: 0,
+            total_swap: 0,
+            gpu_name: String::new(),
+            gpu_driver_version: String::new(),
+            gpu_vendor: String::new(),
+            gpu_vram_total_mb: None,
+            uptime: 0,
+        }
+    }
 }

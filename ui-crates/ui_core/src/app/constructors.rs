@@ -95,6 +95,9 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let _t_total = std::time::Instant::now();
+        tracing::info!("[PulsarApp] new_internal start");
+
         // Create the main dock area
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
@@ -255,35 +258,28 @@ impl PulsarApp {
         ui_common::command_palette::PaletteManager::init(cx);
 
         // Initialize plugin manager
-        tracing::debug!("🔌 Initializing plugin system");
+        let t_plugins = std::time::Instant::now();
+        tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
 
         // Register built-in editors
-        tracing::debug!("📝 Registering built-in editors");
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
-
-        // Register them with the file type and editor registries
         plugin_manager.register_builtin_editors();
-        tracing::debug!("✅ Built-in editors registered");
+        tracing::info!("[PulsarApp] built-in editors registered in {:?}", t_plugins.elapsed());
 
         let plugins_dir = std::path::Path::new("plugins/editor");
-        tracing::debug!("📂 Loading plugins from: {:?}", plugins_dir);
-
+        let t_load = std::time::Instant::now();
         match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
             Err(e) => {
-                tracing::error!("❌ Failed to load editor plugins: {}", e);
+                tracing::error!("[PulsarApp] failed to load editor plugins: {}", e);
             }
             Ok(_) => {
                 let loaded_plugins = plugin_manager.get_plugins();
-                tracing::debug!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
-                for plugin in loaded_plugins {
-                    tracing::debug!(
-                        "   📦 {} v{} by {}",
-                        plugin.name,
-                        plugin.version,
-                        plugin.author
-                    );
-                }
+                tracing::info!(
+                    "[PulsarApp] loaded {} plugin(s) in {:?}",
+                    loaded_plugins.len(),
+                    t_load.elapsed()
+                );
             }
         }
 
@@ -511,6 +507,8 @@ impl PulsarApp {
             app.state.command_palette_id = Some(palette_id);
             app.state.command_palette = Some(palette_ref);
         }
+
+        tracing::info!("[PulsarApp] new_internal total: {:?}", _t_total.elapsed());
 
         // Focus this app's handle so menus built before any editor interaction have
         // a valid action_context that routes back to PulsarApp's .on_action() handlers.
