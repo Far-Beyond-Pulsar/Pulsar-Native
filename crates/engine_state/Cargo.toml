@@ -33,3 +33,4 @@ directories = { workspace = true }
 
 # Shared window types
 ui_types_common = { workspace = true }
+pulsar_auth.workspace = true

@@ -3,6 +3,7 @@ use async_tungstenite::{tokio::connect_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{debug, error, info, warn};
 
@@ -19,6 +20,21 @@ fn tokio_runtime() -> &'static tokio::runtime::Runtime {
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PeerProfile {
+    pub peer_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct PeerIdentity {
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
+}
+
 /// Messages sent from client to server
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -27,6 +43,12 @@ pub enum ClientMessage {
         session_id: String,
         peer_id: String,
         join_token: String,
+        #[serde(default)]
+        display_name: Option<String>,
+        #[serde(default)]
+        avatar_url: Option<String>,
+        #[serde(default)]
+        github_login: Option<String>,
     },
     Leave {
         session_id: String,
@@ -131,10 +153,14 @@ pub enum ServerMessage {
         session_id: String,
         peer_id: String,
         participants: Vec<String>,
+        #[serde(default)]
+        participant_profiles: Option<Vec<PeerProfile>>,
     },
     PeerJoined {
         session_id: String,
         peer_id: String,
+        #[serde(default)]
+        profile: Option<PeerProfile>,
     },
     PeerLeft {
         session_id: String,
@@ -248,6 +274,8 @@ pub struct MultiuserClient {
     status: Arc<RwLock<ConnectionStatus>>,
     message_tx: Option<mpsc::UnboundedSender<ClientMessage>>,
     event_rx: Option<mpsc::UnboundedReceiver<ServerMessage>>,
+    latency_ms: Arc<RwLock<Option<u32>>>,
+    last_ping_at: Arc<RwLock<Option<Instant>>>,
 }
 
 impl MultiuserClient {
@@ -257,12 +285,18 @@ impl MultiuserClient {
             status: Arc::new(RwLock::new(ConnectionStatus::Disconnected)),
             message_tx: None,
             event_rx: None,
+            latency_ms: Arc::new(RwLock::new(None)),
+            last_ping_at: Arc::new(RwLock::new(None)),
         }
     }
 
     /// Get current connection status
     pub async fn status(&self) -> ConnectionStatus {
         self.status.read().await.clone()
+    }
+
+    pub async fn latency_ms(&self) -> Option<u32> {
+        *self.latency_ms.read().await
     }
 
     /// Create a new session (generates local credentials)
@@ -281,8 +315,10 @@ impl MultiuserClient {
         &mut self,
         session_id: String,
         join_token: String,
+        identity: Option<PeerIdentity>,
     ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
         *self.status.write().await = ConnectionStatus::Connecting;
+        *self.latency_ms.write().await = None;
 
         let peer_id = uuid::Uuid::new_v4().to_string();
 
@@ -297,12 +333,15 @@ impl MultiuserClient {
 
         // Create channels for bidirectional communication
         let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();
+        let message_tx_for_client = message_tx.clone();
         let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerMessage>();
 
         // Use oneshot channel to get connection result from Tokio runtime
         let (result_tx, result_rx) = oneshot::channel();
 
         let status_clone = self.status.clone();
+        let latency_ms_clone = self.latency_ms.clone();
+        let last_ping_at_clone = self.last_ping_at.clone();
         let session_id_clone = session_id.clone();
         let peer_id_clone = peer_id.clone();
 
@@ -322,6 +361,9 @@ impl MultiuserClient {
                         session_id: session_id_clone.clone(),
                         peer_id: peer_id_clone.clone(),
                         join_token,
+                        display_name: identity.as_ref().and_then(|i| i.display_name.clone()),
+                        avatar_url: identity.as_ref().and_then(|i| i.avatar_url.clone()),
+                        github_login: identity.as_ref().and_then(|i| i.github_login.clone()),
                     };
 
                     if let Ok(join_json) = serde_json::to_string(&join_msg) {
@@ -338,6 +380,9 @@ impl MultiuserClient {
 
                     // Spawn task to handle outgoing messages
                     let status_clone_out = status_clone.clone();
+                    let ping_tx = message_tx.clone();
+                    let status_clone_ping = status_clone.clone();
+                    let last_ping_at_for_ping = last_ping_at_clone.clone();
                     tokio::spawn(async move {
                         let mut message_rx = message_rx;
                         while let Some(msg) = message_rx.recv().await {
@@ -352,6 +397,22 @@ impl MultiuserClient {
                         }
                     });
 
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+                            if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected)
+                            {
+                                break;
+                            }
+
+                            *last_ping_at_for_ping.write().await = Some(Instant::now());
+                            if ping_tx.send(ClientMessage::Ping).is_err() {
+                                break;
+                            }
+                        }
+                    });
+
                     // Handle incoming messages
                     while let Some(result) = read.next().await {
                         match result {
@@ -359,6 +420,13 @@ impl MultiuserClient {
                                 match serde_json::from_str::<ServerMessage>(&text) {
                                     Ok(msg) => {
                                         debug!("Received message: {:?}", msg);
+
+                                        if matches!(&msg, ServerMessage::Pong) {
+                                            if let Some(sent_at) = last_ping_at_clone.write().await.take() {
+                                                let rtt = sent_at.elapsed().as_millis();
+                                                *latency_ms_clone.write().await = Some(rtt as u32);
+                                            }
+                                        }
 
                                         // Update status on successful join
                                         if matches!(msg, ServerMessage::Joined { .. }) {
@@ -379,6 +447,7 @@ impl MultiuserClient {
                             Ok(Message::Close(_)) => {
                                 info!("WebSocket closed by server");
                                 *status_clone.write().await = ConnectionStatus::Disconnected;
+                                *latency_ms_clone.write().await = None;
                                 break;
                             }
                             Ok(Message::Ping(_)) => {
@@ -389,6 +458,7 @@ impl MultiuserClient {
                                 error!("WebSocket error: {}", e);
                                 *status_clone.write().await =
                                     ConnectionStatus::Error(e.to_string());
+                                *latency_ms_clone.write().await = None;
                                 break;
                             }
                         }
@@ -397,6 +467,7 @@ impl MultiuserClient {
                 Err(e) => {
                     error!("Failed to connect to WebSocket: {}", e);
                     *status_clone.write().await = ConnectionStatus::Error(e.to_string());
+                    *latency_ms_clone.write().await = None;
                     let _ = result_tx.send(Err(anyhow::anyhow!("Connection failed: {}", e)));
                 }
             }
@@ -405,7 +476,7 @@ impl MultiuserClient {
         // Wait for connection result from Tokio runtime
         match result_rx.await {
             Ok(Ok(())) => {
-                self.message_tx = Some(message_tx);
+                self.message_tx = Some(message_tx_for_client);
                 Ok(event_rx)
             }
             Ok(Err(e)) => Err(e),
@@ -435,6 +506,7 @@ impl MultiuserClient {
 
         self.message_tx = None;
         *self.status.write().await = ConnectionStatus::Disconnected;
+        *self.latency_ms.write().await = None;
 
         Ok(())
     }

@@ -1,14 +1,17 @@
 use rust_i18n::t;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use gpui::{
-    actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
-    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
-    MouseButton, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window,
+    actions, div, img, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
+    Context, Corner, Entity, FocusHandle, ImageSource, InteractiveElement as _, IntoElement, Menu,
+    MenuItem, MouseButton, ObjectFit, ParentElement as _, Render, RenderImage, SharedString,
+    Styled as _, StyledImage as _, Subscription, Window,
 };
 use ui::{
     badge::Badge,
     button::{Button, ButtonVariants as _},
+    h_flex,
     locale,
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
@@ -1257,6 +1260,8 @@ pub struct AppTitleBar {
     title: SharedString,
     last_locale: String,
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
+    auth_avatar_image: Option<Arc<RenderImage>>,
+    auth_avatar_url_loaded: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -1291,6 +1296,8 @@ impl AppTitleBar {
             title: title_str,
             last_locale: locale().to_string(),
             child: Rc::new(|_, _| div().into_any_element()),
+            auth_avatar_image: None,
+            auth_avatar_url_loaded: None,
             _subscriptions: subscriptions,
         }
     }
@@ -1312,10 +1319,104 @@ impl AppTitleBar {
 
         Theme::change(mode, None, cx);
     }
+
+    fn ensure_auth_avatar_loaded(&mut self, cx: &mut Context<Self>) {
+        let Some(profile) = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile()) else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+        let Some(url) = profile.avatar_url else {
+            self.auth_avatar_image = None;
+            self.auth_avatar_url_loaded = None;
+            return;
+        };
+        if self.auth_avatar_url_loaded.as_deref() == Some(url.as_str()) {
+            return;
+        }
+        self.auth_avatar_url_loaded = Some(url.clone());
+        self.auth_avatar_image = None;
+
+        let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
+        std::thread::spawn(move || {
+            let image = fetch_avatar_render_image(&url).ok();
+            let _ = smol::block_on(tx.send(image));
+        });
+
+        cx.spawn(async move |this, cx| {
+            if let Ok(maybe_image) = rx.recv().await {
+                cx.update(|cx| {
+                    this.update(cx, |this, cx| {
+                        this.auth_avatar_image = maybe_image;
+                        cx.notify();
+                    });
+                });
+            }
+        })
+        .detach();
+    }
+
+    fn render_auth_identity(&self, cx: &mut Context<Self>) -> AnyElement {
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let login = profile
+            .as_ref()
+            .map(|p| p.login.clone())
+            .unwrap_or_else(|| "Guest".to_string());
+        let initials = login
+            .chars()
+            .next()
+            .map(|c| c.to_ascii_uppercase().to_string())
+            .unwrap_or_else(|| "?".to_string());
+
+        h_flex()
+            .items_center()
+            .gap_1p5()
+            .px_2()
+            .child(if let Some(render_img) = self.auth_avatar_image.clone() {
+                div()
+                    .w(px(20.))
+                    .h(px(20.))
+                    .rounded_full()
+                    .overflow_hidden()
+                    .child(
+                        img(ImageSource::Render(render_img))
+                            .w_full()
+                            .h_full()
+                            .object_fit(ObjectFit::Cover),
+                    )
+                    .into_any_element()
+            } else {
+                div()
+                    .w(px(20.))
+                    .h(px(20.))
+                    .rounded_full()
+                    .bg(cx.theme().primary.opacity(0.16))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::BOLD)
+                            .text_color(cx.theme().primary)
+                            .child(initials),
+                    )
+                    .into_any_element()
+            })
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(login),
+            )
+            .into_any_element()
+    }
 }
 
 impl Render for AppTitleBar {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.ensure_auth_avatar_loaded(cx);
+
         // Only rebuild menus if locale changed
         let current_locale = locale().to_string();
         if current_locale != self.last_locale {
@@ -1353,6 +1454,7 @@ impl Render for AppTitleBar {
                     .gap_2()
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .child(self.child.clone()(window, cx))
+                    .child(self.render_auth_identity(cx))
                     .when(
                         engine_state::EngineContext::global()
                             .map(|ctx| ctx.dev.read().is_source_build)
@@ -1410,6 +1512,26 @@ impl Render for AppTitleBar {
                     ),
             )
     }
+}
+
+fn fetch_avatar_render_image(url: &str) -> Result<Arc<RenderImage>, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .user_agent("Pulsar-Native/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let response = client.get(url).send().map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+
+    let bytes = response.bytes().map_err(|e| e.to_string())?;
+    let rgba = image::load_from_memory(&bytes)
+        .map_err(|e| format!("decode: {e}"))?
+        .into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
 
 struct LocaleSelector {

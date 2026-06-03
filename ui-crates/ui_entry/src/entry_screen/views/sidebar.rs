@@ -329,6 +329,55 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .pb_4()
                 .gap_0p5()
                 .child(div().w_full().h(px(1.0)).bg(border).mb_2())
+                .child({
+                    let signed_in = screen.auth_profile().is_some();
+                    h_flex()
+                        .id("nav-github-auth")
+                        .w_full()
+                        .gap_2p5()
+                        .items_center()
+                        .px_3()
+                        .py_2()
+                        .rounded_lg()
+                        .cursor_pointer()
+                        .hover(|this| this.bg(hover_bg))
+                        .child(
+                            Icon::new(if signed_in {
+                                IconName::User
+                            } else {
+                                IconName::Github
+                            })
+                            .size(px(15.))
+                            .text_color(if signed_in { accent } else { muted_fg }),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(if signed_in { foreground } else { muted_fg })
+                                .child(if signed_in {
+                                    "Sign Out GitHub"
+                                } else {
+                                    "Sign In with GitHub"
+                                }),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            if this.auth_profile().is_some() {
+                                this.sign_out_github(cx);
+                            } else {
+                                this.begin_github_sign_in(cx);
+                            }
+                        }))
+                })
+                .when_some(screen.auth_message.clone(), |this, msg| {
+                    this.child(
+                        div()
+                            .px_3()
+                            .pb_2()
+                            .text_xs()
+                            .text_color(muted_fg)
+                            .child(msg),
+                    )
+                })
                 .child(
                     h_flex()
                         .id("nav-open")

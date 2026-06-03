@@ -54,12 +54,25 @@ pub struct MultiuserContext {
     pub is_host: bool,
     /// List of other participants (peer IDs)
     pub participants: Vec<String>,
+    /// Rich participant metadata when available.
+    pub participant_profiles: Vec<MultiuserParticipant>,
+    /// Last measured latency to signaling server in milliseconds.
+    pub latency_ms: Option<u32>,
     /// Session join token (for inviting others)
     pub join_token: Option<String>,
     /// Optional Bearer token for the `pulsar-host` file API.
     pub auth_token: Option<String>,
     /// The project UUID on the `pulsar-host` server.
     pub project_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct MultiuserParticipant {
+    pub peer_id: String,
+    pub display_name: Option<String>,
+    pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
+    pub ping_ms: Option<u32>,
 }
 
 impl MultiuserContext {
@@ -105,6 +118,8 @@ impl MultiuserContext {
             status: MultiuserStatus::Disconnected,
             is_host,
             participants: Vec::new(),
+            participant_profiles: Vec::new(),
+            latency_ms: None,
             join_token: None,
             auth_token: None,
             project_id: None,
@@ -128,6 +143,16 @@ impl MultiuserContext {
 
     pub fn with_participants(mut self, participants: Vec<String>) -> Self {
         self.participants = participants;
+        self
+    }
+
+    pub fn with_participant_profiles(mut self, participants: Vec<MultiuserParticipant>) -> Self {
+        self.participant_profiles = participants;
+        self
+    }
+
+    pub fn with_latency_ms(mut self, latency_ms: u32) -> Self {
+        self.latency_ms = Some(latency_ms);
         self
     }
 
@@ -161,7 +186,11 @@ impl MultiuserContext {
     }
 
     pub fn participant_count(&self) -> usize {
-        self.participants.len()
+        if self.participant_profiles.is_empty() {
+            self.participants.len()
+        } else {
+            self.participant_profiles.len()
+        }
     }
 
     pub fn mode_label(&self) -> &'static str {

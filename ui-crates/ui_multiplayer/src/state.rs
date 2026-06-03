@@ -8,9 +8,9 @@ use ui::input::InputState;
 
 use super::diff_viewer::{DiffFileEntry, DiffViewer};
 use super::types::*;
-use engine_backend::subsystems::networking::multiuser::MultiuserClient;
+use engine_backend::subsystems::networking::multiuser::{MultiuserClient, PeerIdentity, PeerProfile};
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
-use engine_state::{EngineContext, MultiuserContext, MultiuserStatus};
+use engine_state::{EngineContext, MultiuserContext, MultiuserParticipant, MultiuserStatus};
 
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {
@@ -187,6 +187,37 @@ impl MultiplayerWindow {
         if let Some(ctx) = EngineContext::global() {
             ctx.clear_multiuser();
         }
+    }
+
+    pub(super) fn sync_engine_multiuser_profiles(&self, profiles: Vec<PeerProfile>) {
+        if let Some(ctx) = EngineContext::global() {
+            let participants = profiles
+                .into_iter()
+                .map(|profile| MultiuserParticipant {
+                    peer_id: profile.peer_id,
+                    display_name: profile.display_name,
+                    avatar_url: profile.avatar_url,
+                    github_login: profile.github_login,
+                    ping_ms: None,
+                })
+                .collect();
+            ctx.set_multiuser_participant_profiles(participants);
+        }
+    }
+
+    pub(super) fn sync_engine_multiuser_latency(&self, latency_ms: Option<u32>) {
+        if let Some(ctx) = EngineContext::global() {
+            ctx.set_multiuser_latency_ms(latency_ms);
+        }
+    }
+
+    pub(super) fn current_peer_identity(&self) -> Option<PeerIdentity> {
+        let profile = EngineContext::global()?.auth_profile()?;
+        Some(PeerIdentity {
+            display_name: profile.display_name.clone().or(Some(profile.login.clone())),
+            avatar_url: profile.avatar_url.clone(),
+            github_login: Some(profile.login),
+        })
     }
 
     /// Populate the file sync UI with entries from a diff

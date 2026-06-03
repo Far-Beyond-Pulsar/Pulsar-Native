@@ -4,7 +4,7 @@ use dashmap::DashMap;
 use std::time::SystemTime;
 use tokio::sync::mpsc;
 
-use super::sync_protocol::ServerMessage;
+use super::sync_protocol::{PeerProfile, ServerMessage};
 
 /// Peer session information
 #[derive(Debug, Clone)]
@@ -13,6 +13,7 @@ pub(super) struct PeerSession {
     pub(super) session_id: String,
     pub(super) tx: mpsc::Sender<ServerMessage>,
     pub(super) joined_at: SystemTime,
+    pub(super) profile: Option<PeerProfile>,
 }
 
 impl PeerSession {
@@ -20,12 +21,14 @@ impl PeerSession {
         peer_id: String,
         session_id: String,
         tx: mpsc::Sender<ServerMessage>,
+        profile: Option<PeerProfile>,
     ) -> Self {
         Self {
             peer_id,
             session_id,
             tx,
             joined_at: SystemTime::now(),
+            profile,
         }
     }
 }

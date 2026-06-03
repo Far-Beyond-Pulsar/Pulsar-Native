@@ -49,10 +49,11 @@ pub mod renderers_typed;
 pub mod settings;
 pub mod settings_defaults;
 
+pub use pulsar_auth::AuthProfile;
 pub use discord::DiscordPresence;
 
 // Re-export multiuser types
-pub use multiuser::{MultiuserContext, MultiuserMode, MultiuserStatus};
+pub use multiuser::{MultiuserContext, MultiuserMode, MultiuserParticipant, MultiuserStatus};
 
 // Re-export typed systems as primary API
 pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};

@@ -1,0 +1,17 @@
+[package]
+name = "pulsar_auth"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+directories.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+keyring = "3"
+dotenvy = "0.15"
+
+[lints]
+workspace = true

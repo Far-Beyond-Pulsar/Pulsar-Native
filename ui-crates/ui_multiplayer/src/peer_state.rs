@@ -13,6 +13,7 @@ use engine_backend::subsystems::networking::multiuser::{
     ClientMessage, MultiuserClient, ServerMessage,
 };
 use engine_backend::subsystems::networking::simple_sync;
+use engine_state::{EngineContext, MultiuserParticipant};
 
 impl MultiplayerWindow {
     pub(super) fn join_session(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
@@ -41,20 +42,28 @@ impl MultiplayerWindow {
         // Create client
         let client = Arc::new(RwLock::new(MultiuserClient::new(server_address.clone())));
         self.client = Some(client.clone());
+        let identity = self.current_peer_identity();
 
         cx.spawn(async move |this, cx| {
             let join_token_clone = join_token.clone();
 
             let event_rx_result = {
                 let mut client_guard = client.write().await;
-                client_guard.connect(session_id.clone(), join_token_clone).await
+                client_guard
+                    .connect(session_id.clone(), join_token_clone, identity)
+                    .await
             }; // client_guard dropped here, releasing the lock
 
             match event_rx_result {
                 Ok(mut event_rx) => {
                     // Wait for the initial response (Joined or Error)
                     match event_rx.recv().await {
-                        Some(ServerMessage::Joined { peer_id, participants, .. }) => {
+                        Some(ServerMessage::Joined {
+                            peer_id,
+                            participants,
+                            participant_profiles,
+                            ..
+                        }) => {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Connected;
@@ -133,6 +142,9 @@ impl MultiplayerWindow {
                                         &peer_id,
                                         &participants,
                                     );
+                                    if let Some(profiles) = participant_profiles {
+                                        this.sync_engine_multiuser_profiles(profiles);
+                                    }
 
                                     cx.notify();
                                 });
@@ -173,7 +185,11 @@ impl MultiplayerWindow {
                                 }
 
                                 match msg {
-                                    ServerMessage::PeerJoined { peer_id: joined_peer_id, .. } => {
+                                    ServerMessage::PeerJoined {
+                                        peer_id: joined_peer_id,
+                                        profile,
+                                        ..
+                                    } => {
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
                                                 tracing::debug!(
@@ -233,6 +249,29 @@ impl MultiplayerWindow {
                                                         &participants,
                                                     );
                                                 }
+                                                if let Some(profile) = profile {
+                                                    if let Some(engine) = EngineContext::global() {
+                                                        let _ = engine.update_multiuser(|mu| {
+                                                            if let Some(existing) = mu
+                                                                .participant_profiles
+                                                                .iter_mut()
+                                                                .find(|p| p.peer_id == profile.peer_id)
+                                                            {
+                                                                existing.display_name = profile.display_name.clone();
+                                                                existing.avatar_url = profile.avatar_url.clone();
+                                                                existing.github_login = profile.github_login.clone();
+                                                            } else {
+                                                                mu.participant_profiles.push(MultiuserParticipant {
+                                                                    peer_id: profile.peer_id.clone(),
+                                                                    display_name: profile.display_name.clone(),
+                                                                    avatar_url: profile.avatar_url.clone(),
+                                                                    github_login: profile.github_login.clone(),
+                                                                    ping_ms: None,
+                                                                });
+                                                            }
+                                                        });
+                                                    }
+                                                }
                                             });
                                         });
                                     }
@@ -267,6 +306,12 @@ impl MultiplayerWindow {
                                                         peer_id,
                                                         &participants,
                                                     );
+                                                }
+                                                if let Some(engine) = EngineContext::global() {
+                                                    let _ = engine.update_multiuser(|mu| {
+                                                        mu.participant_profiles
+                                                            .retain(|p| p.peer_id != left_peer_id);
+                                                    });
                                                 }
                                             });
                                         });
@@ -720,6 +765,16 @@ impl MultiplayerWindow {
                                     }
                                     _ => {}
                                 }
+
+                                let latency_ms = {
+                                    let client_guard = client.read().await;
+                                    client_guard.latency_ms().await
+                                };
+                                cx.update(|cx| {
+                                    this.update(cx, |this, _| {
+                                        this.sync_engine_multiuser_latency(latency_ms);
+                                    });
+                                });
                             }
                         }
                         Some(ServerMessage::Error { message }) => {

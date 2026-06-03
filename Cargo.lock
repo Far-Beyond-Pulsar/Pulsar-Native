@@ -3073,6 +3073,7 @@ dependencies = [
  "gpui-ce",
  "parking_lot",
  "pulsar-config",
+ "pulsar_auth",
  "pulsar_settings",
  "rust-discord-activity",
  "serde",
@@ -8568,6 +8569,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_auth"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "directories 6.0.0",
+ "dotenvy",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pulsar_bp_executor"
 version = "0.1.0"
 dependencies = [
@@ -12798,6 +12812,7 @@ dependencies = [
  "plugin_editor_api",
  "pulsar_reflection",
  "pulsar_rendering",
+ "reqwest 0.13.4",
  "rust-i18n 4.1.0",
  "serde",
  "serde_json",
@@ -12900,8 +12915,10 @@ dependencies = [
  "engine_state",
  "git2",
  "gpui-ce",
+ "image",
  "open",
  "parking_lot",
+ "pulsar_auth",
  "reqwest 0.13.4",
  "rfd",
  "rodio",
@@ -12909,6 +12926,7 @@ dependencies = [
  "rustup",
  "serde",
  "serde_json",
+ "smallvec",
  "smol",
  "tokio",
  "toml 1.1.2+spec-1.1.0",
