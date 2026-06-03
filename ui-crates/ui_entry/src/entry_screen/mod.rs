@@ -16,6 +16,17 @@ use types::{
 };
 
 use gpui::{prelude::*, *};
+
+/// Returns `true` when the `PULSAR_INSECURE_TLS` environment variable is set to `"1"`.
+///
+/// When enabled, TLS certificate verification is skipped for all outbound HTTPS
+/// connections made by the entry screen (cloud server API calls, etc.).
+/// This is useful for development environments that use self-signed certificates.
+///
+/// Defaults to `false` — TLS verification is always on for safety.
+fn insecure_tls_enabled() -> bool {
+    std::env::var("PULSAR_INSECURE_TLS").as_deref() == Ok("1")
+}
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
@@ -1131,7 +1142,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1198,7 +1209,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1261,7 +1272,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1331,7 +1342,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1460,7 +1471,7 @@ fn fetch_cloud_server_info(
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(6))
-            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_certs(insecure_tls_enabled())
             .build()
             .ok()?;
 

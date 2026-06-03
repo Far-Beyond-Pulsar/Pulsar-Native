@@ -7,6 +7,31 @@
 pub use libloading;
 use sha2::{Digest, Sha256};
 
+// ── Safe DLL search path (Windows) ─────────────────────────────────────────────
+//
+// On Windows, LoadLibraryW searches CWD and PATH for dependencies before safe
+// system directories.  An attacker who can write to CWD or any PATH entry can
+// plant a malicious DLL.
+//
+// SetDefaultDllDirectories restricts the search to:
+//   LOAD_LIBRARY_SEARCH_APPLICATION_DIR  — the .exe directory
+//   LOAD_LIBRARY_SEARCH_SYSTEM32         — C:\Windows\System32
+//
+// This prevents DLL hijacking via CWD or PATH.
+#[cfg(target_os = "windows")]
+fn set_safe_dll_search_path() {
+    const LOAD_LIBRARY_SEARCH_APPLICATION_DIR: u32 = 0x00000200;
+    const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x00000800;
+    extern "system" {
+        fn SetDefaultDllDirectories(directory_flags: u32) -> i32;
+    }
+    unsafe {
+        SetDefaultDllDirectories(
+            LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+        );
+    }
+}
+
 // ── Error ─────────────────────────────────────────────────────────────────────
 
 #[derive(Debug)]
@@ -91,6 +116,9 @@ impl BpExecutor {
                 });
             }
         }
+
+        #[cfg(target_os = "windows")]
+        set_safe_dll_search_path();
 
         let lib = unsafe { libloading::Library::new(path)? };
         Ok(Self { _lib: lib })

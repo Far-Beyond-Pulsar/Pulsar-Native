@@ -12,6 +12,11 @@ crate-type = ["rlib", "cdylib"]
 default = ["native"]
 # native: full stdlib including threading, Lua scripting, and the linkme registry
 native = ["dep:rlua", "dep:linkme"]
+# unsafe-process: enables shell command execution blueprint nodes (shell_execute,
+# shell_pipe, shell_timeout, etc.). These nodes execute arbitrary OS commands via
+# cmd /C or sh -c and SHOULD NOT be enabled when user-facing blueprints run.
+# Default off as a security hardening measure.
+unsafe-process = []
 
 [dependencies]
 pulsar_macros = { workspace = true }
