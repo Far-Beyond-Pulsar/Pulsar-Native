@@ -9,15 +9,13 @@ use gpui::{
     AnyElement, App, Hsla, IntoElement, ParentElement, Styled, div, 
     img, prelude::FluentBuilder, px, ImageSource, ObjectFit, StyledImage,
 };
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt as _, h_flex};
 
 /// Get or create the global avatar cache
 fn avatar_cache() -> AvatarCache {
-    // This should ideally be stored in a more persistent location,
-    // but for now we'll create it per render. In a real implementation,
-    // this would be stored in app state or engine context.
-    AvatarCache::new()
+    static CACHE: OnceLock<AvatarCache> = OnceLock::new();
+    CACHE.get_or_init(AvatarCache::new).clone()
 }
 
 pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
@@ -166,9 +164,13 @@ pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
                 .text_color(cx.theme().muted_foreground)
                 .child(detail),
         )
-        .children(participants.iter().take(6).map(|participant| {
-            avatar_chip_with_image(participant, cx)
-        }))
+        .child(
+            h_flex()
+                .gap_0p5()
+                .children(participants.iter().map(|participant| {
+                    avatar_chip_with_image(participant, cx)
+                })),
+        )
         .into_any_element()
 }
 
@@ -199,16 +201,25 @@ fn participant_label(participant: &MultiuserParticipant) -> String {
         .unwrap_or_else(|| participant.peer_id.clone())
 }
 
+fn participant_avatar_url(participant: &MultiuserParticipant) -> Option<String> {
+    participant.avatar_url.clone().or_else(|| {
+        participant
+            .github_login
+            .as_ref()
+            .map(|login| format!("https://github.com/{login}.png?size=64"))
+    })
+}
+
 /// Render avatar chip with profile picture if available, otherwise show initials
 fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyElement {
     let name = participant_label(participant);
     
     // Try to fetch and render profile picture if URL is available
-    if let Some(avatar_url) = &participant.avatar_url {
+    if let Some(avatar_url) = participant_avatar_url(participant) {
         let cache = avatar_cache();
         
         // Check if we have a cached image
-        if let Some(cached_image) = cache.get(avatar_url) {
+        if let Some(cached_image) = cache.get(&avatar_url) {
             // Only render if it's a valid image (not the empty placeholder used for failed fetches)
             if cached_image.frame_count() > 0 {
                 return img(ImageSource::Render(cached_image))

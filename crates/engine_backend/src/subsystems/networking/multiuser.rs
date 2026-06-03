@@ -4,7 +4,7 @@ use futures::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, OnceLock};
 use std::time::Instant;
-use tokio::sync::{mpsc, oneshot, RwLock};
+use tokio::sync::{mpsc, oneshot, watch, RwLock};
 use tracing::{debug, error, info, warn};
 
 // Global Tokio runtime for WebSocket operations
@@ -303,6 +303,7 @@ pub struct MultiuserClient {
     event_rx: Option<mpsc::UnboundedReceiver<ServerMessage>>,
     latency_ms: Arc<RwLock<Option<u32>>>,
     last_ping_at: Arc<RwLock<Option<Instant>>>,
+    shutdown_tx: Option<watch::Sender<bool>>,
 }
 
 impl MultiuserClient {
@@ -314,6 +315,7 @@ impl MultiuserClient {
             event_rx: None,
             latency_ms: Arc::new(RwLock::new(None)),
             last_ping_at: Arc::new(RwLock::new(None)),
+            shutdown_tx: None,
         }
     }
 
@@ -396,6 +398,8 @@ impl MultiuserClient {
         let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();
         let message_tx_for_client = message_tx.clone();
         let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerMessage>();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        self.shutdown_tx = Some(shutdown_tx.clone());
 
         // Use oneshot channel to get connection result from Tokio runtime
         let (result_tx, result_rx) = oneshot::channel();
@@ -444,83 +448,120 @@ impl MultiuserClient {
                     let ping_tx = message_tx.clone();
                     let status_clone_ping = status_clone.clone();
                     let last_ping_at_for_ping = last_ping_at_clone.clone();
+                    let mut write_shutdown_rx = shutdown_rx.clone();
                     tokio::spawn(async move {
                         let mut message_rx = message_rx;
-                        while let Some(msg) = message_rx.recv().await {
-                            if let Ok(json) = serde_json::to_string(&msg) {
-                                if let Err(e) = write.send(Message::Text(json.into())).await {
-                                    error!("Failed to send message: {}", e);
-                                    *status_clone_out.write().await =
-                                        ConnectionStatus::Error(e.to_string());
-                                    break;
+                        loop {
+                            tokio::select! {
+                                changed = write_shutdown_rx.changed() => {
+                                    if changed.is_ok() && *write_shutdown_rx.borrow() {
+                                        let _ = write.send(Message::Close(None)).await;
+                                        break;
+                                    }
+                                }
+                                maybe_msg = message_rx.recv() => {
+                                    match maybe_msg {
+                                        Some(msg) => {
+                                            if let Ok(json) = serde_json::to_string(&msg) {
+                                                if let Err(e) = write.send(Message::Text(json.into())).await {
+                                                    error!("Failed to send message: {}", e);
+                                                    *status_clone_out.write().await =
+                                                        ConnectionStatus::Error(e.to_string());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            let _ = write.send(Message::Close(None)).await;
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         }
                     });
 
+                    let mut read_shutdown_rx = shutdown_rx.clone();
                     tokio::spawn(async move {
                         loop {
-                            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                            tokio::select! {
+                                changed = read_shutdown_rx.changed() => {
+                                    if changed.is_ok() && *read_shutdown_rx.borrow() {
+                                        break;
+                                    }
+                                }
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(3)) => {
+                                    if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected) {
+                                        break;
+                                    }
 
-                            if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected)
-                            {
-                                break;
-                            }
-
-                            *last_ping_at_for_ping.write().await = Some(Instant::now());
-                            if ping_tx.send(ClientMessage::Ping).is_err() {
-                                break;
+                                    *last_ping_at_for_ping.write().await = Some(Instant::now());
+                                    if ping_tx.send(ClientMessage::Ping).is_err() {
+                                        break;
+                                    }
+                                }
                             }
                         }
                     });
 
                     // Handle incoming messages
-                    while let Some(result) = read.next().await {
-                        match result {
-                            Ok(Message::Text(text)) => {
-                                match serde_json::from_str::<ServerMessage>(&text) {
-                                    Ok(msg) => {
-                                        debug!("Received message: {:?}", msg);
-
-                                        if matches!(&msg, ServerMessage::Pong) {
-                                            if let Some(sent_at) = last_ping_at_clone.write().await.take() {
-                                                let rtt = sent_at.elapsed().as_millis();
-                                                *latency_ms_clone.write().await = Some(rtt as u32);
-                                            }
-                                        }
-
-                                        // Update status on successful join
-                                        if matches!(msg, ServerMessage::Joined { .. }) {
-                                            *status_clone.write().await =
-                                                ConnectionStatus::Connected;
-                                        }
-
-                                        if event_tx.send(msg).is_err() {
-                                            warn!("Event receiver dropped");
-                                            break;
-                                        }
-                                    }
-                                    Err(e) => {
-                                        error!("Failed to parse server message: {}", e);
-                                    }
+                    let mut incoming_shutdown_rx = shutdown_rx.clone();
+                    loop {
+                        tokio::select! {
+                            changed = incoming_shutdown_rx.changed() => {
+                                if changed.is_ok() && *incoming_shutdown_rx.borrow() {
+                                    break;
                                 }
                             }
-                            Ok(Message::Close(_)) => {
-                                info!("WebSocket closed by server");
-                                *status_clone.write().await = ConnectionStatus::Disconnected;
-                                *latency_ms_clone.write().await = None;
-                                break;
-                            }
-                            Ok(Message::Ping(_)) => {
-                                // Pings are handled automatically by tungstenite
-                            }
-                            Ok(_) => {}
-                            Err(e) => {
-                                error!("WebSocket error: {}", e);
-                                *status_clone.write().await =
-                                    ConnectionStatus::Error(e.to_string());
-                                *latency_ms_clone.write().await = None;
-                                break;
+                            result = read.next() => {
+                                match result {
+                                    Some(Ok(Message::Text(text))) => {
+                                        match serde_json::from_str::<ServerMessage>(&text) {
+                                            Ok(msg) => {
+                                                debug!("Received message: {:?}", msg);
+
+                                                if matches!(&msg, ServerMessage::Pong) {
+                                                    if let Some(sent_at) = last_ping_at_clone.write().await.take() {
+                                                        let rtt = sent_at.elapsed().as_millis();
+                                                        *latency_ms_clone.write().await = Some(rtt as u32);
+                                                    }
+                                                }
+
+                                                // Update status on successful join
+                                                if matches!(msg, ServerMessage::Joined { .. }) {
+                                                    *status_clone.write().await =
+                                                        ConnectionStatus::Connected;
+                                                }
+
+                                                if event_tx.send(msg).is_err() {
+                                                    warn!("Event receiver dropped");
+                                                    break;
+                                                }
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to parse server message: {}", e);
+                                            }
+                                        }
+                                    }
+                                    Some(Ok(Message::Close(_))) => {
+                                        info!("WebSocket closed by server");
+                                        *status_clone.write().await = ConnectionStatus::Disconnected;
+                                        *latency_ms_clone.write().await = None;
+                                        break;
+                                    }
+                                    Some(Ok(Message::Ping(_))) => {
+                                        // Pings are handled automatically by tungstenite
+                                    }
+                                    Some(Ok(_)) => {}
+                                    Some(Err(e)) => {
+                                        error!("WebSocket error: {}", e);
+                                        *status_clone.write().await =
+                                            ConnectionStatus::Error(e.to_string());
+                                        *latency_ms_clone.write().await = None;
+                                        break;
+                                    }
+                                    None => break,
+                                }
                             }
                         }
                     }
@@ -540,8 +581,14 @@ impl MultiuserClient {
                 self.message_tx = Some(message_tx_for_client);
                 Ok(event_rx)
             }
-            Ok(Err(e)) => Err(e),
-            Err(_) => Err(anyhow::anyhow!("Connection task failed")),
+            Ok(Err(e)) => {
+                self.shutdown_tx = None;
+                Err(e)
+            }
+            Err(_) => {
+                self.shutdown_tx = None;
+                Err(anyhow::anyhow!("Connection task failed"))
+            }
         }
     }
 
@@ -565,10 +612,27 @@ impl MultiuserClient {
             tx.send(leave_msg)?;
         }
 
+        if let Some(shutdown_tx) = &self.shutdown_tx {
+            let _ = shutdown_tx.send(true);
+        }
         self.message_tx = None;
+        self.shutdown_tx = None;
         *self.status.write().await = ConnectionStatus::Disconnected;
         *self.latency_ms.write().await = None;
 
         Ok(())
+    }
+
+    /// Forcefully drop the client without sending a Leave message.
+    pub async fn force_disconnect(&mut self) {
+        if let Some(shutdown_tx) = &self.shutdown_tx {
+            let _ = shutdown_tx.send(true);
+        }
+        self.message_tx = None;
+        self.event_rx = None;
+        self.shutdown_tx = None;
+        *self.status.write().await = ConnectionStatus::Disconnected;
+        *self.latency_ms.write().await = None;
+        *self.last_ping_at.write().await = None;
     }
 }

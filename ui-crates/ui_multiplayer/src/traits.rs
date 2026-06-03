@@ -2,7 +2,16 @@
 
 use gpui::prelude::FluentBuilder;
 use gpui::*;
-use ui::{h_flex, v_flex, ActiveTheme as _, TitleBar};
+use ui::{
+    button::Button,
+    h_flex,
+    v_flex,
+    ActiveTheme as _,
+    Icon,
+    IconName,
+    StyledExt as _,
+    TitleBar,
+};
 
 use super::state::MultiplayerWindow;
 
@@ -16,6 +25,17 @@ impl Render for MultiplayerWindow {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Process any pending updates that need window access
         self.process_pending_updates(window, cx);
+
+        let kick_reason = engine_state::EngineContext::global().and_then(|ctx| {
+            ctx.multiuser().and_then(|multiuser| match multiuser.status {
+                engine_state::MultiuserStatus::Error(ref message)
+                    if message.contains("Kicked from session") =>
+                {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+        });
 
         if self.pending_file_sync.is_some() {
             tracing::debug!("RENDER: pending_file_sync present, FileSync tab should show it");
@@ -56,6 +76,62 @@ impl Render for MultiplayerWindow {
                 self.render_active_session(session, cx).into_any_element()
             } else {
                 self.render_connection_form(cx).into_any_element()
+            })
+            .when_some(kick_reason, |this, reason| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(gpui::rgba(0x000000dd))
+                        .child(
+                            v_flex()
+                                .w(px(520.))
+                                .gap_4()
+                                .p_6()
+                                .rounded(px(12.))
+                                .bg(cx.theme().background)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .shadow_lg()
+                                .child(
+                                    h_flex()
+                                        .gap_3()
+                                        .items_center()
+                                        .child(
+                                            Icon::new(IconName::TriangleAlert)
+                                                .size(px(24.))
+                                                .text_color(cx.theme().danger),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_lg()
+                                                .font_bold()
+                                                .text_color(cx.theme().foreground)
+                                                .child("Session ended"),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(reason),
+                                )
+                                .child(
+                                    Button::new("dismiss-kick")
+                                        .label("Close")
+                                        .w_full()
+                                        .on_click(cx.listener(|_, _, _window, cx| {
+                                            if let Some(ctx) = engine_state::EngineContext::global() {
+                                                ctx.clear_multiuser();
+                                            }
+                                            cx.notify();
+                                        })),
+                                ),
+                        ),
+                )
             })
     }
 }

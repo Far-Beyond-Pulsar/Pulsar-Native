@@ -1,7 +1,16 @@
 //! Root wrapper component that contains the titlebar and app
 
-use gpui::{div, prelude::*, Context, Entity, IntoElement, Render, SharedString, Window};
-use ui::{notification::Notification, v_flex, ContextModal as _, Root};
+use gpui::{div, prelude::*, Context, Entity, IntoElement, Render, SharedString, Window, px, rgba};
+use ui::{
+    notification::Notification,
+    v_flex,
+    ActiveTheme as _,
+    ContextModal as _,
+    Icon,
+    IconName,
+    StyledExt as _,
+    Root,
+};
 use ui_common::menu::{
     AboutApp, AppTitleBar, DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets,
     DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings, ShowDocumentation,
@@ -32,6 +41,16 @@ impl Render for PulsarRoot {
         let drawer_layer = Root::render_drawer_layer(window, cx);
         let modal_layer = Root::render_modal_layer(window, cx);
         let notification_layer = Root::render_notification_layer(window, cx);
+        let kicked_reason = engine_state::EngineContext::global().and_then(|ctx| {
+            ctx.multiuser().and_then(|multiuser| match multiuser.status {
+                engine_state::MultiuserStatus::Error(ref message)
+                    if message.contains("Kicked from session") =>
+                {
+                    Some(message.clone())
+                }
+                _ => None,
+            })
+        });
 
         // Belt-and-suspenders action handlers at the root level so that menu
         // actions are always caught regardless of which child element has focus
@@ -136,5 +155,51 @@ impl Render for PulsarRoot {
             .children(drawer_layer)
             .children(modal_layer)
             .children(notification_layer)
+            .when_some(kicked_reason, |this, reason| {
+                this.child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .bg(rgba(0x000000e6))
+                        .child(
+                            v_flex()
+                                .w(px(520.))
+                                .gap_4()
+                                .p_6()
+                                .rounded(px(12.))
+                                .bg(cx.theme().background)
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .shadow_lg()
+                                .child(
+                                    div()
+                                        .flex()
+                                        .gap_3()
+                                        .items_center()
+                                        .child(
+                                            Icon::new(IconName::TriangleAlert)
+                                                .size(px(24.))
+                                                .text_color(cx.theme().danger),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_lg()
+                                                .font_bold()
+                                                .text_color(cx.theme().foreground)
+                                                .child("Disconnected"),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child(reason),
+                                ),
+                        ),
+                )
+            })
     }
 }

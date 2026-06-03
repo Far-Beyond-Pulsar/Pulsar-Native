@@ -336,19 +336,10 @@ impl MultiplayerWindow {
                                                 tracing::warn!("CREATE_SESSION: You were kicked from the session: {}", reason);
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
-                                                        // Disconnect and show error
-                                                        this.connection_status = ConnectionStatus::Error(
-                                                            format!("Kicked from session: {}", reason)
+                                                        this.handle_kicked(
+                                                            format!("Kicked from session: {}", reason),
+                                                            cx,
                                                         );
-                                                        this.sync_engine_multiuser_error(format!(
-                                                            "Kicked from session: {}",
-                                                            reason
-                                                        ));
-                                                        this.active_session = None;
-                                                        this.client = None;
-                                                        this.fs_event_forwarder = None;
-                                                        this.user_presences.clear();
-                                                        cx.notify();
                                                     });
                                                 });
                                                 break; // Exit the message loop
