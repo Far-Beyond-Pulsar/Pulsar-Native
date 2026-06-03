@@ -12,6 +12,7 @@ use ui_level_editor::LevelEditorPanel;
 use ui_log_viewer::MissionControlPanel;
 use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
+use std::time::Duration;
 
 use super::{
     agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
@@ -270,6 +271,16 @@ impl PulsarApp {
         tracing::debug!("🌍 Initializing global plugin manager");
         plugin_manager::initialize_global(plugin_manager);
 
+        let multiuser_refresh_task = cx.spawn(async move |this, cx| {
+            let rx = engine_state::subscribe_multiuser_updates();
+            loop {
+                while rx.try_recv().is_ok() {
+                    this.update(cx, |_, cx| cx.notify());
+                }
+                smol::Timer::after(Duration::from_millis(150)).await;
+            }
+        });
+
         let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
@@ -309,6 +320,7 @@ impl PulsarApp {
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
+                multiuser_refresh_task: Some(multiuser_refresh_task),
             },
         };
 

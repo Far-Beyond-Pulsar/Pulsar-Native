@@ -1,6 +1,6 @@
 //! Application state structure
 
-use gpui::{Entity, FocusHandle};
+use gpui::{Entity, FocusHandle, Task};
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::{DockArea, PanelView, TabPanel};
@@ -79,4 +79,7 @@ pub struct AppState {
 
     // Popped out panels tracking (panel, source tab panel)
     pub popped_out_panels: Vec<Arc<dyn PanelView>>,
+
+    // Multiuser status refresh listener
+    pub multiuser_refresh_task: Option<Task<()>>,
 }

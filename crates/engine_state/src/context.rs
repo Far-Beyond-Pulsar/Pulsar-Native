@@ -11,6 +11,7 @@ use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
@@ -371,6 +372,7 @@ impl EngineContext {
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
         *self.multiuser.write() = Some(context);
+        emit_multiuser_update();
     }
 
     /// Mutate multiuser context in place if active.
@@ -383,6 +385,7 @@ impl EngineContext {
         let mut guard = self.multiuser.write();
         if let Some(ctx) = guard.as_mut() {
             update(ctx);
+            emit_multiuser_update();
             true
         } else {
             false
@@ -394,6 +397,7 @@ impl EngineContext {
     /// Call this when disconnecting from a session.
     pub fn clear_multiuser(&self) {
         *self.multiuser.write() = None;
+        emit_multiuser_update();
     }
 
     /// Get multiuser session context (if active)
@@ -472,6 +476,27 @@ impl Default for EngineContext {
 
 use std::sync::OnceLock;
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
+static MULTIUSER_UPDATE_BUS: OnceLock<Arc<RwLock<Vec<Sender<()>>>>> = OnceLock::new();
+
+fn multiuser_update_bus() -> Arc<RwLock<Vec<Sender<()>>>> {
+    MULTIUSER_UPDATE_BUS
+        .get_or_init(|| {
+            Arc::new(RwLock::new(Vec::new()))
+        })
+        .clone()
+}
+
+pub fn subscribe_multiuser_updates() -> Receiver<()> {
+    let (tx, rx) = channel();
+    multiuser_update_bus().write().push(tx);
+    rx
+}
+
+fn emit_multiuser_update() {
+    let bus = multiuser_update_bus();
+    let mut guard = bus.write();
+    guard.retain(|tx| tx.send(()).is_ok());
+}
 
 /// Migration helpers for transitioning from EngineState metadata to EngineContext
 ///
