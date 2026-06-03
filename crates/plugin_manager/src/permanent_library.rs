@@ -198,7 +198,10 @@ impl PermanentLibrary {
         tracing::info!(
             "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",
             path,
-            sha256.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+            sha256
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
         );
 
         Ok(Self {
@@ -342,13 +345,23 @@ impl std::fmt::Display for IntegrityError {
             IntegrityError::Io(path, e) => {
                 write!(f, "Failed to read '{}': {}", path.display(), e)
             }
-            IntegrityError::HashMismatch { path, expected, actual } => {
+            IntegrityError::HashMismatch {
+                path,
+                expected,
+                actual,
+            } => {
                 write!(
                     f,
                     "Integrity check failed for '{}': expected {:02x?}, got {:02x?}",
                     path.display(),
-                    expected.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
-                    actual.iter().map(|b| format!("{:02x}", b)).collect::<String>(),
+                    expected
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>(),
+                    actual
+                        .iter()
+                        .map(|b| format!("{:02x}", b))
+                        .collect::<String>(),
                 )
             }
         }

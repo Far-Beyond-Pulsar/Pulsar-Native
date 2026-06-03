@@ -183,10 +183,7 @@ fn test_string_type_integration() {
     // Check if &str type has runtime info (it may not be registered as a primitive)
     // &str is a reference type, not typically registered separately
     // This is acceptable - the system should handle it via String or str registration
-    tracing::debug!(
-        "print_string parameter type: {}",
-        print_node.params[0].ty
-    );
+    tracing::debug!("print_string parameter type: {}", print_node.params[0].ty);
 }
 
 #[test]
@@ -220,23 +217,19 @@ fn test_type_info_consistency() {
 
     // They should be the same
     assert_eq!(
-        param_type_via_param.type_id,
-        type_info_direct.type_id,
+        param_type_via_param.type_id, type_info_direct.type_id,
         "TypeId should match"
     );
     assert_eq!(
-        param_type_via_param.type_name,
-        type_info_direct.type_name,
+        param_type_via_param.type_name, type_info_direct.type_name,
         "Type name should match"
     );
     assert_eq!(
-        param_type_via_param.size,
-        type_info_direct.size,
+        param_type_via_param.size, type_info_direct.size,
         "Size should match"
     );
     assert_eq!(
-        param_type_via_param.align,
-        type_info_direct.align,
+        param_type_via_param.align, type_info_direct.align,
         "Alignment should match"
     );
 }
@@ -265,18 +258,32 @@ fn test_node_metadata_fields_populated() {
         // Verify all required fields are populated
         assert!(!node.name.is_empty(), "Node should have a name");
         assert!(!node.category.is_empty(), "Node should have a category");
-        assert!(!node.function_source.is_empty(), "Node should have source code");
+        assert!(
+            !node.function_source.is_empty(),
+            "Node should have source code"
+        );
 
         // Verify params have complete metadata
         for param in node.params {
-            assert!(!param.name.is_empty(), "Parameter '{}' in node '{}' should have a name", param.name, node.name);
-            assert!(!param.ty.is_empty(), "Parameter '{}' in node '{}' should have a type string", param.name, node.name);
+            assert!(
+                !param.name.is_empty(),
+                "Parameter '{}' in node '{}' should have a name",
+                param.name,
+                node.name
+            );
+            assert!(
+                !param.ty.is_empty(),
+                "Parameter '{}' in node '{}' should have a type string",
+                param.name,
+                node.name
+            );
 
             // Size of 0 is valid for:
             // - Generic type parameters (e.g., T, U)
             // - Unit type ()
             // - Zero-sized types (ZSTs)
-            let is_likely_generic = param.ty.len() == 1 && param.ty.chars().next().unwrap().is_uppercase();
+            let is_likely_generic =
+                param.ty.len() == 1 && param.ty.chars().next().unwrap().is_uppercase();
             let is_unit = param.ty.contains("()");
 
             if param.size == 0 && !is_unit && !is_likely_generic {
@@ -288,13 +295,22 @@ fn test_node_metadata_fields_populated() {
                 );
             }
 
-            assert!(param.align > 0, "Parameter '{}' of type '{}' in node '{}' should have non-zero alignment", param.name, param.ty, node.name);
+            assert!(
+                param.align > 0,
+                "Parameter '{}' of type '{}' in node '{}' should have non-zero alignment",
+                param.name,
+                param.ty,
+                node.name
+            );
             // Note: type_info_fn may be None for generic parameters
         }
 
         // Verify return type metadata
         if let Some(return_type) = node.return_type {
-            assert!(!return_type.is_empty(), "Return type string should not be empty");
+            assert!(
+                !return_type.is_empty(),
+                "Return type string should not be empty"
+            );
             // Note: return_type_info_fn may be None for generic returns
         }
     }

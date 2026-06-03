@@ -6,7 +6,10 @@
 use gpui::{prelude::*, *};
 use plugin_editor_api::OpenAsset;
 use pulsar_rendering::components::ScriptAssetPath;
-use ui::{button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, Icon, IconName, Sizable, Disableable as _};
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex, ActiveTheme, Disableable as _, Icon, IconName, Sizable,
+};
 
 use crate::property_editor_registry::PropertyEditorArgs;
 
@@ -24,7 +27,7 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     };
 
     let open_path = std::path::PathBuf::from(&path_str);
-    let has_asset  = !path_str.is_empty();
+    let has_asset = !path_str.is_empty();
 
     let id = format!(
         "script-asset-{}-{}-{}",
@@ -55,7 +58,9 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
                 .when(has_asset, move |b| {
                     b.on_click(move |_event, window, cx| {
                         window.dispatch_action(
-                            Box::new(OpenAsset { path: open_path.clone() }),
+                            Box::new(OpenAsset {
+                                path: open_path.clone(),
+                            }),
                             cx,
                         );
                     })

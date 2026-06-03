@@ -42,13 +42,12 @@ impl Reflectable for Mat4 {
 
         let mut cols = [0.0f32; 16];
         for (idx, value) in values.into_iter().enumerate() {
-            cols[idx] = value
-                .downcast::<f32>()
-                .map(|v| *v)
-                .map_err(|boxed| ReflectError::TypeMismatch {
+            cols[idx] = value.downcast::<f32>().map(|v| *v).map_err(|boxed| {
+                ReflectError::TypeMismatch {
                     expected: "f32",
                     found: format!("{:?}", (&*boxed).type_id()),
-                })?;
+                }
+            })?;
         }
 
         Ok(Mat4::from_cols_array(&cols))

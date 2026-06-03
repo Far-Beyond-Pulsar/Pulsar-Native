@@ -484,10 +484,8 @@ impl AgentChatPanel {
                         panel.save_current_chat();
                         panel.scroll_messages_to_bottom();
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
 
                 Timer::after(Duration::from_millis(14)).await;
             }

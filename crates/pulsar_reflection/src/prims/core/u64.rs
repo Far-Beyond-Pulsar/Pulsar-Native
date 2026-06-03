@@ -25,7 +25,7 @@ type RegisteredU64 = u64;
 
 #[cfg(test)]
 mod tests {
-    use crate::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
 
     #[test]
     fn test_u64_registered() {

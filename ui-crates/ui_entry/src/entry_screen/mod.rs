@@ -11,8 +11,8 @@ use git_operations::{
     pull_updates, setup_template_remotes,
 };
 use types::{
-    get_default_templates, CloneProgress, CloudProject, CloudProjectStatus, CloudServer,
-    CloudServerStatus, EntryScreenView, GitFetchStatus, SharedCloneProgress, Template,
+    CloneProgress, CloudProject, CloudProjectStatus, CloudServer, CloudServerStatus,
+    EntryScreenView, GitFetchStatus, SharedCloneProgress, Template, get_default_templates,
 };
 
 use gpui::{prelude::*, *};
@@ -21,7 +21,7 @@ use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use ui::{h_flex, input::InputState, v_flex, ActiveTheme as _, TitleBar, VirtualListScrollHandle};
+use ui::{ActiveTheme as _, TitleBar, VirtualListScrollHandle, h_flex, input::InputState, v_flex};
 
 /// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
@@ -352,10 +352,8 @@ impl EntryScreen {
                     screen.dependency_status = Some(status);
                     screen.show_dependency_setup = missing;
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -419,8 +417,7 @@ impl EntryScreen {
                 // Notify UI update
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
             }
 
             // Mark fetch complete
@@ -428,10 +425,8 @@ impl EntryScreen {
                 this.update(cx, |screen, cx| {
                     screen.is_fetching_updates = false;
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -461,8 +456,7 @@ impl EntryScreen {
 
             cx.update(|cx| {
                 this.update(cx, |_, cx| cx.notify());
-            })
-            ;
+            });
         })
         .detach();
     }
@@ -522,10 +516,8 @@ impl EntryScreen {
                         screen.recent_projects.add_or_update(recent_project);
                         screen.recent_projects.save(&recent_projects_path);
                         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path });
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -569,8 +561,7 @@ impl EntryScreen {
 
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
 
                 let repo_url_clone = repo_url.clone();
                 let progress_clone = progress.clone();
@@ -623,10 +614,8 @@ impl EntryScreen {
                                     Some((target_path.clone(), template_url.unwrap_or_default()));
 
                                 cx.notify();
-                            })
-                            ;
-                        })
-                        ;
+                            });
+                        });
                     }
                     Ok(Err(e)) => {
                         let mut prog = progress.lock();
@@ -641,17 +630,14 @@ impl EntryScreen {
 
                 cx.update(|cx| {
                     this.update(cx, |_, cx| cx.notify());
-                })
-                ;
+                });
             } else {
                 cx.update(|cx| {
                     this.update(cx, |screen, cx| {
                         screen.clone_progress = None;
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -783,8 +769,7 @@ impl EntryScreen {
                         temp_settings.load_tab_data_sync(&tab_for_load);
                         temp_settings
                     })
-                    .join()
-                    ;
+                    .join();
 
                     if let Ok(loaded) = loaded_data {
                         let _ = cx.update(|cx| {
@@ -844,8 +829,7 @@ impl EntryScreen {
                 let loaded_settings = std::thread::spawn(move || {
                     views::ProjectSettings::load_all_data_async(project_path)
                 })
-                .join()
-                ;
+                .join();
 
                 if let Ok(new_settings) = loaded_settings {
                     let _ = cx.update(|cx| {
@@ -876,10 +860,8 @@ impl EntryScreen {
                     this.update(cx, |screen, cx| {
                         screen.new_project_path = Some(folder.path().to_path_buf());
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -946,10 +928,8 @@ default_scene = "scenes/main.scene"
                     cx.emit(crate::entry_screen::project_selector::ProjectSelected {
                         path: project_path,
                     });
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1066,10 +1046,8 @@ default_scene = "scenes/main.scene"
                             }
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -1154,10 +1132,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1222,10 +1198,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1283,10 +1257,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1353,10 +1325,8 @@ default_scene = "scenes/main.scene"
             cx.update(|cx| {
                 this.update(cx, |screen, cx| {
                     screen.refresh_cloud_server(server_idx, cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -1386,11 +1356,7 @@ default_scene = "scenes/main.scene"
 
         let auth_token = {
             let t = self.cloud_servers[server_idx].auth_token.trim().to_string();
-            if t.is_empty() {
-                None
-            } else {
-                Some(t)
-            }
+            if t.is_empty() { None } else { Some(t) }
         };
 
         // ── Set up remote virtual filesystem ─────────────────────────────────
@@ -1409,11 +1375,11 @@ default_scene = "scenes/main.scene"
         );
 
         // ── Record connection details in engine state ─────────────────────────
-        let ctx = engine_state::MultiuserContext::new(
+        let ctx = engine_state::MultiuserContext::new_cloud_project(
             base_url.clone(),
-            project_id.clone(), // session_id == project_id on pulsar-host
-            "local",            // peer_id (populated later on WS connect)
-            "remote",           // host_peer_id
+            project_id.clone(),
+            "local",  // peer_id (populated later on WS connect)
+            "remote", // host_peer_id
         )
         .with_status(engine_state::MultiuserStatus::Connecting)
         .with_project_id(project_id.clone());

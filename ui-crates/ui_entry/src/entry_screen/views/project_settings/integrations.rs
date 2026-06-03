@@ -2,11 +2,12 @@ use super::types::{AvailableTools, ProjectSettings, ToolInfo};
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme as _, Icon, IconName, Sizable,
     button::{Button, ButtonVariants as _},
     divider::Divider,
     h_flex,
     indicator::Indicator,
-    v_flex, ActiveTheme as _, Icon, IconName, Sizable,
+    v_flex,
 };
 
 pub fn render_integrations_tab(

@@ -13,8 +13,8 @@ pub use cloud_projects::render_cloud_projects;
 pub use dependency_setup::render_dependency_setup;
 pub use new_project::render_new_project;
 pub use project_settings::{
-    render_project_settings, types::load_project_tool_preferences, ProjectSettings,
-    ProjectSettingsTab,
+    ProjectSettings, ProjectSettingsTab, render_project_settings,
+    types::load_project_tool_preferences,
 };
 pub use recent_projects::render_recent_projects;
 pub use sidebar::render_sidebar;

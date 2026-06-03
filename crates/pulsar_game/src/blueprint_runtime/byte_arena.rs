@@ -29,8 +29,7 @@ impl ByteArena {
     pub fn new(size: usize) -> Self {
         assert!(size > 0, "Arena size must be greater than 0");
 
-        let layout = Layout::from_size_align(size, 8)
-            .expect("Invalid arena layout");
+        let layout = Layout::from_size_align(size, 8).expect("Invalid arena layout");
 
         let ptr = unsafe { alloc(layout) };
 
@@ -124,10 +123,7 @@ impl ByteArena {
     /// - Offset must be within bounds
     /// - Offset + len must not exceed arena size
     pub unsafe fn read_bytes(&self, offset: usize, len: usize) -> Vec<u8> {
-        assert!(
-            offset + len <= self.size,
-            "Read would exceed arena bounds"
-        );
+        assert!(offset + len <= self.size, "Read would exceed arena bounds");
 
         let src = self.ptr.add(offset);
         let mut bytes = vec![0u8; len];
@@ -148,10 +144,7 @@ impl ByteArena {
     /// - Offset must be within bounds
     /// - Offset + len must not exceed arena size
     pub unsafe fn slice(&self, offset: usize, len: usize) -> &[u8] {
-        assert!(
-            offset + len <= self.size,
-            "Slice would exceed arena bounds"
-        );
+        assert!(offset + len <= self.size, "Slice would exceed arena bounds");
 
         std::slice::from_raw_parts(self.ptr.add(offset), len)
     }
@@ -162,10 +155,7 @@ impl ByteArena {
     /// - Offset must be within bounds
     /// - Offset + len must not exceed arena size
     pub unsafe fn slice_mut(&mut self, offset: usize, len: usize) -> &mut [u8] {
-        assert!(
-            offset + len <= self.size,
-            "Slice would exceed arena bounds"
-        );
+        assert!(offset + len <= self.size, "Slice would exceed arena bounds");
 
         std::slice::from_raw_parts_mut(self.ptr.add(offset), len)
     }

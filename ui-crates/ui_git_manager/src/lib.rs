@@ -228,10 +228,8 @@ impl GitManager {
                     git_manager.stored_creds = stored_creds;
                     git_manager.rebuild_changes_rows();
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
 
@@ -346,10 +344,8 @@ impl GitManager {
                     this.update(cx, |gm, cx| {
                         gm.avatar_cache.insert(email_key, maybe);
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -382,10 +378,8 @@ impl GitManager {
                     }
                     git_manager.rebuild_changes_rows();
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -407,10 +401,8 @@ impl GitManager {
                 cx.update(|cx| {
                     this.update(cx, |git_manager, cx| {
                         git_manager.refresh_state(cx);
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -429,10 +421,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Stage failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -450,10 +440,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Stage all failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -471,10 +459,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Unstage all failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -492,10 +478,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Unstage failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -520,10 +504,8 @@ impl GitManager {
                     this.update(cx, |git_manager, cx| {
                         git_manager.selected_commit_files = files;
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -563,10 +545,8 @@ impl GitManager {
                         }
                     }
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -598,10 +578,8 @@ impl GitManager {
                         }
                     }
                     cx.notify();
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -720,10 +698,8 @@ impl GitManager {
                         }
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -742,10 +718,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Switch failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -769,10 +743,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Discard failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }
@@ -790,10 +762,8 @@ impl GitManager {
                         gm.op_error = Some(format!("Gitignore failed: {}", e));
                     }
                     gm.refresh_state(cx);
-                })
-                ;
-            })
-            ;
+                });
+            });
         })
         .detach();
     }

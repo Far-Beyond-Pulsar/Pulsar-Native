@@ -289,10 +289,8 @@ impl LevelEditorPanel {
                         this.update(cx, |panel, cx| {
                             panel.notify_sub_panels(cx);
                             cx.notify();
-                        })
-                        ;
-                    })
-                    ;
+                        });
+                    });
                 }
             }
         });
@@ -938,7 +936,9 @@ impl LevelEditorPanel {
         };
 
         if let Some(path) = path_opt {
-            match scene_db.save_to_file_with_editor_camera(&path, self.current_editor_camera_state()) {
+            match scene_db
+                .save_to_file_with_editor_camera(&path, self.current_editor_camera_state())
+            {
                 Ok(_) => {
                     self.shared_state.write().has_unsaved_changes = false;
                     cx.notify();
@@ -977,10 +977,8 @@ impl LevelEditorPanel {
                             Err(e) => tracing::error!("Save failed: {}", e),
                         }
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -1025,10 +1023,8 @@ impl LevelEditorPanel {
                         }
                         this.notify_sub_panels(cx);
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             }
         })
         .detach();
@@ -1049,7 +1045,9 @@ impl LevelEditorPanel {
             if std::fs::write(&tmp, &bytes).is_ok() {
                 match scene_db.load_from_file_with_editor_camera(&tmp) {
                     Ok(loaded_camera) => editor_camera = loaded_camera,
-                    Err(e) => tracing::warn!("New scene: could not load embedded default.level: {e}"),
+                    Err(e) => {
+                        tracing::warn!("New scene: could not load embedded default.level: {e}")
+                    }
                 }
             }
         }

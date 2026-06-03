@@ -121,18 +121,23 @@ impl Reflectable for ColliderDescriptor {
     }
 }
 
-fn serialize_collider_descriptor_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
-    let collider = value
-        .downcast_ref::<ColliderDescriptor>()
-        .ok_or_else(|| ReflectError::TypeMismatch {
-            expected: "ColliderDescriptor",
-            found: format!("{:?}", value.type_id()),
-        })?;
+fn serialize_collider_descriptor_json(
+    value: &dyn std::any::Any,
+) -> ReflectResult<serde_json::Value> {
+    let collider =
+        value
+            .downcast_ref::<ColliderDescriptor>()
+            .ok_or_else(|| ReflectError::TypeMismatch {
+                expected: "ColliderDescriptor",
+                found: format!("{:?}", value.type_id()),
+            })?;
 
     serde_json::to_value(collider).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }
 
-fn deserialize_collider_descriptor_json(value: serde_json::Value) -> ReflectResult<Box<dyn std::any::Any>> {
+fn deserialize_collider_descriptor_json(
+    value: serde_json::Value,
+) -> ReflectResult<Box<dyn std::any::Any>> {
     let collider: ColliderDescriptor = serde_json::from_value(value)
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
     Ok(Box::new(collider))
@@ -187,17 +192,20 @@ impl Reflectable for ColliderShape {
 }
 
 fn serialize_collider_shape_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
-    let shape = value
-        .downcast_ref::<ColliderShape>()
-        .ok_or_else(|| ReflectError::TypeMismatch {
-            expected: "ColliderShape",
-            found: format!("{:?}", value.type_id()),
-        })?;
+    let shape =
+        value
+            .downcast_ref::<ColliderShape>()
+            .ok_or_else(|| ReflectError::TypeMismatch {
+                expected: "ColliderShape",
+                found: format!("{:?}", value.type_id()),
+            })?;
 
     serde_json::to_value(shape).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }
 
-fn deserialize_collider_shape_json(value: serde_json::Value) -> ReflectResult<Box<dyn std::any::Any>> {
+fn deserialize_collider_shape_json(
+    value: serde_json::Value,
+) -> ReflectResult<Box<dyn std::any::Any>> {
     let shape: ColliderShape = serde_json::from_value(value)
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
     Ok(Box::new(shape))

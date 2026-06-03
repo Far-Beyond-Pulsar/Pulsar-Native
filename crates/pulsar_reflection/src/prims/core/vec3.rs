@@ -38,7 +38,7 @@ type RegisteredVec3 = [f32; 3];
 
 #[cfg(test)]
 mod tests {
-    use crate::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
 
     #[test]
     fn test_vec3_registered() {

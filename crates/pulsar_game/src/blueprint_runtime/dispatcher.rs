@@ -71,7 +71,8 @@ impl BlueprintDispatcher {
             .get_loaded_blueprint(&class_name)
             .ok_or_else(|| ExecutorError::BlueprintNotLoaded(class_name.clone()))?;
 
-        let instance = BlueprintInstance::new_bytecode(object_id.clone(), &loaded, variable_overrides);
+        let instance =
+            BlueprintInstance::new_bytecode(object_id.clone(), &loaded, variable_overrides);
         self.instances.insert(object_id, instance);
         Ok(())
     }
@@ -83,7 +84,10 @@ impl BlueprintDispatcher {
     pub fn dispatch_event(&mut self, event: BlueprintEvent) -> Result<(), ExecutorError> {
         match event {
             BlueprintEvent::BeginPlay { object_id } => self.execute_event(&object_id, "begin_play"),
-            BlueprintEvent::Tick { object_id, delta_time } => {
+            BlueprintEvent::Tick {
+                object_id,
+                delta_time,
+            } => {
                 let _ = delta_time;
                 self.execute_event(&object_id, "tick")
             }
@@ -92,17 +96,15 @@ impl BlueprintDispatcher {
     }
 
     fn execute_event(&mut self, object_id: &str, event_name: &str) -> Result<(), ExecutorError> {
-        let instance = self
-            .instances
-            .get_mut(object_id)
-            .ok_or_else(|| ExecutorError::Execution(format!("Blueprint instance not found: {}", object_id)))?;
+        let instance = self.instances.get_mut(object_id).ok_or_else(|| {
+            ExecutorError::Execution(format!("Blueprint instance not found: {}", object_id))
+        })?;
         let class_name = instance.class_name.clone();
 
         let arena = instance
             .state_arena_mut()
             .ok_or_else(|| ExecutorError::Execution("No arena in bytecode instance".to_string()))?;
 
-        self.executor
-            .execute_event(&class_name, event_name, arena)
+        self.executor.execute_event(&class_name, event_name, arena)
     }
 }

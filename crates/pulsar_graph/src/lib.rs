@@ -4,6 +4,6 @@
 //! so that existing engine code that imports from `pulsar_graph` continues to
 //! work without changes.
 
-pub use ui::graph::*;
-pub use ui::graph::type_system;
 pub use ui::graph::prefab;
+pub use ui::graph::type_system;
+pub use ui::graph::*;

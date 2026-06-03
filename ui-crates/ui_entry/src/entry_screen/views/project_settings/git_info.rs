@@ -1,13 +1,14 @@
 use super::{
     helpers::render_info_section,
-    types::{format_size, ProjectSettings},
+    types::{ProjectSettings, format_size},
 };
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme as _, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    h_flex, v_flex, ActiveTheme as _, IconName,
+    h_flex, v_flex,
 };
 
 pub fn render_git_info_tab(

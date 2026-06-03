@@ -26,11 +26,10 @@ impl MultiplayerWindow {
                         this.current_peer_id = None;
                         this.chat_messages.clear();
                         this.current_tab = SessionTab::Info;
+                        this.sync_engine_multiuser_disconnected();
                         cx.notify();
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
             })
             .detach();
         } else {
@@ -40,6 +39,7 @@ impl MultiplayerWindow {
             self.current_peer_id = None;
             self.chat_messages.clear();
             self.current_tab = SessionTab::Info;
+            self.sync_engine_multiuser_disconnected();
             cx.notify();
         }
     }

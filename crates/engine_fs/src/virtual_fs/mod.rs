@@ -22,9 +22,7 @@ pub use path_utils::{cloud_join, is_cloud_path, normalize_path};
 static VIRTUAL_FS: OnceLock<Arc<RwLock<Arc<dyn FsProvider>>>> = OnceLock::new();
 
 fn global() -> &'static Arc<RwLock<Arc<dyn FsProvider>>> {
-    VIRTUAL_FS.get_or_init(|| {
-        Arc::new(RwLock::new(Arc::new(LocalFsProvider::new())))
-    })
+    VIRTUAL_FS.get_or_init(|| Arc::new(RwLock::new(Arc::new(LocalFsProvider::new()))))
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────

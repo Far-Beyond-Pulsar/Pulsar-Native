@@ -4,8 +4,9 @@ use gpui::*;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ui::{
+    ActiveTheme, Icon, IconName,
     button::{Button, ButtonVariants},
-    h_flex, v_flex, ActiveTheme, Icon, IconName,
+    h_flex, v_flex,
 };
 
 #[cfg(target_os = "windows")]
@@ -349,10 +350,8 @@ fn run_setup_script(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) {
                 cx.update(|cx| {
                     this.update(cx, |screen, cx| {
                         screen.check_dependencies_async(cx);
-                    })
-                    ;
-                })
-                ;
+                    });
+                });
                 break;
             }
         }

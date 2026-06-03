@@ -109,7 +109,9 @@ pub fn maybe_prompt_project_file_association() {
             tracing::info!("Project descriptor file association updated successfully");
             let _ = rfd::MessageDialog::new()
                 .set_title("Pulsar Project Association")
-                .set_description("Pulsar project descriptor association was updated for this engine build.")
+                .set_description(
+                    "Pulsar project descriptor association was updated for this engine build.",
+                )
                 .set_level(rfd::MessageLevel::Info)
                 .set_buttons(rfd::MessageButtons::Ok)
                 .show();
@@ -151,8 +153,7 @@ fn build_project_association_request() -> Option<AssociationRequest> {
     {
         let uti = detect_macos_toml_uti()?;
         return Some(
-            AssociationRequest::new(uti, MACOS_BUNDLE_ID)
-                .with_mime_type(PROJECT_ASSOC_MIME),
+            AssociationRequest::new(uti, MACOS_BUNDLE_ID).with_mime_type(PROJECT_ASSOC_MIME),
         );
     }
 

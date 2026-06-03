@@ -1,14 +1,14 @@
 //! Static mesh component for mesh asset assignment.
 
 use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
-    ReflectError, ScenePropsProjector, scene_id_to_tag,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
+    ScenePropsProjector, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use glam::{EulerRot, Mat4, Quat, Vec3};
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
@@ -170,7 +170,8 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             if p.is_absolute() {
                 p.to_string_lossy().replace('\\', "/")
             } else {
-                context.project_root()
+                context
+                    .project_root()
                     .join(&mesh_asset)
                     .to_string_lossy()
                     .replace('\\', "/")
@@ -188,7 +189,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             q,
             Vec3::from_array(owner.position),
         );
-        let pos    = transform.w_axis.truncate();
+        let pos = transform.w_axis.truncate();
         let radius = Vec3::from_array(owner.scale).length() * 0.5;
 
         // Hand off to the context — it decides fast (transform update) or
@@ -201,4 +202,3 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         );
     }
 }
-

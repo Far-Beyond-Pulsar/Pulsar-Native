@@ -58,6 +58,10 @@ impl MultiplayerWindow {
                                 server_address: server_address.clone(),
                                 connected_users: vec!["You (Host)".to_string()],
                             });
+                            this.sync_engine_multiuser_connecting(
+                                &server_address,
+                                &session_id_for_display,
+                            );
                             cx.notify();
                         });
                     });
@@ -141,6 +145,12 @@ impl MultiplayerWindow {
                                             }
 
                                             tracing::debug!("CREATE_SESSION: Initialized replication bridge");
+                                            this.sync_engine_multiuser_connected(
+                                                &server_address,
+                                                &session_id,
+                                                &peer_id,
+                                                &participants,
+                                            );
 
                                             cx.notify();
                                         });
@@ -208,6 +218,27 @@ impl MultiplayerWindow {
                                                         } else {
                                                             tracing::debug!("CREATE_SESSION: Peer {} already in list", joined_peer_id);
                                                         }
+
+                                                        let session_snapshot = this
+                                                            .active_session
+                                                            .as_ref()
+                                                            .map(|s| {
+                                                                (
+                                                                    s.server_address.clone(),
+                                                                    s.session_id.clone(),
+                                                                    s.connected_users.clone(),
+                                                                )
+                                                            });
+                                                        if let (Some(peer_id), Some((server_address, session_id, participants))) =
+                                                            (this.current_peer_id.as_ref(), session_snapshot)
+                                                        {
+                                                            this.sync_engine_multiuser_connected(
+                                                                &server_address,
+                                                                &session_id,
+                                                                peer_id,
+                                                                &participants,
+                                                            );
+                                                        }
                                                     });
                                                 });
                                             }
@@ -222,6 +253,27 @@ impl MultiplayerWindow {
                                                             integration.remove_user(&left_peer_id, cx);
                                                             cx.notify();
                                                         }
+
+                                                        let session_snapshot = this
+                                                            .active_session
+                                                            .as_ref()
+                                                            .map(|s| {
+                                                                (
+                                                                    s.server_address.clone(),
+                                                                    s.session_id.clone(),
+                                                                    s.connected_users.clone(),
+                                                                )
+                                                            });
+                                                        if let (Some(peer_id), Some((server_address, session_id, participants))) =
+                                                            (this.current_peer_id.as_ref(), session_snapshot)
+                                                        {
+                                                            this.sync_engine_multiuser_connected(
+                                                                &server_address,
+                                                                &session_id,
+                                                                peer_id,
+                                                                &participants,
+                                                            );
+                                                        }
                                                     });
                                                 });
                                             }
@@ -233,6 +285,10 @@ impl MultiplayerWindow {
                                                         this.connection_status = ConnectionStatus::Error(
                                                             format!("Kicked from session: {}", reason)
                                                         );
+                                                        this.sync_engine_multiuser_error(format!(
+                                                            "Kicked from session: {}",
+                                                            reason
+                                                        ));
                                                         this.active_session = None;
                                                         this.client = None;
                                                         this.user_presences.clear();
@@ -268,6 +324,10 @@ impl MultiplayerWindow {
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
                                                         this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                                        this.sync_engine_multiuser_error(format!(
+                                                            "Server error: {}",
+                                                            message
+                                                        ));
                                                         cx.notify();
                                                     });
                                                 });
@@ -459,6 +519,10 @@ impl MultiplayerWindow {
                                     cx.update(|cx| {
                                         this.update(cx, |this, cx| {
                                             this.connection_status = ConnectionStatus::Error(format!("Server error: {}", message));
+                                            this.sync_engine_multiuser_error(format!(
+                                                "Server error: {}",
+                                                message
+                                            ));
                                             this.active_session = None;
                                             cx.notify();
                                         });
@@ -468,6 +532,9 @@ impl MultiplayerWindow {
                                     cx.update(|cx| {
                                         this.update(cx, |this, cx| {
                                             this.connection_status = ConnectionStatus::Error("Unexpected server response".to_string());
+                                            this.sync_engine_multiuser_error(
+                                                "Unexpected server response".to_string(),
+                                            );
                                             this.active_session = None;
                                             cx.notify();
                                         });
@@ -477,6 +544,9 @@ impl MultiplayerWindow {
                                     cx.update(|cx| {
                                         this.update(cx, |this, cx| {
                                             this.connection_status = ConnectionStatus::Error("Connection closed before response".to_string());
+                                            this.sync_engine_multiuser_error(
+                                                "Connection closed before response".to_string(),
+                                            );
                                             this.active_session = None;
                                             cx.notify();
                                         });
@@ -488,6 +558,10 @@ impl MultiplayerWindow {
                             cx.update(|cx| {
                                 this.update(cx, |this, cx| {
                                     this.connection_status = ConnectionStatus::Error(format!("Connection failed: {}", e));
+                                    this.sync_engine_multiuser_error(format!(
+                                        "Connection failed: {}",
+                                        e
+                                    ));
                                     cx.notify();
                                 });
                             });
@@ -498,6 +572,10 @@ impl MultiplayerWindow {
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
                             this.connection_status = ConnectionStatus::Error(format!("Failed to create session: {}", e));
+                            this.sync_engine_multiuser_error(format!(
+                                "Failed to create session: {}",
+                                e
+                            ));
                             cx.notify();
                         });
                     });

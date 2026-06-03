@@ -18,12 +18,28 @@ pub enum MultiuserStatus {
     Error(String),
 }
 
+/// Top-level collaboration mode.
+///
+/// The engine supports two runtime collaboration paths:
+/// - `CloudProject`: dedicated host service/project-backed collaboration
+/// - `PeerToPeer`: direct peer session via the multiplayer server path
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MultiuserMode {
+    /// Dedicated host / cloud project mode.
+    CloudProject,
+    /// Traditional P2P session mode.
+    #[default]
+    PeerToPeer,
+}
+
 /// Context for an active multiuser session
 ///
 /// Stores all connection details needed by subsystems to participate
 /// in collaborative editing.  Stored inside `EngineContext::multiuser`.
 #[derive(Clone, Debug)]
 pub struct MultiuserContext {
+    /// Active collaboration mode.
+    pub mode: MultiuserMode,
     /// Server WebSocket URL (e.g., "ws://localhost:8080")
     pub server_url: String,
     /// Current session ID
@@ -47,6 +63,30 @@ pub struct MultiuserContext {
 }
 
 impl MultiuserContext {
+    /// Construct a P2P session context.
+    pub fn new_peer_to_peer(
+        server_url: impl Into<String>,
+        session_id: impl Into<String>,
+        peer_id: impl Into<String>,
+        host_peer_id: impl Into<String>,
+    ) -> Self {
+        Self::new(server_url, session_id, peer_id, host_peer_id)
+            .with_mode(MultiuserMode::PeerToPeer)
+    }
+
+    /// Construct a cloud project session context.
+    pub fn new_cloud_project(
+        server_url: impl Into<String>,
+        project_id: impl Into<String>,
+        peer_id: impl Into<String>,
+        host_peer_id: impl Into<String>,
+    ) -> Self {
+        let project_id = project_id.into();
+        Self::new(server_url, project_id.clone(), peer_id, host_peer_id)
+            .with_mode(MultiuserMode::CloudProject)
+            .with_project_id(project_id)
+    }
+
     pub fn new(
         server_url: impl Into<String>,
         session_id: impl Into<String>,
@@ -57,6 +97,7 @@ impl MultiuserContext {
         let host_peer_id_str = host_peer_id.into();
         let is_host = peer_id_str == host_peer_id_str;
         Self {
+            mode: MultiuserMode::PeerToPeer,
             server_url: server_url.into(),
             session_id: session_id.into(),
             peer_id: peer_id_str,
@@ -68,6 +109,11 @@ impl MultiuserContext {
             auth_token: None,
             project_id: None,
         }
+    }
+
+    pub fn with_mode(mut self, mode: MultiuserMode) -> Self {
+        self.mode = mode;
+        self
     }
 
     pub fn with_status(mut self, status: MultiuserStatus) -> Self {
@@ -116,6 +162,13 @@ impl MultiuserContext {
 
     pub fn participant_count(&self) -> usize {
         self.participants.len()
+    }
+
+    pub fn mode_label(&self) -> &'static str {
+        match self.mode {
+            MultiuserMode::CloudProject => "Cloud",
+            MultiuserMode::PeerToPeer => "P2P",
+        }
     }
 }
 

@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.6.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=c28f7ae7e0a4c40468ff93f81d3604ef24121af2#c28f7ae7e0a4c40468ff93f81d3604ef24121af2"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=14c8bde549b944e23127cca159b48e48888b8e2c#14c8bde549b944e23127cca159b48e48888b8e2c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -12867,6 +12867,7 @@ dependencies = [
  "ui_loading_screen",
  "ui_log_viewer",
  "ui_multiplayer",
+ "ui_multiuser_status",
  "ui_plugin_manager",
  "ui_problems",
  "ui_settings",
@@ -13118,6 +13119,7 @@ name = "ui_multiplayer"
 version = "0.1.0"
 dependencies = [
  "engine_backend",
+ "engine_state",
  "futures",
  "gpui-ce",
  "serde_json",
@@ -13126,6 +13128,15 @@ dependencies = [
  "tracing",
  "ui",
  "window_manager",
+]
+
+[[package]]
+name = "ui_multiuser_status"
+version = "0.1.0"
+dependencies = [
+ "engine_state",
+ "gpui-ce",
+ "ui",
 ]
 
 [[package]]

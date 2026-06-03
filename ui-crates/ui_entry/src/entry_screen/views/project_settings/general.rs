@@ -2,9 +2,10 @@ use super::{helpers::render_info_section, types::ProjectSettings};
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
+    ActiveTheme as _, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    v_flex, ActiveTheme as _, IconName,
+    v_flex,
 };
 
 pub fn render_general_tab(

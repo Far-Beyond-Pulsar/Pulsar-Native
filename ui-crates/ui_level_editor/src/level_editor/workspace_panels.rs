@@ -172,10 +172,13 @@ impl Render for HierarchyPanelWrapper {
             .size_full()
             .bg(cx.theme().sidebar)
             .p_1()
-            .child(
-                self.hierarchy
-                    .render(&state, self.state.clone(), wrapper_entity, add_button, cx),
-            )
+            .child(self.hierarchy.render(
+                &state,
+                self.state.clone(),
+                wrapper_entity,
+                add_button,
+                cx,
+            ))
     }
 }
 

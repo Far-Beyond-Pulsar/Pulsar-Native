@@ -4,7 +4,9 @@
 //! executable bytecode using PBGC (Pulsar Blueprint Graph Compiler).
 
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
-use blueprint_compiler::{compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription};
+use blueprint_compiler::{
+    compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription,
+};
 use pulsar_graph::{BlueprintAsset, ClassVariable, GraphDescription};
 use std::collections::HashMap;
 use std::path::Path;
@@ -119,9 +121,8 @@ impl BytecodeCompiler {
         &self,
         blueprint: &BlueprintAsset,
     ) -> Result<CompiledBytecode, CompilerError> {
-        let mut compiled = CompiledBytecode::new(
-            blueprint.blueprint_metadata.blueprint_type.clone()
-        );
+        let mut compiled =
+            CompiledBytecode::new(blueprint.blueprint_metadata.blueprint_type.clone());
 
         // Extract and compile variables
         let variables = self.compile_variables(&blueprint.variables)?;
@@ -159,7 +160,8 @@ impl BytecodeCompiler {
                 current_offset += align - (current_offset % align);
             }
 
-            let default_value = self.parse_default_value(&var.data_type, var.default_value.as_deref())?;
+            let default_value =
+                self.parse_default_value(&var.data_type, var.default_value.as_deref())?;
 
             descriptors.push(VariableDescriptor::new(
                 var.name.clone(),
@@ -192,14 +194,15 @@ impl BytecodeCompiler {
                     // Most wrappers are pointer-sized structures
                     for wrapper in &type_info.wrappers {
                         match wrapper {
-                            WrapperType::Vec => return (24, 8), // Vec<T> is 24 bytes
+                            WrapperType::Vec => return (24, 8),     // Vec<T> is 24 bytes
                             WrapperType::HashMap => return (48, 8), // HashMap is larger
                             WrapperType::HashSet => return (48, 8), // HashSet is similar
                             WrapperType::Arc | WrapperType::Box => return (8, 8), // Pointer
                             WrapperType::Ref | WrapperType::RefMut => return (8, 8), // Reference
                             WrapperType::Option => {
                                 // Option adds discriminant
-                                let (inner_size, inner_align) = self.get_base_type_size_align(base_type);
+                                let (inner_size, inner_align) =
+                                    self.get_base_type_size_align(base_type);
                                 return (inner_size + 1, inner_align);
                             }
                             WrapperType::Result => return (16, 8), // Result<T, E> approximate
@@ -254,30 +257,39 @@ impl BytecodeCompiler {
 
                 match base_type {
                     "i32" => {
-                        let value: i32 = default.parse()
-                            .map_err(|_| CompilerError::Invalid(format!("Invalid i32: {}", default)))?;
+                        let value: i32 = default.parse().map_err(|_| {
+                            CompilerError::Invalid(format!("Invalid i32: {}", default))
+                        })?;
                         Ok(value.to_le_bytes().to_vec())
                     }
                     "i64" => {
-                        let value: i64 = default.parse()
-                            .map_err(|_| CompilerError::Invalid(format!("Invalid i64: {}", default)))?;
+                        let value: i64 = default.parse().map_err(|_| {
+                            CompilerError::Invalid(format!("Invalid i64: {}", default))
+                        })?;
                         Ok(value.to_le_bytes().to_vec())
                     }
                     "f32" => {
-                        let value: f32 = default.parse()
-                            .map_err(|_| CompilerError::Invalid(format!("Invalid f32: {}", default)))?;
+                        let value: f32 = default.parse().map_err(|_| {
+                            CompilerError::Invalid(format!("Invalid f32: {}", default))
+                        })?;
                         Ok(value.to_le_bytes().to_vec())
                     }
                     "f64" => {
-                        let value: f64 = default.parse()
-                            .map_err(|_| CompilerError::Invalid(format!("Invalid f64: {}", default)))?;
+                        let value: f64 = default.parse().map_err(|_| {
+                            CompilerError::Invalid(format!("Invalid f64: {}", default))
+                        })?;
                         Ok(value.to_le_bytes().to_vec())
                     }
                     "bool" => {
                         let value = match default.to_lowercase().as_str() {
                             "true" | "1" => true,
                             "false" | "0" => false,
-                            _ => return Err(CompilerError::Invalid(format!("Invalid bool: {}", default))),
+                            _ => {
+                                return Err(CompilerError::Invalid(format!(
+                                    "Invalid bool: {}",
+                                    default
+                                )))
+                            }
                         };
                         Ok(vec![if value { 1 } else { 0 }])
                     }
@@ -303,7 +315,8 @@ impl BytecodeCompiler {
         // Find all nodes that start with "Event_"
         for (node_id, node) in &main_graph.nodes {
             if node.node_type.starts_with("Event_") {
-                let event_name = node.node_type
+                let event_name = node
+                    .node_type
                     .strip_prefix("Event_")
                     .unwrap()
                     .to_lowercase();
@@ -336,10 +349,7 @@ impl BytecodeCompiler {
     }
 
     /// Compile an event graph to bytecode.
-    fn compile_event_graph(
-        &self,
-        graph: &GraphDescription,
-    ) -> Result<BpProgram, CompilerError> {
+    fn compile_event_graph(&self, graph: &GraphDescription) -> Result<BpProgram, CompilerError> {
         let bridge_json = serde_json::to_value(graph)?;
         let pbgc_graph: PbgcGraphDescription = serde_json::from_value(bridge_json)
             .map_err(|e| CompilerError::Compilation(format!("Graph conversion failed: {}", e)))?;
@@ -350,7 +360,7 @@ impl BytecodeCompiler {
 
         if programs.is_empty() {
             return Err(CompilerError::Compilation(
-                "PBGC returned no programs".to_string()
+                "PBGC returned no programs".to_string(),
             ));
         }
 
@@ -434,14 +444,20 @@ mod tests {
         assert_eq!(bytes, 42_i32.to_le_bytes().to_vec());
 
         // Test f32
-        let bytes = compiler.parse_default_value(&f32_type, Some("3.14")).unwrap();
+        let bytes = compiler
+            .parse_default_value(&f32_type, Some("3.14"))
+            .unwrap();
         assert_eq!(bytes, 3.14_f32.to_le_bytes().to_vec());
 
         // Test bool
-        let bytes = compiler.parse_default_value(&bool_type, Some("true")).unwrap();
+        let bytes = compiler
+            .parse_default_value(&bool_type, Some("true"))
+            .unwrap();
         assert_eq!(bytes, vec![1]);
 
-        let bytes = compiler.parse_default_value(&bool_type, Some("false")).unwrap();
+        let bytes = compiler
+            .parse_default_value(&bool_type, Some("false"))
+            .unwrap();
         assert_eq!(bytes, vec![0]);
 
         // Test default (None)

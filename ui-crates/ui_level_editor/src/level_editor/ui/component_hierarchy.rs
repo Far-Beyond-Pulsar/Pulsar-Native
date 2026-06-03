@@ -9,18 +9,18 @@
 //! - **Shift+Drag** - Remove parent (un-nest to root level)
 //! - **Click chevron** - Expand/collapse components with children
 
+use crate::level_editor::scene_database::SceneDatabase;
+use crate::level_editor::ui::state::LevelEditorState;
 use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
 use ui::{
     button::{Button, ButtonVariants as _},
-    menu::popup_menu::PopupMenu,
     h_flex,
-    HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout,
-    ActiveTheme, IconName, Sizable,
+    menu::popup_menu::PopupMenu,
+    ActiveTheme, HierarchicalTreeView, HierarchyConfig, HierarchyItem, HierarchyLayout, IconName,
+    Sizable,
 };
-use crate::level_editor::scene_database::SceneDatabase;
-use crate::level_editor::ui::state::LevelEditorState;
 
 // ── Drag Payload ──────────────────────────────────────────────────────────────
 
@@ -125,8 +125,16 @@ impl HierarchyItem for ComponentItem {
         let toggle_button = Button::new(format!("component-toggle-{}-{}", toggle_object_id, index))
             .ghost()
             .xsmall()
-            .icon(if enabled { IconName::Check } else { IconName::Xmark })
-            .tooltip(if enabled { "Disable component" } else { "Enable component" })
+            .icon(if enabled {
+                IconName::Check
+            } else {
+                IconName::Xmark
+            })
+            .tooltip(if enabled {
+                "Disable component"
+            } else {
+                "Enable component"
+            })
             .on_click(move |_, _, cx| {
                 cx.stop_propagation();
                 let mut state = toggle_state.write();
@@ -332,7 +340,11 @@ impl ComponentHierarchyPanel {
             }),
             on_drop: Arc::new({
                 let object_id = self.object_id.clone();
-                move |payload: ComponentDragPayload, target_idx: &usize, modifiers: &Modifiers, _window, _cx| {
+                move |payload: ComponentDragPayload,
+                      target_idx: &usize,
+                      modifiers: &Modifiers,
+                      _window,
+                      _cx| {
                     // Only allow operations within the same object
                     if payload.object_id != object_id {
                         return;

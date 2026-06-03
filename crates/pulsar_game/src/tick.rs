@@ -227,7 +227,8 @@ impl TickLoop {
                 v
             });
 
-            let raw_path = raw_value.as_ref()
+            let raw_path = raw_value
+                .as_ref()
                 .and_then(|v| v.as_str().ok())
                 .map(|s| s.to_owned());
             tracing::info!(raw_map = ?raw_path, "default_map from settings");

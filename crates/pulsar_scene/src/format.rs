@@ -13,9 +13,9 @@
 //! - `version` is an integer (`1`)
 //! - `position`, `rotation`, `scale` are top-level fields on each object
 
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
 
 // ── Top-level file ─────────────────────────────────────────────────────────────
 
@@ -39,17 +39,18 @@ pub struct SceneFile {
     pub editor: Value,
 }
 
-fn default_version_value() -> Value { Value::Number(1.into()) }
+fn default_version_value() -> Value {
+    Value::Number(1.into())
+}
 
 impl SceneFile {
     /// Load a scene from a JSON file.
     pub fn load(path: &std::path::Path) -> Result<Self, SceneLoadError> {
         tracing::debug!(path = %path.display(), "Reading scene file from disk");
-        let text = std::fs::read_to_string(path)
-            .map_err(|e| SceneLoadError::Io(e.to_string()))?;
+        let text = std::fs::read_to_string(path).map_err(|e| SceneLoadError::Io(e.to_string()))?;
         tracing::debug!(bytes = text.len(), "Scene file read OK, parsing JSON");
-        let scene: Self = serde_json::from_str(&text)
-            .map_err(|e| SceneLoadError::Parse(e.to_string()))?;
+        let scene: Self =
+            serde_json::from_str(&text).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
         tracing::info!(
             path = %path.display(),
             version = %scene.version,
@@ -62,13 +63,11 @@ impl SceneFile {
     /// Save a scene to a JSON file (pretty-printed).
     pub fn save(&self, path: &std::path::Path) -> Result<(), SceneLoadError> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| SceneLoadError::Io(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| SceneLoadError::Io(e.to_string()))?;
         }
-        let text = serde_json::to_string_pretty(self)
-            .map_err(|e| SceneLoadError::Parse(e.to_string()))?;
-        std::fs::write(path, text)
-            .map_err(|e| SceneLoadError::Io(e.to_string()))
+        let text =
+            serde_json::to_string_pretty(self).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
+        std::fs::write(path, text).map_err(|e| SceneLoadError::Io(e.to_string()))
     }
 }
 
@@ -88,7 +87,9 @@ pub struct SceneTransform {
     pub scale: [f32; 3],
 }
 
-fn default_scale() -> [f32; 3] { [1.0, 1.0, 1.0] }
+fn default_scale() -> [f32; 3] {
+    [1.0, 1.0, 1.0]
+}
 
 // ── Per-object ─────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,9 @@ pub struct SceneObject {
     pub scene_path: Option<String>,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for SceneObject {
     fn default() -> Self {
@@ -228,11 +231,14 @@ where
 fn object_type_from_value(v: &Value) -> ObjectType {
     match v {
         Value::String(s) => match s.as_str() {
-            "Empty"  => ObjectType::Empty,
+            "Empty" => ObjectType::Empty,
             "Folder" => ObjectType::Folder,
             "Camera" => ObjectType::Camera,
             other => {
-                tracing::debug!(type_ = other, "Unknown ObjectType string — treating as Empty");
+                tracing::debug!(
+                    type_ = other,
+                    "Unknown ObjectType string — treating as Empty"
+                );
                 ObjectType::Unknown
             }
         },
@@ -257,11 +263,11 @@ fn object_type_from_value(v: &Value) -> ObjectType {
 
 fn mesh_type_from_value(v: &Value) -> MeshType {
     match v.as_str().unwrap_or("") {
-        "Cube"     => MeshType::Cube,
-        "Sphere"   => MeshType::Sphere,
+        "Cube" => MeshType::Cube,
+        "Sphere" => MeshType::Sphere,
         "Cylinder" => MeshType::Cylinder,
-        "Plane"    => MeshType::Plane,
-        "Custom"   => MeshType::Custom,
+        "Plane" => MeshType::Plane,
+        "Custom" => MeshType::Custom,
         other => {
             tracing::debug!(type_ = other, "Unknown MeshType — treating as Cube");
             MeshType::Cube
@@ -272,8 +278,8 @@ fn mesh_type_from_value(v: &Value) -> MeshType {
 fn light_type_from_value(v: &Value) -> LightType {
     match v.as_str().unwrap_or("") {
         "Directional" => LightType::Directional,
-        "Point"       => LightType::Point,
-        "Spot"        => LightType::Spot,
+        "Point" => LightType::Point,
+        "Spot" => LightType::Spot,
         other => {
             tracing::debug!(type_ = other, "Unknown LightType — treating as Point");
             LightType::Point
@@ -319,7 +325,7 @@ pub enum SceneLoadError {
 impl std::fmt::Display for SceneLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(e)    => write!(f, "I/O error: {e}"),
+            Self::Io(e) => write!(f, "I/O error: {e}"),
             Self::Parse(e) => write!(f, "Parse error: {e}"),
         }
     }
@@ -331,14 +337,16 @@ impl std::error::Error for SceneLoadError {}
 
 impl SceneObject {
     fn prop_f32(&self, key: &str, default: f32) -> f32 {
-        self.props.get(key)
+        self.props
+            .get(key)
             .and_then(|v| v.as_f64())
             .map(|v| v as f32)
             .unwrap_or(default)
     }
 
     fn prop_f32_arr3(&self, key: &str, default: [f32; 3]) -> [f32; 3] {
-        self.props.get(key)
+        self.props
+            .get(key)
             .and_then(|v| v.as_array())
             .and_then(|a| {
                 if a.len() >= 3 {
@@ -355,7 +363,8 @@ impl SceneObject {
     }
 
     fn prop_f32_arr4(&self, key: &str, default: [f32; 4]) -> [f32; 4] {
-        self.props.get(key)
+        self.props
+            .get(key)
             .and_then(|v| v.as_array())
             .and_then(|a| {
                 if a.len() >= 4 {
@@ -399,8 +408,7 @@ impl SceneObject {
             .and_then(|v| v.as_array())
             .and_then(|arr| {
                 arr.iter().find(|inst| {
-                    inst.get("class_name").and_then(|v| v.as_str())
-                        == Some("StaticMeshComponent")
+                    inst.get("class_name").and_then(|v| v.as_str()) == Some("StaticMeshComponent")
                 })
             })
             .and_then(|inst| inst.get("data"))
@@ -414,12 +422,18 @@ impl SceneObject {
     pub fn mat_base_color(&self) -> [f32; 4] {
         self.prop_f32_arr4("base_color", [0.5, 0.5, 0.5, 1.0])
     }
-    pub fn mat_roughness(&self)         -> f32 { self.prop_f32("roughness", 0.5) }
-    pub fn mat_metallic(&self)          -> f32 { self.prop_f32("metallic", 0.0) }
-    pub fn mat_emissive(&self)          -> [f32; 3] {
+    pub fn mat_roughness(&self) -> f32 {
+        self.prop_f32("roughness", 0.5)
+    }
+    pub fn mat_metallic(&self) -> f32 {
+        self.prop_f32("metallic", 0.0)
+    }
+    pub fn mat_emissive(&self) -> [f32; 3] {
         self.prop_f32_arr3("emissive", [0.0, 0.0, 0.0])
     }
-    pub fn mat_emissive_strength(&self) -> f32 { self.prop_f32("emissive_strength", 0.0) }
+    pub fn mat_emissive_strength(&self) -> f32 {
+        self.prop_f32("emissive_strength", 0.0)
+    }
 
     // ── Light accessors ───────────────────────────────────────────────────────
     //
@@ -458,8 +472,12 @@ impl SceneObject {
         self.light_component_prop_f32("range", 10.0)
     }
 
-    pub fn light_inner_angle(&self) -> f32 { self.prop_f32("inner_angle", 30.0) }
-    pub fn light_outer_angle(&self) -> f32 { self.prop_f32("outer_angle", 45.0) }
+    pub fn light_inner_angle(&self) -> f32 {
+        self.prop_f32("inner_angle", 30.0)
+    }
+    pub fn light_outer_angle(&self) -> f32 {
+        self.prop_f32("outer_angle", 45.0)
+    }
 
     // ── __component_instances helpers ─────────────────────────────────────────
 

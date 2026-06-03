@@ -1,7 +1,10 @@
 //! Level of Detail (LOD) component for performance optimization
 
 use engine_class_derive::EngineClass;
-use pulsar_reflection::{ReflectError, ReflectResult, Reflectable, RuntimeTypeInfo, RuntimeTypeRegistration, TypeDeserializer, TypeSerializer, TypeStructure};
+use pulsar_reflection::{
+    ReflectError, ReflectResult, Reflectable, RuntimeTypeInfo, RuntimeTypeRegistration,
+    TypeDeserializer, TypeSerializer, TypeStructure,
+};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -88,10 +91,12 @@ impl Reflectable for LODLevel {
 }
 
 fn serialize_lod_level_json(value: &dyn Any) -> ReflectResult<serde_json::Value> {
-    let lod = value.downcast_ref::<LODLevel>().ok_or_else(|| ReflectError::TypeMismatch {
-        expected: "LODLevel",
-        found: format!("{:?}", value.type_id()),
-    })?;
+    let lod = value
+        .downcast_ref::<LODLevel>()
+        .ok_or_else(|| ReflectError::TypeMismatch {
+            expected: "LODLevel",
+            found: format!("{:?}", value.type_id()),
+        })?;
 
     serde_json::to_value(lod).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }

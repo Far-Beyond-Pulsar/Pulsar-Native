@@ -64,8 +64,7 @@ impl HelioViewport {
         match result {
             Ok(()) => {
                 window.push_notification(
-                    Notification::success("Added to Scene")
-                        .message(format!("Placed {}", name)),
+                    Notification::success("Added to Scene").message(format!("Placed {}", name)),
                     cx,
                 );
             }
@@ -107,11 +106,14 @@ impl HelioViewport {
                 // Build a __component_instances entry for StaticMeshComponent so the
                 // renderer's sync_scene() loop loads the FBX via the component path.
                 let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), serde_json::json!([{
-                    "class_name": "StaticMeshComponent",
-                    "enabled": true,
-                    "data": { "mesh_asset": asset_path }
-                }]));
+                props.insert(
+                    "__component_instances".to_string(),
+                    serde_json::json!([{
+                        "class_name": "StaticMeshComponent",
+                        "enabled": true,
+                        "data": { "mesh_asset": asset_path }
+                    }]),
+                );
 
                 let mut state = shared_state.write();
                 let mesh_object = SceneObjectData {
@@ -138,21 +140,24 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     let _ = execute_command(
                         &mut state,
-                        SceneCommand::SelectObject { id: Some(id.clone()) },
+                        SceneCommand::SelectObject {
+                            id: Some(id.clone()),
+                        },
                     );
                 }
             }
             AssetKind::Blueprint => {
                 if !path.is_dir() {
-                    return Err(format!(
-                        "Blueprint path is not a directory: {}", path.display()
-                    ).into());
+                    return Err(
+                        format!("Blueprint path is not a directory: {}", path.display()).into(),
+                    );
                 }
                 if !path.join("graph_save.json").exists() {
                     return Err(format!(
                         "Not a valid blueprint class (missing graph_save.json): {}",
                         path.display()
-                    ).into());
+                    )
+                    .into());
                 }
 
                 let class_name = path
@@ -163,11 +168,14 @@ impl HelioViewport {
                 let script_path = path.to_string_lossy().replace('\\', "/");
 
                 let mut props = std::collections::HashMap::new();
-                props.insert("__component_instances".to_string(), serde_json::json!([{
-                    "class_name": "ScriptComponent",
-                    "enabled": true,
-                    "data": { "script_asset": script_path }
-                }]));
+                props.insert(
+                    "__component_instances".to_string(),
+                    serde_json::json!([{
+                        "class_name": "ScriptComponent",
+                        "enabled": true,
+                        "data": { "script_asset": script_path }
+                    }]),
+                );
 
                 let mut state = shared_state.write();
                 let blueprint_object = SceneObjectData {
@@ -194,7 +202,9 @@ impl HelioViewport {
                 if let Some(id) = add_result.affected_ids.first() {
                     let _ = execute_command(
                         &mut state,
-                        SceneCommand::SelectObject { id: Some(id.clone()) },
+                        SceneCommand::SelectObject {
+                            id: Some(id.clone()),
+                        },
                     );
                 }
             }
@@ -263,7 +273,10 @@ impl Render for HelioViewport {
                         );
                         let frame_ms = t_frame.elapsed().as_secs_f64() * 1000.0;
                         if frame_ms > 16.0 {
-                            tracing::warn!("[VIEWPORT] render_frame_to_surface took {:.1}ms", frame_ms);
+                            tracing::warn!(
+                                "[VIEWPORT] render_frame_to_surface took {:.1}ms",
+                                frame_ms
+                            );
                         }
                         for err in engine.drain_pending_errors() {
                             window.push_notification(
@@ -302,7 +315,10 @@ impl Render for HelioViewport {
             .id("helio-viewport-drop")
             .size_full()
             .drag_over::<AssetPayload>(|style, payload, _window, cx| {
-                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint) {
+                if matches!(
+                    payload.kind,
+                    AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
+                ) {
                     style
                         .border_2()
                         .border_color(cx.theme().accent)
@@ -312,7 +328,10 @@ impl Render for HelioViewport {
                 }
             })
             .on_drop::<AssetPayload>(move |payload, window, cx| {
-                if matches!(payload.kind, AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint) {
+                if matches!(
+                    payload.kind,
+                    AssetKind::Mesh | AssetKind::Scene | AssetKind::Blueprint
+                ) {
                     let payload = payload.clone();
                     viewport.update(cx, |this, cx| {
                         this.handle_asset_drop(&payload, window, cx);

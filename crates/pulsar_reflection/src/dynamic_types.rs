@@ -1,9 +1,9 @@
+use crate::runtime_types::RuntimeTypeInfo;
+use dashmap::DashMap;
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
-use dashmap::DashMap;
 use uuid::Uuid;
-use crate::runtime_types::RuntimeTypeInfo;
 
 /// Tag distinguishing compile-time types from runtime-composed types
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -74,7 +74,11 @@ impl DynamicTypeBuilder {
     /// # Safety Requirements
     /// The type_info MUST point to a valid registered compile-time type.
     /// This is enforced by requiring &'static RuntimeTypeInfo.
-    pub fn add_field(mut self, name: impl Into<String>, type_info: &'static RuntimeTypeInfo) -> Self {
+    pub fn add_field(
+        mut self,
+        name: impl Into<String>,
+        type_info: &'static RuntimeTypeInfo,
+    ) -> Self {
         self.fields.push((name.into(), type_info));
         self
     }
@@ -142,9 +146,17 @@ impl DynamicValue {
     /// Returns an error if:
     /// - The field doesn't exist in the type definition
     /// - The value's type doesn't match the field's declared type
-    pub fn set_field(&mut self, field_name: &str, value: Box<dyn Any + Send + Sync>) -> Result<(), String> {
-        let field = self.type_info.get_field(field_name)
-            .ok_or_else(|| format!("Field '{}' not found in type '{}'", field_name, self.type_info.name))?;
+    pub fn set_field(
+        &mut self,
+        field_name: &str,
+        value: Box<dyn Any + Send + Sync>,
+    ) -> Result<(), String> {
+        let field = self.type_info.get_field(field_name).ok_or_else(|| {
+            format!(
+                "Field '{}' not found in type '{}'",
+                field_name, self.type_info.name
+            )
+        })?;
 
         // Type check: value must match the field's base type
         if value.as_ref().type_id() != field.base_type.type_id {
@@ -186,11 +198,18 @@ impl DynamicValue {
     /// - The type T doesn't match the field's actual type
     /// - The type T doesn't implement Clone
     pub fn get_field_typed<T: 'static + Clone>(&self, field_name: &str) -> Result<T, String> {
-        let any_ref = self.get_field(field_name)
+        let any_ref = self
+            .get_field(field_name)
             .ok_or_else(|| format!("Field '{}' not found or not set", field_name))?;
 
-        any_ref.downcast_ref::<T>()
-            .ok_or_else(|| format!("Failed to downcast field '{}' to requested type", field_name))
+        any_ref
+            .downcast_ref::<T>()
+            .ok_or_else(|| {
+                format!(
+                    "Failed to downcast field '{}' to requested type",
+                    field_name
+                )
+            })
             .map(|val| val.clone())
     }
 
@@ -202,11 +221,16 @@ impl DynamicValue {
     /// - The field hasn't been set yet
     /// - The type T doesn't match the field's actual type
     pub fn get_field_typed_mut<T: 'static>(&mut self, field_name: &str) -> Result<&mut T, String> {
-        let any_ref = self.get_field_mut(field_name)
+        let any_ref = self
+            .get_field_mut(field_name)
             .ok_or_else(|| format!("Field '{}' not found or not set", field_name))?;
 
-        any_ref.downcast_mut::<T>()
-            .ok_or_else(|| format!("Failed to downcast field '{}' to requested type", field_name))
+        any_ref.downcast_mut::<T>().ok_or_else(|| {
+            format!(
+                "Failed to downcast field '{}' to requested type",
+                field_name
+            )
+        })
     }
 
     /// Modify a field value using a closure
@@ -305,7 +329,9 @@ impl DynamicTypeRegistry {
 
     /// Look up a type by its UUID
     pub fn get(&self, uuid: &Uuid) -> Option<Arc<DynamicTypeInfo>> {
-        self.types_by_uuid.get(uuid).map(|entry| Arc::clone(entry.value()))
+        self.types_by_uuid
+            .get(uuid)
+            .map(|entry| Arc::clone(entry.value()))
     }
 
     /// Look up a type by its name
@@ -326,14 +352,16 @@ impl DynamicTypeRegistry {
 
     /// Get all registered type names
     pub fn type_names(&self) -> Vec<String> {
-        self.types_by_name.iter()
+        self.types_by_name
+            .iter()
             .map(|entry| entry.key().clone())
             .collect()
     }
 
     /// Get all registered type UUIDs
     pub fn type_uuids(&self) -> Vec<Uuid> {
-        self.types_by_uuid.iter()
+        self.types_by_uuid
+            .iter()
             .map(|entry| *entry.key())
             .collect()
     }

@@ -175,8 +175,7 @@ impl fmt::Debug for RuntimeTypeRegistry {
 ///
 /// Lazily initialized on first access. All reflectable types are automatically
 /// registered via the `inventory` crate.
-pub static RUNTIME_TYPE_REGISTRY: Lazy<RuntimeTypeRegistry> =
-    Lazy::new(RuntimeTypeRegistry::new);
+pub static RUNTIME_TYPE_REGISTRY: Lazy<RuntimeTypeRegistry> = Lazy::new(RuntimeTypeRegistry::new);
 
 use std::fmt;
 

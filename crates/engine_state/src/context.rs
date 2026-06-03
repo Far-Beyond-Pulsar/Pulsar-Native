@@ -8,8 +8,8 @@ use dashmap::DashMap;
 use gpui::AppContext;
 use parking_lot::RwLock;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
@@ -353,6 +353,22 @@ impl EngineContext {
         *self.multiuser.write() = Some(context);
     }
 
+    /// Mutate multiuser context in place if active.
+    ///
+    /// Returns `true` when a context existed and was updated.
+    pub fn update_multiuser<F>(&self, update: F) -> bool
+    where
+        F: FnOnce(&mut crate::multiuser::MultiuserContext),
+    {
+        let mut guard = self.multiuser.write();
+        if let Some(ctx) = guard.as_mut() {
+            update(ctx);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Clear multiuser session context
     ///
     /// Call this when disconnecting from a session.
@@ -381,23 +397,25 @@ impl EngineContext {
 
     /// Update multiuser connection status
     pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.set_status(status);
-        }
+        let _ = self.update_multiuser(|ctx| ctx.set_status(status));
     }
 
     /// Add a participant to the current multiuser session
     pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.add_participant(peer_id);
-        }
+        let peer_id = peer_id.into();
+        let _ = self.update_multiuser(|ctx| ctx.add_participant(peer_id));
+    }
+
+    /// Replace participant list for the active session.
+    pub fn set_multiuser_participants(&self, participants: Vec<String>) {
+        let _ = self.update_multiuser(|ctx| {
+            ctx.participants = participants;
+        });
     }
 
     /// Remove a participant from the current multiuser session
     pub fn remove_multiuser_participant(&self, peer_id: &str) {
-        if let Some(ctx) = self.multiuser.write().as_mut() {
-            ctx.remove_participant(peer_id);
-        }
+        let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
     }
 
     /// Set as global instance (for GPUI views that need global access)

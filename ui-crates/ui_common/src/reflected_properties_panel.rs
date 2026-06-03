@@ -3,6 +3,7 @@
 //! This module provides a centralized system for rendering reflected component properties
 //! that is used by both the level editor and blueprint prefab editor.
 
+use crate::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 use gpui::{prelude::*, *};
 use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY};
 use serde_json::Value;
@@ -13,7 +14,6 @@ use ui::color_picker::{ColorPickerEvent, ColorPickerState};
 use ui::input::{InputEvent, InputState, NumberInputEvent, StepAction};
 use ui::popover::Popover;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
-use crate::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 
 // ============================================================================
 // Type Aliases and Traits
@@ -296,10 +296,13 @@ impl PropertyStateManager {
         });
 
         let on_change = Arc::new(on_change);
-        cx.subscribe(&picker, move |_this, picker, _event: &AssetPickedEvent, cx| {
-            let selected = picker.read(cx).selected_path().to_string();
-            (on_change)(selected);
-        })
+        cx.subscribe(
+            &picker,
+            move |_this, picker, _event: &AssetPickedEvent, cx| {
+                let selected = picker.read(cx).selected_path().to_string();
+                (on_change)(selected);
+            },
+        )
         .detach();
 
         self.mesh_asset_pickers.insert(key, picker.clone());
@@ -426,7 +429,10 @@ pub fn render_property_row_runtime<V: 'static>(
                 .get(selected_ix)
                 .map(|v| (*v).to_string())
                 .unwrap_or_else(|| "Select".to_string());
-            let options = variants.iter().map(|v| (*v).to_string()).collect::<Vec<_>>();
+            let options = variants
+                .iter()
+                .map(|v| (*v).to_string())
+                .collect::<Vec<_>>();
 
             h_flex()
                 .w_full()
@@ -440,30 +446,28 @@ pub fn render_property_row_runtime<V: 'static>(
                         .child(display_name.to_string()),
                 )
                 .child(
-                    ui::button::Button::new(format!(
-                        "enum-{id_prefix}-{class_name}-{prop_name}"
-                    ))
-                    .label(label)
-                    .xsmall()
-                    .ghost()
-                    .dropdown_caret(true)
-                    .dropdown_menu_with_anchor(
-                        Corner::BottomRight,
-                        move |menu, _window, _cx| {
-                            let mut menu = menu;
-                            for (ix, option) in options.iter().enumerate() {
-                                let on_enum_select = on_enum_select.clone();
-                                menu = menu.item(
-                                    ui::menu::PopupMenuItem::new(option.clone())
-                                        .checked(ix == selected_ix)
-                                        .on_click(move |_event, window, cx| {
-                                            (on_enum_select)(ix, window, cx);
-                                        }),
-                                );
-                            }
-                            menu
-                        },
-                    ),
+                    ui::button::Button::new(format!("enum-{id_prefix}-{class_name}-{prop_name}"))
+                        .label(label)
+                        .xsmall()
+                        .ghost()
+                        .dropdown_caret(true)
+                        .dropdown_menu_with_anchor(
+                            Corner::BottomRight,
+                            move |menu, _window, _cx| {
+                                let mut menu = menu;
+                                for (ix, option) in options.iter().enumerate() {
+                                    let on_enum_select = on_enum_select.clone();
+                                    menu = menu.item(
+                                        ui::menu::PopupMenuItem::new(option.clone())
+                                            .checked(ix == selected_ix)
+                                            .on_click(move |_event, window, cx| {
+                                                (on_enum_select)(ix, window, cx);
+                                            }),
+                                    );
+                                }
+                                menu
+                            },
+                        ),
                 )
                 .into_any_element()
         }

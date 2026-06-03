@@ -55,12 +55,13 @@ impl Reflectable for Movability {
 }
 
 fn serialize_movability_json(value: &dyn Any) -> ReflectResult<serde_json::Value> {
-    let movability = value
-        .downcast_ref::<Movability>()
-        .ok_or_else(|| ReflectError::TypeMismatch {
-            expected: "helio::Movability",
-            found: format!("{:?}", value.type_id()),
-        })?;
+    let movability =
+        value
+            .downcast_ref::<Movability>()
+            .ok_or_else(|| ReflectError::TypeMismatch {
+                expected: "helio::Movability",
+                found: format!("{:?}", value.type_id()),
+            })?;
 
     let as_str = match movability {
         Movability::Static => "Static",

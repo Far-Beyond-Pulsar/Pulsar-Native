@@ -34,10 +34,7 @@ impl RuntimeTypeInfo {
     ///
     /// Example: "pulsar::math::Vec3" -> "Vec3"
     pub fn base_name(&self) -> &str {
-        self.type_name
-            .split("::")
-            .last()
-            .unwrap_or(self.type_name)
+        self.type_name.split("::").last().unwrap_or(self.type_name)
     }
 
     /// Check if this is a primitive type

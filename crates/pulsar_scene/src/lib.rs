@@ -37,11 +37,7 @@ pub mod format;
 pub mod loader;
 
 // Flatten the most-used types to the crate root.
-pub use format::{
-    LightType, MeshType, ObjectType, SceneFile, SceneLoadError, SceneObject,
-};
+pub use format::{LightType, MeshType, ObjectType, SceneFile, SceneLoadError, SceneObject};
 pub use loader::{
-    SceneLoader,
-    component_instances_from_props, build_transform_parts,
-    load_mesh_upload,
+    build_transform_parts, component_instances_from_props, load_mesh_upload, SceneLoader,
 };

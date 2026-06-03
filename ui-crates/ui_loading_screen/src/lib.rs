@@ -212,8 +212,7 @@ impl Render for LoadingScreen {
             let handle = window.window_handle();
             cx.defer(move |cx| {
                 on_complete(path, cx);
-                cx.update_window(handle, |_, window, _| window.remove_window())
-                    ;
+                cx.update_window(handle, |_, window, _| window.remove_window());
             });
         }
 

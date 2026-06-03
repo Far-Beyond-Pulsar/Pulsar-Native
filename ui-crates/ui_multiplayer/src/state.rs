@@ -10,6 +10,7 @@ use super::diff_viewer::{DiffFileEntry, DiffViewer};
 use super::types::*;
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 use engine_backend::subsystems::networking::simple_sync::SyncDiff;
+use engine_state::{EngineContext, MultiuserContext, MultiuserStatus};
 
 /// Multiplayer collaboration window for connecting to multiuser servers
 pub struct MultiplayerWindow {
@@ -98,6 +99,93 @@ impl MultiplayerWindow {
             diff_viewer,
             pending_diff_populate: None,
             pending_file_updates: Vec::new(),
+        }
+    }
+
+    pub(super) fn sync_engine_multiuser_connecting(&self, server_url: &str, session_id: &str) {
+        let Some(ctx) = EngineContext::global() else {
+            return;
+        };
+
+        let peer_id = self
+            .current_peer_id
+            .clone()
+            .unwrap_or_else(|| "local".to_string());
+        let host_peer_id = self
+            .active_session
+            .as_ref()
+            .and_then(|s| s.connected_users.first().cloned())
+            .unwrap_or_else(|| peer_id.clone());
+
+        let mut session = MultiuserContext::new_peer_to_peer(
+            server_url.to_string(),
+            session_id.to_string(),
+            peer_id,
+            host_peer_id,
+        )
+        .with_status(MultiuserStatus::Connecting);
+
+        if let Some(active_session) = &self.active_session {
+            session = session.with_join_token(active_session.join_token.clone());
+        }
+
+        ctx.set_multiuser(session);
+    }
+
+    pub(super) fn sync_engine_multiuser_connected(
+        &self,
+        server_url: &str,
+        session_id: &str,
+        our_peer_id: &str,
+        participants: &[String],
+    ) {
+        let Some(ctx) = EngineContext::global() else {
+            return;
+        };
+
+        let host_peer_id = participants
+            .first()
+            .cloned()
+            .unwrap_or_else(|| our_peer_id.to_string());
+
+        let mut session = MultiuserContext::new_peer_to_peer(
+            server_url.to_string(),
+            session_id.to_string(),
+            our_peer_id.to_string(),
+            host_peer_id,
+        )
+        .with_status(MultiuserStatus::Connected)
+        .with_participants(participants.to_vec());
+
+        if let Some(active_session) = &self.active_session {
+            session = session.with_join_token(active_session.join_token.clone());
+        }
+
+        ctx.set_multiuser(session);
+    }
+
+    pub(super) fn sync_engine_multiuser_error(&self, message: String) {
+        let Some(ctx) = EngineContext::global() else {
+            return;
+        };
+
+        if !ctx.update_multiuser(|mu| {
+            mu.set_status(MultiuserStatus::Error(message.clone()));
+        }) {
+            let fallback = MultiuserContext::new_peer_to_peer(
+                "unknown".to_string(),
+                "unknown".to_string(),
+                "local".to_string(),
+                "remote".to_string(),
+            )
+            .with_status(MultiuserStatus::Error(message));
+            ctx.set_multiuser(fallback);
+        }
+    }
+
+    pub(super) fn sync_engine_multiuser_disconnected(&self) {
+        if let Some(ctx) = EngineContext::global() {
+            ctx.clear_multiuser();
         }
     }
 

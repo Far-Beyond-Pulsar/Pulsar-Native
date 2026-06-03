@@ -218,8 +218,7 @@ impl PulsarApp {
                             // Close the originating window only after the target editor opens.
                             cx.update_window(originating_window_handle, |_, win, _| {
                                 win.remove_window()
-                            })
-                            ;
+                            });
                         });
 
                         cx.defer({

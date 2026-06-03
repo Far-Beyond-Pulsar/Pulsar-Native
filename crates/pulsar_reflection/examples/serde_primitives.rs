@@ -2,7 +2,7 @@
 
 #[cfg(feature = "prims-serde")]
 fn main() {
-    use pulsar_reflection::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+    use pulsar_reflection::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
 
     let value = serde_json::json!({
         "kind": "config",

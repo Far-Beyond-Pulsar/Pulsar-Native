@@ -158,23 +158,18 @@ impl ThumbnailService {
                     }
 
                     // 2. Disk cache hit or generate.
-                    let disk_path =
-                        get_or_generate_thumbnail_sync(&job.abs_path, &job.cache_root);
+                    let disk_path = get_or_generate_thumbnail_sync(&job.abs_path, &job.cache_root);
 
                     // 3. Decode once, cache in memory.
                     let rgba = disk_path.and_then(|p| {
                         image::open(&p)
-                            .map_err(|e| {
-                                tracing::debug!("thumbnail decode failed {:?}: {}", p, e)
-                            })
+                            .map_err(|e| tracing::debug!("thumbnail decode failed {:?}: {}", p, e))
                             .ok()
                             .map(|i| Arc::new(i.into_rgba8()))
                     });
 
                     if let Some(ref img) = rgba {
-                        job.mem_cache
-                            .lock()
-                            .insert(cache_key, Arc::clone(img));
+                        job.mem_cache.lock().insert(cache_key, Arc::clone(img));
                     }
 
                     job.pending.lock().remove(&job.abs_path);
@@ -307,8 +302,19 @@ fn get_or_generate_thumbnail_sync(abs_asset_path: &Path, cache_root: &Path) -> O
 fn is_supported_ext(ext: &str) -> bool {
     matches!(
         ext,
-        "fbx" | "gltf" | "glb" | "obj" | "usd" | "usda"
-            | "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif"
+        "fbx"
+            | "gltf"
+            | "glb"
+            | "obj"
+            | "usd"
+            | "usda"
+            | "png"
+            | "jpg"
+            | "jpeg"
+            | "webp"
+            | "tga"
+            | "bmp"
+            | "gif"
     )
 }
 
@@ -336,18 +342,16 @@ fn compute_cache_key(path: &Path) -> String {
 
 fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
     match ext {
-        "fbx" | "gltf" | "glb" | "obj" | "usd" | "usda" => {
-            helio_snapshot::render_snapshot(
-                abs_path,
-                helio_snapshot::SnapshotConfig {
-                    width: THUMB_PX,
-                    height: THUMB_PX,
-                    ..Default::default()
-                },
-            )
-            .map_err(|e| tracing::debug!("snapshot failed for {:?}: {}", abs_path, e))
-            .ok()
-        }
+        "fbx" | "gltf" | "glb" | "obj" | "usd" | "usda" => helio_snapshot::render_snapshot(
+            abs_path,
+            helio_snapshot::SnapshotConfig {
+                width: THUMB_PX,
+                height: THUMB_PX,
+                ..Default::default()
+            },
+        )
+        .map_err(|e| tracing::debug!("snapshot failed for {:?}: {}", abs_path, e))
+        .ok(),
         "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" => {
             let img = image::open(abs_path)
                 .map_err(|e| tracing::debug!("image load failed for {:?}: {}", abs_path, e))

@@ -81,12 +81,10 @@ fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         ),
     ));
     if let Some(v) = a {
-        n.properties
-            .insert(format!("{id}_a"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
-        n.properties
-            .insert(format!("{id}_b"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -121,12 +119,10 @@ fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         ),
     ));
     if let Some(v) = a {
-        n.properties
-            .insert(format!("{id}_a"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
-        n.properties
-            .insert(format!("{id}_b"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -161,12 +157,10 @@ fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         ),
     ));
     if let Some(v) = a {
-        n.properties
-            .insert(format!("{id}_a"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
-        n.properties
-            .insert(format!("{id}_b"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }
@@ -210,16 +204,13 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
         ),
     ));
     if let Some(v) = a {
-        n.properties
-            .insert(format!("{id}_a"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
-        n.properties
-            .insert(format!("{id}_b"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_b"), serde_json::json!(v));
     }
     if let Some(v) = t {
-        n.properties
-            .insert(format!("{id}_t"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_t"), serde_json::json!(v));
     }
     n
 }
@@ -254,12 +245,10 @@ fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         ),
     ));
     if let Some(v) = a {
-        n.properties
-            .insert(format!("{id}_a"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_a"), serde_json::json!(v));
     }
     if let Some(v) = b {
-        n.properties
-            .insert(format!("{id}_b"), serde_json::json!(v));
+        n.properties.insert(format!("{id}_b"), serde_json::json!(v));
     }
     n
 }

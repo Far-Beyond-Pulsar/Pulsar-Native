@@ -25,7 +25,7 @@ type RegisteredBool = bool;
 
 #[cfg(test)]
 mod tests {
-    use crate::{JsonDeserializer, JsonSerializer, Reflectable, RUNTIME_TYPE_REGISTRY};
+    use crate::{JsonDeserializer, JsonSerializer, RUNTIME_TYPE_REGISTRY, Reflectable};
 
     #[test]
     fn test_bool_registered() {

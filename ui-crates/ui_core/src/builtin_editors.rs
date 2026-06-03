@@ -450,10 +450,10 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
+        use gpui::Rgba;
         use plugin_matter::brush_engine::{BrushDropdownItem, BrushRegistry};
         use plugin_matter::state::Document;
         use ui::{color_picker::ColorPickerState, dropdown::DropdownState, IndexPath};
-        use gpui::Rgba;
 
         let document = if file_path.exists() {
             Document::open(file_path.clone()).map_err(|e| PluginError::Other {
@@ -466,17 +466,29 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
         };
 
         let fg = cx.new(|cx| {
-            ColorPickerState::new(window, cx)
-                .default_value(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }.into())
+            ColorPickerState::new(window, cx).default_value(
+                Rgba {
+                    r: 0.0,
+                    g: 0.0,
+                    b: 0.0,
+                    a: 1.0,
+                }
+                .into(),
+            )
         });
         let bg = cx.new(|cx| {
-            ColorPickerState::new(window, cx)
-                .default_value(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }.into())
+            ColorPickerState::new(window, cx).default_value(
+                Rgba {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                    a: 1.0,
+                }
+                .into(),
+            )
         });
 
-        let brushes_dir = std::env::current_dir()
-            .unwrap_or_default()
-            .join("brushes");
+        let brushes_dir = std::env::current_dir().unwrap_or_default().join("brushes");
         let brush_registry = Arc::new(BrushRegistry::load_from_dir(&brushes_dir));
         let items: Vec<BrushDropdownItem> = brush_registry.dropdown_items();
 

@@ -73,7 +73,8 @@ pub struct FileManagerDrawer {
     list_scroll_handle: VirtualListScrollHandle,
 
     // Thumbnail cache: None = queued/unsupported, Some(img) = ready
-    thumbnails: std::collections::HashMap<std::path::PathBuf, Option<std::sync::Arc<gpui::RenderImage>>>,
+    thumbnails:
+        std::collections::HashMap<std::path::PathBuf, Option<std::sync::Arc<gpui::RenderImage>>>,
     thumbnail_cache_root: std::path::PathBuf,
 }
 

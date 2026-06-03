@@ -1,8 +1,9 @@
 use gpui::*;
 use std::path::PathBuf;
 use ui::{
+    ActiveTheme as _, StyledExt,
     button::{Button, ButtonVariants as _},
-    v_flex, ActiveTheme as _, StyledExt,
+    v_flex,
 };
 
 pub struct ProjectSelector {
@@ -41,8 +42,7 @@ impl ProjectSelector {
                         selector.selected_path = Some(path.clone());
                         cx.notify();
                     });
-                })
-                ;
+                });
             }
         })
         .detach();

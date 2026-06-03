@@ -88,23 +88,23 @@ impl Default for WindowDescriptor {
 #[derive(Clone, Debug)]
 pub struct RenderCamera {
     pub position: [f32; 3],
-    pub target:   [f32; 3],
-    pub up:       [f32; 3],
+    pub target: [f32; 3],
+    pub up: [f32; 3],
     /// Vertical field of view in radians.
     pub fov_y: f32,
     pub near: f32,
-    pub far:  f32,
+    pub far: f32,
 }
 
 impl Default for RenderCamera {
     fn default() -> Self {
         Self {
             position: [0.0, 2.0, 8.0],
-            target:   [0.0, 0.0, 0.0],
-            up:       [0.0, 1.0, 0.0],
-            fov_y:    std::f32::consts::FRAC_PI_4,
-            near:     0.1,
-            far:      1000.0,
+            target: [0.0, 0.0, 0.0],
+            up: [0.0, 1.0, 0.0],
+            fov_y: std::f32::consts::FRAC_PI_4,
+            near: 0.1,
+            far: 1000.0,
         }
     }
 }
@@ -205,10 +205,7 @@ impl WindowManager {
     /// event-loop iteration, i.e. < 16 ms).
     pub fn open(&self, desc: WindowDescriptor) -> WindowHandle {
         let handle = WindowHandle::next();
-        self.bridge.send(WindowCommand::Open {
-            handle,
-            desc,
-        });
+        self.bridge.send(WindowCommand::Open { handle, desc });
         handle
     }
 

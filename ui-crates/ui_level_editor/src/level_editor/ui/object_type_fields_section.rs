@@ -5,9 +5,7 @@ use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
-use ui_common::{
-    AssetPickedEvent, AssetQuery, MeshAssetPicker, PropertyStateManager,
-};
+use ui_common::{AssetPickedEvent, AssetQuery, MeshAssetPicker, PropertyStateManager};
 
 use super::add_component_dialog::AddComponentDialog;
 use super::state::LevelEditorState;
@@ -109,7 +107,12 @@ impl ObjectTypeFieldsSection {
         let _ = self.scene_db.update_object(obj);
     }
 
-    fn ensure_object_icon_picker(&mut self, current: &str, window: &mut Window, cx: &mut Context<Self>) {
+    fn ensure_object_icon_picker(
+        &mut self,
+        current: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.icon_asset_picker.is_some() {
             return;
         }
@@ -133,11 +136,14 @@ impl ObjectTypeFieldsSection {
             )
         });
 
-        cx.subscribe(&picker, move |this, picker, _event: &AssetPickedEvent, cx| {
-            let selected = picker.read(cx).selected_path().to_string();
-            this.write_object_icon_path(selected);
-            cx.notify();
-        })
+        cx.subscribe(
+            &picker,
+            move |this, picker, _event: &AssetPickedEvent, cx| {
+                let selected = picker.read(cx).selected_path().to_string();
+                this.write_object_icon_path(selected);
+                cx.notify();
+            },
+        )
         .detach();
 
         self.icon_asset_picker = Some(picker);
@@ -204,20 +210,18 @@ impl Render for ObjectTypeFieldsSection {
                     .to_string()
             };
             let thumb = picker.read(cx).thumbnail_for_path(&object_icon_path);
-            let pop = Popover::<MeshAssetPicker>::new(format!(
-                "object-icon-picker-{}",
-                self.object_id
-            ))
-            .anchor(Corner::BottomRight)
-            .trigger(
-                ui::button::Button::new(format!("object-icon-btn-{}", self.object_id))
-                    .label(display)
-                    .small()
-                    .ghost()
-                    .dropdown_caret(true),
-            )
-            .content(move |_window, _cx| picker.clone())
-            .into_any_element();
+            let pop =
+                Popover::<MeshAssetPicker>::new(format!("object-icon-picker-{}", self.object_id))
+                    .anchor(Corner::BottomRight)
+                    .trigger(
+                        ui::button::Button::new(format!("object-icon-btn-{}", self.object_id))
+                            .label(display)
+                            .small()
+                            .ghost()
+                            .dropdown_caret(true),
+                    )
+                    .content(move |_window, _cx| picker.clone())
+                    .into_any_element();
 
             h_flex()
                 .w_full()
@@ -236,31 +240,27 @@ impl Render for ObjectTypeFieldsSection {
                         .text_color(cx.theme().foreground)
                         .child("Object Icon"),
                 )
-                .child(
-                    h_flex()
-                        .items_center()
-                        .gap_2()
-                        .child(pop)
-                        .map(|el| match thumb {
-                            Some(render_img) => el.child(
-                                div()
-                                    .w(px(32.0))
-                                    .h(px(32.0))
-                                    .rounded(px(4.0))
-                                    .overflow_hidden()
-                                    .border_1()
-                                    .border_color(cx.theme().border)
-                                    .flex_shrink_0()
-                                    .child(
-                                        gpui::img(gpui::ImageSource::Render(render_img))
-                                            .w(px(32.0))
-                                            .h(px(32.0))
-                                            .object_fit(gpui::ObjectFit::Cover),
-                                    ),
-                            ),
-                            None => el,
-                        }),
-                )
+                .child(h_flex().items_center().gap_2().child(pop).map(|el| {
+                    match thumb {
+                        Some(render_img) => el.child(
+                            div()
+                                .w(px(32.0))
+                                .h(px(32.0))
+                                .rounded(px(4.0))
+                                .overflow_hidden()
+                                .border_1()
+                                .border_color(cx.theme().border)
+                                .flex_shrink_0()
+                                .child(
+                                    gpui::img(gpui::ImageSource::Render(render_img))
+                                        .w(px(32.0))
+                                        .h(px(32.0))
+                                        .object_fit(gpui::ObjectFit::Cover),
+                                ),
+                        ),
+                        None => el,
+                    }
+                }))
                 .into_any_element()
         } else {
             div().into_any_element()
@@ -364,11 +364,8 @@ impl Render for ObjectTypeFieldsSection {
                     let default_json = RUNTIME_TYPE_REGISTRY
                         .serialize_json_for_any(default_any.as_ref())
                         .unwrap_or(serde_json::json!(null));
-                    let current_json = self.read_property_json(
-                        class_name,
-                        prop.name,
-                        &default_json,
-                    );
+                    let current_json =
+                        self.read_property_json(class_name, prop.name, &default_json);
 
                     // Set up state for different property types based on RuntimeTypeInfo
                     let numeric_input = match &prop.type_info.structure {
@@ -384,7 +381,12 @@ impl Render for ObjectTypeFieldsSection {
                                 v,
                                 1.0, // Default step
                                 move |new_val| {
-                                    db.update_component_property(&oid, &cls, &pn, Value::from(new_val));
+                                    db.update_component_property(
+                                        &oid,
+                                        &cls,
+                                        &pn,
+                                        Value::from(new_val),
+                                    );
                                 },
                                 window,
                                 cx,
@@ -401,7 +403,12 @@ impl Render for ObjectTypeFieldsSection {
                                 prop.name,
                                 v,
                                 move |new_val| {
-                                    db.update_component_property(&oid, &cls, &pn, Value::from(new_val));
+                                    db.update_component_property(
+                                        &oid,
+                                        &cls,
+                                        &pn,
+                                        Value::from(new_val),
+                                    );
                                 },
                                 window,
                                 cx,
@@ -427,7 +434,12 @@ impl Render for ObjectTypeFieldsSection {
                             prop.name,
                             v,
                             move |new_val| {
-                                db.update_component_property(&oid, &cls, &pn, Value::String(new_val));
+                                db.update_component_property(
+                                    &oid,
+                                    &cls,
+                                    &pn,
+                                    Value::String(new_val),
+                                );
                             },
                             window,
                             cx,
@@ -468,7 +480,12 @@ impl Render for ObjectTypeFieldsSection {
                             prop.name,
                             rgba,
                             move |rgba| {
-                                db.update_component_property(&oid, &cls, &pn, serde_json::json!(rgba));
+                                db.update_component_property(
+                                    &oid,
+                                    &cls,
+                                    &pn,
+                                    serde_json::json!(rgba),
+                                );
                             },
                             window,
                             cx,
@@ -492,48 +509,76 @@ impl Render for ObjectTypeFieldsSection {
                 let db_bool = self.scene_db.clone();
                 let oid_bool = self.object_id.clone();
                 let cls_bool = class_name.to_string();
-                let on_bool_toggle = Arc::new(move |prop_name: &str, checked: bool, _window: &mut Window, _cx: &mut App| {
-                    db_bool.update_component_property(&oid_bool, &cls_bool, prop_name, Value::from(checked));
-                });
+                let on_bool_toggle = Arc::new(
+                    move |prop_name: &str, checked: bool, _window: &mut Window, _cx: &mut App| {
+                        db_bool.update_component_property(
+                            &oid_bool,
+                            &cls_bool,
+                            prop_name,
+                            Value::from(checked),
+                        );
+                    },
+                );
 
                 let db_enum = self.scene_db.clone();
                 let oid_enum = self.object_id.clone();
                 let cls_enum = class_name.to_string();
-                let on_enum_select = Arc::new(move |prop_name: &str, ix: usize, _window: &mut Window, _cx: &mut App| {
-                    db_enum.update_component_property(&oid_enum, &cls_enum, prop_name, Value::from(ix as u64));
-                });
+                let on_enum_select = Arc::new(
+                    move |prop_name: &str, ix: usize, _window: &mut Window, _cx: &mut App| {
+                        db_enum.update_component_property(
+                            &oid_enum,
+                            &cls_enum,
+                            prop_name,
+                            Value::from(ix as u64),
+                        );
+                    },
+                );
 
                 // Render component section with runtime-type-aware property rows
-                let rows = props_data.into_iter().map(
-                    |(display_name, prop_name, type_info, json_value, input, color_picker, mesh_picker)| {
-                        let prop_bool = prop_name.clone();
-                        let on_bool_toggle_local = on_bool_toggle.clone();
-                        let bool_callback = Arc::new(move |checked: bool, window: &mut Window, cx: &mut App| {
-                            (on_bool_toggle_local)(&prop_bool, checked, window, cx);
-                        });
-
-                        let prop_enum = prop_name.clone();
-                        let on_enum_select_local = on_enum_select.clone();
-                        let enum_callback = Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
-                            (on_enum_select_local)(&prop_enum, ix, window, cx);
-                        });
-
-                        ui_common::render_property_row_runtime(
-                            "level",
-                            class_name,
-                            &display_name,
-                            &prop_name,
+                let rows = props_data
+                    .into_iter()
+                    .map(
+                        |(
+                            display_name,
+                            prop_name,
                             type_info,
-                            &json_value,
+                            json_value,
                             input,
                             color_picker,
                             mesh_picker,
-                            bool_callback,
-                            enum_callback,
-                            cx,
-                        )
-                    },
-                ).collect::<Vec<_>>();
+                        )| {
+                            let prop_bool = prop_name.clone();
+                            let on_bool_toggle_local = on_bool_toggle.clone();
+                            let bool_callback = Arc::new(
+                                move |checked: bool, window: &mut Window, cx: &mut App| {
+                                    (on_bool_toggle_local)(&prop_bool, checked, window, cx);
+                                },
+                            );
+
+                            let prop_enum = prop_name.clone();
+                            let on_enum_select_local = on_enum_select.clone();
+                            let enum_callback =
+                                Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
+                                    (on_enum_select_local)(&prop_enum, ix, window, cx);
+                                });
+
+                            ui_common::render_property_row_runtime(
+                                "level",
+                                class_name,
+                                &display_name,
+                                &prop_name,
+                                type_info,
+                                &json_value,
+                                input,
+                                color_picker,
+                                mesh_picker,
+                                bool_callback,
+                                enum_callback,
+                                cx,
+                            )
+                        },
+                    )
+                    .collect::<Vec<_>>();
 
                 Some(
                     v_flex()
@@ -559,7 +604,7 @@ impl Render for ObjectTypeFieldsSection {
                                 ),
                         )
                         .children(rows)
-                        .into_any_element()
+                        .into_any_element(),
                 )
             })
             .collect::<Vec<_>>();
@@ -575,4 +620,3 @@ impl Render for ObjectTypeFieldsSection {
             .into_any_element()
     }
 }
-

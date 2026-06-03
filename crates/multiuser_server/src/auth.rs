@@ -116,10 +116,8 @@ impl AuthService {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.leeway = 0;
         validation.validate_exp = true;
-        validation.required_spec_claims = std::collections::HashSet::from([
-            "exp".to_string(),
-            "iat".to_string(),
-        ]);
+        validation.required_spec_claims =
+            std::collections::HashSet::from(["exp".to_string(), "iat".to_string()]);
 
         let token_data = decode::<Claims>(token, &self.jwt_decoding_key, &validation)
             .context("Failed to decode JWT")?;
