@@ -28,8 +28,6 @@ jobs:
     runs-on: ${{ matrix.run_on }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
         with:
@@ -47,14 +45,6 @@ jobs:
 
       - name: Install bindgen (required by aws-lc-sys)
         run: cargo install bindgen-cli --locked
-
-      - name: Automatically fix compiler warnings (unused vars, etc.)
-        run: cargo fix --workspace --exclude pulsar_docs --all-targets --allow-no-vcs
-
-      - name: Commit & Push fixes
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "style: auto-fix compiler warnings via cargo fix"
 
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
