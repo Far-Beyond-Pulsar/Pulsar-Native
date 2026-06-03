@@ -83,9 +83,16 @@ impl WindowManager {
         let window_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let wtype = window_type.clone();
 
+        let t0 = std::time::Instant::now();
         let handle = cx
             .open_window(options, content_builder)
             .map_err(|e| WindowError::GpuiError(format!("{:?}", e)))?;
+        let open_elapsed = t0.elapsed();
+        tracing::info!(
+            "[WindowManager] cx.open_window for {:?} took {:?}",
+            wtype,
+            open_elapsed
+        );
 
         let handle: AnyWindowHandle = handle.into();
 
