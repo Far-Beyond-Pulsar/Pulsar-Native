@@ -3,9 +3,6 @@ name = "pulsar_rendering"
 version = "0.1.0"
 edition = "2024"
 
-[features]
-ui-editors = []
-
 [dependencies]
 engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true }
