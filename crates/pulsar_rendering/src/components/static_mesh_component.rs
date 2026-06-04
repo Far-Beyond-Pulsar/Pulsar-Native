@@ -91,43 +91,16 @@ fn deserialize_mesh_asset_path_json(
 /// `structure = String` makes `type_info.is_string()` return `true`, which
 /// enables the property inspector to detect this type and render the
 /// mesh-asset browser UI.
-#[cfg(feature = "ui-editors")]
 fn render_mesh_asset_editor(
     args: &pulsar_reflection::PropertyEditorArgs<'_>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    use gpui::{Corner, ImageSource, ObjectFit, prelude::*, *};
-    use ui::{ActiveTheme, Sizable, h_flex, mesh_asset_picker::MeshAssetPicker, popover::Popover};
+    use gpui::{prelude::*, *};
+    use ui::{ActiveTheme, h_flex};
 
     let path_str = args.current_json.as_str().unwrap_or("");
-
-    let Some(picker) = args.mesh_picker.clone() else {
-        return h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(args.display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(if path_str.is_empty() {
-                        "No mesh selected".to_string()
-                    } else {
-                        path_str.to_string()
-                    }),
-            )
-            .into_any_element();
-    };
-
     let display = if path_str.is_empty() {
-        "Select mesh asset…".to_string()
+        "No mesh selected".to_string()
     } else {
         std::path::Path::new(path_str)
             .file_name()
@@ -135,26 +108,6 @@ fn render_mesh_asset_editor(
             .unwrap_or(path_str)
             .to_string()
     };
-
-    let thumb = picker.read(cx).thumbnail_for_path(path_str);
-
-    let pop = Popover::<MeshAssetPicker>::new(format!(
-        "mesh-asset-picker-{}-{}",
-        args.class_name, args.prop_name
-    ))
-    .anchor(Corner::BottomRight)
-    .trigger(
-        ui::button::Button::new(format!(
-            "mesh-asset-btn-{}-{}",
-            args.class_name, args.prop_name
-        ))
-        .label(display)
-        .small()
-        .ghost()
-        .dropdown_caret(true),
-    )
-    .content(move |_window, _cx| picker.clone())
-    .into_any_element();
 
     h_flex()
         .w_full()
@@ -168,47 +121,25 @@ fn render_mesh_asset_editor(
                 .text_color(cx.theme().muted_foreground)
                 .child(args.display_name.to_string()),
         )
-        .child(h_flex().items_center().gap_2().child(pop).map(|el| {
-            match thumb {
-                Some(img) => el.child(
-                    div()
-                        .w(gpui::px(40.0))
-                        .h(gpui::px(40.0))
-                        .rounded(gpui::px(4.0))
-                        .overflow_hidden()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .flex_shrink_0()
-                        .child(
-                            gpui::img(ImageSource::Render(img))
-                                .w(gpui::px(40.0))
-                                .h(gpui::px(40.0))
-                                .object_fit(ObjectFit::Cover),
-                        ),
-                ),
-                None => el,
-            }
-        }))
+        .child(
+            div()
+                .text_sm()
+                .text_color(if path_str.is_empty() {
+                    cx.theme().muted_foreground
+                } else {
+                    cx.theme().foreground
+                })
+                .child(display),
+        )
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_reflection::pulsar_type(
     primitive,
     structure = String,
     serialize_json_with = serialize_mesh_asset_path_json,
     deserialize_json_with = deserialize_mesh_asset_path_json,
     editor = render_mesh_asset_editor
-)]
-#[allow(dead_code)]
-type RegisteredMeshAssetPath = MeshAssetPath;
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_reflection::pulsar_type(
-    primitive,
-    structure = String,
-    serialize_json_with = serialize_mesh_asset_path_json,
-    deserialize_json_with = deserialize_mesh_asset_path_json
 )]
 #[allow(dead_code)]
 type RegisteredMeshAssetPath = MeshAssetPath;

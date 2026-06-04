@@ -1,6 +1,7 @@
 //! f32 primitive type implementation
 
 use crate::pulsar_type;
+use gpui::Styled;
 
 fn serialize_f32_json(value: &f32) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
@@ -16,13 +17,9 @@ fn deserialize_f32_json(value: serde_json::Value) -> crate::ReflectResult<f32> {
         })
 }
 
-#[cfg(feature = "ui-editors")]
-fn render_f32_editor(
-    args: &crate::ui_editors::PropertyEditorArgscrate::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
+fn render_f32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
-    use ui::{h_flex, input::NumberInput, ActiveTheme, Sizable};
+    use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};
 
     let value = args.current_json.as_f64().unwrap_or(0.0) as f32;
     h_flex()
@@ -53,22 +50,12 @@ fn render_f32_editor(
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_f32_json,
     deserialize_json_with = deserialize_f32_json,
     editor = render_f32_editor
 )]
-type RegisteredF32 = f32;
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_f32_json,
-    deserialize_json_with = deserialize_f32_json
-)]
-#[allow(dead_code)]
 type RegisteredF32 = f32;
 
 #[cfg(test)]

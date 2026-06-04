@@ -1,6 +1,7 @@
 //! bool primitive type implementation
 
 use crate::pulsar_type;
+use gpui::Styled;
 
 fn serialize_bool_json(value: &bool) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
@@ -15,13 +16,9 @@ fn deserialize_bool_json(value: serde_json::Value) -> crate::ReflectResult<bool>
         })
 }
 
-#[cfg(feature = "ui-editors")]
-fn render_bool_editor(
-    args: &crate::ui_editors::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
+fn render_bool_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
-    use ui::{h_flex, switch::Switch, ActiveTheme, Sizable};
+    use ui::{ActiveTheme, Sizable, h_flex, switch::Switch};
 
     let value = args.current_json.as_bool().unwrap_or(false);
     let on_toggle = args.on_bool_toggle.clone();
@@ -45,30 +42,18 @@ fn render_bool_editor(
                 .checked(value)
                 .small()
                 .on_click(move |checked, window, cx| {
-                    if let Some(toggle) = &on_toggle {
-                        toggle(*checked, window, cx);
-                    }
+                    (on_toggle)(*checked, window, cx);
                 }),
         )
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_bool_json,
     deserialize_json_with = deserialize_bool_json,
     editor = render_bool_editor
 )]
-type RegisteredBool = bool;
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_bool_json,
-    deserialize_json_with = deserialize_bool_json
-)]
-#[allow(dead_code)]
 type RegisteredBool = bool;
 
 #[cfg(test)]

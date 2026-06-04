@@ -8772,6 +8772,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ui",
  "uuid",
 ]
 
@@ -8792,11 +8793,13 @@ dependencies = [
  "glam 0.33.0",
  "gpui-ce",
  "helio",
+ "plugin_editor_api",
  "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",
  "tracing",
+ "ui",
 ]
 
 [[package]]

@@ -16,13 +16,9 @@ fn deserialize_i32_json(value: serde_json::Value) -> crate::ReflectResult<i32> {
         })
 }
 
-#[cfg(feature = "ui-editors")]
-fn render_i32_editor(
-    args: &crate::ui_editors::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
+fn render_i32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
-    use ui::{h_flex, input::NumberInput, ActiveTheme, Sizable};
+    use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};
 
     let value = args.current_json.as_i64().unwrap_or(0) as i32;
     h_flex()
@@ -53,22 +49,12 @@ fn render_i32_editor(
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_i32_json,
     deserialize_json_with = deserialize_i32_json,
     editor = render_i32_editor
 )]
-type RegisteredI32 = i32;
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_i32_json,
-    deserialize_json_with = deserialize_i32_json
-)]
-#[allow(dead_code)]
 type RegisteredI32 = i32;
 
 #[cfg(test)]

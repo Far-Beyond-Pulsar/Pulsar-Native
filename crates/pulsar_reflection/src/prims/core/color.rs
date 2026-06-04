@@ -1,6 +1,7 @@
 //! [f32; 4] primitive type implementation (Color)
 
 use crate::pulsar_type;
+use gpui::Styled;
 
 fn serialize_color_json(value: &[f32; 4]) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!([value[0], value[1], value[2], value[3]]))
@@ -29,13 +30,9 @@ fn deserialize_color_json(value: serde_json::Value) -> crate::ReflectResult<[f32
     ])
 }
 
-#[cfg(feature = "ui-editors")]
-fn render_color_editor(
-    args: &crate::ui_editors::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
-    use gpui::{prelude::*, Corner, *};
-    use ui::{color_picker::ColorPicker, h_flex, ActiveTheme};
+fn render_color_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
+    use gpui::{Corner, prelude::*, *};
+    use ui::{ActiveTheme, color_picker::ColorPicker, h_flex};
 
     h_flex()
         .w_full()
@@ -62,22 +59,12 @@ fn render_color_editor(
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_color_json,
     deserialize_json_with = deserialize_color_json,
     editor = render_color_editor
 )]
-type RegisteredColor = [f32; 4];
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_color_json,
-    deserialize_json_with = deserialize_color_json
-)]
-#[allow(dead_code)]
 type RegisteredColor = [f32; 4];
 
 #[cfg(test)]

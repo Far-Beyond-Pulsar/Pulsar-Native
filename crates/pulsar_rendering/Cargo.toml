@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-ui-editors = ["dep:gpui-ce"]
+ui-editors = []
 
 [dependencies]
 engine_class_derive = { workspace = true }
@@ -15,4 +15,6 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio.workspace = true
-gpui-ce = { workspace = true, optional = true }
+gpui-ce.workspace = true
+ui.workspace = true
+plugin_editor_api.workspace = true

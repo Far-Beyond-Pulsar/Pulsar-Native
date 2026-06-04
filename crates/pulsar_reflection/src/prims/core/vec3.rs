@@ -1,6 +1,7 @@
 //! [f32; 3] primitive type implementation (Vec3)
 
 use crate::pulsar_type;
+use gpui::Styled;
 
 fn serialize_vec3_json(value: &[f32; 3]) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!([value[0], value[1], value[2]]))
@@ -28,11 +29,7 @@ fn deserialize_vec3_json(value: serde_json::Value) -> crate::ReflectResult<[f32;
     ])
 }
 
-#[cfg(feature = "ui-editors")]
-fn render_vec3_editor(
-    args: &crate::ui_editors::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
+fn render_vec3_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, h_flex};
 
@@ -56,22 +53,12 @@ fn render_vec3_editor(
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_vec3_json,
     deserialize_json_with = deserialize_vec3_json,
     editor = render_vec3_editor
 )]
-type RegisteredVec3 = [f32; 3];
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_vec3_json,
-    deserialize_json_with = deserialize_vec3_json
-)]
-#[allow(dead_code)]
 type RegisteredVec3 = [f32; 3];
 
 #[cfg(test)]

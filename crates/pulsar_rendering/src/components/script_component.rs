@@ -83,7 +83,6 @@ fn deserialize_script_asset_path_json(
 /// `structure = String` makes `type_info.is_string()` return `true`, which
 /// lets the property inspector detect this type and render a blueprint-asset
 /// browser UI (analogous to the mesh-asset browser for `MeshAssetPath`).
-#[cfg(feature = "ui-editors")]
 fn render_script_asset_editor(
     args: &pulsar_reflection::PropertyEditorArgs<'_>,
     cx: &gpui::App,
@@ -148,7 +147,6 @@ fn render_script_asset_editor(
         .into_any_element()
 }
 
-#[cfg(feature = "ui-editors")]
 #[pulsar_reflection::pulsar_type(
     primitive,
     structure = String,
@@ -156,17 +154,6 @@ fn render_script_asset_editor(
     deserialize_json_with = deserialize_script_asset_path_json,
     editor = render_script_asset_editor
 )]
-#[allow(dead_code)]
-type RegisteredScriptAssetPath = ScriptAssetPath;
-
-#[cfg(not(feature = "ui-editors"))]
-#[pulsar_reflection::pulsar_type(
-    primitive,
-    structure = String,
-    serialize_json_with = serialize_script_asset_path_json,
-    deserialize_json_with = deserialize_script_asset_path_json
-)]
-#[allow(dead_code)]
 type RegisteredScriptAssetPath = ScriptAssetPath;
 
 // ── ScriptComponent ───────────────────────────────────────────────────────────
