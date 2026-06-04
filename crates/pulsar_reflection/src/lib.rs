@@ -85,18 +85,12 @@ pub struct PropertyEditorArgs<'a> {
     pub current_json: &'a Value,
     pub numeric_input: Option<gpui::Entity<ui::input::InputState>>,
     pub color_picker: Option<gpui::Entity<ui::color_picker::ColorPickerState>>,
-    pub mesh_picker: Option<gpui::Entity<MeshAssetPickerState>>,
+    pub mesh_picker: Option<gpui::Entity<ui_common::MeshAssetPicker>>,
     pub on_bool_toggle: Arc<dyn Fn(bool, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
     pub on_enum_select: Arc<dyn Fn(usize, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
 }
 
-pub struct MeshAssetPickerState {}
-
-impl Default for MeshAssetPickerState {
-    fn default() -> Self {
-        Self {}
-    }
-}
+pub use ui_common::MeshAssetPickerState;
 
 // ── UI property-editor hint ───────────────────────────────────────────────────
 

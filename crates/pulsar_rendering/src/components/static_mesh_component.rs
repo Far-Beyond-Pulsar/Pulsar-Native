@@ -96,7 +96,8 @@ fn render_mesh_asset_editor(
     cx: &gpui::App,
 ) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
-    use ui::{ActiveTheme, h_flex};
+    use ui::button::{Button, ButtonVariants};
+    use ui::{ActiveTheme, Sizable, h_flex, popover::Popover};
 
     let path_str = args.current_json.as_str().unwrap_or("");
     let display = if path_str.is_empty() {
@@ -108,6 +109,8 @@ fn render_mesh_asset_editor(
             .unwrap_or(path_str)
             .to_string()
     };
+
+    let picker = args.mesh_picker.clone();
 
     h_flex()
         .w_full()
@@ -121,16 +124,31 @@ fn render_mesh_asset_editor(
                 .text_color(cx.theme().muted_foreground)
                 .child(args.display_name.to_string()),
         )
-        .child(
+        .child(if let Some(picker_entity) = picker {
+            Popover::<ui_common::asset_picker::MeshAssetPicker>::new(format!(
+                "mesh-asset-picker-{}-{}",
+                args.id_prefix, args.prop_name
+            ))
+            .anchor(gpui::Corner::BottomRight)
+            .trigger(
+                Button::new(format!(
+                    "mesh-asset-picker-btn-{}-{}",
+                    args.id_prefix, args.prop_name
+                ))
+                .label(display)
+                .small()
+                .ghost()
+                .dropdown_caret(true),
+            )
+            .content(move |_window, _cx| picker_entity.clone())
+            .into_any_element()
+        } else {
             div()
                 .text_sm()
-                .text_color(if path_str.is_empty() {
-                    cx.theme().muted_foreground
-                } else {
-                    cx.theme().foreground
-                })
-                .child(display),
-        )
+                .text_color(cx.theme().muted_foreground)
+                .child("No mesh selected")
+                .into_any_element()
+        })
         .into_any_element()
 }
 

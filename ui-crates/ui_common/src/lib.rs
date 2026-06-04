@@ -27,7 +27,6 @@ pub mod asset_picker;
 pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
-pub mod helpers;
 pub mod menu;
 pub mod open_window;
 pub mod panel;

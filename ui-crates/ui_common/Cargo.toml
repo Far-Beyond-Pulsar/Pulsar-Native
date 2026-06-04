@@ -23,5 +23,4 @@ pulsar_auth.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true
 pulsar_reflection.workspace = true
-pulsar_rendering = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
