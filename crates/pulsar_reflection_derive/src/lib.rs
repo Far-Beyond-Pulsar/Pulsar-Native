@@ -59,21 +59,6 @@ pub fn derive_reflectable(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-enum PrimitiveCloneMode {
-    Copy,
-    Clone,
-    Ref,
-}
-
-struct PrimitiveAliasConfig {
-    serialize_method: Ident,
-    deserialize_method: Ident,
-    structure: Ident,
-    clone_mode: PrimitiveCloneMode,
-}
-
-// ── editor fn path (optional) ─────────────────────────────────────────────────
-
 /// Attribute macro for runtime type registration.
 ///
 /// Primitive alias mode:
@@ -116,44 +101,16 @@ fn expand_primitive_alias(
         ));
     }
 
-    let mut primitive_mode = args.is_empty();
-    let mut override_serialize: Option<Ident> = None;
-    let mut override_deserialize: Option<Ident> = None;
-    let mut override_structure: Option<Ident> = None;
-    let mut override_clone: Option<PrimitiveCloneMode> = None;
+    let mut structure: Ident = format_ident!("Primitive");
     let mut override_serialize_json_with: Option<Path> = None;
     let mut override_deserialize_json_with: Option<Path> = None;
     let mut override_editor: Option<Path> = None;
 
     for meta in args {
         match meta {
-            Meta::Path(path) if path.is_ident("primitive") => {
-                primitive_mode = true;
-            }
-            Meta::NameValue(name_value) if name_value.path.is_ident("serialize_method") => {
-                override_serialize = Some(parse_ident_expr(&name_value.value, "serialize_method")?);
-            }
-            Meta::NameValue(name_value) if name_value.path.is_ident("deserialize_method") => {
-                override_deserialize =
-                    Some(parse_ident_expr(&name_value.value, "deserialize_method")?);
-            }
+            Meta::Path(path) if path.is_ident("primitive") => {}
             Meta::NameValue(name_value) if name_value.path.is_ident("structure") => {
-                override_structure = Some(parse_ident_expr(&name_value.value, "structure")?);
-            }
-            Meta::NameValue(name_value) if name_value.path.is_ident("clone") => {
-                let clone_ident = parse_ident_expr(&name_value.value, "clone")?;
-                let clone_mode = match clone_ident.to_string().as_str() {
-                    "copy" => PrimitiveCloneMode::Copy,
-                    "clone" => PrimitiveCloneMode::Clone,
-                    "ref" => PrimitiveCloneMode::Ref,
-                    _ => {
-                        return Err(syn::Error::new_spanned(
-                            &name_value.value,
-                            "clone must be one of: copy, clone, ref",
-                        ));
-                    }
-                };
-                override_clone = Some(clone_mode);
+                structure = parse_ident_expr(&name_value.value, "structure")?;
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("serialize_json_with") => {
                 override_serialize_json_with =
@@ -175,50 +132,20 @@ fn expand_primitive_alias(
         }
     }
 
-    if !primitive_mode {
-        return Err(syn::Error::new_spanned(
-            item_type,
-            "#[pulsar_type] requires primitive mode for type aliases (use #[pulsar_type(primitive)])",
-        ));
-    }
-
-    // Only try to infer if we don't have custom serialize/deserialize functions
-    let needs_inference =
-        override_serialize_json_with.is_none() || override_deserialize_json_with.is_none();
-
-    let (serialize_method, deserialize_method, structure, _clone_mode) = if needs_inference {
-        let inferred = infer_primitive_alias_config(&item_type.ty)?;
-        (
-            override_serialize.unwrap_or(inferred.serialize_method),
-            override_deserialize.unwrap_or(inferred.deserialize_method),
-            override_structure.unwrap_or(inferred.structure),
-            override_clone.unwrap_or(inferred.clone_mode),
-        )
-    } else {
-        // When custom functions are provided, use defaults
-        (
-            override_serialize.unwrap_or_else(|| format_ident!("serialize_generic")),
-            override_deserialize.unwrap_or_else(|| format_ident!("deserialize_generic")),
-            override_structure.unwrap_or_else(|| format_ident!("Primitive")),
-            override_clone.unwrap_or(PrimitiveCloneMode::Clone),
-        )
-    };
-
     let alias_ident = &item_type.ident;
     let target_ty = &item_type.ty;
     let type_info_name = format_ident!("{}_TYPE_INFO", alias_ident.to_string().to_uppercase());
 
-    let json_serialize_value = if let Some(path) = override_serialize_json_with {
-        quote! { #path(typed) }
-    } else {
-        let value_expr = primitive_serialize_value_expr(&serialize_method, quote! { typed })?;
-        quote! { Ok(#value_expr) }
-    };
-    let json_deserialize_value = if let Some(path) = override_deserialize_json_with {
-        quote! { #path(value)? }
-    } else {
-        primitive_deserialize_value_expr(&deserialize_method, quote! { value })?
-    };
+    if override_serialize_json_with.is_none() || override_deserialize_json_with.is_none() {
+        return Err(syn::Error::new_spanned(
+            &item_type.ident,
+            "#[pulsar_type] requires serialize_json_with and deserialize_json_with to be specified",
+        ));
+    }
+
+    let json_serialize_value = quote! { #override_serialize_json_with(typed) };
+    let json_deserialize_value = quote! { #override_deserialize_json_with(value) };
+    let clone_impl = quote! { typed.clone() };
 
     // Optional UI property-editor hint — only emitted when `editor = fn` is provided.
     let editor_submit = if let Some(editor_fn) = override_editor {
@@ -226,13 +153,6 @@ fn expand_primitive_alias(
             ::pulsar_reflection::inventory::submit! {
                 ::pulsar_reflection::UiPropertyEditorHint {
                     type_id: ::std::any::TypeId::of::<#target_ty>(),
-                    // Erase the concrete fn-pointer type to `fn()` via the
-                    // pulsar_reflection helper so this submit can live in any
-                    // crate without a GPUI dependency.  The `ui_common` registry
-                    // transmutes it back under the documented safety contract:
-                    // the function must have signature
-                    //   `fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
-                    // SAFETY: the `editor = fn` author guarantees the signature.
                     fn_ptr: unsafe { ::pulsar_reflection::erase_property_editor_fn_ptr(#editor_fn) },
                 }
             }
@@ -292,8 +212,8 @@ fn expand_primitive_alias(
                     #json_serialize_value
                 },
                 deserialize_json: |value: ::serde_json::Value| {
-                    let typed: #target_ty = #json_deserialize_value;
-                    Ok(::std::boxed::Box::new(typed) as ::std::boxed::Box<dyn ::std::any::Any>)
+                    let typed: #target_ty = #json_deserialize_value?;
+                    Ok(::std::boxed::Box::new(#clone_impl) as ::std::boxed::Box<dyn ::std::any::Any>)
                 },
             }
         }
@@ -324,284 +244,6 @@ fn parse_path_expr(expr: &Expr, arg_name: &str) -> syn::Result<Path> {
         expr,
         format!("{} must be a function path", arg_name),
     ))
-}
-
-fn infer_primitive_alias_config(ty: &Type) -> syn::Result<PrimitiveAliasConfig> {
-    if is_path_ident(ty, "f32") {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_f32"),
-            deserialize_method: format_ident!("deserialize_f32"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    if is_path_ident(ty, "i32") {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_i32"),
-            deserialize_method: format_ident!("deserialize_i32"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    if is_path_ident(ty, "u64") {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_u64"),
-            deserialize_method: format_ident!("deserialize_u64"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    if is_path_ident(ty, "bool") {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_bool"),
-            deserialize_method: format_ident!("deserialize_bool"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    if is_string_type(ty) {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_string"),
-            deserialize_method: format_ident!("deserialize_string"),
-            structure: format_ident!("String"),
-            clone_mode: PrimitiveCloneMode::Ref,
-        });
-    }
-
-    if is_serde_json_value_type(ty) {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_json_value"),
-            deserialize_method: format_ident!("deserialize_json_value"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Ref,
-        });
-    }
-
-    if is_f32_array_of_len(ty, 3) {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_vec3"),
-            deserialize_method: format_ident!("deserialize_vec3"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    if is_f32_array_of_len(ty, 4) {
-        return Ok(PrimitiveAliasConfig {
-            serialize_method: format_ident!("serialize_color"),
-            deserialize_method: format_ident!("deserialize_color"),
-            structure: format_ident!("Primitive"),
-            clone_mode: PrimitiveCloneMode::Copy,
-        });
-    }
-
-    Err(syn::Error::new_spanned(
-        ty,
-        "unsupported primitive alias type for #[pulsar_type(primitive)]",
-    ))
-}
-
-fn is_path_ident(ty: &Type, ident: &str) -> bool {
-    if let Type::Path(type_path) = ty {
-        return type_path.path.is_ident(ident);
-    }
-    false
-}
-
-fn is_string_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            return segment.ident == "String";
-        }
-    }
-    false
-}
-
-fn is_serde_json_value_type(ty: &Type) -> bool {
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-
-    let segments: Vec<String> = type_path
-        .path
-        .segments
-        .iter()
-        .map(|segment| segment.ident.to_string())
-        .collect();
-
-    matches!(segments.as_slice(), [single] if single == "Value")
-        || matches!(segments.as_slice(), [serde_json, value] if serde_json == "serde_json" && value == "Value")
-}
-
-fn is_f32_array_of_len(ty: &Type, expected_len: usize) -> bool {
-    let Type::Array(array) = ty else {
-        return false;
-    };
-
-    if !is_path_ident(&array.elem, "f32") {
-        return false;
-    }
-
-    let Expr::Lit(expr_lit) = &array.len else {
-        return false;
-    };
-
-    let syn::Lit::Int(len_lit) = &expr_lit.lit else {
-        return false;
-    };
-
-    match len_lit.base10_parse::<usize>() {
-        Ok(value) => value == expected_len,
-        Err(_) => false,
-    }
-}
-
-fn primitive_serialize_value_expr(
-    method: &Ident,
-    typed_expr: proc_macro2::TokenStream,
-) -> syn::Result<proc_macro2::TokenStream> {
-    let method_name = method.to_string();
-    match method_name.as_str() {
-        "serialize_f32" | "serialize_f64" | "serialize_i32" | "serialize_i64" | "serialize_u32"
-        | "serialize_u64" | "serialize_bool" => Ok(quote! { ::serde_json::json!(*#typed_expr) }),
-        "serialize_string" => Ok(quote! { ::serde_json::json!(#typed_expr) }),
-        "serialize_json_value" => Ok(quote! { #typed_expr.clone() }),
-        "serialize_vec3" => {
-            Ok(quote! { ::serde_json::json!([#typed_expr[0], #typed_expr[1], #typed_expr[2]]) })
-        }
-        "serialize_color" => Ok(
-            quote! { ::serde_json::json!([#typed_expr[0], #typed_expr[1], #typed_expr[2], #typed_expr[3]]) },
-        ),
-        _ => Err(syn::Error::new_spanned(
-            method,
-            "unsupported serialize_method for primitive JSON registration",
-        )),
-    }
-}
-
-fn primitive_deserialize_value_expr(
-    method: &Ident,
-    value_expr: proc_macro2::TokenStream,
-) -> syn::Result<proc_macro2::TokenStream> {
-    let method_name = method.to_string();
-    match method_name.as_str() {
-        "deserialize_f32" => Ok(quote! {
-            #value_expr.as_f64().map(|v| v as f32).ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "f32",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_f64" => Ok(quote! {
-            #value_expr.as_f64().ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "f64",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_i32" => Ok(quote! {
-            #value_expr.as_i64().map(|v| v as i32).ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "i32",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_i64" => Ok(quote! {
-            #value_expr.as_i64().ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "i64",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_u32" => Ok(quote! {
-            #value_expr.as_u64().map(|v| v as u32).ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "u32",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_u64" => Ok(quote! {
-            #value_expr.as_u64().ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "u64",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_bool" => Ok(quote! {
-            #value_expr.as_bool().ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "bool",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_string" => Ok(quote! {
-            #value_expr.as_str().map(|v| v.to_string()).ok_or_else(|| {
-                ::pulsar_reflection::ReflectError::TypeMismatch {
-                    expected: "String",
-                    found: format!("{:?}", #value_expr),
-                }
-            })?
-        }),
-        "deserialize_json_value" => Ok(quote! { #value_expr }),
-        "deserialize_vec3" => Ok(quote! {
-            {
-                let arr = #value_expr.as_array().ok_or_else(|| {
-                    ::pulsar_reflection::ReflectError::TypeMismatch {
-                        expected: "[f32; 3]",
-                        found: format!("{:?}", #value_expr),
-                    }
-                })?;
-                if arr.len() != 3 {
-                    return Err(::pulsar_reflection::ReflectError::TypeMismatch {
-                        expected: "[f32; 3]",
-                        found: format!("array of length {}", arr.len()),
-                    });
-                }
-                [
-                    arr[0].as_f64().unwrap_or(0.0) as f32,
-                    arr[1].as_f64().unwrap_or(0.0) as f32,
-                    arr[2].as_f64().unwrap_or(0.0) as f32,
-                ]
-            }
-        }),
-        "deserialize_color" => Ok(quote! {
-            {
-                let arr = #value_expr.as_array().ok_or_else(|| {
-                    ::pulsar_reflection::ReflectError::TypeMismatch {
-                        expected: "[f32; 4]",
-                        found: format!("{:?}", #value_expr),
-                    }
-                })?;
-                if arr.len() != 4 {
-                    return Err(::pulsar_reflection::ReflectError::TypeMismatch {
-                        expected: "[f32; 4]",
-                        found: format!("array of length {}", arr.len()),
-                    });
-                }
-                [
-                    arr[0].as_f64().unwrap_or(0.0) as f32,
-                    arr[1].as_f64().unwrap_or(0.0) as f32,
-                    arr[2].as_f64().unwrap_or(0.0) as f32,
-                    arr[3].as_f64().unwrap_or(0.0) as f32,
-                ]
-            }
-        }),
-        _ => Err(syn::Error::new_spanned(
-            method,
-            "unsupported deserialize_method for primitive JSON registration",
-        )),
-    }
 }
 
 /// Generate implementation for struct types
@@ -951,12 +593,3 @@ fn generate_field_infos(
     }
 }
 
-/// Helper to check if a type is a primitive
-fn _is_primitive_type(ty: &Type) -> bool {
-    if let Type::Path(type_path) = ty {
-        let type_str = quote!(#type_path).to_string();
-        matches!(type_str.as_str(), "f32" | "i32" | "u64" | "bool" | "String")
-    } else {
-        false
-    }
-}
