@@ -1,7 +1,7 @@
 //! SQLite database storage for profiling events
 //! Saves profiling sessions to .pulsar/profiling/flamegraph/ in the project directory
 
-use crate::ProfileEvent;
+use crate::events::ProfileEvent;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
 
