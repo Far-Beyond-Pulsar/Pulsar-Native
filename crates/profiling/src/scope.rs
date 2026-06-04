@@ -1,16 +1,19 @@
 //! RAII scope guard for profiling
 
+use once_cell::sync::OnceCell;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::sync::OnceLock;
 use std::thread;
 use std::time::Instant;
 
-use parking_lot::RwLock;
-use std::sync::Arc;
-
 use crate::events::ProfileEvent;
 use crate::profiler::Profiler;
+
+static PROFILER: OnceCell<Profiler> = OnceCell::new();
+
+pub fn init_profiler() -> &'static Profiler {
+    PROFILER.get_or_init(|| Profiler::new())
+}
 
 /// Thread-local profiling state
 #[derive(Default)]
@@ -21,8 +24,8 @@ pub struct ThreadState {
 }
 
 thread_local! {
-    static THREAD_STATE: std::cell::RefCell<ThreadState> = std::cell::RefCell::new(ThreadState::default());
-    static THREAD_NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    pub(super) static THREAD_STATE: std::cell::RefCell<ThreadState> = std::cell::RefCell::new(ThreadState::default());
+    pub(super) static THREAD_NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
 }
 
 /// RAII scope guard for profiling
@@ -45,7 +48,7 @@ impl ProfileScope {
 
     /// Begin a new profiling scope with file location
     pub fn new_with_location(name: impl Into<String>, location: Option<String>) -> Self {
-        if !PROFILER.is_enabled() {
+        if !init_profiler().is_enabled() {
             return Self {
                 name: String::new(),
                 start: Instant::now(),
@@ -94,7 +97,7 @@ impl ProfileScope {
 
 impl Drop for ProfileScope {
     fn drop(&mut self) {
-        if !PROFILER.is_enabled() {
+        if !init_profiler().is_enabled() {
             return;
         }
 
@@ -110,7 +113,7 @@ impl Drop for ProfileScope {
             name: self.name.clone(),
             thread_id: self.thread_id,
             thread_name: self.thread_name.clone(),
-            process_id: PROFILER.get_process_id(),
+            process_id: init_profiler().get_process_id(),
             parent_name: self.parent_name.clone(),
             start_ns: self.start_ns,
             duration_ns,
@@ -119,14 +122,8 @@ impl Drop for ProfileScope {
             metadata: None,
         };
 
-        PROFILER.submit_event(event);
+        init_profiler().submit_event(event);
     }
-}
-
-static PROFILER: OnceLock<Profiler> = OnceLock::new();
-
-pub fn init_profiler() -> &'static Profiler {
-    PROFILER.get_or_init(Profiler::new)
 }
 
 fn get_time_ns() -> u64 {

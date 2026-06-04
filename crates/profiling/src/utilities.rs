@@ -34,14 +34,23 @@ pub fn clear_events(profiler: &Profiler) {
     profiler.clear();
 }
 
-pub fn record_frame_time(profiler: &Profiler, frame_time_ms: f32) {
+pub fn record_frame_time(frame_time_ms: f32) {
+    let profiler = init_profiler();
     if !profiler.is_enabled() {
         return;
     }
 
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let thread_id = std::thread::current().id();
+    let mut hasher = DefaultHasher::new();
+    thread_id.hash(&mut hasher);
+    let tid = hasher.finish();
+
     let event = ProfileEvent {
         name: "__FRAME_MARKER__".to_string(),
-        thread_id: get_thread_id(),
+        thread_id: tid,
         thread_name: THREAD_NAME.with(|tn| tn.borrow().clone()),
         process_id: profiler.get_process_id(),
         parent_name: None,
@@ -53,16 +62,6 @@ pub fn record_frame_time(profiler: &Profiler, frame_time_ms: f32) {
     };
 
     profiler.submit_event(event);
-}
-
-fn get_thread_id() -> u64 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let thread_id = std::thread::current().id();
-    let mut hasher = DefaultHasher::new();
-    thread_id.hash(&mut hasher);
-    hasher.finish()
 }
 
 fn get_time_ns() -> u64 {
