@@ -31,7 +31,6 @@ pub mod helpers;
 pub mod menu;
 pub mod open_window;
 pub mod panel;
-pub mod prim_editors;
 pub mod properties_inspector;
 pub mod property_editor_registry;
 pub mod reflected_properties_panel;
