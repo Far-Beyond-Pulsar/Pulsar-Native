@@ -3,6 +3,9 @@ name = "pulsar_rendering"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+ui-editors = ["dep:gpui-ce"]
+
 [dependencies]
 engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true }
@@ -12,3 +15,4 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio.workspace = true
+gpui-ce = { workspace = true, optional = true }

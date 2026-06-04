@@ -29,6 +29,49 @@ fn deserialize_color_json(value: serde_json::Value) -> crate::ReflectResult<[f32
     ])
 }
 
+#[cfg(feature = "ui-editors")]
+fn render_color_editor(
+    args: &crate::ui_editors::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{prelude::*, Corner, *};
+    use ui::{color_picker::ColorPicker, h_flex, ActiveTheme};
+
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(if let Some(state) = args.color_picker.clone() {
+            ColorPicker::new(&state)
+                .anchor(Corner::BottomRight)
+                .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(cx.theme().foreground)
+                .child(format!("{:?}", args.current_json))
+                .into_any_element()
+        })
+        .into_any_element()
+}
+
+#[cfg(feature = "ui-editors")]
+#[pulsar_type(
+    primitive,
+    serialize_json_with = serialize_color_json,
+    deserialize_json_with = deserialize_color_json,
+    editor = render_color_editor
+)]
+type RegisteredColor = [f32; 4];
+
+#[cfg(not(feature = "ui-editors"))]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_color_json,

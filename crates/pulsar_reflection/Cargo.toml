@@ -10,6 +10,7 @@ prims-std = ["prims-core"]
 prims-serde = ["prims-std"]
 prims-glam = ["prims-core", "dep:glam"]
 prims-helio = ["prims-core", "dep:helio"]
+ui-editors = ["dep:gpui-ce"]
 
 [dependencies]
 inventory = "0.3"
@@ -22,6 +23,7 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 dashmap = { workspace = true }
 glam = { workspace = true, features = ["serde"], optional = true }
 helio = { workspace = true, optional = true }
+gpui-ce = { workspace = true, optional = true }
 
 [lints]
 workspace = true

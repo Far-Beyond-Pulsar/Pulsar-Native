@@ -8764,6 +8764,7 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "glam 0.33.0",
+ "gpui-ce",
  "helio",
  "inventory",
  "once_cell",
@@ -8789,6 +8790,7 @@ version = "0.1.0"
 dependencies = [
  "engine_class_derive",
  "glam 0.33.0",
+ "gpui-ce",
  "helio",
  "pulsar_events",
  "pulsar_reflection",

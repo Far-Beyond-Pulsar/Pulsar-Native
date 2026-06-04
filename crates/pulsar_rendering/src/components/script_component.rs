@@ -83,6 +83,83 @@ fn deserialize_script_asset_path_json(
 /// `structure = String` makes `type_info.is_string()` return `true`, which
 /// lets the property inspector detect this type and render a blueprint-asset
 /// browser UI (analogous to the mesh-asset browser for `MeshAssetPath`).
+#[cfg(feature = "ui-editors")]
+fn render_script_asset_editor(
+    args: &pulsar_reflection::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{prelude::*, *};
+    use plugin_editor_api::OpenAsset;
+    use ui::button::{Button, ButtonVariants as _};
+    use ui::{ActiveTheme, Disableable as _, Icon, IconName, Sizable, h_flex};
+
+    let path_str = args.current_json.as_str().unwrap_or("").to_string();
+
+    let file_name = if path_str.is_empty() {
+        "None".to_string()
+    } else {
+        std::path::Path::new(&path_str)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&path_str)
+            .to_string()
+    };
+
+    let open_path = std::path::PathBuf::from(&path_str);
+    let has_asset = !path_str.is_empty();
+
+    let id = format!(
+        "script-asset-{}-{}-{}",
+        args.id_prefix, args.class_name, args.prop_name
+    );
+
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .py_1()
+        .child(
+            // Field label
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(
+            // [Code icon] [filename] — clickable when an asset is assigned
+            Button::new(id)
+                .icon(Icon::new(IconName::Code).size(gpui::px(12.)))
+                .label(file_name)
+                .ghost()
+                .small()
+                .when(!has_asset, |b| b.disabled(true))
+                .when(has_asset, move |b| {
+                    b.on_click(move |_event, window, cx| {
+                        window.dispatch_action(
+                            Box::new(OpenAsset {
+                                path: open_path.clone(),
+                            }),
+                            cx,
+                        );
+                    })
+                }),
+        )
+        .into_any_element()
+}
+
+#[cfg(feature = "ui-editors")]
+#[pulsar_reflection::pulsar_type(
+    primitive,
+    structure = String,
+    serialize_json_with = serialize_script_asset_path_json,
+    deserialize_json_with = deserialize_script_asset_path_json,
+    editor = render_script_asset_editor
+)]
+#[allow(dead_code)]
+type RegisteredScriptAssetPath = ScriptAssetPath;
+
+#[cfg(not(feature = "ui-editors"))]
 #[pulsar_reflection::pulsar_type(
     primitive,
     structure = String,

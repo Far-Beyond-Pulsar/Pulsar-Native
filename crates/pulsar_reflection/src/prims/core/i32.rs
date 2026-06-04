@@ -16,6 +16,53 @@ fn deserialize_i32_json(value: serde_json::Value) -> crate::ReflectResult<i32> {
         })
 }
 
+#[cfg(feature = "ui-editors")]
+fn render_i32_editor(
+    args: &crate::ui_editors::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{prelude::*, *};
+    use ui::{h_flex, input::NumberInput, ActiveTheme, Sizable};
+
+    let value = args.current_json.as_i64().unwrap_or(0) as i32;
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(h_flex().items_center().gap_2().child(
+            if let Some(input) = args.numeric_input.clone() {
+                NumberInput::new(&input)
+                    .xsmall()
+                    .w(gpui::px(92.0))
+                    .into_any_element()
+            } else {
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(value.to_string())
+                    .into_any_element()
+            },
+        ))
+        .into_any_element()
+}
+
+#[cfg(feature = "ui-editors")]
+#[pulsar_type(
+    primitive,
+    serialize_json_with = serialize_i32_json,
+    deserialize_json_with = deserialize_i32_json,
+    editor = render_i32_editor
+)]
+type RegisteredI32 = i32;
+
+#[cfg(not(feature = "ui-editors"))]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_i32_json,

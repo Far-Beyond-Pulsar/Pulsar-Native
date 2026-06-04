@@ -69,6 +69,46 @@ pub use type_renderer::{
 // Re-export derive macro
 pub use pulsar_reflection_derive::{Reflectable, pulsar_type};
 
+/// Property editor arguments passed to render functions.
+#[cfg_attr(
+    feature = "ui-editors",
+    doc = r#"
+This struct is used by inline property editors defined in [`pulsar_reflection`]
+when the `ui-editors` feature is enabled."#
+)]
+#[derive(Debug, Clone)]
+pub struct PropertyEditorArgs<'a> {
+    pub id_prefix: &'a str,
+    pub class_name: &'a str,
+    pub prop_name: &'a str,
+    pub display_name: &'a str,
+    pub current_json: serde_json::Value,
+    #[cfg(feature = "ui-editors")]
+    pub numeric_input: Option<gpui::SharedString>,
+    #[cfg(feature = "ui-editors")]
+    pub on_bool_toggle: Option<Box<dyn Fn(bool, &mut gpui::WindowContext, &mut gpui::App) + Send + Sync>>,
+    #[cfg(feature = "ui-editors")]
+    pub color_picker: Option<gpui::SharedState<ColorPickerState>>,
+    #[cfg(feature = "ui-editors")]
+    pub mesh_picker: Option<gpui::SharedState<MeshAssetPickerState>>,
+}
+
+#[cfg(feature = "ui-editors")]
+pub struct ColorPickerState {}
+
+#[cfg(feature = "ui-editors")]
+impl Default for ColorPickerState {
+    fn default() -> Self { Self {} }
+}
+
+#[cfg(feature = "ui-editors")]
+pub struct MeshAssetPickerState {}
+
+#[cfg(feature = "ui-editors")]
+impl Default for MeshAssetPickerState {
+    fn default() -> Self { Self {} }
+}
+
 // ── UI property-editor hint ───────────────────────────────────────────────────
 
 /// Type-erased hint that a concrete type has a registered GPUI property editor.

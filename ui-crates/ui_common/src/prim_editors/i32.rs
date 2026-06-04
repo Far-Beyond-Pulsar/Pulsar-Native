@@ -1,11 +1,14 @@
 //! Property editor for `i32` — integer step-input.
+//!
+//! This module is deprecated. The actual editor registration now lives in
+//! `pulsar_reflection/src/prims/core/i32.rs` via the `ui-editors` feature.
 
 use gpui::{prelude::*, *};
 use ui::{h_flex, input::NumberInput, ActiveTheme, Sizable};
 
 use crate::property_editor_registry::PropertyEditorArgs;
 
-pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
+pub fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     let value = args.current_json.as_i64().unwrap_or(0) as i32;
     h_flex()
         .w_full()
@@ -33,12 +36,4 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
             },
         ))
         .into_any_element()
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::UiPropertyEditorHint {
-        type_id: std::any::TypeId::of::<i32>(),
-        // SAFETY: `render` has the required PropertyEditorRenderFn signature.
-        fn_ptr: unsafe { pulsar_reflection::erase_property_editor_fn_ptr(render) },
-    }
 }

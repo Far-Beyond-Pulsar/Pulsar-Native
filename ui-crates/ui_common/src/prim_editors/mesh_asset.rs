@@ -1,34 +1,19 @@
 //! Property editor for `MeshAssetPath` — mesh asset browser popover.
 //!
-//! Companion to `pulsar_rendering::components::static_mesh_component`.
-//! The `MeshAssetPath` type is defined and registered with the reflection system
-//! in that module; this file registers the GPUI property editor for it.
-//!
-//! Once `pulsar_rendering` gains a GPUI dependency this registration can move
-//! directly into `static_mesh_component.rs` via:
-//! ```rust,ignore
-//! #[pulsar_reflection::pulsar_type(
-//!     primitive,
-//!     structure = String,
-//!     serialize_json_with   = …,
-//!     deserialize_json_with = …,
-//!     editor = render,          // ← macro generates the UiPropertyEditorHint submit
-//! )]
-//! type RegisteredMeshAssetPath = MeshAssetPath;
-//! ```
+//! This module is deprecated. The actual editor registration now lives in
+//! `pulsar_rendering/src/components/static_mesh_component.rs` via the
+//! `ui-editors` feature on pulsar_rendering.
 
-use gpui::{prelude::*, Corner, ImageSource, ObjectFit, *};
+use gpui::{prelude::*, ImageSource, ObjectFit, *};
 use ui::{button::ButtonVariants as _, h_flex, popover::Popover, ActiveTheme, Sizable};
 
-use crate::{property_editor_registry::PropertyEditorArgs, MeshAssetPicker};
-// MeshAssetPath is re-exported from pulsar_rendering::components via `pub use static_mesh_component::*`
-use pulsar_rendering::components::MeshAssetPath;
+use crate::property_editor_registry::PropertyEditorArgs;
+use crate::MeshAssetPicker;
 
-pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
+pub fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     let path_str = args.current_json.as_str().unwrap_or("");
 
     let Some(picker) = args.mesh_picker.clone() else {
-        // Picker state not yet allocated — graceful fallback.
         return h_flex()
             .w_full()
             .justify_between()
@@ -69,7 +54,7 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
         "mesh-asset-picker-{}-{}",
         args.class_name, args.prop_name
     ))
-    .anchor(Corner::BottomRight)
+    .anchor(gpui::Corner::BottomRight)
     .trigger(
         ui::button::Button::new(format!(
             "mesh-asset-btn-{}-{}",
@@ -117,12 +102,4 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
             }
         }))
         .into_any_element()
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::UiPropertyEditorHint {
-        type_id: std::any::TypeId::of::<MeshAssetPath>(),
-        // SAFETY: `render` has the required PropertyEditorRenderFn signature.
-        fn_ptr: unsafe { pulsar_reflection::erase_property_editor_fn_ptr(render) },
-    }
 }

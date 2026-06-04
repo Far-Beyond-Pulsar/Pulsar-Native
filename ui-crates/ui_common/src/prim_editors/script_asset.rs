@@ -2,18 +2,17 @@
 //!
 //! Shows a Code icon next to the blueprint folder name.  Clicking opens the
 //! blueprint in its registered editor via the global `OpenAsset` action.
+//!
+//! This module is deprecated. The actual editor registration now lives in
+//! `pulsar_rendering/src/components/script_component.rs` via the `ui-editors` feature.
 
 use gpui::{prelude::*, *};
 use plugin_editor_api::OpenAsset;
-use pulsar_rendering::components::ScriptAssetPath;
-use ui::{
-    button::{Button, ButtonVariants as _},
-    h_flex, ActiveTheme, Disableable as _, Icon, IconName, Sizable,
-};
+use ui::{button::{Button, ButtonVariants as _}, h_flex, ActiveTheme, Disableable as _, Icon, IconName, Sizable};
 
 use crate::property_editor_registry::PropertyEditorArgs;
 
-pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
+pub fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
     let path_str = args.current_json.as_str().unwrap_or("").to_string();
 
     let file_name = if path_str.is_empty() {
@@ -67,12 +66,4 @@ pub(super) fn render(args: &PropertyEditorArgs<'_>, cx: &App) -> AnyElement {
                 }),
         )
         .into_any_element()
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::UiPropertyEditorHint {
-        type_id: std::any::TypeId::of::<ScriptAssetPath>(),
-        // SAFETY: `render` matches the PropertyEditorRenderFn signature.
-        fn_ptr: unsafe { pulsar_reflection::erase_property_editor_fn_ptr(render) },
-    }
 }

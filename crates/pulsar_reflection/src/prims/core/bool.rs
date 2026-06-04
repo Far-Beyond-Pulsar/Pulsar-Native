@@ -15,6 +15,54 @@ fn deserialize_bool_json(value: serde_json::Value) -> crate::ReflectResult<bool>
         })
 }
 
+#[cfg(feature = "ui-editors")]
+fn render_bool_editor(
+    args: &crate::ui_editors::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{prelude::*, *};
+    use ui::{h_flex, switch::Switch, ActiveTheme, Sizable};
+
+    let value = args.current_json.as_bool().unwrap_or(false);
+    let on_toggle = args.on_bool_toggle.clone();
+    let id = format!(
+        "bool-{}-{}-{}",
+        args.id_prefix, args.class_name, args.prop_name
+    );
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(
+            Switch::new(id)
+                .checked(value)
+                .small()
+                .on_click(move |checked, window, cx| {
+                    if let Some(toggle) = &on_toggle {
+                        toggle(*checked, window, cx);
+                    }
+                }),
+        )
+        .into_any_element()
+}
+
+#[cfg(feature = "ui-editors")]
+#[pulsar_type(
+    primitive,
+    serialize_json_with = serialize_bool_json,
+    deserialize_json_with = deserialize_bool_json,
+    editor = render_bool_editor
+)]
+type RegisteredBool = bool;
+
+#[cfg(not(feature = "ui-editors"))]
 #[pulsar_type(
     primitive,
     serialize_json_with = serialize_bool_json,
