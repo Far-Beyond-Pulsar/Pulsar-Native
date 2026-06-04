@@ -70,12 +70,11 @@ pub use type_renderer::{
 // Re-export derive macro
 pub use pulsar_reflection_derive::{Reflectable, pulsar_type};
 
-/// Property editor arguments passed to registered render functions.
+/// Arguments passed to every registered property editor render function.
 ///
-/// This shape intentionally mirrors the UI-layer inspector args used by
-/// `ui_common` so type-erased editor fn pointers can be invoked safely across
-/// crate boundaries.
-#[derive(Clone)]
+/// Widget state is carried as a type-erased map so the reflection crate has
+/// zero knowledge of what widget types exist.  Each render function retrieves
+/// its own stateful entity by concrete type via [`get_widget`].
 pub struct PropertyEditorArgs<'a> {
     pub id_prefix: &'a str,
     pub class_name: &'a str,
@@ -83,14 +82,19 @@ pub struct PropertyEditorArgs<'a> {
     pub prop_name: &'a str,
     pub type_info: &'static RuntimeTypeInfo,
     pub current_json: &'a Value,
-    pub numeric_input: Option<gpui::Entity<ui::input::InputState>>,
-    pub color_picker: Option<gpui::Entity<ui::color_picker::ColorPickerState>>,
-    pub mesh_picker: Option<gpui::Entity<ui_common::MeshAssetPicker>>,
+    pub widgets: std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
     pub on_bool_toggle: Arc<dyn Fn(bool, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
     pub on_enum_select: Arc<dyn Fn(usize, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
 }
 
-pub use ui_common::MeshAssetPickerState;
+impl<'a> PropertyEditorArgs<'a> {
+    pub fn get_widget<T: std::any::Any + Clone>(&self) -> Option<T> {
+        self.widgets
+            .get(&std::any::TypeId::of::<T>())
+            .and_then(|arc| arc.downcast_ref::<T>())
+            .cloned()
+    }
+}
 
 // ── UI property-editor hint ───────────────────────────────────────────────────
 

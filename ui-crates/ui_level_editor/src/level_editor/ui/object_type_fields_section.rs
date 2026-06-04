@@ -499,9 +499,6 @@ impl Render for ObjectTypeFieldsSection {
                         prop.name.to_string(),
                         prop.type_info,
                         current_json,
-                        numeric_input,
-                        color_picker,
-                        mesh_picker,
                     ));
                 }
 
@@ -537,47 +534,37 @@ impl Render for ObjectTypeFieldsSection {
                 // Render component section with runtime-type-aware property rows
                 let rows = props_data
                     .into_iter()
-                    .map(
-                        |(
-                            display_name,
-                            prop_name,
+                    .map(|(display_name, prop_name, type_info, json_value)| {
+                        let widgets = self.property_state.widget_map_for(class_name, &prop_name);
+
+                        let prop_bool = prop_name.clone();
+                        let on_bool_toggle_local = on_bool_toggle.clone();
+                        let bool_callback = Arc::new(
+                            move |checked: bool, window: &mut Window, cx: &mut App| {
+                                (on_bool_toggle_local)(&prop_bool, checked, window, cx);
+                            },
+                        );
+
+                        let prop_enum = prop_name.clone();
+                        let on_enum_select_local = on_enum_select.clone();
+                        let enum_callback =
+                            Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
+                                (on_enum_select_local)(&prop_enum, ix, window, cx);
+                            });
+
+                        ui_common::render_property_row_runtime(
+                            "level",
+                            class_name,
+                            &display_name,
+                            &prop_name,
                             type_info,
-                            json_value,
-                            input,
-                            color_picker,
-                            mesh_picker,
-                        )| {
-                            let prop_bool = prop_name.clone();
-                            let on_bool_toggle_local = on_bool_toggle.clone();
-                            let bool_callback = Arc::new(
-                                move |checked: bool, window: &mut Window, cx: &mut App| {
-                                    (on_bool_toggle_local)(&prop_bool, checked, window, cx);
-                                },
-                            );
-
-                            let prop_enum = prop_name.clone();
-                            let on_enum_select_local = on_enum_select.clone();
-                            let enum_callback =
-                                Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
-                                    (on_enum_select_local)(&prop_enum, ix, window, cx);
-                                });
-
-                            ui_common::render_property_row_runtime(
-                                "level",
-                                class_name,
-                                &display_name,
-                                &prop_name,
-                                type_info,
-                                &json_value,
-                                input,
-                                color_picker,
-                                mesh_picker,
-                                bool_callback,
-                                enum_callback,
-                                cx,
-                            )
-                        },
-                    )
+                            &json_value,
+                            widgets,
+                            bool_callback,
+                            enum_callback,
+                            cx,
+                        )
+                    })
                     .collect::<Vec<_>>();
 
                 Some(

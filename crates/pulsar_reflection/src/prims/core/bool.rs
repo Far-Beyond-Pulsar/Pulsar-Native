@@ -1,7 +1,6 @@
 //! bool primitive type implementation
 
 use crate::pulsar_type;
-use gpui::Styled;
 
 fn serialize_bool_json(value: &bool) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))

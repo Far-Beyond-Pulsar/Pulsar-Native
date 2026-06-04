@@ -1,7 +1,6 @@
 //! [f32; 3] primitive type implementation (Vec3)
 
 use crate::pulsar_type;
-use gpui::Styled;
 
 fn serialize_vec3_json(value: &[f32; 3]) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!([value[0], value[1], value[2]]))

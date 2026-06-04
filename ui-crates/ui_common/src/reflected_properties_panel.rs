@@ -113,8 +113,14 @@ pub fn json_to_rgba_fallback(json: &Value) -> [f32; 4] {
 // Property State Management
 // ============================================================================
 
-/// State manager for property input fields, color pickers, and mesh pickers
+/// State manager for per-property widget entities.
+///
+/// Widget state is keyed by `(class_name, prop_name)` then by the concrete
+/// `TypeId` of the stored entity, so any widget type can be stored without
+/// this struct knowing about it.
 pub struct PropertyStateManager {
+    /// Type-erased widget state: (class, prop) → TypeId → Arc<dyn Any>
+    states: HashMap<(String, String), HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>>,
     /// ColorPickerState per (class_name, prop_name) for Color-typed properties
     pub color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
     /// Number input state per (class_name, prop_name) for numeric properties
@@ -126,6 +132,7 @@ pub struct PropertyStateManager {
 impl PropertyStateManager {
     pub fn new() -> Self {
         Self {
+            states: HashMap::new(),
             color_pickers: HashMap::new(),
             numeric_inputs: HashMap::new(),
             mesh_asset_pickers: HashMap::new(),
@@ -133,9 +140,46 @@ impl PropertyStateManager {
     }
 
     pub fn clear(&mut self) {
+        self.states.clear();
         self.color_pickers.clear();
         self.numeric_inputs.clear();
         self.mesh_asset_pickers.clear();
+    }
+
+    /// Build the type-erased widget map for one `(class_name, prop_name)` pair,
+    /// populated from whichever typed collections have an entry for that key.
+    /// Render functions call `args.get_widget::<Entity<T>>()` to retrieve their state.
+    pub fn widget_map_for(
+        &self,
+        class_name: &str,
+        prop_name: &str,
+    ) -> HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        let key = (class_name.to_string(), prop_name.to_string());
+        let mut map: HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>> =
+            HashMap::new();
+        if let Some(input) = self.numeric_inputs.get(&key) {
+            map.insert(
+                std::any::TypeId::of::<Entity<InputState>>(),
+                std::sync::Arc::new(input.clone()),
+            );
+        }
+        if let Some(picker) = self.color_pickers.get(&key) {
+            map.insert(
+                std::any::TypeId::of::<Entity<ColorPickerState>>(),
+                std::sync::Arc::new(picker.clone()),
+            );
+        }
+        if let Some(picker) = self.mesh_asset_pickers.get(&key) {
+            map.insert(
+                std::any::TypeId::of::<Entity<MeshAssetPicker>>(),
+                std::sync::Arc::new(picker.clone()),
+            );
+        }
+        // Merge any extra type-erased state registered directly.
+        if let Some(extra) = self.states.get(&key) {
+            map.extend(extra.iter().map(|(k, v)| (*k, v.clone())));
+        }
+        map
     }
 
     /// Ensure an F32 input exists and is up to date
@@ -361,20 +405,13 @@ pub fn render_property_row_runtime<V: 'static>(
     prop_name: &str,
     type_info: &'static RuntimeTypeInfo,
     current_json: &Value,
-    numeric_input: Option<Entity<InputState>>,
-    color_picker: Option<Entity<ColorPickerState>>,
-    mesh_picker: Option<Entity<MeshAssetPicker>>,
+    widgets: std::collections::HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>,
     on_bool_toggle: Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync>,
     on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync>,
     cx: &Context<V>,
 ) -> AnyElement {
     use crate::property_editor_registry::{PropertyEditorArgs, PROPERTY_EDITOR_REGISTRY};
 
-    // ── 1. Registered per-type editor (highest priority) ─────────────────────
-    //
-    // Types self-register via `#[pulsar_type(editor = fn)]` or via an explicit
-    // `inventory::submit! { UiPropertyEditorHint { … } }` in their companion
-    // prim_editor file.  No central matching required — just a HashMap lookup.
     if let Some(render_fn) = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id) {
         let args = PropertyEditorArgs {
             id_prefix,
@@ -383,9 +420,7 @@ pub fn render_property_row_runtime<V: 'static>(
             prop_name,
             type_info,
             current_json,
-            numeric_input,
-            color_picker,
-            mesh_picker,
+            widgets,
             on_bool_toggle,
             on_enum_select,
         };

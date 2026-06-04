@@ -110,7 +110,7 @@ fn render_mesh_asset_editor(
             .to_string()
     };
 
-    let picker = args.mesh_picker.clone();
+    let picker = args.get_widget::<gpui::Entity<ui_common::asset_picker::MeshAssetPicker>>();
 
     h_flex()
         .w_full()

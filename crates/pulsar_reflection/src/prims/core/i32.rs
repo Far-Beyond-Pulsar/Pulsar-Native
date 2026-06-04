@@ -33,7 +33,7 @@ fn render_i32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gp
                 .child(args.display_name.to_string()),
         )
         .child(h_flex().items_center().gap_2().child(
-            if let Some(input) = args.numeric_input.clone() {
+            if let Some(input) = args.get_widget::<gpui::Entity<ui::input::InputState>>() {
                 NumberInput::new(&input)
                     .xsmall()
                     .w(gpui::px(92.0))
