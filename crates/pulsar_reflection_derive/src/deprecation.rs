@@ -23,7 +23,8 @@ pub fn emit_deprecation_warning(
 
     let fmt_loc = |span: proc_macro2::Span| -> String {
         let start = span.start();
-        format!("{}:{}", start.line, start.column + 1)
+        let file = span.file();
+        format!("{}:{}:{}", file, start.line, start.column + 1)
     };
 
     let warn = c!("1;33", "warning");

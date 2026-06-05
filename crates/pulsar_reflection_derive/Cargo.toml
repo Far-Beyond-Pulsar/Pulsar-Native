@@ -9,7 +9,7 @@ proc-macro = true
 [dependencies]
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
-proc-macro2 = { workspace = true }
+proc-macro2 = { workspace = true, features = ["proc-macro"] }
 owo-colors = "4"
 
 [lints]
