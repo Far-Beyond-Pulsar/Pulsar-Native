@@ -77,7 +77,7 @@ pub fn pulsar_type(attr: TokenStream, item: TokenStream) -> TokenStream {
         other => {
             return syn::Error::new_spanned(
                 other,
-                "#[pulsar_type] currently supports type aliases for primitive registration",
+                "#[pulsar_type] currently ONLYsupports type aliases for primitive registration",
             )
             .to_compile_error()
             .into();
@@ -143,8 +143,17 @@ fn expand_primitive_alias(
         ));
     }
 
-    let json_serialize_value = quote! { #override_serialize_json_with(typed) };
-    let json_deserialize_value = quote! { #override_deserialize_json_with(value) };
+    let serialize_json_with = override_serialize_json_with.clone().unwrap();
+    let deserialize_json_with = override_deserialize_json_with.clone().unwrap();
+
+    // Force compile-time signature checks for callback hooks so mismatches fail
+    // at the macro callsite with concrete expected types.
+    let json_serialize_value = quote! {
+        (#serialize_json_with as fn(&#target_ty) -> ::pulsar_reflection::ReflectResult<::serde_json::Value>)(typed)
+    };
+    let json_deserialize_value = quote! {
+        (#deserialize_json_with as fn(::serde_json::Value) -> ::pulsar_reflection::ReflectResult<#target_ty>)(value)
+    };
     let clone_impl = quote! { typed.clone() };
 
     // Optional UI property-editor hint — only emitted when `editor = fn` is provided.
@@ -153,7 +162,12 @@ fn expand_primitive_alias(
             ::pulsar_reflection::inventory::submit! {
                 ::pulsar_reflection::UiPropertyEditorHint {
                     type_id: ::std::any::TypeId::of::<#target_ty>(),
-                    fn_ptr: unsafe { ::pulsar_reflection::erase_property_editor_fn_ptr(#editor_fn) },
+                    fn_ptr: ::pulsar_reflection::erase_property_editor_fn_ptr(
+                        #editor_fn as fn(
+                            &::pulsar_reflection::PropertyEditorArgs<'_>,
+                            &::gpui::App
+                        ) -> ::gpui::AnyElement
+                    ),
                 }
             }
         }
@@ -592,4 +606,3 @@ fn generate_field_infos(
         }
     }
 }
-

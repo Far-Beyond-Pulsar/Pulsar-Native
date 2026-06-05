@@ -131,15 +131,17 @@ inventory::collect!(UiPropertyEditorHint);
 /// [`UiPropertyEditorHint::fn_ptr`].
 ///
 /// All Rust function pointer types are pointer-sized, so transmuting between
-/// them preserves size.  This is a `const unsafe fn` so it can be called
-/// inside `inventory::submit!` static initialisers.
+/// them preserves size.  The input is intentionally constrained to the one
+/// valid property-editor signature so registration sites fail fast at compile
+/// time when a mismatched function is provided.
 ///
-/// # Safety
-/// `f` must be a function whose actual signature is:
-/// `fn(&ui_common::PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
-pub const unsafe fn erase_property_editor_fn_ptr<A, B, C>(f: fn(A, B) -> C) -> fn() {
-    // SAFETY: fn(A, B) -> C and fn() are both pointer-sized on every supported
-    // platform; transmuting between any two fn-pointer types is defined behaviour.
+/// This is a `const fn` so it can be called inside `inventory::submit!`
+/// static initialisers emitted by proc macros.
+pub const fn erase_property_editor_fn_ptr(
+    f: fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement,
+) -> fn() {
+    // SAFETY: all function pointers are pointer-sized, so this cast preserves
+    // representation. The function signature is validated by the typed input.
     unsafe { std::mem::transmute(f) }
 }
 

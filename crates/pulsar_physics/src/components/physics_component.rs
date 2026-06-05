@@ -151,45 +151,13 @@ pulsar_reflection::inventory::submit! {
     }
 }
 
-static COLLIDER_SHAPE_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
-    type_id: std::any::TypeId::of::<ColliderShape>(),
-    type_name: "pulsar_physics::ColliderShape",
-    size: std::mem::size_of::<ColliderShape>(),
-    align: std::mem::align_of::<ColliderShape>(),
-    structure: TypeStructure::Primitive,
-};
-
-impl Reflectable for ColliderShape {
-    fn type_info() -> &'static RuntimeTypeInfo
-    where
-        Self: Sized,
-    {
-        &COLLIDER_SHAPE_TYPE_INFO
-    }
-
-    fn serialize(&self, serializer: &mut dyn TypeSerializer) -> ReflectResult<()> {
-        serializer.serialize_registered(self as &dyn std::any::Any)
-    }
-
-    fn deserialize(deserializer: &mut dyn TypeDeserializer) -> ReflectResult<Self>
-    where
-        Self: Sized,
-    {
-        let boxed = deserializer.deserialize_registered(Self::type_info())?;
-        let found = format!("{:?}", (&*boxed).type_id());
-        boxed
-            .downcast::<Self>()
-            .map(|v| *v)
-            .map_err(|_| ReflectError::TypeMismatch {
-                expected: "ColliderShape",
-                found,
-            })
-    }
-
-    fn clone_any(&self) -> Box<dyn std::any::Any> {
-        Box::new(*self)
-    }
-}
+#[pulsar_type(
+    primitive,
+    serialize_json_with = serialize_collider_shape_json,
+    deserialize_json_with = deserialize_collider_shape_json,
+    editor = render_collider_shape_editor
+)]
+pub type RegisteredColliderShape = ColliderShape;
 
 fn serialize_collider_shape_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
     let shape =
@@ -205,16 +173,18 @@ fn serialize_collider_shape_json(value: &dyn std::any::Any) -> ReflectResult<ser
 
 fn deserialize_collider_shape_json(
     value: serde_json::Value,
-) -> ReflectResult<Box<dyn std::any::Any>> {
-    let shape: ColliderShape = serde_json::from_value(value)
+) -> Result<ColliderShape, ReflectError> {
+    let shape = serde_json::from_value(value)
         .map_err(|e| ReflectError::DeserializationFailed(e.to_string()))?;
-    Ok(Box::new(shape))
+    Ok(shape)
 }
 
-pulsar_reflection::inventory::submit! {
-    RuntimeTypeRegistration {
-        type_info: &COLLIDER_SHAPE_TYPE_INFO,
-        serialize_json: serialize_collider_shape_json,
-        deserialize_json: deserialize_collider_shape_json,
-    }
+fn render_collider_shape_editor(
+    args: &pulsar_reflection::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{Corner, prelude::*, *};
+    use ui::{ActiveTheme, color_picker::ColorPicker, h_flex};
+
+    div().child("Hello world").into_any_element()
 }
