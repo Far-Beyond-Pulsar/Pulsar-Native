@@ -1,14 +1,13 @@
 //! Rigidbody component for dynamic physics simulation
 
-use engine_class_derive::EngineClass;
+use engine_class_derive::engine_class;
 use serde::{Deserialize, Serialize};
 
 /// Rigidbody component for objects affected by forces and gravity
 ///
 /// This component demonstrates additional physics properties beyond
 /// the basic PhysicsComponent.
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Physics")]
+#[engine_class(category = "Physics", default, clone, debug, serialize, deserialize)]
 pub struct RigidbodyComponent {
     /// Linear velocity in world space (m/s)
     #[property]

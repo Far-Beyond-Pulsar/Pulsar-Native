@@ -1,6 +1,6 @@
 //! Script component — attaches a blueprint actor script to a scene object.
 
-use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use pulsar_events::{SCRIPT_REGISTRY, ScriptRegistration};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
@@ -169,8 +169,7 @@ type RegisteredScriptAssetPath = ScriptAssetPath;
 /// The engine treats the presence of this component as the authoritative
 /// signal that the scene object participates in the blueprint event loop —
 /// no other flag or prop is required.
-#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Scripting")]
+#[engine_class(category = "Scripting", default, clone, debug, serialize, deserialize)]
 pub struct ScriptComponent {
     /// Path to the blueprint directory (`graph_save.json` must exist here).
     ///
@@ -180,6 +179,7 @@ pub struct ScriptComponent {
     pub script_asset: ScriptAssetPath,
 }
 
+#[register_scene_props_applier]
 impl ScenePropsProjector for ScriptComponent {
     const CLASS_NAME: &'static str = "ScriptComponent";
 
@@ -199,13 +199,7 @@ impl ScenePropsProjector for ScriptComponent {
     }
 }
 
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::ScenePropsApplierRegistration {
-        class_name: <ScriptComponent as ScenePropsProjector>::CLASS_NAME,
-        apply: <ScriptComponent as ScenePropsProjector>::apply_scene_props,
-    }
-}
-
+#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for ScriptComponent {
     const CLASS_NAME: &'static str = "ScriptComponent";
 

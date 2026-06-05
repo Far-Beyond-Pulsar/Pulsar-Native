@@ -1,14 +1,13 @@
 //! Material override component for customizing object appearance
 
-use engine_class_derive::EngineClass;
+use engine_class_derive::engine_class;
 use serde::{Deserialize, Serialize};
 
 /// Material override component for per-object material customization
 ///
 /// Allows overriding material properties on a per-instance basis without
 /// creating new material assets.
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Rendering")]
+#[engine_class(category = "Rendering", default, clone, debug, serialize, deserialize)]
 pub struct MaterialOverrideComponent {
     /// Base color tint
     #[property]
