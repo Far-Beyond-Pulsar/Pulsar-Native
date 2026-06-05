@@ -376,6 +376,13 @@ pub trait EngineClass: Any + Send + Sync {
     fn clone_boxed(&self) -> Box<dyn EngineClass>;
 }
 
+/// Marker trait for structs that are sub-property groups, not standalone components.
+///
+/// Implemented automatically by `#[engine_class(no_register, ...)]`. Used by the parent
+/// component's derive to enforce that `#[sub_props]` fields are never accidentally
+/// registered as top-level components.
+pub trait EngineSubProps: EngineClass {}
+
 /// Metadata for a single property field
 ///
 /// Contains all information needed to display and edit a property in the UI,

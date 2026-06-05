@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::super::{CollisionChannel, CollisionResponse, CollisionPreset};
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("General", category_color = "#F4C542")]
 pub struct GeneralPhysicsProps {
     #[property(category = "General")]

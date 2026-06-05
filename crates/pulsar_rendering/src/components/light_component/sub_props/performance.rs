@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::super::{MobileQualityLevel, ShadowCacheMode};
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Performance", category_color = "#FB7185", default_collapsed = true)]
 pub struct PerformanceLightProps {
     #[property(category = "Performance")]

@@ -29,7 +29,7 @@ use syn::{
 
 #[proc_macro_derive(
     EngineClass,
-    attributes(property, category, engine_class_category, sub_props)
+    attributes(property, category, engine_class_category, sub_props, engine_class_no_register)
 )]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -181,6 +181,25 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         })
         .collect();
 
+    // Compile-time assertions that every #[sub_props] field implements EngineSubProps.
+    let sub_props_assertions: Vec<_> = sub_props_fields
+        .iter()
+        .map(|field| {
+            let field_ty = &field.ty;
+            quote! {
+                const _: fn() = || {
+                    fn _assert_engine_sub_props<T: pulsar_reflection::EngineSubProps>() {}
+                    _assert_engine_sub_props::<#field_ty>();
+                };
+            }
+        })
+        .collect();
+
+    let skip_registration = input
+        .attrs
+        .iter()
+        .any(|a| a.path().is_ident("engine_class_no_register"));
+
     // Generate the trait implementation
     let generated = quote! {
         impl #impl_generics pulsar_reflection::EngineClass for #name #ty_generics #where_clause {
@@ -229,25 +248,37 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
             }
         }
 
-        // Auto-register with global registry
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::EngineClassRegistration {
-                name: stringify!(#name),
-                category: #category_token,
-                constructor: || Box::new(#name::default()),
-            }
-        }
+    };
 
-        // Register property methods with inventory (for registry lookup)
-        pulsar_reflection::inventory::submit! {
-            pulsar_reflection::ComponentMethodRegistration {
-                class_name: stringify!(#name),
-                methods: || vec![#(#property_method_items),*],
+    let registration = if skip_registration {
+        quote! {}
+    } else {
+        quote! {
+            // Auto-register with global registry
+            pulsar_reflection::inventory::submit! {
+                pulsar_reflection::EngineClassRegistration {
+                    name: stringify!(#name),
+                    category: #category_token,
+                    constructor: || Box::new(#name::default()),
+                }
+            }
+
+            // Register property methods with inventory (for registry lookup)
+            pulsar_reflection::inventory::submit! {
+                pulsar_reflection::ComponentMethodRegistration {
+                    class_name: stringify!(#name),
+                    methods: || vec![#(#property_method_items),*],
+                }
             }
         }
     };
 
-    generated.into()
+    quote! {
+        #generated
+        #registration
+        #(#sub_props_assertions)*
+    }
+    .into()
 }
 
 #[proc_macro_attribute]
@@ -263,6 +294,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut add_debug = false;
     let mut register_runtime = false;
     let mut register_scene_props = false;
+    let mut no_register = false;
 
     for arg in args {
         match arg {
@@ -272,6 +304,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("clone") => add_clone = true,
             Meta::Path(path) if path.is_ident("debug") => add_debug = true,
             Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
+            Meta::Path(path) if path.is_ident("no_register") => no_register = true,
             Meta::Path(path) if path.is_ident("scene_props_applier") => {
                 register_scene_props = true
             }
@@ -344,6 +377,19 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    let no_register_attr = if no_register {
+        quote! { #[engine_class_no_register] }
+    } else {
+        quote! {}
+    };
+
+    let sub_props_marker_impl = if no_register {
+        let name = &item_struct.ident;
+        quote! { impl pulsar_reflection::EngineSubProps for #name {} }
+    } else {
+        quote! {}
+    };
+
     let name = &item_struct.ident;
     let runtime_registration = if register_runtime {
         quote! {
@@ -374,7 +420,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     quote! {
         #derive_attr
         #category_attr
+        #no_register_attr
         #item_struct
+        #sub_props_marker_impl
         #runtime_registration
         #scene_props_registration
     }

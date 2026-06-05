@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::components::physics_component::InterpolationMethod;
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Advanced", category_color = "#9CA3AF", default_collapsed = true)]
 pub struct AdvancedRigidbodyProps {
     #[property(category = "Advanced")]

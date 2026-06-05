@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use crate::components::physics_component::MotionType;
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("General", category_color = "#F4C542")]
 pub struct GeneralRigidbodyProps {
     #[property(category = "General")]
