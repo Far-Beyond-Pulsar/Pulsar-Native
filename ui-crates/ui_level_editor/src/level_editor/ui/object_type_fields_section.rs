@@ -499,6 +499,7 @@ impl Render for ObjectTypeFieldsSection {
                         prop.name.to_string(),
                         prop.type_info,
                         current_json,
+                        prop.category.map(str::to_string),
                     ));
                 }
 
@@ -532,9 +533,11 @@ impl Render for ObjectTypeFieldsSection {
                 );
 
                 // Render component section with runtime-type-aware property rows
-                let rows = props_data
-                    .into_iter()
-                    .map(|(display_name, prop_name, type_info, json_value)| {
+                let mut uncategorized_rows = Vec::new();
+                let mut categorized_rows: std::collections::BTreeMap<String, Vec<AnyElement>> =
+                    std::collections::BTreeMap::new();
+
+                for (display_name, prop_name, type_info, json_value, category) in props_data {
                         let widgets = self.property_state.widget_map_for(class_name, &prop_name);
 
                         let prop_bool = prop_name.clone();
@@ -552,7 +555,7 @@ impl Render for ObjectTypeFieldsSection {
                                 (on_enum_select_local)(&prop_enum, ix, window, cx);
                             });
 
-                        ui_common::render_property_row_runtime(
+                        let row = ui_common::render_property_row_runtime(
                             "level",
                             class_name,
                             &display_name,
@@ -563,9 +566,36 @@ impl Render for ObjectTypeFieldsSection {
                             bool_callback,
                             enum_callback,
                             cx,
-                        )
-                    })
-                    .collect::<Vec<_>>();
+                        );
+
+                        if let Some(category_name) = category.filter(|c| !c.trim().is_empty()) {
+                            categorized_rows
+                                .entry(category_name)
+                                .or_default()
+                                .push(row);
+                        } else {
+                            uncategorized_rows.push(row);
+                        }
+                }
+
+                let mut rows = Vec::new();
+                rows.extend(uncategorized_rows);
+                for (category_name, category_rows) in categorized_rows {
+                    rows.push(
+                        v_flex()
+                            .w_full()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(category_name),
+                            )
+                            .children(category_rows)
+                            .into_any_element(),
+                    );
+                }
 
                 Some(
                     v_flex()

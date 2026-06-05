@@ -1,6 +1,6 @@
 //! Static mesh component for mesh asset assignment.
 
-use engine_class_derive::{EngineClass, register_runtime_behavior, register_scene_props_applier};
+use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
@@ -165,8 +165,7 @@ type RegisteredMeshAssetPath = MeshAssetPath;
 // ── StaticMeshComponent ───────────────────────────────────────────────────────
 
 /// Attaches a mesh asset to a scene object.
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Rendering")]
+#[engine_class(category = "Rendering", default, clone, debug, serialize, deserialize)]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
     ///

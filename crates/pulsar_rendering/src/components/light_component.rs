@@ -1,6 +1,6 @@
 //! Light component for scene lighting
 
-use engine_class_derive::{EngineClass, register_runtime_behavior, register_scene_props_applier};
+use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use helio::{GpuLight, LightType as HelioLightType, SceneActor};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, Reflectable, RuntimeComponentOwner,
@@ -17,8 +17,7 @@ use std::collections::HashMap;
 /// - Color properties (RGBA)
 /// - Float properties with ranges
 /// - Boolean properties for toggles
-#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Rendering")]
+#[engine_class(category = "Rendering", default, clone, debug, serialize, deserialize)]
 pub struct LightComponent {
     /// Type of light source
     #[property]

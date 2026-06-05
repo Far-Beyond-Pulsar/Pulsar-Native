@@ -21,8 +21,9 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Field, Fields, FnArg, ImplItem, ItemImpl, Lit, Meta,
-    MetaNameValue, Pat, PatType, ReturnType, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct,
+    Lit, Meta, MetaNameValue, Pat, PatType, ReturnType, Type, parse_macro_input,
+    punctuated::Punctuated,
 };
 
 #[proc_macro_derive(EngineClass, attributes(property, category))]
@@ -50,8 +51,17 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                     .named
                     .iter()
                     .filter_map(|field| {
-                        if has_property_attr(field) {
-                            Some((generate_property_metadata(field, name, &category), field))
+                        let property_attr = parse_property_attr(field);
+                        if property_attr.is_property {
+                            Some((
+                                generate_property_metadata(
+                                    field,
+                                    name,
+                                    &category,
+                                    &property_attr.category,
+                                ),
+                                field,
+                            ))
                         } else {
                             None
                         }
@@ -143,6 +153,137 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     };
 
     generated.into()
+}
+
+#[proc_macro_attribute]
+pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = parse_macro_input!(attr with Punctuated::<Meta, syn::Token![,]>::parse_terminated);
+    let item_struct = parse_macro_input!(item as ItemStruct);
+
+    let mut category: Option<String> = None;
+    let mut add_serialize = false;
+    let mut add_deserialize = false;
+    let mut add_default = false;
+    let mut add_clone = false;
+    let mut add_debug = false;
+    let mut register_runtime = false;
+    let mut register_scene_props = false;
+
+    for arg in args {
+        match arg {
+            Meta::Path(path) if path.is_ident("serialize") => add_serialize = true,
+            Meta::Path(path) if path.is_ident("deserialize") => add_deserialize = true,
+            Meta::Path(path) if path.is_ident("default") => add_default = true,
+            Meta::Path(path) if path.is_ident("clone") => add_clone = true,
+            Meta::Path(path) if path.is_ident("debug") => add_debug = true,
+            Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
+            Meta::Path(path) if path.is_ident("scene_props_applier") => {
+                register_scene_props = true
+            }
+            Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
+                if let Expr::Lit(expr_lit) = &name_value.value {
+                    if let Lit::Str(lit_str) = &expr_lit.lit {
+                        category = Some(lit_str.value());
+                        continue;
+                    }
+                }
+                return syn::Error::new_spanned(
+                    &name_value,
+                    "engine_class category must be a string literal",
+                )
+                .to_compile_error()
+                .into();
+            }
+            other => {
+                return syn::Error::new_spanned(
+                    other,
+                    "unsupported #[engine_class(...)] argument",
+                )
+                .to_compile_error()
+                .into();
+            }
+        }
+    }
+
+    let has_engine_class_derive = has_derive(&item_struct.attrs, "EngineClass");
+    let has_serialize_derive = has_derive(&item_struct.attrs, "Serialize");
+    let has_deserialize_derive = has_derive(&item_struct.attrs, "Deserialize");
+    let has_default_derive = has_derive(&item_struct.attrs, "Default");
+    let has_clone_derive = has_derive(&item_struct.attrs, "Clone");
+    let has_debug_derive = has_derive(&item_struct.attrs, "Debug");
+    let has_category_attr = item_struct
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("category"));
+
+    let mut derive_additions = Vec::new();
+    if !has_engine_class_derive {
+        derive_additions.push(quote!(::engine_class_derive::EngineClass));
+    }
+    if add_serialize && !has_serialize_derive {
+        derive_additions.push(quote!(::serde::Serialize));
+    }
+    if add_deserialize && !has_deserialize_derive {
+        derive_additions.push(quote!(::serde::Deserialize));
+    }
+    if add_default && !has_default_derive {
+        derive_additions.push(quote!(::core::default::Default));
+    }
+    if add_clone && !has_clone_derive {
+        derive_additions.push(quote!(::core::clone::Clone));
+    }
+    if add_debug && !has_debug_derive {
+        derive_additions.push(quote!(::core::fmt::Debug));
+    }
+
+    let derive_attr = if derive_additions.is_empty() {
+        quote! {}
+    } else {
+        quote! { #[derive(#(#derive_additions),*)] }
+    };
+
+    let category_attr = if category.is_some() && !has_category_attr {
+        let cat = category.unwrap();
+        quote! { #[category(#cat)] }
+    } else {
+        quote! {}
+    };
+
+    let name = &item_struct.ident;
+    let runtime_registration = if register_runtime {
+        quote! {
+            pulsar_reflection::inventory::submit! {
+                pulsar_reflection::RuntimeBehaviorRegistration {
+                    class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                    sync: <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let scene_props_registration = if register_scene_props {
+        quote! {
+            pulsar_reflection::inventory::submit! {
+                pulsar_reflection::ScenePropsApplierRegistration {
+                    class_name: <#name as pulsar_reflection::ScenePropsProjector>::CLASS_NAME,
+                    apply: <#name as pulsar_reflection::ScenePropsProjector>::apply_scene_props,
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    quote! {
+        #derive_attr
+        #category_attr
+        #item_struct
+        #runtime_registration
+        #scene_props_registration
+    }
+    .into()
 }
 
 #[proc_macro_derive(RegisterRuntimeBehavior)]
@@ -290,26 +431,64 @@ pub fn register_scene_props_applier(attr: TokenStream, item: TokenStream) -> Tok
     output.into()
 }
 
-/// Check if a field has the #[property] attribute
-fn has_property_attr(field: &Field) -> bool {
-    field
-        .attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("property"))
+/// Check whether a type already derives a specific trait by final segment ident.
+fn has_derive(attrs: &[Attribute], trait_ident: &str) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("derive") {
+            return false;
+        }
+
+        attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
+            .map(|paths| {
+                paths
+                    .iter()
+                    .any(|p| p.segments.last().map(|s| s.ident == trait_ident).unwrap_or(false))
+            })
+            .unwrap_or(false)
+    })
+}
+
+#[derive(Default)]
+struct PropertyAttrOptions {
+    is_property: bool,
+    category: Option<String>,
+}
+
+/// Parse `#[property(...)]` options.
+fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
+    let mut out = PropertyAttrOptions::default();
+
+    for attr in &field.attrs {
+        if !attr.path().is_ident("property") {
+            continue;
+        }
+        out.is_property = true;
+
+        let Ok(args) =
+            attr.parse_args_with(Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+        else {
+            continue;
+        };
+        for arg in args {
+            if let Meta::NameValue(name_value) = arg
+                && name_value.path.is_ident("category")
+                && let Expr::Lit(expr_lit) = &name_value.value
+                && let Lit::Str(lit_str) = &expr_lit.lit
+            {
+                out.category = Some(lit_str.value());
+            }
+        }
+    }
+
+    out
 }
 
 /// Extract category from struct-level attributes
 fn extract_category(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
         if attr.path().is_ident("category") {
-            if let Ok(Meta::NameValue(MetaNameValue {
-                value: syn::Expr::Lit(expr_lit),
-                ..
-            })) = attr.parse_args()
-            {
-                if let Lit::Str(lit_str) = &expr_lit.lit {
-                    return Some(lit_str.value());
-                }
+            if let Ok(lit_str) = attr.parse_args::<syn::LitStr>() {
+                return Some(lit_str.value());
             }
         }
     }
@@ -322,7 +501,8 @@ fn extract_category(attrs: &[Attribute]) -> Option<String> {
 fn generate_property_metadata(
     field: &Field,
     struct_name: &syn::Ident,
-    category: &Option<String>,
+    struct_category: &Option<String>,
+    property_category: &Option<String>,
 ) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().unwrap();
     let field_name_str = field_name.to_string();
@@ -330,7 +510,11 @@ fn generate_property_metadata(
     let field_type = &field.ty;
 
     // Generate category option
-    let category_expr = if let Some(cat) = category {
+    let resolved_category = property_category
+        .as_ref()
+        .or(struct_category.as_ref())
+        .cloned();
+    let category_expr = if let Some(cat) = resolved_category {
         quote! { Some(#cat) }
     } else {
         quote! { None }
