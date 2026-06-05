@@ -159,16 +159,8 @@ pulsar_reflection::inventory::submit! {
 )]
 pub type RegisteredColliderShape = ColliderShape;
 
-fn serialize_collider_shape_json(value: &dyn std::any::Any) -> ReflectResult<serde_json::Value> {
-    let shape =
-        value
-            .downcast_ref::<ColliderShape>()
-            .ok_or_else(|| ReflectError::TypeMismatch {
-                expected: "ColliderShape",
-                found: format!("{:?}", value.type_id()),
-            })?;
-
-    serde_json::to_value(shape).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
+fn serialize_collider_shape_json(value: &ColliderShape) -> ReflectResult<serde_json::Value> {
+    serde_json::to_value(value).map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }
 
 fn deserialize_collider_shape_json(

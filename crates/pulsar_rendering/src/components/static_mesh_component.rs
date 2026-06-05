@@ -1,6 +1,6 @@
 //! Static mesh component for mesh asset assignment.
 
-use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use engine_class_derive::{EngineClass, register_runtime_behavior, register_scene_props_applier};
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
@@ -165,7 +165,7 @@ type RegisteredMeshAssetPath = MeshAssetPath;
 // ── StaticMeshComponent ───────────────────────────────────────────────────────
 
 /// Attaches a mesh asset to a scene object.
-#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
 #[category("Rendering")]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
@@ -176,6 +176,7 @@ pub struct StaticMeshComponent {
     pub mesh_asset: MeshAssetPath,
 }
 
+#[register_scene_props_applier]
 impl ScenePropsProjector for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";
 
@@ -193,13 +194,7 @@ impl ScenePropsProjector for StaticMeshComponent {
     }
 }
 
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::ScenePropsApplierRegistration {
-        class_name: <StaticMeshComponent as ScenePropsProjector>::CLASS_NAME,
-        apply: <StaticMeshComponent as ScenePropsProjector>::apply_scene_props,
-    }
-}
-
+#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";
 

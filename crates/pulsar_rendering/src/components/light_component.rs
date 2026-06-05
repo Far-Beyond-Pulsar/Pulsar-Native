@@ -1,6 +1,6 @@
 //! Light component for scene lighting
 
-use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use engine_class_derive::{EngineClass, register_runtime_behavior, register_scene_props_applier};
 use helio::{GpuLight, LightType as HelioLightType, SceneActor};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, Reflectable, RuntimeComponentOwner,
@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// - Color properties (RGBA)
 /// - Float properties with ranges
 /// - Boolean properties for toggles
-#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(EngineClass, Default, Clone, Debug, Serialize, Deserialize)]
 #[category("Rendering")]
 pub struct LightComponent {
     /// Type of light source
@@ -71,6 +71,7 @@ impl Default for LightType {
     }
 }
 
+#[register_scene_props_applier]
 impl ScenePropsProjector for LightComponent {
     const CLASS_NAME: &'static str = "LightComponent";
 
@@ -88,13 +89,6 @@ impl ScenePropsProjector for LightComponent {
         for (k, v) in light.to_scene_props() {
             props.insert(k, v);
         }
-    }
-}
-
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::ScenePropsApplierRegistration {
-        class_name: <LightComponent as ScenePropsProjector>::CLASS_NAME,
-        apply: <LightComponent as ScenePropsProjector>::apply_scene_props,
     }
 }
 
@@ -143,6 +137,7 @@ impl LightComponent {
     }
 }
 
+#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for LightComponent {
     const CLASS_NAME: &'static str = "LightComponent";
 

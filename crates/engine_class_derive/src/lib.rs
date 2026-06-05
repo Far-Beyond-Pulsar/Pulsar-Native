@@ -162,6 +162,134 @@ pub fn derive_register_runtime_behavior(input: TokenStream) -> TokenStream {
     generated.into()
 }
 
+#[proc_macro_attribute]
+pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(
+            proc_macro2::TokenStream::from(attr),
+            "#[register_runtime_behavior] does not accept arguments",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let impl_block = parse_macro_input!(item as ItemImpl);
+
+    if !impl_block.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &impl_block.generics,
+            "#[register_runtime_behavior] does not support generic impl blocks",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let Some((_, trait_path, _)) = &impl_block.trait_ else {
+        return syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "#[register_runtime_behavior] must be used on `impl ComponentRuntimeBehavior for Type`",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new_spanned(
+            trait_path,
+            "invalid trait path for #[register_runtime_behavior]",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    if trait_ident != "ComponentRuntimeBehavior" {
+        return syn::Error::new_spanned(
+            trait_path,
+            "#[register_runtime_behavior] must target `ComponentRuntimeBehavior` impl",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty = &impl_block.self_ty;
+    let output = quote! {
+        #impl_block
+
+        pulsar_reflection::inventory::submit! {
+            pulsar_reflection::RuntimeBehaviorRegistration {
+                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                sync: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+            }
+        }
+    };
+
+    output.into()
+}
+
+#[proc_macro_attribute]
+pub fn register_scene_props_applier(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(
+            proc_macro2::TokenStream::from(attr),
+            "#[register_scene_props_applier] does not accept arguments",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let impl_block = parse_macro_input!(item as ItemImpl);
+
+    if !impl_block.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &impl_block.generics,
+            "#[register_scene_props_applier] does not support generic impl blocks",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let Some((_, trait_path, _)) = &impl_block.trait_ else {
+        return syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "#[register_scene_props_applier] must be used on `impl ScenePropsProjector for Type`",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new_spanned(
+            trait_path,
+            "invalid trait path for #[register_scene_props_applier]",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    if trait_ident != "ScenePropsProjector" {
+        return syn::Error::new_spanned(
+            trait_path,
+            "#[register_scene_props_applier] must target `ScenePropsProjector` impl",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty = &impl_block.self_ty;
+    let output = quote! {
+        #impl_block
+
+        pulsar_reflection::inventory::submit! {
+            pulsar_reflection::ScenePropsApplierRegistration {
+                class_name: <#self_ty as pulsar_reflection::ScenePropsProjector>::CLASS_NAME,
+                apply: <#self_ty as pulsar_reflection::ScenePropsProjector>::apply_scene_props,
+            }
+        }
+    };
+
+    output.into()
+}
+
 /// Check if a field has the #[property] attribute
 fn has_property_attr(field: &Field) -> bool {
     field
