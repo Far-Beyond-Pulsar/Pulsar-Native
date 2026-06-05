@@ -1,6 +1,7 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
@@ -28,6 +29,10 @@ pub struct ObjectTypeFieldsSection {
     property_state: PropertyStateManager,
     /// Icon asset picker (special case for object-level icon)
     icon_asset_picker: Option<Entity<MeshAssetPicker>>,
+    /// Collapsed property category headers per (component class, category)
+    collapsed_property_categories: HashSet<(String, String)>,
+    /// Explicitly expanded property categories overriding default-collapsed.
+    expanded_property_categories: HashSet<(String, String)>,
 }
 
 impl ObjectTypeFieldsSection {
@@ -63,6 +68,20 @@ impl ObjectTypeFieldsSection {
             state_arc,
             property_state: PropertyStateManager::new(),
             icon_asset_picker: None,
+            collapsed_property_categories: HashSet::new(),
+            expanded_property_categories: HashSet::new(),
+        }
+    }
+
+    fn parse_hex_category_color(hex: &str) -> Option<Hsla> {
+        let raw = hex.trim().strip_prefix('#').unwrap_or(hex.trim());
+        match raw.len() {
+            6 => u32::from_str_radix(raw, 16).ok().map(rgb).map(Into::into),
+            8 => u32::from_str_radix(raw, 16)
+                .ok()
+                .map(rgba)
+                .map(Into::into),
+            _ => None,
         }
     }
 
@@ -500,6 +519,8 @@ impl Render for ObjectTypeFieldsSection {
                         prop.type_info,
                         current_json,
                         prop.category.map(str::to_string),
+                        prop.category_color.map(str::to_string),
+                        prop.category_default_collapsed,
                     ));
                 }
 
@@ -534,10 +555,20 @@ impl Render for ObjectTypeFieldsSection {
 
                 // Render component section with runtime-type-aware property rows
                 let mut uncategorized_rows = Vec::new();
-                let mut categorized_rows: std::collections::BTreeMap<String, Vec<AnyElement>> =
-                    std::collections::BTreeMap::new();
+                let mut categorized_rows: BTreeMap<String, (Vec<AnyElement>, Option<String>, bool)> =
+                    BTreeMap::new();
 
-                for (display_name, prop_name, type_info, json_value, category) in props_data {
+                for (
+                    display_name,
+                    prop_name,
+                    type_info,
+                    json_value,
+                    category,
+                    category_color,
+                    category_default_collapsed,
+                ) in
+                    props_data
+                {
                         let widgets = self.property_state.widget_map_for(class_name, &prop_name);
 
                         let prop_bool = prop_name.clone();
@@ -569,10 +600,15 @@ impl Render for ObjectTypeFieldsSection {
                         );
 
                         if let Some(category_name) = category.filter(|c| !c.trim().is_empty()) {
-                            categorized_rows
-                                .entry(category_name)
-                                .or_default()
-                                .push(row);
+                            let entry =
+                                categorized_rows
+                                    .entry(category_name)
+                                    .or_insert((Vec::new(), None, category_default_collapsed));
+                            entry.0.push(row);
+                            if entry.1.is_none() {
+                                entry.1 = category_color;
+                            }
+                            entry.2 = entry.2 || category_default_collapsed;
                         } else {
                             uncategorized_rows.push(row);
                         }
@@ -580,19 +616,80 @@ impl Render for ObjectTypeFieldsSection {
 
                 let mut rows = Vec::new();
                 rows.extend(uncategorized_rows);
-                for (category_name, category_rows) in categorized_rows {
+                for (category_name, (category_rows, category_color_hex, default_collapsed)) in
+                    categorized_rows
+                {
+                    let category_key = (class_name.to_string(), category_name.clone());
+                    let is_collapsed = if self.collapsed_property_categories.contains(&category_key)
+                    {
+                        true
+                    } else if self.expanded_property_categories.contains(&category_key) {
+                        false
+                    } else {
+                        default_collapsed
+                    };
+                    let toggle_key = category_key.clone();
+                    let was_collapsed = is_collapsed;
+                    let accent =
+                        category_color_hex.as_deref().and_then(Self::parse_hex_category_color);
                     rows.push(
                         v_flex()
                             .w_full()
                             .gap_1()
+                            .p_2()
+                            .rounded(px(6.0))
+                            .border_1()
+                            .when_some(accent, |el, color| {
+                                el.border_color(color.opacity(0.7))
+                                    .bg(color.opacity(0.08))
+                            })
+                            .when(accent.is_none(), |el| {
+                                el.border_color(cx.theme().border)
+                                    .bg(cx.theme().border.opacity(0.08))
+                            })
                             .child(
-                                div()
-                                    .text_xs()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(category_name),
+                                h_flex()
+                                    .w_full()
+                                    .items_center()
+                                    .justify_between()
+                                    .cursor_pointer()
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(move |this, _event, _window, cx| {
+                                        if was_collapsed {
+                                            this.collapsed_property_categories.remove(&toggle_key);
+                                            this.expanded_property_categories.insert(toggle_key.clone());
+                                        } else {
+                                            this.expanded_property_categories.remove(&toggle_key);
+                                            this.collapsed_property_categories.insert(toggle_key.clone());
+                                        }
+                                        cx.notify();
+                                    }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .when_some(accent, |el, color| el.text_color(color))
+                                            .when(accent.is_none(), |el| {
+                                                el.text_color(cx.theme().muted_foreground)
+                                            })
+                                            .child(category_name),
+                                    )
+                                    .child(
+                                        ui::Icon::new(if is_collapsed {
+                                            IconName::ChevronRight
+                                        } else {
+                                            IconName::ChevronDown
+                                        })
+                                        .xsmall()
+                                        .when_some(accent, |el, color| el.text_color(color))
+                                        .when(accent.is_none(), |el| {
+                                            el.text_color(cx.theme().muted_foreground)
+                                        }),
+                                    ),
                             )
-                            .children(category_rows)
+                            .when(!is_collapsed, |el| el.children(category_rows))
                             .into_any_element(),
                     );
                 }

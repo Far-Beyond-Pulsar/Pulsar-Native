@@ -23,21 +23,26 @@ use quote::quote;
 use syn::{
     Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct,
     Lit, Meta, MetaNameValue, Pat, PatType, ReturnType, Type, parse_macro_input,
+    parse::{Parse, ParseStream},
     punctuated::Punctuated,
 };
 
-#[proc_macro_derive(EngineClass, attributes(property, category))]
+#[proc_macro_derive(EngineClass, attributes(property, category, engine_class_category))]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // Extract category from struct attributes
-    let category = extract_category(&input.attrs);
+    // Extract class category (menu grouping) and property category declarations.
+    let class_category = extract_class_category(&input.attrs);
+    let property_categories = match extract_property_categories(&input.attrs) {
+        Ok(v) => v,
+        Err(err) => return err.to_compile_error().into(),
+    };
 
     // Convert category to TokenStream for registration
-    let category_token = if let Some(cat) = &category {
+    let category_token = if let Some(cat) = &class_category {
         quote! { Some(#cat) }
     } else {
         quote! { None }
@@ -47,26 +52,35 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let (property_impls, property_fields): (Vec<_>, Vec<_>) = match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
-                let props: Vec<_> = fields
-                    .named
-                    .iter()
-                    .filter_map(|field| {
-                        let property_attr = parse_property_attr(field);
-                        if property_attr.is_property {
-                            Some((
-                                generate_property_metadata(
-                                    field,
-                                    name,
-                                    &category,
-                                    &property_attr.category,
-                                ),
+                let mut props = Vec::new();
+                for field in &fields.named {
+                    let property_attr = parse_property_attr(field);
+                    if !property_attr.is_property {
+                        continue;
+                    }
+
+                    let category_decl = if let Some(cat) = property_attr.category.as_ref() {
+                        let Some(decl) = property_categories.iter().find(|d| d.name == *cat) else {
+                            return syn::Error::new_spanned(
                                 field,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                                format!(
+                                    "property category '{}' is not declared; add #[category(\"{}\", ...)] on the struct",
+                                    cat, cat
+                                ),
+                            )
+                            .to_compile_error()
+                            .into();
+                        };
+                        Some(decl)
+                    } else {
+                        None
+                    };
+
+                    props.push((
+                        generate_property_metadata(field, name, &property_attr, category_decl),
+                        field,
+                    ));
+                }
                 props.into_iter().unzip()
             }
             _ => {
@@ -211,10 +225,10 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let has_default_derive = has_derive(&item_struct.attrs, "Default");
     let has_clone_derive = has_derive(&item_struct.attrs, "Clone");
     let has_debug_derive = has_derive(&item_struct.attrs, "Debug");
-    let has_category_attr = item_struct
+    let has_engine_class_category_attr = item_struct
         .attrs
         .iter()
-        .any(|attr| attr.path().is_ident("category"));
+        .any(|attr| attr.path().is_ident("engine_class_category"));
 
     let mut derive_additions = Vec::new();
     if !has_engine_class_derive {
@@ -242,9 +256,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { #[derive(#(#derive_additions),*)] }
     };
 
-    let category_attr = if category.is_some() && !has_category_attr {
+    let category_attr = if category.is_some() && !has_engine_class_category_attr {
         let cat = category.unwrap();
-        quote! { #[category(#cat)] }
+        quote! { #[engine_class_category(#cat)] }
     } else {
         quote! {}
     };
@@ -452,6 +466,41 @@ fn has_derive(attrs: &[Attribute], trait_ident: &str) -> bool {
 struct PropertyAttrOptions {
     is_property: bool,
     category: Option<String>,
+    category_color: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct PropertyCategoryDefinition {
+    name: String,
+    category_color: Option<String>,
+    default_collapsed: bool,
+}
+
+struct CategoryAttrArgs {
+    name: syn::LitStr,
+    options: Punctuated<MetaNameValue, syn::Token![,]>,
+}
+
+impl Parse for CategoryAttrArgs {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let name: syn::LitStr = input.parse()?;
+        let mut options = Punctuated::new();
+        if input.is_empty() {
+            return Ok(Self { name, options });
+        }
+
+        let _comma: syn::Token![,] = input.parse()?;
+        while !input.is_empty() {
+            options.push_value(input.parse::<MetaNameValue>()?);
+            if input.is_empty() {
+                break;
+            }
+            let punct: syn::Token![,] = input.parse()?;
+            options.push_punct(punct);
+        }
+
+        Ok(Self { name, options })
+    }
 }
 
 /// Parse `#[property(...)]` options.
@@ -470,12 +519,19 @@ fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
             continue;
         };
         for arg in args {
-            if let Meta::NameValue(name_value) = arg
-                && name_value.path.is_ident("category")
-                && let Expr::Lit(expr_lit) = &name_value.value
-                && let Lit::Str(lit_str) = &expr_lit.lit
-            {
-                out.category = Some(lit_str.value());
+            if let Meta::NameValue(name_value) = arg {
+                if name_value.path.is_ident("category")
+                    && let Expr::Lit(expr_lit) = &name_value.value
+                    && let Lit::Str(lit_str) = &expr_lit.lit
+                {
+                    out.category = Some(lit_str.value());
+                }
+                if name_value.path.is_ident("category_color")
+                    && let Expr::Lit(expr_lit) = &name_value.value
+                    && let Lit::Str(lit_str) = &expr_lit.lit
+                {
+                    out.category_color = Some(lit_str.value());
+                }
             }
         }
     }
@@ -483,8 +539,19 @@ fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
     out
 }
 
-/// Extract category from struct-level attributes
-fn extract_category(attrs: &[Attribute]) -> Option<String> {
+/// Extract engine-class category (registry grouping) from struct-level attributes.
+fn extract_class_category(attrs: &[Attribute]) -> Option<String> {
+    for attr in attrs {
+        if attr.path().is_ident("engine_class_category")
+            && let Ok(lit_str) = attr.parse_args::<syn::LitStr>()
+        {
+            return Some(lit_str.value());
+        }
+    }
+
+    // Backwards-compatible fallback for legacy `#[category("Physics")]` style.
+    // This only matches the single-string form (category declarations with extra
+    // options are intentionally excluded from class-category extraction).
     for attr in attrs {
         if attr.path().is_ident("category") {
             if let Ok(lit_str) = attr.parse_args::<syn::LitStr>() {
@@ -495,14 +562,77 @@ fn extract_category(attrs: &[Attribute]) -> Option<String> {
     None
 }
 
+/// Extract `#[category("Name", ...)]` declarations used by property grouping.
+fn extract_property_categories(attrs: &[Attribute]) -> syn::Result<Vec<PropertyCategoryDefinition>> {
+    let mut out = Vec::new();
+
+    for attr in attrs {
+        if !attr.path().is_ident("category") {
+            continue;
+        }
+
+        let parsed: CategoryAttrArgs = attr.parse_args()?;
+        let mut category_color: Option<String> = None;
+        let mut default_collapsed = false;
+
+        for nv in parsed.options {
+            if nv.path.is_ident("category_color") {
+                if let Expr::Lit(expr_lit) = &nv.value
+                    && let Lit::Str(lit) = &expr_lit.lit
+                {
+                    category_color = Some(lit.value());
+                    continue;
+                }
+                return Err(syn::Error::new_spanned(
+                    nv,
+                    "category_color must be a string literal",
+                ));
+            }
+            if nv.path.is_ident("default_collapsed") {
+                if let Expr::Lit(expr_lit) = &nv.value
+                    && let Lit::Bool(lit) = &expr_lit.lit
+                {
+                    default_collapsed = lit.value();
+                    continue;
+                }
+                return Err(syn::Error::new_spanned(
+                    nv,
+                    "default_collapsed must be a bool literal",
+                ));
+            }
+            return Err(syn::Error::new_spanned(
+                nv,
+                "unsupported #[category(...)] option",
+            ));
+        }
+
+        if out.iter().any(|existing: &PropertyCategoryDefinition| {
+            existing.name == parsed.name.value()
+        }) {
+            return Err(syn::Error::new_spanned(
+                attr,
+                format!("duplicate #[category(\"{}\")] declaration", parsed.name.value()),
+            ));
+        }
+
+        out.push(PropertyCategoryDefinition {
+            name: parsed.name.value(),
+            category_color,
+            default_collapsed,
+        });
+    }
+
+    Ok(out)
+}
+
 /// Generate PropertyMetadata for a single field
 ///
 /// NOW USES RUNTIME TYPE REFLECTION - NO MORE ENUM INFERENCE!
 fn generate_property_metadata(
     field: &Field,
     struct_name: &syn::Ident,
-    struct_category: &Option<String>,
-    property_category: &Option<String>,
+    property_attr: &PropertyAttrOptions,
+    category_decl: Option<&PropertyCategoryDefinition>,
 ) -> proc_macro2::TokenStream {
     let field_name = field.ident.as_ref().unwrap();
     let field_name_str = field_name.to_string();
@@ -510,15 +640,27 @@ fn generate_property_metadata(
     let field_type = &field.ty;
 
     // Generate category option
-    let resolved_category = property_category
-        .as_ref()
-        .or(struct_category.as_ref())
-        .cloned();
+    let resolved_category = property_attr.category.clone();
     let category_expr = if let Some(cat) = resolved_category {
         quote! { Some(#cat) }
     } else {
         quote! { None }
     };
+    let resolved_category_color = property_attr
+        .category_color
+        .clone()
+        .or_else(|| category_decl.and_then(|decl| decl.category_color.clone()));
+    let category_color_expr = if let Some(color) = resolved_category_color {
+        quote! { Some(#color) }
+    } else {
+        quote! { None }
+    };
+    let category_default_collapsed_expr =
+        if category_decl.map(|decl| decl.default_collapsed).unwrap_or(false) {
+            quote! { true }
+        } else {
+            quote! { false }
+        };
 
     // Use Reflectable::type_info() to get runtime type information
     // This eliminates the need for PropertyType enum inference!
@@ -557,6 +699,8 @@ fn generate_property_metadata(
             name: #field_name_str,
             display_name: #display_name.to_string(),
             category: #category_expr,
+            category_color: #category_color_expr,
+            category_default_collapsed: #category_default_collapsed_expr,
             type_info: #type_info_expr,
             getter: #getter,
             setter: #setter,

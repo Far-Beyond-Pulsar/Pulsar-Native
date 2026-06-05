@@ -40,9 +40,12 @@ pub struct PhysicsComponent {
 /// This is a nested component that will be rendered inline when editing
 /// the PhysicsComponent's colliders array.
 #[engine_class(default, clone, debug, serialize, deserialize)]
+#[category("Shape", category_color = "#58A6FF", default_collapsed = true)]
+#[category("Transform", default_collapsed = true)]
+#[category("Collision")]
 pub struct ColliderDescriptor {
     /// Type of collider shape
-    #[property(category = "Shape")]
+    #[property(category = "Shape", category_color = "#58A6FF")]
     pub shape: ColliderShape,
 
     /// Offset from the object's center

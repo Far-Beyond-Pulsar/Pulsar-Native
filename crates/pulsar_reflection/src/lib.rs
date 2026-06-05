@@ -392,6 +392,12 @@ pub struct PropertyMetadata {
     /// Optional category for grouping (e.g., "Physics", "Rendering")
     pub category: Option<&'static str>,
 
+    /// Optional hex color for the property category header (e.g., "#58A6FF").
+    pub category_color: Option<&'static str>,
+
+    /// Whether this property's category should start collapsed in UI.
+    pub category_default_collapsed: bool,
+
     /// Runtime type information (replaces PropertyType enum)
     pub type_info: &'static RuntimeTypeInfo,
 
@@ -408,6 +414,8 @@ impl fmt::Debug for PropertyMetadata {
             .field("name", &self.name)
             .field("display_name", &self.display_name)
             .field("category", &self.category)
+            .field("category_color", &self.category_color)
+            .field("category_default_collapsed", &self.category_default_collapsed)
             .field("type_info", &self.type_info)
             .finish()
     }
