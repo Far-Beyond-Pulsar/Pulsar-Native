@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use crate::components::physics_component::InterpolationMethod;
 
+#[engine_class(clone, debug, serialize, deserialize)]
+#[category("Advanced", category_color = "#9CA3AF", default_collapsed = true)]
 pub struct AdvancedRigidbodyProps {
     #[property(category = "Advanced")]
     pub enable_transform_interpolation: bool,
@@ -46,10 +48,7 @@ impl Default for AdvancedRigidbodyProps {
 
 impl AdvancedRigidbodyProps {
     pub(crate) fn apply_from_component_data(&mut self, obj: &serde_json::Map<String, Value>) {
-        if let Some(v) = obj
-            .get("enable_transform_interpolation")
-            .and_then(|v| v.as_bool())
-        {
+        if let Some(v) = obj.get("enable_transform_interpolation").and_then(|v| v.as_bool()) {
             self.enable_transform_interpolation = v;
         }
         if let Some(ix) = obj.get("interpolation_method").and_then(|v| v.as_u64()) {
@@ -60,16 +59,10 @@ impl AdvancedRigidbodyProps {
                 _ => self.interpolation_method,
             };
         }
-        if let Some(v) = obj
-            .get("min_translation_for_interpolation")
-            .and_then(|v| v.as_f64())
-        {
+        if let Some(v) = obj.get("min_translation_for_interpolation").and_then(|v| v.as_f64()) {
             self.min_translation_for_interpolation = v as f32;
         }
-        if let Some(v) = obj
-            .get("min_rotation_for_interpolation")
-            .and_then(|v| v.as_f64())
-        {
+        if let Some(v) = obj.get("min_rotation_for_interpolation").and_then(|v| v.as_f64()) {
             self.min_rotation_for_interpolation = v as f32;
         }
         if let Some(v) = obj.get("enable_sync_to_physics").and_then(|v| v.as_bool()) {
@@ -113,25 +106,10 @@ impl AdvancedRigidbodyProps {
             "enable_sync_to_physics".to_string(),
             Value::from(self.enable_sync_to_physics),
         );
-        out.insert(
-            "enable_sleeping".to_string(),
-            Value::from(self.enable_sleeping),
-        );
-        out.insert(
-            "sleep_threshold".to_string(),
-            Value::from(self.sleep_threshold),
-        );
-        out.insert(
-            "wake_on_collision".to_string(),
-            Value::from(self.wake_on_collision),
-        );
-        out.insert(
-            "disable_collision".to_string(),
-            Value::from(self.disable_collision),
-        );
-        out.insert(
-            "enable_gravity".to_string(),
-            Value::from(self.enable_gravity),
-        );
+        out.insert("enable_sleeping".to_string(), Value::from(self.enable_sleeping));
+        out.insert("sleep_threshold".to_string(), Value::from(self.sleep_threshold));
+        out.insert("wake_on_collision".to_string(), Value::from(self.wake_on_collision));
+        out.insert("disable_collision".to_string(), Value::from(self.disable_collision));
+        out.insert("enable_gravity".to_string(), Value::from(self.enable_gravity));
     }
 }

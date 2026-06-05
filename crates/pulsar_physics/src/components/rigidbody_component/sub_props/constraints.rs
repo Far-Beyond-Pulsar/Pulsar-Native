@@ -2,6 +2,8 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[engine_class(clone, debug, serialize, deserialize)]
+#[category("Constraints", category_color = "#EF4444")]
 pub struct ConstraintsRigidbodyProps {
     #[property(category = "Constraints")]
     pub lock_linear_x: bool,
@@ -59,10 +61,7 @@ impl ConstraintsRigidbodyProps {
         if let Some(v) = obj.get("auto_update_constraints").and_then(|v| v.as_bool()) {
             self.auto_update_constraints = v;
         }
-        if let Some(v) = obj
-            .get("enable_locked_motions_override")
-            .and_then(|v| v.as_bool())
-        {
+        if let Some(v) = obj.get("enable_locked_motions_override").and_then(|v| v.as_bool()) {
             self.enable_locked_motions_override = v;
         }
     }
@@ -71,22 +70,10 @@ impl ConstraintsRigidbodyProps {
         out.insert("lock_linear_x".to_string(), Value::from(self.lock_linear_x));
         out.insert("lock_linear_y".to_string(), Value::from(self.lock_linear_y));
         out.insert("lock_linear_z".to_string(), Value::from(self.lock_linear_z));
-        out.insert(
-            "lock_angular_x".to_string(),
-            Value::from(self.lock_angular_x),
-        );
-        out.insert(
-            "lock_angular_y".to_string(),
-            Value::from(self.lock_angular_y),
-        );
-        out.insert(
-            "lock_angular_z".to_string(),
-            Value::from(self.lock_angular_z),
-        );
-        out.insert(
-            "auto_update_constraints".to_string(),
-            Value::from(self.auto_update_constraints),
-        );
+        out.insert("lock_angular_x".to_string(), Value::from(self.lock_angular_x));
+        out.insert("lock_angular_y".to_string(), Value::from(self.lock_angular_y));
+        out.insert("lock_angular_z".to_string(), Value::from(self.lock_angular_z));
+        out.insert("auto_update_constraints".to_string(), Value::from(self.auto_update_constraints));
         out.insert(
             "enable_locked_motions_override".to_string(),
             Value::from(self.enable_locked_motions_override),

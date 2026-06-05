@@ -2,6 +2,8 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[engine_class(clone, debug, serialize, deserialize)]
+#[category("Velocity", category_color = "#3B82F6")]
 pub struct VelocityRigidbodyProps {
     #[property(category = "Velocity")]
     pub linear_velocity: [f32; 3],
@@ -47,21 +49,14 @@ impl VelocityRigidbodyProps {
                 arr[2].as_f64().unwrap_or(0.0) as f32,
             ];
         }
-        if let Some(v) = obj
-            .get("auto_compute_linear_velocity")
-            .and_then(|v| v.as_bool())
-        {
+        if let Some(v) = obj.get("auto_compute_linear_velocity").and_then(|v| v.as_bool()) {
             self.auto_compute_linear_velocity = v;
         }
-        if let Some(v) = obj
-            .get("auto_compute_angular_velocity")
-            .and_then(|v| v.as_bool())
-        {
+        if let Some(v) = obj.get("auto_compute_angular_velocity").and_then(|v| v.as_bool()) {
             self.auto_compute_angular_velocity = v;
         }
-        if let Some(v) = obj
-            .get("compute_velocity_from_displacement")
-            .and_then(|v| v.as_bool())
+        if let Some(v) =
+            obj.get("compute_velocity_from_displacement").and_then(|v| v.as_bool())
         {
             self.compute_velocity_from_displacement = v;
         }

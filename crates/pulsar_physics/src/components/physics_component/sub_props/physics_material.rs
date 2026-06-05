@@ -2,6 +2,8 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
+#[engine_class(clone, debug, serialize, deserialize)]
+#[category("Physics Material", category_color = "#4ECDC4")]
 pub struct MaterialPhysicsProps {
     #[property(category = "Physics Material")]
     pub physics_material: String,
@@ -35,10 +37,7 @@ impl MaterialPhysicsProps {
         if let Some(v) = obj.get("physics_material").and_then(|v| v.as_str()) {
             self.physics_material = v.to_string();
         }
-        if let Some(v) = obj
-            .get("override_physics_material")
-            .and_then(|v| v.as_bool())
-        {
+        if let Some(v) = obj.get("override_physics_material").and_then(|v| v.as_bool()) {
             self.override_physics_material = v;
         }
         if let Some(v) = obj.get("friction").and_then(|v| v.as_f64()) {
@@ -66,10 +65,7 @@ impl MaterialPhysicsProps {
         );
         out.insert("friction".to_string(), Value::from(self.friction));
         out.insert("restitution".to_string(), Value::from(self.restitution));
-        out.insert(
-            "combined_friction".to_string(),
-            Value::from(self.combined_friction),
-        );
+        out.insert("combined_friction".to_string(), Value::from(self.combined_friction));
         out.insert(
             "combined_restitution".to_string(),
             Value::from(self.combined_restitution),

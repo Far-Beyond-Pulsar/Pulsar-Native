@@ -4,6 +4,8 @@ use std::collections::HashMap;
 
 use super::super::InterpolationMethod;
 
+#[engine_class(clone, debug, serialize, deserialize)]
+#[category("Advanced", category_color = "#9CA3AF", default_collapsed = true)]
 pub struct AdvancedPhysicsProps {
     #[property(category = "Advanced")]
     pub enable_transform_interpolation: bool,
