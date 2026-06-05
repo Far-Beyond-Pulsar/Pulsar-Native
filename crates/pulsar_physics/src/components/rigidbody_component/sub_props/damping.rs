@@ -2,8 +2,6 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[engine_class(clone, debug, serialize, deserialize)]
-#[category("Damping", category_color = "#8B5CF6")]
 pub struct DampingRigidbodyProps {
     #[property(min = 0.0, max = 100.0, step = 0.1, category = "Damping")]
     pub linear_damping: f32,
@@ -46,17 +44,29 @@ impl DampingRigidbodyProps {
         if let Some(v) = obj.get("default_angular_damping").and_then(|v| v.as_f64()) {
             self.default_angular_damping = v as f32;
         }
-        if let Some(v) = obj.get("disable_animation_damping").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("disable_animation_damping")
+            .and_then(|v| v.as_bool())
+        {
             self.disable_animation_damping = v;
         }
-        if let Some(v) = obj.get("disable_pose_animation_damping").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("disable_pose_animation_damping")
+            .and_then(|v| v.as_bool())
+        {
             self.disable_pose_animation_damping = v;
         }
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("linear_damping".to_string(), Value::from(self.linear_damping));
-        out.insert("angular_damping".to_string(), Value::from(self.angular_damping));
+        out.insert(
+            "linear_damping".to_string(),
+            Value::from(self.linear_damping),
+        );
+        out.insert(
+            "angular_damping".to_string(),
+            Value::from(self.angular_damping),
+        );
         out.insert(
             "default_linear_damping".to_string(),
             Value::from(self.default_linear_damping),

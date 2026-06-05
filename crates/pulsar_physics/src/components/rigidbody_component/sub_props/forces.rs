@@ -2,8 +2,6 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[engine_class(clone, debug, serialize, deserialize)]
-#[category("Forces", category_color = "#F59E0B")]
 pub struct ForcesRigidbodyProps {
     #[property(category = "Forces")]
     pub gravity_enabled: bool,
@@ -121,7 +119,10 @@ impl ForcesRigidbodyProps {
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("gravity_enabled".to_string(), Value::from(self.gravity_enabled));
+        out.insert(
+            "gravity_enabled".to_string(),
+            Value::from(self.gravity_enabled),
+        );
         out.insert("gravity_scale".to_string(), Value::from(self.gravity_scale));
         out.insert(
             "custom_gravity".to_string(),

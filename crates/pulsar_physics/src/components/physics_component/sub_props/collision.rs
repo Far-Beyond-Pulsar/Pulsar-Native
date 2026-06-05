@@ -7,8 +7,6 @@ use std::collections::HashMap;
 use super::super::{CollisionChannel, CollisionPreset, CollisionResponse};
 use pulsar_reflection::{ReflectError, ReflectResult, pulsar_type};
 
-#[engine_class(clone, debug, serialize, deserialize)]
-#[category("Collision", category_color = "#FF6B6B")]
 pub struct CollisionPhysicsProps {
     #[property(category = "Collision")]
     pub collision_preset: CollisionPreset,

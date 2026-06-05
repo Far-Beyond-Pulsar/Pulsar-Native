@@ -4,8 +4,6 @@ use std::collections::HashMap;
 
 use super::super::SimulationInterface;
 
-#[engine_class(clone, debug, serialize, deserialize)]
-#[category("Simulation", category_color = "#A78BFA", default_collapsed = true)]
 pub struct SimulationPhysicsProps {
     #[property(category = "Simulation")]
     pub simulate_physics: bool,
