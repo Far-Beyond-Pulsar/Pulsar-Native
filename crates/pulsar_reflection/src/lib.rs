@@ -398,6 +398,9 @@ pub struct PropertyMetadata {
     /// Whether this property's category should start collapsed in UI.
     pub category_default_collapsed: bool,
 
+    /// Order index from declared `#[category(...)]` attributes.
+    pub category_order: Option<usize>,
+
     /// Runtime type information (replaces PropertyType enum)
     pub type_info: &'static RuntimeTypeInfo,
 
@@ -416,6 +419,7 @@ impl fmt::Debug for PropertyMetadata {
             .field("category", &self.category)
             .field("category_color", &self.category_color)
             .field("category_default_collapsed", &self.category_default_collapsed)
+            .field("category_order", &self.category_order)
             .field("type_info", &self.type_info)
             .finish()
     }

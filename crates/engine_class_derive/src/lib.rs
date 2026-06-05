@@ -474,6 +474,7 @@ struct PropertyCategoryDefinition {
     name: String,
     category_color: Option<String>,
     default_collapsed: bool,
+    order: usize,
 }
 
 struct CategoryAttrArgs {
@@ -619,6 +620,7 @@ fn extract_property_categories(attrs: &[Attribute]) -> syn::Result<Vec<PropertyC
             name: parsed.name.value(),
             category_color,
             default_collapsed,
+            order: out.len(),
         });
     }
 
@@ -661,6 +663,11 @@ fn generate_property_metadata(
         } else {
             quote! { false }
         };
+    let category_order_expr = if let Some(order) = category_decl.map(|decl| decl.order) {
+        quote! { Some(#order) }
+    } else {
+        quote! { None }
+    };
 
     // Use Reflectable::type_info() to get runtime type information
     // This eliminates the need for PropertyType enum inference!
@@ -701,6 +708,7 @@ fn generate_property_metadata(
             category: #category_expr,
             category_color: #category_color_expr,
             category_default_collapsed: #category_default_collapsed_expr,
+            category_order: #category_order_expr,
             type_info: #type_info_expr,
             getter: #getter,
             setter: #setter,

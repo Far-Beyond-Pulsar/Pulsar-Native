@@ -1,7 +1,7 @@
 use gpui::{prelude::*, *};
 use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
 use ui::popover::Popover;
@@ -521,6 +521,7 @@ impl Render for ObjectTypeFieldsSection {
                         prop.category.map(str::to_string),
                         prop.category_color.map(str::to_string),
                         prop.category_default_collapsed,
+                        prop.category_order,
                     ));
                 }
 
@@ -555,8 +556,10 @@ impl Render for ObjectTypeFieldsSection {
 
                 // Render component section with runtime-type-aware property rows
                 let mut uncategorized_rows = Vec::new();
-                let mut categorized_rows: BTreeMap<String, (Vec<AnyElement>, Option<String>, bool)> =
-                    BTreeMap::new();
+                let mut categorized_rows: Vec<(String, Vec<AnyElement>, Option<String>, bool, usize)> =
+                    Vec::new();
+                let mut category_index_by_name: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
 
                 for (
                     display_name,
@@ -566,6 +569,7 @@ impl Render for ObjectTypeFieldsSection {
                     category,
                     category_color,
                     category_default_collapsed,
+                    category_order,
                 ) in
                     props_data
                 {
@@ -600,15 +604,27 @@ impl Render for ObjectTypeFieldsSection {
                         );
 
                         if let Some(category_name) = category.filter(|c| !c.trim().is_empty()) {
-                            let entry =
-                                categorized_rows
-                                    .entry(category_name)
-                                    .or_insert((Vec::new(), None, category_default_collapsed));
-                            entry.0.push(row);
-                            if entry.1.is_none() {
-                                entry.1 = category_color;
+                            if let Some(ix) = category_index_by_name.get(&category_name).copied() {
+                                let entry = &mut categorized_rows[ix];
+                                entry.1.push(row);
+                                if entry.2.is_none() {
+                                    entry.2 = category_color;
+                                }
+                                entry.3 = entry.3 || category_default_collapsed;
+                                if category_order.unwrap_or(usize::MAX) < entry.4 {
+                                    entry.4 = category_order.unwrap_or(usize::MAX);
+                                }
+                            } else {
+                                let ix = categorized_rows.len();
+                                category_index_by_name.insert(category_name.clone(), ix);
+                                categorized_rows.push((
+                                    category_name,
+                                    vec![row],
+                                    category_color,
+                                    category_default_collapsed,
+                                    category_order.unwrap_or(usize::MAX),
+                                ));
                             }
-                            entry.2 = entry.2 || category_default_collapsed;
                         } else {
                             uncategorized_rows.push(row);
                         }
@@ -616,7 +632,8 @@ impl Render for ObjectTypeFieldsSection {
 
                 let mut rows = Vec::new();
                 rows.extend(uncategorized_rows);
-                for (category_name, (category_rows, category_color_hex, default_collapsed)) in
+                categorized_rows.sort_by_key(|(_, _, _, _, order)| *order);
+                for (category_name, category_rows, category_color_hex, default_collapsed, _) in
                     categorized_rows
                 {
                     let category_key = (class_name.to_string(), category_name.clone());
