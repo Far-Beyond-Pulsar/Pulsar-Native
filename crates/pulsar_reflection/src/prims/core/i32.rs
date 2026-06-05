@@ -2,6 +2,13 @@
 
 use crate::pulsar_type;
 
+#[pulsar_type(
+    serialize_json_with = serialize_i32_json,
+    deserialize_json_with = deserialize_i32_json,
+    editor = render_i32_editor
+)]
+type RegisteredI32 = i32;
+
 fn serialize_i32_json(value: &i32) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
 }
@@ -48,14 +55,6 @@ fn render_i32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gp
         ))
         .into_any_element()
 }
-
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_i32_json,
-    deserialize_json_with = deserialize_i32_json,
-    editor = render_i32_editor
-)]
-type RegisteredI32 = i32;
 
 #[cfg(test)]
 mod tests {

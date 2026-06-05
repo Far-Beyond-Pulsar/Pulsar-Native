@@ -2,6 +2,13 @@
 
 use crate::pulsar_type;
 
+#[pulsar_type(
+    serialize_json_with = serialize_bool_json,
+    deserialize_json_with = deserialize_bool_json,
+    editor = render_bool_editor
+)]
+type RegisteredBool = bool;
+
 fn serialize_bool_json(value: &bool) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
 }
@@ -46,14 +53,6 @@ fn render_bool_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> g
         )
         .into_any_element()
 }
-
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_bool_json,
-    deserialize_json_with = deserialize_bool_json,
-    editor = render_bool_editor
-)]
-type RegisteredBool = bool;
 
 #[cfg(test)]
 mod tests {

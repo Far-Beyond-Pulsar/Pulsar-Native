@@ -10,6 +10,7 @@ proc-macro = true
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
+owo-colors = "4"
 
 [lints]
 workspace = true

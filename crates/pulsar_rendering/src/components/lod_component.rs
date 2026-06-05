@@ -1,9 +1,7 @@
 //! Level of Detail (LOD) component for performance optimization
 
 use engine_class_derive::engine_class;
-use pulsar_reflection::{
-    ReflectError, ReflectResult, pulsar_type,
-};
+use pulsar_reflection::{ReflectError, ReflectResult, pulsar_type};
 use serde::{Deserialize, Serialize};
 
 /// LOD component for managing mesh detail based on distance
@@ -56,7 +54,6 @@ fn deserialize_lod_level_json(value: serde_json::Value) -> ReflectResult<LODLeve
 }
 
 #[pulsar_type(
-    primitive,
     serialize_json_with = serialize_lod_level_json,
     deserialize_json_with = deserialize_lod_level_json
 )]

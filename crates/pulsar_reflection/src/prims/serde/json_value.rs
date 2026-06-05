@@ -13,7 +13,6 @@ fn deserialize_json_value_json(
 }
 
 #[pulsar_type(
-    primitive,
     serialize_json_with = serialize_json_value_json,
     deserialize_json_with = deserialize_json_value_json
 )]

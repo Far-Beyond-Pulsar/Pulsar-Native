@@ -7593,6 +7593,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "owo-colors"
+version = "4.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d211803b9b6b570f68772237e415a029d5a50c65d382910b879fb19d3271f94d"
+
+[[package]]
 name = "page_size"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8812,6 +8818,7 @@ dependencies = [
 name = "pulsar_reflection_derive"
 version = "0.1.0"
 dependencies = [
+ "owo-colors",
  "proc-macro2",
  "quote",
  "syn 2.0.117",

@@ -1,6 +1,12 @@
 //! [f32; 4] primitive type implementation (Color)
-
 use crate::pulsar_type;
+
+#[pulsar_type(
+    serialize_json_with = serialize_color_json,
+    deserialize_json_with = deserialize_color_json,
+    editor = render_color_editor
+)]
+type RegisteredColor = [f32; 4];
 
 fn serialize_color_json(value: &[f32; 4]) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!([value[0], value[1], value[2], value[3]]))
@@ -61,14 +67,6 @@ fn render_color_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> 
         )
         .into_any_element()
 }
-
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_color_json,
-    deserialize_json_with = deserialize_color_json,
-    editor = render_color_editor
-)]
-type RegisteredColor = [f32; 4];
 
 #[cfg(test)]
 mod tests {

@@ -74,7 +74,6 @@ fn deserialize_collider_descriptor_json(
 }
 
 #[pulsar_type(
-    primitive,
     serialize_json_with = serialize_collider_descriptor_json,
     deserialize_json_with = deserialize_collider_descriptor_json
 )]
@@ -103,7 +102,6 @@ impl Default for ColliderShape {
 }
 
 #[pulsar_type(
-    primitive,
     serialize_json_with = serialize_collider_shape_json,
     deserialize_json_with = deserialize_collider_shape_json,
     editor = render_collider_shape_editor
