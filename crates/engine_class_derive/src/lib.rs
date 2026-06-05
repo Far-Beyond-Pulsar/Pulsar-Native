@@ -27,7 +27,10 @@ use syn::{
     punctuated::Punctuated,
 };
 
-#[proc_macro_derive(EngineClass, attributes(property, category, engine_class_category))]
+#[proc_macro_derive(
+    EngineClass,
+    attributes(property, category, engine_class_category, sub_props)
+)]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
@@ -48,40 +51,57 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         quote! { None }
     };
 
-    // Extract fields marked with #[property]
-    let (property_impls, property_fields): (Vec<_>, Vec<_>) = match &input.data {
+    // Extract direct #[property] fields and optional #[sub_props] flattening fields.
+    let (property_impls, property_fields, sub_props_fields): (Vec<_>, Vec<_>, Vec<_>) =
+        match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
                 let mut props = Vec::new();
+                let mut sub_props = Vec::new();
                 for field in &fields.named {
+                    let has_sub_props = has_sub_props_attr(field);
                     let property_attr = parse_property_attr(field);
-                    if !property_attr.is_property {
-                        continue;
+
+                    if property_attr.is_property && has_sub_props {
+                        return syn::Error::new_spanned(
+                            field,
+                            "field cannot use both #[property] and #[sub_props]",
+                        )
+                        .to_compile_error()
+                        .into();
                     }
 
-                    let category_decl = if let Some(cat) = property_attr.category.as_ref() {
-                        let Some(decl) = property_categories.iter().find(|d| d.name == *cat) else {
-                            return syn::Error::new_spanned(
-                                field,
-                                format!(
-                                    "property category '{}' is not declared; add #[category(\"{}\", ...)] on the struct",
-                                    cat, cat
-                                ),
-                            )
-                            .to_compile_error()
-                            .into();
+                    if property_attr.is_property {
+                        let category_decl = if let Some(cat) = property_attr.category.as_ref() {
+                            let Some(decl) = property_categories.iter().find(|d| d.name == *cat)
+                            else {
+                                return syn::Error::new_spanned(
+                                    field,
+                                    format!(
+                                        "property category '{}' is not declared; add #[category(\"{}\", ...)] on the struct",
+                                        cat, cat
+                                    ),
+                                )
+                                .to_compile_error()
+                                .into();
+                            };
+                            Some(decl)
+                        } else {
+                            None
                         };
-                        Some(decl)
-                    } else {
-                        None
-                    };
 
-                    props.push((
-                        generate_property_metadata(field, name, &property_attr, category_decl),
-                        field,
-                    ));
+                        props.push((
+                            generate_property_metadata(field, name, &property_attr, category_decl),
+                            field,
+                        ));
+                    }
+
+                    if has_sub_props {
+                        sub_props.push(field);
+                    }
                 }
-                props.into_iter().unzip()
+                let (impls, fields): (Vec<_>, Vec<_>) = props.into_iter().unzip();
+                (impls, fields, sub_props)
             }
             _ => {
                 return syn::Error::new_spanned(
@@ -92,15 +112,74 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                 .into();
             }
         },
-        _ => {
-            return syn::Error::new_spanned(&input, "EngineClass can only be derived for structs")
+            _ => {
+                return syn::Error::new_spanned(
+                    &input,
+                    "EngineClass can only be derived for structs",
+                )
                 .to_compile_error()
                 .into();
-        }
-    };
+            }
+        };
 
     // Generate auto-property methods (getters and setters)
     let property_method_items = generate_property_method_items(&property_fields, name);
+    let category_order_arms: Vec<_> = property_categories
+        .iter()
+        .map(|decl| {
+            let cat_name = &decl.name;
+            let order = decl.order;
+            quote! { Some(#cat_name) => Some(#order), }
+        })
+        .collect();
+    let sub_props_extenders: Vec<_> = sub_props_fields
+        .iter()
+        .map(|field| {
+            let field_name = field.ident.as_ref().unwrap();
+            quote! {
+                for nested_prop in self.#field_name.get_properties() {
+                    let pulsar_reflection::PropertyMetadata {
+                        name: nested_name,
+                        display_name,
+                        category,
+                        category_color,
+                        category_default_collapsed,
+                        category_order,
+                        type_info,
+                        getter: nested_getter,
+                        setter: nested_setter,
+                    } = nested_prop;
+
+                    let remapped_category_order = match category {
+                        #(#category_order_arms)*
+                        _ => category_order,
+                    };
+
+                    let getter = Box::new(move |obj: &dyn pulsar_reflection::EngineClass| -> Box<dyn std::any::Any> {
+                        let concrete = obj.as_any().downcast_ref::<#name>().unwrap();
+                        nested_getter(&concrete.#field_name as &dyn pulsar_reflection::EngineClass)
+                    });
+
+                    let setter = Box::new(move |obj: &mut dyn pulsar_reflection::EngineClass, value: Box<dyn std::any::Any>| {
+                        let concrete = obj.as_any_mut().downcast_mut::<#name>().unwrap();
+                        nested_setter(&mut concrete.#field_name as &mut dyn pulsar_reflection::EngineClass, value);
+                    });
+
+                    props.push(pulsar_reflection::PropertyMetadata {
+                        name: nested_name,
+                        display_name,
+                        category,
+                        category_color,
+                        category_default_collapsed,
+                        category_order: remapped_category_order,
+                        type_info,
+                        getter,
+                        setter,
+                    });
+                }
+            }
+        })
+        .collect();
 
     // Generate the trait implementation
     let generated = quote! {
@@ -110,9 +189,11 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
             }
 
             fn get_properties(&self) -> Vec<pulsar_reflection::PropertyMetadata> {
-                vec![
+                let mut props = vec![
                     #(#property_impls),*
-                ]
+                ];
+                #(#sub_props_extenders)*
+                props
             }
 
             fn get_methods() -> Vec<pulsar_reflection::MethodMetadata> {
@@ -460,6 +541,13 @@ fn has_derive(attrs: &[Attribute], trait_ident: &str) -> bool {
             })
             .unwrap_or(false)
     })
+}
+
+fn has_sub_props_attr(field: &Field) -> bool {
+    field
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("sub_props"))
 }
 
 #[derive(Default)]
