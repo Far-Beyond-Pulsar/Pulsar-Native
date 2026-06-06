@@ -1,0 +1,23 @@
+# Block direct std::fs usage — all filesystem access must go through engine_fs
+disallowed-methods = [
+    { path = "std::fs::read", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::read_to_string", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::write", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::create_dir", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::create_dir_all", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::remove_file", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::remove_dir", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::remove_dir_all", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::rename", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::copy", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::metadata", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::symlink_metadata", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::hard_link", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::read_dir", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::read_link", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::set_permissions", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::canonicalize", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::File::create", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::File::open", reason = "Use engine_fs or fs_err instead" },
+    { path = "std::fs::File::append", reason = "Use engine_fs or fs_err instead" },
+]
