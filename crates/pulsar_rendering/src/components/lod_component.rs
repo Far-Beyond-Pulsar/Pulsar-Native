@@ -29,7 +29,7 @@ pub struct LODComponent {
 }
 
 /// Single LOD level descriptor
-#[engine_class(default, clone, debug, serialize, deserialize)]
+#[engine_class(no_register, default, clone, debug, serialize, deserialize)]
 pub struct LODLevel {
     /// Distance from camera where this LOD becomes active
     #[property(min = 0.0, max = 10000.0, step = 1.0)]

@@ -2,7 +2,7 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Attenuation", category_color = "#6EC5FF")]
 pub struct AttenuationLightProps {
     #[property(min = 0.0, max = 5000.0, step = 1.0, category = "Attenuation")]

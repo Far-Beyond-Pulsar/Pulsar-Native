@@ -2,7 +2,7 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Color", category_color = "#FF8AAE")]
 pub struct ColorLightProps {
     #[property(category = "Color")]

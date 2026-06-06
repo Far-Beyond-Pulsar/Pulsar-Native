@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use super::super::IntensityUnits;
 
-#[engine_class(clone, debug, serialize, deserialize)]
+#[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Intensity", category_color = "#F59E0B")]
 pub struct IntensityLightProps {
     #[property(min = 0.0, max = 200000.0, step = 10.0, category = "Intensity")]
