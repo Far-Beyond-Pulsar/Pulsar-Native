@@ -1,3 +1,15 @@
+pub mod component_hierarchy;
+pub mod material_section;
+pub mod object_header_section;
+pub mod object_type_fields;
+pub mod transform_section;
+
+pub use component_hierarchy::ComponentHierarchyPanel;
+pub use material_section::MaterialSection;
+pub use object_header_section::ObjectHeaderSection;
+pub use object_type_fields::ObjectTypeFieldsSection;
+pub use transform_section::TransformSection;
+
 use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::collections::HashSet;
@@ -13,7 +25,7 @@ use ui_common::properties_inspector;
 
 use super::state::{LevelEditorState, Transform};
 use crate::level_editor::scene_database::ObjectType;
-use crate::level_editor::workspace_panels::PropertiesPanelWrapper;
+use crate::level_editor::workspace::panels::PropertiesPanelWrapper;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;

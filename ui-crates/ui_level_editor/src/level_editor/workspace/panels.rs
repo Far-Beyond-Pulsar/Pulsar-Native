@@ -1,6 +1,6 @@
 //! Workspace panels for Level Editor
 
-use super::ui::{
+use crate::level_editor::ui::{
     HierarchyPanel, LevelEditorState, ObjectHeaderSection, ObjectTypeFieldsSection,
     PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };

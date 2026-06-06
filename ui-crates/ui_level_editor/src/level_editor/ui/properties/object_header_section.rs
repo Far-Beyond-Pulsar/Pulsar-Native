@@ -6,7 +6,7 @@
 use gpui::{prelude::*, *};
 use ui::{h_flex, v_flex, ActiveTheme};
 
-use super::bound_field::{BoolBoundField, StringBoundField};
+use super::super::bindings::bound_field::{BoolBoundField, StringBoundField};
 use crate::level_editor::scene_database::SceneDatabase;
 
 /// Object header section showing name, visibility, and locked status
@@ -24,7 +24,7 @@ impl ObjectHeaderSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::field_bindings::{BoolFieldBinding, StringFieldBinding};
+        use super::super::bindings::field_bindings::{BoolFieldBinding, StringFieldBinding};
 
         // Name field
         let name_field = cx.new(|cx| {

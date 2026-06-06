@@ -1,3 +1,5 @@
+pub mod tree_item_renderer;
+
 use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use gpui::{prelude::*, *};

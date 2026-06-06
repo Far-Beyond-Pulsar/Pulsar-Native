@@ -11,16 +11,20 @@
 /// - Asset Browser: Browse and preview project assets
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
-pub mod commands;
-mod scene_database;
+pub mod core;
+pub mod workspace;
 mod ui;
-mod workspace_panels;
-mod world_settings_data;
 
-pub use commands::{execute_command, CommandResult, SceneCommand};
-pub use scene_database::SceneDatabase;
-pub use scene_database::SceneObjectData;
+// Module aliases so existing `crate::level_editor::X::Y` paths still compile
+pub use core::commands;
+pub use core::scene_database;
+pub use core::world_settings_data;
+pub use workspace::panels as workspace_panels;
+
+// Public API
+pub use core::commands::{execute_command, CommandResult, SceneCommand};
+pub use core::scene_database::{SceneDatabase, SceneObjectData};
 pub use ui::LevelEditorPanel;
 pub use ui::LevelEditorState;
-pub use workspace_panels::*;
-pub use world_settings_data::*;
+pub use workspace::panels::*;
+pub use core::world_settings_data::*;

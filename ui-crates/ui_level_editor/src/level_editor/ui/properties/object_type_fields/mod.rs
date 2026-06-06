@@ -20,8 +20,8 @@ use ui::button::ButtonVariants as _;
 use ui::{v_flex, ActiveTheme};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
-use super::add_component_dialog::AddComponentDialog;
-use super::state::LevelEditorState;
+use super::super::dialogs::add_component_dialog::AddComponentDialog;
+use super::super::state::LevelEditorState;
 use crate::level_editor::scene_database::SceneDatabase;
 
 mod category_section;
@@ -63,7 +63,7 @@ impl ObjectTypeFieldsSection {
         // Refresh the inspector whenever a component is added.
         cx.subscribe(
             &add_component_dialog,
-            |_this, _dialog, _event: &super::add_component_dialog::ComponentAddedEvent, cx| {
+            |_this, _dialog, _event: &super::super::dialogs::add_component_dialog::ComponentAddedEvent, cx| {
                 cx.notify();
             },
         )

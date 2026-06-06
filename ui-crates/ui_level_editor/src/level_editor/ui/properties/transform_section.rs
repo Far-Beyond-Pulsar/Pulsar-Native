@@ -6,7 +6,7 @@
 use gpui::{prelude::*, *};
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
-use super::bound_field::F32BoundField;
+use super::super::bindings::bound_field::F32BoundField;
 use crate::level_editor::scene_database::SceneDatabase;
 
 /// Transform section component for the properties panel
@@ -42,7 +42,7 @@ impl TransformSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::field_bindings::F32FieldBinding;
+        use super::super::bindings::field_bindings::F32FieldBinding;
 
         // Position fields
         let position_x = cx.new(|cx| {

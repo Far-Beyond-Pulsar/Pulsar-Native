@@ -20,7 +20,7 @@ use ui::{
     v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
 };
 
-use super::state::LevelEditorState;
+use super::super::state::LevelEditorState;
 use crate::level_editor::world_settings_data::WorldSettingsData;
 use crate::level_editor::WorldSettingsPanel;
 

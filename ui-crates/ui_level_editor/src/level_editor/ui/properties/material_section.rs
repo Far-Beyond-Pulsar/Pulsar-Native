@@ -7,7 +7,7 @@ use gpui::{prelude::*, *};
 use serde_json::Value;
 use ui::{h_flex, v_flex, ActiveTheme, IconName, Sizable};
 
-use super::bound_field::F32BoundField;
+use super::super::bindings::bound_field::F32BoundField;
 use crate::level_editor::scene_database::SceneDatabase;
 
 /// Material section for editing material component properties
@@ -92,7 +92,7 @@ impl MaterialSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        use super::field_bindings::F32FieldBinding;
+        use super::super::bindings::field_bindings::F32FieldBinding;
 
         // Color R
         let color_r = cx.new(|cx| {
