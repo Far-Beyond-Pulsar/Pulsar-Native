@@ -90,12 +90,13 @@ pub fn process_abort() -> ! {
 /// # Notes
 /// On Windows, the command is executed using `cmd /C`. On Unix-like systems, it uses `sh -c`.
 /// Use with caution, as executing arbitrary shell commands can be a security risk.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Execute
 /// Executes a shell command and returns the standard output.
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute(command: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {
@@ -129,12 +130,13 @@ pub fn shell_execute(command: String) -> Result<String, String> {
 ///
 /// # Notes
 /// The command runs asynchronously; you are responsible for managing the process lifecycle.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Execute Async
 /// Executes a shell command asynchronously and returns the process ID.
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute_async(command: String) -> Result<u32, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let child = if cfg!(target_os = "windows") {
@@ -163,12 +165,13 @@ pub fn shell_execute_async(command: String) -> Result<u32, String> {
 ///
 /// # Notes
 /// This implementation uses the system shell to pipe commands together.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Pipe
 /// Pipes the output of one command to another command.
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::{Command, Stdio};
 
     // First command
@@ -230,12 +233,13 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
 ///
 /// # Notes
 /// The timeout is enforced by sleeping and checking process status.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Timeout
 /// Executes a command with a timeout (in seconds).
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
@@ -307,12 +311,13 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
 ///
 /// # Notes
 /// The exit code is returned as an integer. If the command does not return an exit code, -1 is used.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Exit Code
 /// Executes a command and returns only the exit code.
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_exit_code(command: String) -> Result<i32, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let status = if cfg!(target_os = "windows") {
@@ -341,12 +346,13 @@ pub fn shell_exit_code(command: String) -> Result<i32, String> {
 ///
 /// # Notes
 /// On Windows, this function uses the `where` command; on Unix-like systems, it uses `which`.
-/// Gated behind the `unsafe-process` feature flag — disabled by default.
 /// # Shell Which
 /// Finds the path to an executable command in the system PATH.
-#[cfg(feature = "unsafe-process")]
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_which(command: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {

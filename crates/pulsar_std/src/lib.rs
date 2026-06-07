@@ -7,6 +7,22 @@
 //! All nodes are defined as Rust functions with the `#[blueprint]` attribute macro.
 //!
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Runtime flag for allowing unsafe shell process execution.
+/// Set via [`set_unsafe_process_allowed`]; checked by shell blueprint nodes.
+static UNSAFE_PROCESS_ALLOWED: AtomicBool = AtomicBool::new(false);
+
+/// Enable or disable shell process blueprint nodes at runtime.
+pub fn set_unsafe_process_allowed(allowed: bool) {
+    UNSAFE_PROCESS_ALLOWED.store(allowed, Ordering::Relaxed);
+}
+
+/// Returns `true` if shell process blueprint nodes are currently allowed.
+pub fn unsafe_process_allowed() -> bool {
+    UNSAFE_PROCESS_ALLOWED.load(Ordering::Relaxed)
+}
+
 // Registry infrastructure
 pub mod registry;
 pub mod type_constructors;
