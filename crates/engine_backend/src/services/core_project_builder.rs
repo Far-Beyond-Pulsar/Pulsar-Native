@@ -336,8 +336,11 @@ struct LevelConfig {
 /// 1. Spawns native actor classes declared in `Pulsar/level.json` into the
 ///    `TickLoop`'s `ActorRegistry` and `World` so they receive `tick` every frame.
 /// 2. Scans `src/classes/*/events/.build/bytecode.json` for VM-compiled blueprints,
-///    loads them into a `BlueprintDispatcher`, dispatches `begin_play`, and wires
-///    the dispatcher into the `TickLoop` so `tick` events are driven each frame.
+///    loads them into a `BlueprintDispatcher`, and wires the dispatcher into the
+///    `TickLoop`. `setup()` runs before the primary window/scene exist, so
+///    `begin_play`/`end_play` are deliberately NOT dispatched here — the
+///    `TickLoop` fires `begin_play` on its first tick (once the window is open)
+///    and `end_play` on shutdown, the same lifecycle ordering native actors get.
 ///
 /// The file is regenerated whenever the Pulsar editor compiles a blueprint.
 /// Remove the `@generated-by-pulsar-engine_main` marker to opt out of regeneration.
@@ -397,7 +400,7 @@ fn ensure_engine_main(project_root: &Path, src_dir: &Path) -> Result<(), String>
 //! VM blueprints are auto-discovered from `src/classes/*/events/.build/bytecode.json`.
 
 use pulsar_game::prelude::*;
-use pulsar_game::blueprint_runtime::{{BlueprintDispatcher, BlueprintEvent}};
+use pulsar_game::blueprint_runtime::BlueprintDispatcher;
 use std::sync::{{Arc, Mutex}};
 
 /// Set up the level: spawn native actors and load VM-compiled blueprints.
@@ -449,14 +452,11 @@ pub fn setup(game: &mut TickLoop) -> Result<(), String> {{
 
                     match dispatcher.register_instance(object_id.clone(), &build_path, None) {{
                         Ok(()) => {{
-                            // Fire begin_play immediately so the blueprint can initialise state.
-                            if let Err(e) = dispatcher.dispatch_event(
-                                BlueprintEvent::BeginPlay {{ object_id: object_id.clone() }}
-                            ) {{
-                                tracing::warn!(
-                                    "begin_play failed for VM blueprint '{{class_name}}': {{e}}"
-                                );
-                            }}
+                            // `begin_play` is intentionally NOT fired here — `setup()` runs
+                            // before the primary window/GPU surface/scene exist. The
+                            // TickLoop dispatches it on the first tick (after the window is
+                            // open), so blueprint begin_play logic sees a ready world —
+                            // the same ordering native actors get from `ActorRegistry`.
                             vm_loaded += 1;
                             tracing::info!("VM blueprint loaded: {{class_name}} → {{object_id}}");
                         }}
