@@ -32,6 +32,8 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
+use std::hash::DefaultHasher;
+
 // --- Global Allocator Setup ---
 use gpui::AppContext;
 use ui_log_viewer::TrackingAllocator;
