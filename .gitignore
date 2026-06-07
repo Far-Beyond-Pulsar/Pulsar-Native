@@ -33,3 +33,4 @@ crates/ui/src/dropdown/searchable_list.rs
 docs/AGENT_CHAT_PROVIDER_PLAN.md
 *.bak
 blueprint_graph_debug.json
+.env

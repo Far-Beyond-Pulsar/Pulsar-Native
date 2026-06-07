@@ -100,7 +100,7 @@ impl BlueprintExecutor {
             .map_err(|e| ExecutorError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         // Load native library
-        let native_executor = NativeExecutor::load(&temp_lib.path)?;
+        let native_executor = NativeExecutor::load(&temp_lib.path, None)?;
 
         Ok(Self {
             native_executor,

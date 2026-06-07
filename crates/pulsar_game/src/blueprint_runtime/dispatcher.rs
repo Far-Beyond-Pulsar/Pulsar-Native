@@ -84,6 +84,7 @@ impl BlueprintDispatcher {
         let instance =
             BlueprintInstance::new_bytecode(object_id.clone(), &loaded, variable_overrides);
         self.instances.insert(object_id.clone(), instance);
+        tracing::info!("Queued '{object_id}' for deferred begin_play");
         self.pending_begin_play.push(object_id);
         Ok(())
     }
@@ -101,9 +102,11 @@ impl BlueprintDispatcher {
             return;
         }
         let pending = std::mem::take(&mut self.pending_begin_play);
+        tracing::info!("Dispatching begin_play to {} VM blueprint instance(s)", pending.len());
         for object_id in pending {
-            if let Err(e) = self.execute_event(&object_id, "begin_play") {
-                tracing::warn!("begin_play failed for VM blueprint instance '{object_id}': {e}");
+            match self.execute_event(&object_id, "begin_play") {
+                Ok(()) => tracing::info!("begin_play executed for VM blueprint instance '{object_id}'"),
+                Err(e) => tracing::warn!("begin_play failed for VM blueprint instance '{object_id}': {e}"),
             }
         }
     }
