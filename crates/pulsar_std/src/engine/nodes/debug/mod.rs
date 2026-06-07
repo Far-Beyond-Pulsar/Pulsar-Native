@@ -68,7 +68,7 @@ fn sanitize_string(s: String) -> String {
 /// Prints a string to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_string(message: &str) {
-    tracing::debug!("[DEBUG] {}", message);
+    println!("[DEBUG] {}", message);
 }
 
 /// Print a number to the console for debugging.
@@ -94,7 +94,7 @@ pub fn print_string(message: &str) {
 /// Prints a number to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_number(value: f64) {
-    tracing::debug!("[DEBUG] Number: {}", value);
+    println!("[DEBUG] Number: {}", value);
 }
 
 /// Print a boolean value to the console for debugging.
@@ -124,7 +124,7 @@ pub fn print_number(value: f64) {
 /// Prints a boolean value to the console with [DEBUG] prefix.
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn print_bool(value: bool) {
-    tracing::debug!("[DEBUG] Boolean: {}", value);
+    println!("[DEBUG] Boolean: {}", value);
 }
 
 /// Print a message to the console without any prefix.
@@ -151,7 +151,7 @@ pub fn print_bool(value: bool) {
 #[blueprint(type: NodeTypes::fn_, category: "Debug", color: "#7ED321")]
 pub fn println(message: String) {
     let message = sanitize_string(message);
-    tracing::debug!("{}", message);
+    println!("{}", message);
 }
 
 /// Print a formatted message with placeholder replacements.
@@ -191,7 +191,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
         .replace("{0}", &value0)
         .replace("{1}", &value1)
         .replace("{2}", &value2);
-    tracing::debug!("[DEBUG] {}", message);
+    println!("[DEBUG] {}", message);
 }
 
 /// Print a message only if a condition is true.
@@ -221,7 +221,7 @@ pub fn print_formatted(format: String, value0: String, value1: String, value2: S
 pub fn conditional_print(condition: bool, message: String) {
     let message = sanitize_string(message);
     if condition {
-        tracing::debug!("[CONDITIONAL] {}", message);
+        println!("[CONDITIONAL] {}", message);
     }
 }
 

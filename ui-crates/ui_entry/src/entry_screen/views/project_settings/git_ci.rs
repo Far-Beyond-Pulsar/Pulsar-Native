@@ -2,10 +2,9 @@ use super::{helpers::render_info_section, types::ProjectSettings};
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     divider::Divider,
-    h_flex, v_flex,
+    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 pub fn render_git_ci_tab(
@@ -56,13 +55,11 @@ pub fn render_git_ci_tab(
                         .child("Detected Workflows"),
                 )
                 .children(if settings.workflow_files.is_empty() {
-                    vec![
-                        div()
-                            .text_sm()
-                            .text_color(theme.muted_foreground)
-                            .child("No workflow files found in .github/workflows/")
-                            .into_any_element(),
-                    ]
+                    vec![div()
+                        .text_sm()
+                        .text_color(theme.muted_foreground)
+                        .child("No workflow files found in .github/workflows/")
+                        .into_any_element()]
                 } else {
                     settings
                         .workflow_files

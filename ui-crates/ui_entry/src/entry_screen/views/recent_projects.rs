@@ -1,16 +1,15 @@
 use crate::entry_screen::{
-    EntryScreen, GitFetchStatus, recent_projects::RecentProjectsList,
-    virtual_grid::render_card_grid,
+    recent_projects::RecentProjectsList, virtual_grid::render_card_grid, EntryScreen,
+    GitFetchStatus,
 };
 use gpui::{prelude::*, *};
 use ui::Sizable;
 use ui::{
-    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     h_flex,
     spinner::Spinner,
     tag::Tag,
-    v_flex,
+    v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 pub fn render_recent_projects(

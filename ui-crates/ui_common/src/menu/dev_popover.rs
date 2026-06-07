@@ -266,7 +266,25 @@ impl Render for DevPopover {
                     mu_active = true;
                     mu_is_connected = mu.is_connected();
                     mu_status = match &mu.status {
-                        engine_state::MultiuserStatus::Connected => "Connected".to_string(),
+                        engine_state::MultiuserStatus::Connected { relay_mode } => {
+                            let mode_str = relay_mode
+                                .as_ref()
+                                .map(|m| match m {
+                                    engine_state::RelayConnectionMode::DirectP2P => " (P2P)",
+                                    engine_state::RelayConnectionMode::BinaryProxy => " (Proxy)",
+                                    engine_state::RelayConnectionMode::JsonFallback => " (JSON)",
+                                })
+                                .unwrap_or("");
+                            format!("Connected{}", mode_str)
+                        }
+                        engine_state::MultiuserStatus::DegradedMode { relay_mode } => {
+                            let mode_str = match relay_mode {
+                                engine_state::RelayConnectionMode::BinaryProxy => "Proxy",
+                                engine_state::RelayConnectionMode::JsonFallback => "JSON",
+                                engine_state::RelayConnectionMode::DirectP2P => "P2P",
+                            };
+                            format!("Degraded ({})", mode_str)
+                        }
                         engine_state::MultiuserStatus::Connecting => "Connecting…".to_string(),
                         engine_state::MultiuserStatus::Disconnected => "Disconnected".to_string(),
                         engine_state::MultiuserStatus::Error(e) => format!("Error: {}", e),

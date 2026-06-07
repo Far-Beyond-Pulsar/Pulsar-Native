@@ -9,15 +9,16 @@ use gpui::AppContext;
 use parking_lot::RwLock;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 use type_db::TypeDatabase;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
 
 use crate::DiscordPresence;
 
-use gpui::{IntoElement, Render};
+use gpui::Render;
 
 use window_manager::WindowManager;
 
@@ -196,15 +197,6 @@ pub struct EngineContext {
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 }
 
-/// Wrapper to convert AnyView to a Render-implementing type
-struct AnyViewWrapper(gpui::AnyView);
-
-impl Render for AnyViewWrapper {
-    fn render(&mut self, _: &mut gpui::Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-        self.0.clone()
-    }
-}
-
 impl EngineContext {
     /// Create a new engine context
     pub fn new() -> Self {
@@ -258,33 +250,6 @@ impl EngineContext {
         use gpui::UpdateGlobal;
         WindowManager::update_global(cx, |wm, cx| {
             wm.create_window(window_type, options, content_builder, cx)
-        })
-    }
-
-    /// Legacy method: Create a window through the window manager using AnyView.
-    /// when available or falls back to raw `cx.open_window`.
-    pub fn create_window_safe<F>(
-        &self,
-        window_type: WindowRequest,
-        options: gpui::WindowOptions,
-        content_builder: F,
-        cx: &mut gpui::App,
-    ) -> Result<(WindowId, gpui::AnyWindowHandle), window_manager::WindowError>
-    where
-        F: FnOnce(&mut gpui::Window, &mut gpui::App) -> gpui::AnyView + Send + 'static,
-    {
-        use gpui::UpdateGlobal;
-        WindowManager::update_global(cx, |wm, cx| {
-            // Wrap the AnyView builder to work with the generic create_window
-            wm.create_window(
-                window_type,
-                options,
-                move |window: &mut gpui::Window, cx: &mut gpui::App| {
-                    let view = content_builder(window, cx);
-                    cx.new(|_| AnyViewWrapper(view))
-                },
-                cx,
-            )
         })
     }
 
@@ -371,6 +336,7 @@ impl EngineContext {
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
         *self.multiuser.write() = Some(context);
+        emit_multiuser_update();
     }
 
     /// Mutate multiuser context in place if active.
@@ -383,6 +349,7 @@ impl EngineContext {
         let mut guard = self.multiuser.write();
         if let Some(ctx) = guard.as_mut() {
             update(ctx);
+            emit_multiuser_update();
             true
         } else {
             false
@@ -394,6 +361,7 @@ impl EngineContext {
     /// Call this when disconnecting from a session.
     pub fn clear_multiuser(&self) {
         *self.multiuser.write() = None;
+        emit_multiuser_update();
     }
 
     /// Get multiuser session context (if active)
@@ -453,6 +421,11 @@ impl EngineContext {
         let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
     }
 
+    /// Notify listeners that the multiuser snapshot changed.
+    pub fn notify_multiuser_changed(&self) {
+        emit_multiuser_update();
+    }
+
     /// Set as global instance (for GPUI views that need global access)
     pub fn set_global(self) {
         GLOBAL_CONTEXT.set(self);
@@ -470,8 +443,34 @@ impl Default for EngineContext {
     }
 }
 
-use std::sync::OnceLock;
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
+static MULTIUSER_UPDATE_BUS: OnceLock<(
+    smol::channel::Sender<()>,
+    Mutex<Option<smol::channel::Receiver<()>>>,
+)> = OnceLock::new();
+
+fn multiuser_update_bus() -> &'static (
+    smol::channel::Sender<()>,
+    Mutex<Option<smol::channel::Receiver<()>>>,
+) {
+    MULTIUSER_UPDATE_BUS.get_or_init(|| {
+        let (tx, rx) = smol::channel::unbounded();
+        (tx, Mutex::new(Some(rx)))
+    })
+}
+
+pub fn subscribe_multiuser_updates() -> smol::channel::Receiver<()> {
+    multiuser_update_bus()
+        .1
+        .lock()
+        .expect("multiuser update bus poisoned")
+        .take()
+        .expect("multiuser updates already subscribed")
+}
+
+fn emit_multiuser_update() {
+    let _ = multiuser_update_bus().0.try_send(());
+}
 
 /// Migration helpers for transitioning from EngineState metadata to EngineContext
 ///

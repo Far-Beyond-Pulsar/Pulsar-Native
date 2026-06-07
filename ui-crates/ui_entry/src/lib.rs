@@ -78,20 +78,22 @@ pub fn create_entry_component(
                 let on_fab2 = on_fab_oobe.clone();
                 let ec2 = ec_oobe.clone();
 
-                let opts = gpui::WindowOptions {
-                    titlebar: None,
-                    window_decorations: Some(gpui::WindowDecorations::Client),
-                    window_min_size: Some(gpui::Size {
-                        width: gpui::px(600.0),
-                        height: gpui::px(400.0),
-                    }),
-                    ..Default::default()
-                };
-
-                let result = cx.open_window(opts, move |window, cx| {
-                    tracing::debug!("✅ [OOBE] Entry window opened, building component");
-                    create_entry_component(window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2)
-                });
+                use gpui::UpdateGlobal as _;
+                let result = window_manager::WindowManager::update_global(cx, |wm, cx| {
+                    wm.create_window(
+                        window_manager::WindowRequest::Entry,
+                        window_manager::WindowConfig::entry(),
+                        move |window, cx| {
+                            tracing::debug!("✅ [OOBE] Entry window opened, building component");
+                            create_entry_component(
+                                window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2,
+                            )
+                        },
+                        cx,
+                    )
+                })
+                .map(|_| ())
+                .map_err(|e| format!("{:?}", e));
                 tracing::debug!("✅ [OOBE] open_window result: {:?}", result.is_ok());
                 // The OOBE window closes itself via should_close flag in render()
             },

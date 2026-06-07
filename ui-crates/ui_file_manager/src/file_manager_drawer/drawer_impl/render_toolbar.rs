@@ -126,6 +126,7 @@ impl FileManagerDrawer {
                                 if let Some(ref path) = drawer.project_path {
                                     drawer.folder_tree = FolderNode::from_path(path);
                                 }
+                                drawer.mark_directory_cache_dirty();
                                 cx.notify();
                             }))
                     )

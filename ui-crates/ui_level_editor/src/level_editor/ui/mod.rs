@@ -1,32 +1,22 @@
 mod actions;
-pub mod add_component_dialog;
-pub mod add_object_dialog;
-mod bound_field;
-mod component_hierarchy;
-mod field_bindings;
+pub mod bindings;
+pub mod dialogs;
 pub(crate) mod hierarchy;
-mod material_section;
-mod object_header_section;
-mod object_type_fields_section;
 mod panel;
-mod properties_panel; // Old properties panel (to be integrated)
+mod properties;
 mod state;
 mod toolbar;
-mod transform_section;
-mod tree_item_renderer;
 mod viewport;
 mod world_settings;
-mod world_settings_replicated;
 
-pub use component_hierarchy::ComponentHierarchyPanel;
 pub use hierarchy::HierarchyPanel;
-pub use object_header_section::ObjectHeaderSection;
-pub use object_type_fields_section::ObjectTypeFieldsSection;
 pub use panel::LevelEditorPanel;
-pub use properties_panel::PropertiesPanel;
+pub use properties::{
+    ComponentHierarchyPanel, MaterialSection, ObjectHeaderSection, ObjectTypeFieldsSection,
+    PropertiesPanel, TransformSection,
+};
 pub use state::*;
 pub use toolbar::ToolbarPanel;
-pub use transform_section::TransformSection;
 pub use viewport::ViewportPanel;
-pub use world_settings::WorldSettings;
-pub use world_settings_replicated::WorldSettingsReplicated;
+pub use world_settings::{WorldSettings, WorldSettingsReplicated};
+pub use dialogs::*;

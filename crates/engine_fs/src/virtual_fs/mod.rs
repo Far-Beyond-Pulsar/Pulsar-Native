@@ -11,6 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, OnceLock};
 
 use crate::providers::{FsEntry, FsMetadata, FsProvider, LocalFsProvider, ManifestEntry};
+use crate::{events, FsChangeKind};
 
 pub mod path_utils;
 
@@ -66,22 +67,39 @@ pub fn read_file(path: &Path) -> Result<Vec<u8>> {
 
 /// Overwrite (or create) a file with `content`.
 pub fn write_file(path: &Path, content: &[u8]) -> Result<()> {
-    global().read().write_file(path, content)
+    let result = global().read().write_file(path, content);
+    if result.is_ok() {
+        events::emit(path.to_path_buf(), FsChangeKind::Modified);
+    }
+    result
 }
 
 /// Create a new file with `content`, failing if it already exists.
 pub fn create_file(path: &Path, content: &[u8]) -> Result<()> {
-    global().read().create_file(path, content)
+    let result = global().read().create_file(path, content);
+    if result.is_ok() {
+        events::emit(path.to_path_buf(), FsChangeKind::Created);
+    }
+    result
 }
 
 /// Delete a file or recursively remove a directory.
 pub fn delete_path(path: &Path) -> Result<()> {
-    global().read().delete_path(path)
+    let result = global().read().delete_path(path);
+    if result.is_ok() {
+        events::emit(path.to_path_buf(), FsChangeKind::Deleted);
+    }
+    result
 }
 
 /// Rename / move a path.
 pub fn rename(from: &Path, to: &Path) -> Result<()> {
-    global().read().rename(from, to)
+    let result = global().read().rename(from, to);
+    if result.is_ok() {
+        events::emit(from.to_path_buf(), FsChangeKind::Deleted);
+        events::emit(to.to_path_buf(), FsChangeKind::Created);
+    }
+    result
 }
 
 /// List the immediate children of a directory.
@@ -91,7 +109,11 @@ pub fn list_dir(path: &Path) -> Result<Vec<FsEntry>> {
 
 /// Recursively create a directory and all missing parents.
 pub fn create_dir_all(path: &Path) -> Result<()> {
-    global().read().create_dir_all(path)
+    let result = global().read().create_dir_all(path);
+    if result.is_ok() {
+        events::emit(path.to_path_buf(), FsChangeKind::Created);
+    }
+    result
 }
 
 /// Return `true` if `path` exists.

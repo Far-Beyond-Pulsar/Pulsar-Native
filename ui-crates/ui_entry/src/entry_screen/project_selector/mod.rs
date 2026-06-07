@@ -1,9 +1,8 @@
 use gpui::*;
 use std::path::PathBuf;
 use ui::{
-    ActiveTheme as _, StyledExt,
     button::{Button, ButtonVariants as _},
-    v_flex,
+    v_flex, ActiveTheme as _, StyledExt,
 };
 
 pub struct ProjectSelector {

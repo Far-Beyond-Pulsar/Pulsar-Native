@@ -141,14 +141,7 @@ impl MultiplayerWindow {
                                     .read(cx)
                                     .text()
                                     .to_string()
-                                    .is_empty()
-                                    || self.session_id_input.read(cx).text().to_string().is_empty()
-                                    || self
-                                        .session_password_input
-                                        .read(cx)
-                                        .text()
-                                        .to_string()
-                                        .is_empty(),
+                                    .is_empty(),
                             )
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.join_session(window, cx);
@@ -289,26 +282,16 @@ impl MultiplayerWindow {
                             .child("PASSWORD"),
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .text_sm()
-                                    .text_color(cx.theme().foreground)
-                                    .child(join_token.clone()),
-                            )
-                            .child(
-                                Clipboard::new("copy-password")
-                                    .value_fn({
-                                        let token = join_token.clone();
-                                        move |_, _| SharedString::from(token.clone())
-                                    })
-                                    .on_copied(|_, _window, _cx| {
-                                        tracing::debug!("Password copied to clipboard");
-                                    }),
-                            ),
+                        h_flex().gap_2().items_center().child(
+                            Clipboard::new("copy-password")
+                                .value_fn({
+                                    let token = join_token.clone();
+                                    move |_, _| SharedString::from(token.clone())
+                                })
+                                .on_copied(|_, _window, _cx| {
+                                    tracing::debug!("Password copied to clipboard");
+                                }),
+                        ),
                     ),
             )
             .child(
@@ -329,47 +312,30 @@ impl MultiplayerWindow {
                     ),
             )
             .child(
-                // Share join command with copy button
+                // Invite copy button
                 v_flex()
                     .gap_2()
                     .child(
                         div()
                             .text_xs()
                             .text_color(cx.theme().muted_foreground)
-                            .child("SHARE WITH TEAMMATES"),
+                            .child("INVITE"),
                     )
                     .child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .px_2()
-                                    .py_1()
-                                    .rounded(px(4.))
-                                    .bg(cx.theme().secondary)
-                                    .text_xs()
-                                    .font_family("monospace")
-                                    .text_color(cx.theme().foreground)
-                                    .child(format!("Join: {} / {}", session_id, join_token)),
-                            )
-                            .child(
-                                Clipboard::new("copy-join-command")
-                                    .value_fn({
-                                        let id = session_id.clone();
-                                        let token = join_token.clone();
-                                        move |_, _| {
-                                            SharedString::from(format!(
-                                                "Session: {}\nPassword: {}",
-                                                id, token
-                                            ))
-                                        }
-                                    })
-                                    .on_copied(|_, _window, _cx| {
-                                        tracing::debug!("Join credentials copied to clipboard");
-                                    }),
-                            ),
+                        Clipboard::new("copy-join-command")
+                            .value_fn({
+                                let id = session_id.clone();
+                                let token = join_token.clone();
+                                move |_, _| {
+                                    SharedString::from(format!(
+                                        "Session: {}\nPassword: {}",
+                                        id, token
+                                    ))
+                                }
+                            })
+                            .on_copied(|_, _window, _cx| {
+                                tracing::debug!("Join credentials copied to clipboard");
+                            }),
                     ),
             )
             .child(div().h(px(1.)).w_full().bg(cx.theme().border))

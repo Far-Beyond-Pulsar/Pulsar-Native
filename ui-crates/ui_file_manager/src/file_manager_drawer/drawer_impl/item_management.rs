@@ -12,6 +12,7 @@ impl FileManagerDrawer {
                 return;
             }
             self.renaming_item = Some(new_path);
+            self.mark_directory_cache_dirty();
             cx.notify();
         }
     }
@@ -29,26 +30,80 @@ impl FileManagerDrawer {
                 return;
             }
             self.renaming_item = Some(new_path);
+            self.mark_directory_cache_dirty();
             cx.notify();
         }
     }
 
-    pub fn get_filtered_items(&self) -> Vec<FileItem> {
-        let Some(ref folder) = self.selected_folder else {
+    pub fn get_filtered_items(&mut self) -> Vec<FileItem> {
+        let Some(folder) = self.selected_folder.clone() else {
             return Vec::new();
         };
 
-        // List directory — either locally or remotely depending on the active provider.
+        let mut items = self.cached_items_for_folder(&folder);
+
+        items.retain(|item| {
+            if !self.show_hidden_files && item.name.starts_with('.') {
+                return false;
+            }
+            if !self.file_filter_query.is_empty() {
+                item.name
+                    .to_lowercase()
+                    .contains(&self.file_filter_query.to_lowercase())
+            } else {
+                true
+            }
+        });
+
+        // Sort items
+        items.sort_by(|a, b| {
+            let cmp = match self.sort_by {
+                SortBy::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+                SortBy::Modified => a.modified.cmp(&b.modified),
+                SortBy::Size => a.size.cmp(&b.size),
+                SortBy::Type => a.display_name().cmp(b.display_name()),
+            };
+
+            match self.sort_order {
+                SortOrder::Ascending => cmp,
+                SortOrder::Descending => cmp.reverse(),
+            }
+        });
+
+        // Folders first
+        items.sort_by_key(|item| !item.is_folder);
+
+        items
+    }
+
+    pub fn mark_directory_cache_dirty(&mut self) {
+        self.directory_cache_dirty = true;
+    }
+
+    fn cached_items_for_folder(&mut self, folder: &Path) -> Vec<FileItem> {
+        let needs_refresh = self
+            .directory_cache
+            .as_ref()
+            .map(|(cached_folder, _)| cached_folder != folder)
+            .unwrap_or(true)
+            || self.directory_cache_dirty;
+
+        if !needs_refresh {
+            if let Some((_, items)) = &self.directory_cache {
+                return items.clone();
+            }
+        }
+
+        let items = self.read_items_for_folder(folder);
+        self.directory_cache = Some((folder.to_path_buf(), items.clone()));
+        self.directory_cache_dirty = false;
+        items
+    }
+
+    fn read_items_for_folder(&self, folder: &Path) -> Vec<FileItem> {
         let remote = engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(folder);
 
-        let mut items: Vec<FileItem> = if remote {
-            // ── Remote path ──────────────────────────────────────────────────
-            // Build FileItem objects directly from the FsEntry data returned by
-            // list_dir.  This avoids N+1 blocking HTTP /stat calls that would
-            // stall the UI thread for every visible file.
-            //
-            // Use string concatenation for path construction (never PathBuf::join)
-            // so that Windows doesn't insert backslashes into cloud+pulsar:// URIs.
+        let items: Vec<FileItem> = if remote {
             let folder_s = folder.to_string_lossy().replace('\\', "/");
             let folder_s = folder_s.trim_end_matches('/');
 
@@ -60,21 +115,8 @@ impl FileManagerDrawer {
                         if name.is_empty() {
                             return None;
                         }
-                        // Hidden-file filter.
-                        if !self.show_hidden_files && name.starts_with('.') {
-                            return None;
-                        }
-                        // Search filter.
-                        if !self.file_filter_query.is_empty()
-                            && !name.to_lowercase().contains(&self.file_filter_query.to_lowercase())
-                        {
-                            return None;
-                        }
 
-                        // Forward-slash path — safe on every OS.
                         let path = PathBuf::from(format!("{}/{}", folder_s, name));
-
-                        // Extension-based file-type lookup (no HTTP call needed).
                         let file_type_def = if e.is_dir {
                             self.registered_file_types
                                 .iter()
@@ -104,7 +146,6 @@ impl FileManagerDrawer {
                         let modified = e.modified.map(|secs| {
                             std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)
                         });
-
                         let is_folder = e.is_dir && file_type_def.is_none();
 
                         Some(FileItem {
@@ -119,55 +160,18 @@ impl FileManagerDrawer {
                     .collect(),
                 Err(e) => {
                     tracing::error!("Failed to list remote dir: {}", e);
-                    return Vec::new();
+                    Vec::new()
                 }
             }
         } else {
-            // ── Local path ───────────────────────────────────────────────────
             let Ok(read) = std::fs::read_dir(folder) else {
                 return Vec::new();
             };
             read.filter_map(|e| e.ok())
                 .map(|e| e.path())
-                .filter_map(|path| {
-                    if !self.show_hidden_files {
-                        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                            if name.starts_with('.') {
-                                return None;
-                            }
-                        }
-                    }
-                    FileItem::from_path(&path, &self.registered_file_types)
-                })
-                .filter(|item| {
-                    if !self.file_filter_query.is_empty() {
-                        item.name
-                            .to_lowercase()
-                            .contains(&self.file_filter_query.to_lowercase())
-                    } else {
-                        true
-                    }
-                })
+                .filter_map(|path| FileItem::from_path(&path, &self.registered_file_types))
                 .collect()
         };
-
-        // Sort items
-        items.sort_by(|a, b| {
-            let cmp = match self.sort_by {
-                SortBy::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-                SortBy::Modified => a.modified.cmp(&b.modified),
-                SortBy::Size => a.size.cmp(&b.size),
-                SortBy::Type => a.display_name().cmp(b.display_name()),
-            };
-
-            match self.sort_order {
-                SortOrder::Ascending => cmp,
-                SortOrder::Descending => cmp.reverse(),
-            }
-        });
-
-        // Folders first
-        items.sort_by_key(|item| !item.is_folder);
 
         items
     }

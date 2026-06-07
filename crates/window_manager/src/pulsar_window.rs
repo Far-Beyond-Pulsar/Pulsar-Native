@@ -4,6 +4,7 @@
 //! repetition. Each crate declares its own window with max customization, min boilerplate.
 
 use gpui::{App, Entity, Render, Window, WindowOptions};
+use ui_types_common::window_types::WindowRequest;
 
 /// Implement this trait for any type you want to open as a top-level window.
 ///
@@ -43,47 +44,30 @@ pub trait PulsarWindow: Render + Sized + 'static {
     /// Override to customise; call `default_window_options(width, height)` for defaults.
     fn window_options(params: &Self::Params) -> WindowOptions;
 
+    /// Optional profile used by WindowManager to apply wrapper chrome around built content.
+    ///
+    /// Most windows can keep the default `None`.
+    fn window_profile(_params: &Self::Params) -> Option<crate::configs::WindowProfile> {
+        None
+    }
+
+    /// Window request metadata tracked by WindowManager state/telemetry.
+    /// Defaults to a custom window keyed by [`Self::window_name`].
+    fn window_request(_params: &Self::Params) -> WindowRequest {
+        WindowRequest::Custom {
+            type_name: Self::window_name(),
+        }
+    }
+
     /// Build and return the root entity for this window.
     /// Called inside the GPUI open_window callback; wrapped in `Root` automatically.
     fn build(params: Self::Params, window: &mut Window, cx: &mut App) -> Entity<Self>;
 }
 
-/// Convenience constructor for standard client-decorated windows.
+/// Convenience constructor for standard client-decorated dialog windows.
 /// `width` and `height` are logical pixels; min size is half of each.
+///
+/// Equivalent to [`WindowConfig::dialog`].
 pub fn default_window_options(width: f32, height: f32) -> WindowOptions {
-    use gpui::{px, Bounds, Point, Size, WindowBounds, WindowDecorations, WindowIcon, WindowKind};
-
-    // Embed the Pulsar icon at compile time so it is always available, even
-    // when running outside an app bundle.
-    #[cfg(target_os = "macos")]
-    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl_mac.png");
-
-    #[cfg(not(target_os = "macos"))]
-    static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
-
-    let app_icon = WindowIcon::from_png_bytes(ICON_PNG)
-        .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"));
-
-    WindowOptions {
-        window_bounds: Some(WindowBounds::Windowed(Bounds {
-            origin: Point {
-                x: px(100.0),
-                y: px(100.0),
-            },
-            size: Size {
-                width: px(width),
-                height: px(height),
-            },
-        })),
-        titlebar: None,
-        kind: WindowKind::Normal,
-        is_resizable: true,
-        window_decorations: Some(WindowDecorations::Client),
-        window_min_size: Some(Size {
-            width: px(width * 0.5),
-            height: px(height * 0.5),
-        }),
-        app_icon: app_icon.ok(),
-        ..Default::default()
-    }
+    crate::configs::WindowConfig::dialog(width, height)
 }

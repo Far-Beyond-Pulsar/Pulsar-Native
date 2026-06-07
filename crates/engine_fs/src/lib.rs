@@ -24,6 +24,7 @@
 
 // Module declarations
 mod engine_fs;
+pub mod events;
 pub mod operations;
 pub mod providers;
 mod scanner;
@@ -42,6 +43,7 @@ pub use providers::{
 };
 
 // Re-export operations
+pub use events::{emit, subscribe, FsChangeKind, FsEvent};
 pub use operations::AssetOperations;
 
 // Re-export template types

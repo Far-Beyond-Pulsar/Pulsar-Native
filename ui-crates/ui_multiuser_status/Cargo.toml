@@ -7,6 +7,10 @@ edition = "2024"
 gpui-ce.workspace = true
 ui.workspace = true
 engine_state.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
+image = { workspace = true, features = ["png", "jpeg"] }
+tracing = { workspace = true }
+smallvec = { workspace = true }
 
 [lints]
 workspace = true

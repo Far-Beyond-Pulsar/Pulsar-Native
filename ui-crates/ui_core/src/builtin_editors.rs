@@ -389,10 +389,9 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
     }
 
     fn file_types(&self) -> Vec<FileTypeDefinition> {
-        // default_content is written verbatim (via serde_json::to_string_pretty) to
-        // manifest.json, so it must be a valid PifManifest as defined in PIF-rs:
-        //   pif_version + canvas (width/height/color_space) + layers array.
-        // The "type":"raster" tag and "sRGB" colour-space rename come from PIF-rs serde attrs.
+        // PIF assets are directory-backed bundles named `*.pif`.
+        // Register as FolderBased so `Path::is_dir()` resolution still maps them
+        // to the Matter editor during open-path lookup.
         vec![FileTypeDefinition {
             id: FileTypeId::new("pif"),
             extension: "pif".to_string(),
@@ -401,8 +400,6 @@ impl BuiltinEditorProvider for MatterEditorBuiltinProvider {
             color: gpui::rgb(0xE91E63).into(),
             structure: FileStructure::FolderBased {
                 marker_file: "manifest.json".to_string(),
-                // PIF directory bundle layout requires a `.raster/` subdirectory
-                // for QOI-encoded tile shards (created on demand but must exist).
                 template_structure: vec![PathTemplate::Folder {
                     path: ".raster".into(),
                 }],

@@ -4,18 +4,42 @@
 //! exclusively in `EngineContext::multiuser` — there is no separate global
 //! static.  Use `EngineContext::global()` to read or mutate session state.
 
+/// Relay/data connection mode
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RelayConnectionMode {
+    /// Attempting direct P2P connection with hole punching
+    DirectP2P,
+    /// Using server binary proxy for data relay
+    BinaryProxy,
+    /// Fallback to JSON messages (degraded mode)
+    JsonFallback,
+}
+
 /// Connection status for multiuser session
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MultiuserStatus {
     /// Not connected to any session
-    #[default]
     Disconnected,
     /// Currently connecting to a session
     Connecting,
-    /// Connected and active in a session
-    Connected,
+    /// Connected to signaling server and relay/data connection is active
+    Connected {
+        /// Current relay connection mode (P2P, proxy, or fallback)
+        relay_mode: Option<RelayConnectionMode>,
+    },
+    /// Signaling connected but data connection failed, using fallback
+    DegradedMode {
+        /// Which fallback mode we're using
+        relay_mode: RelayConnectionMode,
+    },
     /// Connection error occurred
     Error(String),
+}
+
+impl Default for MultiuserStatus {
+    fn default() -> Self {
+        MultiuserStatus::Disconnected
+    }
 }
 
 /// Top-level collaboration mode.
@@ -182,7 +206,10 @@ impl MultiuserContext {
     }
 
     pub fn is_connected(&self) -> bool {
-        matches!(self.status, MultiuserStatus::Connected)
+        matches!(
+            self.status,
+            MultiuserStatus::Connected { .. } | MultiuserStatus::DegradedMode { .. }
+        )
     }
 
     pub fn participant_count(&self) -> usize {

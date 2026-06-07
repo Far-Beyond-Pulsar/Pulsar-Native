@@ -6,7 +6,7 @@
 //!
 //! 1. Each component crate (e.g. `pulsar_rendering`) submits a
 //!    `RuntimeBehaviorRegistration` via `inventory::submit!` in its
-//!    `#[derive(RegisterRuntimeBehavior)]` expansion.
+//!    `#[register_runtime_behavior]` proc-macro expansion.
 //! 2. The loader creates a [`SceneObjectContext`] that implements
 //!    [`ComponentRuntimeContext`] and owns all renderer state needed to
 //!    materialise lights and meshes.

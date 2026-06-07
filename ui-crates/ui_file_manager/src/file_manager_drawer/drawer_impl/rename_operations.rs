@@ -48,6 +48,7 @@ impl FileManagerDrawer {
                 if let Some(ref project_path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(project_path);
                 }
+                self.mark_directory_cache_dirty();
             }
             Err(e) => {
                 tracing::error!("Rename failed: {}", e);
@@ -90,6 +91,7 @@ impl FileManagerDrawer {
         if let Some(ref project_path) = self.project_path {
             self.folder_tree = FolderNode::from_path(project_path);
         }
+        self.mark_directory_cache_dirty();
         cx.notify();
     }
 }

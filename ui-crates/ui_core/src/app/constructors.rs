@@ -95,6 +95,9 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
+        let _t_total = std::time::Instant::now();
+        tracing::info!("[PulsarApp] new_internal start");
+
         // Create the main dock area
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
@@ -171,6 +174,27 @@ impl PulsarApp {
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
 
+        // Register entity-capturing openers so the registry can open these windows
+        // without callers knowing the concrete types or holding the entities.
+        {
+            use gpui::UpdateGlobal as _;
+            use ui_common::PulsarWindowExt as _;
+
+            let pd = problems_drawer.clone();
+            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
+                reg.register("ProblemsWindow", move |cx| {
+                    ui_problems::ProblemsWindow::open(pd.clone(), cx);
+                });
+            });
+
+            let td = type_debugger_drawer.clone();
+            window_manager::WindowRegistry::update_global(cx, move |reg, _| {
+                reg.register("TypeDebuggerWindow", move |cx| {
+                    ui_type_debugger::TypeDebuggerWindow::open(td.clone(), cx);
+                });
+            });
+        }
+
         // Subscribe to drawer events
         cx.subscribe_in(
             &file_manager_drawer,
@@ -234,41 +258,44 @@ impl PulsarApp {
         ui_common::command_palette::PaletteManager::init(cx);
 
         // Initialize plugin manager
-        tracing::debug!("🔌 Initializing plugin system");
+        let t_plugins = std::time::Instant::now();
+        tracing::info!("[PulsarApp] plugin init start");
         let mut plugin_manager = PluginManager::new();
 
         // Register built-in editors
-        tracing::debug!("📝 Registering built-in editors");
         crate::register_all_builtin_editors(plugin_manager.builtin_registry_mut());
-
-        // Register them with the file type and editor registries
         plugin_manager.register_builtin_editors();
-        tracing::debug!("✅ Built-in editors registered");
+        tracing::info!(
+            "[PulsarApp] built-in editors registered in {:?}",
+            t_plugins.elapsed()
+        );
 
         let plugins_dir = std::path::Path::new("plugins/editor");
-        tracing::debug!("📂 Loading plugins from: {:?}", plugins_dir);
-
+        let t_load = std::time::Instant::now();
         match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
             Err(e) => {
-                tracing::error!("❌ Failed to load editor plugins: {}", e);
+                tracing::error!("[PulsarApp] failed to load editor plugins: {}", e);
             }
             Ok(_) => {
                 let loaded_plugins = plugin_manager.get_plugins();
-                tracing::debug!("✅ Loaded {} editor plugin(s)", loaded_plugins.len());
-                for plugin in loaded_plugins {
-                    tracing::debug!(
-                        "   📦 {} v{} by {}",
-                        plugin.name,
-                        plugin.version,
-                        plugin.author
-                    );
-                }
+                tracing::info!(
+                    "[PulsarApp] loaded {} plugin(s) in {:?}",
+                    loaded_plugins.len(),
+                    t_load.elapsed()
+                );
             }
         }
 
         // Initialize global plugin manager
         tracing::debug!("🌍 Initializing global plugin manager");
         plugin_manager::initialize_global(plugin_manager);
+
+        let multiuser_refresh_task = cx.spawn(async move |this, cx| {
+            let rx = engine_state::subscribe_multiuser_updates();
+            while rx.recv().await.is_ok() {
+                this.update(cx, |_, cx| cx.notify());
+            }
+        });
 
         let mut app = Self {
             state: crate::app::state::AppState {
@@ -309,6 +336,7 @@ impl PulsarApp {
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
+                multiuser_refresh_task: Some(multiuser_refresh_task),
             },
         };
 
@@ -482,6 +510,8 @@ impl PulsarApp {
             app.state.command_palette_id = Some(palette_id);
             app.state.command_palette = Some(palette_ref);
         }
+
+        tracing::info!("[PulsarApp] new_internal total: {:?}", _t_total.elapsed());
 
         // Focus this app's handle so menus built before any editor interaction have
         // a valid action_context that routes back to PulsarApp's .on_action() handlers.

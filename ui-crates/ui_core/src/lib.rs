@@ -29,36 +29,40 @@ pub use ui_common::file_utils;
 // Re-export actions from ui crate
 pub use ui::OpenSettings;
 
-/// Initialize ui_core: register global action handlers for application menu actions.
+/// Initialize ui_core: populate the [`WindowRegistry`] and wire GPUI menu actions to it.
 ///
 /// Must be called once from the `gpui_app.run` callback (alongside `ui::init`).
-/// Global `cx.on_action` handlers fire regardless of focus or render-tree position,
-/// which is necessary because popup menus render in a `deferred` layer that is
-/// disconnected from the `PulsarApp` dispatch tree on Windows / Linux.
+/// Global `cx.on_action` handlers fire regardless of focus, so popup menus always
+/// reach their target even when focus is in a disconnected render layer.
 ///
-/// Each handler opens the corresponding window directly via `open_pulsar_window`,
-/// the same path used everywhere else in the codebase — fully decoupled from
-/// `PulsarApp` or any particular window hierarchy.
+/// Adding a new menu-triggered window: call `MyWindow::register(cx)` here and add one
+/// `cx.on_action` line. Nothing else needs to change.
+/// Register GPUI menu actions through the [`WindowRegistry`].
+///
+/// Window crates call their own `init(cx)` to self-register before this runs.
+/// `ui_core` does not import any window crate here — it only maps existing GPUI
+/// actions to registry name lookups.
 pub fn init(cx: &mut gpui::App) {
-    use ui_about::AboutWindow;
+    use gpui::UpdateGlobal as _;
     use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
-    use ui_common::open_pulsar_window;
-    use ui_documentation::DocumentationWindow;
-    use ui_settings::SettingsWindow;
+
+    root::register_window_wrappers(cx);
 
     cx.on_action(|_: &Settings, cx| {
-        tracing::debug!("[MENU] global: Settings → SettingsWindow");
-        open_pulsar_window::<SettingsWindow>((), cx);
+        tracing::debug!("[MENU] Settings");
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
     });
     cx.on_action(|_: &Preferences, cx| {
-        tracing::debug!("[MENU] global: Preferences → SettingsWindow");
-        open_pulsar_window::<SettingsWindow>((), cx);
+        tracing::debug!("[MENU] Preferences");
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
     });
     cx.on_action(|_: &AboutApp, cx| {
-        open_pulsar_window::<AboutWindow>((), cx);
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("AboutWindow", cx));
     });
     cx.on_action(|_: &ShowDocumentation, cx| {
-        open_pulsar_window::<DocumentationWindow>((), cx);
+        window_manager::WindowRegistry::update_global(cx, |reg, cx| {
+            reg.open("DocumentationWindow", cx)
+        });
     });
 }
 

@@ -17,7 +17,6 @@ fn deserialize_string_json(value: serde_json::Value) -> crate::ReflectResult<Str
 }
 
 #[pulsar_type(
-    primitive,
     serialize_json_with = serialize_string_json,
     deserialize_json_with = deserialize_string_json
 )]

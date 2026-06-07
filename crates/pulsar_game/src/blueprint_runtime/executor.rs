@@ -6,7 +6,7 @@ use super::byte_arena::ByteArena;
 use super::compiled_bytecode::CompiledBytecode;
 use blueprint_compiler::{vm, BpProgram};
 use pulsar_bp_executor::{BpExecutor as NativeExecutor, ExecutorError as NativeExecutorError};
-use pulsar_std_bundle::extract_to_tempfile;
+use pulsar_std_bundle::{expected_sha256, extract_to_tempfile};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -100,7 +100,7 @@ impl BlueprintExecutor {
             .map_err(|e| ExecutorError::Io(std::io::Error::new(std::io::ErrorKind::Other, e)))?;
 
         // Load native library
-        let native_executor = NativeExecutor::load(&temp_lib.path)?;
+        let native_executor = NativeExecutor::load(&temp_lib.path, Some(expected_sha256()))?;
 
         Ok(Self {
             native_executor,

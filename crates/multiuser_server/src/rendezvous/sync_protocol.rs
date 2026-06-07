@@ -62,6 +62,13 @@ pub enum ClientMessage {
         chunk_index: usize,
         total_chunks: usize,
     },
+    /// File change notification
+    FileChanged {
+        session_id: String,
+        peer_id: String,
+        path: String,
+        kind: String,
+    },
     /// P2P connection negotiation
     P2PConnectionRequest {
         session_id: String,
@@ -118,6 +125,8 @@ pub enum ServerMessage {
         peer_id: String,
         participants: Vec<String>,
         #[serde(default)]
+        join_token: Option<String>,
+        #[serde(default)]
         participant_profiles: Option<Vec<PeerProfile>>,
     },
     /// Another peer joined
@@ -162,6 +171,13 @@ pub enum ServerMessage {
         files_json: String,
         chunk_index: usize,
         total_chunks: usize,
+    },
+    /// File change notification
+    FileChanged {
+        session_id: String,
+        from_peer_id: String,
+        path: String,
+        kind: String,
     },
     /// P2P connection negotiation (relayed)
     P2PConnectionRequest {

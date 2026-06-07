@@ -22,6 +22,9 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
+use uuid::Uuid;
+
+use crate::auth::Role;
 
 use crate::metrics::METRICS;
 use peer_discovery::PeerSession;
@@ -139,19 +142,18 @@ impl RendezvousCoordinator {
                 avatar_url,
                 github_login,
             } => {
-                self
-                    .handle_join(
-                        sid,
-                        pid,
-                        join_token,
-                        display_name,
-                        avatar_url,
-                        github_login,
-                        tx,
-                        peer_id,
-                        session_id,
-                    )
-                    .await?;
+                self.handle_join(
+                    sid,
+                    pid,
+                    join_token,
+                    display_name,
+                    avatar_url,
+                    github_login,
+                    tx,
+                    peer_id,
+                    session_id,
+                )
+                .await?;
             }
             ClientMessage::Leave {
                 session_id: sid,
@@ -217,6 +219,14 @@ impl RendezvousCoordinator {
             } => {
                 self.relay_files_chunk(&sid, &pid, files_json, chunk_index, total_chunks)
                     .await?;
+            }
+            ClientMessage::FileChanged {
+                session_id: sid,
+                peer_id: pid,
+                path,
+                kind,
+            } => {
+                self.relay_file_changed(&sid, &pid, path, kind).await?;
             }
             ClientMessage::P2PConnectionRequest {
                 session_id: sid,
@@ -307,9 +317,9 @@ impl RendezvousCoordinator {
 
     async fn handle_join(
         &self,
-        sid: String,
+        mut sid: String,
         pid: String,
-        _join_token: String,
+        join_token: String,
         display_name: Option<String>,
         avatar_url: Option<String>,
         github_login: Option<String>,
@@ -317,8 +327,23 @@ impl RendezvousCoordinator {
         peer_id: &mut Option<String>,
         session_id: &mut Option<String>,
     ) -> Result<()> {
-        // Validate JWT token
-        if let Err(e) = self.validate_jwt_token(&_join_token) {
+        let creating_session = join_token.trim().is_empty();
+        let mut created_join_token = None;
+
+        if creating_session {
+            info!("No join token provided; creating a new session");
+            if sid.trim().is_empty() {
+                sid = Uuid::new_v4().to_string()[..8].to_string();
+            }
+            if !self.sessions.contains_key(&sid) {
+                self.create_session(sid.clone(), pid.clone())?;
+            }
+            created_join_token = Some(self.auth.create_join_token(
+                sid.clone(),
+                Role::Host,
+                Duration::from_secs(3600),
+            )?);
+        } else if let Err(e) = self.auth.verify_join_token(&join_token) {
             error!(error = %e, "Invalid join token");
             tx.send(ServerMessage::Error {
                 message: "Invalid join token".to_string(),
@@ -376,6 +401,7 @@ impl RendezvousCoordinator {
             session_id: sid.clone(),
             peer_id: pid.clone(),
             participants,
+            join_token: created_join_token,
             participant_profiles: if participant_profiles.is_empty() {
                 None
             } else {
@@ -560,6 +586,34 @@ impl RendezvousCoordinator {
         METRICS
             .signaling_messages
             .with_label_values(&["files_chunk"])
+            .inc();
+
+        Ok(())
+    }
+
+    async fn relay_file_changed(
+        &self,
+        sid: &str,
+        pid: &str,
+        path: String,
+        kind: String,
+    ) -> Result<()> {
+        let session = self.sessions.get(sid).context("Session not found")?;
+
+        let msg = ServerMessage::FileChanged {
+            session_id: sid.to_string(),
+            from_peer_id: pid.to_string(),
+            path,
+            kind,
+        };
+
+        for peer in session.list_peers() {
+            let _ = peer.tx.send(msg.clone()).await;
+        }
+
+        METRICS
+            .signaling_messages
+            .with_label_values(&["file_changed"])
             .inc();
 
         Ok(())

@@ -8,7 +8,9 @@ publish = false
 # UI framework
 gpui-ce.workspace = true
 ui.workspace = true
+ui_common.workspace = true
 window_manager.workspace = true
+linkme.workspace = true
 # Engine
 engine_state.workspace = true
 pulsar_std.workspace = true

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Serialize};
@@ -40,6 +41,14 @@ impl Role {
             Role::Observer => vec!["read".to_string()],
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JoinTokenClaims {
+    s: String,
+    r: Role,
+    e: u64,
+    i: u64,
 }
 
 pub struct AuthService {
@@ -135,24 +144,57 @@ impl AuthService {
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
         let exp = now + ttl.as_secs();
 
-        let join_data = serde_json::json!({
-            "session_id": session_id,
-            "role": role,
-            "exp": exp,
-            "iat": now,
-        });
+        let join_data = JoinTokenClaims {
+            s: session_id,
+            r: role,
+            e: exp,
+            i: now,
+        };
 
         let payload = serde_json::to_vec(&join_data)?;
         let signature = self.server_signing_key.sign(&payload);
 
-        // Encode as hex: payload || signature
-        let mut token_bytes = payload;
-        token_bytes.extend_from_slice(&signature.to_bytes());
-        Ok(hex_encode(&token_bytes))
+        Ok(format!(
+            "{}.{}",
+            URL_SAFE_NO_PAD.encode(payload),
+            URL_SAFE_NO_PAD.encode(signature.to_bytes())
+        ))
     }
 
     /// Verify a session join token
     pub fn verify_join_token(&self, token: &str) -> Result<(String, Role)> {
+        if let Some((payload_b64, sig_b64)) = token.split_once('.') {
+            let payload = URL_SAFE_NO_PAD
+                .decode(payload_b64)
+                .map_err(|e| anyhow::anyhow!("Failed to decode join token payload: {}", e))?;
+            let sig_bytes = URL_SAFE_NO_PAD
+                .decode(sig_b64)
+                .map_err(|e| anyhow::anyhow!("Failed to decode join token signature: {}", e))?;
+
+            if sig_bytes.len() != 64 {
+                anyhow::bail!("Invalid signature length");
+            }
+
+            let signature = Signature::from_bytes(
+                sig_bytes
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| anyhow::anyhow!("Invalid signature"))?,
+            );
+
+            self.server_verifying_key
+                .verify(&payload, &signature)
+                .context("Invalid signature")?;
+
+            let join_data: JoinTokenClaims = serde_json::from_slice(&payload)?;
+
+            if SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs() > join_data.e {
+                anyhow::bail!("Join token expired");
+            }
+
+            return Ok((join_data.s, join_data.r));
+        }
+
         let token_bytes =
             hex_decode(token).map_err(|e| anyhow::anyhow!("Failed to decode join token: {}", e))?;
 
@@ -173,7 +215,6 @@ impl AuthService {
 
         let join_data: serde_json::Value = serde_json::from_slice(payload)?;
 
-        // Check expiration
         let exp = join_data["exp"].as_u64().context("Missing exp field")?;
         let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 

@@ -2,6 +2,13 @@
 
 use crate::pulsar_type;
 
+#[pulsar_type(
+    serialize_json_with = serialize_u64_json,
+    deserialize_json_with = deserialize_u64_json
+)]
+#[allow(dead_code)]
+type RegisteredU64 = u64;
+
 fn serialize_u64_json(value: &u64) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
 }
@@ -14,14 +21,6 @@ fn deserialize_u64_json(value: serde_json::Value) -> crate::ReflectResult<u64> {
             found: format!("{:?}", value),
         })
 }
-
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_u64_json,
-    deserialize_json_with = deserialize_u64_json
-)]
-#[allow(dead_code)]
-type RegisteredU64 = u64;
 
 #[cfg(test)]
 mod tests {

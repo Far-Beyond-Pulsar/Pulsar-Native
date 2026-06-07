@@ -27,11 +27,9 @@ pub mod asset_picker;
 pub mod command_palette;
 pub mod file_utils;
 pub mod generic_window;
-pub mod helpers;
 pub mod menu;
 pub mod open_window;
 pub mod panel;
-pub mod prim_editors;
 pub mod properties_inspector;
 pub mod property_editor_registry;
 pub mod reflected_properties_panel;
@@ -39,7 +37,7 @@ pub mod shared;
 pub mod shared_state;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
-pub use open_window::open_pulsar_window;
+pub use open_window::PulsarWindowExt;
 pub use property_editor_registry::{
     PropertyEditorArgs, PropertyEditorRenderFn, PROPERTY_EDITOR_REGISTRY,
 };

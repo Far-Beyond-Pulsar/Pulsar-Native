@@ -1,7 +1,7 @@
-use crate::entry_screen::{EntryScreen, virtual_grid::render_card_grid};
+use crate::entry_screen::{virtual_grid::render_card_grid, EntryScreen};
 use gpui::{prelude::*, *};
 use ui::Sizable;
-use ui::{ActiveTheme as _, Icon, IconName, h_flex, progress::Progress, tag::Tag, v_flex};
+use ui::{h_flex, progress::Progress, tag::Tag, v_flex, ActiveTheme as _, Icon, IconName};
 
 pub fn render_templates(
     screen: &mut EntryScreen,

@@ -50,10 +50,10 @@ impl MultiplayerWindow {
                     let session_id_for_display = session_id.clone();
                     let join_token_for_display = join_token.clone();
 
-                    // Update UI state
+                    // Update UI state - still connecting, not yet fully connected
                     cx.update(|cx| {
                         this.update(cx, |this, cx| {
-                            this.connection_status = ConnectionStatus::Connected;
+                            this.connection_status = ConnectionStatus::Connecting;
                             this.active_session = Some(ActiveSession {
                                 session_id: session_id_for_display.clone(),
                                 join_token: join_token_for_display.clone(),
@@ -83,6 +83,7 @@ impl MultiplayerWindow {
                                 Some(ServerMessage::Joined {
                                     peer_id,
                                     participants,
+                                    join_token,
                                     participant_profiles,
                                     ..
                                 }) => {
@@ -100,6 +101,9 @@ impl MultiplayerWindow {
                                             if let Some(session) = &mut this.active_session {
                                                 // Store raw participant list
                                                 session.connected_users = participants.clone();
+                                                if let Some(join_token) = join_token.clone() {
+                                                    session.join_token = join_token;
+                                                }
                                             }
 
                                             // Initialize presence for all participants
@@ -159,6 +163,12 @@ impl MultiplayerWindow {
                                                 &session_id,
                                                 &peer_id,
                                                 &participants,
+                                            );
+                                            this.start_fs_event_forwarder(
+                                                client.clone(),
+                                                session_id.clone(),
+                                                peer_id.clone(),
+                                                cx,
                                             );
                                             if let Some(profiles) = participant_profiles {
                                                 this.sync_engine_multiuser_profiles(profiles);
@@ -276,6 +286,7 @@ impl MultiplayerWindow {
                                                                         });
                                                                     }
                                                                 });
+                                                                engine.notify_multiuser_changed();
                                                             }
                                                         }
                                                     });
@@ -318,6 +329,7 @@ impl MultiplayerWindow {
                                                                 mu.participant_profiles
                                                                     .retain(|p| p.peer_id != left_peer_id);
                                                             });
+                                                            engine.notify_multiuser_changed();
                                                         }
                                                     });
                                                 });
@@ -326,18 +338,10 @@ impl MultiplayerWindow {
                                                 tracing::warn!("CREATE_SESSION: You were kicked from the session: {}", reason);
                                                 cx.update(|cx| {
                                                     this.update(cx, |this, cx| {
-                                                        // Disconnect and show error
-                                                        this.connection_status = ConnectionStatus::Error(
-                                                            format!("Kicked from session: {}", reason)
+                                                        this.handle_kicked(
+                                                            format!("Kicked from session: {}", reason),
+                                                            cx,
                                                         );
-                                                        this.sync_engine_multiuser_error(format!(
-                                                            "Kicked from session: {}",
-                                                            reason
-                                                        ));
-                                                        this.active_session = None;
-                                                        this.client = None;
-                                                        this.user_presences.clear();
-                                                        cx.notify();
                                                     });
                                                 });
                                                 break; // Exit the message loop
@@ -373,9 +377,18 @@ impl MultiplayerWindow {
                                                             "Server error: {}",
                                                             message
                                                         ));
+                                                        this.fs_event_forwarder = None;
                                                         cx.notify();
                                                     });
                                                 });
+                                            }
+                                            ServerMessage::FileChanged { path, kind, .. } => {
+                                                let change_kind = match kind.as_str() {
+                                                    "created" => engine_fs::events::FsChangeKind::Created,
+                                                    "deleted" => engine_fs::events::FsChangeKind::Deleted,
+                                                    _ => engine_fs::events::FsChangeKind::Modified,
+                                                };
+                                                engine_fs::events::emit_remote(path, change_kind);
                                             }
                                             ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
                                                 tracing::debug!("CREATE_SESSION: Received RequestFileManifest from {}", from_peer_id);
@@ -590,6 +603,7 @@ impl MultiplayerWindow {
                                             this.sync_engine_multiuser_error(
                                                 "Unexpected server response".to_string(),
                                             );
+                                            this.fs_event_forwarder = None;
                                             this.active_session = None;
                                             cx.notify();
                                         });
@@ -602,6 +616,7 @@ impl MultiplayerWindow {
                                             this.sync_engine_multiuser_error(
                                                 "Connection closed before response".to_string(),
                                             );
+                                            this.fs_event_forwarder = None;
                                             this.active_session = None;
                                             cx.notify();
                                         });

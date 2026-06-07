@@ -9,6 +9,7 @@ use std::sync::Arc;
 use type_db::TypeDatabase;
 
 use crate::templates::AssetKind;
+use crate::{events, FsChangeKind};
 
 /// General asset operations handler
 pub struct GeneralOperations {
@@ -62,6 +63,7 @@ impl GeneralOperations {
 
         // Register in appropriate index
         self.register_asset(&file_path, kind)?;
+        events::emit(file_path.clone(), FsChangeKind::Created);
 
         Ok(file_path)
     }
@@ -104,6 +106,7 @@ impl GeneralOperations {
 
         // Delete file
         std::fs::remove_file(file_path).context("Failed to delete asset file")?;
+        events::emit(file_path.clone(), FsChangeKind::Deleted);
 
         Ok(())
     }
@@ -149,6 +152,8 @@ impl GeneralOperations {
                 }
             }
         }
+        events::emit(old_path.clone(), FsChangeKind::Deleted);
+        events::emit(new_path.clone(), FsChangeKind::Created);
 
         Ok(())
     }

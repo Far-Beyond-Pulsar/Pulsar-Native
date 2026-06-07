@@ -39,6 +39,7 @@ use serde_json::Value;
 use std::any::Any;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 // Re-export for convenience
 pub use registry::{
@@ -68,6 +69,32 @@ pub use type_renderer::{
 
 // Re-export derive macro
 pub use pulsar_reflection_derive::{Reflectable, pulsar_type};
+
+/// Arguments passed to every registered property editor render function.
+///
+/// Widget state is carried as a type-erased map so the reflection crate has
+/// zero knowledge of what widget types exist.  Each render function retrieves
+/// its own stateful entity by concrete type via [`get_widget`].
+pub struct PropertyEditorArgs<'a> {
+    pub id_prefix: &'a str,
+    pub class_name: &'a str,
+    pub display_name: &'a str,
+    pub prop_name: &'a str,
+    pub type_info: &'static RuntimeTypeInfo,
+    pub current_json: &'a Value,
+    pub widgets: std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
+    pub on_bool_toggle: Arc<dyn Fn(bool, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
+    pub on_enum_select: Arc<dyn Fn(usize, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
+}
+
+impl<'a> PropertyEditorArgs<'a> {
+    pub fn get_widget<T: std::any::Any + Clone>(&self) -> Option<T> {
+        self.widgets
+            .get(&std::any::TypeId::of::<T>())
+            .and_then(|arc| arc.downcast_ref::<T>())
+            .cloned()
+    }
+}
 
 // ── UI property-editor hint ───────────────────────────────────────────────────
 
@@ -104,15 +131,17 @@ inventory::collect!(UiPropertyEditorHint);
 /// [`UiPropertyEditorHint::fn_ptr`].
 ///
 /// All Rust function pointer types are pointer-sized, so transmuting between
-/// them preserves size.  This is a `const unsafe fn` so it can be called
-/// inside `inventory::submit!` static initialisers.
+/// them preserves size.  The input is intentionally constrained to the one
+/// valid property-editor signature so registration sites fail fast at compile
+/// time when a mismatched function is provided.
 ///
-/// # Safety
-/// `f` must be a function whose actual signature is:
-/// `fn(&ui_common::PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement`.
-pub const unsafe fn erase_property_editor_fn_ptr<A, B, C>(f: fn(A, B) -> C) -> fn() {
-    // SAFETY: fn(A, B) -> C and fn() are both pointer-sized on every supported
-    // platform; transmuting between any two fn-pointer types is defined behaviour.
+/// This is a `const fn` so it can be called inside `inventory::submit!`
+/// static initialisers emitted by proc macros.
+pub const fn erase_property_editor_fn_ptr(
+    f: fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement,
+) -> fn() {
+    // SAFETY: all function pointers are pointer-sized, so this cast preserves
+    // representation. The function signature is validated by the typed input.
     unsafe { std::mem::transmute(f) }
 }
 
@@ -347,6 +376,13 @@ pub trait EngineClass: Any + Send + Sync {
     fn clone_boxed(&self) -> Box<dyn EngineClass>;
 }
 
+/// Marker trait for structs that are sub-property groups, not standalone components.
+///
+/// Implemented automatically by `#[engine_class(no_register, ...)]`. Used by the parent
+/// component's derive to enforce that `#[sub_props]` fields are never accidentally
+/// registered as top-level components.
+pub trait EngineSubProps: EngineClass {}
+
 /// Metadata for a single property field
 ///
 /// Contains all information needed to display and edit a property in the UI,
@@ -362,6 +398,15 @@ pub struct PropertyMetadata {
 
     /// Optional category for grouping (e.g., "Physics", "Rendering")
     pub category: Option<&'static str>,
+
+    /// Optional hex color for the property category header (e.g., "#58A6FF").
+    pub category_color: Option<&'static str>,
+
+    /// Whether this property's category should start collapsed in UI.
+    pub category_default_collapsed: bool,
+
+    /// Order index from declared `#[category(...)]` attributes.
+    pub category_order: Option<usize>,
 
     /// Runtime type information (replaces PropertyType enum)
     pub type_info: &'static RuntimeTypeInfo,
@@ -379,6 +424,9 @@ impl fmt::Debug for PropertyMetadata {
             .field("name", &self.name)
             .field("display_name", &self.display_name)
             .field("category", &self.category)
+            .field("category_color", &self.category_color)
+            .field("category_default_collapsed", &self.category_default_collapsed)
+            .field("category_order", &self.category_order)
             .field("type_info", &self.type_info)
             .finish()
     }

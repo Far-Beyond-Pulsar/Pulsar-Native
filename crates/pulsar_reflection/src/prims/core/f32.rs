@@ -2,6 +2,13 @@
 
 use crate::pulsar_type;
 
+#[pulsar_type(
+    serialize_json_with = serialize_f32_json,
+    deserialize_json_with = deserialize_f32_json,
+    editor = render_f32_editor
+)]
+type RegisteredF32 = f32;
+
 fn serialize_f32_json(value: &f32) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!(*value))
 }
@@ -16,13 +23,38 @@ fn deserialize_f32_json(value: serde_json::Value) -> crate::ReflectResult<f32> {
         })
 }
 
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_f32_json,
-    deserialize_json_with = deserialize_f32_json
-)]
-#[allow(dead_code)]
-type RegisteredF32 = f32;
+fn render_f32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
+    use gpui::{prelude::*, *};
+    use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};
+
+    let value = args.current_json.as_f64().unwrap_or(0.0) as f32;
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(h_flex().items_center().gap_2().child(
+            if let Some(input) = args.get_widget::<gpui::Entity<ui::input::InputState>>() {
+                NumberInput::new(&input)
+                    .xsmall()
+                    .w(gpui::px(92.0))
+                    .into_any_element()
+            } else {
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(format!("{:.3}", value))
+                    .into_any_element()
+            },
+        ))
+        .into_any_element()
+}
 
 #[cfg(test)]
 mod tests {

@@ -1,7 +1,7 @@
 use crate::entry_screen::{EntryScreen, EntryScreenView};
 use crate::entry_screen::{FabSearchRequested, SettingsRequested};
 use gpui::{prelude::*, *};
-use ui::{ActiveTheme as _, Colorize as _, Icon, IconName, h_flex, v_flex};
+use ui::{h_flex, v_flex, ActiveTheme as _, Colorize as _, Icon, IconName};
 
 pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();

@@ -1,6 +1,6 @@
 //! Static mesh component for mesh asset assignment.
 
-use engine_class_derive::{EngineClass, RegisterRuntimeBehavior};
+use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
@@ -91,11 +91,73 @@ fn deserialize_mesh_asset_path_json(
 /// `structure = String` makes `type_info.is_string()` return `true`, which
 /// enables the property inspector to detect this type and render the
 /// mesh-asset browser UI.
+fn render_mesh_asset_editor(
+    args: &pulsar_reflection::PropertyEditorArgs<'_>,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
+    use gpui::{prelude::*, *};
+    use ui::button::{Button, ButtonVariants};
+    use ui::{ActiveTheme, Sizable, h_flex, popover::Popover};
+
+    let path_str = args.current_json.as_str().unwrap_or("");
+    let display = if path_str.is_empty() {
+        "No mesh selected".to_string()
+    } else {
+        std::path::Path::new(path_str)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path_str)
+            .to_string()
+    };
+
+    let picker = args.get_widget::<gpui::Entity<ui_common::asset_picker::MeshAssetPicker>>();
+
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .py_1()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(if let Some(picker_entity) = picker {
+            Popover::<ui_common::asset_picker::MeshAssetPicker>::new(format!(
+                "mesh-asset-picker-{}-{}",
+                args.id_prefix, args.prop_name
+            ))
+            .anchor(gpui::Corner::BottomRight)
+            .trigger(
+                Button::new(format!(
+                    "mesh-asset-picker-btn-{}-{}",
+                    args.id_prefix, args.prop_name
+                ))
+                .label(display)
+                .small()
+                .ghost()
+                .dropdown_caret(true),
+            )
+            .content(move |_window, _cx| picker_entity.clone())
+            .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child("No mesh selected")
+                .into_any_element()
+        })
+        .into_any_element()
+}
+
 #[pulsar_reflection::pulsar_type(
     primitive,
     structure = String,
     serialize_json_with = serialize_mesh_asset_path_json,
-    deserialize_json_with = deserialize_mesh_asset_path_json
+    deserialize_json_with = deserialize_mesh_asset_path_json,
+    editor = render_mesh_asset_editor
 )]
 #[allow(dead_code)]
 type RegisteredMeshAssetPath = MeshAssetPath;
@@ -103,8 +165,7 @@ type RegisteredMeshAssetPath = MeshAssetPath;
 // ── StaticMeshComponent ───────────────────────────────────────────────────────
 
 /// Attaches a mesh asset to a scene object.
-#[derive(EngineClass, RegisterRuntimeBehavior, Default, Clone, Debug, Serialize, Deserialize)]
-#[category("Rendering")]
+#[engine_class(category = "Rendering", default, clone, debug, serialize, deserialize)]
 pub struct StaticMeshComponent {
     /// Relative asset path to the mesh file (e.g. "meshes/primitives/SM_Cube.fbx").
     ///
@@ -114,6 +175,7 @@ pub struct StaticMeshComponent {
     pub mesh_asset: MeshAssetPath,
 }
 
+#[register_scene_props_applier]
 impl ScenePropsProjector for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";
 
@@ -131,13 +193,7 @@ impl ScenePropsProjector for StaticMeshComponent {
     }
 }
 
-pulsar_reflection::inventory::submit! {
-    pulsar_reflection::ScenePropsApplierRegistration {
-        class_name: <StaticMeshComponent as ScenePropsProjector>::CLASS_NAME,
-        apply: <StaticMeshComponent as ScenePropsProjector>::apply_scene_props,
-    }
-}
-
+#[register_runtime_behavior]
 impl ComponentRuntimeBehavior for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";
 

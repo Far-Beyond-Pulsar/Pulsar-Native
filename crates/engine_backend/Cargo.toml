@@ -59,6 +59,7 @@ parking_lot = { workspace = true }
 anyhow = { workspace = true }
 # horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
 serde_json = { workspace = true }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
 
 # Networking dependencies
 async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }

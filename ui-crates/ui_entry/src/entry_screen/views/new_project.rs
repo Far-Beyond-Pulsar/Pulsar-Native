@@ -1,11 +1,10 @@
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme as _,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
-    v_flex,
+    v_flex, ActiveTheme as _,
 };
 
 pub fn render_new_project(

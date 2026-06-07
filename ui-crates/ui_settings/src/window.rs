@@ -52,6 +52,7 @@ impl Render for SettingsWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for SettingsWindow {
     type Params = ();
 

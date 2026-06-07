@@ -61,6 +61,7 @@ impl MultiplayerWindow {
                         Some(ServerMessage::Joined {
                             peer_id,
                             participants,
+                            join_token: server_join_token,
                             participant_profiles,
                             ..
                         }) => {
@@ -78,7 +79,9 @@ impl MultiplayerWindow {
 
                                     this.active_session = Some(ActiveSession {
                                         session_id: session_id.clone(),
-                                        join_token: join_token.clone(),
+                                        join_token: server_join_token
+                                            .clone()
+                                            .unwrap_or_else(|| join_token.clone()),
                                         server_address: server_address.clone(),
                                         // Store raw participant list
                                         connected_users: participants.clone(),
@@ -141,6 +144,12 @@ impl MultiplayerWindow {
                                         &session_id,
                                         &peer_id,
                                         &participants,
+                                    );
+                                    this.start_fs_event_forwarder(
+                                        client.clone(),
+                                        session_id.clone(),
+                                        peer_id.clone(),
+                                        cx,
                                     );
                                     if let Some(profiles) = participant_profiles {
                                         this.sync_engine_multiuser_profiles(profiles);
@@ -270,6 +279,7 @@ impl MultiplayerWindow {
                                                                 });
                                                             }
                                                         });
+                                                        engine.notify_multiuser_changed();
                                                     }
                                                 }
                                             });
@@ -312,6 +322,7 @@ impl MultiplayerWindow {
                                                         mu.participant_profiles
                                                             .retain(|p| p.peer_id != left_peer_id);
                                                     });
+                                                    engine.notify_multiuser_changed();
                                                 }
                                             });
                                         });
@@ -320,18 +331,10 @@ impl MultiplayerWindow {
                                         tracing::warn!("JOIN_SESSION: You were kicked from the session: {}", reason);
                                         cx.update(|cx| {
                                             this.update(cx, |this, cx| {
-                                                // Disconnect and show error
-                                                this.connection_status = ConnectionStatus::Error(
-                                                    format!("Kicked from session: {}", reason)
+                                                this.handle_kicked(
+                                                    format!("Kicked from session: {}", reason),
+                                                    cx,
                                                 );
-                                                this.sync_engine_multiuser_error(format!(
-                                                    "Kicked from session: {}",
-                                                    reason
-                                                ));
-                                                this.active_session = None;
-                                                this.client = None;
-                                                this.user_presences.clear();
-                                                cx.notify();
                                             });
                                         });
                                         break; // Exit the message loop
@@ -592,6 +595,14 @@ impl MultiplayerWindow {
                                                 }
                                             }
                                         }
+                                    }
+                                    ServerMessage::FileChanged { path, kind, .. } => {
+                                        let change_kind = match kind.as_str() {
+                                            "created" => engine_fs::events::FsChangeKind::Created,
+                                            "deleted" => engine_fs::events::FsChangeKind::Deleted,
+                                            _ => engine_fs::events::FsChangeKind::Modified,
+                                        };
+                                        engine_fs::events::emit_remote(path, change_kind);
                                     }
                                     ServerMessage::RequestFileManifest { from_peer_id, session_id: req_session_id, .. } => {
                                         tracing::debug!("JOIN_SESSION: Received RequestFileManifest from {}", from_peer_id);

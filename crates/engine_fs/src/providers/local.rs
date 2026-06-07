@@ -4,6 +4,7 @@ use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 
 use super::provider_trait::{FsEntry, FsMetadata, FsProvider};
+use crate::{events, FsChangeKind};
 
 /// Standard local-disk implementation of [`FsProvider`].
 ///
@@ -127,7 +128,11 @@ impl FsProvider for LocalFsProvider {
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p)?;
         }
-        Ok(std::fs::write(path, content)?)
+        let result = std::fs::write(path, content).map_err(Into::into);
+        if result.is_ok() {
+            events::emit(path.to_path_buf(), FsChangeKind::Modified);
+        }
+        result
     }
 
     fn create_file(&self, path: &Path, content: &[u8]) -> Result<()> {
@@ -138,7 +143,11 @@ impl FsProvider for LocalFsProvider {
         if let Some(p) = path.parent() {
             std::fs::create_dir_all(p)?;
         }
-        Ok(std::fs::write(path, content)?)
+        let result = std::fs::write(path, content).map_err(Into::into);
+        if result.is_ok() {
+            events::emit(path.to_path_buf(), FsChangeKind::Created);
+        }
+        result
     }
 
     fn delete_path(&self, path: &Path) -> Result<()> {
@@ -148,13 +157,19 @@ impl FsProvider for LocalFsProvider {
         } else {
             std::fs::remove_file(path)?;
         }
+        events::emit(path.to_path_buf(), FsChangeKind::Deleted);
         Ok(())
     }
 
     fn rename(&self, from: &Path, to: &Path) -> Result<()> {
         self.check_write_allowed(from)?;
         self.check_write_allowed(to)?;
-        Ok(std::fs::rename(from, to)?)
+        let result = std::fs::rename(from, to).map_err(Into::into);
+        if result.is_ok() {
+            events::emit(from.to_path_buf(), FsChangeKind::Deleted);
+            events::emit(to.to_path_buf(), FsChangeKind::Created);
+        }
+        result
     }
 
     fn list_dir(&self, path: &Path) -> Result<Vec<FsEntry>> {
@@ -180,7 +195,11 @@ impl FsProvider for LocalFsProvider {
 
     fn create_dir_all(&self, path: &Path) -> Result<()> {
         self.check_write_allowed(path)?;
-        Ok(std::fs::create_dir_all(path)?)
+        let result = std::fs::create_dir_all(path).map_err(Into::into);
+        if result.is_ok() {
+            events::emit(path.to_path_buf(), FsChangeKind::Created);
+        }
+        result
     }
 
     fn exists(&self, path: &Path) -> Result<bool> {

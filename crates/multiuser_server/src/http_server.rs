@@ -81,7 +81,7 @@ pub async fn run_server(config: Arc<Config>, shutdown: mpsc::Receiver<()>) -> Re
     let auth = Arc::new(AuthService::new(&config)?);
     let sessions = Arc::new(SessionStore::new(config.clone()));
     let health = Arc::new(HealthChecker::new(config.clone()));
-    let rendezvous = Arc::new(RendezvousCoordinator::new((*config).clone()));
+    let rendezvous = Arc::new(RendezvousCoordinator::new(auth.clone(), (*config).clone()));
 
     let state = AppState {
         config,
@@ -119,9 +119,9 @@ fn create_router(state: AppState) -> Router {
         .route("/metrics/json", get(metrics_json_handler))
         // Session management
         .route("/v1/sessions", post(create_session))
-        .route("/v1/sessions/:id/join", post(join_session))
-        .route("/v1/sessions/:id/close", post(close_session))
-        .route("/v1/sessions/:id", get(get_session))
+        .route("/v1/sessions/{id}/join", post(join_session))
+        .route("/v1/sessions/{id}/close", post(close_session))
+        .route("/v1/sessions/{id}", get(get_session))
         // WebSocket signaling
         .route("/v1/signaling", get(websocket_handler))
         .route("/ws", get(websocket_handler)) // Simple /ws endpoint for client compatibility

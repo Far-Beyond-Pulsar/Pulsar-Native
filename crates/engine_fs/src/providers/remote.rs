@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tracing::debug;
 
 use super::provider_trait::{FsEntry, FsMetadata, FsProvider, ManifestEntry};
+use crate::{events, FsChangeKind};
 
 // ── Wire types ─────────────────────────────────────────────────────────────────
 
@@ -196,6 +197,7 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.put(&url))
             .send_json(body)
             .context("RemoteFs write HTTP call failed")?;
+        events::emit(path.to_path_buf(), FsChangeKind::Modified);
         Ok(())
     }
 
@@ -212,6 +214,7 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.put(&url))
             .send_json(body)
             .context("RemoteFs create HTTP call failed")?;
+        events::emit(path.to_path_buf(), FsChangeKind::Created);
         Ok(())
     }
 
@@ -222,6 +225,7 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.delete(&url))
             .call()
             .context("RemoteFs delete HTTP call failed")?;
+        events::emit(path.to_path_buf(), FsChangeKind::Deleted);
         Ok(())
     }
 
@@ -237,6 +241,8 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.post(&url))
             .send_json(&body)
             .context("RemoteFs rename HTTP call failed")?;
+        events::emit(from.to_path_buf(), FsChangeKind::Deleted);
+        events::emit(to.to_path_buf(), FsChangeKind::Created);
         Ok(())
     }
 
@@ -274,6 +280,7 @@ impl FsProvider for RemoteFsProvider {
         self.auth(self.agent.post(&url))
             .send_empty()
             .context("RemoteFs mkdir HTTP call failed")?;
+        events::emit(path.to_path_buf(), FsChangeKind::Created);
         Ok(())
     }
 

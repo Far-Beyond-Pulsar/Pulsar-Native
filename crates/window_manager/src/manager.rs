@@ -7,7 +7,9 @@ use crate::hooks::{HookContext, HookRegistry, HookType, LoggingHook, TelemetryHo
 use crate::state::WindowState;
 use crate::telemetry::TelemetrySender;
 use crate::validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
-use gpui::{AnyWindowHandle, App, EventEmitter, Global, Render, Window, WindowOptions};
+use gpui::{
+    AnyWindowHandle, App, AppContext as _, EventEmitter, Global, Render, Window, WindowOptions,
+};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use ui_types_common::window_types::{WindowId, WindowRequest};
@@ -83,9 +85,16 @@ impl WindowManager {
         let window_id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let wtype = window_type.clone();
 
+        let t0 = std::time::Instant::now();
         let handle = cx
             .open_window(options, content_builder)
             .map_err(|e| WindowError::GpuiError(format!("{:?}", e)))?;
+        let open_elapsed = t0.elapsed();
+        tracing::info!(
+            "[WindowManager] cx.open_window for {:?} took {:?}",
+            wtype,
+            open_elapsed
+        );
 
         let handle: AnyWindowHandle = handle.into();
 

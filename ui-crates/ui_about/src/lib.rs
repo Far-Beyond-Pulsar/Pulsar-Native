@@ -254,6 +254,7 @@ impl Render for AboutWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for AboutWindow {
     type Params = ();
 

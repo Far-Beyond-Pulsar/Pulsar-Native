@@ -1,6 +1,12 @@
 //! [f32; 4] primitive type implementation (Color)
-
 use crate::pulsar_type;
+
+#[pulsar_type(
+    serialize_json_with = serialize_color_json,
+    deserialize_json_with = deserialize_color_json,
+    editor = render_color_editor
+)]
+type RegisteredColor = [f32; 4];
 
 fn serialize_color_json(value: &[f32; 4]) -> crate::ReflectResult<serde_json::Value> {
     Ok(serde_json::json!([value[0], value[1], value[2], value[3]]))
@@ -29,13 +35,38 @@ fn deserialize_color_json(value: serde_json::Value) -> crate::ReflectResult<[f32
     ])
 }
 
-#[pulsar_type(
-    primitive,
-    serialize_json_with = serialize_color_json,
-    deserialize_json_with = deserialize_color_json
-)]
-#[allow(dead_code)]
-type RegisteredColor = [f32; 4];
+fn render_color_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
+    use gpui::{Corner, prelude::*, *};
+    use ui::{ActiveTheme, color_picker::ColorPicker, h_flex};
+
+    h_flex()
+        .w_full()
+        .justify_between()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(args.display_name.to_string()),
+        )
+        .child(
+            if let Some(state) =
+                args.get_widget::<gpui::Entity<ui::color_picker::ColorPickerState>>()
+            {
+                ColorPicker::new(&state)
+                    .anchor(Corner::BottomRight)
+                    .into_any_element()
+            } else {
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(format!("{:?}", args.current_json))
+                    .into_any_element()
+            },
+        )
+        .into_any_element()
+}
 
 #[cfg(test)]
 mod tests {

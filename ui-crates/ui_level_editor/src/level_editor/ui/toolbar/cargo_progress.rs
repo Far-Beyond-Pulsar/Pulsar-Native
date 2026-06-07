@@ -96,12 +96,24 @@ pub fn run_cargo_clean(
     }
 }
 
-/// Run `cargo update` and drive progress via stderr "Updating …" lines.
-/// cargo update has no JSON format — all output is human-readable on stderr.
+/// Run `cargo update`, occupying the full 0–100 % range.
 pub fn run_cargo_update(
     project_root: &Path,
     progress: Arc<AtomicU32>,
     status: StatusCell,
+) -> Result<(), String> {
+    run_cargo_update_to(project_root, progress, status, 100)
+}
+
+/// Run `cargo update` and drive progress via stderr "Updating …" lines,
+/// scaling the 0–100 internal range down to `[0, up_to_pct]` (used when
+/// chained before a build phase that occupies the remainder).
+/// cargo update has no JSON format — all output is human-readable on stderr.
+pub fn run_cargo_update_to(
+    project_root: &Path,
+    progress: Arc<AtomicU32>,
+    status: StatusCell,
+    up_to_pct: u32,
 ) -> Result<(), String> {
     tracing::info!(
         "[CARGO-PROGRESS] spawning: cargo update in {}",
@@ -126,7 +138,8 @@ pub fn run_cargo_update(
         let trimmed = line.trim_start();
         if trimmed.starts_with("Updating ") || trimmed.starts_with("Locking ") {
             updates_seen += 1;
-            let pct = (updates_seen * 3).min(95) as u32;
+            let internal = (updates_seen * 3).min(95);
+            let pct = internal * up_to_pct / 100;
             progress.store(pct, Ordering::Relaxed);
 
             let what = trimmed
@@ -143,8 +156,9 @@ pub fn run_cargo_update(
         .wait()
         .map_err(|e| format!("Failed to wait for cargo update: {e}"))?;
     if exit.success() {
-        progress.store(100, Ordering::Relaxed);
-        tracing::info!("[CARGO-PROGRESS] update success → 100%");
+        progress.store(up_to_pct, Ordering::Relaxed);
+        *status.lock() = String::new();
+        tracing::info!("[CARGO-PROGRESS] update success → {up_to_pct}%");
         Ok(())
     } else {
         Err("cargo update failed — check the editor output for details".into())

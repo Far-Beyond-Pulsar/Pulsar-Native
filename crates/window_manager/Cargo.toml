@@ -18,6 +18,8 @@ anyhow = { workspace = true }
 # Thread-safe data structures
 parking_lot = { workspace = true }
 dashmap = { workspace = true }
+linkme = { workspace = true }
+ui_gen_macros = { workspace = true }
 
 # Logging
 tracing.workspace = true

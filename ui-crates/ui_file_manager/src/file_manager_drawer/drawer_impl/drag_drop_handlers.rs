@@ -35,6 +35,7 @@ impl FileManagerDrawer {
                 if let Some(ref path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(path);
                 }
+                self.mark_directory_cache_dirty();
 
                 // Select the target folder to show where items were moved
                 self.selected_folder = Some(target_folder);
@@ -105,6 +106,7 @@ impl FileManagerDrawer {
                 if let Some(ref path) = self.project_path {
                     self.folder_tree = FolderNode::from_path(path);
                 }
+                self.mark_directory_cache_dirty();
                 self.selected_folder = Some(target_folder);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;

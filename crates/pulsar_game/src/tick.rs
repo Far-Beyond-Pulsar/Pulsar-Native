@@ -106,9 +106,15 @@ impl TickLoop {
         self.schedule.run(&mut self.world, time);
         self.actors.tick_all(&mut self.world, time);
 
-        // Drive runtime blueprint tick events after ECS + actor updates.
+        // Drive runtime blueprint lifecycle + tick events after ECS + actor
+        // updates. `begin_play` for newly-registered instances is deferred to
+        // here (rather than fired at registration time during level setup) so
+        // it observes a fully-initialised window/world/scene — registration
+        // happens before the primary window opens, but `tick_once` only runs
+        // after `spawn_ecs_thread`, which is called once the window is ready.
         if let Some(dispatcher) = &self.blueprint_dispatcher {
             let mut dispatcher = dispatcher.lock().unwrap();
+            dispatcher.dispatch_pending_begin_play();
             let object_ids = dispatcher.instance_ids();
             for object_id in object_ids {
                 let _ = dispatcher.dispatch_event(BlueprintEvent::Tick {
@@ -140,6 +146,13 @@ impl TickLoop {
             if elapsed < target_dt {
                 std::thread::sleep(target_dt - elapsed);
             }
+        }
+
+        // Loop is shutting down — give VM blueprint instances a chance to run
+        // their `end_play` teardown logic, mirroring `ActorRegistry`'s
+        // begin_play/end_play contract for native actors.
+        if let Some(dispatcher) = &self.blueprint_dispatcher {
+            dispatcher.lock().unwrap().dispatch_end_play_all();
         }
     }
 

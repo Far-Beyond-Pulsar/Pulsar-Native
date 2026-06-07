@@ -1,27 +1,71 @@
-//! open_pulsar_window — open any PulsarWindow directly via cx.open_window.
+//! PulsarWindowExt — open any PulsarWindow via WindowManager with Root theming.
 //!
-//! Uses `cx.open_window` instead of routing through the `WindowManager` global,
-//! which avoids panics when the global is not yet registered and keeps window
-//! opening simple and reliable.
+//! Import the trait and call `TypeName::open(params, cx)`. All routing goes
+//! through the WindowManager so hooks, telemetry, and tracking apply uniformly.
 
-use gpui::{App, AppContext as _};
+use gpui::{App, AppContext as _, UpdateGlobal as _};
 use ui::Root;
-use window_manager::PulsarWindow;
+use window_manager::{apply_window_wrapper, PulsarWindow, WindowManager, WindowRegistry};
 
-/// Open any [`PulsarWindow`] by calling `cx.open_window` directly.
-///
-/// The window is wrapped in `Root` for theming. This does **not** require the
-/// `WindowManager` global to be registered.
+/// Extends every [`PulsarWindow`] with an `open` method that routes through
+/// the [`WindowManager`] and wraps the entity in [`Root`] for theming.
 ///
 /// # Example
 /// ```ignore
-/// open_pulsar_window::<ProblemsWindow>(drawer.clone(), cx);
-/// open_pulsar_window::<SettingsWindow>((), cx);
+/// use ui_common::PulsarWindowExt as _;
+///
+/// ProblemsWindow::open(drawer, cx);
+/// SettingsWindow::open((), cx);
+/// PulsarRoot::open(project_path, cx);
 /// ```
-pub fn open_pulsar_window<W: PulsarWindow>(params: W::Params, cx: &mut App) {
-    let options = W::window_options(&params);
-    let _ = cx.open_window(options, move |window, cx| {
-        let entity = W::build(params, window, cx);
-        cx.new(|cx| Root::new(entity.into(), window, cx))
-    });
+pub trait PulsarWindowExt: PulsarWindow {
+    /// Open this window through the [`WindowManager`], wrapped in [`Root`] for theming.
+    fn open(params: Self::Params, cx: &mut App) {
+        let request = Self::window_request(&params);
+        let profile = Self::window_profile(&params);
+        let options = Self::window_options(&params);
+        let _ = WindowManager::update_global(cx, |wm, cx| {
+            if let Some(profile) = profile {
+                let wrapper_kind = profile.wrapper();
+                let profile_options = profile.options();
+                wm.create_window(
+                    request,
+                    profile_options,
+                    move |window, cx| {
+                        let entity = Self::build(params, window, cx);
+                        let wrapped = apply_window_wrapper(wrapper_kind, entity.into(), window, cx);
+                        cx.new(|cx| Root::new(wrapped, window, cx))
+                    },
+                    cx,
+                )
+            } else {
+                wm.create_window(
+                    request,
+                    options,
+                    move |window, cx| {
+                        let entity = Self::build(params, window, cx);
+                        cx.new(|cx| Root::new(entity.into(), window, cx))
+                    },
+                    cx,
+                )
+            }
+        });
+    }
+
+    /// Register this window in the [`WindowRegistry`] so it can be opened by name.
+    ///
+    /// Only available for windows whose `Params` implement `Default` (i.e. zero-param
+    /// windows like Settings, About, etc.). Call once from `init()`.
+    fn register(cx: &mut App)
+    where
+        Self::Params: Default,
+    {
+        WindowRegistry::update_global(cx, |reg, _| {
+            reg.register(Self::window_name(), |cx| {
+                Self::open(Self::Params::default(), cx);
+            });
+        });
+    }
 }
+
+impl<W: PulsarWindow> PulsarWindowExt for W {}

@@ -9,6 +9,9 @@ pulsar_reflection = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+gpui-ce.workspace = true
+ui.workspace = true
+ui_common.workspace = true
 
 [lints]
 workspace = true

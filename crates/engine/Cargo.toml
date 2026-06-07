@@ -3,7 +3,7 @@ edition = "2021"
 name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
-version = "0.2.23"
+version = "0.2.27"
 
 [[bin]]
 name = "pulsar_engine"
@@ -32,14 +32,8 @@ profiling = { workspace = true }
 ui_core.workspace = true
 ui_common.workspace = true
 ui_entry.workspace = true
-# ui_daw_editor.workspace = true
-ui_settings.workspace = true
 ui_loading_screen.workspace = true
-ui_about.workspace = true
-ui_documentation.workspace = true
 ui_log_viewer.workspace = true
-ui_git_manager.workspace = true
-ui_fab_search.workspace = true
 serde_json = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }

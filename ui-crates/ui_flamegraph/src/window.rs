@@ -47,11 +47,6 @@ impl FlamegraphWindow {
         })
     }
 
-    /// Convenience: open the flamegraph window via the PulsarWindow system.
-    pub fn open(cx: &mut App) {
-        ui_common::open_pulsar_window::<FlamegraphWindow>(Arc::new(TraceData::new()), cx);
-    }
-
     fn start_profiling(&mut self, _cx: &mut Context<Self>) {
         if self.is_profiling {
             return;
@@ -859,22 +854,19 @@ impl FlamegraphWindow {
     }
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for FlamegraphWindow {
-    type Params = std::sync::Arc<crate::TraceData>;
+    type Params = ();
 
     fn window_name() -> &'static str {
         "FlamegraphWindow"
     }
 
-    fn window_options(_params: &std::sync::Arc<crate::TraceData>) -> gpui::WindowOptions {
+    fn window_options(_: &()) -> gpui::WindowOptions {
         window_manager::default_window_options(1200.0, 800.0)
     }
 
-    fn build(
-        params: std::sync::Arc<crate::TraceData>,
-        window: &mut gpui::Window,
-        cx: &mut gpui::App,
-    ) -> gpui::Entity<Self> {
-        FlamegraphWindow::new(params, window, cx)
+    fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {
+        FlamegraphWindow::new(std::sync::Arc::new(crate::TraceData::new()), window, cx)
     }
 }

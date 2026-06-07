@@ -129,44 +129,77 @@ impl BpExecutor {
         Ok(Self { _lib: lib })
     }
 
-    /// Whitelist of allowed dispatch node type prefixes.
-    /// Only symbols matching one of these prefixes will be resolved.
-    /// This prevents arbitrary code execution by limiting which functions
-    /// the blueprint VM can call.
-    const ALLOWED_DISPATCH_PREFIXES: &'static [&'static str] = &[
-        "__bp_dispatch_std_",
-        "__bp_dispatch_core_",
-        "__bp_dispatch_math_",
-        "__bp_dispatch_string_",
-        "__bp_dispatch_array_",
-        "__bp_dispatch_flow_",
-        "__bp_dispatch_debug_",
-        "__bp_dispatch_file_",
-        "__bp_dispatch_time_",
-        "__bp_dispatch_random_",
-        "__bp_dispatch_input_",
-        "__bp_dispatch_render_",
-        "__bp_dispatch_physics_",
-        "__bp_dispatch_scene_",
-        "__bp_dispatch_engine_",
-        "__bp_dispatch_game_",
-        "__bp_dispatch_crypto_",
-        "__bp_dispatch_ui_",
-        "__bp_dispatch_agent_",
-        "__bp_dispatch_network_",
-        "__bp_dispatch_audio_",
-        "__bp_dispatch_animation_",
-        "__bp_dispatch_transform_",
-        "__bp_dispatch_collision_",
-        "__bp_dispatch_events_",
-        "__bp_dispatch_blueprint_",
+    /// Whitelist of allowed blueprint node names, matched against the bare
+    /// `node_type` (i.e. without the `__bp_dispatch_` prefix). Entries may
+    /// use `*` as a wildcard — at the start, end, or both — e.g. `"array_*"`
+    /// matches `array_push`/`array_get`/…, `"*_port"` matches `http_port`/…
+    /// Entries without `*` require an exact match.
+    ///
+    /// This only allows resolving symbols that correspond to real
+    /// `#[blueprint]`-annotated nodes in `pulsar_std`, rather than trusting
+    /// every `__bp_dispatch_*` symbol the embedded cdylib happens to export.
+    /// Regenerate this list (see `crates/pulsar_std/src/**/*.rs` for
+    /// `#[blueprint] pub fn <name>`) whenever new node categories are added.
+    const ALLOWED_NODE_NAMES: &'static [&'static str] = &[
+        // Category-prefix groups (covers most array/file/string/... nodes)
+        "array_*", "assert_*", "atomic_*", "bit_*", "bitwise_*", "break_*",
+        "channel_*", "color_*", "count_*", "create_*", "current_*", "debug_*",
+        "dir_*", "do_*", "ease_*", "file_*", "format_*", "generate_*",
+        "get_*", "greater_*", "hash_*", "hashmap_*", "hashset_*", "hex_*",
+        "http_*", "is_*", "join_*", "json_*", "less_*", "log_*",
+        "make_*", "mixed_*", "multi_*", "on_*", "parse_*", "path_*",
+        "print_*", "process_*", "random_*", "rect_*", "remove_*", "select_*",
+        "set_*", "shell_*", "string_*", "switch_*", "system_*", "unix_*",
+        "url_*", "validate_*", "vector2_*", "vector3_*",
+
+        // Individually-named nodes that don't share a common group prefix
+        "Var1", "Var2", "abs", "add", "add_seconds", "and",
+        "angle_difference", "base64_encode", "begin_play", "benchmark_function", "bool_to_string", "bounce_value",
+        "branch", "breakpoint", "build_url", "bytes_to_string", "caesar_cipher", "ceil",
+        "center_justify", "checksum", "cidr_to_mask", "clamp", "clamp_to_range", "clear_bit",
+        "coin_flip", "command_success", "compare_hashes", "conditional_print", "cos", "crc_checksum",
+        "crypto_url_encode", "days_to_seconds", "degrees_to_radians", "delay", "denormalize", "distance2d",
+        "distance3d", "divide", "divide_add", "dns_port", "emit_event", "equals",
+        "example", "first_char", "flip_flop", "floor", "for_loop", "from_percentage",
+        "ftp_port", "gate", "hours_to_seconds", "https_port", "in_range", "insert_at",
+        "last_char", "left_justify", "lerp", "list_env", "lock_mutex", "main",
+        "map_range", "max", "mean", "median", "min", "minutes_to_seconds",
+        "modulo", "mongodb_port", "ms_to_seconds", "multiply", "mysql_port", "nearly_equal",
+        "normalize", "normalize_path", "not", "not_equals", "now", "number_to_string",
+        "or", "percentage", "ping_pong", "postgresql_port", "power", "println",
+        "proportion", "radians_to_degrees", "randexec", "range", "range_switch", "ratio",
+        "redis_port", "repeat", "retriggerable_delay", "reverse_string", "right_justify", "rot13",
+        "round", "run_command", "runlua", "seconds_to_ms", "sequence", "shuffle_seed",
+        "sign", "sin", "sleep_ms", "smoothstep", "smtp_port", "spawn_thread",
+        "split_path", "sqrt", "ssh_port", "std_dev", "subtract", "subtract_seconds",
+        "tan", "templateLua", "timestamp_difference", "toggle_bit", "transform_new", "unlock_mutex",
+        "variance", "verify_checksum", "while_loop", "xor", "xor_cipher",
     ];
 
-    /// Check if a dispatch symbol name is on the allowed whitelist.
-    fn is_allowed_dispatch(symbol_name: &str) -> bool {
-        Self::ALLOWED_DISPATCH_PREFIXES
+    /// Match `name` against a whitelist `pattern` that may use `*` as a
+    /// leading and/or trailing wildcard (e.g. `"array_*"`, `"*_port"`,
+    /// `"*lua*"`, or bare `"*"` to match anything). A pattern with no `*`
+    /// requires an exact match.
+    fn glob_match(pattern: &str, name: &str) -> bool {
+        match (pattern.starts_with('*'), pattern.ends_with('*')) {
+            (false, false) => pattern == name,
+            (false, true) => name.starts_with(&pattern[..pattern.len() - 1]),
+            (true, false) => name.ends_with(&pattern[1..]),
+            (true, true) => {
+                if pattern.len() == 1 {
+                    true
+                } else {
+                    name.contains(&pattern[1..pattern.len() - 1])
+                }
+            }
+        }
+    }
+
+    /// Check whether `node_type` names a whitelisted blueprint node.
+    fn is_allowed_node(node_type: &str) -> bool {
+        Self::ALLOWED_NODE_NAMES
             .iter()
-            .any(|prefix| symbol_name.starts_with(prefix))
+            .any(|pattern| Self::glob_match(pattern, node_type))
     }
 
     /// Patch `fn_ptr` in every `Instruction::Call` by resolving
@@ -190,19 +223,21 @@ impl BpExecutor {
                 fn_ptr, node_type, ..
             } = instr
             {
-                // Build a NUL-terminated key for libloading, but keep a clean
-                // copy without the NUL for use in error messages.
-                let display_name = format!("__bp_dispatch_{}", node_type);
-
-                // Whitelist check: only allow known dispatch prefixes.
-                if !Self::is_allowed_dispatch(&display_name) {
+                // Whitelist check: only allow known blueprint node names.
+                // (Matched against the bare `node_type` — dispatch symbols
+                // are named `__bp_dispatch_<node_type>` with no category
+                // infix, so the whitelist patterns mirror that convention.)
+                if !Self::is_allowed_node(node_type) {
                     return Err(ExecutorError::MissingSymbol(format!(
-                        "Dispatch '{}' is not on the allowed whitelist. \
+                        "Dispatch '__bp_dispatch_{}' is not on the allowed whitelist. \
                          Only whitelisted blueprint node types can be executed.",
-                        display_name
+                        node_type
                     )));
                 }
 
+                // Build a NUL-terminated key for libloading, but keep a clean
+                // copy without the NUL for use in error messages.
+                let display_name = format!("__bp_dispatch_{}", node_type);
                 let lookup_key = format!("{}\0", display_name);
                 let ptr: libloading::Symbol<pbgc::DispatchFn> = unsafe {
                     self._lib

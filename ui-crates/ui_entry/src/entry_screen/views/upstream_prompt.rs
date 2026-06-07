@@ -1,11 +1,10 @@
 use crate::entry_screen::EntryScreen;
 use gpui::{prelude::*, *};
 use ui::{
-    ActiveTheme as _, Icon, IconName,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::TextInput,
-    v_flex,
+    v_flex, ActiveTheme as _, Icon, IconName,
 };
 
 pub fn render_upstream_prompt(

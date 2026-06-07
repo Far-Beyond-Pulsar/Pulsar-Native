@@ -78,6 +78,7 @@ pub struct FabSearchWindow {
     pub(crate) gallery_scroll_state: ScrollbarState,
 }
 
+#[window_manager::register_window]
 impl window_manager::PulsarWindow for FabSearchWindow {
     type Params = ();
 
