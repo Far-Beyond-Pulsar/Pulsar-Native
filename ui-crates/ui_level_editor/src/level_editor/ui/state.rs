@@ -139,6 +139,10 @@ pub enum BuildMode {
     Check,
     /// Run `cargo update` to refresh all git and registry deps.
     Update,
+    /// `cargo update` then compile then immediately launch the game —
+    /// use this after pushing engine changes to a git dependency so the
+    /// build picks up the new commit instead of the locked one.
+    UpdateBuildAndRun,
     /// `cargo clean` then `cargo build --release`.
     BuildScratch,
     /// `cargo clean` then `cargo build --release` then `cargo run --release`.
