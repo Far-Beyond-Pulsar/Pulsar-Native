@@ -171,13 +171,27 @@ impl BuiltinEditorProvider for BlueprintEditorBuiltinProvider {
                 }],
             },
             default_content: json!({
-                "graph": {
-                    "nodes": [],
+                "format_version": 1,
+                "main_graph": {
+                    "nodes": {},
                     "connections": [],
-                    "comments": [],
                     "metadata": {
-                        "version": "0.1.0"
-                    }
+                        "name": "EventGraph",
+                        "description": "",
+                        "version": "1.0.0",
+                        "created_at": "2024-01-01T00:00:00+00:00",
+                        "modified_at": "2024-01-01T00:00:00+00:00"
+                    },
+                    "comments": []
+                },
+                "local_macros": [],
+                "variables": [],
+                "blueprint_metadata": {
+                    "blueprint_type": "Generic",
+                    "parent_class": null,
+                    "description": "",
+                    "category": "Uncategorized",
+                    "tags": []
                 }
             }),
             categories: vec!["Blueprints".to_string()],

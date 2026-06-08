@@ -17,6 +17,17 @@ use types::{
 
 use gpui::StyledImage as _;
 use gpui::{prelude::*, *};
+
+/// Returns `true` when the `PULSAR_INSECURE_TLS` environment variable is set to `"1"`.
+///
+/// When enabled, TLS certificate verification is skipped for all outbound HTTPS
+/// connections made by the entry screen (cloud server API calls, etc.).
+/// This is useful for development environments that use self-signed certificates.
+///
+/// Defaults to `false` — TLS verification is always on for safety.
+fn insecure_tls_enabled() -> bool {
+    std::env::var("PULSAR_INSECURE_TLS").as_deref() == Ok("1")
+}
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
