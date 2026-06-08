@@ -1234,7 +1234,7 @@ name = "blueprint_compiler"
 version = "0.1.0"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=d18837c13dd3e1cf6076d9a3c64c450971a6d1af)",
- "pbgc",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=319e4118b5e8c2efe2280f54f9729c2688293f95)",
  "pulsar_graph",
  "serde_json",
  "tracing",
@@ -1244,6 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.6.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=4edbe9fcf57fae7e40d5636de7c80296510e44ed#4edbe9fcf57fae7e40d5636de7c80296510e44ed"
 dependencies = [
  "anyhow",
  "arboard",
@@ -1256,7 +1257,7 @@ dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2)",
  "log",
  "parking_lot",
- "pbgc",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5c7cc44bf97ea570a43cbd438871881609390125)",
  "plugin_editor_api",
  "pulsar_bp_executor",
  "pulsar_reflection",
@@ -5140,7 +5141,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "system-configuration 0.7.0",
  "tokio",
  "tower-service",
@@ -7704,6 +7705,19 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=319e4118b5e8c2efe2280f54f9729c2688293f95#319e4118b5e8c2efe2280f54f9729c2688293f95"
+dependencies = [
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2)",
+ "pulsar_std",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
+name = "pbgc"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=5c7cc44bf97ea570a43cbd438871881609390125#5c7cc44bf97ea570a43cbd438871881609390125"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2)",
@@ -8433,7 +8447,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "343d3bd7056eda839b03204e68deff7d1b13aba7af2b2fd16890697274262ee7"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "log",
  "multimap",
  "petgraph",
@@ -8452,7 +8466,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.13.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
@@ -8612,7 +8626,7 @@ version = "0.1.0"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=d18837c13dd3e1cf6076d9a3c64c450971a6d1af)",
  "libloading 0.9.0",
- "pbgc",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=319e4118b5e8c2efe2280f54f9729c2688293f95)",
  "pulsar_std_bundle",
  "serde_json",
  "sha2 0.11.0",
@@ -8879,7 +8893,7 @@ version = "0.1.0"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=d18837c13dd3e1cf6076d9a3c64c450971a6d1af)",
  "once_cell",
- "pbgc",
+ "pbgc 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=319e4118b5e8c2efe2280f54f9729c2688293f95)",
  "pulsar_bp_executor",
  "pulsar_std",
  "serde_json",
@@ -8954,7 +8968,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash 2.1.2",
  "rustls",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -8994,7 +9008,7 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.4",
+ "socket2 0.5.10",
  "tracing",
  "windows-sys 0.60.2",
 ]
@@ -10570,7 +10584,7 @@ version = "3.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32824fab5e16e6c4d86dc1ba84489390419a39f97699852b66480bb87d297ed8"
 dependencies = [
- "dirs 6.0.0",
+ "dirs 5.0.1",
 ]
 
 [[package]]
