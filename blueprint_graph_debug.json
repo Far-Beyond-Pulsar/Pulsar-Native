@@ -2,6 +2,15 @@
   "active_tab": "EventGraph",
   "editor_nodes": [
     {
+      "id": "300e6f79-2af7-46e7-b885-4a92289b29aa",
+      "definition_id": "begin_play",
+      "title": "begin_play",
+      "editor_node_type": "Event",
+      "definition_is_event": true,
+      "metadata_found": true,
+      "metadata_node_type": "event"
+    },
+    {
       "id": "504ac3c6-fde7-4250-afd6-7576ebe50873",
       "definition_id": "println",
       "title": "println",
@@ -18,15 +27,6 @@
       "definition_is_event": false,
       "metadata_found": true,
       "metadata_node_type": "control_flow"
-    },
-    {
-      "id": "300e6f79-2af7-46e7-b885-4a92289b29aa",
-      "definition_id": "begin_play",
-      "title": "begin_play",
-      "editor_node_type": "Event",
-      "definition_is_event": true,
-      "metadata_found": true,
-      "metadata_node_type": "event"
     }
   ],
   "graph_description_nodes": [
@@ -35,12 +35,12 @@
       "node_type": "branch"
     },
     {
-      "id": "504ac3c6-fde7-4250-afd6-7576ebe50873",
-      "node_type": "println"
-    },
-    {
       "id": "300e6f79-2af7-46e7-b885-4a92289b29aa",
       "node_type": "begin_play"
+    },
+    {
+      "id": "504ac3c6-fde7-4250-afd6-7576ebe50873",
+      "node_type": "println"
     }
   ]
 }
