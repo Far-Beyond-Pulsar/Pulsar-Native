@@ -1,0 +1,193 @@
+{
+  "active_tab": "EventGraph",
+  "editor_nodes": [
+    {
+      "id": "4429dec8-233f-4e50-95b9-77a2032dbf40",
+      "definition_id": "println",
+      "title": "println",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "f3943088-1597-4a1c-8558-7a31a26b2c92",
+      "definition_id": "print_formatted",
+      "title": "print_formatted",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "abbfaa66-9729-4fdd-bf1b-5bd471464ff2",
+      "definition_id": "print_number",
+      "title": "print_number",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "7be3ef31-6aa7-4f9d-8b5b-0001620da024",
+      "definition_id": "print_bool",
+      "title": "print_bool",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "a025784e-8399-4fd2-bbb1-64ffb3b75e2b",
+      "definition_id": "sequence",
+      "title": "sequence",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "control_flow"
+    },
+    {
+      "id": "6b228e95-aba9-497f-b61d-d94e80465f88",
+      "definition_id": "print_bool",
+      "title": "print_bool",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "35f3d625-e73f-456b-9516-b0ad8b078a39",
+      "definition_id": "random_float",
+      "title": "random_float",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "pure"
+    },
+    {
+      "id": "aef3fdca-6992-48a7-b16d-651ed2733547",
+      "definition_id": "print_number",
+      "title": "print_number",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "03570ef6-0a85-42a3-a496-e8d3ab9d35a0",
+      "definition_id": "random_float",
+      "title": "random_float",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "pure"
+    },
+    {
+      "id": "246027fa-54e4-48a6-af68-d463a5e83f3c",
+      "definition_id": "macro:e665b206-7d0c-460c-86db-952c3b76b683",
+      "title": "macro:e665b206-7d0c-460c-86db-952c3b76b683",
+      "editor_node_type": "Logic",
+      "definition_is_event": null,
+      "metadata_found": false,
+      "metadata_node_type": null
+    },
+    {
+      "id": "477b16cc-6fd7-4268-85c5-4c83fb0402b9",
+      "definition_id": "begin_play",
+      "title": "begin_play",
+      "editor_node_type": "Event",
+      "definition_is_event": true,
+      "metadata_found": true,
+      "metadata_node_type": "event"
+    },
+    {
+      "id": "a0bdff47-956d-4174-bd8b-b74fb1b8b2ab",
+      "definition_id": "print_number",
+      "title": "print_number",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "fn_"
+    },
+    {
+      "id": "8aca12ae-f954-4ebf-b7cb-9058da2722ca",
+      "definition_id": "sequence",
+      "title": "sequence",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "control_flow"
+    },
+    {
+      "id": "972ec112-6283-4bc6-8c68-c7712b43016a",
+      "definition_id": "sequence",
+      "title": "sequence",
+      "editor_node_type": "Logic",
+      "definition_is_event": false,
+      "metadata_found": true,
+      "metadata_node_type": "control_flow"
+    }
+  ],
+  "graph_description_nodes": [
+    {
+      "id": "972ec112-6283-4bc6-8c68-c7712b43016a",
+      "node_type": "sequence"
+    },
+    {
+      "id": "477b16cc-6fd7-4268-85c5-4c83fb0402b9",
+      "node_type": "begin_play"
+    },
+    {
+      "id": "7be3ef31-6aa7-4f9d-8b5b-0001620da024",
+      "node_type": "print_bool"
+    },
+    {
+      "id": "a025784e-8399-4fd2-bbb1-64ffb3b75e2b",
+      "node_type": "sequence"
+    },
+    {
+      "id": "35f3d625-e73f-456b-9516-b0ad8b078a39",
+      "node_type": "random_float"
+    },
+    {
+      "id": "4429dec8-233f-4e50-95b9-77a2032dbf40",
+      "node_type": "println"
+    },
+    {
+      "id": "f3943088-1597-4a1c-8558-7a31a26b2c92",
+      "node_type": "print_formatted"
+    },
+    {
+      "id": "6b228e95-aba9-497f-b61d-d94e80465f88",
+      "node_type": "print_bool"
+    },
+    {
+      "id": "aef3fdca-6992-48a7-b16d-651ed2733547",
+      "node_type": "print_number"
+    },
+    {
+      "id": "a0bdff47-956d-4174-bd8b-b74fb1b8b2ab",
+      "node_type": "print_number"
+    },
+    {
+      "id": "abbfaa66-9729-4fdd-bf1b-5bd471464ff2",
+      "node_type": "print_number"
+    },
+    {
+      "id": "246027fa-54e4-48a6-af68-d463a5e83f3c__macro_entry_e665b206-7d0c-460c-86db-952c3b76b683",
+      "node_type": "subgraph_entry"
+    },
+    {
+      "id": "246027fa-54e4-48a6-af68-d463a5e83f3c__macro_exit_e665b206-7d0c-460c-86db-952c3b76b683",
+      "node_type": "subgraph_exit"
+    },
+    {
+      "id": "03570ef6-0a85-42a3-a496-e8d3ab9d35a0",
+      "node_type": "random_float"
+    },
+    {
+      "id": "8aca12ae-f954-4ebf-b7cb-9058da2722ca",
+      "node_type": "sequence"
+    }
+  ]
+}

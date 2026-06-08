@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=227aa048ff43fbd4f8fba6c114b3cff192889977#227aa048ff43fbd4f8fba6c114b3cff192889977"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=73971f370cfc039c58038a88a01559dfcfb30b4c#73971f370cfc039c58038a88a01559dfcfb30b4c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4198,7 +4198,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=3458d987317e30f6cda800e03822292e27ef4a33#3458d987317e30f6cda800e03822292e27ef4a33"
+source = "git+https://github.com/j4flmao/wgpui-fork-27957.git?branch=fix%2Fscroll-stutter-and-panic#677fb8bc677f702f2dd75c2a68cd491a99367c12"
 dependencies = [
  "anyhow",
  "arboard",
@@ -13237,6 +13237,7 @@ dependencies = [
  "engine_state",
  "gpui-ce",
  "linkme",
+ "pulsar_std",
  "tracing",
  "ui",
  "ui_common",
