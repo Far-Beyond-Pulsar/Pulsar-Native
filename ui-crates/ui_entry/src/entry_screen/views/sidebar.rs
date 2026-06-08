@@ -41,18 +41,28 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                 .child(
                     div()
                         .flex_shrink_0()
-                        .w(px(34.))
-                        .h(px(34.))
+                        .w(px(44.))
+                        .h(px(44.))
                         .flex()
                         .items_center()
                         .justify_center()
                         .rounded_lg()
-                        .bg(primary)
-                        .child(
-                            Icon::new(IconName::Star)
-                                .size(px(18.))
-                                .text_color(primary_fg),
-                        ),
+                        .when(screen.logo.is_none(), |this| this.bg(primary))
+                        .when_some(screen.logo.clone(), |this, logo| {
+                            this.child(
+                                img(ImageSource::Render(logo))
+                                    .w(px(44.))
+                                    .h(px(44.))
+                                    .object_fit(gpui::ObjectFit::Contain),
+                            )
+                        })
+                        .when(screen.logo.is_none(), |this| {
+                            this.child(
+                                Icon::new(IconName::Star)
+                                    .size(px(18.))
+                                    .text_color(primary_fg),
+                            )
+                        }),
                 )
                 .child(
                     v_flex()

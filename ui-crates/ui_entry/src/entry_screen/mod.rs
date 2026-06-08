@@ -40,9 +40,18 @@ use ui::{
     v_flex, ActiveTheme as _, TitleBar, VirtualListScrollHandle,
 };
 
+static LOGO_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
+
+fn decode_logo_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+}
+
 /// EntryScreen: AAA-quality project manager
 pub struct EntryScreen {
     pub(crate) entity: Option<Entity<EntryScreen>>,
+    pub(crate) logo: Option<Arc<RenderImage>>,
     pub(crate) view: EntryScreenView,
     pub(crate) recent_projects: RecentProjectsList,
     pub(crate) templates: Vec<Template>,
@@ -164,6 +173,7 @@ impl EntryScreen {
 
         let mut screen = Self {
             entity: None,
+            logo: decode_logo_png(LOGO_PNG),
             view: EntryScreenView::Recent,
             recent_projects,
             templates,

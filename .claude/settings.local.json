@@ -73,7 +73,8 @@
       "Read(//tmp/**)",
       "Bash(git *)",
       "Bash(awk -F: '{print $1}')",
-      "Bash(xargs sed -i '' 's/crate::level_editor::ui::state::StateEntity/crate::level_editor::StateEntity/g')"
+      "Bash(xargs sed -i '' 's/crate::level_editor::ui::state::StateEntity/crate::level_editor::StateEntity/g')",
+      "Bash(awk *)"
     ]
   }
 }
