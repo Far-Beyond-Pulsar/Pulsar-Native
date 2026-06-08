@@ -544,5 +544,24 @@ pub fn render_property_row_runtime<V: 'static>(
                     .child(format!("struct {}", type_info.base_name())),
             )
             .into_any_element(),
+
+        TypeStructure::Wildcard => h_flex()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(display_name.to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("(any type)"),
+            )
+            .into_any_element(),
     }
 }

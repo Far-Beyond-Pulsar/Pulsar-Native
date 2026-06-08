@@ -680,6 +680,7 @@ fn test_json_deserializer_rejects_unregistered_type_info() {
         size: std::mem::size_of::<Ghost>(),
         align: std::mem::align_of::<Ghost>(),
         structure: TypeStructure::Primitive,
+        color: None,
     };
 
     let mut deserializer = JsonDeserializer::new(serde_json::json!(42));

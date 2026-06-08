@@ -4,7 +4,9 @@
 //! reflection, serialization, and UI generation without enum pattern matching.
 
 use std::any::TypeId;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
 /// Runtime type descriptor captured at compile time
 ///
@@ -27,6 +29,16 @@ pub struct RuntimeTypeInfo {
 
     /// Structural information about the type
     pub structure: TypeStructure,
+
+    /// Optional declared display color for this type, as a hex string
+    /// (e.g. `"#58A6FF"`). Set via `#[reflect(color = "#RRGGBB")]`.
+    ///
+    /// Consumers that need *some* color for a type (e.g. a node-graph pin
+    /// renderer) should go through [`RuntimeTypeInfo::resolve_color`], which
+    /// falls back to a deterministic hash-based color when this is `None` —
+    /// this is the canonical, single source of truth for type display color;
+    /// UI frameworks must not derive their own.
+    pub color: Option<&'static str>,
 }
 
 impl RuntimeTypeInfo {
@@ -85,7 +97,92 @@ impl RuntimeTypeInfo {
             _ => None,
         }
     }
+
+    /// Check if this is the wildcard "matches anything" type
+    pub fn is_wildcard(&self) -> bool {
+        matches!(self.structure, TypeStructure::Wildcard)
+    }
+
+    /// The shared wildcard type instance — represents "any type" for generic
+    /// blueprint nodes (e.g. `Make Array<T>`) and reroute-node type inference.
+    pub fn wildcard() -> &'static RuntimeTypeInfo {
+        &WILDCARD_TYPE_INFO
+    }
+
+    /// Resolve a display color for this type as RGBA in `[0.0, 1.0]`.
+    ///
+    /// This is the single canonical way to get a type's display color: it
+    /// uses the declared [`color`](Self::color) when present, and otherwise
+    /// derives a deterministic color from a hash of the type name. Consumers
+    /// (e.g. node-graph pin renderers) should always go through this rather
+    /// than computing their own type-to-color mapping.
+    pub fn resolve_color(&self) -> [f32; 4] {
+        if self.is_wildcard() {
+            // Rendered specially (rainbow) by consumers; white is the neutral base.
+            return [1.0, 1.0, 1.0, 1.0];
+        }
+
+        if let Some(hex) = self.color {
+            if let Some(rgba) = parse_hex_color(hex) {
+                return rgba;
+            }
+        }
+
+        let mut hasher = DefaultHasher::new();
+        self.base_name().hash(&mut hasher);
+        let hash = hasher.finish();
+
+        let hue = (hash % 360) as f32;
+        let (r, g, b) = hsv_to_rgb(hue, 0.7, 0.8);
+        [r, g, b, 1.0]
+    }
 }
+
+/// Parse a `#RRGGBB` or `#RRGGBBAA` hex color string into RGBA `[0.0, 1.0]`.
+fn parse_hex_color(hex: &str) -> Option<[f32; 4]> {
+    let hex = hex.strip_prefix('#').unwrap_or(hex);
+    let channel = |s: &str| u8::from_str_radix(s, 16).ok().map(|v| v as f32 / 255.0);
+
+    match hex.len() {
+        6 => Some([channel(&hex[0..2])?, channel(&hex[2..4])?, channel(&hex[4..6])?, 1.0]),
+        8 => Some([
+            channel(&hex[0..2])?,
+            channel(&hex[2..4])?,
+            channel(&hex[4..6])?,
+            channel(&hex[6..8])?,
+        ]),
+        _ => None,
+    }
+}
+
+/// Convert an HSV color (hue in degrees, saturation/value in `[0,1]`) to RGB.
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> (f32, f32, f32) {
+    let c = v * s;
+    let h_prime = h / 60.0;
+    let x = c * (1.0 - ((h_prime % 2.0) - 1.0).abs());
+    let m = v - c;
+
+    let (r_prime, g_prime, b_prime) = match h_prime as i32 {
+        0 => (c, x, 0.0),
+        1 => (x, c, 0.0),
+        2 => (0.0, c, x),
+        3 => (0.0, x, c),
+        4 => (x, 0.0, c),
+        5 => (c, 0.0, x),
+        _ => (0.0, 0.0, 0.0),
+    };
+
+    (r_prime + m, g_prime + m, b_prime + m)
+}
+
+static WILDCARD_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
+    type_id: TypeId::of::<()>(),
+    type_name: "?",
+    size: 0,
+    align: 1,
+    structure: TypeStructure::Wildcard,
+    color: None,
+};
 
 impl fmt::Debug for RuntimeTypeInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -95,6 +192,7 @@ impl fmt::Debug for RuntimeTypeInfo {
             .field("size", &self.size)
             .field("align", &self.align)
             .field("structure", &self.structure)
+            .field("color", &self.color)
             .finish()
     }
 }
@@ -128,6 +226,10 @@ pub enum TypeStructure {
         /// Variant names
         variants: &'static [&'static str],
     },
+
+    /// Wildcard "matches anything" placeholder, used by generic blueprint
+    /// nodes (e.g. `Make Array<T>`) and reroute-node type inference.
+    Wildcard,
 }
 
 /// Types of wrapper containers
@@ -201,6 +303,7 @@ mod tests {
             size: 4,
             align: 4,
             structure: TypeStructure::Primitive,
+            color: None,
         };
 
         assert_eq!(type_info.base_name(), "f32");
@@ -217,6 +320,7 @@ mod tests {
             size: std::mem::size_of::<String>(),
             align: std::mem::align_of::<String>(),
             structure: TypeStructure::String,
+            color: None,
         };
 
         assert_eq!(type_info.base_name(), "String");
@@ -232,6 +336,7 @@ mod tests {
             size: 4,
             align: 4,
             structure: TypeStructure::Primitive,
+            color: None,
         };
 
         let vec_type = RuntimeTypeInfo {
@@ -243,6 +348,7 @@ mod tests {
                 wrapper_kind: WrapperType::Vec,
                 inner: &INNER,
             },
+            color: None,
         };
 
         assert!(vec_type.is_wrapper());

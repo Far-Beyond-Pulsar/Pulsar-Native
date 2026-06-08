@@ -9,15 +9,16 @@ pub fn generate_struct_impl(
     ty_generics: &TypeGenerics,
     where_clause: &Option<&WhereClause>,
     data_struct: &DataStruct,
+    color_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     match &data_struct.fields {
-        Fields::Named(fields) => generate_named_fields_impl(name, impl_generics, ty_generics, where_clause, &fields),
+        Fields::Named(fields) => generate_named_fields_impl(name, impl_generics, ty_generics, where_clause, &fields, color_expr),
         Fields::Unnamed(_) => syn::Error::new_spanned(
             name,
             "Reflectable only supports structs with named fields (tuple structs not supported yet)",
         )
         .to_compile_error(),
-        Fields::Unit => generate_unit_struct_impl(name, impl_generics, ty_generics, where_clause),
+        Fields::Unit => generate_unit_struct_impl(name, impl_generics, ty_generics, where_clause, color_expr),
     }
 }
 
@@ -27,6 +28,7 @@ fn generate_named_fields_impl(
     ty_generics: &TypeGenerics,
     where_clause: &Option<&WhereClause>,
     fields: &syn::FieldsNamed,
+    color_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let field_infos = field_info::generate_field_infos(&fields.named, name);
 
@@ -70,6 +72,7 @@ fn generate_named_fields_impl(
             structure: ::pulsar_reflection::TypeStructure::Struct {
                 fields: &#field_infos,
             },
+            color: #color_expr,
         };
 
         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {
@@ -132,6 +135,7 @@ fn generate_unit_struct_impl(
     impl_generics: &ImplGenerics,
     ty_generics: &TypeGenerics,
     where_clause: &Option<&WhereClause>,
+    color_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let type_info_name = quote::format_ident!("{}_TYPE_INFO", name);
 
@@ -144,6 +148,7 @@ fn generate_unit_struct_impl(
             structure: ::pulsar_reflection::TypeStructure::Struct {
                 fields: &[],
             },
+            color: #color_expr,
         };
 
         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {

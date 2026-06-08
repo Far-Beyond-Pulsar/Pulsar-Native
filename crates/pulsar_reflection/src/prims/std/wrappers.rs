@@ -34,6 +34,7 @@ where
             wrapper_kind,
             inner: Inner::type_info(),
         },
+        color: None,
     }));
 
     STD_WRAPPER_TYPE_INFO.entries.insert(type_id, info);

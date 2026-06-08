@@ -7,6 +7,7 @@ pub fn generate_enum_impl(
     ty_generics: &TypeGenerics,
     where_clause: &Option<&WhereClause>,
     data_enum: &DataEnum,
+    color_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     let variant_names: Vec<String> = data_enum
         .variants
@@ -70,6 +71,7 @@ pub fn generate_enum_impl(
             structure: ::pulsar_reflection::TypeStructure::Enum {
                 variants: &[#(#variant_name_literals),*],
             },
+            color: #color_expr,
         };
 
         impl #impl_generics ::pulsar_reflection::Reflectable for #name #ty_generics #where_clause {

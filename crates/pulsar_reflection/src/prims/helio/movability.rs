@@ -14,6 +14,7 @@ static MOVABILITY_TYPE_INFO: RuntimeTypeInfo = RuntimeTypeInfo {
     structure: TypeStructure::Enum {
         variants: &["Static", "Stationary", "Movable"],
     },
+    color: None,
 };
 
 impl Reflectable for Movability {

@@ -40,6 +40,7 @@ pub fn expand_primitive_alias(
     let mut override_serialize_json_with: Option<Path> = None;
     let mut override_deserialize_json_with: Option<Path> = None;
     let mut override_editor: Option<Path> = None;
+    let mut color: Option<syn::LitStr> = None;
 
     let mut has_deprecated_primitive: Option<proc_macro2::Span> = None;
     let mut has_deprecated_structure: Option<proc_macro2::Span> = None;
@@ -63,6 +64,9 @@ pub fn expand_primitive_alias(
             Meta::NameValue(name_value) if name_value.path.is_ident("editor") => {
                 override_editor = Some(util::parse_path_expr(&name_value.value, "editor")?);
             }
+            Meta::NameValue(name_value) if name_value.path.is_ident("color") => {
+                color = Some(util::parse_lit_str_expr(&name_value.value, "color")?);
+            }
             _ => {
                 return Err(syn::Error::new_spanned(
                     meta,
@@ -75,6 +79,11 @@ pub fn expand_primitive_alias(
     if has_deprecated_primitive.is_some() || has_deprecated_structure.is_some() {
         crate::deprecation::emit_deprecation_warning(has_deprecated_primitive, has_deprecated_structure);
     }
+
+    let color_expr = match &color {
+        Some(lit) => quote! { Some(#lit) },
+        None => quote! { None },
+    };
 
     let alias_ident = &item_type.ident;
     let target_ty = &item_type.ty;
@@ -126,6 +135,7 @@ pub fn expand_primitive_alias(
             size: ::std::mem::size_of::<#target_ty>(),
             align: ::std::mem::align_of::<#target_ty>(),
             structure: ::pulsar_reflection::TypeStructure::Primitive,
+            color: #color_expr,
         };
 
         impl ::pulsar_reflection::Reflectable for #target_ty {
