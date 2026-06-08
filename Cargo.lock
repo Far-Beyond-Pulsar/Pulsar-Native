@@ -1244,7 +1244,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=64181f67de6301714f902294c9bff7ba1b87c74d#64181f67de6301714f902294c9bff7ba1b87c74d"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=664ec3eff0d91d377c4f3669f11a93a93896faff#664ec3eff0d91d377c4f3669f11a93a93896faff"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7705,7 +7705,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=72702ec5b071f3daf0729dfe36dc1feed1a70f59#72702ec5b071f3daf0729dfe36dc1feed1a70f59"
+source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=d0a4afcbada25fc875d217d19357f76bc420a16f#d0a4afcbada25fc875d217d19357f76bc420a16f"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2)",
  "pulsar_std",
