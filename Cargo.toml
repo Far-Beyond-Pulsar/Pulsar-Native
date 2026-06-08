@@ -338,3 +338,5 @@ blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 pulsar_replication    = { path = "crates/pulsar_replication" }
 gpui-component-macros = { path = "crates/macros" }
+[patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
+gpui-ce = { git = "https://github.com/j4flmao/wgpui-fork-27957.git", branch = "fix/scroll-stutter-and-panic" }

@@ -49,6 +49,9 @@ pub struct AdvancedSettings {
     /// Maximum viewport refresh rate in FPS (30, 60, 120, 144, 240, or 0 for unlimited)
     #[serde(default = "default_max_viewport_fps")]
     pub max_viewport_fps: u32,
+    /// Allow shell command execution blueprint nodes (disabled by default for security)
+    #[serde(default)]
+    pub allow_unsafe_process: bool,
 }
 
 fn default_max_viewport_fps() -> u32 {
@@ -93,6 +96,7 @@ impl Default for AdvancedSettings {
             debug_logging: false,
             experimental_features: false,
             max_viewport_fps: 60,
+            allow_unsafe_process: false,
         }
     }
 }

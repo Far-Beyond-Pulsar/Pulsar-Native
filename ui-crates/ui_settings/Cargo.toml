@@ -13,6 +13,7 @@ window_manager.workspace = true
 linkme.workspace = true
 # Engine
 engine_state.workspace = true
+pulsar_std.workspace = true
 directories = { workspace = true }
 # Logging
 tracing.workspace = true

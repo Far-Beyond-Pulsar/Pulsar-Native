@@ -13,6 +13,7 @@ default = ["native"]
 # native: full stdlib including threading, Lua scripting, and the linkme registry
 native = ["dep:rlua", "dep:linkme"]
 
+
 [dependencies]
 pulsar_macros = { workspace = true }
 pulsar_reflection = { workspace = true }

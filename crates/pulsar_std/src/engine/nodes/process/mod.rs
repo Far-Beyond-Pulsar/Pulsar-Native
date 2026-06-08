@@ -94,6 +94,9 @@ pub fn process_abort() -> ! {
 /// Executes a shell command and returns the standard output.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute(command: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {
@@ -131,6 +134,9 @@ pub fn shell_execute(command: String) -> Result<String, String> {
 /// Executes a shell command asynchronously and returns the process ID.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_execute_async(command: String) -> Result<u32, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let child = if cfg!(target_os = "windows") {
@@ -163,6 +169,9 @@ pub fn shell_execute_async(command: String) -> Result<u32, String> {
 /// Pipes the output of one command to another command.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::{Command, Stdio};
 
     // First command
@@ -228,6 +237,9 @@ pub fn shell_pipe(command1: String, command2: String) -> Result<String, String> 
 /// Executes a command with a timeout (in seconds).
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::{Command, Stdio};
     use std::time::Duration;
 
@@ -303,6 +315,9 @@ pub fn shell_timeout(command: String, timeout: i64) -> Result<String, String> {
 /// Executes a command and returns only the exit code.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_exit_code(command: String) -> Result<i32, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let status = if cfg!(target_os = "windows") {
@@ -335,6 +350,9 @@ pub fn shell_exit_code(command: String) -> Result<i32, String> {
 /// Finds the path to an executable command in the system PATH.
 #[blueprint(type: NodeTypes::fn_, category: "Process", color: "#E74C3C")]
 pub fn shell_which(command: String) -> Result<String, String> {
+    if !crate::unsafe_process_allowed() {
+        return Err("Shell execution is disabled. Enable in Advanced Settings.".into());
+    }
     use std::process::Command;
 
     let output = if cfg!(target_os = "windows") {

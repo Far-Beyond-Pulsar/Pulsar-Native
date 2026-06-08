@@ -1144,7 +1144,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1209,7 +1209,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1270,7 +1270,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1338,7 +1338,7 @@ default_scene = "scenes/main.scene"
                 rt.block_on(async move {
                     let Ok(client) = reqwest::Client::builder()
                         .timeout(std::time::Duration::from_secs(10))
-                        .danger_accept_invalid_certs(true)
+                        .danger_accept_invalid_certs(insecure_tls_enabled())
                         .build()
                     else {
                         return;
@@ -1893,7 +1893,7 @@ fn fetch_cloud_server_info(
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(6))
-            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_certs(insecure_tls_enabled())
             .build()
             .ok()?;
 

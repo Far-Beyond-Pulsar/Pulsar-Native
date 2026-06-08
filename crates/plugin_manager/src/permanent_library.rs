@@ -52,6 +52,31 @@ use std::io::{BufReader, Read};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 
+// ── Safe DLL search path (Windows) ─────────────────────────────────────────────
+//
+// On Windows, LoadLibraryW searches the current working directory and PATH for
+// dependencies before safe system directories. An attacker who can write to CWD
+// or any PATH entry can plant a malicious DLL.
+//
+// SetDefaultDllDirectories restricts the search to:
+//   LOAD_LIBRARY_SEARCH_APPLICATION_DIR  — the .exe directory
+//   LOAD_LIBRARY_SEARCH_SYSTEM32         — C:\Windows\System32
+//
+// This prevents DLL hijacking via CWD or PATH.
+#[cfg(target_os = "windows")]
+fn set_safe_dll_search_path() {
+    const LOAD_LIBRARY_SEARCH_APPLICATION_DIR: u32 = 0x00000200;
+    const LOAD_LIBRARY_SEARCH_SYSTEM32: u32 = 0x00000800;
+    extern "system" {
+        fn SetDefaultDllDirectories(directory_flags: u32) -> i32;
+    }
+    unsafe {
+        SetDefaultDllDirectories(
+            LOAD_LIBRARY_SEARCH_APPLICATION_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32,
+        );
+    }
+}
+
 /// A dynamically loaded library that is NEVER unloaded.
 ///
 /// This wrapper around `libloading::Library` prevents undefined behavior by:
@@ -151,6 +176,9 @@ impl PermanentLibrary {
     /// // Library is now loaded and will stay loaded until process exits
     /// ```
     pub fn new(path: impl AsRef<Path>) -> Result<Self, libloading::Error> {
+        #[cfg(target_os = "windows")]
+        set_safe_dll_search_path();
+
         let path = path.as_ref();
 
         // Open the file, hash it while holding the handle, then load from the

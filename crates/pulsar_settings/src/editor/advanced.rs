@@ -88,21 +88,9 @@ pub fn register(cfg: &'static ConfigManager) {
                 .label("Log Rotate Size (MB)").page("Advanced")
                 .field_type(FieldType::NumberInput { min: Some(0.0), max: Some(500.0), step: Some(5.0) })
                 .validator(Validator::int_range(0, 500)))
-        .setting("experimental_features",
-            SchemaEntry::new("Enable unstable features that are not yet ready for general use", false)
-                .label("Experimental Features").page("Advanced")
-                .field_type(FieldType::Checkbox))
         .setting("dev_mode",
             SchemaEntry::new("Enable developer mode with extra diagnostics, raw inspector access, and internal tools", false)
                 .label("Developer Mode").page("Advanced")
-                .field_type(FieldType::Checkbox))
-        .setting("crash_reporter",
-            SchemaEntry::new("Send anonymized crash reports to the Pulsar team to help fix bugs", true)
-                .label("Send Crash Reports").page("Advanced")
-                .field_type(FieldType::Checkbox))
-        .setting("telemetry",
-            SchemaEntry::new("Send anonymized usage analytics to improve the editor", false)
-                .label("Usage Telemetry").page("Advanced")
                 .field_type(FieldType::Checkbox))
         .setting("ipc_socket_path",
             SchemaEntry::new("Path to the UNIX socket / named pipe for external tooling IPC", "")
@@ -128,6 +116,10 @@ pub fn register(cfg: &'static ConfigManager) {
         .setting("auto_update_editor",
             SchemaEntry::new("Automatically download and install editor updates in the background", true)
                 .label("Auto-Update Editor").page("Advanced")
+                .field_type(FieldType::Checkbox))
+        .setting("allow_unsafe_process",
+            SchemaEntry::new("WARNING: Enabling this allows blueprints to execute arbitrary system commands. Only enable if you trust all blueprint sources.", false)
+                .label("Allow Shell Execution").page("Advanced")
                 .field_type(FieldType::Checkbox));
 
     let _ = cfg.register(NS, OWNER, schema);
