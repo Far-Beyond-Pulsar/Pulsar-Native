@@ -51,8 +51,8 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         .when_some(screen.logo.clone(), |this, logo| {
                             this.child(
                                 img(ImageSource::Render(logo))
-                                    .w(px(44.))
-                                    .h(px(44.))
+                                    .w(px(58.))
+                                    .h(px(58.))
                                     .object_fit(gpui::ObjectFit::Contain),
                             )
                         })
