@@ -275,6 +275,7 @@ ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
+blueprint_editor_plugin = { path = "/Users/tristanpoland/Documents/GitHub/Plugin_Blueprints" }
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
 ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
 ui_common             = { path = "ui-crates/ui_common" }
