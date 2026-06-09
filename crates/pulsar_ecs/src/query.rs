@@ -1,44 +1,65 @@
+use crate::component::{component_id, ComponentId};
 use crate::archetype::Archetype;
 use crate::component::{Column, Component};
 use crate::entity::Entity;
 use crate::world::World;
-use std::any::TypeId;
 use std::marker::PhantomData;
 
+/// Trait for types that can be fetched from a world query.
 pub trait WorldQuery<'w>: Sized {
     type Item;
 
+    /// Returns `true` if the given archetype contains all the components
+    /// required by this query.
     fn matches(archetype: &Archetype) -> bool;
 
+    /// # Safety
+    /// - `archetype` must satisfy `Self::matches(archetype)`.
+    /// - `row` must be < `archetype.entities.len()`.
     unsafe fn fetch(archetype: &'w Archetype, row: usize) -> Self::Item;
 }
 
 impl<'w, T: Component> WorldQuery<'w> for &'w T {
     type Item = &'w T;
 
+    #[inline]
     fn matches(arch: &Archetype) -> bool {
-        arch.columns.contains_key(&TypeId::of::<T>())
+        let cid = component_id::<T>();
+        arch.has_columns(std::slice::from_ref(&cid))
     }
 
+    // SAFETY: caller guarantees archetype matches and row is in bounds.
+    #[inline]
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w T {
-        arch.columns[&TypeId::of::<T>()]
+        let cid = component_id::<T>();
+        // SAFETY: caller guarantees the column exists and row is in bounds.
+        let col = arch.columns.get_unchecked(cid.0 as usize)
+            .as_ref()
+            .unwrap_unchecked()
             .as_any()
             .downcast_ref::<Column<T>>()
-            .unwrap_unchecked()
-            .data
-            .get_unchecked(row)
+            .unwrap_unchecked();
+        &col.data.get_unchecked(row)
     }
 }
 
 impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
     type Item = &'w mut T;
 
+    #[inline]
     fn matches(arch: &Archetype) -> bool {
-        arch.columns.contains_key(&TypeId::of::<T>())
+        let cid = component_id::<T>();
+        arch.has_columns(std::slice::from_ref(&cid))
     }
 
+    // SAFETY: caller guarantees archetype matches and row is in bounds.
+    #[inline]
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w mut T {
-        let col: &Column<T> = arch.columns[&TypeId::of::<T>()]
+        let cid = component_id::<T>();
+        // SAFETY: caller guarantees the column exists and row is in bounds.
+        let col: &Column<T> = arch.columns.get_unchecked(cid.0 as usize)
+            .as_ref()
+            .unwrap_unchecked()
             .as_any()
             .downcast_ref::<Column<T>>()
             .unwrap_unchecked();
@@ -47,15 +68,33 @@ impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
     }
 }
 
+// ── Empty query: matches every archetype (useful for counting entities) ──────
+
+impl<'w> WorldQuery<'w> for () {
+    type Item = ();
+    #[inline]
+    fn matches(_arch: &Archetype) -> bool {
+        true
+    }
+    // SAFETY: caller guarantees row is in bounds.
+    #[inline]
+    unsafe fn fetch(_arch: &'w Archetype, _row: usize) -> Self::Item {}
+}
+
+// ── Tuple conbinator macro (1 to 8 components) ───────────────────────────────
+
 macro_rules! impl_world_query_tuple {
     ($($Q:ident),+) => {
         impl<'w, $($Q: WorldQuery<'w>),+> WorldQuery<'w> for ($($Q,)+) {
             type Item = ($($Q::Item,)+);
 
+            #[inline]
             fn matches(arch: &Archetype) -> bool {
                 $($Q::matches(arch))&&+
             }
 
+            // SAFETY: caller guarantees all Q::matches & row in bounds.
+            #[inline]
             unsafe fn fetch(arch: &'w Archetype, row: usize) -> Self::Item {
                 ($($Q::fetch(arch, row),)+)
             }
@@ -71,6 +110,8 @@ impl_world_query_tuple!(A, B, C, D, E);
 impl_world_query_tuple!(A, B, C, D, E, F);
 impl_world_query_tuple!(A, B, C, D, E, F, G);
 impl_world_query_tuple!(A, B, C, D, E, F, G, H);
+
+// ── QueryIter ────────────────────────────────────────────────────────────────
 
 pub struct QueryIter<'w, Q: WorldQuery<'w>> {
     archetypes: &'w [crate::archetype::Archetype],
@@ -107,6 +148,8 @@ impl<'w, Q: WorldQuery<'w>> Iterator for QueryIter<'w, Q> {
                 continue;
             }
             let entity = arch.entities[self.row];
+            // SAFETY: we've verified that this archetype matches Q and
+            // that self.row is in bounds.
             let item = unsafe { Q::fetch(arch, self.row) };
             self.row += 1;
             return Some((entity, item));

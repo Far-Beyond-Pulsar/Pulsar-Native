@@ -1,8 +1,7 @@
 use crate::archetype::{Archetype, ArchetypeId, ArchetypeKey};
-use crate::component::{Column, Component, ErasedColumn};
+use crate::component::{Column, Component, ComponentId, ErasedColumn};
 use crate::entity::{Entity, EntitySlot};
 use ahash::AHashMap;
-use std::any::TypeId;
 
 pub struct World {
     pub entity_slots: Vec<EntitySlot>,
@@ -23,6 +22,8 @@ impl World {
             archetype_index,
         }
     }
+
+    // ── Entity lifecycle ─────────────────────────────────────────────────
 
     pub fn spawn(&mut self) -> Entity {
         let (idx, gen) = if let Some(idx) = self.free_slots.pop() {
@@ -70,6 +71,59 @@ impl World {
             .unwrap_or(false)
     }
 
+    // ── Component helpers ────────────────────────────────────────────────
+
+    /// Fast path: check whether archetype `arch_id` has a column at `cid`.
+    #[inline]
+    fn has_column_id(arch: &Archetype, cid: ComponentId) -> bool {
+        let idx = cid.0 as usize;
+        idx < arch.columns.len() && arch.columns[idx].is_some()
+    }
+
+    /// Get a mutable reference to the `ErasedColumn` at `cid` in `arch`.
+    #[inline]
+    fn get_erased_mut(arch: &mut Archetype, cid: ComponentId) -> Option<&mut Box<dyn ErasedColumn>> {
+        arch.columns.get_mut(cid.0 as usize).and_then(|c| c.as_mut())
+    }
+
+    /// Get a shared reference to the `ErasedColumn` at `cid` in `arch`.
+    #[inline]
+    fn get_erased(arch: &Archetype, cid: ComponentId) -> Option<&Box<dyn ErasedColumn>> {
+        arch.columns.get(cid.0 as usize).and_then(|c| c.as_ref())
+    }
+
+    /// Ensure the columns vec is large enough for `cid`, then set it.
+    #[inline]
+    fn set_column(arch: &mut Archetype, cid: ComponentId, col: Box<dyn ErasedColumn>) {
+        let idx = cid.0 as usize;
+        for _ in arch.columns.len()..=idx {
+            arch.columns.push(None);
+        }
+        arch.columns[idx] = Some(col);
+    }
+
+    /// Collect all CIDs that have a column in this archetype (for migration).
+    fn collect_cids(arch: &Archetype) -> Vec<ComponentId> {
+        arch.columns
+            .iter()
+            .enumerate()
+            .filter(|(_, col)| col.is_some())
+            .map(|(i, _)| ComponentId(i as u32))
+            .collect()
+    }
+
+    /// Collect all CIDs except `skip` (for migration skip).
+    fn collect_cids_skip(arch: &Archetype, skip: ComponentId) -> Vec<ComponentId> {
+        arch.columns
+            .iter()
+            .enumerate()
+            .filter(|(i, col)| col.is_some() && ComponentId(*i as u32) != skip)
+            .map(|(i, _)| ComponentId(i as u32))
+            .collect()
+    }
+
+    // ── Component operations ─────────────────────────────────────────────
+
     pub fn insert<T: Component>(&mut self, entity: Entity, value: T) {
         assert!(self.is_alive(entity), "insert on dead entity {entity}");
 
@@ -78,34 +132,53 @@ impl World {
             (s.archetype, s.row as usize)
         };
 
-        if self.archetypes[old_arch_id.0 as usize].has_column::<T>() {
+        // In-place update: entity already has this component in this archetype.
+        let cid = crate::component::component_id::<T>();
+        if Self::has_column_id(&self.archetypes[old_arch_id.0 as usize], cid) {
             let col = self.archetypes[old_arch_id.0 as usize].column_mut::<T>();
             col.data[old_row] = value;
             return;
         }
 
+        // Build the destination archetype key and ensure it exists, then
+        // pre-populate the new Column<T> before migrating existing columns.
         let new_key = self.archetypes[old_arch_id.0 as usize].key.with::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
-        self.migrate_row(
-            entity,
-            old_arch_id,
-            old_row,
-            new_arch_id,
-            None::<fn(TypeId)>,
-        );
-
-        self.ensure_column::<T>(new_arch_id);
-        self.archetypes[new_arch_id.0 as usize]
-            .column_mut::<T>()
+        // Add an empty Column<T> in the destination before migration.
+        let new_arch = &mut self.archetypes[new_arch_id.0 as usize];
+        let idx = cid.0 as usize;
+        if let Some(existing) = new_arch.columns.get(idx).and_then(|c| c.as_ref()) {
+            // Debug check: type must match
+            debug_assert_eq!(
+                ErasedColumn::type_id(existing.as_ref()),
+                std::any::TypeId::of::<T>(),
+                "insert column type collision at {:?}",
+                cid,
+            );
+        } else {
+            Self::set_column(new_arch, cid, Box::new(Column::<T>::new()));
+        }
+        // Push the new value (column now exists at idx).
+        new_arch.columns[idx]
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<Column<T>>()
+            .unwrap()
             .data
             .push(value);
 
-        let new_row = (self.archetypes[new_arch_id.0 as usize].entities.len()) as u32;
+        // Migrate ALL existing components from old → new archetype.
+        self.migrate_row(entity, old_arch_id, old_row, new_arch_id);
+
+        // Update slot to point at the new archetype + row.
+        let new_row = self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .len() as u32;
         self.archetypes[new_arch_id.0 as usize]
             .entities
             .push(entity);
-
         let slot = &mut self.entity_slots[entity.index() as usize];
         slot.archetype = new_arch_id;
         slot.row = new_row;
@@ -119,24 +192,28 @@ impl World {
             let s = &self.entity_slots[entity.index() as usize];
             (s.archetype, s.row as usize)
         };
-        if !self.archetypes[old_arch_id.0 as usize].has_column::<T>() {
+        let cid = crate::component::component_id::<T>();
+        if !Self::has_column_id(&self.archetypes[old_arch_id.0 as usize], cid) {
             return None;
         }
 
-        let t_id = TypeId::of::<T>();
+        // Pull the value out of the column.
         let removed_ptr = unsafe {
-            self.archetypes[old_arch_id.0 as usize]
-                .columns
-                .get_mut(&t_id)
+            Self::get_erased_mut(&mut self.archetypes[old_arch_id.0 as usize], cid)
                 .unwrap()
                 .swap_remove_erased(old_row)
         };
+        // SAFETY: we know the concrete type from the generic.
         let removed_val = unsafe { *Box::from_raw(removed_ptr as *mut T) };
 
-        let new_key = self.archetypes[old_arch_id.0 as usize].key.without::<T>();
+        // Build the destination key WITHOUT this component.
+        let new_key = self.archetypes[old_arch_id.0 as usize]
+            .key
+            .without::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
-        self.migrate_row_skip(entity, old_arch_id, old_row, new_arch_id, t_id);
+        // Migrate everything except the removed component.
+        self.migrate_row_skip(entity, old_arch_id, old_row, new_arch_id, cid);
 
         Some(removed_val)
     }
@@ -148,10 +225,12 @@ impl World {
         }
         let s = &self.entity_slots[entity.index() as usize];
         let arch = &self.archetypes[s.archetype.0 as usize];
-        arch.columns
-            .get(&TypeId::of::<T>())
-            .and_then(|c| c.as_any().downcast_ref::<Column<T>>())
-            .map(|c| &c.data[s.row as usize])
+        let cid = crate::component::component_id::<T>();
+        Self::get_erased(arch, cid).and_then(|c| {
+            c.as_any()
+                .downcast_ref::<Column<T>>()
+                .map(|col| &col.data[s.row as usize])
+        })
     }
 
     #[inline]
@@ -163,12 +242,15 @@ impl World {
             let s = &self.entity_slots[entity.index() as usize];
             (s.archetype, s.row as usize)
         };
-        self.archetypes[arch_id.0 as usize]
-            .columns
-            .get_mut(&TypeId::of::<T>())
-            .and_then(|c| c.as_any_mut().downcast_mut::<Column<T>>())
-            .map(|c| &mut c.data[row])
+        let cid = crate::component::component_id::<T>();
+        Self::get_erased_mut(&mut self.archetypes[arch_id.0 as usize], cid).and_then(|c| {
+            c.as_any_mut()
+                .downcast_mut::<Column<T>>()
+                .map(|col| &mut col.data[row])
+        })
     }
+
+    // ── Archetype graph ─────────────────────────────────────────────────
 
     pub(crate) fn get_or_create_archetype(&mut self, key: ArchetypeKey) -> ArchetypeId {
         if let Some(&id) = self.archetype_index.get(&key) {
@@ -180,57 +262,93 @@ impl World {
         id
     }
 
-    fn ensure_column<T: Component>(&mut self, arch_id: ArchetypeId) {
-        let arch = &mut self.archetypes[arch_id.0 as usize];
-        arch.columns
-            .entry(TypeId::of::<T>())
-            .or_insert_with(|| Box::new(Column::<T>::new()));
+    // ── Archetype migration ──────────────────────────────────────────────
+
+    /// Move all components from `old_arch_id`/`old_row` into
+    /// `new_arch_id`.  The destination archetype must already have columns
+    /// for all the components being moved (or they will be cloned from the
+    /// source).
+    ///
+    /// After migration the entity is removed from the OLD archetype but is
+    /// NOT added to the NEW one — the caller is responsible for that.
+    fn migrate_row(
+        &mut self,
+        entity: Entity,
+        old_arch_id: ArchetypeId,
+        old_row: usize,
+        new_arch_id: ArchetypeId,
+    ) {
+        let cids = Self::collect_cids(&self.archetypes[old_arch_id.0 as usize]);
+
+        for &cid in &cids {
+            let ptr = unsafe {
+                Self::get_erased_mut(&mut self.archetypes[old_arch_id.0 as usize], cid)
+                    .unwrap()
+                    .swap_remove_erased(old_row)
+            };
+            if !Self::has_column_id(&self.archetypes[new_arch_id.0 as usize], cid) {
+                let proto = Self::get_erased(&self.archetypes[old_arch_id.0 as usize], cid)
+                    .unwrap()
+                    .new_empty();
+                Self::set_column(&mut self.archetypes[new_arch_id.0 as usize], cid, proto);
+            }
+            unsafe {
+                Self::get_erased_mut(&mut self.archetypes[new_arch_id.0 as usize], cid)
+                    .unwrap()
+                    .push_erased(ptr);
+            }
+        }
+
+        // Fix entity-slot rows for the swap-removed entity in the OLD arch.
+        let moved = {
+            let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
+            old_arch.entities.swap_remove(old_row);
+            if old_row < old_arch.entities.len() {
+                Some(old_arch.entities[old_row])
+            } else {
+                None
+            }
+        };
+        if let Some(m) = moved {
+            self.entity_slots[m.index() as usize].row = old_row as u32;
+        }
     }
 
+    /// Move all components EXCEPT `skip_cid`.  Also pushes the entity into
+    /// the destination archetype and updates the slot — callers should NOT
+    /// repeat that work.
     fn migrate_row_skip(
         &mut self,
         entity: Entity,
         old_arch_id: ArchetypeId,
         old_row: usize,
         new_arch_id: ArchetypeId,
-        skip_type: TypeId,
+        skip_cid: ComponentId,
     ) {
-        let type_ids: Vec<TypeId> = self.archetypes[old_arch_id.0 as usize]
-            .columns
-            .keys()
-            .filter(|&&t| t != skip_type)
-            .copied()
-            .collect();
+        let cids = Self::collect_cids_skip(&self.archetypes[old_arch_id.0 as usize], skip_cid);
 
-        for type_id in type_ids {
+        for &cid in &cids {
             let ptr = unsafe {
-                self.archetypes[old_arch_id.0 as usize]
-                    .columns
-                    .get_mut(&type_id)
+                Self::get_erased_mut(&mut self.archetypes[old_arch_id.0 as usize], cid)
                     .unwrap()
                     .swap_remove_erased(old_row)
             };
-
-            if !self.archetypes[new_arch_id.0 as usize]
-                .columns
-                .contains_key(&type_id)
-            {
-                let proto = self.archetypes[old_arch_id.0 as usize].columns[&type_id].new_empty();
-                self.archetypes[new_arch_id.0 as usize]
-                    .columns
-                    .insert(type_id, proto);
+            if !Self::has_column_id(&self.archetypes[new_arch_id.0 as usize], cid) {
+                let proto = Self::get_erased(&self.archetypes[old_arch_id.0 as usize], cid)
+                    .unwrap()
+                    .new_empty();
+                Self::set_column(&mut self.archetypes[new_arch_id.0 as usize], cid, proto);
             }
-
             unsafe {
-                self.archetypes[new_arch_id.0 as usize]
-                    .columns
-                    .get_mut(&type_id)
+                Self::get_erased_mut(&mut self.archetypes[new_arch_id.0 as usize], cid)
                     .unwrap()
                     .push_erased(ptr);
             }
         }
 
-        let new_row = self.archetypes[new_arch_id.0 as usize].entities.len() as u32;
+        let new_row = self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .len() as u32;
         let moved = {
             let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
             old_arch.entities.swap_remove(old_row);
@@ -249,60 +367,6 @@ impl World {
         let slot = &mut self.entity_slots[entity.index() as usize];
         slot.archetype = new_arch_id;
         slot.row = new_row;
-    }
-
-    fn migrate_row<F: Fn(TypeId)>(
-        &mut self,
-        entity: Entity,
-        old_arch_id: ArchetypeId,
-        old_row: usize,
-        new_arch_id: ArchetypeId,
-        _filter: Option<F>,
-    ) {
-        let type_ids: Vec<TypeId> = self.archetypes[old_arch_id.0 as usize]
-            .columns
-            .keys()
-            .copied()
-            .collect();
-
-        for type_id in type_ids {
-            let ptr = unsafe {
-                self.archetypes[old_arch_id.0 as usize]
-                    .columns
-                    .get_mut(&type_id)
-                    .unwrap()
-                    .swap_remove_erased(old_row)
-            };
-            if !self.archetypes[new_arch_id.0 as usize]
-                .columns
-                .contains_key(&type_id)
-            {
-                let proto = self.archetypes[old_arch_id.0 as usize].columns[&type_id].new_empty();
-                self.archetypes[new_arch_id.0 as usize]
-                    .columns
-                    .insert(type_id, proto);
-            }
-            unsafe {
-                self.archetypes[new_arch_id.0 as usize]
-                    .columns
-                    .get_mut(&type_id)
-                    .unwrap()
-                    .push_erased(ptr);
-            }
-        }
-
-        let moved = {
-            let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
-            old_arch.entities.swap_remove(old_row);
-            if old_row < old_arch.entities.len() {
-                Some(old_arch.entities[old_row])
-            } else {
-                None
-            }
-        };
-        if let Some(m) = moved {
-            self.entity_slots[m.index() as usize].row = old_row as u32;
-        }
     }
 }
 

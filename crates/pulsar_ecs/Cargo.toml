@@ -14,3 +14,11 @@ tracing           = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+rand = "0.8"
+criterion = { version = "=0.8.2" }
+
+[[bench]]
+name = "ecs_bench"
+harness = false
