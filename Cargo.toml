@@ -265,6 +265,8 @@ blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
 pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
+engine_class_derive   = { path = "crates/engine_class_derive" }
+pulsar_rendering      = { path = "crates/pulsar_rendering" }
 
 [patch.crates-io]
 profiling             = { path = "crates/profiling" }
@@ -274,6 +276,8 @@ pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
 gpui-component-macros = { path = "crates/macros" }
+engine_class_derive   = { path = "crates/engine_class_derive" }
+pulsar_rendering      = { path = "crates/pulsar_rendering" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
