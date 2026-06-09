@@ -28,7 +28,9 @@
 //! struct Vel(f32, f32);
 //!
 //! let mut world = World::new();
-//! let e = world.spawn((Pos(0.0, 0.0), Vel(1.0, 0.0)));
+//! let e = world.spawn();
+//! world.insert(e, Pos(0.0, 0.0));
+//! world.insert(e, Vel(1.0, 0.0));
 //! for (pos, vel) in world.query::<(&Pos, &Vel)>() {
 //!     // ...
 //! }

@@ -68,6 +68,11 @@ impl ArchetypeKey {
 pub struct Archetype {
     pub id: ArchetypeId,
     pub key: ArchetypeKey,
+    /// Pre-computed, immutable list of this archetype's component IDs.
+    /// Populated once in [`Archetype::new`] and never modified.  Used by
+    /// the migration routines to iterate columns without heap-allocating
+    /// intermediate vectors.
+    pub(crate) active_cids: Vec<ComponentId>,
     /// Columns indexed by `ComponentId.0 as usize`.  A `None` slot means the
     /// archetype does not contain that component type.  Dense indexing avoids
     /// hashing overhead on the query path.
@@ -84,6 +89,7 @@ impl Archetype {
         Self {
             id,
             key: ArchetypeKey(vec![]),
+            active_cids: Vec::new(),
             columns: Vec::new(),
             entities: Vec::new(),
             mask: 0,
@@ -97,9 +103,11 @@ impl Archetype {
             .map(|c| c.0)
             .filter(|&i| i <= 64)
             .fold(0u64, |m, i| m | (1u64 << (i - 1)));
+        let active_cids = key.0.clone();
         Self {
             id,
             key,
+            active_cids,
             columns: Vec::new(),
             entities: Vec::new(),
             mask,

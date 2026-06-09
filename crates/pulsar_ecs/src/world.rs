@@ -42,6 +42,31 @@ impl World {
         }
     }
 
+    /// Debug assertion: every archetype's column lengths must equal its entity
+    /// count.  Panics on the first mismatch.  Compiled out in release builds
+    /// (the loop body becomes a no-op).
+    #[inline]
+    pub fn assert_archetype_consistency(&self) {
+        #[cfg(debug_assertions)]
+        for arch in &self.archetypes {
+            let elen = arch.entities.len();
+            for (cidx, col) in arch.columns.iter().enumerate() {
+                if let Some(c) = col {
+                    assert_eq!(
+                        c.len(),
+                        elen,
+                        "ArchetypeId({}) column[{}] len {} != entities.len {} (key={:?})",
+                        arch.id.0,
+                        cidx,
+                        c.len(),
+                        elen,
+                        arch.key.0,
+                    );
+                }
+            }
+        }
+    }
+
     // ── Entity lifecycle ─────────────────────────────────────────────────
 
     /// Allocate a new entity in the empty archetype.
@@ -186,16 +211,14 @@ impl World {
             return;
         }
 
-        // Build the destination archetype key and ensure it exists, then
-        // pre-populate the new Column<T> before migrating existing columns.
+        // Build the destination archetype key and ensure it exists.
         let new_key = self.archetypes[old_arch_id.0 as usize].key.with::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
-        // Add an empty Column<T> in the destination before migration.
+        // Ensure Column<T> exists in the destination (may be empty).
         let new_arch = &mut self.archetypes[new_arch_id.0 as usize];
         let idx = cid.0 as usize;
         if let Some(existing) = new_arch.columns.get(idx).and_then(|c| c.as_ref()) {
-            // Debug check: type must match
             debug_assert_eq!(
                 ErasedColumn::type_id(existing.as_ref()),
                 std::any::TypeId::of::<T>(),
@@ -205,7 +228,15 @@ impl World {
         } else {
             Self::set_column(new_arch, cid, Box::new(Column::<T>::new()));
         }
-        // Push the new value (column now exists at idx).
+
+        // Phase 1: push entity + migrate all existing components.
+        // migrate_row pushes the entity to the destination first, then
+        // transfers every column from the source, then updates all slots.
+        self.migrate_row(entity, old_arch_id, old_row, new_arch_id);
+
+        // Phase 2: push the new value.  The destination entity vec has
+        // already grown by one, so this keeps all column lengths in sync.
+        let new_arch = &mut self.archetypes[new_arch_id.0 as usize];
         new_arch.columns[idx]
             .as_mut()
             .unwrap()
@@ -214,20 +245,6 @@ impl World {
             .unwrap()
             .data
             .push(value);
-
-        // Migrate ALL existing components from old → new archetype.
-        self.migrate_row(entity, old_arch_id, old_row, new_arch_id);
-
-        // Update slot to point at the new archetype + row.
-        let new_row = self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .len() as u32;
-        self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .push(entity);
-        let slot = &mut self.entity_slots[entity.index() as usize];
-        slot.archetype = new_arch_id;
-        slot.row = new_row;
     }
 
     /// Remove a component from an entity, returning its value.
@@ -265,6 +282,8 @@ impl World {
         let new_arch_id = self.get_or_create_archetype(new_key);
 
         // Migrate everything except the removed component.
+        // migrate_row_skip pushes the entity first, migrates all columns
+        // except the skipped one, then updates all slots.
         self.migrate_row_skip(entity, old_arch_id, old_row, new_arch_id, cid);
 
         Some(removed_val)
@@ -318,13 +337,20 @@ impl World {
 
     // ── Archetype migration ──────────────────────────────────────────────
 
-    /// Move all components from `old_arch_id`/`old_row` into
-    /// `new_arch_id`.  The destination archetype must already have columns
-    /// for all the components being moved (or they will be cloned from the
-    /// source).
+    /// Move the entity and all component data from `old_arch_id`/`old_row`
+    /// into `new_arch_id`.
     ///
-    /// After migration the entity is removed from the OLD archetype but is
-    /// NOT added to the NEW one — the caller is responsible for that.
+    /// Order of operations (single cohesive window):
+    /// 1. Push entity to destination `.entities` (first).
+    /// 2. For each component in `active_cids` of the source archetype:
+    ///    swap-remove from the source column, ensure the destination column
+    ///    exists, and push into it.
+    /// 3. Swap-remove the entity from the source archetype and fix the
+    ///    swapped-in entity's slot row.
+    /// 4. Update the migrated entity's slot.
+    ///
+    /// The caller is responsible for pushing any *new* component value (not
+    /// present in the source archetype) *after* this returns.
     fn migrate_row(
         &mut self,
         entity: Entity,
@@ -332,9 +358,23 @@ impl World {
         old_row: usize,
         new_arch_id: ArchetypeId,
     ) {
-        let cids = Self::collect_cids(&self.archetypes[old_arch_id.0 as usize]);
+        // Phase 1: push entity to destination first.
+        let new_row = self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .len() as u32;
+        self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .push(entity);
 
-        for &cid in &cids {
+        // Phase 2: broadcast each source column into the destination using
+        // the pre-computed `active_cids` slice (no heap allocation).
+        let n = self.archetypes[old_arch_id.0 as usize].active_cids.len();
+        for i in 0..n {
+            let cid = {
+                // isolated immutable borrow — released before the mutable one
+                let src = &self.archetypes[old_arch_id.0 as usize];
+                src.active_cids[i]
+            };
             let ptr = unsafe {
                 Self::get_erased_mut(&mut self.archetypes[old_arch_id.0 as usize], cid)
                     .unwrap()
@@ -353,7 +393,7 @@ impl World {
             }
         }
 
-        // Fix entity-slot rows for the swap-removed entity in the OLD arch.
+        // Phase 3: remove entity from old archetype; fix swapped-in slot.
         let moved = {
             let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
             old_arch.entities.swap_remove(old_row);
@@ -366,11 +406,18 @@ impl World {
         if let Some(m) = moved {
             self.entity_slots[m.index() as usize].row = old_row as u32;
         }
+
+        // Phase 4: update the migrated entity's slot.
+        let slot = &mut self.entity_slots[entity.index() as usize];
+        slot.archetype = new_arch_id;
+        slot.row = new_row;
     }
 
-    /// Move all components EXCEPT `skip_cid`.  Also pushes the entity into
-    /// the destination archetype and updates the slot — callers should NOT
-    /// repeat that work.
+    /// Move all components EXCEPT `skip_cid` and push the entity into the
+    /// destination archetype.
+    ///
+    /// Same ordering as [`migrate_row`]: entity first, then columns, then
+    /// slot updates.
     fn migrate_row_skip(
         &mut self,
         entity: Entity,
@@ -379,9 +426,24 @@ impl World {
         new_arch_id: ArchetypeId,
         skip_cid: ComponentId,
     ) {
-        let cids = Self::collect_cids_skip(&self.archetypes[old_arch_id.0 as usize], skip_cid);
+        // Phase 1: push entity to destination first.
+        let new_row = self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .len() as u32;
+        self.archetypes[new_arch_id.0 as usize]
+            .entities
+            .push(entity);
 
-        for &cid in &cids {
+        // Phase 2: migrate all columns except `skip_cid`.
+        let n = self.archetypes[old_arch_id.0 as usize].active_cids.len();
+        for i in 0..n {
+            let cid = {
+                let src = &self.archetypes[old_arch_id.0 as usize];
+                src.active_cids[i]
+            };
+            if cid == skip_cid {
+                continue;
+            }
             let ptr = unsafe {
                 Self::get_erased_mut(&mut self.archetypes[old_arch_id.0 as usize], cid)
                     .unwrap()
@@ -400,9 +462,7 @@ impl World {
             }
         }
 
-        let new_row = self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .len() as u32;
+        // Phase 3: remove entity from old archetype; fix swapped-in slot.
         let moved = {
             let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
             old_arch.entities.swap_remove(old_row);
@@ -415,9 +475,8 @@ impl World {
         if let Some(m) = moved {
             self.entity_slots[m.index() as usize].row = old_row as u32;
         }
-        self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .push(entity);
+
+        // Phase 4: update the migrated entity's slot.
         let slot = &mut self.entity_slots[entity.index() as usize];
         slot.archetype = new_arch_id;
         slot.row = new_row;

@@ -903,7 +903,156 @@ fn correctness_query_tuples_compile() {
     let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight)>().count();
     // 7-tuple
     let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color)>().count();
-    // 8-tuple
-    let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color, &Lifetime)>()
-        .count();
+// 8-tuple
+let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color, &Lifetime)>()
+    .count();
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Regression: column/entity length symmetry during structural mutation
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Migrate entities into an already-populated destination archetype (the
+/// classic "dual-push" scenario) and verify column/entity symmetry.
+#[test]
+fn regression_column_entity_symmetry_on_insert_into_existing_archetype() {
+    struct A(u32);
+    struct B(u32);
+    struct C(u32);
+
+    let mut world = World::new();
+
+    // Phase 1: create a batch of [A, B, C] entities to pre-populate the arch.
+    for i in 0..10 {
+        let e = world.spawn();
+        world.insert(e, A(i));
+        world.insert(e, B(i * 10));
+        world.insert(e, C(i * 100));
+    }
+    world.assert_archetype_consistency();
+
+    // Phase 2: add more [A, B] entities, then migrate each into the
+    // already-populated [A, B, C] archetype by inserting C.
+    for i in 10..20 {
+        let e = world.spawn();
+        world.insert(e, A(i));
+        world.insert(e, B(i * 10));
+        // This insert migrates into a destination that already has 10+ entities
+        world.insert(e, C(i * 100));
+        world.assert_archetype_consistency();
+    }
+    world.assert_archetype_consistency();
+
+    // Phase 3: remove C from entities one by one, migrating back into the
+    // already-populated [A, B] archetype.
+    // Collect entities in [A, B, C] archetype
+    let abc_entities: Vec<_> = world.query::<(&A, &B, &C)>().map(|(e, _)| e).collect();
+    for (i, e) in abc_entities.iter().enumerate() {
+        let c: Option<C> = world.remove::<C>(*e);
+        assert!(c.is_some());
+        world.assert_archetype_consistency();
+    }
+}
+
+/// Trigger column/entity asymmetry by interleaving insert/remove on a shared
+/// archetype from multiple source archetypes.
+#[test]
+fn regression_column_entity_symmetry_interleaved_migrations() {
+    struct X(u32);
+    struct Y(u32);
+    struct Z(u32);
+
+    let mut world = World::new();
+
+    // Spawn entities across different archetypes
+    // Group 1: [X, Y]
+    let mut group1 = Vec::new();
+    for i in 0..5 {
+        let e = world.spawn();
+        world.insert(e, X(i));
+        world.insert(e, Y(i * 10));
+        group1.push(e);
+    }
+
+    // Group 2: [X, Z]
+    let mut group2 = Vec::new();
+    for i in 0..5 {
+        let e = world.spawn();
+        world.insert(e, X(i * 100));
+        world.insert(e, Z(i * 1000));
+        group2.push(e);
+    }
+
+    // Pre-populate [X, Y, Z] archetype
+    let mut first = world.spawn();
+    world.insert(first, X(999));
+    world.insert(first, Y(888));
+    world.insert(first, Z(777));
+
+    // Now migrate group1 entities into [X, Y, Z] — each targets the same
+    // existing archetype.
+    for &e in &group1 {
+        world.insert(e, Z(42));
+        world.assert_archetype_consistency();
+    }
+
+    // Migrate group2 entities into [X, Y, Z]
+    for &e in &group2 {
+        world.insert(e, Y(43));
+        world.assert_archetype_consistency();
+    }
+
+    // Remove Z from all [X, Y, Z] entities back to [X, Y]
+    let all_xyz: Vec<Entity> = world.query::<(&X, &Y, &Z)>().map(|(e, _)| e).collect();
+    for &e in &all_xyz {
+        world.remove::<Z>(e);
+        world.assert_archetype_consistency();
+    }
+}
+
+/// Massive interleaved insert/remove stress on a growing archetype to probe
+/// for any latent column/entity row desync.
+#[test]
+fn regression_column_entity_symmetry_stress() {
+    struct Alpha(f32);
+    struct Beta(f32);
+    struct Gamma(f32);
+
+    let mut world = World::new();
+
+    // Batch: repeatedly insert and remove components on the same entities,
+    // growing the destination archetype each time.
+    let batch_size = 500;
+    let mut entities = Vec::with_capacity(batch_size);
+
+    for i in 0..batch_size {
+        let e = world.spawn();
+        world.insert(e, Alpha(i as f32));
+        entities.push(e);
+    }
+    world.assert_archetype_consistency();
+
+    // Give all entities Beta (creates [Alpha, Beta] archetype)
+    for (i, &e) in entities.iter().enumerate() {
+        world.insert(e, Beta(i as f32 * 2.0));
+        world.assert_archetype_consistency();
+    }
+
+    // Give all entities Gamma (creates [Alpha, Beta, Gamma] archetype)
+    for (i, &e) in entities.iter().enumerate() {
+        world.insert(e, Gamma(i as f32 * 3.0));
+        world.assert_archetype_consistency();
+    }
+
+    // Remove Gamma from all (back to [Alpha, Beta])
+    for &e in &entities {
+        world.remove::<Gamma>(e);
+        world.assert_archetype_consistency();
+    }
+
+    // Remove Beta from all (back to [Alpha])
+    for &e in &entities {
+        world.remove::<Beta>(e);
+        world.assert_archetype_consistency();
+    }
 }
