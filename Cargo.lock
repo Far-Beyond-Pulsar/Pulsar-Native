@@ -3004,7 +3004,7 @@ dependencies = [
  "lsp-types",
  "parking_lot",
  "profiling 0.1.0",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_lsp",
  "pulsar_reflection",
  "pulsar_scene",
@@ -3030,17 +3030,6 @@ dependencies = [
 [[package]]
 name = "engine_class_derive"
 version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "pulsar_reflection",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "engine_class_derive"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44#634e1206e488bd6ef2a69d7eb1d948e5bafb9c44"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection",
@@ -8728,17 +8717,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_events"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44#634e1206e488bd6ef2a69d7eb1d948e5bafb9c44"
-dependencies = [
- "once_cell",
- "parking_lot",
- "serde",
- "tracing",
-]
-
-[[package]]
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
@@ -8814,7 +8792,7 @@ dependencies = [
 name = "pulsar_physics"
 version = "0.1.0"
 dependencies = [
- "engine_class_derive 0.1.0",
+ "engine_class_derive",
  "gpui-ce",
  "pulsar_reflection",
  "serde",
@@ -8856,12 +8834,12 @@ dependencies = [
 name = "pulsar_rendering"
 version = "0.1.0"
 dependencies = [
- "engine_class_derive 0.1.0",
+ "engine_class_derive",
  "glam 0.33.1",
  "gpui-ce",
  "helio",
  "plugin_editor_api",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_reflection",
  "serde",
  "serde_json",
@@ -8871,30 +8849,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_rendering"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44#634e1206e488bd6ef2a69d7eb1d948e5bafb9c44"
-dependencies = [
- "engine_class_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44)",
- "glam 0.33.1",
- "helio",
- "pulsar_events 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44)",
- "pulsar_reflection",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
 name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
  "glam 0.33.1",
  "helio",
  "helio-asset-compat",
- "pulsar_events 0.1.0",
+ "pulsar_events",
  "pulsar_reflection",
- "pulsar_rendering 0.1.0",
+ "pulsar_rendering",
  "serde",
  "serde_json",
  "tracing",
@@ -12976,7 +12939,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_reflection",
- "pulsar_rendering 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=634e1206e488bd6ef2a69d7eb1d948e5bafb9c44)",
+ "pulsar_rendering",
  "rust-i18n 4.1.0",
  "serde",
  "serde_json",
@@ -13257,7 +13220,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_physics",
  "pulsar_reflection",
- "pulsar_rendering 0.1.0",
+ "pulsar_rendering",
  "raw-window-handle",
  "rfd",
  "rust-i18n 4.1.0",
