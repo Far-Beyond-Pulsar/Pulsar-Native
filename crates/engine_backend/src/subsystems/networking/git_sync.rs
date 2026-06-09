@@ -7,7 +7,7 @@
 //! 1. **Host creates session**: Initializes git repo, commits current state
 //! 2. **Joiner requests sync**: Asks host for commit hash
 //! 3. **Host serializes git objects**: Converts commit, trees, and blobs to `GitObject` structs
-//! 4. **Transfer via WebSocket**: Git objects sent as JSON through multiuser_server
+//! 4. **Transfer via WebSocket**: Git objects sent as JSON through pulsar-relay
 //! 5. **Joiner reconstructs**: Receives objects and recreates them in local git repo
 //! 6. **Checkout**: Joiner checks out the synced commit
 //!

@@ -39,6 +39,7 @@
 //! ```
 
 mod discord;
+mod multiplayer;
 mod multiuser;
 
 // Typed systems (primary API)

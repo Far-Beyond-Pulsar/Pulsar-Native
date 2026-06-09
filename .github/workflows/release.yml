@@ -9,8 +9,8 @@ env:
   # First crate is used for version checking
   CRATES_TO_BUILD: |
     crates/engine
-    crates/multiuser_host
-    crates/multiuser_server
+    crates/pulsar-studio
+    crates/pulsar-relay
 
   # Crates to build examples for (newline-separated list)
   CRATES_WITH_EXAMPLES: |
@@ -966,12 +966,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: pulsar-multiedit
+          - name: pulsar-relay
             context: .
-            dockerfile: crates/multiuser_server/Dockerfile
-          - name: pulsar-host
+            dockerfile: crates/pulsar-relay/Dockerfile
+          - name: pulsar-studio
             context: .
-            dockerfile: crates/multiuser_host/Dockerfile
+            dockerfile: crates/pulsar-studio/Dockerfile
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -1035,14 +1035,14 @@ jobs:
           Pull the sidecar images for this release from the GitHub Container Registry:
 
           \`\`\`bash
-          docker pull ghcr.io/${OWNER_LC}/pulsar-multiedit:${TAG}
-          docker pull ghcr.io/${OWNER_LC}/pulsar-host:${TAG}
+          docker pull ghcr.io/${OWNER_LC}/pulsar-relay:${TAG}
+          docker pull ghcr.io/${OWNER_LC}/pulsar-studio:${TAG}
           \`\`\`
 
           | Image | Package page | Tags |
           |---|---|---|
-          | \`pulsar-multiedit\` | [ghcr.io/${OWNER_LC}/pulsar-multiedit](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-multiedit) | \`${TAG}\`, \`latest\` |
-          | \`pulsar-host\` | [ghcr.io/${OWNER_LC}/pulsar-host](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-host) | \`${TAG}\`, \`latest\` |
+          | \`pulsar-relay\` | [ghcr.io/${OWNER_LC}/pulsar-relay](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-relay) | \`${TAG}\`, \`latest\` |
+          | \`pulsar-studio\` | [ghcr.io/${OWNER_LC}/pulsar-studio](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-studio) | \`${TAG}\`, \`latest\` |
 
           ---
 

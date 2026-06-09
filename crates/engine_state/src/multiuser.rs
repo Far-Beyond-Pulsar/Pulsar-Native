@@ -84,9 +84,9 @@ pub struct MultiuserContext {
     pub latency_ms: Option<u32>,
     /// Session join token (for inviting others)
     pub join_token: Option<String>,
-    /// Optional Bearer token for the `pulsar-host` file API.
+    /// Optional Bearer token for the `pulsar-studio` file API.
     pub auth_token: Option<String>,
-    /// The project UUID on the `pulsar-host` server.
+    /// The project UUID on the `pulsar-studio` server.
     pub project_id: Option<String>,
 }
 

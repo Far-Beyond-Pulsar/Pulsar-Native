@@ -375,7 +375,7 @@ impl EngineContext {
     }
 
     /// Check if we're the host of the current session
-    pub fn are_we_multiuser_host(&self) -> bool {
+    pub fn are_we_pulsar_studio(&self) -> bool {
         self.multiuser
             .read()
             .as_ref()

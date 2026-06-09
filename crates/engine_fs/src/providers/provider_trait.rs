@@ -2,7 +2,7 @@
 //!
 //! The `FsProvider` trait decouples the engine from any single filesystem
 //! backend, letting the same editor code work transparently against a local
-//! disk *or* a remote `pulsar-host` server.
+//! disk *or* a remote `pulsar-studio` server.
 
 use anyhow::Result;
 use std::path::Path;

@@ -5,7 +5,7 @@
 use std::path::Path;
 
 /// Return `true` when `path` carries the `cloud+pulsar://` scheme, indicating
-/// it refers to a file on a remote `pulsar-host` server rather than on disk.
+/// it refers to a file on a remote `pulsar-studio` server rather than on disk.
 ///
 /// Normalizes Windows backslashes to forward slashes before checking so that
 /// paths stored in a `PathBuf` on Windows still match the URI scheme prefix.

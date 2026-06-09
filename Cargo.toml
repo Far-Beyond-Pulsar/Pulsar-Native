@@ -62,7 +62,6 @@ window_manager                     = { path = "crates/window_manager" }
 blueprint_compiler                 = { path = "crates/blueprint_compiler" }
 pulsar_graph                       = { path = "crates/pulsar_graph" }
 pulsar_game                        = { path = "crates/pulsar_game" }
-pulsar_replication                 = { path = "crates/pulsar_replication" }
 agent_chat_core                    = { path = "agent-providers/agent_chat_core" }
 agent_chat_tools                   = { path = "agent-providers/agent_chat_tools" }
 agent_provider_demo_random         = { path = "agent-providers/agent_provider_demo_random" }
@@ -266,7 +265,6 @@ pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-pulsar_replication    = { path = "crates/pulsar_replication" }
 pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
 pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 gpui-component-macros = { path = "crates/macros" }
@@ -296,7 +294,6 @@ pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-pulsar_replication    = { path = "crates/pulsar_replication" }
 gpui-component-macros = { path = "crates/macros" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
@@ -316,7 +313,6 @@ pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-pulsar_replication    = { path = "crates/pulsar_replication" }
 gpui-component-macros = { path = "crates/macros" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Matter"]
@@ -336,7 +332,6 @@ pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-pulsar_replication    = { path = "crates/pulsar_replication" }
 gpui-component-macros = { path = "crates/macros" }
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
 gpui-ce = { git = "https://github.com/j4flmao/wgpui-fork-27957.git", branch = "fix/scroll-stutter-and-panic" }

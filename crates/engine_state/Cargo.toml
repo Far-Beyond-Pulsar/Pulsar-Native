@@ -35,3 +35,8 @@ directories = { workspace = true }
 # Shared window types
 ui_types_common = { workspace = true }
 pulsar_auth.workspace = true
+
+# Multiplayer session bridge
+pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
+engine_fs = { workspace = true }
+futures = { workspace = true }

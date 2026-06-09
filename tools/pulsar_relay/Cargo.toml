@@ -1,0 +1,10 @@
+[package]
+name = "pulsar_relay"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "pulsar_relay"
+path = "src/main.rs"
+
+[dependencies]

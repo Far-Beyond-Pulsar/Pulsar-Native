@@ -1,6 +1,6 @@
-//! HTTP-backed filesystem provider for `pulsar-host` servers.
+//! HTTP-backed filesystem provider for `pulsar-studio` servers.
 //!
-//! [`RemoteFsProvider`] talks to the file API that `pulsar-host` exposes under
+//! [`RemoteFsProvider`] talks to the file API that `pulsar-studio` exposes under
 //! `/api/v1/projects/:id/files/…`.  All operations are synchronous (blocking)
 //! so they can be used from any thread without an async runtime.
 
@@ -56,7 +56,7 @@ struct ApiStatResponse {
 
 // ── RemoteConfig ──────────────────────────────────────────────────────────────
 
-/// Connection details required to reach a `pulsar-host` project over HTTP.
+/// Connection details required to reach a `pulsar-studio` project over HTTP.
 #[derive(Debug, Clone)]
 pub struct RemoteConfig {
     /// Base HTTP URL, e.g. `http://studio.example.com:7700`.
@@ -100,7 +100,7 @@ impl RemoteConfig {
 
 // ── RemoteFsProvider ──────────────────────────────────────────────────────────
 
-/// HTTP-backed [`FsProvider`] that reads and writes files on a `pulsar-host`.
+/// HTTP-backed [`FsProvider`] that reads and writes files on a `pulsar-studio`.
 pub struct RemoteFsProvider {
     config: Arc<RemoteConfig>,
     agent: ureq::Agent,
