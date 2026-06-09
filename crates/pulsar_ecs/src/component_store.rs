@@ -1,5 +1,6 @@
 use pulsar_reflection::{EngineClass, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use std::cell::Cell;
+use std::ptr;
 
 thread_local! {
     static BP_COMP_CTX: Cell<usize> = Cell::new(0);
@@ -201,6 +202,63 @@ impl ComponentStore {
                 );
                 return false;
             }
+        };
+
+        let comp_mut = self.entries[idx].1.as_mut();
+        (setter)(comp_mut, any_val);
+        true
+    }
+
+    /// Directly write raw bytes into a reflected component property.
+    ///
+    /// Reconstructs a `Box<dyn Any>` from `ptr`/`size` and dispatches
+    /// through the reflection system's setter.  This avoids JSON
+    /// serialization overhead on the hot blueprint VM path while keeping
+    /// the existing setter logic (type validation, side-effects, etc.)
+    /// intact.
+    ///
+    /// For types whose size does not match a known primitive (1, 2, 4, or
+    /// 8 bytes) the method returns `false` without modifying the property.
+    /// The blueprint VM should fall back to [`set_property_json`] for
+    /// compound types.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that:
+    /// - `ptr` points to a valid, properly-aligned block of `size` bytes.
+    /// - The bytes at `ptr` represent a valid instance of the target
+    ///   property's type (same layout, size, and alignment).
+    /// - `size` matches the exact size of the property's type, as
+    ///   returned by the reflection type info.
+    pub unsafe fn set_property_raw(
+        &mut self,
+        class_name: &str,
+        prop_name: &str,
+        ptr: *const u8,
+        size: usize,
+    ) -> bool {
+        let Some(idx) = self.entries.iter().position(|(name, _)| name == class_name) else {
+            return false;
+        };
+
+        let setter = {
+            let comp_ref = self.entries[idx].1.as_ref();
+            let props = comp_ref.get_properties();
+            match props.into_iter().find(|p| p.name == prop_name) {
+                Some(prop) => prop.setter,
+                None => return false,
+            }
+        };
+
+        // SAFETY: caller guarantees ptr is valid, aligned, and the bytes
+        // match the property's type layout.  We match on size to
+        // reconstruct a Box<dyn Any> of the correct primitive type.
+        let any_val: Box<dyn std::any::Any> = match size {
+            1 => Box::new(ptr::read(ptr as *const u8)),
+            2 => Box::new(ptr::read(ptr as *const u16)),
+            4 => Box::new(ptr::read(ptr as *const f32)),
+            8 => Box::new(ptr::read(ptr as *const f64)),
+            _ => return false,
         };
 
         let comp_mut = self.entries[idx].1.as_mut();
