@@ -460,41 +460,42 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         has_categories: bool,
         cx: &mut Context<Self>,
     ) -> Vec<gpui::AnyElement> {
-        self.filtered_categories
-            .iter()
-            .enumerate()
-            .flat_map(|(cat_idx, (cat_name, items))| {
-                let mut elements = Vec::new();
-                // Global index across all visible items
-                let mut global_index = 0;
+        let mut elements = Vec::new();
+        // Global index across all visible items
+        let mut global_index = 0;
 
-                if !cat_name.is_empty() && has_categories {
-                    let expanded = self
-                        .category_states
-                        .get(cat_idx)
-                        .map(|s| s.expanded)
-                        .unwrap_or(true);
+        for (cat_idx, (cat_name, items)) in self.filtered_categories.iter().enumerate() {
+            if !cat_name.is_empty() && has_categories {
+                let expanded = self
+                    .category_states
+                    .get(cat_idx)
+                    .map(|s| s.expanded)
+                    .unwrap_or(true);
 
-                    elements.push(self.render_category_header(cat_idx, cat_name, items.len(), expanded, cx));
+                elements.push(self.render_category_header(cat_idx, cat_name, items.len(), expanded, cx));
 
-                    if expanded {
-                        for item in items {
-                            let is_selected = global_index == selected_index;
-                            elements.push(self.render_item(item, is_selected, global_index, cx));
-                            global_index += 1;
-                        }
-                    }
-                } else {
+                if expanded {
                     for item in items {
                         let is_selected = global_index == selected_index;
                         elements.push(self.render_item(item, is_selected, global_index, cx));
                         global_index += 1;
                     }
+                } else {
+                    // Even when collapsed we still count items for selection indices
+                    for _ in items {
+                        global_index += 1;
+                    }
                 }
+            } else {
+                for item in items {
+                    let is_selected = global_index == selected_index;
+                    elements.push(self.render_item(item, is_selected, global_index, cx));
+                    global_index += 1;
+                }
+            }
+        }
 
-                elements
-            })
-            .collect()
+        elements
     }
 
     /// Renders a single category header row.
