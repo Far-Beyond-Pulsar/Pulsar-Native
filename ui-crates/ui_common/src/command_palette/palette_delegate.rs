@@ -58,6 +58,11 @@ impl PaletteViewDelegate {
         self.selected_item_id.take()
     }
 
+    /// Reset selection state for a fresh palette open
+    pub fn reset_selection(&mut self) {
+        self.selected_item_id = None;
+    }
+
     /// Get a reference to the palette entity
     pub fn palette_entity(&self) -> &Entity<Palette> {
         &self.palette

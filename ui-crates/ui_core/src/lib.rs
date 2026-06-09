@@ -48,6 +48,13 @@ pub fn init(cx: &mut gpui::App) {
 
     root::register_window_wrappers(cx);
 
+    // Register global keybindings for actions that must work anywhere in the app
+    cx.bind_keys([gpui::KeyBinding::new::<ToggleCommandPalette>(
+        "alt-space",
+        ToggleCommandPalette {},
+        None,
+    )]);
+
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");
         window_manager::WindowRegistry::update_global(cx, |reg, cx| reg.open("SettingsWindow", cx));
