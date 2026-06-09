@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use ui::ActiveTheme;
 
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::RustAnalyzerManager;
 
 use crate::recent_projects::update_recent_projects;
 use crate::tasks::{LoadingEvent, TaskStatus, TASKS};

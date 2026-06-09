@@ -12,9 +12,7 @@ use ui_problems::ProblemsDrawer;
 
 // use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 // use ui_alias_editor::ShowTypePickerRequest;
-use engine_backend::services::rust_analyzer_manager::{
-    AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager,
-};
+use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use futures::FutureExt;
 use smol::Timer;
 use std::path::PathBuf;

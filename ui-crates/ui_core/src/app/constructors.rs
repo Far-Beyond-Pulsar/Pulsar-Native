@@ -1,6 +1,6 @@
 //! Constructor methods for PulsarApp
 
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::RustAnalyzerManager;
 use gpui::{AppContext, Context, Entity, Window};
 use plugin_manager::PluginManager;
 use std::{path::PathBuf, sync::Arc};

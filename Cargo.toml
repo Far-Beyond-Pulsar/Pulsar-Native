@@ -56,7 +56,6 @@ engine_state                       = { path = "crates/engine_state" }
 pulsar_auth                        = { path = "crates/pulsar_auth" }
 pulsar_settings                    = { path = "crates/pulsar_settings" }
 engine_backend                     = { path = "crates/engine_backend" }
-pulsar_diagnostics                 = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp                         = { path = "crates/pulsar_lsp" }
 window_manager                     = { path = "crates/window_manager" }
 blueprint_compiler                 = { path = "crates/blueprint_compiler" }
@@ -261,28 +260,9 @@ engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
 type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
-pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
-pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
-gpui-component-macros = { path = "crates/macros" }
-# UI crates referenced by core crates
-ui_common             = { path = "ui-crates/ui_common" }
-ui_types_common       = { path = "ui-crates/ui_types_common" }
-
-[patch."https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints"]
-plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
-ui_common             = { path = "ui-crates/ui_common" }
-ui_types_common       = { path = "ui-crates/ui_types_common" }
-pulsar_std            = { path = "crates/pulsar_std" }
-pulsar_reflection     = { path = "crates/pulsar_reflection" }
-engine_backend        = { path = "crates/engine_backend" }
-window_manager        = { path = "crates/window_manager" }
-engine_state          = { path = "crates/engine_state" }
-engine_fs             = { path = "crates/engine_fs" }
 pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
 pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 
@@ -290,7 +270,6 @@ pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 profiling             = { path = "crates/profiling" }
 type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
-pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
@@ -309,7 +288,6 @@ engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
 type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
-pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
@@ -328,7 +306,6 @@ engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
 type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
-pulsar_diagnostics    = { path = "crates/pulsar_diagnostics" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }

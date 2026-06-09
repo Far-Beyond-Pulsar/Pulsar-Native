@@ -1,6 +1,6 @@
 //! Rendering implementation for PulsarApp
 
-use engine_backend::services::rust_analyzer_manager::AnalyzerStatus;
+use engine_backend::services::AnalyzerStatus;
 use gpui::{
     div, prelude::*, px, relative, rgb, Animation, AnimationExt as _, AnyElement, App, Context,
     FocusHandle, Focusable, Hsla, IntoElement, MouseButton, MouseMoveEvent, Render, Window,

@@ -40,7 +40,6 @@ profiling = { workspace = true }
 # UI dependencies needed for services
 gpui-ce.workspace = true
 ui.workspace = true
-pulsar_diagnostics.workspace = true
 pulsar_lsp.workspace = true
 lsp-types.workspace = true
 ropey.workspace = true

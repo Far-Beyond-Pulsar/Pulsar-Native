@@ -3,7 +3,7 @@
 //! This module provides a single function to register all built-in editors
 //! with the plugin manager's registries.
 
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::RustAnalyzerManager;
 use gpui::AppContext;
 use gpui::{App, Entity, Global, Window};
 use plugin_editor_api::*;

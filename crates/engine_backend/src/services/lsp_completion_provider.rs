@@ -10,7 +10,7 @@ use std::sync::{
 };
 use ui::input::{CompletionProvider, DefinitionProvider, InputState, RopeExt};
 
-use super::rust_analyzer_manager::RustAnalyzerManager;
+use crate::services::RustAnalyzerManager;
 use gpui::Entity;
 
 /// Completion provider that uses the global rust-analyzer instance
@@ -44,7 +44,7 @@ impl GlobalRustAnalyzerCompletionProvider {
 
     /// Convert file path to LSP URI
     fn path_to_uri(&self) -> String {
-        super::path_utils::path_to_uri(&self.file_path)
+        pulsar_lsp::rust_analyzer::path_to_uri(&self.file_path)
     }
 
     fn ensure_document_open_with_ra(&self, text: &ropey::Rope, cx: &mut App) {

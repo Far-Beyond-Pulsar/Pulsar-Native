@@ -8,7 +8,6 @@
 
 pub mod rust_analyzer;
 pub mod traits;
-pub mod types;
 
 pub use rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 pub use traits::{DefinitionProvider, HoverProvider, LspBackend};

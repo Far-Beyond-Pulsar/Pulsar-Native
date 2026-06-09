@@ -8,7 +8,7 @@ use ui_file_manager::FileManagerDrawer;
 use ui_problems::ProblemsDrawer;
 // use ui_level_editor::LevelEditorPanel;
 // use ui_daw_editor::DawEditorPanel;
-use engine_backend::services::rust_analyzer_manager::RustAnalyzerManager;
+use engine_backend::services::RustAnalyzerManager;
 use ui_common::command_palette::{GenericPalette, Palette, PaletteId, PaletteViewDelegate};
 use ui_entry::EntryScreen;
 use ui_log_viewer::MissionControlPanel;

@@ -9,7 +9,7 @@ pub mod scene;
 pub mod services;
 pub mod subsystems;
 
-pub use services::{GlobalRustAnalyzerCompletionProvider, GpuRenderer, RustAnalyzerManager};
+pub use services::{GpuRenderer, RustAnalyzerManager};
 use std::sync::Arc;
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
 pub use subsystems::game::{GameObject, GameState, GameThread, ManagedGameThread};
