@@ -423,11 +423,11 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                     v_flex()
                                         .h(px(384.)) // 480 - 96 (input height) = 384
                                         .scrollable(Axis::Vertical)
+                                        .id("palette-list")  // ID required for scroll to work
                                         .child(
                                             v_flex()
                                                 .gap_0p5()
                                                 .p_2()
-                                                .id("palette-list")  // ID preserves scroll state across renders
                                                 .children({
                                                 let mut item_index = 0;
                                                 let has_categories = self
@@ -594,11 +594,11 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                     v_flex()
                                         .flex_1()
                                         .scrollable(Axis::Vertical)
+                                        .id("palette-docs")  // ID required for scroll to work
                                         .child(
                                             v_flex()
                                                 .p_4()
                                                 .gap_3()
-                                                .id("palette-docs")  // ID preserves scroll state
                                                 .map(|el| {
                                                     if let Some(doc_text) = doc_content {
                                                         el.child(
