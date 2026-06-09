@@ -10,6 +10,10 @@ pub mod gizmo_interaction_controller;
 pub mod gpu_renderer;
 pub mod lsp_completion_provider;
 pub mod physics_query_service;
+pub mod rust_analyzer_manager {
+    pub use pulsar_lsp::rust_analyzer::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
+}
+
 pub use core_project_builder::ensure_core_bootstrap;
 pub use gizmo_interaction_controller::{DragState, GizmoInteractionController, InteractionState};
 pub use gpu_renderer::GpuRenderer;

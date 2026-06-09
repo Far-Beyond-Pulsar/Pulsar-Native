@@ -267,6 +267,7 @@ pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
 pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
+ui_common             = { path = "ui-crates/ui_common" }
 
 [patch.crates-io]
 profiling             = { path = "crates/profiling" }
