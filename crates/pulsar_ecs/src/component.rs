@@ -3,17 +3,22 @@ use std::cell::RefCell;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-// ── ComponentId registry ─────────────────────────────────────────────────────
-//
-// Every component type in the ECS gets a dense u32 ComponentId assigned on
-// first access.  A thread-local cache provides a fast read path for the hot
-// query loop (no atomic ops, no syscalls); the global Mutex-backed registry
-// handles the cold registration path and cross-thread consistency.
-//
-// NOTE: a per-monomorphisation OnceLock approach was tried but triggers
-// linker ICF (identical-code folding) on macOS, which merges the statics
-// across different T → CID collisions.
-
+/// A dense `u32` identifier assigned to each component type.
+///
+/// IDs are allocated sequentially from 1 on first access via
+/// [`component_id::<T>()`].  ID 0 is reserved and never assigned — it
+/// corresponds to `None` in the column Vec.
+///
+/// Columns in [`Archetype`](crate::Archetype) are indexed directly by
+/// `ComponentId.0 as usize`, so lookups are a single Vec index rather
+/// than a hash-map probe.
+///
+/// # Note
+///
+/// A previous implementation used a per-monomorphisation `OnceLock`, but
+/// this triggered linker ICF (identical-code folding) on macOS, which
+/// merged the statics across different `T` and caused CID collisions.
+/// The current approach uses a thread-local cache + global `Mutex`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ComponentId(pub u32);
 
@@ -32,10 +37,14 @@ thread_local! {
     static CID_CACHE: RefCell<Vec<(TypeId, ComponentId)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Returns the canonical `ComponentId` for `T`, registering it on first call.
+/// Returns the canonical [`ComponentId`] for `T`, registering it on first call.
 ///
-/// Hot path: thread-local cache lookup (linear scan of ~8–20 entries).
-/// Cold path: acquire the global Mutex once per type per thread.
+/// # Performance
+///
+/// - **Hot path** (cached): thread-local linear scan over ~8–20 entries, no
+///   synchronization.
+/// - **Cold path** (first call per type per thread): acquires the global `Mutex`,
+///   then populates the thread-local cache for subsequent calls.
 pub fn component_id<T: 'static>() -> ComponentId {
     let tid = TypeId::of::<T>();
     // Fast path — thread-local, no synchronization.
@@ -60,7 +69,11 @@ pub fn component_id<T: 'static>() -> ComponentId {
     cid
 }
 
-/// Resolve a TypeId that was already registered. Panics if not registered.
+/// Resolve a [`TypeId`] to its [`ComponentId`].
+///
+/// # Panics
+///
+/// Panics if `type_id` has not been registered via [`component_id::<T>()`].
 pub fn resolve_id(type_id: TypeId) -> ComponentId {
     let reg = registry().lock().expect("ComponentId registry lock");
     for (i, &tid) in reg.iter().enumerate() {
@@ -71,13 +84,22 @@ pub fn resolve_id(type_id: TypeId) -> ComponentId {
     panic!("TypeId {:?} is not registered as a component", type_id);
 }
 
-/// Total number of registered component types.
+/// Returns the total number of component types registered so far.
+///
+/// This is the number of distinct `T` for which `component_id::<T>()` has
+/// been called across all threads.
 pub fn component_count() -> u32 {
     let reg = registry().lock().expect("ComponentId registry lock");
     reg.len() as u32
 }
 
-/// Get the TypeId for a given ComponentId (used for downcast).
+/// Returns the [`TypeId`] corresponding to a [`ComponentId`].
+///
+/// Used internally for downcast validation in column access.
+///
+/// # Panics
+///
+/// Panics if `id` has not been registered.
 pub fn type_of(id: ComponentId) -> TypeId {
     let reg = registry().lock().expect("ComponentId registry lock");
     reg[id.0 as usize - 1]
@@ -85,6 +107,11 @@ pub fn type_of(id: ComponentId) -> TypeId {
 
 // ── Component trait ──────────────────────────────────────────────────────────
 
+/// Marker trait for types that can be stored as ECS components.
+///
+/// Automatically implemented for any `T: Any + Send + Sync + 'static`.
+/// Components are stored in contiguous `Vec<T>` columns within their
+/// archetype — not in sparse maps or hash tables.
 pub trait Component: Any + Send + Sync + 'static {}
 impl<T: Any + Send + Sync + 'static> Component for T {}
 

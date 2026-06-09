@@ -5,16 +5,29 @@ thread_local! {
     static BP_COMP_CTX: Cell<usize> = Cell::new(0);
 }
 
+/// Set the thread-local blueprint component context to `store`.
+///
+/// Called by the blueprint executor before dispatching actor lifecycle
+/// hooks so that [`__bp_with_comp`] resolves correctly.
 #[inline]
 pub fn __bp_set_comp_ctx(store: &mut ComponentStore) {
     BP_COMP_CTX.with(|c| c.set(store as *mut ComponentStore as usize));
 }
 
+/// Clear the thread-local blueprint component context.
+///
+/// Called by the blueprint executor after an actor lifecycle hook returns.
 #[inline]
 pub fn __bp_clear_comp_ctx() {
     BP_COMP_CTX.with(|c| c.set(0));
 }
 
+/// Access the current blueprint component store from thread-local context.
+///
+/// # Panics
+///
+/// Panics if called outside a `__bp_set_comp_ctx` / `__bp_clear_comp_ctx`
+/// pair (i.e., outside an actor lifecycle hook).
 #[inline]
 pub fn __bp_with_comp<R>(f: impl FnOnce(&mut ComponentStore) -> R) -> R {
     BP_COMP_CTX.with(|c| {
@@ -27,6 +40,21 @@ pub fn __bp_with_comp<R>(f: impl FnOnce(&mut ComponentStore) -> R) -> R {
     })
 }
 
+/// Runtime store for blueprint (visual scripting) components attached to an
+/// actor or object.
+///
+/// Each entry is a `(class_name, Box<dyn EngineClass>)` pair.  The
+/// `EngineClass` trait comes from `pulsar_reflection` and provides
+/// reflection-based property get/set and method dispatch via JSON.
+///
+/// This is the bridge between the ECS world and the blueprint runtime:
+/// blueprint instances read and write their reflected properties through
+/// a `ComponentStore` rather than through direct ECS column access.
+///
+/// The thread-local accessor functions ([`__bp_set_comp_ctx`],
+/// [`__bp_clear_comp_ctx`], [`__bp_with_comp`]) let blueprint VM bytecode
+/// operate on the *current* actor's store without plumbing it through every
+/// call site.
 pub struct ComponentStore {
     entries: Vec<(String, Box<dyn EngineClass>)>,
 }
@@ -44,6 +72,11 @@ impl ComponentStore {
         }
     }
 
+    /// Create a component from the reflection registry and deserialize its
+    /// properties from a JSON map.
+    ///
+    /// Returns `false` if `class_name` is not registered in the reflection
+    /// registry.
     pub fn add_from_registry(&mut self, class_name: &str, data: &serde_json::Value) -> bool {
         let Some(mut instance) = REGISTRY.create_instance(class_name) else {
             tracing::warn!(
@@ -84,22 +117,26 @@ impl ComponentStore {
         true
     }
 
+    /// Add a pre-constructed engine-class instance.
     pub fn add_boxed(&mut self, class_name: impl Into<String>, comp: Box<dyn EngineClass>) {
         self.entries.push((class_name.into(), comp));
     }
 
+    /// Get a shared reference to the first component of type `T`.
     pub fn get<T: EngineClass + 'static>(&self) -> Option<&T> {
         self.entries
             .iter()
             .find_map(|(_, e)| e.as_any().downcast_ref::<T>())
     }
 
+    /// Get a mutable reference to the first component of type `T`.
     pub fn get_mut<T: EngineClass + 'static>(&mut self) -> Option<&mut T> {
         self.entries
             .iter_mut()
             .find_map(|(_, e)| e.as_any_mut().downcast_mut::<T>())
     }
 
+    /// Get a shared reference to a component by its registered class name.
     pub fn get_by_name(&self, class_name: &str) -> Option<&dyn EngineClass> {
         self.entries
             .iter()
@@ -107,6 +144,7 @@ impl ComponentStore {
             .map(|(_, e)| e.as_ref())
     }
 
+    /// Get a mutable reference to a component by its registered class name.
     pub fn get_by_name_mut(&mut self, class_name: &str) -> Option<&mut dyn EngineClass> {
         self.entries
             .iter_mut()
@@ -114,6 +152,7 @@ impl ComponentStore {
             .map(|(_, e)| e.as_mut())
     }
 
+    /// Serialize a component property to JSON.
     pub fn get_property_json(
         &self,
         class_name: &str,
@@ -129,6 +168,9 @@ impl ComponentStore {
             .ok()
     }
 
+    /// Deserialize a JSON value into a component property.
+    ///
+    /// Returns `false` if `class_name` or `prop_name` is not found.
     pub fn set_property_json(
         &mut self,
         class_name: &str,
@@ -166,6 +208,9 @@ impl ComponentStore {
         true
     }
 
+    /// Call a reflected method on a component with JSON-serialized arguments.
+    ///
+    /// Returns the JSON-serialized return value, if any.
     pub fn call_method_json(
         &mut self,
         class_name: &str,
@@ -201,22 +246,27 @@ impl ComponentStore {
         })
     }
 
+    /// Returns `true` if a component with `class_name` is stored.
     pub fn has(&self, class_name: &str) -> bool {
         self.entries.iter().any(|(name, _)| name == class_name)
     }
 
+    /// Number of component entries in this store.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    /// Returns `true` if the store is empty.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
+    /// Iterate over `(class_name, component)` pairs.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &dyn EngineClass)> {
         self.entries.iter().map(|(n, e)| (n.as_str(), e.as_ref()))
     }
 
+    /// Iterate mutably over `(class_name, component)` pairs.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = (&str, &mut dyn EngineClass)> {
         self.entries
             .iter_mut()

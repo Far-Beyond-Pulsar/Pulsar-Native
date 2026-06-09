@@ -3,6 +3,24 @@ use crate::component::{Column, Component, ComponentId, ErasedColumn};
 use crate::entity::{Entity, EntitySlot};
 use ahash::AHashMap;
 
+/// The central ECS store: owns all entities, their component data, and the
+/// archetype graph.
+///
+/// # Entity lifecycle
+///
+/// 1. [`World::spawn`] allocates a slot and places the entity in the empty
+///    archetype (no components).
+/// 2. [`World::insert`] adds a component, migrating the entity to a new
+///    archetype.
+/// 3. [`World::remove`] strips a component, migrating back.
+/// 4. [`World::despawn`] frees the slot and swap-removes the entity from its
+///    archetype.
+///
+/// # Queries
+///
+/// Use [`World::query`] to iterate entities matching a component pattern.
+/// Queries scan all archetypes, using the `u64` bitmask to skip non-matching
+/// archetypes in constant time.
 pub struct World {
     pub entity_slots: Vec<EntitySlot>,
     pub free_slots: Vec<u32>,
@@ -11,6 +29,7 @@ pub struct World {
 }
 
 impl World {
+    /// Create an empty world with one empty archetype and no entities.
     pub fn new() -> Self {
         let empty = Archetype::new_empty(ArchetypeId::EMPTY);
         let mut archetype_index = AHashMap::default();
@@ -25,6 +44,11 @@ impl World {
 
     // ── Entity lifecycle ─────────────────────────────────────────────────
 
+    /// Allocate a new entity in the empty archetype.
+    ///
+    /// Recycles a free slot if one is available; otherwise extends the slot
+    /// vec.  The returned handle includes a generation counter that allows
+    /// [`is_alive`](Self::is_alive) to detect stale handles after despawn.
     pub fn spawn(&mut self) -> Entity {
         let (idx, gen) = if let Some(idx) = self.free_slots.pop() {
             let slot = &mut self.entity_slots[idx as usize];
@@ -45,6 +69,14 @@ impl World {
         entity
     }
 
+    /// Remove an entity and all its components from the world.
+    ///
+    /// Returns `false` if the entity was already dead (generation mismatch or
+    /// out-of-bounds index).
+    ///
+    /// The entity's slot is recycled: the generation is incremented and the
+    /// index is pushed onto the free list.  The entity's data is
+    /// swap-removed from its archetype.
     pub fn despawn(&mut self, entity: Entity) -> bool {
         if !self.is_alive(entity) {
             return false;
@@ -63,6 +95,11 @@ impl World {
         true
     }
 
+    /// Returns `true` if `entity` is still alive.
+    ///
+    /// Checks that the slot exists (index in bounds) and that the stored
+    /// generation matches the entity handle's generation — meaning the slot
+    /// hasn't been recycled since the handle was created.
     #[inline]
     pub fn is_alive(&self, entity: Entity) -> bool {
         self.entity_slots
@@ -124,6 +161,15 @@ impl World {
 
     // ── Component operations ─────────────────────────────────────────────
 
+    /// Add a component to an entity, migrating it to a new archetype if needed.
+    ///
+    /// If the entity already has a component of type `T`, the value is
+    /// overwritten in place (no migration).  Otherwise the entity is moved to
+    /// an archetype that includes `T`, preserving all existing component data.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `entity` is dead.
     pub fn insert<T: Component>(&mut self, entity: Entity, value: T) {
         assert!(self.is_alive(entity), "insert on dead entity {entity}");
 
@@ -184,6 +230,12 @@ impl World {
         slot.row = new_row;
     }
 
+    /// Remove a component from an entity, returning its value.
+    ///
+    /// The entity is migrated to an archetype without `T`.  All other
+    /// components are preserved.
+    ///
+    /// Returns `None` if the entity is dead or does not have component `T`.
     pub fn remove<T: Component>(&mut self, entity: Entity) -> Option<T> {
         if !self.is_alive(entity) {
             return None;
@@ -218,6 +270,7 @@ impl World {
         Some(removed_val)
     }
 
+    /// Returns a shared reference to component `T` on `entity`, if present.
     #[inline]
     pub fn get<T: Component>(&self, entity: Entity) -> Option<&T> {
         if !self.is_alive(entity) {
@@ -233,6 +286,7 @@ impl World {
         })
     }
 
+    /// Returns a mutable reference to component `T` on `entity`, if present.
     #[inline]
     pub fn get_mut<T: Component>(&mut self, entity: Entity) -> Option<&mut T> {
         if !self.is_alive(entity) {

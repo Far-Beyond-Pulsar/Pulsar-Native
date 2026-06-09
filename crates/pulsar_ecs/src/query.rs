@@ -5,15 +5,31 @@ use crate::entity::Entity;
 use crate::world::World;
 use std::marker::PhantomData;
 
-/// Trait for types that can be fetched from a world query.
+/// Types that can be fetched from an archetype row during a query.
+///
+/// Implementations exist for:
+/// - `&T` — shared reference to a component
+/// - `&mut T` — mutable reference to a component
+/// - `()` — matches every archetype (for counting or iteration without data)
+/// - Tuples `(A, B, ...)` up to 8 elements — combine multiple fetches
+///
+/// # Safety
+///
+/// `fetch` uses `unsafe` because it performs unchecked column access.  The
+/// caller guarantees that `matches(archetype)` is `true` and `row` is within
+/// the archetype's entity count.
 pub trait WorldQuery<'w>: Sized {
+    /// The type returned by [`fetch`](Self::fetch).
     type Item;
 
     /// Returns `true` if the given archetype contains all the components
     /// required by this query.
     fn matches(archetype: &Archetype) -> bool;
 
+    /// Read component data at `row` in `archetype`.
+    ///
     /// # Safety
+    ///
     /// - `archetype` must satisfy `Self::matches(archetype)`.
     /// - `row` must be < `archetype.entities.len()`.
     unsafe fn fetch(archetype: &'w Archetype, row: usize) -> Self::Item;
@@ -113,6 +129,13 @@ impl_world_query_tuple!(A, B, C, D, E, F, G, H);
 
 // ── QueryIter ────────────────────────────────────────────────────────────────
 
+/// Iterator over all entities in the [`World`](crate::World) that match a query
+/// pattern `Q`.
+///
+/// Yields `(Entity, Q::Item)` pairs.  Created by [`World::query`](crate::World::query).
+///
+/// The iterator scans archetypes in order, skipping those that don't match `Q`.
+/// Within each matching archetype it walks rows sequentially.
 pub struct QueryIter<'w, Q: WorldQuery<'w>> {
     archetypes: &'w [crate::archetype::Archetype],
     arch_idx: usize,
@@ -158,6 +181,23 @@ impl<'w, Q: WorldQuery<'w>> Iterator for QueryIter<'w, Q> {
 }
 
 impl World {
+    /// Iterate all entities whose components match the query pattern `Q`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use pulsar_ecs::{World, QueryIter, WorldQuery};
+    ///
+    /// # struct Pos(f32, f32);
+    /// # struct Vel(f32, f32);
+    /// # let mut world = World::new();
+    /// for (pos, vel) in world.query::<(&Pos, &Vel)>() {
+    ///     // ...
+    /// }
+    /// ```
+    ///
+    /// An empty tuple `()` matches every archetype and can be used to iterate
+    /// all entities without fetching any component data.
     pub fn query<'w, Q: WorldQuery<'w>>(&'w self) -> QueryIter<'w, Q> {
         QueryIter::new(self)
     }

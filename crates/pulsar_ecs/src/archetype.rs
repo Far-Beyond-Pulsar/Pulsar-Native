@@ -1,15 +1,25 @@
 use crate::component::{Column, Component, ComponentId, ErasedColumn};
 use crate::entity::Entity;
 
+/// Opaque index into [`World::archetypes`](crate::World).
+///
+/// ID 0 is reserved for the empty archetype (entities with no components).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArchetypeId(pub u32);
 
 impl ArchetypeId {
+    /// The empty-archetype sentinel (ID 0).
+    ///
+    /// Every `World` starts with one empty archetype.  Newly spawned entities
+    /// live here until a component is inserted.
     pub const EMPTY: ArchetypeId = ArchetypeId(0);
 }
 
-/// Key used for deduplication of archetypes.  Stored as a sorted `Vec<ComponentId>`
-/// so that two archetypes with the same set of components compare equal.
+/// A sorted, deduplicated set of [`ComponentId`]s that uniquely identifies an
+/// archetype.
+///
+/// Archetypes with the same `ArchetypeKey` share the same column layout and
+/// are deduplicated by [`World`](crate::World).
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ArchetypeKey(pub Vec<ComponentId>);
 
@@ -46,6 +56,15 @@ impl ArchetypeKey {
     }
 }
 
+/// A group of entities that share the exact same set of component types.
+///
+/// Entities within an archetype are stored in parallel arrays:
+/// - `columns[ComponentId]` → `Vec<T>` for each component type
+/// - `entities` → `Vec<Entity>`
+///
+/// Column data is accessed by row index, which is the same across all columns
+/// and the entity vec.  Entity removal uses `swap_remove` — the last entity
+/// is moved into the vacated slot and its row is updated in the slot map.
 pub struct Archetype {
     pub id: ArchetypeId,
     pub key: ArchetypeKey,
@@ -54,9 +73,9 @@ pub struct Archetype {
     /// hashing overhead on the query path.
     pub columns: Vec<Option<Box<dyn ErasedColumn>>>,
     pub entities: Vec<Entity>,
-    /// Bitmask over the first 64 component IDs for extremely fast archetype
-    /// filtering during queries.  A set bit at position `i` means component
-    /// ID `i+1` is present in this archetype.
+    /// Bitmask over the first 64 component IDs for fast archetype
+    /// filtering during queries.  Bit `i` is set if component ID `i+1`
+    /// is present.
     pub mask: u64,
 }
 
@@ -87,11 +106,13 @@ impl Archetype {
         }
     }
 
+    /// Number of entities in this archetype.
     #[inline]
     pub fn len(&self) -> usize {
         self.entities.len()
     }
 
+    /// Returns `true` if this archetype has no entities.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.entities.is_empty()
