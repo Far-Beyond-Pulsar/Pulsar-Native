@@ -17,7 +17,6 @@
 //!
 //! The following subsystems have been migrated to use the Subsystem trait:
 //! - ✅ **PhysicsEngine** - Rapier3D physics simulation with async task spawning
-//! - ✅ **GameThread** - Fixed timestep game loop with std::thread
 //! - ❌ **World** - Cannot implement Subsystem due to PebbleVault not being Send+Sync
 //!
 //! ## Pending Subsystems
@@ -27,9 +26,7 @@
 //! - All new subsystems should implement the Subsystem trait from the start
 
 // Subsystem framework
-pub mod classes;
 pub mod framework;
-pub mod game;
 pub mod game_network;
 pub mod networking;
 pub mod physics;

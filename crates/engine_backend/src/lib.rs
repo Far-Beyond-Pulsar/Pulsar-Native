@@ -10,9 +10,7 @@ pub mod services;
 pub mod subsystems;
 
 pub use services::{GpuRenderer, RustAnalyzerManager};
-use std::sync::Arc;
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
-pub use subsystems::game::{GameObject, GameState, GameThread, ManagedGameThread};
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
 pub use subsystems::world::World;
@@ -29,8 +27,7 @@ pub use scene::{
     SceneObjectMetadata, SceneSnapshot,
 };
 
-pub const ENGINE_THREADS: [&str; 8] = [
-    "GameThread",
+pub const ENGINE_THREADS: [&str; 7] = [
     "RenderThread",
     "AssetLoaderThread",
     "PhysicsThread",
@@ -40,13 +37,12 @@ pub const ENGINE_THREADS: [&str; 8] = [
     "InputThread",
 ];
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 static GLOBAL_BACKEND: OnceLock<Arc<parking_lot::RwLock<EngineBackend>>> = OnceLock::new();
 
 pub struct EngineBackend {
     subsystems: SubsystemRegistry,
-    game_thread: Option<Arc<GameThread>>,
 }
 
 impl EngineBackend {
@@ -62,13 +58,6 @@ impl EngineBackend {
         registry
             .register(PhysicsEngine::new())
             .expect("Failed to register PhysicsEngine subsystem");
-
-        let managed_game_thread = ManagedGameThread::new(60.0); // 60 TPS target
-        let game_thread_ref = managed_game_thread.game_thread().clone();
-
-        registry
-            .register(managed_game_thread)
-            .expect("Failed to register ManagedGameThread subsystem");
 
         // NOTE: World subsystem cannot be registered here because PebbleVault::VaultManager
         // doesn't implement Send + Sync. It must be managed separately.
@@ -86,7 +75,6 @@ impl EngineBackend {
 
         EngineBackend {
             subsystems: registry,
-            game_thread: Some(game_thread_ref),
         }
     }
 
@@ -119,11 +107,6 @@ impl EngineBackend {
         profiling::profile_scope!("EngineBackend::Shutdown");
         tracing::info!("Shutting down Engine Backend");
         self.subsystems.shutdown_all()
-    }
-
-    /// Get the central GameThread instance
-    pub fn game_thread(&self) -> Option<&Arc<GameThread>> {
-        self.game_thread.as_ref()
     }
 
     /// Set as global instance (for access from other parts of the engine)

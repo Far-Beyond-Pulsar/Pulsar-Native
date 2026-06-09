@@ -5,27 +5,13 @@ use crate::world::World;
 use std::any::TypeId;
 use std::marker::PhantomData;
 
-/// Trait implemented by tuples of component references, enabling typed queries.
-///
-/// `'w` is the lifetime of the world borrow.  The `Item` associated type is
-/// the tuple you get per entity, e.g. `(&'w Position, &'w mut Velocity)`.
 pub trait WorldQuery<'w>: Sized {
     type Item;
 
-    /// Return `true` if `archetype` contains every component this query needs.
     fn matches(archetype: &Archetype) -> bool;
 
-    /// Extract the item for row `row` from `archetype`.
-    ///
-    /// # Safety
-    /// Caller must ensure that:
-    /// - `archetype` matches this query (`matches` returned `true`).
-    /// - `row` is within bounds.
-    /// - No other conflicting borrows exist for the same row.
     unsafe fn fetch(archetype: &'w Archetype, row: usize) -> Self::Item;
 }
-
-// ── Single-component queries ─────────────────────────────────────────────────
 
 impl<'w, T: Component> WorldQuery<'w> for &'w T {
     type Item = &'w T;
@@ -52,8 +38,6 @@ impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
     }
 
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w mut T {
-        // Safety: caller guarantees exclusive access for this row.
-        // We go through a raw pointer to bypass the shared borrow on `arch`.
         let col: &Column<T> = arch.columns[&TypeId::of::<T>()]
             .as_any()
             .downcast_ref::<Column<T>>()
@@ -62,8 +46,6 @@ impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
         &mut *ptr.add(row)
     }
 }
-
-// ── Tuple queries (up to 8 components) ──────────────────────────────────────
 
 macro_rules! impl_world_query_tuple {
     ($($Q:ident),+) => {
@@ -90,13 +72,6 @@ impl_world_query_tuple!(A, B, C, D, E, F);
 impl_world_query_tuple!(A, B, C, D, E, F, G);
 impl_world_query_tuple!(A, B, C, D, E, F, G, H);
 
-// ── QueryIter ────────────────────────────────────────────────────────────────
-
-/// An iterator over all entities in a world that match query `Q`.
-///
-/// Yields `(Entity, Q::Item)` pairs.  The iterator holds a shared borrow of
-/// the world for the duration of iteration, so no structural changes (spawn /
-/// despawn / insert / remove) are possible while iterating.
 pub struct QueryIter<'w, Q: WorldQuery<'w>> {
     archetypes: &'w [crate::archetype::Archetype],
     arch_idx: usize,
@@ -132,8 +107,6 @@ impl<'w, Q: WorldQuery<'w>> Iterator for QueryIter<'w, Q> {
                 continue;
             }
             let entity = arch.entities[self.row];
-            // Safety: we hold a shared borrow of the world, arch matches Q,
-            // and row is within bounds.
             let item = unsafe { Q::fetch(arch, self.row) };
             self.row += 1;
             return Some((entity, item));
@@ -141,16 +114,7 @@ impl<'w, Q: WorldQuery<'w>> Iterator for QueryIter<'w, Q> {
     }
 }
 
-// ── World query helpers ──────────────────────────────────────────────────────
-
 impl World {
-    /// Iterate over all entities that have every component referenced by `Q`.
-    ///
-    /// ```ignore
-    /// for (entity, (pos, vel)) in world.query::<(&Position, &mut Velocity)>() {
-    ///     vel.x += 1.0;
-    /// }
-    /// ```
     pub fn query<'w, Q: WorldQuery<'w>>(&'w self) -> QueryIter<'w, Q> {
         QueryIter::new(self)
     }

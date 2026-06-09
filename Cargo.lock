@@ -8632,6 +8632,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_core"
+version = "0.1.0"
+dependencies = [
+ "profiling 0.1.0",
+ "smol",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
@@ -8644,6 +8653,18 @@ dependencies = [
  "toml 1.1.2+spec-1.1.0",
  "tracing",
  "walkdir",
+]
+
+[[package]]
+name = "pulsar_ecs"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "profiling 0.1.0",
+ "pulsar_core",
+ "pulsar_reflection",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -8706,16 +8727,15 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
- "ahash",
  "blueprint_compiler",
  "engine_state",
  "glam 0.33.1",
  "helio",
- "notify 8.2.0",
- "once_cell",
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_bp_executor",
+ "pulsar_core",
+ "pulsar_ecs",
  "pulsar_graph",
  "pulsar_reflection",
  "pulsar_scene",
@@ -8723,7 +8743,6 @@ dependencies = [
  "pulsar_std_bundle",
  "serde",
  "serde_json",
- "smol",
  "tracing",
  "uuid",
  "wgpu",

@@ -61,6 +61,8 @@ window_manager                     = { path = "crates/window_manager" }
 blueprint_compiler                 = { path = "crates/blueprint_compiler" }
 pulsar_graph                       = { path = "crates/pulsar_graph" }
 pulsar_game                        = { path = "crates/pulsar_game" }
+pulsar_core                        = { path = "crates/pulsar_core" }
+pulsar_ecs                         = { path = "crates/pulsar_ecs" }
 agent_chat_core                    = { path = "agent-providers/agent_chat_core" }
 agent_chat_tools                   = { path = "agent-providers/agent_chat_tools" }
 agent_provider_demo_random         = { path = "agent-providers/agent_provider_demo_random" }
@@ -267,6 +269,8 @@ pulsar_bp_executor    = { path = "crates/pulsar_bp_executor" }
 pulsar_std_bundle     = { path = "crates/pulsar_std_bundle" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
+pulsar_core           = { path = "crates/pulsar_core" }
+pulsar_ecs            = { path = "crates/pulsar_ecs" }
 ui_common             = { path = "ui-crates/ui_common" }
 
 [patch.crates-io]
@@ -279,6 +283,8 @@ pulsar_graph          = { path = "crates/pulsar_graph" }
 gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
+pulsar_core           = { path = "crates/pulsar_core" }
+pulsar_ecs            = { path = "crates/pulsar_ecs" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
@@ -299,6 +305,8 @@ pulsar_graph          = { path = "crates/pulsar_graph" }
 gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
+pulsar_core           = { path = "crates/pulsar_core" }
+pulsar_ecs            = { path = "crates/pulsar_ecs" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Matter"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
@@ -319,5 +327,7 @@ pulsar_graph          = { path = "crates/pulsar_graph" }
 gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
+pulsar_core           = { path = "crates/pulsar_core" }
+pulsar_ecs            = { path = "crates/pulsar_ecs" }
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
 gpui-ce = { git = "https://github.com/j4flmao/wgpui-fork-27957.git", branch = "fix/scroll-stutter-and-panic" }

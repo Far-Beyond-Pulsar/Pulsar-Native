@@ -12,7 +12,6 @@ use std::time::Instant;
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
     scene_db: Option<Arc<SceneDb>>,
-    _game_thread_state: Option<Arc<Mutex<crate::subsystems::game::GameState>>>,
     _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
 
@@ -20,18 +19,12 @@ impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
         Self {
             scene_db: None,
-            _game_thread_state: None,
             _physics_query: None,
         }
     }
 
     pub fn scene_db(mut self, db: Arc<SceneDb>) -> Self {
         self.scene_db = Some(db);
-        self
-    }
-
-    pub fn game_thread(mut self, gt: Arc<Mutex<crate::subsystems::game::GameState>>) -> Self {
-        self._game_thread_state = Some(gt);
         self
     }
 

@@ -1,13 +1,9 @@
 use std::time::{Duration, Instant};
 
-/// Snapshot of game time passed to every tick.
 #[derive(Clone, Copy, Debug)]
 pub struct GameTime {
-    /// Wall-clock time since the world was created.
     pub elapsed: Duration,
-    /// Time since the previous tick (capped at `max_delta` to prevent spiral-of-death).
     pub delta: Duration,
-    /// Current fixed-tick counter (always 0 for variable-timestep ticks).
     pub tick: u64,
 }
 
@@ -28,8 +24,7 @@ impl GameTime {
     }
 }
 
-/// Tracks wall-clock time and computes per-tick deltas.
-pub(crate) struct Clock {
+pub struct Clock {
     start: Instant,
     last_tick: Instant,
     pub max_delta: Duration,

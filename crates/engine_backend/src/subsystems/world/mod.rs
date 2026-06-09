@@ -20,11 +20,18 @@
 //! - Error handling and logging for robust operation
 //! - Unit tests for core functionalities
 
-use super::classes::actor::Actor;
 use pebble::spacial_store::sqlite_backend::SqliteDatabase;
 use pebble::SpatialObject;
 use std::sync::Arc;
 use uuid::Uuid;
+
+/// Minimal actor stored in the PebbleVault spatial database.
+/// (Formerly in `subsystems::classes`.)
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Actor {
+    pub id: u64,
+    pub name: String,
+}
 
 // NOTE: World cannot implement the Subsystem trait due to PebbleVault::VaultManager
 // not implementing Send + Sync (it contains Box<dyn PersistenceBackend> without bounds).

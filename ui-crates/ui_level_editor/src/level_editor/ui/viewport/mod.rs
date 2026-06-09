@@ -21,7 +21,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use device_query::{DeviceQuery, DeviceState, Keycode};
-use engine_backend::GameThread;
+use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
@@ -134,7 +134,6 @@ impl ViewportPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        game_thread: &Arc<GameThread>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where
@@ -144,7 +143,7 @@ impl ViewportPanel {
         self.spawn_input_thread_once(gpu_engine);
 
         // Update performance metrics
-        self.update_performance_metrics(gpu_engine, game_thread);
+        self.update_performance_metrics(gpu_engine);
 
         // Send input to GPU
         self.send_input_to_gpu(gpu_engine, state);
@@ -155,7 +154,6 @@ impl ViewportPanel {
             state_arc,
             fps_graph_state,
             gpu_engine,
-            game_thread,
             cx,
         )
     }
@@ -340,7 +338,6 @@ impl ViewportPanel {
     fn update_performance_metrics(
         &self,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        game_thread: &Arc<GameThread>,
     ) {
         if let Ok(engine) = gpu_engine.try_lock() {
             let ui_fps = engine.get_fps() as f64;
@@ -364,10 +361,6 @@ impl ViewportPanel {
             // Update FPS using the renderer metric when UI-side frame count is not yet available.
             let display_fps = if ui_fps > 0.0 { ui_fps } else { helio_fps };
             metrics.add_fps(display_fps);
-
-            // Update TPS from game thread
-            let game_tps = game_thread.get_tps() as f64;
-            metrics.add_tps(game_tps);
 
             // Update frame time
             metrics.add_frame_time(frame_time_ms as f64);
@@ -446,7 +439,6 @@ impl ViewportPanel {
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_state: Rc<RefCell<bool>>,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
-        _game_thread: &Arc<GameThread>,
         cx: &mut Context<V>,
     ) -> impl IntoElement
     where

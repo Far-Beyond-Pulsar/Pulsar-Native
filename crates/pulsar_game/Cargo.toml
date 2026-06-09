@@ -5,14 +5,13 @@ edition = "2021"
 description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, and actor lifecycle"
 
 [dependencies]
-smol        = { workspace = true }
+# Core primitives (extracted)
+pulsar_core  = { workspace = true }
+pulsar_ecs   = { workspace = true }
+
+# Profiling + logging
 profiling   = { workspace = true }
 tracing     = { workspace = true }
-
-# Fast hasher — avoids DoS-resistant hashing overhead for internal tables
-ahash       = "0.8"
-# Stable, fast type-name/id utilities
-once_cell   = { workspace = true }
 
 # Blueprint runtime dependencies
 pulsar_graph = { workspace = true }
@@ -22,7 +21,6 @@ pulsar_std_bundle = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
-notify = { workspace = true }
 
 # Reflection — for ComponentStore property access
 pulsar_reflection = { workspace = true }

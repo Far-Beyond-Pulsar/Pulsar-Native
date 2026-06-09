@@ -4,25 +4,14 @@ use crate::entity::{Entity, EntitySlot};
 use ahash::AHashMap;
 use std::any::TypeId;
 
-/// The central ECS store.
-///
-/// # Layout
-/// - `entity_slots`: flat pool indexed by `Entity::index()`.
-/// - `archetypes`: dense `Vec<Archetype>` indexed by `ArchetypeId`.
-/// - `archetype_index`: `ArchetypeKey → ArchetypeId` for O(log n) archetype lookup.
-///
-/// # Guarantees
-/// - Entities are invalidated on `despawn` via a 32-bit generation counter.
-/// - Component migrations (insert/remove) preserve all existing component values.
 pub struct World {
-    pub(crate) entity_slots: Vec<EntitySlot>,
-    pub(crate) free_slots: Vec<u32>,
-    pub(crate) archetypes: Vec<Archetype>,
-    pub(crate) archetype_index: AHashMap<ArchetypeKey, ArchetypeId>,
+    pub entity_slots: Vec<EntitySlot>,
+    pub free_slots: Vec<u32>,
+    pub archetypes: Vec<Archetype>,
+    pub archetype_index: AHashMap<ArchetypeKey, ArchetypeId>,
 }
 
 impl World {
-    /// Create an empty world with one archetype: the zero-component "empty" archetype.
     pub fn new() -> Self {
         let empty = Archetype::new_empty(ArchetypeId::EMPTY);
         let mut archetype_index = AHashMap::default();
@@ -35,9 +24,6 @@ impl World {
         }
     }
 
-    // ── Entity lifetime ──────────────────────────────────────────────────────
-
-    /// Allocate a new entity with no components.
     pub fn spawn(&mut self) -> Entity {
         let (idx, gen) = if let Some(idx) = self.free_slots.pop() {
             let slot = &mut self.entity_slots[idx as usize];
@@ -58,8 +44,6 @@ impl World {
         entity
     }
 
-    /// Destroy an entity and drop all its components.
-    /// Returns `false` if the entity was already dead.
     pub fn despawn(&mut self, entity: Entity) -> bool {
         if !self.is_alive(entity) {
             return false;
@@ -86,9 +70,6 @@ impl World {
             .unwrap_or(false)
     }
 
-    // ── Component access ─────────────────────────────────────────────────────
-
-    /// Insert (or overwrite) a component on `entity`, migrating it to the correct archetype.
     pub fn insert<T: Component>(&mut self, entity: Entity, value: T) {
         assert!(self.is_alive(entity), "insert on dead entity {entity}");
 
@@ -97,19 +78,15 @@ impl World {
             (s.archetype, s.row as usize)
         };
 
-        // Fast path: entity already has this component — just overwrite.
         if self.archetypes[old_arch_id.0 as usize].has_column::<T>() {
             let col = self.archetypes[old_arch_id.0 as usize].column_mut::<T>();
             col.data[old_row] = value;
             return;
         }
 
-        // Compute the destination archetype key.
         let new_key = self.archetypes[old_arch_id.0 as usize].key.with::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
-        // Migrate: collect all component values from the old archetype row as
-        // owning pointers, then push them into the new archetype.
         self.migrate_row(
             entity,
             old_arch_id,
@@ -118,7 +95,6 @@ impl World {
             None::<fn(TypeId)>,
         );
 
-        // Push the new component T.
         self.ensure_column::<T>(new_arch_id);
         self.archetypes[new_arch_id.0 as usize]
             .column_mut::<T>()
@@ -135,8 +111,6 @@ impl World {
         slot.row = new_row;
     }
 
-    /// Remove a component from `entity`, migrating it to the smaller archetype.
-    /// Returns the removed value, or `None` if the entity didn't have it.
     pub fn remove<T: Component>(&mut self, entity: Entity) -> Option<T> {
         if !self.is_alive(entity) {
             return None;
@@ -149,7 +123,6 @@ impl World {
             return None;
         }
 
-        // Extract the T value before migrating.
         let t_id = TypeId::of::<T>();
         let removed_ptr = unsafe {
             self.archetypes[old_arch_id.0 as usize]
@@ -163,13 +136,11 @@ impl World {
         let new_key = self.archetypes[old_arch_id.0 as usize].key.without::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
-        // Migrate remaining columns (skip T — already removed above).
         self.migrate_row_skip(entity, old_arch_id, old_row, new_arch_id, t_id);
 
         Some(removed_val)
     }
 
-    /// Get a shared reference to a component on `entity`.
     #[inline]
     pub fn get<T: Component>(&self, entity: Entity) -> Option<&T> {
         if !self.is_alive(entity) {
@@ -183,7 +154,6 @@ impl World {
             .map(|c| &c.data[s.row as usize])
     }
 
-    /// Get a mutable reference to a component on `entity`.
     #[inline]
     pub fn get_mut<T: Component>(&mut self, entity: Entity) -> Option<&mut T> {
         if !self.is_alive(entity) {
@@ -199,8 +169,6 @@ impl World {
             .and_then(|c| c.as_any_mut().downcast_mut::<Column<T>>())
             .map(|c| &mut c.data[row])
     }
-
-    // ── Archetype management ──────────────────────────────────────────────────
 
     pub(crate) fn get_or_create_archetype(&mut self, key: ArchetypeKey) -> ArchetypeId {
         if let Some(&id) = self.archetype_index.get(&key) {
@@ -219,8 +187,6 @@ impl World {
             .or_insert_with(|| Box::new(Column::<T>::new()));
     }
 
-    /// Move all component values from `old_arch[old_row]` into `new_arch`,
-    /// skipping the component identified by `skip_type` (already extracted by caller).
     fn migrate_row_skip(
         &mut self,
         entity: Entity,
@@ -229,7 +195,6 @@ impl World {
         new_arch_id: ArchetypeId,
         skip_type: TypeId,
     ) {
-        // Collect (TypeId, ptr) for every column except the skipped one.
         let type_ids: Vec<TypeId> = self.archetypes[old_arch_id.0 as usize]
             .columns
             .keys()
@@ -237,9 +202,7 @@ impl World {
             .copied()
             .collect();
 
-        // For each remaining type: swap-remove from old, push into new.
         for type_id in type_ids {
-            // swap_remove on the old column
             let ptr = unsafe {
                 self.archetypes[old_arch_id.0 as usize]
                     .columns
@@ -248,7 +211,6 @@ impl World {
                     .swap_remove_erased(old_row)
             };
 
-            // Ensure the destination column exists.
             if !self.archetypes[new_arch_id.0 as usize]
                 .columns
                 .contains_key(&type_id)
@@ -268,7 +230,6 @@ impl World {
             }
         }
 
-        // Update entity records.
         let new_row = self.archetypes[new_arch_id.0 as usize].entities.len() as u32;
         let moved = {
             let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
@@ -290,8 +251,6 @@ impl World {
         slot.row = new_row;
     }
 
-    /// Move all component values from `old_arch[old_row]` into `new_arch`.
-    /// The `_filter` parameter is unused here; present to match `migrate_row_skip` signature.
     fn migrate_row<F: Fn(TypeId)>(
         &mut self,
         entity: Entity,
@@ -332,8 +291,6 @@ impl World {
             }
         }
 
-        // The entity record update is done by the caller (insert path) after
-        // pushing the new T — so here we only fix up the old archetype side.
         let moved = {
             let old_arch = &mut self.archetypes[old_arch_id.0 as usize];
             old_arch.entities.swap_remove(old_row);
@@ -346,7 +303,6 @@ impl World {
         if let Some(m) = moved {
             self.entity_slots[m.index() as usize].row = old_row as u32;
         }
-        // Caller is responsible for pushing entity into new_arch and updating slot.
     }
 }
 

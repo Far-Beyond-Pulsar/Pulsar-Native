@@ -1,0 +1,16 @@
+[package]
+name = "pulsar_ecs"
+version = "0.1.0"
+edition = "2021"
+description = "Pulsar archetypal Entity-Component System"
+
+[dependencies]
+pulsar_core       = { workspace = true }
+pulsar_reflection = { workspace = true }
+serde_json        = { workspace = true }
+ahash             = "0.8"
+profiling         = { workspace = true }
+tracing           = { workspace = true }
+
+[lints]
+workspace = true

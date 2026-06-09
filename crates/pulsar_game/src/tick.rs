@@ -1,31 +1,10 @@
-use crate::actor::ActorRegistry;
 use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
-use crate::schedule::Schedule;
-use crate::task::TaskPool;
-use crate::time::{Clock, GameTime};
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
-use crate::world::World;
+use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
+use pulsar_ecs::{ActorRegistry, Schedule, World};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-/// Describes how the tick loop advances time.
-#[derive(Clone, Copy, Debug)]
-pub enum TickMode {
-    /// Advance by a fixed `dt` every tick regardless of wall-clock time.
-    /// Use for deterministic simulation (physics, rollback netcode).
-    Fixed { dt: Duration },
-    /// Advance by real elapsed wall-clock time per tick, capped at `max_delta`.
-    Variable { max_delta: Duration },
-}
-
-impl Default for TickMode {
-    fn default() -> Self {
-        TickMode::Fixed {
-            dt: Duration::from_secs_f64(1.0 / 60.0),
-        }
-    }
-}
 
 /// The main game loop.
 ///

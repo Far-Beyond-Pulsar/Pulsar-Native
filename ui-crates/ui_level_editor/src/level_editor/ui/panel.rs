@@ -10,7 +10,6 @@ use ui::{
 use super::viewport::helio_viewport::HelioViewport;
 
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
-use engine_backend::GameThread;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -41,9 +40,6 @@ pub struct LevelEditorPanel {
     viewport: Entity<HelioViewport>,
     gpu_engine: Arc<Mutex<GpuRenderer>>, // Full GPU renderer from backend
     render_enabled: Arc<std::sync::atomic::AtomicBool>,
-
-    // Game thread for object movement and game logic
-    game_thread: Arc<GameThread>,
 
     // Shared state for all panels (single source of truth)
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -197,27 +193,9 @@ impl LevelEditorPanel {
 
         let _max_viewport_fps = settings.advanced.max_viewport_fps;
 
-        // Get the central GameThread from the global EngineBackend
-        let (game_thread, physics_query) = match engine_backend::EngineBackend::global() {
-            Some(backend_arc) => {
-                let backend_guard = backend_arc.read();
-                let gt = backend_guard.game_thread()
-                    .expect("GameThread not initialized in EngineBackend - engine failed to initialize properly")
-                    .clone();
-                let pq = backend_guard.get_physics_query_service();
-                (gt, pq)
-            }
-            None => {
-                tracing::error!("EngineBackend not initialized when creating level editor");
-                panic!("EngineBackend must be initialized before creating LevelEditorPanel. This is a critical engine initialization failure.");
-            }
-        };
-
-        // CRITICAL: Start disabled for Edit mode (editor starts in Edit, not Play)
-        game_thread.set_enabled(false);
-
-        // Get game state reference (needed for renderer integration)
-        let _game_state = game_thread.get_state();
+        // Get the physics query service from the global EngineBackend
+        let physics_query = engine_backend::EngineBackend::global()
+            .and_then(|backend_arc| backend_arc.read().get_physics_query_service());
 
         // Create the shared scene database FIRST so both the renderer and the UI
         // panels hold the same Arc. All reads/writes go to the same atomic storage.
@@ -302,7 +280,6 @@ impl LevelEditorPanel {
             viewport,
             gpu_engine: gpu_engine.clone(),
             render_enabled,
-            game_thread: game_thread.clone(),
             shared_state,
             workspace: None,
             hierarchy_panel_entity: None,
@@ -340,7 +317,6 @@ impl LevelEditorPanel {
         let shared_state = self.shared_state.clone();
         let fps_graph = self.fps_graph_is_line.clone();
         let gpu = self.gpu_engine.clone();
-        let game = self.game_thread.clone();
         let viewport = self.viewport.clone();
         let render_enabled = self.render_enabled.clone();
 
@@ -358,7 +334,6 @@ impl LevelEditorPanel {
                         shared_state.clone(),
                         fps_graph.clone(),
                         gpu.clone(),
-                        game.clone(),
                         cx,
                     )
                 });
@@ -867,9 +842,6 @@ impl LevelEditorPanel {
         // Enter play mode (saves scene snapshot)
         self.shared_state.write().enter_play_mode();
 
-        // Enable game thread
-        self.game_thread.set_enabled(true);
-
         // Disable gizmos in play mode
         self.sync_gizmo_to_helio();
 
@@ -877,9 +849,6 @@ impl LevelEditorPanel {
     }
 
     fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
-        // Disable game thread
-        self.game_thread.set_enabled(false);
-
         // Exit play mode (restores scene from snapshot)
         self.shared_state.write().exit_play_mode();
 

@@ -3,20 +3,15 @@ use crate::entity::Entity;
 use std::any::TypeId;
 use std::collections::HashMap;
 
-/// Opaque, stable index into `World::archetypes`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ArchetypeId(pub(crate) u32);
+pub struct ArchetypeId(pub u32);
 
 impl ArchetypeId {
-    /// The archetype that holds entities with zero components.
     pub const EMPTY: ArchetypeId = ArchetypeId(0);
 }
 
-/// The sorted list of component `TypeId`s that defines an archetype.
-///
-/// Sorting ensures that `(A, B)` and `(B, A)` map to the same archetype.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ArchetypeKey(pub(crate) Vec<TypeId>);
+pub struct ArchetypeKey(pub Vec<TypeId>);
 
 impl ArchetypeKey {
     pub fn new(mut types: Vec<TypeId>) -> Self {
@@ -45,18 +40,11 @@ impl ArchetypeKey {
     }
 }
 
-/// One archetype: a set of densely-packed same-shape entities.
-///
-/// Every entity in this archetype has exactly the components described by
-/// the key.  Components are stored column-major: one `Vec<T>` per type.
-/// Row `i` corresponds to `entities[i]`.
 pub struct Archetype {
-    pub(crate) id: ArchetypeId,
-    pub(crate) key: ArchetypeKey,
-    /// Ordered parallel to `key.0` for fast column lookup by TypeId.
-    pub(crate) columns: HashMap<TypeId, Box<dyn ErasedColumn>>,
-    /// Entities occupying each row.
-    pub(crate) entities: Vec<Entity>,
+    pub id: ArchetypeId,
+    pub key: ArchetypeKey,
+    pub columns: HashMap<TypeId, Box<dyn ErasedColumn>>,
+    pub entities: Vec<Entity>,
 }
 
 impl Archetype {
@@ -94,16 +82,14 @@ impl Archetype {
             .or_insert_with(|| Box::new(Column::<T>::new()));
     }
 
-    /// Typed column accessor — panics if this archetype doesn't hold `T`.
     #[inline]
     pub(crate) fn column<T: Component>(&self) -> &Column<T> {
         self.columns[&TypeId::of::<T>()]
             .as_any()
             .downcast_ref::<Column<T>>()
-            .expect("column type mismatch — this is a bug in pulsar_game")
+            .expect("column type mismatch")
     }
 
-    /// Typed mutable column accessor.
     #[inline]
     pub(crate) fn column_mut<T: Component>(&mut self) -> &mut Column<T> {
         self.columns
@@ -118,13 +104,9 @@ impl Archetype {
         self.columns.contains_key(&TypeId::of::<T>())
     }
 
-    /// Remove entity at `row` via swap-remove and drop all its components.
-    /// Returns the entity that was swapped into `row` (if any), so the caller
-    /// can update that entity's metadata.
     pub(crate) fn remove_row(&mut self, row: usize) -> Option<Entity> {
         let last = self.entities.len() - 1;
         for col in self.columns.values_mut() {
-            // Safety: swap_remove returns owned ptr; we immediately drop it.
             let ptr = unsafe { col.swap_remove_erased(row) };
             unsafe { col.drop_erased(ptr) };
         }

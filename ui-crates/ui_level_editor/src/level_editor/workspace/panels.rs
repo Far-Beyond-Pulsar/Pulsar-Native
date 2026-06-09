@@ -5,7 +5,6 @@ use crate::level_editor::ui::{
     PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
-use engine_backend::GameThread;
 use gpui::{Corner, *};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -420,7 +419,6 @@ pub struct ViewportPanelWrapper {
     state: Arc<parking_lot::RwLock<LevelEditorState>>,
     fps_graph_is_line: Rc<RefCell<bool>>,
     gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
-    game_thread: Arc<GameThread>,
     focus_handle: FocusHandle,
 }
 
@@ -430,7 +428,6 @@ impl ViewportPanelWrapper {
         state: Arc<parking_lot::RwLock<LevelEditorState>>,
         fps_graph_is_line: Rc<RefCell<bool>>,
         gpu_engine: Arc<std::sync::Mutex<GpuRenderer>>,
-        game_thread: Arc<GameThread>,
         cx: &mut Context<Self>,
     ) -> Self {
         Self {
@@ -438,7 +435,6 @@ impl ViewportPanelWrapper {
             state,
             fps_graph_is_line,
             gpu_engine,
-            game_thread,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -456,7 +452,6 @@ impl Render for ViewportPanelWrapper {
             self.state.clone(),
             self.fps_graph_is_line.clone(),
             &self.gpu_engine,
-            &self.game_thread,
             cx,
         )
     }
