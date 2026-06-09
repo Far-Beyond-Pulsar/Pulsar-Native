@@ -465,7 +465,8 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             .enumerate()
             .flat_map(|(cat_idx, (cat_name, items))| {
                 let mut elements = Vec::new();
-                let mut item_index = 0;
+                // Global index across all visible items
+                let mut global_index = 0;
 
                 if !cat_name.is_empty() && has_categories {
                     let expanded = self
@@ -478,18 +479,16 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 
                     if expanded {
                         for item in items {
-                            let is_selected = item_index == selected_index;
-                            let current_item_index = item_index;
-                            elements.push(self.render_item(item, is_selected, current_item_index, cx));
-                            item_index += 1;
+                            let is_selected = global_index == selected_index;
+                            elements.push(self.render_item(item, is_selected, global_index, cx));
+                            global_index += 1;
                         }
                     }
                 } else {
                     for item in items {
-                        let is_selected = item_index == selected_index;
-                        let current_item_index = item_index;
-                        elements.push(self.render_item(item, is_selected, current_item_index, cx));
-                        item_index += 1;
+                        let is_selected = global_index == selected_index;
+                        elements.push(self.render_item(item, is_selected, global_index, cx));
+                        global_index += 1;
                     }
                 }
 
