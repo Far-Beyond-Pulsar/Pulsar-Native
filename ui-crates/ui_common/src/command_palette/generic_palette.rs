@@ -5,8 +5,9 @@ use gpui::{
 use ui::{
     h_flex,
     input::{Escape, InputEvent, InputState, TextInput},
+    scroll::{Scrollbar, ScrollbarState},
     text::TextView,
-    v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
+    v_flex, ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
 };
 use ui::scroll::Scrollable;
 
@@ -29,6 +30,14 @@ pub struct GenericPalette<D: PaletteDelegate> {
     show_docs: bool,
     /// Cached lowercased query for text highlighting
     search_query: SharedString,
+    /// Scroll handle for the item list
+    scroll_handle: VirtualListScrollHandle,
+    /// Scrollbar state for the item list
+    scrollbar_state: ScrollbarState,
+    /// Scroll handle for the docs panel
+    docs_scroll_handle: VirtualListScrollHandle,
+    /// Scrollbar state for the docs panel
+    docs_scrollbar_state: ScrollbarState,
 }
 
 impl<D: PaletteDelegate> EventEmitter<DismissEvent> for GenericPalette<D> {}
@@ -75,6 +84,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             selected_index: 0,
             show_docs: false,
             search_query: SharedString::default(),
+            scroll_handle: VirtualListScrollHandle::new(),
+            scrollbar_state: ScrollbarState::default(),
+            docs_scroll_handle: VirtualListScrollHandle::new(),
+            docs_scrollbar_state: ScrollbarState::default(),
         }
     }
 
@@ -102,6 +115,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             .collect();
         self.selected_index = 0;
         self.search_query = SharedString::default();
+        self.scroll_handle = VirtualListScrollHandle::new();
+        self.scrollbar_state = ScrollbarState::default();
+        self.docs_scroll_handle = VirtualListScrollHandle::new();
+        self.docs_scrollbar_state = ScrollbarState::default();
     }
 
     /// Swap the delegate and update all state
@@ -134,6 +151,10 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         self.selected_index = 0;
         self.show_docs = false;
         self.search_query = SharedString::default();
+        self.scroll_handle = VirtualListScrollHandle::new();
+        self.scrollbar_state = ScrollbarState::default();
+        self.docs_scroll_handle = VirtualListScrollHandle::new();
+        self.docs_scrollbar_state = ScrollbarState::default();
 
         cx.notify();
     }
@@ -299,336 +320,322 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                     cx.stop_propagation();
                 }
             }))
-            .child(
-                h_flex()
-                    .gap_3()
-                    .items_start()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                        cx.stop_propagation();
-                    })
-                    .on_action(cx.listener(|_this, _: &Escape, _window, cx| {
-                        // Handle ESC from input or elsewhere
+            .child(self.render_palette_container(selected_index, selected_item.as_ref(), window, cx))
+            .when(show_docs, |this| {
+                this.child(self.render_docs_panel(selected_item, window, cx))
+            })
+    }
+}
+
+impl<D: PaletteDelegate> GenericPalette<D> {
+    /// Renders the main palette panel with search bar and item list.
+    fn render_palette_container(
+        &mut self,
+        selected_index: usize,
+        _selected_item: Option<&D::Item>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        v_flex()
+            .w(px(640.))
+            .max_w(px(900.))
+            .min_w(px(480.))
+            .h(px(480.))
+            .bg(cx.theme().background)
+            .border_1()
+            .border_color(cx.theme().border)
+            .rounded(px(12.))
+            .shadow_lg()
+            .overflow_hidden()
+            .child(self.render_search_bar(cx))
+            .child(self.render_item_list(selected_index, cx))
+    }
+
+    /// Renders the search input row.
+    fn render_search_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        h_flex()
+            .px_4()
+            .py_3()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .gap_3()
+            .items_center()
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+                match event.keystroke.key.as_str() {
+                    "escape" => {
                         cx.emit(DismissEvent);
-                    }))
-                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                        match event.keystroke.key.as_str() {
-                            "down" | "arrowdown" => {
-                                this.move_selection(1, cx);
-                                cx.stop_propagation();
-                            }
-                            "up" | "arrowup" => {
-                                this.move_selection(-1, cx);
-                                cx.stop_propagation();
-                            }
-                            "enter" | "return" => {
-                                this.select_item(cx);
-                                cx.stop_propagation();
-                            }
-                            "escape" => {
-                                cx.emit(DismissEvent);
-                                cx.stop_propagation();
-                            }
-                            " " | "space" if this.delegate.supports_docs() => {
-                                this.show_docs = !this.show_docs;
-                                cx.notify();
-                                cx.stop_propagation();
-                            }
-                            _ => {}
-                        }
-                    }))
-                    // Main palette panel
+                        cx.stop_propagation();
+                    }
+                    "down" | "arrowdown" => {
+                        this.move_selection(1, cx);
+                        cx.stop_propagation();
+                    }
+                    "up" | "arrowup" => {
+                        this.move_selection(-1, cx);
+                        cx.stop_propagation();
+                    }
+                    "enter" | "return" => {
+                        this.select_item(cx);
+                        cx.stop_propagation();
+                    }
+                    _ => {}
+                }
+            }))
+            .child(
+                Icon::new(IconName::Search)
+                    .size(px(18.0))
+                    .text_color(cx.theme().muted_foreground),
+            )
+            .child(
+                TextInput::new(&self.search_input)
+                    .appearance(false)
+                    .bordered(false)
+                    .flex_1(),
+            )
+    }
+
+    /// Renders the scrollable item list, or a "no items found" message.
+    fn render_item_list(&mut self, selected_index: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
+        if self.filtered_categories.iter().all(|(_, items)| items.is_empty()) {
+            return self.render_no_results(cx);
+        }
+
+        let has_categories = self.filtered_categories.iter().any(|(name, _)| !name.is_empty());
+
+        div()
+            .relative()
+            .h(px(384.))
+            .child(
+                v_flex()
+                    .h_full()
+                    .scrollable(Axis::Vertical)
+                    .id("palette-list")
+                    .track_scroll(&self.scroll_handle)
                     .child(
                         v_flex()
-                            .w(px(640.))
-                            .max_w(px(900.))
-                            .min_w(px(480.))
-                            .h(px(480.))
-                            .bg(cx.theme().background)
-                            .border_1()
+                            .gap_0p5()
+                            .p_2()
+                            .children(self.render_category_items(selected_index, has_categories, cx)),
+                    ),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(Scrollbar::vertical(&self.scrollbar_state, &self.scroll_handle)),
+            )
+            .into_any_element()
+    }
+
+    /// Renders the "no items found" empty state.
+    fn render_no_results(&self, cx: &mut Context<Self>) -> gpui::AnyElement {
+        div()
+            .h(px(320.))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(
+                v_flex()
+                    .items_center()
+                    .gap_2()
+                    .child(
+                        Icon::new(IconName::Search)
+                            .size(px(32.0))
+                            .text_color(cx.theme().muted_foreground.opacity(0.3)),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("No items found"),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// Renders all category headers and their items for the item list.
+    fn render_category_items(
+        &self,
+        selected_index: usize,
+        has_categories: bool,
+        cx: &mut Context<Self>,
+    ) -> Vec<gpui::AnyElement> {
+        self.filtered_categories
+            .iter()
+            .enumerate()
+            .flat_map(|(cat_idx, (cat_name, items))| {
+                let mut elements = Vec::new();
+                let mut item_index = 0;
+
+                if !cat_name.is_empty() && has_categories {
+                    let expanded = self
+                        .category_states
+                        .get(cat_idx)
+                        .map(|s| s.expanded)
+                        .unwrap_or(true);
+
+                    elements.push(self.render_category_header(cat_idx, cat_name, items.len(), expanded, cx));
+
+                    if expanded {
+                        for item in items {
+                            let is_selected = item_index == selected_index;
+                            let current_item_index = item_index;
+                            elements.push(self.render_item(item, is_selected, current_item_index, cx));
+                            item_index += 1;
+                        }
+                    }
+                } else {
+                    for item in items {
+                        let is_selected = item_index == selected_index;
+                        let current_item_index = item_index;
+                        elements.push(self.render_item(item, is_selected, current_item_index, cx));
+                        item_index += 1;
+                    }
+                }
+
+                elements
+            })
+            .collect()
+    }
+
+    /// Renders a single category header row.
+    fn render_category_header(
+        &self,
+        cat_idx: usize,
+        cat_name: &str,
+        item_count: usize,
+        expanded: bool,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        h_flex()
+            .w_full()
+            .px_2()
+            .py_1p5()
+            .gap_2()
+            .items_center()
+            .cursor_pointer()
+            .rounded(px(4.))
+            .hover(|s| s.bg(cx.theme().muted.opacity(0.1)))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, _, _, cx| {
+                    this.toggle_category(cat_idx, cx);
+                }),
+            )
+            .child(
+                Icon::new(if expanded {
+                    IconName::ChevronDown
+                } else {
+                    IconName::ChevronRight
+                })
+                .size(px(12.))
+                .text_color(cx.theme().muted_foreground),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .text_xs()
+                    .font_semibold()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(cat_name.to_string()),
+            )
+            .child(
+                div()
+                    .text_xs()
+                    .flex_shrink_0()
+                    .text_color(cx.theme().muted_foreground)
+                    .opacity(0.6)
+                    .child(format!("({})", item_count)),
+            )
+            .into_any_element()
+    }
+
+    /// Renders the documentation panel shown on the right when space is pressed.
+    fn render_docs_panel(&mut self, selected_item: Option<D::Item>, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let doc_content = selected_item.as_ref().and_then(|item| item.documentation());
+        let scroll_handle = self.docs_scroll_handle.clone();
+        let scrollbar_state = self.docs_scrollbar_state.clone();
+
+        div()
+            .relative()
+            .w(px(360.))
+            .h(px(480.))
+            .child(
+                v_flex()
+                    .h_full()
+                    .bg(cx.theme().background)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(px(12.))
+                    .shadow_lg()
+                    .overflow_hidden()
+                    .child(
+                        h_flex()
+                            .px_4()
+                            .py_3()
+                            .border_b_1()
                             .border_color(cx.theme().border)
-                            .rounded(px(12.))
-                            .shadow_lg()
-                            .overflow_hidden()
+                            .gap_2()
+                            .items_center()
                             .child(
-                                // Search input
-                                h_flex()
-                                    .px_4()
-                                    .py_3()
-                                    .border_b_1()
-                                    .border_color(cx.theme().border)
-                                    .gap_3()
-                                    .items_center()
-                                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                                        match event.keystroke.key.as_str() {
-                                            "escape" => {
-                                                cx.emit(DismissEvent);
-                                                cx.stop_propagation();
-                                            }
-                                            "down" | "arrowdown" => {
-                                                this.move_selection(1, cx);
-                                                cx.stop_propagation();
-                                            }
-                                            "up" | "arrowup" => {
-                                                this.move_selection(-1, cx);
-                                                cx.stop_propagation();
-                                            }
-                                            "enter" | "return" => {
-                                                this.select_item(cx);
-                                                cx.stop_propagation();
-                                            }
-                                            _ => {}
-                                        }
-                                    }))
+                                Icon::new(IconName::SubmitDocument)
+                                    .size(px(16.0))
+                                    .text_color(cx.theme().muted_foreground),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_semibold()
+                                    .text_color(cx.theme().foreground)
+                                    .child("Documentation"),
+                            ),
+                    )
+                    .child({
+                        div()
+                            .relative()
+                            .h_full()
+                            .child(
+                                v_flex()
+                                    .h_full()
+                                    .scrollable(Axis::Vertical)
+                                    .id("palette-docs")
+                                    .track_scroll(&scroll_handle)
                                     .child(
-                                        Icon::new(IconName::Search)
-                                            .size(px(18.0))
-                                            .text_color(cx.theme().muted_foreground),
-                                    )
-                                    .child(
-                                        TextInput::new(&self.search_input)
-                                            .appearance(false)
-                                            .bordered(false)
-                                            .flex_1(),
+                                        v_flex()
+                                            .p_4()
+                                            .gap_3()
+                                            .map(|el| {
+                                                if let Some(doc_text) = doc_content {
+                                                    el.child(
+                                                        TextView::markdown("node-docs", doc_text, window, cx)
+                                                            .selectable(),
+                                                    )
+                                                } else {
+                                                    el.child(
+                                                        div()
+                                                            .h(px(300.))
+                                                            .flex()
+                                                            .items_center()
+                                                            .justify_center()
+                                                            .child(
+                                                                div()
+                                                                    .text_sm()
+                                                                    .text_color(cx.theme().muted_foreground)
+                                                                    .child("No documentation available"),
+                                                            ),
+                                                    )
+                                                }
+                                            }),
                                     ),
                             )
-                            .child({
-                                if self.filtered_categories.iter().all(|(_, items)| items.is_empty()) {
-                                    // Show "No items found" message
-                                    div()
-                                        .h(px(320.))
-                                        .flex()
-                                        .items_center()
-                                        .justify_center()
-                                        .child(
-                                            v_flex()
-                                                .items_center()
-                                                .gap_2()
-                                                .child(
-                                                    Icon::new(IconName::Search)
-                                                        .size(px(32.0))
-                                                        .text_color(
-                                                            cx.theme().muted_foreground.opacity(0.3),
-                                                        ),
-                                                )
-                                                .child(
-                                                    div()
-                                                        .text_sm()
-                                                        .text_color(cx.theme().muted_foreground)
-                                                        .child("No items found"),
-                                                ),
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    // Item list with categories - scrollable container
-                                    v_flex()
-                                        .h(px(384.)) // 480 - 96 (input height) = 384
-                                        .scrollable(Axis::Vertical)
-                                        .id("palette-list")  // ID required for scroll to work
-                                        .child(
-                                            v_flex()
-                                                .gap_0p5()
-                                                .p_2()
-                                                .children({
-                                                let mut item_index = 0;
-                                                let has_categories = self
-                                                    .filtered_categories
-                                                    .iter()
-                                                    .any(|(name, _)| !name.is_empty());
-
-                                                self.filtered_categories
-                                                    .iter()
-                                                    .enumerate()
-                                                    .flat_map(|(cat_idx, (cat_name, items))| {
-                                                        let mut elements = Vec::new();
-
-                                                        // Category header (only if category name is not empty)
-                                                        if !cat_name.is_empty() && has_categories {
-                                                            let expanded = self
-                                                                .category_states
-                                                                .get(cat_idx)
-                                                                .map(|s| s.expanded)
-                                                                .unwrap_or(true);
-
-                                                            elements.push(
-                                                                h_flex()
-                                                                    .w_full()
-                                                                    .px_2()
-                                                                    .py_1p5()
-                                                                    .gap_2()
-                                                                    .items_center()
-                                                                    .cursor_pointer()
-                                                                    .rounded(px(4.))
-                                                                    .hover(|s| {
-                                                                        s.bg(cx
-                                                                            .theme()
-                                                                            .muted
-                                                                            .opacity(0.1))
-                                                                    })
-                                                                    .on_mouse_down(
-                                                                        MouseButton::Left,
-                                                                        cx.listener(
-                                                                            move |this,
-                                                                                  _,
-                                                                                  _,
-                                                                                  cx| {
-                                                                                this.toggle_category(
-                                                                                    cat_idx, cx,
-                                                                                );
-                                                                            },
-                                                                        ),
-                                                                    )
-                                                                    .child(
-                                                                        Icon::new(if expanded {
-                                                                            IconName::ChevronDown
-                                                                        } else {
-                                                                            IconName::ChevronRight
-                                                                        })
-                                                                        .size(px(12.))
-                                                                        .text_color(
-                                                                            cx.theme().muted_foreground,
-                                                                        ),
-                                                                    )
-                                                                    .child(
-                                                                        div()
-                                                                            .flex_1()
-                                                                            .overflow_hidden()
-                                                                            .text_xs()
-                                                                            .font_semibold()
-                                                                            .text_color(
-                                                                                cx.theme().muted_foreground,
-                                                                            )
-                                                                            .child(cat_name.clone()),
-                                                                    )
-                                                                    .child(
-                                                                        div()
-                                                                            .text_xs()
-                                                                            .flex_shrink_0()
-                                                                            .text_color(
-                                                                                cx.theme().muted_foreground,
-                                                                            )
-                                                                            .opacity(0.6)
-                                                                            .child(format!(
-                                                                                "({})",
-                                                                                items.len()
-                                                                            )),
-                                                                    )
-                                                                    .into_any_element(),
-                                                            );
-
-                                                            // Items (if expanded)
-                                                            if expanded {
-                                                                for item in items {
-                                                                    let is_selected =
-                                                                        item_index == selected_index;
-                                                                    let current_item_index = item_index;
-
-                                                                    elements.push(
-                                                                        self.render_item(item, is_selected, current_item_index, cx)
-                                                                    );
-
-                                                                    item_index += 1;
-                                                                }
-                                                            }
-                                                        } else {
-                                                            // No category name, render items directly
-                                                            for item in items {
-                                                                let is_selected =
-                                                                    item_index == selected_index;
-                                                                let current_item_index = item_index;
-
-                                                                elements.push(
-                                                                    self.render_item(item, is_selected, current_item_index, cx)
-                                                                );
-
-                                                                item_index += 1;
-                                                            }
-                                                        }
-
-                                                        elements
-                                                    })
-                                                    .collect::<Vec<_>>()
-                                                }),
-                                        )
-                                        .into_any_element()
-                                }
-                            })
-                    )
-                    // Documentation panel (shown on the RIGHT when space is pressed)
-                    .when(show_docs, |this| {
-                        this.child(
-                            v_flex()
-                                .w(px(360.))
-                                .h(px(480.))  // Match palette height to avoid layout shifts
-                                .bg(cx.theme().background)
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .rounded(px(12.))
-                                .shadow_lg()
-                                .overflow_hidden()
-                                .child(
-                                    // Header
-                                    h_flex()
-                                        .px_4()
-                                        .py_3()
-                                        .border_b_1()
-                                        .border_color(cx.theme().border)
-                                        .gap_2()
-                                        .items_center()
-                                        .child(
-                                            Icon::new(IconName::SubmitDocument)
-                                                .size(px(16.0))
-                                                .text_color(cx.theme().muted_foreground),
-                                        )
-                                        .child(
-                                            div()
-                                                .text_sm()
-                                                .font_semibold()
-                                                .text_color(cx.theme().foreground)
-                                                .child("Documentation"),
-                                        ),
-                                )
-                                .child({
-                                    // Documentation content
-                                    let doc_content = selected_item.as_ref().and_then(|item| item.documentation());
-
-                                    v_flex()
-                                        .flex_1()
-                                        .scrollable(Axis::Vertical)
-                                        .id("palette-docs")  // ID required for scroll to work
-                                        .child(
-                                            v_flex()
-                                                .p_4()
-                                                .gap_3()
-                                                .map(|el| {
-                                                    if let Some(doc_text) = doc_content {
-                                                        el.child(
-                                                            TextView::markdown("node-docs", doc_text, window, cx)
-                                                                .selectable()
-                                                        )
-                                                    } else {
-                                                        el.child(
-                                                            div()
-                                                                .h(px(300.))
-                                                                .flex()
-                                                                .items_center()
-                                                                .justify_center()
-                                                                .child(
-                                                                    div()
-                                                                        .text_sm()
-                                                                        .text_color(
-                                                                            cx.theme().muted_foreground,
-                                                                        )
-                                                                        .child(
-                                                                            "No documentation available",
-                                                                        ),
-                                                                )
-                                                        )
-                                                    }
-                                                }),
-                                        )
-                                })
-                        )
-                    })
+                            .child(
+                                div()
+                                    .absolute()
+                                    .inset_0()
+                                    .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
+                            )
+                    }),
             )
     }
 }
