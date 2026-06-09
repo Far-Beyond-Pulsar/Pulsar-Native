@@ -1,6 +1,6 @@
 use gpui::{
     div, prelude::*, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
-    KeyDownEvent, MouseButton, Render, Window,
+    KeyDownEvent, MouseButton, Render, SharedString, StyledText, Window,
 };
 use ui::{
     h_flex,
@@ -8,6 +8,7 @@ use ui::{
     text::TextView,
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt,
 };
+use ui::scroll::Scrollable;
 
 use super::palette_trait::{PaletteDelegate, PaletteItem};
 
@@ -26,6 +27,8 @@ pub struct GenericPalette<D: PaletteDelegate> {
     category_states: Vec<CategoryState>,
     selected_index: usize,
     show_docs: bool,
+    /// Cached lowercased query for text highlighting
+    search_query: SharedString,
 }
 
 impl<D: PaletteDelegate> EventEmitter<DismissEvent> for GenericPalette<D> {}
@@ -71,6 +74,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             category_states,
             selected_index: 0,
             show_docs: false,
+            search_query: SharedString::default(),
         }
     }
 
@@ -80,6 +84,24 @@ impl<D: PaletteDelegate> GenericPalette<D> {
 
     pub fn delegate_mut(&mut self) -> &mut D {
         &mut self.delegate
+    }
+
+    /// Reset filter state for a fresh palette open
+    /// Called when the palette is reopened to clear search and reset selection
+    pub fn reset_filter(&mut self) {
+        let categories = self.delegate.categories();
+        let collapsed = self.delegate.categories_collapsed_by_default();
+
+        self.filtered_categories = categories.clone();
+        self.category_states = categories
+            .iter()
+            .map(|(name, _)| CategoryState {
+                name: name.clone(),
+                expanded: !collapsed,
+            })
+            .collect();
+        self.selected_index = 0;
+        self.search_query = SharedString::default();
     }
 
     /// Swap the delegate and update all state
@@ -111,6 +133,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         self.filtered_categories = categories;
         self.selected_index = 0;
         self.show_docs = false;
+        self.search_query = SharedString::default();
 
         cx.notify();
     }
@@ -118,6 +141,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     fn update_filter(&mut self, query: &str) {
         let old_categories = self.filtered_categories.clone();
         self.filtered_categories = self.delegate.filter(query);
+        self.search_query = SharedString::from(query.to_lowercase());
 
         // Update category states
         let collapsed = self.delegate.categories_collapsed_by_default();
@@ -193,6 +217,26 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         if let Some(state) = self.category_states.get_mut(category_index) {
             state.expanded = !state.expanded;
             cx.notify();
+        }
+    }
+
+    /// Highlight matching portions of text for a given search query
+    /// Returns bold text for the first match
+    fn highlight_query(&self, text: &str) -> gpui::AnyElement {
+        if self.search_query.is_empty() {
+            return StyledText::new(text).into_any_element();
+        }
+
+        let text_lower = text.to_lowercase();
+        let query_lower = self.search_query.as_ref();
+
+        if let Some(match_pos) = text_lower.find(query_lower) {
+            let match_range = match_pos..match_pos + query_lower.len();
+            StyledText::new(text)
+                .with_highlights([(match_range, gpui::FontWeight::BOLD.into())])
+                .into_any_element()
+        } else {
+            StyledText::new(text).into_any_element()
         }
     }
 }
@@ -292,23 +336,28 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                             _ => {}
                         }
                     }))
-                    // Main list panel (always shown, fixed width)
+                    // Main palette panel
                     .child(
                         v_flex()
-                            .w(px(600.0))
-                            .max_h(px(500.0))
+                            .w(px(640.))
+                            .max_w(px(900.))
+                            .min_w(px(480.))
+                            .h(px(480.))
                             .bg(cx.theme().background)
                             .border_1()
                             .border_color(cx.theme().border)
-                            .rounded(px(8.0))
+                            .rounded(px(12.))
                             .shadow_lg()
                             .overflow_hidden()
                             .child(
                                 // Search input
                                 h_flex()
-                                    .p_3()
+                                    .px_4()
+                                    .py_3()
                                     .border_b_1()
                                     .border_color(cx.theme().border)
+                                    .gap_3()
+                                    .items_center()
                                     .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                                         match event.keystroke.key.as_str() {
                                             "escape" => {
@@ -331,33 +380,32 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                         }
                                     }))
                                     .child(
+                                        Icon::new(IconName::Search)
+                                            .size(px(18.0))
+                                            .text_color(cx.theme().muted_foreground),
+                                    )
+                                    .child(
                                         TextInput::new(&self.search_input)
                                             .appearance(false)
                                             .bordered(false)
-                                            .prefix(
-                                                Icon::new(IconName::Search)
-                                                    .size(px(18.0))
-                                                    .text_color(cx.theme().muted_foreground),
-                                            )
-                                            .w_full(),
+                                            .flex_1(),
                                     ),
                             )
                             .child({
                                 if self.filtered_categories.iter().all(|(_, items)| items.is_empty()) {
                                     // Show "No items found" message
                                     div()
-                                        .flex_1()
+                                        .h(px(320.))
                                         .flex()
                                         .items_center()
                                         .justify_center()
-                                        .p_8()
                                         .child(
                                             v_flex()
                                                 .items_center()
                                                 .gap_2()
                                                 .child(
                                                     Icon::new(IconName::Search)
-                                                        .size(px(48.0))
+                                                        .size(px(32.0))
                                                         .text_color(
                                                             cx.theme().muted_foreground.opacity(0.3),
                                                         ),
@@ -371,16 +419,15 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                         )
                                         .into_any_element()
                                 } else {
-                                    // Item list with categories
-                                    div()
-                                        .flex_1()
-                                        .overflow_hidden()
+                                    // Item list with categories - scrollable container
+                                    v_flex()
+                                        .h(px(384.)) // 480 - 96 (input height) = 384
+                                        .scrollable(Axis::Vertical)
                                         .child(
                                             v_flex()
                                                 .gap_0p5()
                                                 .p_2()
                                                 .id("palette-list")  // ID preserves scroll state across renders
-                                                .scrollable(Axis::Vertical)
                                                 .children({
                                                 let mut item_index = 0;
                                                 let has_categories = self
@@ -406,10 +453,11 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                 h_flex()
                                                                     .w_full()
                                                                     .px_2()
-                                                                    .py_2()
+                                                                    .py_1p5()
                                                                     .gap_2()
                                                                     .items_center()
                                                                     .cursor_pointer()
+                                                                    .rounded(px(4.))
                                                                     .hover(|s| {
                                                                         s.bg(cx
                                                                             .theme()
@@ -435,7 +483,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                         } else {
                                                                             IconName::ChevronRight
                                                                         })
-                                                                        .size(px(14.0))
+                                                                        .size(px(12.))
                                                                         .text_color(
                                                                             cx.theme().muted_foreground,
                                                                         ),
@@ -447,7 +495,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                             .text_xs()
                                                                             .font_semibold()
                                                                             .text_color(
-                                                                                cx.theme().foreground,
+                                                                                cx.theme().muted_foreground,
                                                                             )
                                                                             .child(cat_name.clone()),
                                                                     )
@@ -458,6 +506,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                             .text_color(
                                                                                 cx.theme().muted_foreground,
                                                                             )
+                                                                            .opacity(0.6)
                                                                             .child(format!(
                                                                                 "({})",
                                                                                 items.len()
@@ -474,7 +523,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                     let current_item_index = item_index;
 
                                                                     elements.push(
-                                                                        self.render_item(item, is_selected, current_item_index, true, cx)
+                                                                        self.render_item(item, is_selected, current_item_index, cx)
                                                                     );
 
                                                                     item_index += 1;
@@ -488,7 +537,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                                 let current_item_index = item_index;
 
                                                                 elements.push(
-                                                                    self.render_item(item, is_selected, current_item_index, false, cx)
+                                                                    self.render_item(item, is_selected, current_item_index, cx)
                                                                 );
 
                                                                 item_index += 1;
@@ -508,25 +557,26 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                     .when(show_docs, |this| {
                         this.child(
                             v_flex()
-                                .w(px(400.0))
-                                .max_h(px(500.0))  // Match palette height to avoid layout shifts
+                                .w(px(360.))
+                                .h(px(480.))  // Match palette height to avoid layout shifts
                                 .bg(cx.theme().background)
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .rounded(px(8.0))
+                                .rounded(px(12.))
                                 .shadow_lg()
                                 .overflow_hidden()
                                 .child(
                                     // Header
                                     h_flex()
-                                        .p_3()
+                                        .px_4()
+                                        .py_3()
                                         .border_b_1()
                                         .border_color(cx.theme().border)
                                         .gap_2()
                                         .items_center()
                                         .child(
                                             Icon::new(IconName::SubmitDocument)
-                                                .size(px(18.0))
+                                                .size(px(16.0))
                                                 .text_color(cx.theme().muted_foreground),
                                         )
                                         .child(
@@ -541,15 +591,14 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                     // Documentation content
                                     let doc_content = selected_item.as_ref().and_then(|item| item.documentation());
 
-                                    div()
+                                    v_flex()
                                         .flex_1()
-                                        .overflow_hidden()
+                                        .scrollable(Axis::Vertical)
                                         .child(
                                             v_flex()
                                                 .p_4()
-                                                .gap_4()
+                                                .gap_3()
                                                 .id("palette-docs")  // ID preserves scroll state
-                                                .scrollable(Axis::Vertical)
                                                 .map(|el| {
                                                     if let Some(doc_text) = doc_content {
                                                         el.child(
@@ -559,7 +608,7 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                     } else {
                                                         el.child(
                                                             div()
-                                                                .flex_1()
+                                                                .h(px(300.))
                                                                 .flex()
                                                                 .items_center()
                                                                 .justify_center()
@@ -578,21 +627,6 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                                                 }),
                                         )
                                 })
-                                .child(
-                                    // Footer hint
-                                    div()
-                                        .p_2()
-                                        .border_t_1()
-                                        .border_color(cx.theme().border)
-                                        .bg(cx.theme().muted.opacity(0.05))
-                                        .child(
-                                            div()
-                                                .text_xs()
-                                                .text_center()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Press Space to toggle"),
-                                        ),
-                                ),
                         )
                     })
             )
@@ -611,15 +645,13 @@ impl<D: PaletteDelegate> GenericPalette<D> {
         item: &D::Item,
         is_selected: bool,
         item_index: usize,
-        indented: bool,
         cx: &mut Context<Self>,
     ) -> gpui::AnyElement {
         h_flex()
             .w_full()
             .px_3()
             .py_2()
-            .when(indented, |this| this.ml_4())
-            .rounded(px(6.0))
+            .rounded(px(6.))
             .gap_3()
             .items_center()
             .cursor_pointer()
@@ -643,7 +675,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
             }))
             .child(
                 Icon::new(item.icon())
-                    .size(px(20.0))
+                    .size(px(18.0))
                     .text_color(if is_selected {
                         cx.theme().primary
                     } else {
@@ -667,7 +699,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                             } else {
                                 cx.theme().foreground.opacity(0.9)
                             })
-                            .child(item.name().to_string()),
+                            .child(self.highlight_query(item.name())),
                     )
                     .child(
                         div()
@@ -676,6 +708,7 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                             .text_ellipsis()
                             .whitespace_nowrap()
                             .text_color(cx.theme().muted_foreground)
+                            .opacity(0.75)
                             .child(item.description().to_string()),
                     ),
             )

@@ -133,7 +133,10 @@ impl PulsarApp {
 
             // Create or reuse view
             if let Some(view) = &self.state.command_palette_view {
-                // Reuse existing view (already subscribed)
+                // Reuse existing view - reset search state for fresh open
+                view.update(cx, |palette_view, _cx| {
+                    palette_view.reset_filter();
+                });
                 let input_handle = view.read(cx).search_input.read(cx).focus_handle(cx);
                 input_handle.focus(window, cx);
             } else {
