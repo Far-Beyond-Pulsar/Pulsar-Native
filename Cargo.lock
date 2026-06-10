@@ -9102,6 +9102,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pulsar_scenedb"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "criterion",
+ "profiling 0.1.0",
+ "pulsar_core",
+ "pulsar_reflection",
+ "rand 0.8.6",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "pulsar_settings"
 version = "0.1.0"
 dependencies = [
