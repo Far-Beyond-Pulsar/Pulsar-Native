@@ -1,4 +1,4 @@
-﻿// Hotpath profiler for pulsar_scenedb.
+// Hotpath profiler for pulsar_scenedb.
 //
 // This benchmark measures every individual phase of the ECS hot paths using
 // `std::time::Instant` for per-operation timing and the `profiling` crate for

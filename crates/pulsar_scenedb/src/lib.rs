@@ -1,4 +1,4 @@
-﻿//! Archetype-based Entity Component System for the Pulsar engine.
+//! Archetype-based Entity Component System for the Pulsar engine.
 //!
 //! # Design
 //!

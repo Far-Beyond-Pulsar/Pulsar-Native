@@ -1,4 +1,4 @@
-﻿use pulsar_reflection::{EngineClass, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{EngineClass, REGISTRY, RUNTIME_TYPE_REGISTRY};
 use std::cell::Cell;
 use std::ptr;
 

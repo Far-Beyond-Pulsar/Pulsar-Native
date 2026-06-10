@@ -1,4 +1,4 @@
-﻿use pulsar_core::GameTime;
+use pulsar_core::GameTime;
 
 use crate::entity::Entity;
 use crate::world::World;

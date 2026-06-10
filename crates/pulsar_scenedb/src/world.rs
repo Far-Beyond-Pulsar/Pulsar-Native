@@ -1,4 +1,4 @@
-﻿use crate::archetype::{Archetype, ArchetypeId, ArchetypeKey};
+use crate::archetype::{Archetype, ArchetypeId, ArchetypeKey};
 use crate::component::{Column, Component, ComponentId, ErasedColumn};
 use crate::entity::{Entity, EntitySlot};
 use ahash::AHashMap;

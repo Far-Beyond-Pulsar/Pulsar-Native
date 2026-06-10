@@ -1,4 +1,4 @@
-﻿use std::any::{Any, TypeId};
+use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
