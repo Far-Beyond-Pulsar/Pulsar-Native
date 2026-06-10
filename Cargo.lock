@@ -8581,32 +8581,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar-studio"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "base64",
- "chrono",
- "clap",
- "dashmap",
- "futures",
- "hex",
- "parking_lot",
- "serde",
- "serde_json",
- "sha2 0.11.0",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
 name = "pulsar_auth"
 version = "0.1.0"
 dependencies = [
