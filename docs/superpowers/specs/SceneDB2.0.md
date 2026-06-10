@@ -1,6 +1,13 @@
 # SceneDB 2.0 & Helio — Unified Engine Specification
 
-> **Revision 2.1** · Tristan J. Poland (tristanpoland), Sepehr (sepehrnour),  · May 2026
+> **Revision 2.2** · Tristan J. Poland (tristanpoland), Sepehr (sepehrnour),  · June 2026
+
+> **Rev 2.2 changes:** stable-slot/row-indirection handle semantics (§3.1, §4.4);
+> physics writeback sub-phase (§2, §22); intra-frame Hi-Z rebuild pass (§13, §18);
+> WGSL layout contract replacing GLSL scalar layout (§6.1, §10); near-plane
+> view-space pre-test (§12); VG error radius correction (§16.3); lease slots +
+> timeout revocation (§9.2); hysteresis (§5.5); DEI compaction (§8.5); expanded
+> Hi-Z kernels (§13.2); Tests 10–12; normative wgpu mapping (Appendix C).
 
 ---
 
@@ -130,7 +137,13 @@ flowchart LR
     HE -->|"bulk sequential reads"| DB
 ```
 
-The access pattern asymmetry is intentional. The game thread is the only routine writer during the simulation phase. All other clients are readers during the harvest phase. The strict phase separation means no reader ever sees a partial write.
+The access pattern asymmetry is intentional. Writes are serialized **per
+sub-phase**, not globally: the simulation phase consists of an ordered sequence
+of write windows — gameplay mutation (game thread), then physics solver
+writeback (transforms and velocities only). Exactly one writer class is active
+in any window, enforced by write-leases issued by Layer 2. All other clients
+are readers during the harvest phase, and the strict phase separation means no
+reader ever sees a partial write.
 
 ---
 
@@ -149,7 +162,15 @@ All entities and assets are addressed through packed 64-bit unsigned integer han
  └──────────────────────────────────┴──────────────────────────────────┘
 ```
 
-**Index (bits 0–31):** A direct unsigned integer offset into the core registry arrays. Supports up to $2^{32} - 1 = 4{,}294{,}967{,}295$ concurrent live allocations within a single cell context. Accesses into registry arrays using this field are always O(1) and involve no indirection.
+**Index (bits 0–31):** A **stable slot ID**. Slot IDs are allocated from a free
+pool and never change for the lifetime of an allocation. A slot ID is *not* a row
+offset into the SoA page columns: pages store live elements densely, and
+swap-and-pop compaction (Section 4.4) moves elements between rows. The registry
+maintains a **slot→row indirection table** — one `u32` row index per slot,
+updated during compaction — so dereferencing a handle is two O(1) array reads
+(slot → row, then row → column data). Supports up to $2^{32} - 1$ concurrent
+live slots per registry. The generation array and the slot→row table are both
+indexed by slot ID; only column data is indexed by row.
 
 **Generation (bits 32–63):** A 32-bit monotonically increasing version stamp. Every time a slot is retired and recycled, its generation increments. A client holding a stale handle will find that its stored generation does not match the live generation in the registry, and the access is rejected before any data is read.
 
@@ -238,7 +259,14 @@ A stride of 64 bytes per element with a 256-element page occupies 16 KB — comf
 
 Deletions during the simulation phase do not immediately restructure the page. The dead element's slot is marked in the liveness bitmask atomically. The physical swap-and-pop compaction is deferred to the **frame-boundary isolation phase**, which runs only after all client read-leases on that cell are confirmed closed.
 
-> **Critical constraint:** Because swap-and-pop changes which entity occupies a given index position, all clients must treat harvested index arrays as valid only for the frame in which they were issued. Any client caching an index value across frame boundaries and using it as a positional reference — rather than re-querying — risks reading a different entity's data silently. There is no generation-check protection for this class of error because the slot is still live; it simply holds a different entity. The engine enforces this contract through the client lease API, which invalidates all outstanding scratch buffers at the frame-boundary phase.
+> **Critical constraint:** Swap-and-pop changes which entity occupies a given
+> *row*. Handle dereference is unaffected — the slot→row indirection table is
+> updated atomically with the compaction (Section 3.1), so a valid handle always
+> resolves to its entity's current row. However, **harvested index arrays contain
+> raw row indices**, not handles, for GPU lockstep addressing. Clients must treat
+> harvested row arrays as valid only for the frame in which they were issued.
+> The client lease API (Section 9.2) enforces this by invalidating all
+> outstanding scratch buffers at the frame-boundary phase.
 
 ### 5. Concentric Cell Streaming
 
@@ -300,6 +328,18 @@ Where $\bar{S}_{\text{entity\_geometry}}$ is the mean geometry footprint per inn
 
 Shadow cascade cameras, reflection probes, and stereo eye pairs each constitute separate observation boundaries. The effective inner core is the **union** of all observation AABBs across all active observers, not just the primary camera. The active simulation margin and outer buffer expand accordingly. HLOD proxies must be present for all cells visible to any observer, including shadow camera frusta, since an object that casts a shadow from the outer buffer must still have geometry to cast it with — the HLOD proxy serves this role.
 
+#### 5.5 Domain transition hysteresis
+
+Promotion and demotion boundaries are asymmetric to prevent oscillation when an
+observer hovers on a cell boundary:
+
+$$\text{PromotionBoundary} = \text{CellBounds} + \Delta_{\text{pad}}$$
+$$\text{DemotionBoundary} = \text{CellBounds} + \Delta_{\text{pad}} + \delta_{\text{hysteresis}}$$
+
+A promoted cell stays in its domain until the observer exits the cell bounds
+plus a padding of 10% of the cell width. Sub-pixel camera jitter therefore
+never triggers domain churn (Test 11).
+
 ### 6. Asset Registry and LOD Layout
 
 Asset metadata is stored in a flat, tightly packed host-side registry mirroring the exact byte layout expected by the GPU mesh configurator SSBO. No conversion step occurs before upload; the host buffer is uploaded directly.
@@ -320,7 +360,11 @@ Asset metadata is stored in a flat, tightly packed host-side registry mirroring 
 | 56–67 | `local_aabb_extents` | f32 × 3 | Local-space bounding box half-extents |
 | 68–71 | `meshlet_count` | u32 | Total meshlet count across all DAG levels (0 if non-VG) |
 
-Total struct size: **72 bytes**. The `padding_0` and `padding_1` fields from the previous revision have been repurposed as `cluster_table_offset` and `meshlet_count` respectively. Both fields are zero for traditional discrete-LOD meshes, making the layout backwards-compatible. The explicit 16-byte alignment of the `local_aabb` fields is preserved — `cluster_table_offset` at byte 52 and `meshlet_count` at byte 68 sit in the same positions the padding occupied and carry the same alignment guarantee.
+Total struct size: **72 bytes**. The `padding_0` and `padding_1` fields from the previous revision have been repurposed as `cluster_table_offset` and `meshlet_count` respectively. Both fields are zero for traditional discrete-LOD meshes, making the layout backwards-compatible. All fields are 4-byte aligned scalars. The struct is authored in WGSL as scalar
+`f32`/`u32` fields only — never `vec3<f32>`, which carries 16-byte alignment in
+WGSL and would shift every subsequent offset. `cluster_table_offset` at byte 52
+and `meshlet_count` at byte 68 occupy the positions of the former padding
+fields, so the 72-byte total size and every existing field offset are unchanged.
 
 A mesh is either a **traditional LOD mesh** (non-zero `lod_count`, zero `cluster_table_offset`) or a **virtual geometry mesh** (zero `lod_count`, non-zero `cluster_table_offset`). Mixing both modes in a single mesh asset is not permitted and is caught by the asset validator at import time.
 
@@ -356,6 +400,13 @@ The threshold is deliberately conservative. At 128 bytes × 256 elements (recomm
 
 When a stride limit violation occurs, the fix is always to register a new cell type rather than increase the limit.
 
+The guardrail is evaluated **holistically per cell composition**, not per type
+registration in isolation: the ingestion macro aggregates the cumulative
+per-element byte size of *all* columns registered against a shared cell type.
+Splitting one logical layout into many small registrations cannot bypass the
+limit — the combined cross-component stride against any single cell type must
+stay ≤ 128 bytes or compilation fails.
+
 ### 8. Spatial Queries and Index Output
 
 #### 8.1 Query interface
@@ -381,9 +432,26 @@ Results are written as a **unified struct-of-indices token array**. Every elemen
 
 This preserves positional alignment across output columns, which is essential for GPU bindless indexing where parallel shader lanes must read from the same logical position in multiple SSBOs simultaneously. A null sentinel value is never a valid index into any resource array and is trivially checked in shader code.
 
+Production of the unified token array is a Layer 1 responsibility; all
+*consumption-side* partitioning (LOD/VG/HLOD splits, DEI-driven dense
+compaction, staging-buffer packing) belongs to Layer 2, as specified in
+Section 18.
+
 #### 8.4 Multi-view query
 
 For shadow cascades, reflection probes, stereo renders, and any other scenario requiring multiple simultaneous spatial queries, the caller provides **one scratch buffer per view**. Queries over different views may run on separate threads simultaneously. SceneDB 2.0 makes no per-query allocations, so concurrent queries over the same cell pages are safe as long as no simulation writes are in progress (enforced by the phase ordering contract).
+
+#### 8.5 Density Efficiency Index and dense compaction
+
+Before uploading a harvested token array to VRAM, Layer 2 computes the
+**Density Efficiency Index**:
+
+$$\text{DEI} = \frac{\text{Count}(\text{valid tokens})}{\text{total token slots}}$$
+
+If DEI < 25%, lockstep streaming of the sparse array is bypassed: a vectorized
+host-side reduction (SIMD masked compress-store) strips null sentinels and
+produces a dense, packed index payload plus a compact remap table. This bounds
+the GPU bandwidth wasted on `0xFFFF_FFFF` tokens in sparse cells (Test 12).
 
 ### 9. Multi-Threaded Harvesting
 
@@ -395,7 +463,24 @@ Capacity is managed with a **decay policy**: if a scratchpad's peak usage over t
 
 #### 9.2 Read-lease tracking
 
-Each client that initiates a spatial query acquires a **read lease** on the cells it queries. The lease is a lightweight token stored in a per-cell atomic bitmask — one bit per registered worker thread. The frame-boundary isolation phase checks that all lease bits are cleared before executing swap-and-pop compaction on any cell page. A thread that holds a lease past the frame boundary is a programming error and is caught by the validation test suite (Test 1, see Part VI).
+Each client that initiates a spatial query acquires a **read lease** on the cells it queries. The lease is a lightweight token stored in a per-cell atomic bitmask — one bit
+per **lease slot**. Lease slots are acquired from a fixed-size pool (default 64,
+matching the bitmask width) at query start and released at query end; they are
+not bound to thread identity, so dynamic thread pools, work-stealing schedulers,
+and nested queries are all supported. Pool exhaustion blocks the requesting
+query until a slot frees (a saturated pool indicates a leaked lease, surfaced by
+Test 1).
+
+#### 9.2.1 Lease timeout and revocation
+
+The liveness bitmask and index-column registries are **double-buffered**: a
+read-lease pins a snapshot of the current frame topology, not the live buffers.
+If a lease is still held 2.0 ms into the frame-boundary isolation phase, Layer 2
+forcibly revokes it: the holder's handle set is pushed to a secondary stale
+validation lane (reads continue against the pinned snapshot; all results are
+re-validated against live generations on use) and compaction proceeds on the
+primary layout immediately. A revocation is logged; persistent revocations from
+the same client are a bug in that client (Test 10). The frame-boundary isolation phase checks that all lease bits are cleared before executing swap-and-pop compaction on any cell page. A thread that holds a lease past the frame boundary is a programming error and is caught by the validation test suite (Test 1, see Part VI).
 
 ---
 
@@ -416,14 +501,14 @@ flowchart TD
     G1 & G2 & G3 & G4 & GV --> SH["Helio compute shaders\n& raster passes"]
 ```
 
-All shaders interacting with these SSBOs must declare:
-
-```glsl
-#extension GL_EXT_scalar_block_layout   : require
-#extension GL_EXT_nonuniform_qualifier  : require
-```
-
-The scalar block layout extension is mandatory. Without it, the GLSL compiler may insert implicit padding that breaks the host–shader byte-offset contract described in Section 6.1. The hardware alignment verification test (Test 3, Part VI) validates this contract statically.
+All shaders interacting with these SSBOs are authored in **WGSL**. WGSL storage
+buffer layout rules are normative for every shared struct, with one project-wide
+authoring constraint: **shared structs use scalar `f32`/`u32`/`i32` fields
+exclusively** (no `vec3`, which has 16-byte alignment; no implicit padding).
+Vector math inside shaders reconstructs vectors from scalars at load time.
+The hardware alignment verification test (Test 3, Part VI) compares the byte
+offset of every host Rust field against the offsets reported by naga reflection
+of the compiled WGSL and fails on any single-byte difference.
 
 ### 11. World-Space AABB Transformation
 
@@ -475,9 +560,23 @@ $$\tilde{P}_i = VP \cdot \begin{bmatrix} P_i \\ 1 \end{bmatrix}$$
 
 If $\tilde{P}_i.w \le 0$ for **any** $i \in \{0 \dots 7\}$, the object intersects the near plane and the culling pipeline is bypassed for that object.
 
+To keep the bypass population small, a **view-space pre-test** runs first: the
+object's view-space AABB is tested against the near-plane slab. Only objects
+whose view-space bounds actually straddle $z = -z_{\text{near}}$ enter the
+W≤0 corner check; objects fully in front of the near plane proceed through the
+normal culling pipeline even when large.
+
 ### 13. Hierarchical Z-Buffer Occlusion
 
 Objects that pass frustum and near-plane checks are tested against the device-side Hi-Z pyramid. The Hi-Z map is a mipmap of the previous frame's depth buffer, where each texel stores the **maximum** (furthest) depth value in its footprint.
+
+Two Hi-Z states exist per frame: the **previous-frame pyramid** (used by the
+first cull pass of the frame) and the **intra-frame pyramid**, produced by an
+explicit **Hi-Z rebuild pass** — a compute mip-chain reduction dispatched after
+the traditional raster pass completes and before the VG object-level cull
+begins. Any pass that claims same-frame occlusion benefit must consume the
+intra-frame pyramid; consuming the raw depth buffer mid-frame is a contract
+violation.
 
 #### 13.1 Screen-space footprint and mip selection
 
@@ -492,7 +591,10 @@ $$\text{MaxDim} = \max(W_{\text{px}},\ H_{\text{px}})$$
 
 $$\text{MipLevel} = \text{clamp}\!\left(\lfloor \log_2(\text{MaxDim}) \rfloor,\ 0,\ \text{MaxMipLevel}\right)$$
 
-Using the floor ensures the selected mip level is never finer than the projected footprint. A conservative $2 \times 2$ texel gather at this mip level returns four depth samples, and the maximum is taken as the scene depth at this footprint. This guarantees the test never falsely occludes an object due to sub-pixel sampling gaps.
+Using the floor selects the finest mip whose $2 \times 2$ texel gather still
+covers the projected footprint: one texel at level $\lfloor \log_2(\text{MaxDim})
+\rfloor$ spans up to $\text{MaxDim}$ pixels, so a $2 \times 2$ gather spans up
+to $2\,\text{MaxDim}$ — always at least the footprint. A conservative $2 \times 2$ texel gather at this mip level returns four depth samples, and the maximum is taken as the scene depth at this footprint. This guarantees the test never falsely occludes an object due to sub-pixel sampling gaps.
 
 #### 13.2 Mip boundary blending
 
@@ -503,6 +605,12 @@ $$\delta = \text{MaxDim} - 2^{\lfloor \log_2(\text{MaxDim}) \rfloor}$$
 If $\delta / 2^{\lfloor \log_2(\text{MaxDim}) \rfloor} < 0.05$ (within 5% of a mip boundary), the culling test runs at **both** `MipLevel` and `MipLevel + 1`, taking the maximum depth from both samples. An object is considered occluded only if both samples indicate occlusion. This eliminates flickering at the cost of two texture fetches for a small fraction of objects.
 
 The dual-sample path is gated on screen-size delta, not on every object every frame. Its per-frame cost is proportional to how many objects happen to be near a mip transition threshold, which in practice is a small minority.
+
+Additionally, if the projected extent spans more than two texels of the selected
+mip along either screen axis (possible for elongated or diagonal footprints),
+the shader expands the gather kernel from $2 \times 2$ to $3 \times 3$ or
+$4 \times 4$ so the conservative-coverage guarantee holds for non-square
+footprints.
 
 ### 14. Indirect Command Buffer Generation
 
@@ -595,7 +703,12 @@ The cluster DAG buffer is a single globally persistent SSBO indexed by `cluster_
 
 The GPU evaluates each cluster node against a **projected screen-space error** metric. Given the node's bounding sphere center $C$ and the camera position $P$, the view distance is:
 
-$$d = \|C_{\text{world}} - P\|$$
+$$d = \max\!\left(\|C_{\text{world}} - P\| - r_{\text{world}},\ z_{\text{near}}\right)$$
+
+Where $r_{\text{world}}$ is the node's bounding-sphere radius. Subtracting the
+radius uses the *nearest* point of the node rather than its center, which
+prevents error underestimation at grazing angles and for large nodes close to
+the camera.
 
 The screen-space error in pixels is approximated as:
 
@@ -679,7 +792,7 @@ flowchart LR
 
 The split happens at the harvest phase: the SceneDB query returns a unified index list, and Layer 2 partitions it into two staging arrays — one for each pipeline path — before the GPU compute passes begin. Both arrays are produced in a single scan of the query output.
 
-The depth buffer is shared between the two pipelines within a frame. The traditional pipeline runs first (it tends to cover large surfaces quickly, populating the Hi-Z for the VG pass), followed by the VG pipeline which benefits from the partially populated Hi-Z during its object-level cull.
+The depth buffer is shared between the two pipelines within a frame. The traditional pipeline runs first (it tends to cover large surfaces quickly; the Hi-Z rebuild pass defined in Section 13 then regenerates the pyramid from the partially populated depth buffer before the VG object-level cull dispatches), followed by the VG pipeline which benefits from the partially populated Hi-Z during its object-level cull.
 
 #### 18.1 Hi-Z ordering note
 
@@ -821,6 +934,22 @@ Loads a VG mesh and renders it from a sweep of camera distances ranging from nea
 - The screen-space error of the rendered output does not exceed $\epsilon_{\text{target}} + 0.5$ pixels at any tested distance (a half-pixel tolerance accounts for floating-point imprecision in the error metric calculation).
 - Transitioning between DAG levels as the camera moves produces no visible popping in the rendered sequence.
 
+#### Test 10 — Editor lease stall compliance
+Opens a persistent entity selection lease in Layer 2, then forces immediate
+frame-isolation compaction in Layer 1. Pass: execution continues with zero
+lockups; the lease is revoked per §9.2.1 and the holder's reads complete
+against the pinned snapshot.
+
+#### Test 11 — Grid boundary oscillation compliance
+Jitters camera parameters along a cell grid boundary at 60 Hz. Pass: zero
+redundant domain transitions, host-to-device allocations, or buffer
+recreation requests (hysteresis per §5.5 absorbs the jitter).
+
+#### Test 12 — Sparse cell compaction compliance
+Populates a cell with 10,000 logic-only entities and 5 meshes, then harvests.
+Pass: DEI < 25% triggers dense compaction per §8.5; the VRAM payload contains
+no null-token cascades.
+
 ---
 
 ## Part VII — End-to-End Execution Flow
@@ -829,7 +958,7 @@ Loads a VG mesh and renders it from a sweep of camera distances ranging from nea
 
 ```mermaid
 flowchart TD
-    SIM["Simulation phase\nGame thread & physics mutations\nTransform updates, spawn/despawn\nLiveness bitmask updates only\nNo structural page changes mid-frame"]
+    SIM["Simulation phase\nSub-phase A: game thread mutation\nSub-phase B: physics writeback\nTransform updates, spawn/despawn\nLiveness bitmask updates only\nNo structural page changes mid-frame"]
 
     QH["Query & harvesting phase\nAll clients acquire read leases\nSIMD spatial scans per cell\nResults partitioned: LOD vs VG vs HLOD\nUnified index token arrays produced"]
 
@@ -858,7 +987,7 @@ The cycle repeats. The invariant that makes it correct is the strict ordering: n
 | Deferred compaction over immediate reuse | Immediate structural changes mid-frame require read–write synchronization on every page access. Deferral to frame boundary removes this entirely. |
 | Per-view command buffers over view tags | A single shared buffer with view ID tags requires post-sort or atomic partitioning. Separate buffers allow fully concurrent compute dispatches. |
 | Absolute-matrix AABB method | Cheaper than transforming all vertices and still produces the tightest correct result. The error of naively transforming only two corners is unbounded under rotation. |
-| Floor operator in mip selection | Guarantees the sampled mip texel fully covers the object's projected footprint. Ceil would risk sampling a coarser level and miss small-but-visible objects. |
+| Floor operator in mip selection | A 2×2 gather at the floored level always covers the projected footprint; ceil would over-coarsen and inflate false occlusion. |
 | Hardware timeline semaphore for retirement | Frame counter arithmetic breaks under stutter and variable scheduling. The semaphore is the only CPU-observable signal with a guaranteed relationship to GPU execution order. |
 | Compile-time stride guardrail | Cache locality is a correctness property for performance SLAs, not merely a preference. Making violations a build error prevents them from silently accumulating. |
 | HLOD proxy for all outer buffer cells | Locking outer buffer cells away from all rendering produces a hard visual horizon. Every cell must produce at least one draw contribution per frame regardless of domain. |
@@ -877,92 +1006,18 @@ The cycle repeats. The invariant that makes it correct is the strict ordering: n
 - **HLOD proxy generation.** The specification requires that every cell has a pre-baked HLOD proxy but does not specify how those proxies are generated. Automatic decimation, atlas baking, and imposter generation are all viable approaches and are left to the art pipeline specification.
 - **Skinned and deformable meshes.** Both the traditional indirect pipeline and the VG pipeline described here assume static geometry. Skinned meshes require the transform to be applied before culling bounding volumes are valid. The integration path for skinned VG meshes in particular is an open design question.
 
+## Appendix C — wgpu Implementation Mapping (Normative)
 
+The reference implementation targets wgpu (custom Far-Beyond-Pulsar fork) with
+WGSL shaders. The following mappings are normative; spec text using Vulkan
+terminology is to be read through this table.
 
-# |=====================================|
-# |==         CLAUDE ANALYSIS         ==|
-# |=====================================|
-
-
-Critical Issues
-
-  1. Handle bit layout — 4.29B "within a single cell context" — VALID
-  Line 152 literally says "Supports up to 4,294,967,295 concurrent live allocations within a single cell context." Line 229 caps per-cell page capacity at 1024. The phrasing is genuinely contradictory; the index is presumably global, not cell-local.
-
-  2. Swap-and-pop vs stable handle indexing — VALID
-  Line 152 says the index is "A direct unsigned integer offset into the core registry arrays." Lines 239–241 then admit swap-and-pop changes which entity sits at an index, with no generation protection ("the slot is still live; it simply holds a different
-  entity"). The constraint is bolted onto harvested index arrays only — the underlying handle semantic isn't resolved. The fix (separate stable slot ID from dense row index) is sound.
-
-  <!-- 3. Test 5 contradicts §14.2 — VALID - Not Valid on Review
-  §14.2 (lines 537–543): "Counter is NOT clamped here." Test 5 (line 796): "The global draw counter does not exceed MAX_BUFFER_CAPACITY after the compute pass." Direct contradiction. -->
-
-  4. Hi-Z mip selection wording — VALID (wording)
-  Line 495: "Using the floor ensures the selected mip level is never finer than the projected footprint." With MipLevel = floor(log2(MaxDim)), one texel at that level covers 2^MipLevel ≤ MaxDim pixels — i.e. the texel footprint is ≤ object footprint, which is finer than the object, not coarser. The 2×2 gather (line 495) makes the test conservative in practice, but the stated guarantee is reversed.
-
-  5. Near-plane W≤0 bypass too broad — VALID
-  Lines 462–466 mark the object visible and "Skip all culling tests" if any corner has W≤0. A view-space frustum/AABB test before projection would catch most of these without the cliff.
-
-  GPU API / Hardware
-
-  <!-- 1. Mixed OpenGL/Vulkan terms — VALID (cosmetic)
-  SSBO + GL_EXT_* extensions + gl_BaseInstance (lines 421–423, 521) alongside vkCmd* (lines 547, 670). All legal in Vulkan-GLSL, but the contract should be declared explicitly. -->
-
-  <!-- 2. Mesh/task shader portability — VALID
-  No capability gate or fallback specified. -->
-
-  <!-- 3. Bindless / partially-bound descriptors assumed — VALID
-  Line 413 mentions "Partially bound descriptor array" with no feature-flag matrix. -->
-
-  4. Mesh metadata "16-byte alignment" claim — VALID, needs to be included 
-  Per §6.1 table: local_aabb_center starts at byte 40, local_aabb_extents at byte 56. Neither is 16-byte-aligned (40 = 16×2+8, 56 = 16×3+8). Under scalar block layout f32×3 only requires 4-byte alignment, so the layout is legal, but the "16-byte alignment is preserved" claim on line 323 is false.
-
-  Architecture Gaps
-
-  1. Single-writer simplification — VALID, needs to be included 
-  Line 133 names the game thread as the only routine writer. Physics solver writeback isn't modeled.
-
-  2. Read-lease bitmask = 1 bit per worker — VALID
-  Line 398: "one bit per registered worker thread." Breaks for dynamic pools / work-stealing / nesting.
-
-  3. Null-sentinel scratch output — VALID concern, tradeoff acknowledged
-  Lines 380–382 explicitly trade bandwidth for positional alignment. The audit's compaction suggestion is reasonable but not a correctness bug.
-
-  4. SceneDB vs Layer 2 boundary — PARTIALLY VALID
-  §18 (line 680) does put partitioning in Layer 2, so the boundary exists; but §8.3's "unified index token output" for GPU bindless creates the tension the audit names. Worth a clarifying sentence.
-
-  Rendering / Streaming
-
-  <!-- 1. "Always rendered" outer-cell HLOD — VALID
-  Line 275 says "Yes — proxy always rendered." Line 277 then says it "participates in frustum culling, Hi-Z testing." Contradictory. -->
-
-  <!-- 2. "Exactly one representation per pixel" during cross-fade — VALID, applies more to Helio than SceneDB which is the primary object of this writeup
-  Line 285 makes the claim; nothing in §5.2 specifies behavior in depth prepass, shadows, motion vectors, or TAA history. -->
-
-  3. Same-frame Hi-Z populated by traditional draws — VALID, needs to be included
-  Line 480: Hi-Z is "the previous frame's depth buffer." Line 682: traditional pass "populat[es] the Hi-Z for the VG pass." No pyramid-rebuild pass is specified between them.
-
-  Virtual Geometry
-
-  <!-- 1. DAG traversal underspecified — VALID, nitpick too much impl detail for this doc
-  §17.2 (line 644) says "walk the cluster DAG" — no payload bound, queue, or overflow behavior. -->
-
-  2. Error metric uses center distance — VALID
-  §16.3 uses d = ‖C − P‖ only. No bounding-sphere-radius correction; underestimates at grazing angles.
-
-  3. "Exactly one DAG level" runtime invariant — VALID
-  Line 610 states it as runtime guarantee. The invariant actually lives in offline DAG construction; Appendix B already lists VG asset pipeline as deferred, but the invariant claim should move there too.
-<!-- 
-  Testing
-
-  1. Test 1 premise contradicts phase separation — VALID
-  Line 763: "the game thread to mutate transforms at the maximum scheduled rate while physics and Helio issue high-frequency spatial queries." Spec correctness depends on these being phase-separated, not concurrent.
-
-  2. Test 4 "false positive cull artifact visible" — PARTIALLY VALID
-  Line 790's terminology is internally muddled. False-positive visibility (drew when shouldn't) is a perf issue; false-negative visibility (didn't draw when should) is the artifact. Worth rewording.
-
-  3. Test 3 compares GLSL source, not SPIR-V — VALID
-  Line 779: "compiles both the host Rust struct definitions and the GLSL struct declarations." SPIR-V reflection is the only authoritative source for actual binding layout. -->
-
-  Bottom line
-
-  Of 22 distinct issues raised, 20 are real and substantive, 1 is partially valid (terminology), and 1 (SceneDB/Layer 2 boundary) is partially addressed in §18 but worth clarifying. The audit's prioritization is also correct — the handle/swap-and-pop contradiction (#2) and the Test 5 / §14.2 contradiction (#3) are the most concrete blockers; the Vulkan/GL contract normalization is a paper-only fix; mesh-shader portability is a real product-scope decision.
+| Spec mechanism | wgpu implementation |
+|---|---|
+| Timeline semaphore retirement tokens (§20) | Monotonic host-side submission serial per queue submit; `Queue::on_submitted_work_done` callback marks the serial complete. The retirement queue drains only entries whose serial is marked complete. Frame-counter arithmetic remains forbidden. |
+| Task/mesh shader VG pipeline (§17) | Compute-shader cluster cull (DAG traversal + cone/frustum tests) emitting per-meshlet `DrawIndexedIndirect` records with `instance_count ∈ {0, 1}`; drawn via `multi_draw_indexed_indirect`. One cull dispatch + one indirect draw per view. |
+| `vkCmdDrawIndexedIndirectCount` (§14) | GPU writes the atomic draw counter; the CPU clamps host-side after the compute pass (§14.2 already specifies CPU-side clamping). Where readback latency is unacceptable, the full command buffer is submitted with overflowed slots holding `instance_count = 0`. |
+| `vkCmdDrawMeshTasksIndirectEXT` (§18) | `multi_draw_indexed_indirect` over the VG pipeline's per-meshlet command buffer. |
+| GLSL + scalar block layout (§10) | WGSL with the scalar-fields-only authoring rule (§10). Verified by naga reflection (Test 3). |
+| Bindless descriptor arrays (§10) | `binding_array` / partially-bound texture arrays as exposed by the fork; capability-gated with a bound-array fallback. |
+| AVX-512 SIMD scans (§8.2) | Portable SIMD with runtime dispatch: AVX-512 → AVX2 → NEON → scalar. The scalar path is the reference implementation; property tests assert bit-identical results across paths. Throughput targets are validated by benchmark, not assumed from instruction width. |
