@@ -1,4 +1,4 @@
-﻿//! # Adversarial and performance tests for pulsar_scenedb
+//! # Adversarial and performance tests for pulsar_scenedb
 //!
 //! These tests probe edge cases, memory safety, slot reuse correctness,
 //! archetype explosion, entity lifecycle, and raw throughput.

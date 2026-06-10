@@ -1,4 +1,4 @@
-﻿// Comprehensive Criterion benchmark suite for pulsar_scenedb.
+// Comprehensive Criterion benchmark suite for pulsar_scenedb.
 //
 // This file provides statistically rigorous benchmarks with:
 // - Multiple entity scales (100 â†’ 100K)

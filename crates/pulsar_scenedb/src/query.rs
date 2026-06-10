@@ -1,4 +1,4 @@
-﻿use crate::component::{component_id, ComponentId};
+use crate::component::{component_id, ComponentId};
 use crate::archetype::Archetype;
 use crate::component::{Column, Component};
 use crate::entity::Entity;

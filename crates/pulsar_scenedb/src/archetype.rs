@@ -1,4 +1,4 @@
-﻿use crate::component::{Column, Component, ComponentId, ErasedColumn};
+use crate::component::{Column, Component, ComponentId, ErasedColumn};
 use crate::entity::Entity;
 
 /// Opaque index into [`World::archetypes`](crate::World).

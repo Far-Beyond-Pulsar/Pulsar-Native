@@ -1,4 +1,4 @@
-﻿use std::fmt;
+use std::fmt;
 
 /// A lightweight handle to an entity in the ECS [`World`](crate::World).
 ///
