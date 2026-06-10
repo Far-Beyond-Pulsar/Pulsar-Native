@@ -9,6 +9,24 @@ pub const MAX_STRIDE_BYTES: u32 = 128;
 /// Every column starts on a cache-line boundary (spec §4.2).
 pub const COLUMN_ALIGN: usize = 64;
 
+/// Marker for types whose every byte pattern — in particular all-zero — is a
+/// valid value, so a column of them may be handed out as `&[T]` over the
+/// zero-initialised page allocation.
+///
+/// `unsafe` to implement: implementors guarantee zero-init validity and no
+/// `Drop` glue. The M1b TypeToken layer builds the column-registration API on
+/// top of this bound.
+///
+/// # Safety
+/// All-zero bytes must be a valid value of `Self`, and `Self` must be `Copy`
+/// with no `Drop`.
+pub unsafe trait Pod: Copy {}
+
+macro_rules! impl_pod {
+    ($($t:ty),*) => { $( unsafe impl Pod for $t {} )* };
+}
+impl_pod!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
+
 /// Size/alignment descriptor for one column's element type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ColumnDesc {
@@ -29,6 +47,7 @@ impl ColumnDesc {
 pub enum LayoutError {
     StrideExceeded { stride: u32 },
     BadCapacity { capacity: u32 },
+    AlignmentExceeded { align: u32 },
 }
 
 /// Computed byte layout for a page: per-column offsets within one contiguous
@@ -53,7 +72,9 @@ impl PageLayout {
         let mut offsets = Vec::with_capacity(columns.len());
         let mut cursor = 0usize;
         for col in columns {
-            debug_assert!(col.align as usize <= COLUMN_ALIGN);
+            if col.align as usize > COLUMN_ALIGN {
+                return Err(LayoutError::AlignmentExceeded { align: col.align });
+            }
             cursor = next_multiple(cursor, COLUMN_ALIGN);
             offsets.push(cursor);
             cursor += col.size as usize * capacity as usize;
@@ -77,7 +98,8 @@ impl PageLayout {
 
 #[inline]
 fn next_multiple(n: usize, m: usize) -> usize {
-    n.div_ceil(m) * m
+    // m is always COLUMN_ALIGN (64); n is bounded by MAX_STRIDE_BYTES * MAX_PAGE_CAPACITY.
+    n.div_ceil(m).checked_mul(m).expect("page layout size overflow")
 }
 
 /// One SoA page: a single 64-byte-aligned contiguous allocation holding all
@@ -102,7 +124,9 @@ impl Page {
                 .expect("page layout is valid");
         // SAFETY: size is non-zero (max'd with COLUMN_ALIGN), align is 64.
         let data = unsafe { alloc_zeroed(alloc_layout) };
-        assert!(!data.is_null(), "page allocation failed");
+        if data.is_null() {
+            std::alloc::handle_alloc_error(alloc_layout);
+        }
         Self {
             data,
             layout: layout.clone(),
@@ -116,6 +140,9 @@ impl Page {
         self.len
     }
 
+    /// Returns `true` only if no rows have ever been pushed (`len == 0`).
+    /// A page may have `len > 0` with every row dead — consult the liveness
+    /// mask for true emptiness.
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.len == 0
@@ -147,6 +174,12 @@ impl Page {
         // SAFETY: offset is within the allocation by PageLayout construction.
         unsafe { self.data.add(self.layout.column_offsets[col]) }
     }
+
+    /// Mutable raw pointer to a column's first element.
+    fn column_ptr_mut(&mut self, col: usize) -> *mut u8 {
+        // SAFETY: offset is within the allocation by PageLayout construction.
+        unsafe { self.data.add(self.layout.column_offsets[col]) }
+    }
 }
 
 /// Typed column access — a view of all `capacity` slots (including dead rows;
@@ -154,38 +187,31 @@ impl Page {
 /// the registered `ColumnDesc` — the M1b TypeToken layer makes this statically
 /// safe; for now the size check guards against mis-typed access.
 impl Page {
-    pub fn column_slice<T>(&self, col: usize) -> &[T] {
-        let desc = self.layout.column_descs[col];
-        assert_eq!(
-            desc.size as usize,
-            std::mem::size_of::<T>(),
-            "column type size mismatch"
-        );
-        // SAFETY: the column region holds `capacity` elements of `desc.size`
-        // bytes, 64-byte aligned (≥ align_of::<T>()), zero-initialised, and
-        // borrowed under &self.
-        unsafe {
-            std::slice::from_raw_parts(
-                self.column_ptr(col) as *const T,
-                self.layout.capacity as usize,
-            )
-        }
+    pub fn column_slice<T: Pod>(&self, col: usize) -> &[T] {
+        let len = self.assert_column::<T>(col);
+        // SAFETY: column region holds `capacity` elements of size_of::<T>()
+        // bytes, 64-byte aligned (≥ align_of::<T>(), enforced at layout
+        // build), zero-initialised (valid for T: Pod), borrowed under &self.
+        unsafe { std::slice::from_raw_parts(self.column_ptr(col) as *const T, len) }
     }
 
-    pub fn column_slice_mut<T>(&mut self, col: usize) -> &mut [T] {
+    pub fn column_slice_mut<T: Pod>(&mut self, col: usize) -> &mut [T] {
+        let len = self.assert_column::<T>(col);
+        let ptr = self.column_ptr_mut(col) as *mut T;
+        // SAFETY: as column_slice, under &mut self with a *mut derived from &mut self.
+        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+    }
+
+    /// Validates the column's element size matches `T` and returns the slice length.
+    #[inline]
+    fn assert_column<T>(&self, col: usize) -> usize {
         let desc = self.layout.column_descs[col];
         assert_eq!(
             desc.size as usize,
             std::mem::size_of::<T>(),
             "column type size mismatch"
         );
-        // SAFETY: as column_slice, under &mut self.
-        unsafe {
-            std::slice::from_raw_parts_mut(
-                self.column_ptr(col) as *mut T,
-                self.layout.capacity as usize,
-            )
-        }
+        self.layout.capacity as usize
     }
 }
 
@@ -231,6 +257,18 @@ mod tests {
         assert!(matches!(
             PageLayout::new(&cols, 256),
             Err(LayoutError::StrideExceeded { stride: 136 })
+        ));
+    }
+
+    #[test]
+    fn over_aligned_column_rejected() {
+        #[repr(align(128))]
+        #[derive(Copy, Clone)]
+        struct Over(u8);
+        // 128-byte alignment exceeds the 64-byte column boundary.
+        assert!(matches!(
+            PageLayout::new(&[ColumnDesc::of::<Over>()], 16),
+            Err(LayoutError::AlignmentExceeded { align: 128 })
         ));
     }
 

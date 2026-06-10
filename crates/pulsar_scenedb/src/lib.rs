@@ -56,7 +56,7 @@ pub use component_store::{__bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp
 pub use entity::Entity;
 pub use handle::Handle;
 pub use page::{
-    ColumnDesc, LayoutError, Page, PageLayout, DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY,
+    ColumnDesc, LayoutError, Page, PageLayout, Pod, DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY,
     MAX_STRIDE_BYTES,
 };
 pub use pulsar_core::GameTime;
