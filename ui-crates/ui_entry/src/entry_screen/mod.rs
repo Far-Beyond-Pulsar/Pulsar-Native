@@ -2132,7 +2132,7 @@ fn fetch_cloud_server_info(
                                 .unwrap_or("")
                                 .to_string();
                             let user_count =
-                                p.get("member_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                p.get("active_users").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                             let project_status =
                                 match p.get("status").and_then(|v| v.as_str()).unwrap_or("idle") {
                                     "preparing" => CloudProjectStatus::Preparing,
