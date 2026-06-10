@@ -6,7 +6,7 @@ use std::fmt;
 /// Generation 0 is permanently reserved as invalid; live generations start at 1.
 /// Unlike row positions, the slot index is stable for the allocation lifetime —
 /// the registry's slot→row table absorbs compaction movement.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Handle(u64);
 
@@ -14,6 +14,10 @@ impl Handle {
     /// The canonical invalid handle (all zero — generation 0).
     pub const INVALID: Handle = Handle(0);
 
+    /// Constructs a handle from a raw slot index and generation.
+    ///
+    /// Passing `generation = 0` produces an invalid handle. The registry always
+    /// starts allocations at generation 1.
     #[inline]
     #[must_use]
     pub const fn new(index: u32, generation: u32) -> Self {
@@ -35,6 +39,10 @@ impl Handle {
         (self.0 >> 32) as u32
     }
 
+    /// Returns `true` if this handle has a non-zero generation.
+    ///
+    /// A zero generation is permanently reserved as invalid (spec §3, C1).
+    /// Note: slot index 0 is valid; only generation 0 is not.
     #[inline]
     #[must_use]
     pub const fn is_valid(self) -> bool {
@@ -80,5 +88,18 @@ mod tests {
         let h = Handle::new(u32::MAX, u32::MAX);
         assert_eq!(h.index(), u32::MAX);
         assert_eq!(h.generation(), u32::MAX);
+    }
+
+    #[test]
+    fn bits_round_trip() {
+        let h = Handle::new(14, 2);
+        assert_eq!(h.bits(), (2u64 << 32) | 14u64);
+        assert_eq!(Handle::INVALID.bits(), 0);
+    }
+
+    #[test]
+    fn debug_format() {
+        assert_eq!(format!("{:?}", Handle::new(14, 2)), "Handle(14v2)");
+        assert_eq!(format!("{:?}", Handle::INVALID), "Handle(0v0)");
     }
 }
