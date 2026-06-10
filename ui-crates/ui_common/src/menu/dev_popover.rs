@@ -193,7 +193,7 @@ impl Render for DevPopover {
         let mu_peer_id: String;
         let mu_host_peer_id: String;
         let mu_join_token: String;
-        let mu_project_id: String;
+        let mu_workspace_id: String;
         let mu_participants: Vec<String>;
         let window_rows: Vec<String>;
         let renderer_rows: Vec<String>;
@@ -295,7 +295,7 @@ impl Render for DevPopover {
                     mu_peer_id = mu.peer_id.clone();
                     mu_host_peer_id = mu.host_peer_id.clone();
                     mu_join_token = mu.join_token.clone().unwrap_or_else(|| "—".to_string());
-                    mu_project_id = mu.project_id.clone().unwrap_or_else(|| "—".to_string());
+                    mu_workspace_id = mu.workspace_id.clone().unwrap_or_else(|| "—".to_string());
                     mu_participants = mu.participants.clone();
                 } else {
                     mu_active = false;
@@ -307,7 +307,7 @@ impl Render for DevPopover {
                     mu_peer_id = "—".to_string();
                     mu_host_peer_id = "—".to_string();
                     mu_join_token = "—".to_string();
-                    mu_project_id = "—".to_string();
+                    mu_workspace_id = "—".to_string();
                     mu_participants = Vec::new();
                 }
             }
@@ -355,7 +355,7 @@ impl Render for DevPopover {
             mu_peer_id = "—".to_string();
             mu_host_peer_id = "—".to_string();
             mu_join_token = "—".to_string();
-            mu_project_id = "—".to_string();
+            mu_workspace_id = "—".to_string();
             mu_participants = Vec::new();
             window_rows = Vec::new();
             renderer_rows = Vec::new();
@@ -643,10 +643,10 @@ impl Render for DevPopover {
                         if mu_join_token != "—" { fg } else { muted },
                     ))
                     .child(kv(
-                        "Project ID",
-                        &mu_project_id,
+                        "Workspace ID",
+                        &mu_workspace_id,
                         muted,
-                        if mu_project_id != "—" { fg } else { muted },
+                        if mu_workspace_id != "—" { fg } else { muted },
                     ))
                     .when(!mu_participants.is_empty(), |el| {
                         let peers = mu_participants.clone();

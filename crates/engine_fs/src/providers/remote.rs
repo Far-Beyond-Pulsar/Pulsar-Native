@@ -1,7 +1,7 @@
 //! HTTP-backed filesystem provider for `pulsar-studio` servers.
 //!
 //! [`RemoteFsProvider`] talks to the file API that `pulsar-studio` exposes under
-//! `/api/v1/projects/:id/files/…`.  All operations are synchronous (blocking)
+//! `/api/v1/workspaces/:id/files/…`.  All operations are synchronous (blocking)
 //! so they can be used from any thread without an async runtime.
 
 use anyhow::{bail, Context as _, Result};
@@ -56,13 +56,13 @@ struct ApiStatResponse {
 
 // ── RemoteConfig ──────────────────────────────────────────────────────────────
 
-/// Connection details required to reach a `pulsar-studio` project over HTTP.
+/// Connection details required to reach a `pulsar-studio` server over HTTP.
 #[derive(Debug, Clone)]
 pub struct RemoteConfig {
     /// Base HTTP URL, e.g. `http://studio.example.com:7700`.
     pub server_url: String,
-    /// UUID of the project on the host server.
-    pub project_id: String,
+    /// UUID of the workspace on the host server.
+    pub workspace_id: String,
     /// Optional Bearer token for password-protected servers.
     pub auth_token: Option<String>,
 }
@@ -79,14 +79,14 @@ impl RemoteConfig {
         let slash = without_scheme.find('/')?;
         let host = &without_scheme[..slash];
         let rest = &without_scheme[slash + 1..];
-        let project_id_end = rest.find('/').unwrap_or(rest.len());
-        let project_id = rest[..project_id_end].to_string();
-        if project_id.is_empty() {
+        let workspace_id_end = rest.find('/').unwrap_or(rest.len());
+        let workspace_id = rest[..workspace_id_end].to_string();
+        if workspace_id.is_empty() {
             return None;
         }
         Some(RemoteConfig {
             server_url: format!("http://{}", host),
-            project_id,
+            workspace_id,
             auth_token: None,
         })
     }
@@ -122,8 +122,8 @@ impl RemoteFsProvider {
 
     fn files_base(&self) -> String {
         format!(
-            "{}/api/v1/projects/{}/files",
-            self.config.server_url, self.config.project_id
+            "{}/api/v1/workspaces/{}/files",
+            self.config.server_url, self.config.workspace_id
         )
     }
 
@@ -137,7 +137,7 @@ impl RemoteFsProvider {
     }
 
     /// Convert `path` to a forward-slash-separated string relative to the
-    /// project root, stripping any leading `cloud+pulsar://HOST/PROJECT_ID`.
+    /// workspace root, stripping any leading `cloud+pulsar://HOST/WORKSPACE_ID`.
     ///
     /// Also rejects path-traversal attempts (`..`).
     fn to_rel(&self, path: &Path) -> Result<String> {
@@ -148,7 +148,7 @@ impl RemoteFsProvider {
         let s = path.to_string_lossy().replace('\\', "/");
 
         let rel = if let Some(tail) = s.strip_prefix("cloud+pulsar://") {
-            // Strip  HOST / PROJECT_ID /  to get the bare relative path.
+            // Strip  HOST / WORKSPACE_ID /  to get the bare relative path.
             let after_host = tail.find('/').map(|i| &tail[i + 1..]).unwrap_or("");
             let after_proj = after_host
                 .find('/')

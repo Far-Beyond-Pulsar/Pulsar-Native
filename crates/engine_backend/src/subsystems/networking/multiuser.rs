@@ -7,6 +7,23 @@ use std::time::Instant;
 use tokio::sync::{mpsc, oneshot, watch, RwLock};
 use tracing::{debug, error, info, warn};
 
+/// Wire-level message for the `pulsar-studio` WebSocket session protocol.
+///
+/// Mirrors `studio-web/src/sessions/types.rs::WsMessage`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub(crate) enum StudioWsMessage {
+    Ping,
+    Pong,
+    UserJoined { user: String },
+    UserLeft { user: String },
+    UserList { users: Vec<String> },
+    StatePatch { #[serde(flatten)] patch: serde_json::Value },
+    Chat { user: String, text: String },
+    Error { message: String },
+    FileChanged { path: String, kind: String },
+}
+
 // Global Tokio runtime for WebSocket operations
 fn tokio_runtime() -> &'static tokio::runtime::Runtime {
     static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -568,6 +585,300 @@ impl MultiuserClient {
                 }
                 Err(e) => {
                     error!("Failed to connect to WebSocket: {}", e);
+                    *status_clone.write().await = ConnectionStatus::Error(e.to_string());
+                    *latency_ms_clone.write().await = None;
+                    let _ = result_tx.send(Err(anyhow::anyhow!("Connection failed: {}", e)));
+                }
+            }
+        });
+
+        // Wait for connection result from Tokio runtime
+        match result_rx.await {
+            Ok(Ok(())) => {
+                self.message_tx = Some(message_tx_for_client);
+                Ok(event_rx)
+            }
+            Ok(Err(e)) => {
+                self.shutdown_tx = None;
+                Err(e)
+            }
+            Err(_) => {
+                self.shutdown_tx = None;
+                Err(anyhow::anyhow!("Connection task failed"))
+            }
+        }
+    }
+
+    /// Connect to a `pulsar-studio` workspace session via Studio WebSocket protocol.
+    ///
+    /// Unlike [`connect`] which talks the pulsar-relay signalling protocol, this
+    /// method connects to the Studio session endpoint at
+    /// `/api/v1/workspaces/{wid}/session` and uses the simpler
+    /// `StudioWsMessage` protocol (pub/sub with user-list, chat and
+    /// state-patch messages).
+    pub async fn connect_to_workspace(
+        &mut self,
+        workspace_id: String,
+        auth_token: String,
+        username: String,
+    ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
+        *self.status.write().await = ConnectionStatus::Connecting;
+        *self.latency_ms.write().await = None;
+
+        let peer_id = username.clone();
+
+        // Build WebSocket URL for Studio session endpoint
+        let server_url_clean = self.server_url.trim().trim_end_matches('/');
+        let ws_base = if let Some(rest) = server_url_clean.strip_prefix("http://") {
+            format!("ws://{rest}")
+        } else if let Some(rest) = server_url_clean.strip_prefix("https://") {
+            format!("wss://{rest}")
+        } else {
+            format!("ws://{server_url_clean}")
+        };
+        let ws_url = format!(
+            "{}/api/v1/workspaces/{}/session?user={}&token={}",
+            ws_base, workspace_id, username, auth_token
+        );
+
+        info!("🔗 Connecting to Studio workspace session: {:?}", ws_url);
+
+        // Create channels for bidirectional communication
+        let (message_tx, message_rx) = mpsc::unbounded_channel::<ClientMessage>();
+        let message_tx_for_client = message_tx.clone();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<ServerMessage>();
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+        self.shutdown_tx = Some(shutdown_tx.clone());
+
+        let (result_tx, result_rx) = oneshot::channel();
+
+        let status_clone = self.status.clone();
+        let latency_ms_clone = self.latency_ms.clone();
+        let last_ping_at_clone = self.last_ping_at.clone();
+        let session_id_clone = workspace_id.clone();
+        let peer_id_clone = peer_id.clone();
+
+        tokio_runtime().spawn(async move {
+            let connect_result = connect_async(&ws_url).await;
+
+            match connect_result {
+                Ok((ws_stream, _)) => {
+                    info!("Studio WebSocket connected successfully");
+
+                    let (mut write, mut read) = ws_stream.split();
+
+                    // ── Send initial presence ──
+                    // Studio protocol doesn't require an explicit Join message;
+                    // just connecting with query params establishes identity.
+
+                    // Signal successful connection
+                    let _ = result_tx.send(Ok(()));
+
+                    // Spawn task to handle outgoing messages (map ClientMessage → StudioWsMessage)
+                    let status_clone_out = status_clone.clone();
+                    let ping_tx = message_tx.clone();
+                    let status_clone_ping = status_clone.clone();
+                    let last_ping_at_for_ping = last_ping_at_clone.clone();
+                    let mut write_shutdown_rx = shutdown_rx.clone();
+                    let username_for_write = username.clone();
+                    let (raw_tx, mut raw_rx) = mpsc::unbounded_channel::<StudioWsMessage>();
+                    tokio::spawn(async move {
+                        let mut message_rx = message_rx;
+                        loop {
+                            tokio::select! {
+                                changed = write_shutdown_rx.changed() => {
+                                    if changed.is_ok() && *write_shutdown_rx.borrow() {
+                                        let _ = write.send(Message::Close(None)).await;
+                                        break;
+                                    }
+                                }
+                                maybe_raw = raw_rx.recv() => {
+                                    match maybe_raw {
+                                        Some(ws_msg) => {
+                                            if let Ok(json) = serde_json::to_string(&ws_msg) {
+                                                if let Err(e) = write.send(Message::Text(json.into())).await {
+                                                    error!("Failed to send message: {}", e);
+                                                    *status_clone_out.write().await =
+                                                        ConnectionStatus::Error(e.to_string());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            let _ = write.send(Message::Close(None)).await;
+                                            break;
+                                        }
+                                    }
+                                }
+                                maybe_msg = message_rx.recv() => {
+                                    match maybe_msg {
+                                        Some(msg) => {
+                                            let ws_msg = match msg {
+                                                ClientMessage::ChatMessage { message, .. } => {
+                                                    StudioWsMessage::Chat {
+                                                        user: username_for_write.clone(),
+                                                        text: message,
+                                                    }
+                                                }
+                                                ClientMessage::Ping => StudioWsMessage::Ping,
+                                                _ => continue,
+                                            };
+                                            if let Ok(json) = serde_json::to_string(&ws_msg) {
+                                                if let Err(e) = write.send(Message::Text(json.into())).await {
+                                                    error!("Failed to send message: {}", e);
+                                                    *status_clone_out.write().await =
+                                                        ConnectionStatus::Error(e.to_string());
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            let _ = write.send(Message::Close(None)).await;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Spawn ping task
+                    let mut read_shutdown_rx = shutdown_rx.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::select! {
+                                changed = read_shutdown_rx.changed() => {
+                                    if changed.is_ok() && *read_shutdown_rx.borrow() {
+                                        break;
+                                    }
+                                }
+                                _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+                                    if matches!(*status_clone_ping.read().await, ConnectionStatus::Disconnected) {
+                                        break;
+                                    }
+                                    *last_ping_at_for_ping.write().await = Some(Instant::now());
+                                    if ping_tx.send(ClientMessage::Ping).is_err() {
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // ── Handle incoming messages (StudioWsMessage → ServerMessage) ──
+                    let mut incoming_shutdown_rx = shutdown_rx.clone();
+                    let mut first_message = true;
+                    loop {
+                        tokio::select! {
+                            changed = incoming_shutdown_rx.changed() => {
+                                if changed.is_ok() && *incoming_shutdown_rx.borrow() {
+                                    break;
+                                }
+                            }
+                            result = read.next() => {
+                                match result {
+                                    Some(Ok(Message::Text(text))) => {
+                                        match serde_json::from_str::<StudioWsMessage>(&text) {
+                                            Ok(studio_msg) => {
+                                                debug!("Received Studio message: {:?}", studio_msg);
+
+                                                match studio_msg {
+                                                    StudioWsMessage::Pong => {
+                                                        if let Some(sent_at) = last_ping_at_clone.write().await.take() {
+                                                            let rtt = sent_at.elapsed().as_millis();
+                                                            *latency_ms_clone.write().await = Some(rtt as u32);
+                                                        }
+                                                    }
+                                                    StudioWsMessage::UserList { users } => {
+                                                        if first_message {
+                                                            first_message = false;
+                                                            *status_clone.write().await =
+                                                                ConnectionStatus::Connected;
+                                                            let _ = event_tx.send(ServerMessage::Joined {
+                                                                session_id: session_id_clone.clone(),
+                                                                peer_id: peer_id_clone.clone(),
+                                                                participants: users,
+                                                                join_token: None,
+                                                                participant_profiles: None,
+                                                            });
+                                                        }
+                                                    }
+                                                    StudioWsMessage::UserJoined { user } => {
+                                                        let _ = event_tx.send(ServerMessage::PeerJoined {
+                                                            session_id: session_id_clone.clone(),
+                                                            peer_id: user,
+                                                            profile: None,
+                                                        });
+                                                    }
+                                                    StudioWsMessage::UserLeft { user } => {
+                                                        let _ = event_tx.send(ServerMessage::PeerLeft {
+                                                            session_id: session_id_clone.clone(),
+                                                            peer_id: user,
+                                                        });
+                                                    }
+                                                    StudioWsMessage::Chat { user, text } => {
+                                                        let _ = event_tx.send(ServerMessage::ChatMessage {
+                                                            session_id: session_id_clone.clone(),
+                                                            peer_id: user,
+                                                            message: text,
+                                                            timestamp: std::time::SystemTime::now()
+                                                                .duration_since(std::time::UNIX_EPOCH)
+                                                                .map(|d| d.as_secs())
+                                                                .unwrap_or(0),
+                                                        });
+                                                    }
+                                                    StudioWsMessage::StatePatch { patch } => {
+                                                        let data = patch.to_string();
+                                                        let _ = event_tx.send(ServerMessage::ReplicationUpdate {
+                                                            session_id: session_id_clone.clone(),
+                                                            from_peer_id: "studio".to_string(),
+                                                            data,
+                                                        });
+                                                    }
+                                                    StudioWsMessage::Error { message } => {
+                                                        error!("Studio session error: {}", message);
+                                                        *status_clone.write().await =
+                                                            ConnectionStatus::Error(message.clone());
+                                                        let _ = event_tx.send(ServerMessage::Error { message });
+                                                        break;
+                                                    }
+                                                    StudioWsMessage::Ping => {
+                                                        // Respond with Pong
+                                                        let _ = raw_tx.send(StudioWsMessage::Pong);
+                                                    }
+                                                    StudioWsMessage::FileChanged { .. } => {
+                                                        // File changes are handled via HTTP file API; ignore for now
+                                                    }
+                                                }
+                                            }
+                                            Err(e) => {
+                                                error!("Failed to parse Studio message: {}", e);
+                                            }
+                                        }
+                                    }
+                                    Some(Ok(Message::Close(_))) => {
+                                        info!("Studio WebSocket closed by server");
+                                        *status_clone.write().await = ConnectionStatus::Disconnected;
+                                        *latency_ms_clone.write().await = None;
+                                        break;
+                                    }
+                                    Some(Ok(Message::Ping(_))) => {}
+                                    Some(Ok(_)) => {}
+                                    Some(Err(e)) => {
+                                        error!("Studio WebSocket error: {}", e);
+                                        *status_clone.write().await =
+                                            ConnectionStatus::Error(e.to_string());
+                                        *latency_ms_clone.write().await = None;
+                                        break;
+                                    }
+                                    None => break,
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to connect to Studio WebSocket: {}", e);
                     *status_clone.write().await = ConnectionStatus::Error(e.to_string());
                     *latency_ms_clone.write().await = None;
                     let _ = result_tx.send(Err(anyhow::anyhow!("Connection failed: {}", e)));

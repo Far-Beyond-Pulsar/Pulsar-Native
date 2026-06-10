@@ -86,8 +86,8 @@ pub struct MultiuserContext {
     pub join_token: Option<String>,
     /// Optional Bearer token for the `pulsar-studio` file API.
     pub auth_token: Option<String>,
-    /// The project UUID on the `pulsar-studio` server.
-    pub project_id: Option<String>,
+    /// The workspace UUID on the `pulsar-studio` server.
+    pub workspace_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -114,14 +114,14 @@ impl MultiuserContext {
     /// Construct a cloud project session context.
     pub fn new_cloud_project(
         server_url: impl Into<String>,
-        project_id: impl Into<String>,
+        workspace_id: impl Into<String>,
         peer_id: impl Into<String>,
         host_peer_id: impl Into<String>,
     ) -> Self {
-        let project_id = project_id.into();
-        Self::new(server_url, project_id.clone(), peer_id, host_peer_id)
+        let workspace_id = workspace_id.into();
+        Self::new(server_url, workspace_id.clone(), peer_id, host_peer_id)
             .with_mode(MultiuserMode::CloudProject)
-            .with_project_id(project_id)
+            .with_workspace_id(workspace_id)
     }
 
     pub fn new(
@@ -146,7 +146,7 @@ impl MultiuserContext {
             latency_ms: None,
             join_token: None,
             auth_token: None,
-            project_id: None,
+            workspace_id: None,
         }
     }
 
@@ -185,8 +185,8 @@ impl MultiuserContext {
         self
     }
 
-    pub fn with_project_id(mut self, id: impl Into<String>) -> Self {
-        self.project_id = Some(id.into());
+    pub fn with_workspace_id(mut self, id: impl Into<String>) -> Self {
+        self.workspace_id = Some(id.into());
         self
     }
 

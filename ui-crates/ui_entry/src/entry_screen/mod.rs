@@ -28,6 +28,7 @@ use gpui::{prelude::*, *};
 fn insecure_tls_enabled() -> bool {
     std::env::var("PULSAR_INSECURE_TLS").as_deref() == Ok("1")
 }
+use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
 use std::collections::HashMap;
@@ -83,10 +84,14 @@ pub struct EntryScreen {
     pub(crate) show_add_server: bool,
     pub(crate) add_server_alias_input: Entity<InputState>,
     pub(crate) add_server_url_input: Entity<InputState>,
-    pub(crate) add_server_token_input: Entity<InputState>,
+    pub(crate) add_server_email_input: Entity<InputState>,
+    pub(crate) add_server_password_input: Entity<InputState>,
     pub(crate) add_server_alias: String,
     pub(crate) add_server_url: String,
-    pub(crate) add_server_token: String,
+    pub(crate) add_server_email: String,
+    pub(crate) add_server_password: String,
+    pub(crate) add_server_logging_in: bool,
+    pub(crate) add_server_error: Option<String>,
     // Cloud project creation dialog
     pub(crate) show_create_project: bool,
     pub(crate) create_project_name: String,
@@ -163,8 +168,10 @@ impl EntryScreen {
             cx.new(|cx| InputState::new(_window, cx).placeholder("My Studio Server"));
         let add_server_url_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("https://studio.example.com"));
-        let add_server_token_input = cx.new(|cx| {
-            InputState::new(_window, cx).placeholder("Bearer token (leave blank for open servers)")
+        let add_server_email_input =
+            cx.new(|cx| InputState::new(_window, cx).placeholder("email@example.com"));
+        let add_server_password_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("password")
         });
         let create_project_name_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("My Awesome Game"));
@@ -203,10 +210,14 @@ impl EntryScreen {
             show_add_server: false,
             add_server_alias_input: add_server_alias_input.clone(),
             add_server_url_input: add_server_url_input.clone(),
-            add_server_token_input: add_server_token_input.clone(),
+            add_server_email_input: add_server_email_input.clone(),
+            add_server_password_input: add_server_password_input.clone(),
             add_server_alias: String::new(),
             add_server_url: String::new(),
-            add_server_token: String::new(),
+            add_server_email: String::new(),
+            add_server_password: String::new(),
+            add_server_logging_in: false,
+            add_server_error: None,
             show_create_project: false,
             create_project_name: String::new(),
             create_project_description: String::new(),
@@ -307,10 +318,19 @@ impl EntryScreen {
         )
         .detach();
         cx.subscribe(
-            &add_server_token_input,
+            &add_server_email_input,
             |this, _input, event: &ui::input::InputEvent, cx| {
                 if let ui::input::InputEvent::Change = event {
-                    this.add_server_token = this.add_server_token_input.read(cx).text().to_string();
+                    this.add_server_email = this.add_server_email_input.read(cx).text().to_string();
+                }
+            },
+        )
+        .detach();
+        cx.subscribe(
+            &add_server_password_input,
+            |this, _input, event: &ui::input::InputEvent, cx| {
+                if let ui::input::InputEvent::Change = event {
+                    this.add_server_password = this.add_server_password_input.read(cx).text().to_string();
                 }
             },
         )
@@ -1003,16 +1023,60 @@ default_scene = "scenes/main.scene"
     }
 
     /// Add a new server entry, persist it, and immediately start a connectivity poll.
+    /// Authenticate against the server and add it to the cloud server list.
+    /// On success the returned JWT is stored as `auth_token` and the server list
+    /// is persisted so the user never needs to re-enter credentials.
     pub(crate) fn add_cloud_server(
         &mut self,
         alias: String,
         url: String,
-        token: String,
+        email: String,
+        password: String,
         cx: &mut Context<Self>,
     ) {
-        if url.trim().is_empty() {
+        if url.trim().is_empty() || email.trim().is_empty() || password.is_empty() {
+            self.add_server_error = Some("Email and password are required.".to_string());
+            cx.notify();
             return;
         }
+        self.add_server_logging_in = true;
+        self.add_server_error = None;
+        cx.notify();
+
+        let raw = url.trim().trim_end_matches('/');
+        let base_url = if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("http://{}", raw)
+        };
+        let login_url = format!("{}/api/v1/auth/login", base_url);
+        let login_body = serde_json::json!({ "email": email, "password": password });
+
+        let (tx, rx) = smol::channel::bounded::<Option<String>>(1);
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                let result = rt.block_on(async move {
+                    let client = reqwest::Client::builder()
+                        .timeout(std::time::Duration::from_secs(10))
+                        .danger_accept_invalid_certs(false)
+                        .build()
+                        .ok()?;
+                    let resp = client.post(&login_url).json(&login_body).send().await.ok()?;
+                    if !resp.status().is_success() {
+                        return None;
+                    }
+                    let data: serde_json::Value = resp.json().await.ok()?;
+                    data.get("token")?.as_str().map(|s| s.to_string())
+                });
+                smol::block_on(tx.send(result));
+            } else {
+                smol::block_on(tx.send(None));
+            }
+        });
+
         let id = format!(
             "{:x}",
             std::time::SystemTime::now()
@@ -1020,24 +1084,44 @@ default_scene = "scenes/main.scene"
                 .map(|d| d.as_nanos())
                 .unwrap_or(0)
         );
-        let server = CloudServer {
-            id,
-            alias: if alias.trim().is_empty() {
-                url.clone()
-            } else {
-                alias
-            },
-            url: url.trim_end_matches('/').to_string(),
-            auth_token: token,
-            status: CloudServerStatus::Unknown,
-            projects: Vec::new(),
+        let alias = if alias.trim().is_empty() {
+            url.clone()
+        } else {
+            alias
         };
-        self.cloud_servers.push(server);
-        self.save_cloud_servers();
-        self.show_add_server = false;
-        let new_idx = self.cloud_servers.len() - 1;
-        self.refresh_cloud_server(new_idx, cx);
-        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let token = rx.recv().await.unwrap_or(None);
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.add_server_logging_in = false;
+                    match token {
+                        Some(jwt) => {
+                            let server = CloudServer {
+                                id,
+                                alias: alias.clone(),
+                                url: base_url.clone(),
+                                auth_token: jwt,
+                                status: CloudServerStatus::Unknown,
+                                projects: Vec::new(),
+                            };
+                            screen.cloud_servers.push(server);
+                            screen.save_cloud_servers();
+                            screen.show_add_server = false;
+                            let new_idx = screen.cloud_servers.len() - 1;
+                            screen.refresh_cloud_server(new_idx, cx);
+                        }
+                        None => {
+                            screen.add_server_error = Some(
+                                "Login failed. Check your email/password and server URL.".to_string(),
+                            );
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     /// Remove a server entry by index and persist.
@@ -1123,11 +1207,11 @@ default_scene = "scenes/main.scene"
         }
     }
 
-    /// Signal a specific project on a server to warm up (prepare), then refresh.
+    /// Signal a specific workspace on a server to warm up (prepare), then refresh.
     pub(crate) fn prepare_cloud_project(
         &mut self,
         server_idx: usize,
-        project_id: String,
+        workspace_id: String,
         cx: &mut Context<Self>,
     ) {
         if server_idx >= self.cloud_servers.len() {
@@ -1143,13 +1227,13 @@ default_scene = "scenes/main.scene"
             format!("http://{}", raw)
         };
         let token = self.cloud_servers[server_idx].auth_token.clone();
-        let post_url = format!("{}/api/v1/projects/{}/prepare", base_url, project_id);
+        let post_url = format!("{}/api/v1/workspaces/{}/prepare", base_url, workspace_id);
 
         // Optimistic status update
         if let Some(proj) = self.cloud_servers[server_idx]
             .projects
             .iter_mut()
-            .find(|p| p.id == project_id)
+            .find(|p| p.id == workspace_id)
         {
             proj.status = CloudProjectStatus::Preparing;
         }
@@ -1194,7 +1278,7 @@ default_scene = "scenes/main.scene"
         .detach();
     }
 
-    /// Create a new project on a remote server via `POST /api/v1/projects`, then refresh.
+    /// Create a new project on a remote server via `POST /api/v1/workspaces`, then refresh.
     pub(crate) fn create_cloud_project(
         &mut self,
         server_idx: usize,
@@ -1215,7 +1299,7 @@ default_scene = "scenes/main.scene"
             format!("http://{}", raw)
         };
         let token = self.cloud_servers[server_idx].auth_token.clone();
-        let post_url = format!("{}/api/v1/projects", base_url);
+        let post_url = format!("{}/api/v1/workspaces", base_url);
 
         self.show_create_project = false;
         cx.notify();
@@ -1260,11 +1344,11 @@ default_scene = "scenes/main.scene"
         .detach();
     }
 
-    /// Send `DELETE /api/v1/projects/{id}` to the server, then refresh.
+    /// Send `DELETE /api/v1/workspaces/{id}` to the server, then refresh.
     pub(crate) fn delete_cloud_project(
         &mut self,
         server_idx: usize,
-        project_id: String,
+        workspace_id: String,
         cx: &mut Context<Self>,
     ) {
         if server_idx >= self.cloud_servers.len() {
@@ -1280,7 +1364,7 @@ default_scene = "scenes/main.scene"
             format!("http://{}", raw)
         };
         let token = self.cloud_servers[server_idx].auth_token.clone();
-        let delete_url = format!("{}/api/v1/projects/{}", base_url, project_id);
+        let delete_url = format!("{}/api/v1/workspaces/{}", base_url, workspace_id);
 
         let (tx, rx) = smol::channel::bounded::<()>(1);
         std::thread::spawn(move || {
@@ -1319,11 +1403,11 @@ default_scene = "scenes/main.scene"
         .detach();
     }
 
-    /// Send `POST /api/v1/projects/{id}/stop` to the server, then refresh.
+    /// Send `POST /api/v1/workspaces/{id}/stop` to the server, then refresh.
     pub(crate) fn stop_cloud_project(
         &mut self,
         server_idx: usize,
-        project_id: String,
+        workspace_id: String,
         cx: &mut Context<Self>,
     ) {
         if server_idx >= self.cloud_servers.len() {
@@ -1339,12 +1423,12 @@ default_scene = "scenes/main.scene"
             format!("http://{}", raw)
         };
         let token = self.cloud_servers[server_idx].auth_token.clone();
-        let stop_url = format!("{}/api/v1/projects/{}/stop", base_url, project_id);
+        let stop_url = format!("{}/api/v1/workspaces/{}/stop", base_url, workspace_id);
 
         if let Some(proj) = self.cloud_servers[server_idx]
             .projects
             .iter_mut()
-            .find(|p| p.id == project_id)
+            .find(|p| p.id == workspace_id)
         {
             proj.status = CloudProjectStatus::Idle;
         }
@@ -1387,11 +1471,11 @@ default_scene = "scenes/main.scene"
         .detach();
     }
 
-    /// Open a Running cloud project in the editor by emitting a ProjectSelected event.
+    /// Open a Running cloud workspace in the editor by emitting a ProjectSelected event.
     pub(crate) fn open_cloud_project(
         &mut self,
         server_idx: usize,
-        project_id: String,
+        workspace_id: String,
         cx: &mut Context<Self>,
     ) {
         if server_idx >= self.cloud_servers.len() {
@@ -1422,27 +1506,27 @@ default_scene = "scenes/main.scene"
         // ── Set up remote virtual filesystem ─────────────────────────────────
         let remote_config = engine_fs::RemoteConfig {
             server_url: base_url.clone(),
-            project_id: project_id.clone(),
+            workspace_id: workspace_id.clone(),
             auth_token: auth_token.clone(),
         };
         engine_fs::virtual_fs::set_provider(std::sync::Arc::new(engine_fs::RemoteFsProvider::new(
             remote_config,
         )));
         tracing::info!(
-            "🌐 RemoteFsProvider configured for project '{}' at {}",
-            project_id,
+            "🌐 RemoteFsProvider configured for workspace '{}' at {}",
+            workspace_id,
             base_url
         );
 
         // ── Record connection details in engine state ─────────────────────────
         let ctx = engine_state::MultiuserContext::new_cloud_project(
             base_url.clone(),
-            project_id.clone(),
+            workspace_id.clone(),
             "local",  // peer_id (populated later on WS connect)
             "remote", // host_peer_id
         )
         .with_status(engine_state::MultiuserStatus::Connecting)
-        .with_project_id(project_id.clone());
+        .with_workspace_id(workspace_id.clone());
 
         let ctx = if let Some(ref t) = auth_token {
             ctx.with_auth_token(t.clone())
@@ -1462,9 +1546,53 @@ default_scene = "scenes/main.scene"
             base_url
                 .trim_start_matches("http://")
                 .trim_start_matches("https://"),
-            project_id
+            workspace_id
         ));
         cx.emit(crate::entry_screen::project_selector::ProjectSelected { path: virtual_path });
+
+        // ── Connect to the Studio session WebSocket in background ──────────
+        let ws_url = base_url.clone();
+        let wid = workspace_id.clone();
+        let token = auth_token.clone().unwrap_or_default();
+        // Use the auth token as username if available; fall back to "editor"
+        let user = "editor".to_string();
+        std::thread::spawn(move || {
+            if let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                rt.block_on(async move {
+                    let mut client = MultiuserClient::new(ws_url.clone());
+                    match client.connect_to_workspace(wid, token, user).await {
+                        Ok(mut event_rx) => {
+                            tracing::info!("Connected to Studio workspace session");
+                            // Update EngineContext status on join
+                            if let Some(ec) = engine_state::EngineContext::global() {
+                                let _ = ec.update_multiuser(|mu| {
+                                    mu.set_status(engine_state::MultiuserStatus::Connected {
+                                        relay_mode: None,
+                                    });
+                                });
+                                ec.notify_multiuser_changed();
+                            }
+                            // Keep connection alive by receiving events
+                            while event_rx.recv().await.is_some() {}
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to connect to workspace session: {e}");
+                            if let Some(ec) = engine_state::EngineContext::global() {
+                                let _ = ec.update_multiuser(|mu| {
+                                    mu.set_status(engine_state::MultiuserStatus::Error(
+                                        e.to_string(),
+                                    ));
+                                });
+                                ec.notify_multiuser_changed();
+                            }
+                        }
+                    }
+                });
+            }
+        });
     }
 
     pub(crate) fn auth_profile(&self) -> Option<engine_state::AuthProfile> {
@@ -1909,7 +2037,7 @@ fn fetch_cloud_server_info(
         .ok()?;
     rt.block_on(async move {
         let info_url = format!("{}/api/v1/info", base_url);
-        let projects_url = format!("{}/api/v1/projects", base_url);
+        let projects_url = format!("{}/api/v1/workspaces", base_url);
         let tok: Option<String> = if token.is_empty() { None } else { Some(token) };
 
         let client = reqwest::Client::builder()
@@ -1952,14 +2080,15 @@ fn fetch_cloud_server_info(
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0) as u32,
                     active_projects: info
-                        .get("active_projects")
+                        .get("active_workspaces")
+                        .or_else(|| info.get("active_projects"))
                         .and_then(|v| v.as_u64())
                         .unwrap_or(0) as u32,
                 }
             }
         };
 
-        // ── Fetch /api/v1/projects ──
+        // ── Fetch /api/v1/workspaces ──
         let proj_req = {
             let r = client.get(&projects_url);
             if let Some(ref t) = tok {
@@ -1991,19 +2120,19 @@ fn fetch_cloud_server_info(
                                 .unwrap_or("")
                                 .to_string();
                             let last_modified = p
-                                .get("last_modified")
+                                .get("updated_at")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
                             let size_bytes =
                                 p.get("size_bytes").and_then(|v| v.as_u64()).unwrap_or(0);
                             let owner = p
-                                .get("owner")
+                                .get("owner_name")
                                 .and_then(|v| v.as_str())
                                 .unwrap_or("")
                                 .to_string();
                             let user_count =
-                                p.get("user_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                                p.get("member_count").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
                             let project_status =
                                 match p.get("status").and_then(|v| v.as_str()).unwrap_or("idle") {
                                     "preparing" => CloudProjectStatus::Preparing,

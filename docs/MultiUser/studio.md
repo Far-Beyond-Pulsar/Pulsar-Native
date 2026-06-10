@@ -8,7 +8,7 @@ Pulsar Studio is designed for teams and individuals who want a **centralized, se
 
 Typical users include:
 
-- **Game studios** with a dedicated build server or NAS that stores project files
+- **Game studios** with a dedicated build server or NAS that stores workspace files
 - **Remote teams** working across different networks where NAT traversal would be unreliable
 - **Organizations** that require a single machine to own the authoritative copy of project data
 - **Anyone** who prefers the simplicity of a client-server model over P2P networking
@@ -121,32 +121,32 @@ All file paths are relative to the project root, URL-encoded as query parameters
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/v1/projects/{id}/files?path={rel}` | No | Read file (base64 response) |
-| `GET` | `/api/v1/projects/{id}/files/list?path={rel}` | No | List directory children |
-| `GET` | `/api/v1/projects/{id}/files/manifest?path={rel}` | No | Full recursive file tree |
-| `GET` | `/api/v1/projects/{id}/files/exists?path={rel}` | No | Check path existence |
-| `GET` | `/api/v1/projects/{id}/files/stat?path={rel}` | No | Get file metadata |
-| `PUT` | `/api/v1/projects/{id}/files?path={rel}[&create=true]` | Yes | Write/create file (base64 body) |
-| `DELETE` | `/api/v1/projects/{id}/files?path={rel}` | Yes | Delete file or directory |
-| `POST` | `/api/v1/projects/{id}/files/mkdir?path={rel}` | Yes | Create directory recursively |
-| `POST` | `/api/v1/projects/{id}/files/rename` | Yes | Rename/move a path (JSON body) |
+| `GET` | `/api/v1/workspaces/{wid}/files?path={rel}` | Yes | Read file (base64 response) |
+| `GET` | `/api/v1/workspaces/{wid}/files/list?path={rel}` | Yes | List directory children |
+| `GET` | `/api/v1/workspaces/{wid}/files/manifest?path={rel}` | Yes | Full recursive file tree |
+| `GET` | `/api/v1/workspaces/{wid}/files/exists?path={rel}` | Yes | Check path existence |
+| `GET` | `/api/v1/workspaces/{wid}/files/stat?path={rel}` | Yes | Get file metadata |
+| `PUT` | `/api/v1/workspaces/{wid}/files?path={rel}[&create=true]` | Yes | Write/create file (base64 body) |
+| `DELETE` | `/api/v1/workspaces/{wid}/files?path={rel}` | Yes | Delete file or directory |
+| `POST` | `/api/v1/workspaces/{wid}/files/mkdir?path={rel}` | Yes | Create directory recursively |
+| `POST` | `/api/v1/workspaces/{wid}/files/rename` | Yes | Rename/move a path (JSON body) |
 
-### Project Lifecycle
+### Project Lifecycle (Workspaces)
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/v1/projects` | No | List all projects |
-| `GET` | `/api/v1/projects/{id}` | No | Get project details |
-| `POST` | `/api/v1/projects` | Yes | Create a new project |
-| `POST` | `/api/v1/projects/{id}/prepare` | Yes | Prepare/start a project |
-| `POST` | `/api/v1/projects/{id}/stop` | Yes | Stop a project |
-| `DELETE` | `/api/v1/projects/{id}` | Yes | Delete a project |
+| `GET` | `/api/v1/workspaces` | Yes | List all workspaces |
+| `GET` | `/api/v1/workspaces/{wid}` | Yes | Get workspace details |
+| `POST` | `/api/v1/workspaces` | Yes | Create a new workspace |
+| `POST` | `/api/v1/workspaces/{wid}/prepare` | Yes | Prepare/start a workspace |
+| `POST` | `/api/v1/workspaces/{wid}/stop` | Yes | Stop a workspace |
+| `DELETE` | `/api/v1/workspaces/{wid}` | Yes | Delete a workspace |
 
 ### Session
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| `GET` | `/api/v1/projects/{id}/session?user={name}[&token=...]` | Yes* | Upgrade to WebSocket |
+| `GET` | `/api/v1/workspaces/{wid}/session?user={name}[&token=...]` | Yes* | Upgrade to WebSocket |
 
 *Required only if `auth_required` is enabled.
 

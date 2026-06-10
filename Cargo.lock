@@ -12938,6 +12938,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "directories 6.0.0",
+ "engine_backend",
  "engine_fs",
  "engine_state",
  "git2",
