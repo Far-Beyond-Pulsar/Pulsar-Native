@@ -11,7 +11,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use crate::auth::Role;
+use pulsar_multiplayer_core::session::Role;
 use crate::config::Config;
 use crate::metrics::METRICS;
 

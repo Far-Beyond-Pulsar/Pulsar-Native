@@ -36,6 +36,9 @@ rand = { workspace = true }
 # JWT
 jsonwebtoken = "10.0"
 
+# Async trait support
+async-trait = "0.1"
+
 # Serialization
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -62,6 +65,9 @@ sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "tls-rustls",
 clap = { workspace = true, features = ["derive", "env"] }
 config = "0.15"
 anyhow = { workspace = true }
+
+# Pulsar multiplayer core
+pulsar-multiplayer-core = { workspace = true }
 
 # Utilities
 uuid = { workspace = true, features = ["v4", "serde"] }

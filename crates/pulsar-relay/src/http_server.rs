@@ -19,7 +19,8 @@ use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
-use crate::auth::{AuthService, Role};
+use crate::auth::AuthService;
+use pulsar_multiplayer_core::session::Role;
 use crate::config::Config;
 use crate::health::HealthChecker;
 use crate::metrics::METRICS;

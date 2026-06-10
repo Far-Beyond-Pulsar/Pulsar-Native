@@ -61,7 +61,8 @@ pub mod telemetry;
 pub mod transport;
 
 // Re-export commonly used types
-pub use auth::{AuthService, Role};
+pub use auth::AuthService;
+pub use pulsar_multiplayer_core::session::Role;
 pub use config::Config;
 pub use crdt::{ORSet, RGASeq};
 pub use health::HealthChecker;

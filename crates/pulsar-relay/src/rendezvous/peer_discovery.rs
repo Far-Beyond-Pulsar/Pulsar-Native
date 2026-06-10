@@ -4,7 +4,8 @@ use dashmap::DashMap;
 use std::time::SystemTime;
 use tokio::sync::mpsc;
 
-use super::sync_protocol::{PeerProfile, ServerMessage};
+use pulsar_multiplayer_core::session::PeerProfile;
+use super::sync_protocol::ServerMessage;
 
 /// Peer session information
 #[derive(Debug, Clone)]

@@ -7,7 +7,8 @@ mod session_manager;
 mod sync_protocol;
 
 pub use session_manager::RendezvousCoordinator;
-pub use sync_protocol::{CandidateDto, ClientMessage, PeerProfile, ServerMessage};
+pub use pulsar_multiplayer_core::session::PeerProfile;
+pub use sync_protocol::{CandidateDto, ClientMessage, ServerMessage};
 
 use anyhow::{Context, Result};
 use axum::{
@@ -24,7 +25,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
-use crate::auth::Role;
+use pulsar_multiplayer_core::session::Role;
 
 use crate::metrics::METRICS;
 use peer_discovery::PeerSession;

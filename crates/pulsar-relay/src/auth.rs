@@ -5,6 +5,9 @@ use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use pulsar_multiplayer_core::auth::{AuthError, SessionAuth};
+use pulsar_multiplayer_core::session::Role;
+
 use crate::config::Config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,31 +19,6 @@ pub struct Claims {
     pub exp: u64,                  // Expiration timestamp
     pub iat: u64,                  // Issued at timestamp
     pub nbf: u64,                  // Not before timestamp
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    Host,
-    Editor,
-    Observer,
-}
-
-impl Role {
-    pub fn capabilities(&self) -> Vec<String> {
-        match self {
-            Role::Host => vec![
-                "create_session".to_string(),
-                "close_session".to_string(),
-                "edit".to_string(),
-                "read".to_string(),
-                "invite".to_string(),
-                "kick".to_string(),
-            ],
-            Role::Editor => vec!["edit".to_string(), "read".to_string()],
-            Role::Observer => vec!["read".to_string()],
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -255,6 +233,27 @@ impl AuthService {
     /// Get server public key
     pub fn server_public_key(&self) -> &VerifyingKey {
         &self.server_verifying_key
+    }
+}
+
+#[async_trait::async_trait]
+impl SessionAuth for AuthService {
+    async fn create_join_token(
+        &self,
+        session_id: &str,
+        role: Role,
+        ttl: Duration,
+    ) -> Result<String, AuthError> {
+        self.create_join_token(session_id.to_string(), role, ttl)
+            .map_err(|e| AuthError::Internal(e.to_string()))
+    }
+
+    async fn verify_join_token(
+        &self,
+        token: &str,
+    ) -> Result<(String, Role), AuthError> {
+        self.verify_join_token(token)
+            .map_err(|e| AuthError::Invalid(e.to_string()))
     }
 }
 

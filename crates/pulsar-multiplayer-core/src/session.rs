@@ -22,6 +22,7 @@ pub struct ParticipantInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
 pub enum Role {
     Host,
     Editor,
@@ -32,6 +33,21 @@ impl Role {
     pub fn can_write(&self) -> bool {
         matches!(self, Role::Host | Role::Editor)
     }
+
+    pub fn capabilities(&self) -> Vec<String> {
+        match self {
+            Role::Host => vec![
+                "create_session".to_string(),
+                "close_session".to_string(),
+                "edit".to_string(),
+                "read".to_string(),
+                "invite".to_string(),
+                "kick".to_string(),
+            ],
+            Role::Editor => vec!["edit".to_string(), "read".to_string()],
+            Role::Observer => vec!["read".to_string()],
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -41,6 +57,7 @@ pub enum SessionMode {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum FileChangeKind {
     Created,
     Modified,
@@ -60,4 +77,5 @@ pub struct PeerProfile {
     pub peer_id: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub github_login: Option<String>,
 }

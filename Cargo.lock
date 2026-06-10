@@ -8537,6 +8537,7 @@ name = "pulsar-relay"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
  "base64",
  "bincode",
@@ -8560,6 +8561,7 @@ dependencies = [
  "prometheus",
  "proptest",
  "prost-build",
+ "pulsar-multiplayer-core",
  "quinn",
  "rand 0.10.1",
  "rcgen",

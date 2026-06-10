@@ -1,15 +1,8 @@
 //! Wire protocol types: ClientMessage, ServerMessage, CandidateDto
 
 use crate::nat::ConnectionCandidate;
+use pulsar_multiplayer_core::session::PeerProfile;
 use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct PeerProfile {
-    pub peer_id: String,
-    pub display_name: Option<String>,
-    pub avatar_url: Option<String>,
-    pub github_login: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
