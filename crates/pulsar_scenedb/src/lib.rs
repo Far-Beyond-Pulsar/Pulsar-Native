@@ -44,6 +44,7 @@ pub mod component_store;
 pub mod entity;
 pub mod handle;
 pub mod query;
+pub mod registry;
 pub mod schedule;
 pub mod world;
 
@@ -55,5 +56,6 @@ pub use entity::Entity;
 pub use handle::Handle;
 pub use pulsar_core::GameTime;
 pub use query::{QueryIter, WorldQuery};
+pub use registry::{HandleRegistry, NULL_ROW};
 pub use schedule::Schedule;
 pub use world::World;
