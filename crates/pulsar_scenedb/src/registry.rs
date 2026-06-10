@@ -10,8 +10,9 @@ pub const NULL_ROW: u32 = 0xFFFF_FFFF;
 /// - `generations[slot]` is the live generation if the slot is allocated,
 ///   or the generation a recycled allocation *will get* if free.
 /// - `slot_to_row[slot] == NULL_ROW` iff the slot is unallocated.
-/// - A slot whose next generation would be `u32::MAX` is moved to `retired`
-///   and never reissued (spec §3.2).
+/// - A slot whose generation reaches `u32::MAX` on free is permanently
+///   retired (never pushed back to the free pool) — see spec §3.2. Its
+///   `generations[slot]` entry stays at `u32::MAX` as a tombstone.
 pub struct HandleRegistry {
     generations: Vec<u32>,
     slot_to_row: Vec<u32>,
@@ -51,7 +52,12 @@ impl HandleRegistry {
         }
         let slot = handle.index() as usize;
         self.slot_to_row[slot] = NULL_ROW;
-        let next = handle.generation().wrapping_add(1);
+        debug_assert!(
+            handle.generation() < u32::MAX,
+            "generation overflow on slot {}: a slot reaching u32::MAX must already be retired",
+            handle.index()
+        );
+        let next = handle.generation() + 1;
         self.generations[slot] = next;
         if next == u32::MAX {
             self.retired_count += 1;
@@ -84,13 +90,27 @@ impl HandleRegistry {
 
     /// Redirect a slot to a new row. Called by frame-boundary compaction
     /// when swap-and-pop moves an element (spec §4.4).
+    ///
+    /// Callers must guarantee `slot` was allocated and is currently live.
     #[inline]
     pub fn set_row(&mut self, slot: u32, row: u32) {
+        debug_assert!(
+            (slot as usize) < self.slot_to_row.len(),
+            "set_row: slot {} out of range (len={})",
+            slot,
+            self.slot_to_row.len()
+        );
+        debug_assert!(
+            self.slot_to_row[slot as usize] != NULL_ROW,
+            "set_row: slot {} is not live (freed or never allocated)",
+            slot
+        );
         self.slot_to_row[slot as usize] = row;
     }
 
     /// Read-only view of the generation array (uploaded to the VRAM
-    /// validation buffer in Layer 2/3).
+    /// validation buffer in Layer 2/3). Retired slots hold `u32::MAX`;
+    /// `is_live` still rejects them via the slot→row `NULL_ROW` check.
     pub fn generations(&self) -> &[u32] {
         &self.generations
     }
@@ -162,6 +182,7 @@ mod tests {
         // Recycling this slot would need gen u32::MAX → permanently retired.
         let h2 = reg.allocate(0);
         assert_ne!(h2.index(), slot, "retired slot must never be reissued");
+        assert_eq!(h2.generation(), 1, "a fresh slot starts at generation 1");
     }
 
     #[test]
