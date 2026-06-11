@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use helio::{MaterialId, MeshId, MeshUpload};
+use tracing;
 
 /// Cache of GPU-uploaded mesh geometry, keyed by the resolved asset path.
 ///
@@ -24,6 +25,39 @@ impl MeshCache {
 
     pub fn insert(&mut self, key: String, ids: (MeshId, MaterialId)) {
         self.upload_cache.insert(key, ids);
+    }
+}
+
+/// Per-object-instance scene cache, keyed by scene-object ID.
+///
+/// Tracks which scene objects exist per component instance so that
+/// the editor can update transforms in-place instead of deleting and
+/// re-inserting every frame (which would cascade-free meshes/materials
+/// in the helio scene).
+pub struct SceneObjectCache {
+    /// scene_object_id → (ObjectId, mesh_asset_path)
+    pub map: HashMap<String, (helio::ObjectId, String)>,
+}
+
+impl SceneObjectCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, scene_id: &str) -> Option<(helio::ObjectId, &str)> {
+        self.map
+            .get(scene_id)
+            .map(|(id, path)| (*id, path.as_str()))
+    }
+
+    pub fn insert(&mut self, scene_id: String, obj_id: helio::ObjectId, mesh_asset: String) {
+        self.map.insert(scene_id, (obj_id, mesh_asset));
+    }
+
+    pub fn remove(&mut self, scene_id: &str) -> Option<(helio::ObjectId, String)> {
+        self.map.remove(scene_id)
     }
 }
 
@@ -55,25 +89,51 @@ fn embedded_primitive(stem: &str) -> Option<&'static [u8]> {
 
 /// Resolve an asset path to an existing file on disk.
 ///
-/// Checks (in order): absolute, project-root-relative, engine built-in assets.
+/// Checks (in order):
+///  1. absolute path
+///  2. project-root-relative
+///  3. working-directory-relative
+///  4. `cwd/assets/` (editor convention)
+///  5. engine built-in assets (embedded primitives dir)
 pub fn resolve_asset_path(project_root: &Path, asset: &str) -> PathBuf {
     let norm = asset.replace('\\', "/");
     let p = Path::new(&norm);
 
+    tracing::info!("[RAP] asset={:?} project_root={:?}", asset, project_root);
+
     if p.is_absolute() && p.exists() {
+        tracing::info!("[RAP] FOUND absolute {:?}", p);
         return p.to_path_buf();
     }
 
     let proj = project_root.join(&norm);
     if proj.exists() {
+        tracing::info!("[RAP] FOUND project-root {:?}", proj);
         return proj;
     }
 
+    if let Ok(cwd) = std::env::current_dir() {
+        tracing::info!("[RAP] cwd={:?}", cwd);
+        let cwd_path = cwd.join(&norm);
+        if cwd_path.exists() {
+            tracing::info!("[RAP] FOUND cwd {:?}", cwd_path);
+            return cwd_path;
+        }
+        let cwd_assets = cwd.join("assets").join(&norm);
+        if cwd_assets.exists() {
+            tracing::info!("[RAP] FOUND cwd/assets {:?}", cwd_assets);
+            return cwd_assets;
+        }
+    }
+
     let engine = Path::new(ENGINE_ASSETS_DIR).join(&norm);
+    tracing::info!("[RAP] checking engine={:?}", engine);
     if engine.exists() {
+        tracing::info!("[RAP] FOUND engine {:?}", engine);
         return engine;
     }
 
+    tracing::warn!("[RAP] NOT FOUND — returning fallback {:?}", proj);
     proj
 }
 

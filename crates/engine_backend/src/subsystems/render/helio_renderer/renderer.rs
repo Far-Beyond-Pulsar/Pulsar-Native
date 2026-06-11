@@ -17,7 +17,7 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::subsystems::MeshCache;
+use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{ObjectType, SceneObjectSnapshot};
@@ -93,6 +93,9 @@ struct HelioInner {
     /// Persists GPU-uploaded mesh geometry across frames so components
     /// don't re-load + re-upload the same asset every sync pass.
     mesh_cache: MeshCache,
+    /// Tracks scene object instances keyed by tag for incremental
+    /// update (avoid cascade-free on clear-all-insert-each-frame).
+    object_cache: SceneObjectCache,
 }
 
 impl HelioRenderer {
@@ -180,6 +183,7 @@ impl HelioRenderer {
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
                 mesh_cache: MeshCache::new(),
+                object_cache: SceneObjectCache::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -694,6 +698,7 @@ impl HelioRenderer {
             renderer: &'a mut Renderer,
             subsystems: Subsystems,
             error_queue: &'a Arc<Mutex<Vec<String>>>,
+            project_root: PathBuf,
         }
 
         impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
@@ -702,7 +707,7 @@ impl HelioRenderer {
             }
 
             fn project_root(&self) -> &std::path::Path {
-                std::path::Path::new("")
+                &self.project_root
             }
 
             fn report_error(&mut self, message: String) {
@@ -718,8 +723,7 @@ impl HelioRenderer {
             return;
         }
 
-        // Clear all lights and objects each frame — components re-insert fresh.
-        // Mesh geometry stays cached in inner.mesh_cache so re-upload is avoided.
+        // Clear lights each frame (no cascade-free — lights don't ref count).
         let light_ids: Vec<LightId> = inner
             .renderer
             .scene()
@@ -729,15 +733,11 @@ impl HelioRenderer {
         for id in light_ids {
             let _ = inner.renderer.scene_mut().remove_light(id);
         }
-        let object_ids: Vec<helio::ObjectId> = inner
-            .renderer
-            .scene()
-            .iter_objects_for_editor()
-            .map(|entry| entry.0)
-            .collect();
-        for id in object_ids {
-            let _ = inner.renderer.scene_mut().remove_object(id);
-        }
+        // Objects are managed incrementally through SceneObjectCache:
+        // components call get_subsystem!(context, SceneObjectCache) to look up
+        // existing objects by tag, then either update transforms in-place or
+        // insert new ones.  After the sync pass we remove stale entries (those
+        // the component system didn't touch this frame).
 
         // ── Component sync pass ───────────────────────────────────────────────
         let t_snap = std::time::Instant::now();
@@ -766,11 +766,16 @@ impl HelioRenderer {
             let mut subsystems = Subsystems::new();
             subsystems.register_ref::<Renderer>(&mut inner.renderer);
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
+            subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
+            let project_root = engine_state::get_project_path()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
                 subsystems,
                 error_queue,
+                project_root,
             };
 
             for (component_index, class_name, data) in component_instances {
@@ -787,6 +792,20 @@ impl HelioRenderer {
         let comp_ms = t_components.elapsed().as_secs_f64() * 1000.0;
         if comp_ms > 2.0 {
             tracing::warn!("[SYNC_SCENE] component loop took {:.2}ms", comp_ms);
+        }
+
+        // Remove stale scene objects and cache entries (components didn't touch them).
+        let stale_ids: Vec<String> = inner
+            .object_cache
+            .map
+            .keys()
+            .filter(|id| !live_keys.inner().contains(*id))
+            .cloned()
+            .collect();
+        for scene_id in stale_ids {
+            if let Some((obj_id, _)) = inner.object_cache.remove(&scene_id) {
+                let _ = inner.renderer.scene_mut().remove_object(obj_id);
+            }
         }
 
         // Cull script registrations for objects no longer in the scene.

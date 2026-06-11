@@ -6,14 +6,14 @@ use helio::{
     GroupMask, GpuMaterial, Movability, ObjectDescriptor, Renderer, SceneActor,
 };
 use pulsar_reflection::{
-    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError,
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
     RuntimeComponentOwner, ScenePropsProjector, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
-use crate::subsystems::{load_mesh_upload, resolve_asset_path, MeshCache};
+use crate::subsystems::{load_mesh_upload, resolve_asset_path, MeshCache, SceneObjectCache};
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
@@ -224,9 +224,18 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        let abs_path = resolve_asset_path(context.project_root(), &mesh_asset)
+        let pr = context.project_root();
+        tracing::info!(
+            "[SMC] mesh_asset={:?} project_root={:?}",
+            mesh_asset,
+            pr,
+        );
+
+        let abs_path = resolve_asset_path(pr, &mesh_asset)
             .to_string_lossy()
             .replace('\\', "/");
+
+        tracing::info!("[SMC] abs_path={:?} exists={}", abs_path, std::path::Path::new(&abs_path).exists());
 
         let q = Quat::from_euler(
             EulerRot::YXZ,
@@ -251,13 +260,22 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         };
 
         let (mesh_id, mat_id) = if let Some(ids) = cached {
+            tracing::info!("[SMC] cache HIT for {}", abs_path);
             ids
         } else {
+            tracing::info!("[SMC] cache MISS for {}", abs_path);
             // Cache miss — load file and upload.
             let path = std::path::Path::new(&abs_path);
             let upload = match load_mesh_upload(path) {
-                Some(u) => u,
+                Some(u) => {
+                    tracing::info!("[SMC] load_mesh_upload SUCCESS for {}", abs_path);
+                    u
+                }
                 None => {
+                    tracing::warn!(
+                        "[SMC] load_mesh_upload FAILED for {}",
+                        abs_path
+                    );
                     context.report_error(format!(
                         "StaticMeshComponent on '{}': failed to load '{}'",
                         owner.scene_object_id, abs_path
@@ -266,9 +284,16 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 }
             };
             let renderer = get_subsystem!(context, Renderer);
-            let mid = match renderer.scene_mut().insert_actor(SceneActor::mesh(upload)).as_mesh() {
-                Some(m) => m,
-                None => return,
+            let scene = renderer.scene_mut();
+            let mid = match scene.insert_actor(SceneActor::mesh(upload)).as_mesh() {
+                Some(m) => {
+                    tracing::info!("[SMC] inserted mesh id={:?}", m);
+                    m
+                }
+                None => {
+                    tracing::warn!("[SMC] insert_actor returned no mesh id");
+                    return;
+                }
             };
             let mat = GpuMaterial {
                 base_color: [0.6, 0.6, 0.65, 1.0],
@@ -290,17 +315,107 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             (mid, matid)
         };
 
-        // Phase 2: insert scene object
-        let renderer = get_subsystem!(context, Renderer);
-        renderer.scene_mut().insert_actor(SceneActor::object(ObjectDescriptor {
-            mesh: mesh_id,
-            material: mat_id,
+        let scene_id = owner.scene_object_id;
+
+        // Mark this component instance as live so stale-cleanup doesn't
+        // remove its scene object cache entry between frames.
+        get_subsystem!(context, LiveKeySet).insert(scene_id.to_string());
+
+        // Phase 2: update or insert scene object via object-instance cache.
+        // This avoids deleting+re-inserting unchanged objects every frame,
+        // which would cascade-free meshes/materials in the helio scene.
+        //
+        // Each get_subsystem! mutably borrows context, so we must strictly
+        // separate cache lookups from scene operations into distinct scopes.
+        // Three outcomes when consulting the object-instance cache.
+        enum SceneCacheAction {
+            UpdateTransform { obj_id: helio::ObjectId },
+            Replace {
+                old_id: helio::ObjectId,
+                mesh_id: helio::MeshId,
+                mat_id: helio::MaterialId,
+                transform: Mat4,
+                bounds: [f32; 4],
+                tag: u64,
+                abs_path: String,
+            },
+        }
+
+        let mut action: Option<SceneCacheAction> = {
+            let oc = get_subsystem!(context, SceneObjectCache);
+            oc.get(scene_id)
+                .map(|(obj_id, cached_asset)| {
+                    if cached_asset == abs_path {
+                        SceneCacheAction::UpdateTransform { obj_id }
+                    } else {
+                        SceneCacheAction::Replace {
+                            old_id: obj_id,
+                            mesh_id,
+                            mat_id,
+                            transform,
+                            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                            tag,
+                            abs_path: abs_path.clone(),
+                        }
+                    }
+                })
+        };
+        if action.is_none() {
+            // New object — we need mesh_id/mat_id from Phase 1, which doesn't
+            // borrow context, so no conflict.  But the descriptor also needs
+            // transform/bounds etc., so clone them here.
+            let desc = ObjectDescriptor {
+                mesh: mesh_id,
+                material: mat_id,
+                transform,
+                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                flags: 0,
+                groups: GroupMask::NONE,
+                movability: Some(Movability::Movable),
+                user_tag: tag,
+            };
+            let ob = get_subsystem!(context, Renderer)
+                .scene_mut()
+                .insert_actor(SceneActor::object(desc));
+            if let Some(id) = ob.as_object() {
+                let oc = get_subsystem!(context, SceneObjectCache);
+                oc.insert(scene_id.to_string(), id, abs_path.clone());
+            }
+            tracing::info!("[SMC] inserted new object for {}", scene_id);
+        } else if let Some(SceneCacheAction::UpdateTransform { obj_id }) = action.take() {
+            let _ = get_subsystem!(context, Renderer)
+                .scene_mut()
+                .update_object_transform(obj_id, transform);
+            tracing::info!("[SMC] updated transform for {}", scene_id);
+        } else if let Some(SceneCacheAction::Replace {
+            old_id,
+            mesh_id,
+            mat_id,
             transform,
-            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-            flags: 0,
-            groups: GroupMask::NONE,
-            movability: Some(Movability::Movable),
-            user_tag: tag,
-        }));
+            bounds,
+            tag,
+            abs_path,
+        }) = action.take()
+        {
+            let scene = get_subsystem!(context, Renderer).scene_mut();
+            let _ = scene.remove_object(old_id);
+            let ob = scene.insert_actor(SceneActor::object(ObjectDescriptor {
+                mesh: mesh_id,
+                material: mat_id,
+                transform,
+                bounds,
+                flags: 0,
+                groups: GroupMask::NONE,
+                movability: Some(Movability::Movable),
+                user_tag: tag,
+            }));
+            // update cache after scene operations (different scope)
+            if let Some(id) = ob.as_object() {
+                let oc = get_subsystem!(context, SceneObjectCache);
+                oc.remove(scene_id);
+                oc.insert(scene_id.to_string(), id, abs_path);
+            }
+            tracing::info!("[SMC] re-inserted (mesh changed) for {}", scene_id);
+        }
     }
 }
