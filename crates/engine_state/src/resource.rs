@@ -6,7 +6,7 @@
 //! [`crate::store::StateStore`] (one resource per type) and
 //! [`crate::keyed_store::KeyedStore`] (one resource per type *per key*).
 
-use event_listener::Event;
+use event_listener::{Event, EventListener};
 use parking_lot::{RwLock, RwLockReadGuard};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -86,12 +86,26 @@ impl<T> ResourceHandle<T> {
         self.version.load(Ordering::Acquire)
     }
 
-    /// Asynchronously wait until the next change.
+    /// Returns a future that resolves on the next change.
     ///
-    /// Any number of independent callers may await this concurrently — each
-    /// gets its own notification, unlike a single-consumer channel.
-    pub async fn changed(&self) {
-        self.event.listen().await;
+    /// Registration happens *synchronously* when this method is called (not
+    /// when the returned future is first polled), so a notification fired
+    /// immediately after calling `changed()` is never missed:
+    ///
+    /// ```ignore
+    /// let waiter = handle.changed(); // registered now
+    /// handle.set(new_value);          // wakes `waiter`
+    /// waiter.await;                   // resolves immediately
+    /// ```
+    ///
+    /// Any number of independent callers may register and await
+    /// concurrently — each gets its own notification, unlike a
+    /// single-consumer channel. As with any "wait for next change" API,
+    /// a notification that fires *between* an `await` returning and the next
+    /// call to `changed()` can be missed — for state that must observe every
+    /// transition, read the value (and act on it) before re-registering.
+    pub fn changed(&self) -> EventListener<()> {
+        self.event.listen()
     }
 }
 

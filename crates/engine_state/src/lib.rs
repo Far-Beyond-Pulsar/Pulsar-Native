@@ -37,6 +37,40 @@
 //! // New (compile-time safety):
 //! handle.as_helio::<Mutex<GpuRenderer>>() // Returns Option
 //! ```
+//!
+//! ## Generic Resource System (extension point for new state)
+//!
+//! [`EngineContext`] also exposes a generic, type-safe resource system —
+//! [`store`] / [`StateStore`] for global singletons and [`keyed_store`] /
+//! [`KeyedStore`] for per-window (or otherwise keyed) state. This is the
+//! preferred home for **any new piece of engine/editor state**: instead of
+//! adding another named field to `EngineContext` or another hand-rolled
+//! `static FOO: OnceLock<RwLock<T>>` in some other crate, store your type
+//! here. No upfront registration is required — the first call to
+//! `get_or_init` creates it via [`Default`].
+//!
+//! ```ignore
+//! #[derive(Default)]
+//! struct GizmoSettings { snap_translation: f32 }
+//!
+//! let ctx = EngineContext::global().unwrap();
+//!
+//! // Global singleton, created on first use:
+//! let gizmo = ctx.store.get_or_init::<GizmoSettings>();
+//! gizmo.update(|g| g.snap_translation = 0.5);
+//!
+//! // Per-window state, keyed by WindowId:
+//! #[derive(Default)]
+//! struct PanelLayout { sidebar_width: f32 }
+//! let layout = ctx.window_state.get_or_init::<PanelLayout>(&window_id);
+//!
+//! // React to changes from any number of independent listeners:
+//! gizmo.changed().await;
+//! ```
+//!
+//! See `EngineContext::multiuser` for a real migration of an existing field
+//! onto this system (it replaced a single-consumer `smol::channel` bus with
+//! multi-listener [`ResourceHandle::changed`]).
 
 mod discord;
 mod multiplayer;
