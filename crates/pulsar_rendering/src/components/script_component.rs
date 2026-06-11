@@ -3,8 +3,8 @@
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use pulsar_events::{SCRIPT_REGISTRY, ScriptRegistration};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
-    ScenePropsProjector,
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
+    RuntimeComponentOwner, ScenePropsProjector,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -236,6 +236,6 @@ impl ComponentRuntimeBehavior for ScriptComponent {
         });
 
         // Mark live so the context's stale-cleanup pass keeps this key.
-        context.mark_live(&actor_key);
+        get_subsystem!(context, LiveKeySet).insert(actor_key);
     }
 }

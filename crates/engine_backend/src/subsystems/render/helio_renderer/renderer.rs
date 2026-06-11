@@ -14,9 +14,10 @@ use helio::{
 };
 use pulsar_events::SCRIPT_REGISTRY;
 use pulsar_reflection::{
-    apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext,
-    RuntimeComponentOwner,
+    apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
+    RuntimeComponentOwner, Subsystems,
 };
+use pulsar_rendering::subsystems::MeshCache;
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{ObjectType, SceneObjectSnapshot};
@@ -37,85 +38,9 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-// ── Mesh Generation ──────────────────────────────────────────────────────────
-
-fn make_material(base_color: [f32; 4], roughness: f32, metallic: f32) -> GpuMaterial {
-    GpuMaterial {
-        base_color,
-        emissive: [0.0, 0.0, 0.0, 0.0],
-        roughness_metallic: [roughness, metallic, 1.5, 0.5],
-        tex_base_color: GpuMaterial::NO_TEXTURE,
-        tex_normal: GpuMaterial::NO_TEXTURE,
-        tex_roughness: GpuMaterial::NO_TEXTURE,
-        tex_emissive: GpuMaterial::NO_TEXTURE,
-        tex_occlusion: GpuMaterial::NO_TEXTURE,
-        workflow: 0,
-        flags: 0,
-        _pad: 0,
-    }
-}
-
 /// Delegates to the shared implementation in `pulsar_scene`.
 fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
     build_transform_parts(snap.position, snap.rotation, snap.scale)
-}
-
-/// Resolve a mesh asset path string to an absolute filesystem path.
-///
-/// Checks (in order): absolute, project-root-relative, cwd/assets-relative,
-/// virtual-fs manifest.  Returns `None` if the asset cannot be located.
-fn resolve_mesh_path(path: &str) -> Option<PathBuf> {
-    if path.is_empty() {
-        return None;
-    }
-    let norm = path.replace('\\', "/");
-    let p = Path::new(&norm);
-
-    if p.is_absolute() && p.exists() {
-        return Some(p.to_path_buf());
-    }
-
-    if let Some(root) = engine_state::get_project_path() {
-        let abs = PathBuf::from(root).join(&norm);
-        if abs.exists() {
-            return Some(abs);
-        }
-    }
-
-    if let Ok(cwd) = std::env::current_dir() {
-        let abs = cwd.join("assets").join(&norm);
-        if abs.exists() {
-            return Some(abs);
-        }
-    }
-
-    let assets_root = std::env::current_dir().ok()?.join("assets");
-    let manifest = virtual_fs::manifest(Path::new("assets")).ok()?;
-    manifest
-        .into_iter()
-        .find(|e| !e.is_dir && e.path == norm)
-        .map(|e| assets_root.join(e.path))
-}
-
-/// Load the first mesh from an FBX/OBJ/GLTF file via helio_asset_compat.
-/// Returns an error string if loading fails — the caller decides how to handle it.
-fn load_fbx_mesh(path: &str) -> Result<MeshUpload, String> {
-    let cfg = helio_asset_compat::LoadConfig {
-        flip_uv_y: true,
-        merge_meshes: false,
-        import_scale: glam::Vec3::ONE,
-    };
-    let scene = helio_asset_compat::load_scene_file_with_config(std::path::Path::new(path), cfg)
-        .map_err(|e| format!("Failed to load mesh asset \"{}\": {}", path, e))?;
-    scene
-        .meshes
-        .into_iter()
-        .next()
-        .map(|mesh| MeshUpload {
-            vertices: mesh.vertices,
-            indices: mesh.indices,
-        })
-        .ok_or_else(|| format!("Mesh asset \"{}\" contains no geometry", path))
 }
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -165,14 +90,9 @@ struct HelioInner {
     queue: Arc<wgpu::Queue>,
     editor_state: EditorState,
     scene_picker: ScenePicker,
-    /// Resolved-path → (MeshId, MaterialId).
-    /// Mesh geometry is uploaded to the GPU once per unique asset path and
-    /// reused across all sync passes.  Cleared when the scene is unloaded.
-    mesh_upload_cache: std::collections::HashMap<String, (MeshId, MaterialId)>,
-    /// user_tag → (ObjectId, MeshId, asset_path_key).
-    /// Tracks which helio object corresponds to each scene object so
-    /// sync_scene can update transforms instead of removing + re-inserting.
-    object_instance_cache: std::collections::HashMap<u64, (ObjectId, MeshId, String)>,
+    /// Persists GPU-uploaded mesh geometry across frames so components
+    /// don't re-load + re-upload the same asset every sync pass.
+    mesh_cache: MeshCache,
 }
 
 impl HelioRenderer {
@@ -259,8 +179,7 @@ impl HelioRenderer {
                 queue: queue_arc,
                 editor_state: EditorState::new(),
                 scene_picker: ScenePicker::new(),
-                mesh_upload_cache: std::collections::HashMap::new(),
-                object_instance_cache: std::collections::HashMap::new(),
+                mesh_cache: MeshCache::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -773,115 +692,17 @@ impl HelioRenderer {
 
         struct HelioRuntimeContext<'a> {
             renderer: &'a mut Renderer,
-            owner_snap: &'a SceneObjectSnapshot,
-            mesh_upload_cache: &'a mut std::collections::HashMap<String, (MeshId, MaterialId)>,
-            object_instance_cache:
-                &'a mut std::collections::HashMap<u64, (ObjectId, MeshId, String)>,
-            live_object_tags: &'a mut std::collections::HashSet<u64>,
-            live_light_tags: &'a mut std::collections::HashSet<u64>,
-            live_script_keys: &'a mut std::collections::HashSet<String>,
+            subsystems: Subsystems,
             error_queue: &'a Arc<Mutex<Vec<String>>>,
         }
 
         impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
-            fn renderer_mut(&mut self) -> &mut Renderer {
-                self.renderer
+            fn subsystems_mut(&mut self) -> &mut Subsystems {
+                &mut self.subsystems
             }
 
             fn project_root(&self) -> &std::path::Path {
                 std::path::Path::new("")
-            }
-
-            fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
-                // Game-context fallback only — editor uses sync_mesh_object.
-                let abs = resolve_mesh_path(path.to_str().unwrap_or(""))?;
-                load_fbx_mesh(abs.to_str().unwrap_or("")).ok()
-            }
-
-            /// Full insert-vs-update logic.  Zero disk I/O and zero GPU upload
-            /// on every frame where the object already exists with the same mesh.
-            fn sync_mesh_object(
-                &mut self,
-                tag: u64,
-                mesh_asset: &str,
-                transform: glam::Mat4,
-                bounds: [f32; 4],
-            ) {
-                self.live_object_tags.insert(tag);
-
-                // Fast path: object exists with same mesh — update transform only.
-                if let Some(&(existing_obj, _, ref cached_key)) =
-                    self.object_instance_cache.get(&tag)
-                {
-                    if cached_key.as_str() == mesh_asset {
-                        let _ = self
-                            .renderer
-                            .scene_mut()
-                            .update_object_transform(existing_obj, transform);
-                        return; // ← no disk I/O, no GPU upload
-                    }
-                    // Mesh asset changed — remove old instance, fall through.
-                    let _ = self.renderer.scene_mut().remove_object(existing_obj);
-                    self.object_instance_cache.remove(&tag);
-                }
-
-                // Slow path: first time this object appears or its mesh changed.
-                // Upload geometry once; subsequent frames take the fast path above.
-                let (mesh_id, mat_id) = if let Some(&ids) = self.mesh_upload_cache.get(mesh_asset) {
-                    ids // GPU cache hit — geometry already uploaded
-                } else {
-                    let abs = match resolve_mesh_path(mesh_asset) {
-                        Some(p) => p,
-                        None => {
-                            self.report_error(format!("Cannot resolve '{mesh_asset}'"));
-                            return;
-                        }
-                    };
-                    let upload = match load_fbx_mesh(abs.to_str().unwrap_or("")) {
-                        Ok(u) => u,
-                        Err(e) => {
-                            self.report_error(format!("Mesh load failed: {e}"));
-                            return;
-                        }
-                    };
-                    let mid = match self
-                        .renderer
-                        .scene_mut()
-                        .insert_actor(SceneActor::mesh(upload.clone()))
-                        .as_mesh()
-                    {
-                        Some(m) => m,
-                        None => return,
-                    };
-                    let mat = make_material([0.6, 0.6, 0.65, 1.0], 0.7, 0.0);
-                    let matid = self.renderer.scene_mut().insert_material(mat);
-                    self.mesh_upload_cache
-                        .insert(mesh_asset.to_string(), (mid, matid));
-                    (mid, matid)
-                };
-
-                if let Some(obj_id) = self
-                    .renderer
-                    .scene_mut()
-                    .insert_actor(SceneActor::object(ObjectDescriptor {
-                        mesh: mesh_id,
-                        material: mat_id,
-                        transform,
-                        bounds,
-                        flags: 0,
-                        groups: GroupMask::NONE,
-                        movability: Some(Movability::Movable),
-                        user_tag: tag,
-                    }))
-                    .as_object()
-                {
-                    self.object_instance_cache
-                        .insert(tag, (obj_id, mesh_id, mesh_asset.to_string()));
-                }
-            }
-
-            fn mark_live(&mut self, actor_key: &str) {
-                self.live_script_keys.insert(actor_key.to_string());
             }
 
             fn report_error(&mut self, message: String) {
@@ -897,7 +718,8 @@ impl HelioRenderer {
             return;
         }
 
-        // Lights are cheap — clear all and re-insert each frame.
+        // Clear all lights and objects each frame — components re-insert fresh.
+        // Mesh geometry stays cached in inner.mesh_cache so re-upload is avoided.
         let light_ids: Vec<LightId> = inner
             .renderer
             .scene()
@@ -906,6 +728,15 @@ impl HelioRenderer {
             .collect();
         for id in light_ids {
             let _ = inner.renderer.scene_mut().remove_light(id);
+        }
+        let object_ids: Vec<helio::ObjectId> = inner
+            .renderer
+            .scene()
+            .iter_objects_for_editor()
+            .map(|entry| entry.0)
+            .collect();
+        for id in object_ids {
+            let _ = inner.renderer.scene_mut().remove_object(id);
         }
 
         // ── Component sync pass ───────────────────────────────────────────────
@@ -916,9 +747,7 @@ impl HelioRenderer {
             tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
         }
         let t_components = std::time::Instant::now();
-        let mut live_object_tags = std::collections::HashSet::<u64>::new();
-        let mut live_light_tags = std::collections::HashSet::<u64>::new();
-        let mut live_script_keys = std::collections::HashSet::<String>::new();
+        let mut live_keys = LiveKeySet::new();
 
         for snap in &snapshots {
             if !snap.visible {
@@ -934,14 +763,13 @@ impl HelioRenderer {
             };
 
             let component_instances = component_instances_from_snap(snap);
+            let mut subsystems = Subsystems::new();
+            subsystems.register_ref::<Renderer>(&mut inner.renderer);
+            subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
+            subsystems.register_ref::<LiveKeySet>(&mut live_keys);
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
-                owner_snap: snap,
-                mesh_upload_cache: &mut inner.mesh_upload_cache,
-                object_instance_cache: &mut inner.object_instance_cache,
-                live_object_tags: &mut live_object_tags,
-                live_light_tags: &mut live_light_tags,
-                live_script_keys: &mut live_script_keys,
+                subsystems,
                 error_queue,
             };
 
@@ -962,29 +790,7 @@ impl HelioRenderer {
         }
 
         // Cull script registrations for objects no longer in the scene.
-        SCRIPT_REGISTRY.lock().retain_keys(&live_script_keys);
-
-        // Remove stale mesh objects (scene objects that were deleted this frame).
-        let stale_tags: Vec<u64> = inner
-            .object_instance_cache
-            .keys()
-            .copied()
-            .filter(|tag| !live_object_tags.contains(tag))
-            .collect();
-        for tag in stale_tags {
-            if let Some((obj_id, _mesh_id, mesh_key)) = inner.object_instance_cache.remove(&tag) {
-                let _ = inner.renderer.scene_mut().remove_object(obj_id);
-                // If no other live object references this mesh key, evict from GPU cache
-                // so the mesh is freed.
-                let still_needed = inner
-                    .object_instance_cache
-                    .values()
-                    .any(|(_, _, k)| *k == mesh_key);
-                if !still_needed {
-                    inner.mesh_upload_cache.remove(&mesh_key);
-                }
-            }
-        }
+        SCRIPT_REGISTRY.lock().retain_keys(live_keys.inner());
 
         // Rebuild scene picker BVH after any insertions or removals.
         let t_picker = std::time::Instant::now();

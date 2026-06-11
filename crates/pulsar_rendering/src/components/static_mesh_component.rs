@@ -2,13 +2,18 @@
 
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use glam::{EulerRot, Mat4, Quat, Vec3};
+use helio::{
+    GroupMask, GpuMaterial, Movability, ObjectDescriptor, Renderer, SceneActor,
+};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError, RuntimeComponentOwner,
-    ScenePropsProjector, scene_id_to_tag,
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, ReflectError,
+    RuntimeComponentOwner, ScenePropsProjector, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+
+use crate::subsystems::{load_mesh_upload, resolve_asset_path, MeshCache};
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
@@ -219,20 +224,9 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             return;
         }
 
-        // Resolve to an absolute path so the context can use it as a stable
-        // cache key regardless of which working directory the process uses.
-        let abs_path = {
-            let p = std::path::Path::new(&mesh_asset);
-            if p.is_absolute() {
-                p.to_string_lossy().replace('\\', "/")
-            } else {
-                context
-                    .project_root()
-                    .join(&mesh_asset)
-                    .to_string_lossy()
-                    .replace('\\', "/")
-            }
-        };
+        let abs_path = resolve_asset_path(context.project_root(), &mesh_asset)
+            .to_string_lossy()
+            .replace('\\', "/");
 
         let q = Quat::from_euler(
             EulerRot::YXZ,
@@ -248,13 +242,65 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         let pos = transform.w_axis.truncate();
         let radius = Vec3::from_array(owner.scale).length() * 0.5;
 
-        // Hand off to the context — it decides fast (transform update) or
-        // slow (first-time disk load + GPU upload) based on its own caches.
-        context.sync_mesh_object(
-            scene_id_to_tag(owner.scene_object_id),
-            &abs_path,
+        let tag = scene_id_to_tag(owner.scene_object_id);
+
+        // Phase 1: check mesh cache
+        let cached = {
+            let mc = get_subsystem!(context, MeshCache);
+            mc.get(&abs_path)
+        };
+
+        let (mesh_id, mat_id) = if let Some(ids) = cached {
+            ids
+        } else {
+            // Cache miss — load file and upload.
+            let path = std::path::Path::new(&abs_path);
+            let upload = match load_mesh_upload(path) {
+                Some(u) => u,
+                None => {
+                    context.report_error(format!(
+                        "StaticMeshComponent on '{}': failed to load '{}'",
+                        owner.scene_object_id, abs_path
+                    ));
+                    return;
+                }
+            };
+            let renderer = get_subsystem!(context, Renderer);
+            let mid = match renderer.scene_mut().insert_actor(SceneActor::mesh(upload)).as_mesh() {
+                Some(m) => m,
+                None => return,
+            };
+            let mat = GpuMaterial {
+                base_color: [0.6, 0.6, 0.65, 1.0],
+                emissive: [0.0, 0.0, 0.0, 0.0],
+                roughness_metallic: [0.7, 0.0, 1.5, 0.5],
+                tex_base_color: GpuMaterial::NO_TEXTURE,
+                tex_normal: GpuMaterial::NO_TEXTURE,
+                tex_roughness: GpuMaterial::NO_TEXTURE,
+                tex_emissive: GpuMaterial::NO_TEXTURE,
+                tex_occlusion: GpuMaterial::NO_TEXTURE,
+                workflow: 0,
+                flags: 0,
+                _pad: 0,
+            };
+            let matid = renderer.scene_mut().insert_material(mat);
+            // Store in cache
+            let mc = get_subsystem!(context, MeshCache);
+            mc.insert(abs_path.clone(), (mid, matid));
+            (mid, matid)
+        };
+
+        // Phase 2: insert scene object
+        let renderer = get_subsystem!(context, Renderer);
+        renderer.scene_mut().insert_actor(SceneActor::object(ObjectDescriptor {
+            mesh: mesh_id,
+            material: mat_id,
             transform,
-            [pos.x, pos.y, pos.z, radius.max(0.1)],
-        );
+            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+            flags: 0,
+            groups: GroupMask::NONE,
+            movability: Some(Movability::Movable),
+            user_tag: tag,
+        }));
     }
 }

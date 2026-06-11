@@ -25,18 +25,17 @@
 //! `pulsar_rendering`'s `#[used]` inventory statics.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use glam::{EulerRot, Mat4, Quat, Vec3};
-use helio::{
-    GpuMaterial, GroupMask, MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, Renderer,
-    SceneActor,
-};
+use helio::Renderer;
 use serde_json::Value;
 
 use pulsar_reflection::{
-    apply_runtime_behavior_for_class, ComponentRuntimeContext, RuntimeComponentOwner,
+    apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
+    Subsystems,
 };
+use pulsar_rendering::subsystems::MeshCache;
 
 use crate::format::{SceneFile, SceneLoadError};
 
@@ -87,10 +86,6 @@ impl SceneLoader {
     ) {
         tracing::info!(total = objects.len(), "Loading scene objects");
 
-        // Shared per-load cache: avoid re-uploading the same mesh geometry for
-        // every object that references it (e.g. many cubes using SM_Cube.fbx).
-        let mut mesh_cache: HashMap<String, (MeshId, MaterialId)> = HashMap::new();
-
         for obj in objects {
             if !obj.visible {
                 continue;
@@ -107,11 +102,15 @@ impl SceneLoader {
 
             let instances = component_instances_from_props(&obj.props);
             {
+                let mut subsystems = Subsystems::new();
+                subsystems.register_ref::<Renderer>(renderer);
+                subsystems.register(MeshCache::new());
+                subsystems.register(LiveKeySet::new());
                 let mut ctx = SceneObjectContext {
                     obj_id: &obj.id,
                     project_root,
                     renderer,
-                    mesh_cache: &mut mesh_cache,
+                    subsystems,
                 };
                 for (idx, class_name, data) in &instances {
                     let handled =
@@ -133,101 +132,24 @@ impl SceneLoader {
 
 // ── SceneObjectContext — ComponentRuntimeContext impl ─────────────────────────
 
-struct SceneObjectContext<'r, 'p, 'c> {
+struct SceneObjectContext<'r, 'p> {
     obj_id: &'p str,
     project_root: &'p Path,
+    subsystems: Subsystems,
     renderer: &'r mut Renderer,
-    /// Geometry/material cache shared across all objects in one load pass.
-    mesh_cache: &'c mut HashMap<String, (MeshId, MaterialId)>,
 }
 
-impl ComponentRuntimeContext for SceneObjectContext<'_, '_, '_> {
-    fn renderer_mut(&mut self) -> &mut Renderer {
-        self.renderer
+impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
+    fn subsystems_mut(&mut self) -> &mut Subsystems {
+        &mut self.subsystems
     }
 
     fn project_root(&self) -> &std::path::Path {
         self.project_root
     }
 
-    fn load_mesh_file(&mut self, path: &std::path::Path) -> Option<MeshUpload> {
-        let s = path.to_str().unwrap_or("");
-        if s.is_empty() || s == "None" {
-            return None;
-        }
-        let full = resolve_asset(self.project_root, s);
-        load_fbx(full.as_path()).ok()
-    }
-
-    fn sync_mesh_object(
-        &mut self,
-        tag: u64,
-        mesh_asset: &str,
-        transform: glam::Mat4,
-        bounds: [f32; 4],
-    ) {
-        if mesh_asset.is_empty() {
-            return;
-        }
-
-        let (mesh_id, mat_id) = if let Some(&ids) = self.mesh_cache.get(mesh_asset) {
-            ids
-        } else {
-            let path = resolve_asset(self.project_root, mesh_asset);
-            let upload = match load_fbx(&path) {
-                Ok(u) => u,
-                Err(e) => {
-                    tracing::warn!(id = self.obj_id, "Mesh load failed for '{mesh_asset}': {e}");
-                    return;
-                }
-            };
-            let mid = match self
-                .renderer
-                .scene_mut()
-                .insert_actor(SceneActor::mesh(upload))
-                .as_mesh()
-            {
-                Some(m) => m,
-                None => return,
-            };
-            let mat = default_material();
-            let matid = self.renderer.scene_mut().insert_material(mat);
-            self.mesh_cache.insert(mesh_asset.to_string(), (mid, matid));
-            (mid, matid)
-        };
-
-        self.renderer
-            .scene_mut()
-            .insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh: mesh_id,
-                material: mat_id,
-                transform,
-                bounds,
-                flags: 0,
-                groups: GroupMask::NONE,
-                movability: Some(Movability::Movable),
-                user_tag: tag,
-            }));
-    }
-
     fn report_error(&mut self, message: String) {
         tracing::warn!(id = self.obj_id, "{message}");
-    }
-}
-
-fn default_material() -> GpuMaterial {
-    GpuMaterial {
-        base_color: [0.6, 0.6, 0.65, 1.0],
-        emissive: [0.0, 0.0, 0.0, 0.0],
-        roughness_metallic: [0.7, 0.0, 1.5, 0.5],
-        tex_base_color: GpuMaterial::NO_TEXTURE,
-        tex_normal: GpuMaterial::NO_TEXTURE,
-        tex_roughness: GpuMaterial::NO_TEXTURE,
-        tex_emissive: GpuMaterial::NO_TEXTURE,
-        tex_occlusion: GpuMaterial::NO_TEXTURE,
-        workflow: 0,
-        flags: 0,
-        _pad: 0,
     }
 }
 
@@ -275,119 +197,4 @@ pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
 
-/// Load a mesh file via helio-asset-compat.
-pub fn load_mesh_upload(path: &Path) -> Result<MeshUpload, String> {
-    load_fbx(path)
-}
 
-/// The engine's built-in assets live next to pulsar_scene in the Pulsar-Native
-/// source tree.  At *compile time* this is a known absolute path; at runtime
-/// it allows game binaries to load engine primitives (SM_Cube.fbx, etc.) even
-/// when those files haven't been copied into the game project yet.
-const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets");
-
-fn resolve_asset(project_root: &Path, asset: &str) -> PathBuf {
-    let norm = asset.replace('\\', "/");
-    let p = Path::new(&norm);
-
-    // 1. Absolute path — check first.
-    if p.is_absolute() && p.exists() {
-        return p.to_path_buf();
-    }
-
-    // 2. Relative to the game project root.
-    let proj = project_root.join(&norm);
-    if proj.exists() {
-        return proj.clone();
-    }
-
-    // 3. Relative to the working directory (matches engine's cwd/assets check).
-    if let Ok(cwd) = std::env::current_dir() {
-        let cwd_path = cwd.join(&norm);
-        if cwd_path.exists() {
-            return cwd_path;
-        }
-        let cwd_assets = cwd.join("assets").join(&norm);
-        if cwd_assets.exists() {
-            return cwd_assets;
-        }
-    }
-
-    // 4. Engine built-in assets — compiled-in path (dev builds only).
-    let engine_path = Path::new(ENGINE_ASSETS_DIR).join(&norm);
-    if engine_path.exists() {
-        tracing::debug!(
-            path = %engine_path.display(),
-            "Mesh resolved from engine assets (copy to game project for release)"
-        );
-        return engine_path;
-    }
-
-    // Not found — return the project-relative path; caller will use fallback.
-    proj
-}
-
-// ── Engine primitive meshes embedded directly in the binary ──────────────────
-// These are always available regardless of what's on the project filesystem.
-
-macro_rules! prim_bytes {
-    ($name:literal) => {
-        include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/meshes/primitives/",
-            $name,
-            ".fbx"
-        ))
-    };
-}
-
-fn embedded_primitive(stem: &str) -> Option<&'static [u8]> {
-    match stem {
-        "SM_Cube" => Some(prim_bytes!("SM_Cube")),
-        "SM_Sphere" => Some(prim_bytes!("SM_Sphere")),
-        "SM_Cylinder" => Some(prim_bytes!("SM_Cylinder")),
-        "SM_Plane" => Some(prim_bytes!("SM_Plane")),
-        "SM_Torus" => Some(prim_bytes!("SM_Torus")),
-        _ => None,
-    }
-}
-
-fn load_fbx(path: &Path) -> Result<MeshUpload, String> {
-    let cfg = helio_asset_compat::LoadConfig {
-        flip_uv_y: true,
-        merge_meshes: false,
-        import_scale: glam::Vec3::ONE,
-    };
-
-    // Fast path: try loading from disk first.
-    if path.exists() {
-        return helio_asset_compat::load_scene_file_with_config(path, cfg)
-            .map_err(|e| format!("{}: {}", path.display(), e))?
-            .meshes
-            .into_iter()
-            .next()
-            .map(|m| MeshUpload {
-                vertices: m.vertices,
-                indices: m.indices,
-            })
-            .ok_or_else(|| format!("{}: no geometry", path.display()));
-    }
-
-    // Fallback: check if the filename stem matches a bundled engine primitive.
-    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    if let Some(bytes) = embedded_primitive(stem) {
-        tracing::debug!("Loading engine primitive '{}' from embedded bytes", stem);
-        return helio_asset_compat::load_scene_bytes_with_config(bytes, "fbx", None, cfg)
-            .map_err(|e| format!("{stem} (embedded): {e}"))?
-            .meshes
-            .into_iter()
-            .next()
-            .map(|m| MeshUpload {
-                vertices: m.vertices,
-                indices: m.indices,
-            })
-            .ok_or_else(|| format!("{stem} (embedded): no geometry"));
-    }
-
-    Err(format!("{}: file not found", path.display()))
-}

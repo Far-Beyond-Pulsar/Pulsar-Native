@@ -1,7 +1,8 @@
 use engine_class_derive::register_runtime_behavior;
-use helio::{GpuLight, LightType as HelioLightType, SceneActor};
+use helio::{GpuLight, LightType as HelioLightType, SceneActor, Renderer};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, scene_id_to_tag,
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+    scene_id_to_tag,
 };
 use serde_json::Value;
 
@@ -47,8 +48,8 @@ impl ComponentRuntimeBehavior for LightComponent {
         };
 
         let tag = scene_id_to_tag(owner.scene_object_id);
-        context
-            .renderer_mut()
+        let renderer = get_subsystem!(context, Renderer);
+        renderer
             .scene_mut()
             .insert_actor(SceneActor::light_with_tag(gpu, tag));
     }

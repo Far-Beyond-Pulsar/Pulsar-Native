@@ -4,5 +4,6 @@
 //! engine's reflection system for automatic UI generation.
 
 pub mod components;
+pub mod subsystems;
 
 pub use components::*;

@@ -36,8 +36,8 @@ pub mod type_traits;
 pub mod prims;
 
 use serde_json::Value;
-use std::any::Any;
-use std::collections::HashMap;
+use std::any::{Any, TypeId};
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -217,6 +217,128 @@ pub fn scene_id_to_tag(id: &str) -> u64 {
     h.finish()
 }
 
+/// Type-erased registry of runtime subsystems.
+///
+/// Subsystems (renderer, physics engine, audio system, etc.) register themselves
+/// here by type so that components can look them up without the context trait
+/// carrying direct knowledge of every subsystem.
+///
+/// Supports both **owned** subsystems (stored in `Box<dyn Any>`) and
+/// **borrowed** subsystems (stored as a raw pointer).  Use [`register`] for
+/// owned values and [`register_ref`] for borrowed references.
+pub struct Subsystems {
+    owned: HashMap<TypeId, Box<dyn Any>>,
+    borrow: HashMap<TypeId, *mut ()>,
+}
+
+impl Subsystems {
+    /// Create an empty registry.
+    pub fn new() -> Self {
+        Self {
+            owned: HashMap::new(),
+            borrow: HashMap::new(),
+        }
+    }
+
+    /// Register an **owned** subsystem value.
+    ///
+    /// The subsystem is stored in a `Box` and lives for the lifetime of
+    /// this registry — no further lifetime management needed.
+    pub fn register<T: 'static>(&mut self, subsystem: T) {
+        self.owned.insert(TypeId::of::<T>(), Box::new(subsystem));
+    }
+
+    /// Register a **borrowed** subsystem reference.
+    ///
+    /// The pointed-to value must outlive this registry.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the reference outlives this registry.
+    pub fn register_ref<T: 'static>(&mut self, subsystem: &mut T) {
+        let ptr = subsystem as *mut T as *mut ();
+        self.borrow.insert(TypeId::of::<T>(), ptr);
+    }
+
+    /// Get a registered subsystem by concrete type.
+    ///
+    /// Returns `None` if no subsystem of this type has been registered.
+    pub fn get_mut<T: 'static>(&mut self) -> Option<&mut T> {
+        // Check owned map first, then borrow map.
+        if let Some(b) = self.owned.get_mut(&TypeId::of::<T>()) {
+            return b.downcast_mut::<T>();
+        }
+        self.borrow
+            .get(&TypeId::of::<T>())
+            .map(|&ptr| unsafe { &mut *(ptr as *mut T) })
+    }
+
+    /// Unregister a subsystem by type.
+    pub fn unregister<T: 'static>(&mut self) {
+        self.owned.remove(&TypeId::of::<T>());
+        self.borrow.remove(&TypeId::of::<T>());
+    }
+}
+
+/// A set of string keys used by contexts to track which actor keys are live
+/// during a sync pass, enabling stale-cleanup after the pass completes.
+///
+/// Components insert their keys here; the owning context reads the set after
+/// the sync pass and removes stale entries from its subsystems.
+pub struct LiveKeySet {
+    keys: HashSet<String>,
+}
+
+impl LiveKeySet {
+    pub fn new() -> Self {
+        Self {
+            keys: HashSet::new(),
+        }
+    }
+
+    pub fn insert(&mut self, key: String) {
+        self.keys.insert(key);
+    }
+
+    pub fn contains(&self, key: &str) -> bool {
+        self.keys.contains(key)
+    }
+
+    pub fn clear(&mut self) {
+        self.keys.clear();
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
+        self.keys.iter().map(|s| s.as_str())
+    }
+
+    pub fn inner(&self) -> &HashSet<String> {
+        &self.keys
+    }
+
+    pub fn retain_keys(&mut self, other: &Self) {
+        self.keys.retain(|k| other.keys.contains(k));
+    }
+}
+
+/// Convenience macro to get a registered subsystem from a context, panicking
+/// if it is not found.
+///
+/// # Example
+///
+/// ```ignore
+/// let renderer = get_subsystem!(context, helio::Renderer);
+/// renderer.scene_mut().insert_actor(actor);
+/// ```
+#[macro_export]
+macro_rules! get_subsystem {
+    ($ctx:expr, $ty:ty) => {
+        $crate::ComponentRuntimeContext::subsystems_mut(&mut *$ctx)
+            .get_mut::<$ty>()
+            .expect(concat!("Subsystem `", stringify!($ty), "` is not registered"))
+    };
+}
+
 /// Context provided to every component's [`ComponentRuntimeBehavior::sync_component`].
 ///
 /// Exposes **generic services only** — no knowledge of what any specific
@@ -231,63 +353,14 @@ pub fn scene_id_to_tag(id: &str) -> u64 {
 /// * **Game (`SceneObjectContext`)** — one-shot scene load; components insert
 ///   once and the loader records the resulting IDs.
 pub trait ComponentRuntimeContext {
-    /// Raw mutable access to the Helio renderer.
+    /// Access the type-erased subsystem registry.
     ///
-    /// Components use this to insert lights, meshes, and objects directly.
-    /// The context owns no knowledge of what they insert or how.
-    #[cfg(feature = "prims-helio")]
-    fn renderer_mut(&mut self) -> &mut helio::Renderer;
+    /// Components use this together with [`get_subsystem!`] to retrieve
+    /// concrete subsystems such as the renderer, physics engine, etc.
+    fn subsystems_mut(&mut self) -> &mut Subsystems;
 
     /// Project root for resolving relative asset paths.
     fn project_root(&self) -> &std::path::Path;
-
-    /// Load a mesh file, with optional context-level caching.
-    ///
-    /// The path may be absolute or relative to [`project_root`].
-    /// Returns `None` when the file cannot be loaded; the component should
-    /// call [`report_error`] and return early in that case.
-    ///
-    /// Default implementation returns `None`; override in contexts that
-    /// support mesh loading.
-    #[cfg(feature = "prims-helio")]
-    fn load_mesh_file(&mut self, _path: &std::path::Path) -> Option<helio::MeshUpload> {
-        None
-    }
-
-    /// Mark an actor key as live in the current sync pass **without** inserting
-    /// a render actor.
-    ///
-    /// Used by components (e.g. `ScriptComponent`) that register with
-    /// non-renderer systems and still need stale-cleanup semantics.
-    fn mark_live(&mut self, _actor_key: &str) {}
-
-    /// Called by `StaticMeshComponent` after obtaining a `MeshUpload` from
-    /// [`load_mesh_file`].  The context decides whether to update an existing
-    /// object's transform (fast path) or upload geometry and insert a new
-    /// object instance (slow path, runs once per unique asset).
-    ///
-    /// Default is a no-op so game-side contexts that insert once on load are
-    /// unaffected.
-    /// Sync a mesh scene object into the renderer.
-    ///
-    /// The context owns the full insert-vs-update decision:
-    /// - If an object with `tag` already exists using the same `mesh_asset` →
-    ///   update transform only (no disk I/O, no GPU upload).
-    /// - If the mesh geometry has not been uploaded yet →
-    ///   load from disk once, upload to GPU, cache both.
-    ///
-    /// The component passes the *resolved absolute asset path* so the context
-    /// can use it as a cache key without re-doing path resolution.
-    /// Default is a no-op; contexts that support incremental mesh sync override.
-    #[cfg(all(feature = "prims-helio", feature = "prims-glam"))]
-    fn sync_mesh_object(
-        &mut self,
-        _tag: u64,
-        _mesh_asset: &str,
-        _transform: glam::Mat4,
-        _bounds: [f32; 4],
-    ) {
-    }
 
     /// Report a non-fatal component error.
     fn report_error(&mut self, message: String);
