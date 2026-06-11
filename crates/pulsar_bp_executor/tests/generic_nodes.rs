@@ -10,7 +10,7 @@ use pulsar_std_bundle::extract_to_tempfile;
 
 fn exec() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().unwrap();
-    let e = BpExecutor::load(&tmp.path).unwrap();
+    let e = BpExecutor::load(&tmp.path, None).unwrap();
     (e, tmp)
 }
 

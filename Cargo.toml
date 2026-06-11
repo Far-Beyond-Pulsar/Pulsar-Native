@@ -211,7 +211,7 @@ pulsar_bp_executor = { path = "crates/pulsar_bp_executor" }
 similar = "3"
 quinn = "0.11"
 tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
-graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "d18837c13dd3e1cf6076d9a3c64c450971a6d1af" }
+graphy = { git = "https://github.com/Far-Beyond-Pulsar/Graphy", rev = "e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 pulsar_std_bundle = { path = "crates/pulsar_std_bundle" }
 
