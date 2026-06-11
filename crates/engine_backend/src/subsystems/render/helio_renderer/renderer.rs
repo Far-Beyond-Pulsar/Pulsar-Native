@@ -789,11 +789,6 @@ impl HelioRenderer {
             }
         }
 
-        let comp_ms = t_components.elapsed().as_secs_f64() * 1000.0;
-        if comp_ms > 2.0 {
-            tracing::warn!("[SYNC_SCENE] component loop took {:.2}ms", comp_ms);
-        }
-
         // Remove stale scene objects and cache entries (components didn't touch them).
         let stale_ids: Vec<String> = inner
             .object_cache
