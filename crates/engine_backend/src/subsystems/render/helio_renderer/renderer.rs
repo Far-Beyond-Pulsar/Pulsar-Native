@@ -746,7 +746,6 @@ impl HelioRenderer {
         if snap_ms > 2.0 {
             tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
         }
-        let t_components = std::time::Instant::now();
         let mut live_keys = LiveKeySet::new();
 
         for snap in &snapshots {

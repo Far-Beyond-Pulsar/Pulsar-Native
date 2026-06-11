@@ -257,7 +257,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             // Cache miss — load file and upload.
             let path = std::path::Path::new(&abs_path);
             let upload = match load_mesh_upload(path) {
-                Some(u) => u
+                Some(u) => u,
                 None => {
                     tracing::warn!(
                         "[SMC] load_mesh_upload FAILED for {}",
@@ -273,7 +273,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             let renderer = get_subsystem!(context, Renderer);
             let scene = renderer.scene_mut();
             let mid = match scene.insert_actor(SceneActor::mesh(upload)).as_mesh() {
-                Some(m) => m
+                Some(m) => m,
                 None => {
                     tracing::warn!("[SMC] insert_actor returned no mesh id");
                     return;
