@@ -15,7 +15,7 @@ fn spawn_n(c: &mut Criterion) {
     let mut group = c.benchmark_group("spawn");
     for &n in &[100, 1_000, 10_000, 50_000] {
         group.throughput(criterion::Throughput::Elements(n as u64));
-        group.bench_within(criterion::BenchmarkId::new("empty", n), |b| {
+        group.bench_function(criterion::BenchmarkId::new("empty", n), |b| {
             b.iter(|| {
                 let mut world = World::new();
                 for _ in 0..n {
@@ -23,7 +23,7 @@ fn spawn_n(c: &mut Criterion) {
                 }
             });
         });
-        group.bench_within(criterion::BenchmarkId::new("with_component", n), |b| {
+        group.bench_function(criterion::BenchmarkId::new("with_component", n), |b| {
             b.iter(|| {
                 let mut world = World::new();
                 for _ in 0..n {
@@ -32,7 +32,7 @@ fn spawn_n(c: &mut Criterion) {
                 }
             });
         });
-        group.bench_within(criterion::BenchmarkId::new("with_4_components", n), |b| {
+        group.bench_function(criterion::BenchmarkId::new("with_4_components", n), |b| {
             b.iter(|| {
                 let mut world = World::new();
                 for _ in 0..n {
@@ -63,7 +63,7 @@ fn query_single(c: &mut Criterion) {
             world.insert(e, Vel(0.0, 0.0, 0.0));
         }
         group.throughput(criterion::Throughput::Elements(n as u64));
-        group.bench_within(criterion::BenchmarkId::new("iter", n), |b| {
+        group.bench_function(criterion::BenchmarkId::new("iter", n), |b| {
             b.iter(|| {
                 for (_entity, (pos, health)) in world.query::<(&Pos, &Health)>() {
                     black_box((pos, health));
