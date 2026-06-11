@@ -37,10 +37,6 @@ pub const ENGINE_THREADS: [&str; 7] = [
     "InputThread",
 ];
 
-use std::sync::{Arc, OnceLock};
-
-static GLOBAL_BACKEND: OnceLock<Arc<parking_lot::RwLock<EngineBackend>>> = OnceLock::new();
-
 pub struct EngineBackend {
     subsystems: SubsystemRegistry,
 }
