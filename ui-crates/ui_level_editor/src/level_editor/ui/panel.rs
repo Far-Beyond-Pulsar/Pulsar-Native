@@ -114,7 +114,7 @@ impl LevelEditorPanel {
             // File does not exist — seed from the embedded default.level if available,
             // otherwise save the current in-memory (empty) scene to disk.
             let embedded = engine_state::EngineContext::global()
-                .and_then(|ctx| ctx.default_level_bytes.read().clone());
+                .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone());
 
             let seed_result = if let Some(bytes) = embedded {
                 // Write the embedded bytes directly — preserves whatever the developer
@@ -195,7 +195,7 @@ impl LevelEditorPanel {
 
         // Get the physics query service from the global EngineBackend
         let physics_query = engine_backend::EngineBackend::global()
-            .and_then(|backend_arc| backend_arc.read().get_physics_query_service());
+            .and_then(|backend| backend.read().get_physics_query_service());
 
         // Create the shared scene database FIRST so both the renderer and the UI
         // panels hold the same Arc. All reads/writes go to the same atomic storage.
@@ -1008,7 +1008,7 @@ impl LevelEditorPanel {
 
         // Load from the embedded default.level if available, otherwise start empty.
         if let Some(bytes) = engine_state::EngineContext::global()
-            .and_then(|ctx| ctx.default_level_bytes.read().clone())
+            .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone())
         {
             let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
             if std::fs::write(&tmp, &bytes).is_ok() {
@@ -1097,10 +1097,8 @@ impl Panel for LevelEditorPanel {
 
         // Get the file type icon from the plugin manager registry
         if let Some(plugin_mgr) = plugin_manager::global() {
-            if let Ok(plugin_mgr_guard) = plugin_mgr.read() {
-                if let Some(file_type_def) = plugin_mgr_guard.get_file_type_for_path(file_path) {
-                    return Some(file_type_def.icon.clone());
-                }
+            if let Some(file_type_def) = plugin_mgr.read().get_file_type_for_path(file_path) {
+                return Some(file_type_def.icon.clone());
             }
         }
 

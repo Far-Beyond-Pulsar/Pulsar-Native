@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+engine_state = { workspace = true }
 gpui-ce.workspace = true
 window_manager = { workspace = true }
 linkme = { workspace = true }

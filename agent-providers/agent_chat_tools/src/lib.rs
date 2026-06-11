@@ -7,11 +7,13 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
-        Arc, Mutex, OnceLock, RwLock,
+        Arc, RwLock,
     },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use engine_state::{EngineContext, ResourceHandle};
 use tracing::debug;
 
 pub use tool_registry::{ChatTool, PluginToolRegistry, ToolContext, ToolRegistry};
@@ -60,8 +62,6 @@ struct RuntimeState {
     current_file: Option<PathBuf>,
     extras: PulsarToolExtras,
 }
-
-static RUNTIME_STATE: OnceLock<Mutex<RuntimeState>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SubagentStatus {
@@ -118,7 +118,6 @@ struct SubagentStore {
     completion_queue: VecDeque<String>,
 }
 
-static SUBAGENT_STORE: OnceLock<Mutex<SubagentStore>> = OnceLock::new();
 static SUBAGENT_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 
 // ── Task Manifest ────────────────────────────────────────────────────────────
@@ -137,17 +136,17 @@ struct TaskManifest {
     tasks: Vec<TaskEntry>,
 }
 
-static TASK_MANIFEST: OnceLock<Mutex<TaskManifest>> = OnceLock::new();
-
-fn task_manifest() -> &'static Mutex<TaskManifest> {
-    TASK_MANIFEST.get_or_init(|| Mutex::new(TaskManifest::default()))
+fn task_manifest() -> ResourceHandle<TaskManifest> {
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .get_or_init::<TaskManifest>()
 }
 
 /// Returns a JSON snapshot of current tasks for injection into system messages.
 pub fn get_task_manifest_snapshot() -> Vec<Value> {
-    let Ok(guard) = task_manifest().lock() else {
-        return vec![];
-    };
+    let store = task_manifest();
+    let guard = store.read();
     guard
         .tasks
         .iter()
@@ -164,16 +163,14 @@ pub fn get_task_manifest_snapshot() -> Vec<Value> {
 
 /// Clears the task manifest — call when starting a fresh chat.
 pub fn clear_task_manifest() {
-    if let Ok(mut guard) = task_manifest().lock() {
-        guard.tasks.clear();
-    }
+    let store = task_manifest();
+    store.write().tasks.clear();
 }
 
 /// Returns running/pending sub-agents for live context injection.
 pub fn get_active_subagents_snapshot() -> Vec<Value> {
-    let Ok(guard) = subagent_store().lock() else {
-        return vec![];
-    };
+    let store = subagent_store();
+    let guard = store.read();
     guard
         .records
         .values()
@@ -193,9 +190,8 @@ pub fn get_active_subagents_snapshot() -> Vec<Value> {
 /// Returns the first ~800 chars of the sub-agent's final assistant message,
 /// or `None` if the result is not yet available.
 pub fn get_subagent_result_preview(subagent_id: &str) -> Option<String> {
-    let Ok(guard) = subagent_store().lock() else {
-        return None;
-    };
+    let store = subagent_store();
+    let guard = store.read();
     guard.records.get(subagent_id).and_then(|r| {
         r.result.as_ref().and_then(|result| {
             result
@@ -207,8 +203,11 @@ pub fn get_subagent_result_preview(subagent_id: &str) -> Option<String> {
     })
 }
 
-fn subagent_store() -> &'static Mutex<SubagentStore> {
-    SUBAGENT_STORE.get_or_init(|| Mutex::new(SubagentStore::default()))
+fn subagent_store() -> ResourceHandle<SubagentStore> {
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .get_or_init::<SubagentStore>()
 }
 
 fn now_ms_u64() -> u64 {
@@ -286,7 +285,9 @@ fn launch_subagent_worker(
         let mut model_snapshot = String::new();
         let mut instructions_snapshot = String::new();
 
-        if let Ok(mut guard) = subagent_store().lock() {
+        {
+            let store = subagent_store();
+            let mut guard = store.write();
             if let Some(record) = guard.records.get_mut(&subagent_id) {
                 record.status = SubagentStatus::Running;
                 record.started_at_ms = Some(now);
@@ -309,7 +310,9 @@ fn launch_subagent_worker(
             thread::sleep(Duration::from_millis(350));
 
             let mut should_exit = false;
-            if let Ok(mut guard) = subagent_store().lock() {
+            {
+                let store = subagent_store();
+                let mut guard = store.write();
                 if let Some(record) = guard.records.get_mut(&subagent_id) {
                     if record.cancellation_requested {
                         record.status = SubagentStatus::Cancelled;
@@ -338,8 +341,6 @@ fn launch_subagent_worker(
                 } else {
                     should_exit = true;
                 }
-            } else {
-                should_exit = true;
             }
 
             if should_exit {
@@ -366,7 +367,9 @@ fn launch_subagent_worker(
         };
 
         let finished_at = now_ms_u64();
-        if let Ok(mut guard) = subagent_store().lock() {
+        {
+            let store = subagent_store();
+            let mut guard = store.write();
             if let Some(record) = guard.records.get_mut(&subagent_id) {
                 if record.cancellation_requested {
                     record.status = SubagentStatus::Cancelled;
@@ -473,9 +476,8 @@ fn launch_subagent_worker(
 }
 
 pub fn dequeue_subagent_completion_event() -> Option<Value> {
-    let Ok(mut guard) = subagent_store().lock() else {
-        return None;
-    };
+    let store = subagent_store();
+    let mut guard = store.write();
 
     let id = guard.completion_queue.pop_front()?;
     let mut event = None;
@@ -500,9 +502,8 @@ pub fn dequeue_subagent_completion_event() -> Option<Value> {
 }
 
 pub fn queued_subagent_completion_count() -> usize {
-    let Ok(guard) = subagent_store().lock() else {
-        return 0;
-    };
+    let store = subagent_store();
+    let guard = store.read();
     guard.completion_queue.len()
 }
 
@@ -511,29 +512,25 @@ fn set_runtime_state(
     current_file: Option<PathBuf>,
     extras: PulsarToolExtras,
 ) {
-    let state = RUNTIME_STATE.get_or_init(|| {
-        Mutex::new(RuntimeState {
-            workspace_root: workspace_root.clone(),
-            current_file: current_file.clone(),
-            extras: extras.clone(),
-        })
-    });
-
-    if let Ok(mut guard) = state.lock() {
-        guard.workspace_root = workspace_root;
-        guard.current_file = current_file;
-        guard.extras = extras;
-    }
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .insert(RuntimeState {
+            workspace_root,
+            current_file,
+            extras,
+        });
 }
 
 fn runtime_state() -> anyhow::Result<RuntimeState> {
-    let state = RUNTIME_STATE
-        .get()
+    let ctx = EngineContext::global()
+        .ok_or_else(|| anyhow!("Engine not initialized"))?;
+    let handle = ctx
+        .store
+        .get::<RuntimeState>()
         .ok_or_else(|| anyhow!("Tool runtime state is not initialized"))?;
-    let guard = state
-        .lock()
-        .map_err(|_| anyhow!("Tool runtime state lock poisoned"))?;
-    Ok(guard.clone())
+    let state = handle.read().clone();
+    Ok(state)
 }
 
 fn runtime_workspace_root() -> anyhow::Result<PathBuf> {
@@ -640,9 +637,8 @@ pub fn task_list_update(tasks: Value) -> anyhow::Result<Value> {
     }
 
     let count = entries.len();
-    if let Ok(mut guard) = task_manifest().lock() {
-        guard.tasks = entries;
-    }
+    let store = task_manifest();
+    store.write().tasks = entries;
 
     Ok(json!({ "ok": true, "count": count }))
 }
@@ -699,9 +695,7 @@ pub fn activate_open_editor(index: i64) -> anyhow::Result<Value> {
 pub fn query_available_file_types() -> anyhow::Result<Value> {
     let manager_lock =
         plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
-    let manager = manager_lock
-        .read()
-        .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+    let manager = manager_lock.read();
 
     let file_types = manager
         .file_type_registry()
@@ -731,9 +725,7 @@ pub fn query_file_editors(file_path: String) -> anyhow::Result<Value> {
 
     let manager_lock =
         plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
-    let manager = manager_lock
-        .read()
-        .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+    let manager = manager_lock.read();
 
     let Some(file_type_id) = manager.file_type_registry().get_file_type_for_path(&full) else {
         return Ok(json!({
@@ -791,9 +783,7 @@ pub fn query_plugin_tools(file_path: Option<String>) -> anyhow::Result<Value> {
 
     let manager_lock =
         plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
-    let manager = manager_lock
-        .read()
-        .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+    let manager = manager_lock.read();
 
     let tools = manager.build_tool_bridge_for_file(&full).all_tools();
 
@@ -863,9 +853,7 @@ pub fn query_tools_for_plugin(
 
     let manager_lock =
         plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
-    let manager = manager_lock
-        .read()
-        .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+    let manager = manager_lock.read();
 
     let bridge = if let Some(path) = full.as_ref() {
         manager.build_tool_bridge_for_file(path)
@@ -906,9 +894,7 @@ fn execute_plugin_tool_inner(
     debug!(tool = tool_name.as_str(), file = %full_file_path.display(), plugin_id = ?plugin_id, "call_plugin_tool start");
     let manager_lock =
         plugin_manager::global().ok_or_else(|| anyhow!("Global plugin manager not available"))?;
-    let manager = manager_lock
-        .read()
-        .map_err(|_| anyhow!("Failed to lock plugin manager"))?;
+    let manager = manager_lock.read();
 
     // Resolve through the same file-scoped bridge used by query_plugin_tools so
     // execution matches file capabilities and plugin ownership for that file.
@@ -1071,12 +1057,8 @@ pub fn spawn_subagent(
         })],
     };
 
-    {
-        let mut guard = subagent_store()
-            .lock()
-            .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
-        guard.records.insert(subagent_id.clone(), record);
-    }
+    let store = subagent_store();
+    store.write().records.insert(subagent_id.clone(), record);
 
     launch_subagent_worker(
         subagent_id.clone(),
@@ -1112,10 +1094,8 @@ pub fn spawn_subagent(
 pub fn query_running_subagents() -> anyhow::Result<Value> {
     debug!("query_running_subagents start");
 
-    let guard = subagent_store()
-        .lock()
-        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
-
+    let store = subagent_store();
+    let guard = store.read();
     let mut running_count = 0usize;
     let mut queued_count = 0usize;
     let mut completed_count = 0usize;
@@ -1175,9 +1155,8 @@ pub fn query_running_subagents() -> anyhow::Result<Value> {
 pub fn get_subagent_result(subagent_id: String) -> anyhow::Result<Value> {
     debug!("get_subagent_result start subagent_id={}", subagent_id);
 
-    let guard = subagent_store()
-        .lock()
-        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+    let store = subagent_store();
+    let guard = store.read();
     let Some(record) = guard.records.get(&subagent_id) else {
         return Err(anyhow!("Subagent {} not found", subagent_id));
     };
@@ -1218,9 +1197,8 @@ pub fn get_subagent_result(subagent_id: String) -> anyhow::Result<Value> {
 pub fn cancel_subagent(subagent_id: String) -> anyhow::Result<Value> {
     debug!("cancel_subagent start subagent_id={}", subagent_id);
 
-    let mut guard = subagent_store()
-        .lock()
-        .map_err(|_| anyhow!("Subagent store lock poisoned"))?;
+    let store = subagent_store();
+    let mut guard = store.write();
     let Some(record) = guard.records.get_mut(&subagent_id) else {
         return Err(anyhow!("Subagent {} not found", subagent_id));
     };

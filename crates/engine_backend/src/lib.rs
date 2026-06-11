@@ -10,6 +10,7 @@ pub mod services;
 pub mod subsystems;
 
 pub use services::{GpuRenderer, RustAnalyzerManager};
+use std::sync::Arc;
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
@@ -106,12 +107,16 @@ impl EngineBackend {
     }
 
     /// Set as global instance (for access from other parts of the engine)
-    pub fn set_global(backend: Arc<parking_lot::RwLock<Self>>) {
-        GLOBAL_BACKEND.set(backend);
+    pub fn set_global(backend: Self) {
+        if let Some(ctx) = engine_state::EngineContext::global() {
+            ctx.store.insert(backend);
+        }
     }
 
     /// Get global instance
-    pub fn global() -> Option<&'static Arc<parking_lot::RwLock<EngineBackend>>> {
-        GLOBAL_BACKEND.get()
+    pub fn global() -> Option<engine_state::ResourceHandle<EngineBackend>> {
+        engine_state::EngineContext::global()?
+            .store
+            .get::<EngineBackend>()
     }
 }

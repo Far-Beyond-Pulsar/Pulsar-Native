@@ -125,7 +125,8 @@ impl GeneralOperations {
 
         // Re-register at new location using registry
         if let Some(plugin_manager) = plugin_manager::global() {
-            if let Ok(pm) = plugin_manager.read() {
+            {
+                let pm = plugin_manager.read();
                 if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(new_path)
                 {
                     if let Some(file_type_def) =

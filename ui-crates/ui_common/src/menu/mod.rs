@@ -1554,7 +1554,7 @@ impl Render for AppTitleBar {
                     .child(self.child.clone()(window, cx))
                     .when(
                         engine_state::EngineContext::global()
-                            .map(|ctx| ctx.dev.read().is_source_build)
+                            .map(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().is_source_build)
                             .unwrap_or(false),
                         |el| {
                             el.child(

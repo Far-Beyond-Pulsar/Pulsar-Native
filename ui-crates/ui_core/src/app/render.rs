@@ -481,14 +481,12 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) -> Vec<AnyElement> {
         let buttons = if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(pm) = pm_lock.read() {
-                pm.get_statusbar_buttons_for_position(position)
-                    .into_iter()
-                    .cloned()
-                    .collect()
-            } else {
-                Vec::new()
-            }
+            pm_lock
+                .read()
+                .get_statusbar_buttons_for_position(position)
+                .into_iter()
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
@@ -563,36 +561,31 @@ impl PulsarApp {
 
                             // Find which plugin owns this editor
                             if let Some(pm_lock) = plugin_manager::global() {
-                                let plugin_id: Option<plugin_editor_api::PluginId> =
-                                    if let Ok(pm) = pm_lock.read() {
-                                        pm.editor_registry()
-                                            .get_plugin_for_editor(&editor_id)
-                                            .cloned()
-                                    } else {
-                                        None
-                                    };
+                                let plugin_id: Option<plugin_editor_api::PluginId> = pm_lock
+                                    .read()
+                                    .editor_registry()
+                                    .get_plugin_for_editor(&editor_id)
+                                    .cloned();
 
                                 if let Some(plugin_id) = plugin_id {
-                                    if let Ok(mut pm) = pm_lock.write() {
-                                        match pm
-                                            .create_editor(&plugin_id, &editor_id, path, window, cx)
-                                        {
-                                            Ok(panel) => {
-                                                app.state.center_tabs.update(cx, |tabs, cx| {
-                                                    tabs.add_panel(panel, window, cx);
-                                                });
-                                                tracing::info!(
-                                                    "Successfully opened editor {:?}",
-                                                    editor_id
-                                                );
-                                            }
-                                            Err(e) => {
-                                                tracing::error!(
-                                                    "Failed to open editor {:?}: {:?}",
-                                                    editor_id,
-                                                    e
-                                                );
-                                            }
+                                    let mut pm = pm_lock.write();
+                                    match pm.create_editor(&plugin_id, &editor_id, path, window, cx)
+                                    {
+                                        Ok(panel) => {
+                                            app.state.center_tabs.update(cx, |tabs, cx| {
+                                                tabs.add_panel(panel, window, cx);
+                                            });
+                                            tracing::info!(
+                                                "Successfully opened editor {:?}",
+                                                editor_id
+                                            );
+                                        }
+                                        Err(e) => {
+                                            tracing::error!(
+                                                "Failed to open editor {:?}: {:?}",
+                                                editor_id,
+                                                e
+                                            );
                                         }
                                     }
                                 } else {

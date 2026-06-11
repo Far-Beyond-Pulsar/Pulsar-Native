@@ -98,7 +98,7 @@ impl Render for PulsarRoot {
             .on_action(
                 cx.listener(|_: &mut PulsarRoot, _: &DevOpenWorkspaceRoot, window, cx| {
                     if let Some(path) = engine_state::EngineContext::global()
-                        .and_then(|ctx| ctx.dev.read().source_path.clone())
+                        .and_then(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().source_path.clone())
                     {
                         #[cfg(target_os = "macos")]
                         let _ = std::process::Command::new("open").arg(&path).spawn();
@@ -118,7 +118,7 @@ impl Render for PulsarRoot {
                 cx.listener(|_: &mut PulsarRoot, _: &DevShowBuildInfo, window, cx| {
                     let info = engine_state::EngineContext::global()
                         .map(|ctx| {
-                            let dev = ctx.dev.read();
+                            let dev = ctx.store.get_or_init::<engine_state::DevContext>().get();
                             format!(
                                 "Source build: {}\nWorkspace root: {}",
                                 dev.is_source_build,

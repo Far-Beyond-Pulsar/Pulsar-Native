@@ -347,15 +347,13 @@ impl PulsarApp {
         // Update file manager drawer with registered file types from plugin manager
         let file_types: Vec<plugin_editor_api::FileTypeDefinition> =
             if let Some(pm_lock) = plugin_manager::global() {
-                if let Ok(pm) = pm_lock.read() {
-                    pm.file_type_registry()
-                        .get_all_file_types()
-                        .into_iter()
-                        .cloned()
-                        .collect()
-                } else {
-                    Vec::new()
-                }
+                pm_lock
+                    .read()
+                    .file_type_registry()
+                    .get_all_file_types()
+                    .into_iter()
+                    .cloned()
+                    .collect()
             } else {
                 Vec::new()
             };
@@ -367,7 +365,7 @@ impl PulsarApp {
 
         // Sync UserTypeRegistry to UI if we have a project
         if has_project {
-            if let Some(engine_state) = engine_state::EngineState::global() {
+            if let Some(engine_state) = engine_state::EngineContext::global() {
                 if let Some(user_types) = engine_state.user_types() {
                     let types = user_types.all();
                     tracing::debug!("📊 Syncing {} types to TypeDebuggerDrawer", types.len());

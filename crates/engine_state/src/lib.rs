@@ -23,7 +23,7 @@
 //! Use compile-time type-safe contexts:
 //! ```ignore
 //! // New (compile-time safety):
-//! engine_context.project.read().map(|p| p.path.clone())
+//! engine_context.store.get_or_init::<Option<ProjectContext>>().read().as_ref().map(|p| p.path.clone())
 //! // Window ID passed directly as parameter
 //! ```
 //!
@@ -73,7 +73,6 @@
 //! multi-listener [`ResourceHandle::changed`]).
 
 mod discord;
-mod multiplayer;
 mod multiuser;
 
 // Typed systems (primary API)
@@ -101,7 +100,7 @@ pub use multiuser::{
 pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
 pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 pub use keyed_store::KeyedStore;
-pub use resource::{Resource, ResourceHandle};
+pub use resource::{Resource, ResourceHandle, WriteGuard};
 pub use store::StateStore;
 
 // Re-export settings system (PulsarConfig surface)
@@ -131,13 +130,6 @@ pub use settings::{
 };
 pub use settings_defaults::register_default_settings;
 
-// Type alias for backward compatibility - EngineState is now EngineContext
-#[deprecated(
-    since = "0.2.0",
-    note = "Use EngineContext instead - provides typed context fields"
-)]
-pub type EngineState = EngineContext;
-
 /// Set the current project path.
 ///
 /// Updates `EngineContext::project` so that all subsystems that read the
@@ -153,7 +145,8 @@ pub fn set_project_path(path: String) {
 /// Get the current project path from EngineContext.
 pub fn get_project_path() -> Option<String> {
     EngineContext::global().and_then(|ctx| {
-        ctx.project
+        ctx.store
+            .get_or_init::<Option<ProjectContext>>()
             .read()
             .as_ref()
             .map(|p| p.path.to_string_lossy().into_owned())

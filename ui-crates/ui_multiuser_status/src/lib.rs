@@ -4,18 +4,20 @@ mod avatar_cache;
 
 pub use avatar_cache::{AvatarCache, fetch_avatar_image};
 
-use engine_state::{EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode};
+use engine_state::{EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode, ResourceHandle};
 use gpui::{
     AnyElement, App, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
     div, img, prelude::FluentBuilder, px,
 };
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt as _, h_flex};
 
 /// Get or create the global avatar cache
-fn avatar_cache() -> AvatarCache {
-    static CACHE: OnceLock<AvatarCache> = OnceLock::new();
-    CACHE.get_or_init(AvatarCache::new).clone()
+fn avatar_cache() -> ResourceHandle<AvatarCache> {
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .get_or_init::<AvatarCache>()
 }
 
 pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
@@ -224,7 +226,7 @@ fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyEl
         let cache = avatar_cache();
 
         // Check if we have a cached image
-        if let Some(cached_image) = cache.get(&avatar_url) {
+        if let Some(cached_image) = cache.read().get(&avatar_url) {
             // Only render if it's a valid image (not the empty placeholder used for failed fetches)
             if cached_image.frame_count() > 0 {
                 return img(ImageSource::Render(cached_image))
@@ -243,13 +245,13 @@ fn avatar_chip_with_image(participant: &MultiuserParticipant, cx: &App) -> AnyEl
             std::thread::spawn(move || {
                 match fetch_avatar_image(&url) {
                     Ok(image) => {
-                        cache_clone.insert(url.clone(), image);
+                        cache_clone.write().insert(url.clone(), image);
                         tracing::debug!("Fetched avatar from {}", url);
                     }
                     Err(e) => {
                         tracing::debug!("Failed to fetch avatar from {}: {}", url, e);
                         // Mark as attempted (store empty to avoid retrying)
-                        cache_clone.insert(
+                        cache_clone.write().insert(
                             url.clone(),
                             Arc::new(gpui::RenderImage::new(smallvec::smallvec![])),
                         );

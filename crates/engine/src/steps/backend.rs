@@ -13,8 +13,7 @@ pub fn run(ctx: &mut InitContext) -> Result<(), InitError> {
     // Set backend as global for access from other parts of the engine.
     // It is globally accessible via EngineBackend::global() afterwards,
     // so it does not need to be stored in InitContext.
-    let backend_arc = std::sync::Arc::new(parking_lot::RwLock::new(backend));
-    engine_backend::EngineBackend::set_global(backend_arc);
+    engine_backend::EngineBackend::set_global(backend);
 
     Ok(())
 }

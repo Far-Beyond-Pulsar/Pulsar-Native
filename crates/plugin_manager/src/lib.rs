@@ -54,10 +54,11 @@
 //! See `PLUGIN_ARCHITECTURE.md` for guidelines on preventing cycles with `Weak<T>`.
 
 use once_cell::sync::OnceCell;
+use parking_lot::RwLock;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use ui::dock::PanelView;
 
 struct FileTypeDecoratedPanelView {
@@ -185,18 +186,21 @@ pub use tool_bridge::PluginToolBridge;
 // Global Plugin Manager
 // ============================================================================
 
-/// Global plugin manager instance
+/// Global plugin manager instance.
 static GLOBAL_PLUGIN_MANAGER: OnceCell<RwLock<PluginManager>> = OnceCell::new();
 
-/// Initialize the global plugin manager
-/// This should be called once at application startup
+/// Initialize the global plugin manager.
+/// This should be called once at application startup.
 pub fn initialize_global(manager: PluginManager) {
     if GLOBAL_PLUGIN_MANAGER.set(RwLock::new(manager)).is_err() {
         tracing::warn!("Global plugin manager already initialized");
     }
 }
 
-/// Get a read-only reference to the global plugin manager
+/// Get a handle to the global plugin manager.
+///
+/// `parking_lot`-backed — `.read()` / `.write()` return guards directly,
+/// no `.unwrap()` needed.
 pub fn global() -> Option<&'static RwLock<PluginManager>> {
     GLOBAL_PLUGIN_MANAGER.get()
 }

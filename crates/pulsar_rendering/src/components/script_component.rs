@@ -1,7 +1,7 @@
 //! Script component — attaches a blueprint actor script to a scene object.
 
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
-use pulsar_events::{SCRIPT_REGISTRY, ScriptRegistration};
+use pulsar_events::{script_registry, ScriptRegistration};
 use pulsar_reflection::{
     get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
     RuntimeComponentOwner, ScenePropsProjector,
@@ -229,7 +229,8 @@ impl ComponentRuntimeBehavior for ScriptComponent {
 
         // Register with the global script registry.  The blueprint runtime reads
         // this each frame to know which scene objects have live scripts.
-        SCRIPT_REGISTRY.lock().register(ScriptRegistration {
+        let registry = script_registry();
+        registry.write().register(ScriptRegistration {
             actor_key: actor_key.clone(),
             scene_object_id: owner.scene_object_id.to_string(),
             script_path,

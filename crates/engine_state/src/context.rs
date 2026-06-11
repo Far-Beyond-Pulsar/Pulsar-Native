@@ -6,7 +6,6 @@
 
 use dashmap::DashMap;
 use gpui::AppContext;
-use parking_lot::RwLock;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -19,7 +18,6 @@ use window_manager;
 use crate::DiscordPresence;
 
 use gpui::Render;
-
 use window_manager::WindowManager;
 
 /// Context for a specific window
@@ -151,7 +149,7 @@ impl Default for LaunchContext {
     }
 }
 
-/// Main engine context - replaces EngineState's string metadata system
+/// Main engine context - typed, thread-safe access to all engine state
 ///
 /// This provides type-safe access to engine state across different domains.
 /// Instead of `get_metadata("current_project_path")`, you use `context.project.read().path`.
@@ -159,15 +157,6 @@ impl Default for LaunchContext {
 pub struct EngineContext {
     /// Per-window contexts indexed by WindowId
     pub windows: Arc<DashMap<WindowId, WindowContext>>,
-
-    /// Current project context (if any)
-    pub project: Arc<RwLock<Option<ProjectContext>>>,
-
-    /// Launch parameters (URI, command-line args, etc.)
-    pub launch: Arc<RwLock<LaunchContext>>,
-
-    /// Discord Rich Presence integration
-    pub discord: Arc<RwLock<Option<DiscordPresence>>>,
 
     /// Multiuser session context (if in a collaborative session).
     ///
@@ -179,56 +168,24 @@ pub struct EngineContext {
     /// instead of a single-consumer channel.
     pub multiuser: crate::resource::ResourceHandle<Option<crate::multiuser::MultiuserContext>>,
 
-    /// Authenticated user profile (if signed in).
-    pub auth_profile: Arc<RwLock<Option<AuthProfile>>>,
-
-    /// Global user type registry for reflection
-    pub user_types: Arc<RwLock<Option<Arc<UserTypeRegistry>>>>,
-
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
-
-    /// Developer / source-build context.  Populated during engine init.
-    pub dev: Arc<RwLock<DevContext>>,
-
-    /// Bytes of the embedded `assets/default.level` file, set during init.
-    /// `None` if the asset was not compiled into the binary (e.g. no file exists yet).
-    /// Used by the level editor to seed new projects with the engine's default scene.
-    pub default_level_bytes: Arc<RwLock<Option<Vec<u8>>>>,
 
     /// Monotonically increasing window ID counter (no cross-thread ordering
     /// needed — uniqueness is all that matters for IDs).
     next_id: Arc<AtomicU64>,
-
-    /// Optional window manager instance (enabled via feature)
-    pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
 
     /// Generic, type-safe global resource table.
     ///
     /// This is the extension point for new engine-wide singleton state.
     /// Instead of adding a new named field here or a new `OnceLock` in some
     /// other crate, store your type here:
-    ///
-    /// ```ignore
-    /// #[derive(Default)]
-    /// struct MySettings { enabled: bool }
-    ///
-    /// let settings = engine_context.store.get_or_init::<MySettings>();
-    /// settings.update(|s| s.enabled = true);
-    /// ```
     pub store: crate::store::StateStore,
 
     /// Generic, type-safe per-window resource table.
     ///
     /// The extension point for new per-window state (replaces ad-hoc
     /// per-window registries):
-    ///
-    /// ```ignore
-    /// #[derive(Default)]
-    /// struct PanelLayout { sidebar_width: f32 }
-    ///
-    /// let layout = engine_context.window_state.get_or_init::<PanelLayout>(&window_id);
-    /// ```
     pub window_state: crate::keyed_store::KeyedStore<WindowId>,
 }
 
@@ -240,19 +197,9 @@ impl EngineContext {
 
         Self {
             windows: Arc::new(DashMap::new()),
-            project: Arc::new(RwLock::new(None)),
-            launch: Arc::new(RwLock::new(LaunchContext::new())),
-            discord: Arc::new(RwLock::new(None)),
             multiuser,
-            auth_profile: Arc::new(RwLock::new(None)),
-            user_types: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
-            dev: Arc::new(RwLock::new(DevContext::default())),
-            default_level_bytes: Arc::new(RwLock::new(None)),
             next_id: Arc::new(AtomicU64::new(1)),
-
-            window_manager: Arc::new(RwLock::new(None)),
-
             window_state: crate::keyed_store::KeyedStore::new(),
             store,
         }
@@ -301,25 +248,34 @@ impl EngineContext {
 
     /// Set current project
     pub fn set_project(&self, project: ProjectContext) {
-        *self.project.write() = Some(project);
+        self.store
+            .get_or_init::<Option<ProjectContext>>()
+            .set(Some(project));
     }
 
     /// Clear current project
     pub fn clear_project(&self) {
-        *self.project.write() = None;
+        self.store
+            .get_or_init::<Option<ProjectContext>>()
+            .set(None);
     }
 
     /// Initialize Discord Rich Presence
     pub fn init_discord(&self, application_id: impl Into<String>) -> anyhow::Result<()> {
         let presence = DiscordPresence::new(application_id);
         presence.connect()?;
-        *self.discord.write() = Some(presence);
+        self.store
+            .get_or_init::<Option<DiscordPresence>>()
+            .set(Some(presence));
         Ok(())
     }
 
     /// Get Discord presence handle
     pub fn discord(&self) -> Option<DiscordPresence> {
-        self.discord.read().clone()
+        self.store
+            .get_or_init::<Option<DiscordPresence>>()
+            .read()
+            .clone()
     }
 
     /// Update Discord presence
@@ -329,34 +285,48 @@ impl EngineContext {
         tab_name: Option<String>,
         file_path: Option<String>,
     ) {
-        if let Some(discord) = self.discord.read().as_ref() {
+        let handle = self.store.get_or_init::<Option<DiscordPresence>>();
+        let guard = handle.read();
+        if let Some(discord) = guard.as_ref() {
             discord.update_all(project_name, tab_name, file_path);
         }
     }
 
     /// Set global user type registry
     pub fn set_user_types(&self, user_types: Arc<UserTypeRegistry>) {
-        *self.user_types.write() = Some(user_types);
+        self.store
+            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
+            .set(Some(user_types));
     }
 
     /// Set authenticated user profile.
     pub fn set_auth_profile(&self, profile: AuthProfile) {
-        *self.auth_profile.write() = Some(profile);
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .set(Some(profile));
     }
 
     /// Clear authenticated user profile.
     pub fn clear_auth_profile(&self) {
-        *self.auth_profile.write() = None;
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .set(None);
     }
 
     /// Get authenticated user profile.
     pub fn auth_profile(&self) -> Option<AuthProfile> {
-        self.auth_profile.read().clone()
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .read()
+            .clone()
     }
 
     /// Get global user type registry
     pub fn user_types(&self) -> Option<Arc<UserTypeRegistry>> {
-        self.user_types.read().clone()
+        self.store
+            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
+            .read()
+            .clone()
     }
 
     /// Set multiuser session context
@@ -487,9 +457,7 @@ impl Default for EngineContext {
 
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
 
-/// Migration helpers for transitioning from EngineState metadata to EngineContext
-///
-/// These provide a compatibility layer during the migration period.
+// (legacy metadata system removed)
 pub mod migration {
 
     /// Extract window ID from metadata string (used during migration)
@@ -565,19 +533,20 @@ mod tests {
     #[test]
     fn test_engine_context_project() {
         let context = EngineContext::new();
+        let project_handle = context.store.get_or_init::<Option<ProjectContext>>();
 
-        assert!(context.project.read().is_none());
+        assert!(project_handle.read().is_none());
 
         let project = ProjectContext::new(PathBuf::from("/test"));
         context.set_project(project.clone());
 
-        assert!(context.project.read().is_some());
+        assert!(project_handle.read().is_some());
         assert_eq!(
-            context.project.read().as_ref().unwrap().path,
+            project_handle.read().as_ref().unwrap().path,
             PathBuf::from("/test")
         );
 
         context.clear_project();
-        assert!(context.project.read().is_none());
+        assert!(project_handle.read().is_none());
     }
 }

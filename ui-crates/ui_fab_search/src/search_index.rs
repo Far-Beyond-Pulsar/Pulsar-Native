@@ -1,9 +1,9 @@
 //! Cache and network fetch layer for Sketchfab search.
 
 use std::collections::VecDeque;
-use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use engine_state::{EngineContext, ResourceHandle};
 use crate::parser::{SketchfabDownloadInfo, SketchfabMe, SketchfabModel, SketchfabModelDetail};
 
 // ── Cache ────────────────────────────────────────────────────────────────────
@@ -35,11 +35,17 @@ pub(crate) struct SearchCache {
     pub entries: VecDeque<CacheEntry>,
 }
 
-impl SearchCache {
-    pub fn new() -> Self {
+impl Default for SearchCache {
+    fn default() -> Self {
         Self {
             entries: VecDeque::with_capacity(CACHE_CAP),
         }
+    }
+}
+
+impl SearchCache {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn evict(&mut self) {
@@ -70,9 +76,11 @@ impl SearchCache {
     }
 }
 
-pub(crate) fn global_cache() -> &'static Mutex<SearchCache> {
-    static CACHE: OnceLock<Mutex<SearchCache>> = OnceLock::new();
-    CACHE.get_or_init(|| Mutex::new(SearchCache::new()))
+pub(crate) fn global_cache() -> ResourceHandle<SearchCache> {
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .get_or_init::<SearchCache>()
 }
 
 // ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -145,7 +153,9 @@ pub(crate) fn fetch_sketchfab_model_detail(
 ) -> (Vec<String>, Result<Box<SketchfabModelDetail>, String>) {
     let url = format!("https://api.sketchfab.com/v3/models/{}", uid);
 
-    if let Ok(mut cache) = global_cache().lock() {
+    {
+        let cache_handle = global_cache();
+        let mut cache = cache_handle.write();
         if let Some(cached) = cache.get_detail(&url) {
             return (vec!["cache hit".into()], Ok(cached));
         }
@@ -189,9 +199,8 @@ pub(crate) fn fetch_sketchfab_model_detail(
         (log, result)
     });
     if let Ok(ref d) = result {
-        if let Ok(mut cache) = global_cache().lock() {
-            cache.insert(url, CacheValue::Detail(d.clone()));
-        }
+        let cache = global_cache();
+        cache.write().insert(url, CacheValue::Detail(d.clone()));
     }
     (log, result)
 }

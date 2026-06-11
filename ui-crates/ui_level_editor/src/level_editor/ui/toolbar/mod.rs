@@ -178,7 +178,7 @@ impl ToolbarPanel {
 
     fn is_source_build() -> bool {
         engine_state::EngineContext::global()
-            .map(|ctx| ctx.dev.read().is_source_build)
+            .map(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().is_source_build)
             .unwrap_or(false)
     }
 
@@ -195,7 +195,7 @@ impl ToolbarPanel {
             .on_click(move |_, window, cx| {
                 // Resolve the target path: <workspace_root>/assets/default.level
                 let target_path = engine_state::EngineContext::global()
-                    .and_then(|ctx| ctx.dev.read().source_path.clone())
+                    .and_then(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().source_path.clone())
                     .map(|root| root.join("assets").join("default.level"));
 
                 let Some(path) = target_path else {

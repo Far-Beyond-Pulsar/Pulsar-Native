@@ -7,7 +7,8 @@
 //! [`crate::keyed_store::KeyedStore`] (one resource per type *per key*).
 
 use event_listener::{Event, EventListener};
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -86,6 +87,24 @@ impl<T> ResourceHandle<T> {
         self.version.load(Ordering::Acquire)
     }
 
+    /// Direct mutable (RAII) access to the value.
+    ///
+    /// Bumps the version counter and wakes all [`Self::changed`] listeners
+    /// when the returned guard is dropped — unlike `std::sync::RwLock`'s
+    /// `write()`, no `.unwrap()` is needed (parking_lot locks don't poison).
+    ///
+    /// Prefer [`Self::update`] for new code (it makes the mutation's extent
+    /// explicit), but `write()` is the drop-in replacement when migrating a
+    /// call site that previously held a `RwLockWriteGuard` across several
+    /// statements.
+    pub fn write(&self) -> WriteGuard<'_, T> {
+        WriteGuard {
+            guard: self.value.write(),
+            version: &self.version,
+            event: &self.event,
+        }
+    }
+
     /// Returns a future that resolves on the next change.
     ///
     /// Registration happens *synchronously* when this method is called (not
@@ -109,6 +128,37 @@ impl<T> ResourceHandle<T> {
     }
 }
 
+/// RAII write guard returned by [`ResourceHandle::write`].
+///
+/// Bumps the resource's version counter and notifies all [`ResourceHandle::changed`]
+/// listeners when dropped.
+pub struct WriteGuard<'a, T> {
+    guard: RwLockWriteGuard<'a, T>,
+    version: &'a AtomicU64,
+    event: &'a Event,
+}
+
+impl<'a, T> Deref for WriteGuard<'a, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.guard
+    }
+}
+
+impl<'a, T> DerefMut for WriteGuard<'a, T> {
+    fn deref_mut(&mut self) -> &mut T {
+        &mut self.guard
+    }
+}
+
+impl<'a, T> Drop for WriteGuard<'a, T> {
+    fn drop(&mut self) {
+        self.version.fetch_add(1, Ordering::AcqRel);
+        self.event.notify(usize::MAX);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,6 +169,17 @@ mod tests {
         assert_eq!(*handle.read(), 42);
         handle.set(7);
         assert_eq!(*handle.read(), 7);
+    }
+
+    #[test]
+    fn write_guard_mutates_and_bumps_version() {
+        let handle = ResourceHandle::new(vec![1, 2]);
+        {
+            let mut guard = handle.write();
+            guard.push(3);
+        }
+        assert_eq!(*handle.read(), vec![1, 2, 3]);
+        assert_eq!(handle.version(), 1);
     }
 
     #[test]
