@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use clap::Parser;
     use pulsar_relay::config::{Config, Cli};
 
     #[test]
