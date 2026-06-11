@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use helio::{MaterialId, MeshId, MeshUpload};
-use tracing;
 
 /// Cache of GPU-uploaded mesh geometry, keyed by the resolved asset path.
 ///
@@ -99,41 +98,31 @@ pub fn resolve_asset_path(project_root: &Path, asset: &str) -> PathBuf {
     let norm = asset.replace('\\', "/");
     let p = Path::new(&norm);
 
-    tracing::info!("[RAP] asset={:?} project_root={:?}", asset, project_root);
-
     if p.is_absolute() && p.exists() {
-        tracing::info!("[RAP] FOUND absolute {:?}", p);
         return p.to_path_buf();
     }
 
     let proj = project_root.join(&norm);
     if proj.exists() {
-        tracing::info!("[RAP] FOUND project-root {:?}", proj);
         return proj;
     }
 
     if let Ok(cwd) = std::env::current_dir() {
-        tracing::info!("[RAP] cwd={:?}", cwd);
         let cwd_path = cwd.join(&norm);
         if cwd_path.exists() {
-            tracing::info!("[RAP] FOUND cwd {:?}", cwd_path);
             return cwd_path;
         }
         let cwd_assets = cwd.join("assets").join(&norm);
         if cwd_assets.exists() {
-            tracing::info!("[RAP] FOUND cwd/assets {:?}", cwd_assets);
             return cwd_assets;
         }
     }
 
     let engine = Path::new(ENGINE_ASSETS_DIR).join(&norm);
-    tracing::info!("[RAP] checking engine={:?}", engine);
     if engine.exists() {
-        tracing::info!("[RAP] FOUND engine {:?}", engine);
         return engine;
     }
 
-    tracing::warn!("[RAP] NOT FOUND — returning fallback {:?}", proj);
     proj
 }
 

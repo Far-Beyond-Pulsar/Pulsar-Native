@@ -225,17 +225,9 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         }
 
         let pr = context.project_root();
-        tracing::info!(
-            "[SMC] mesh_asset={:?} project_root={:?}",
-            mesh_asset,
-            pr,
-        );
-
         let abs_path = resolve_asset_path(pr, &mesh_asset)
             .to_string_lossy()
             .replace('\\', "/");
-
-        tracing::info!("[SMC] abs_path={:?} exists={}", abs_path, std::path::Path::new(&abs_path).exists());
 
         let q = Quat::from_euler(
             EulerRot::YXZ,
@@ -260,17 +252,12 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         };
 
         let (mesh_id, mat_id) = if let Some(ids) = cached {
-            tracing::info!("[SMC] cache HIT for {}", abs_path);
             ids
         } else {
-            tracing::info!("[SMC] cache MISS for {}", abs_path);
             // Cache miss — load file and upload.
             let path = std::path::Path::new(&abs_path);
             let upload = match load_mesh_upload(path) {
-                Some(u) => {
-                    tracing::info!("[SMC] load_mesh_upload SUCCESS for {}", abs_path);
-                    u
-                }
+                Some(u) => u
                 None => {
                     tracing::warn!(
                         "[SMC] load_mesh_upload FAILED for {}",
@@ -286,10 +273,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             let renderer = get_subsystem!(context, Renderer);
             let scene = renderer.scene_mut();
             let mid = match scene.insert_actor(SceneActor::mesh(upload)).as_mesh() {
-                Some(m) => {
-                    tracing::info!("[SMC] inserted mesh id={:?}", m);
-                    m
-                }
+                Some(m) => m
                 None => {
                     tracing::warn!("[SMC] insert_actor returned no mesh id");
                     return;
@@ -381,12 +365,10 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 let oc = get_subsystem!(context, SceneObjectCache);
                 oc.insert(scene_id.to_string(), id, abs_path.clone());
             }
-            tracing::info!("[SMC] inserted new object for {}", scene_id);
         } else if let Some(SceneCacheAction::UpdateTransform { obj_id }) = action.take() {
             let _ = get_subsystem!(context, Renderer)
                 .scene_mut()
                 .update_object_transform(obj_id, transform);
-            tracing::info!("[SMC] updated transform for {}", scene_id);
         } else if let Some(SceneCacheAction::Replace {
             old_id,
             mesh_id,
@@ -415,7 +397,6 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 oc.remove(scene_id);
                 oc.insert(scene_id.to_string(), id, abs_path);
             }
-            tracing::info!("[SMC] re-inserted (mesh changed) for {}", scene_id);
         }
     }
 }
