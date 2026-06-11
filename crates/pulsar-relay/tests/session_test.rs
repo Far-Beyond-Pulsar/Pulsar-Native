@@ -2,7 +2,8 @@
 mod tests {
     use pulsar_relay::config::Config;
     use pulsar_relay::session::SessionStore;
-    use pulsar_relay::auth::{AuthService, Role};
+    use pulsar_relay::auth::AuthService;
+    use pulsar_multiplayer_core::session::Role;
     use std::sync::Arc;
     use std::time::Duration;
 
