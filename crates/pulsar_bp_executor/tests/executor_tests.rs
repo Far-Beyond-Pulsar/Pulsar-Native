@@ -23,7 +23,7 @@ use pulsar_std_bundle::extract_to_tempfile;
 
 fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().expect("extract dylib");
-    let exec = BpExecutor::load(&tmp.path, None).expect("load dylib");
+    let exec = BpExecutor::load(&tmp.path).expect("load dylib");
     (exec, tmp)
 }
 
