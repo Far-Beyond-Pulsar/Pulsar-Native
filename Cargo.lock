@@ -1230,18 +1230,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "blueprint_compiler"
-version = "0.1.0"
-dependencies = [
- "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=d18837c13dd3e1cf6076d9a3c64c450971a6d1af)",
- "pbgc",
- "pulsar_graph",
- "serde_json",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=f61f77bf4c1351ae4327184dc5479f61d72781e6#f61f77bf4c1351ae4327184dc5479f61d72781e6"
@@ -8664,10 +8652,10 @@ dependencies = [
 name = "pulsar_game"
 version = "0.1.0"
 dependencies = [
- "blueprint_compiler",
  "engine_state",
  "glam 0.33.1",
  "helio",
+ "pbgc",
  "pollster 0.4.0",
  "profiling 0.1.0",
  "pulsar_bp_executor",

@@ -4,7 +4,7 @@
 //! executable bytecode using PBGC (Pulsar Blueprint Graph Compiler).
 
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
-use blueprint_compiler::{
+use pbgc::{
     compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription,
 };
 use pulsar_graph::{BlueprintAsset, ClassVariable, GraphDescription};

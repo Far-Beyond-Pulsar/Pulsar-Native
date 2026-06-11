@@ -1,6 +1,6 @@
 //! Compiled bytecode data structures for blueprint execution.
 
-use blueprint_compiler::BpProgram;
+use pbgc::BpProgram;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 

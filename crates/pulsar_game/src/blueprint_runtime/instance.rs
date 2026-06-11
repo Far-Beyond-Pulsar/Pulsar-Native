@@ -278,7 +278,7 @@ impl Drop for BlueprintInstance {
 mod tests {
     use super::*;
     use crate::blueprint_runtime::compiled_bytecode::CompiledBytecode;
-    use blueprint_compiler::BpProgram;
+    use pbgc::BpProgram;
     use std::collections::HashMap;
 
     fn create_test_loaded_blueprint() -> LoadedBlueprint {

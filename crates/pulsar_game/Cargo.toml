@@ -15,7 +15,7 @@ tracing     = { workspace = true }
 
 # Blueprint runtime dependencies
 pulsar_graph = { workspace = true }
-blueprint_compiler = { workspace = true }
+pbgc = { workspace = true }
 pulsar_bp_executor = { workspace = true }
 pulsar_std_bundle = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

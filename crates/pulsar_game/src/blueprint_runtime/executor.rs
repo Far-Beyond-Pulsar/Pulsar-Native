@@ -4,7 +4,7 @@
 
 use super::byte_arena::ByteArena;
 use super::compiled_bytecode::CompiledBytecode;
-use blueprint_compiler::{vm, BpProgram};
+use pbgc::{vm, BpProgram};
 use pulsar_bp_executor::{BpExecutor as NativeExecutor, ExecutorError as NativeExecutorError};
 use pulsar_std_bundle::{expected_sha256, extract_to_tempfile};
 use std::collections::HashMap;
