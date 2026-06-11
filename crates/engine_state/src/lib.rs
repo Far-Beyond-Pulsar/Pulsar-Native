@@ -46,6 +46,11 @@ mod multiuser;
 pub mod context;
 pub mod renderers_typed;
 
+// Generic, type-safe arbitrary state system
+pub mod keyed_store;
+pub mod resource;
+pub mod store;
+
 // Settings system — backed by PulsarConfig
 pub mod settings;
 pub mod settings_defaults;
@@ -59,9 +64,11 @@ pub use multiuser::{
 };
 
 // Re-export typed systems as primary API
-pub use context::subscribe_multiuser_updates;
 pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
 pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
+pub use keyed_store::KeyedStore;
+pub use resource::{Resource, ResourceHandle};
+pub use store::StateStore;
 
 // Re-export settings system (PulsarConfig surface)
 pub use settings::{

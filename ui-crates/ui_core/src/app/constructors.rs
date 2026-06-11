@@ -291,8 +291,12 @@ impl PulsarApp {
         plugin_manager::initialize_global(plugin_manager);
 
         let multiuser_refresh_task = cx.spawn(async move |this, cx| {
-            let rx = engine_state::subscribe_multiuser_updates();
-            while rx.recv().await.is_ok() {
+            let multiuser = engine_state::EngineContext::global()
+                .expect("EngineContext not initialized")
+                .multiuser
+                .clone();
+            loop {
+                multiuser.changed().await;
                 this.update(cx, |_, cx| cx.notify());
             }
         });

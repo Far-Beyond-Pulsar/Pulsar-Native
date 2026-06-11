@@ -3032,6 +3032,7 @@ dependencies = [
  "dashmap",
  "directories 6.0.0",
  "engine_fs",
+ "event-listener 5.4.1",
  "futures",
  "gpui-ce",
  "parking_lot",

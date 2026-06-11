@@ -11,7 +11,7 @@ use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use engine_fs::UserTypeRegistry;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
@@ -169,8 +169,15 @@ pub struct EngineContext {
     /// Discord Rich Presence integration
     pub discord: Arc<RwLock<Option<DiscordPresence>>>,
 
-    /// Multiuser session context (if in a collaborative session)
-    pub multiuser: Arc<RwLock<Option<crate::multiuser::MultiuserContext>>>,
+    /// Multiuser session context (if in a collaborative session).
+    ///
+    /// Backed by [`crate::store::StateStore`] — this is the first field
+    /// migrated to the generic resource system. `.read()` works exactly as
+    /// before; mutation goes through [`Self::set_multiuser`] /
+    /// [`Self::update_multiuser`] / [`Self::clear_multiuser`], which now
+    /// notify *every* subscriber via [`crate::resource::ResourceHandle::changed`]
+    /// instead of a single-consumer channel.
+    pub multiuser: crate::resource::ResourceHandle<Option<crate::multiuser::MultiuserContext>>,
 
     /// Authenticated user profile (if signed in).
     pub auth_profile: Arc<RwLock<Option<AuthProfile>>>,
@@ -195,17 +202,48 @@ pub struct EngineContext {
 
     /// Optional window manager instance (enabled via feature)
     pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
+
+    /// Generic, type-safe global resource table.
+    ///
+    /// This is the extension point for new engine-wide singleton state.
+    /// Instead of adding a new named field here or a new `OnceLock` in some
+    /// other crate, store your type here:
+    ///
+    /// ```ignore
+    /// #[derive(Default)]
+    /// struct MySettings { enabled: bool }
+    ///
+    /// let settings = engine_context.store.get_or_init::<MySettings>();
+    /// settings.update(|s| s.enabled = true);
+    /// ```
+    pub store: crate::store::StateStore,
+
+    /// Generic, type-safe per-window resource table.
+    ///
+    /// The extension point for new per-window state (replaces ad-hoc
+    /// per-window registries):
+    ///
+    /// ```ignore
+    /// #[derive(Default)]
+    /// struct PanelLayout { sidebar_width: f32 }
+    ///
+    /// let layout = engine_context.window_state.get_or_init::<PanelLayout>(&window_id);
+    /// ```
+    pub window_state: crate::keyed_store::KeyedStore<WindowId>,
 }
 
 impl EngineContext {
     /// Create a new engine context
     pub fn new() -> Self {
+        let store = crate::store::StateStore::new();
+        let multiuser = store.get_or_init::<Option<crate::multiuser::MultiuserContext>>();
+
         Self {
             windows: Arc::new(DashMap::new()),
             project: Arc::new(RwLock::new(None)),
             launch: Arc::new(RwLock::new(LaunchContext::new())),
             discord: Arc::new(RwLock::new(None)),
-            multiuser: Arc::new(RwLock::new(None)),
+            multiuser,
             auth_profile: Arc::new(RwLock::new(None)),
             user_types: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
@@ -214,6 +252,9 @@ impl EngineContext {
             next_id: Arc::new(AtomicU64::new(1)),
 
             window_manager: Arc::new(RwLock::new(None)),
+
+            window_state: crate::keyed_store::KeyedStore::new(),
+            store,
         }
     }
 
@@ -335,33 +376,34 @@ impl EngineContext {
     /// engine_context.set_multiuser(multiuser_ctx);
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
-        *self.multiuser.write() = Some(context);
-        emit_multiuser_update();
+        self.multiuser.set(Some(context));
     }
 
     /// Mutate multiuser context in place if active.
     ///
-    /// Returns `true` when a context existed and was updated.
+    /// Returns `true` when a context existed and was updated. Subscribers
+    /// (via [`crate::resource::ResourceHandle::changed`]) are only notified
+    /// when an update actually happened.
     pub fn update_multiuser<F>(&self, update: F) -> bool
     where
         F: FnOnce(&mut crate::multiuser::MultiuserContext),
     {
-        let mut guard = self.multiuser.write();
-        if let Some(ctx) = guard.as_mut() {
-            update(ctx);
-            emit_multiuser_update();
-            true
-        } else {
-            false
+        if self.multiuser.read().is_none() {
+            return false;
         }
+        self.multiuser.update(|guard| {
+            if let Some(ctx) = guard.as_mut() {
+                update(ctx);
+            }
+        });
+        true
     }
 
     /// Clear multiuser session context
     ///
     /// Call this when disconnecting from a session.
     pub fn clear_multiuser(&self) {
-        *self.multiuser.write() = None;
-        emit_multiuser_update();
+        self.multiuser.set(None);
     }
 
     /// Get multiuser session context (if active)
@@ -423,7 +465,7 @@ impl EngineContext {
 
     /// Notify listeners that the multiuser snapshot changed.
     pub fn notify_multiuser_changed(&self) {
-        emit_multiuser_update();
+        self.multiuser.update(|_| {});
     }
 
     /// Set as global instance (for GPUI views that need global access)
@@ -444,33 +486,6 @@ impl Default for EngineContext {
 }
 
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
-static MULTIUSER_UPDATE_BUS: OnceLock<(
-    smol::channel::Sender<()>,
-    Mutex<Option<smol::channel::Receiver<()>>>,
-)> = OnceLock::new();
-
-fn multiuser_update_bus() -> &'static (
-    smol::channel::Sender<()>,
-    Mutex<Option<smol::channel::Receiver<()>>>,
-) {
-    MULTIUSER_UPDATE_BUS.get_or_init(|| {
-        let (tx, rx) = smol::channel::unbounded();
-        (tx, Mutex::new(Some(rx)))
-    })
-}
-
-pub fn subscribe_multiuser_updates() -> smol::channel::Receiver<()> {
-    multiuser_update_bus()
-        .1
-        .lock()
-        .expect("multiuser update bus poisoned")
-        .take()
-        .expect("multiuser updates already subscribed")
-}
-
-fn emit_multiuser_update() {
-    let _ = multiuser_update_bus().0.try_send(());
-}
 
 /// Migration helpers for transitioning from EngineState metadata to EngineContext
 ///

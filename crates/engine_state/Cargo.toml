@@ -12,6 +12,7 @@ window_manager.workspace = true
 dashmap = { workspace = true }
 parking_lot = { workspace = true }
 smol = { workspace = true }
+event-listener = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
