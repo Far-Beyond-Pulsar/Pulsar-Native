@@ -176,6 +176,30 @@ impl InitTask {
     }
 }
 
+/// Registers an initialization task with a graph, collapsing the
+/// `add_task(InitTask::new(...)).unwrap()` boilerplate into one call.
+///
+/// ```ignore
+/// init_task!(graph, DISCORD, "Discord Rich Presence", [SET_GLOBAL], |ctx| {
+///     // ...
+///     Ok(())
+/// });
+/// ```
+macro_rules! init_task {
+    ($graph:expr, $id:expr, $name:expr, [$($dep:expr),* $(,)?], $executor:expr) => {
+        $graph
+            .add_task($crate::init::InitTask::new(
+                $id,
+                $name,
+                vec![$($dep),*],
+                Box::new($executor),
+            ))
+            .unwrap()
+    };
+}
+
+pub(crate) use init_task;
+
 /// Dependency graph for engine initialization
 pub struct InitGraph {
     tasks: HashMap<TaskId, InitTask>,

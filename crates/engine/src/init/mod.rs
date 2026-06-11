@@ -5,4 +5,5 @@
 
 pub mod graph;
 
+pub(crate) use graph::init_task;
 pub use graph::{task_ids, InitContext, InitError, InitGraph, InitTask, TaskId};

@@ -54,9 +54,6 @@ pub use assets::Assets;
 // Re-export OpenSettings from ui crate
 pub use ui::OpenSettings;
 
-// --- External and engine imports ---
-use crate::settings::EngineSettings;
-
 // --- Internal modules ---
 
 // Re-export core modules that UI needs
@@ -72,6 +69,7 @@ pub mod logging; // Logging setup and configuration
 pub mod macos_permissions;
 pub mod runtime; // Async runtime setup and management
 pub mod settings; // Engine settings loading and saving
+mod steps;
 pub mod uri; // URI scheme handling // Project file association management
 
 // --- Engine context re-exports ---
@@ -82,7 +80,7 @@ pub use engine_state::{
     WindowRequest,
 };
 
-use init::{task_ids::*, InitContext, InitGraph, InitTask};
+use init::{init_task, task_ids::*, InitContext, InitGraph};
 
 #[cfg(target_os = "windows")]
 #[unsafe(no_mangle)]
@@ -148,116 +146,31 @@ fn main() {
     let mut graph = InitGraph::new();
 
     // Task 1: Logging (no dependencies)
-    graph
-        .add_task(InitTask::new(
-            LOGGING,
-            "Logging",
-            vec![],
-            Box::new(move |ctx| {
-                let _log_guard = logging::init(ctx.launch_args.verbose);
-
-                // Engine metadata logging
-                tracing::debug!("{}", consts::ENGINE_NAME);
-                tracing::debug!("Version: {}", consts::ENGINE_VERSION);
-                tracing::debug!("Authors: {}", consts::ENGINE_AUTHORS);
-                tracing::debug!("Description: {}", consts::ENGINE_DESCRIPTION);
-                tracing::debug!(
-                    "🚀 Starting Pulsar Engine with Winit + GPUI Zero-Copy Composition"
-                );
-                tracing::debug!(
-                    "Command-line arguments: {:?}",
-                    std::env::args().collect::<Vec<_>>()
-                );
-
-                ctx.log_guard = Some(_log_guard);
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(graph, LOGGING, "Logging", [], steps::logging::run);
 
     // Task 2: App data (depends on logging)
-    graph
-        .add_task(InitTask::new(
-            APPDATA,
-            "App Data",
-            vec![LOGGING],
-            Box::new(|_ctx| {
-                let appdata = appdata::setup_appdata();
-                tracing::debug!("App data directory: {:?}", appdata.appdata_dir);
-                tracing::debug!("Themes directory: {:?}", appdata.themes_dir);
-                tracing::debug!("Config directory: {:?}", appdata.config_dir);
-                tracing::debug!("Config file: {:?}", appdata.config_file);
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(graph, APPDATA, "App Data", [LOGGING], steps::appdata::run);
 
     // Task 3: Settings (depends on app data)
-    graph
-        .add_task(InitTask::new(
-            SETTINGS,
-            "Settings",
-            vec![APPDATA],
-            Box::new(|_ctx| {
-                let appdata = appdata::setup_appdata();
-                tracing::debug!("Loading engine settings from {:?}", appdata.config_file);
-                let engine_settings = EngineSettings::load(&appdata.config_file);
-                
-                // Initialize modern ConfigManager Global Settings
-                engine_state::register_default_settings();
-                engine_state::settings::GlobalSettings::new().load_all();
-
-                let allow_unsafe = engine_state::settings::global_config()
-                    .get(engine_state::settings::NS_EDITOR, "advanced", "allow_unsafe_process")
-                    .ok()
-                    .and_then(|v| v.as_bool().ok())
-                    .unwrap_or(engine_settings.advanced.allow_unsafe_process);
-                
-                pulsar_std::set_unsafe_process_allowed(allow_unsafe);
-
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(graph, SETTINGS, "Settings", [APPDATA], steps::settings::run);
 
     // Task 4: Runtime (depends on logging)
-    graph
-        .add_task(InitTask::new(
-            RUNTIME,
-            "Async Runtime",
-            vec![LOGGING],
-            Box::new(|ctx| {
-                let rt = runtime::create_runtime();
-                ctx.runtime = Some(rt);
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        RUNTIME,
+        "Async Runtime",
+        [LOGGING],
+        steps::runtime::run
+    );
 
     // Task 5: Backend (depends on runtime)
-    graph
-        .add_task(InitTask::new(
-            BACKEND,
-            "Engine Backend",
-            vec![RUNTIME],
-            Box::new(|ctx| {
-                let rt = ctx
-                    .runtime
-                    .as_ref()
-                    .ok_or_else(|| init::InitError::MissingContext("Runtime not initialized"))?;
-
-                let backend = rt.block_on(async { engine_backend::EngineBackend::init().await });
-
-                // Set backend as global for access from other parts of the engine
-                let backend_arc = std::sync::Arc::new(parking_lot::RwLock::new(backend));
-                engine_backend::EngineBackend::set_global(backend_arc);
-
-                // NOTE: Backend is now globally accessible via EngineBackend::global()
-                // No need to store in InitContext
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        BACKEND,
+        "Engine Backend",
+        [RUNTIME],
+        steps::backend::run
+    );
 
     // Task 6: Channels (no dependencies)
     // (disabled – window management will be done directly via GPUI)
@@ -274,133 +187,58 @@ fn main() {
     )).unwrap();*/
 
     // Task 7: Engine Context (depends on channels)
-    graph
-        .add_task(InitTask::new(
-            ENGINE_CONTEXT,
-            "Engine Context",
-            vec![], // no dependency now
-            Box::new(|ctx| {
-                let engine_context = EngineContext::new();
-
-                // Handle URI project path if present
-                if let Some(uri::UriCommand::OpenProject { path }) = &ctx.launch_args.uri_command {
-                    tracing::debug!("Launching project from URI: {}", path.display());
-                    let mut launch = engine_context.launch.write();
-                    launch.uri_project_path = Some(path.clone());
-                }
-
-                ctx.engine_context = Some(engine_context);
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        ENGINE_CONTEXT,
+        "Engine Context",
+        [],
+        steps::engine_context::run
+    );
 
     // Task 7b: Dev Detection (depends on engine context, before set_global)
-    graph
-        .add_task(InitTask::new(
-            DEV_DETECT,
-            "Dev/Source Detection",
-            vec![ENGINE_CONTEXT],
-            Box::new(|ctx| {
-                let engine_context = ctx.engine_context.as_ref().ok_or_else(|| {
-                    init::InitError::MissingContext("Engine context not initialized")
-                })?;
-
-                let dev = engine_state::DevContext::detect();
-                if dev.is_source_build {
-                    tracing::info!(
-                        "Source build detected — workspace root: {:?}",
-                        dev.source_path
-                    );
-                } else {
-                    tracing::debug!("Running from installed/distributed binary");
-                }
-                *engine_context.dev.write() = dev;
-
-                // Stash the embedded default level bytes so the level editor can
-                // seed new projects without depending on the engine crate directly.
-                if let Some(file) = Assets::get("default.level") {
-                    tracing::info!("Embedded default.level found ({} bytes)", file.data.len());
-                    *engine_context.default_level_bytes.write() = Some(file.data.into_owned());
-                } else {
-                    tracing::debug!("No embedded default.level — new projects start empty");
-                }
-
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        DEV_DETECT,
+        "Dev/Source Detection",
+        [ENGINE_CONTEXT],
+        steps::dev_detect::run
+    );
 
     // Task 8: Set Global (depends on dev detection)
-    graph
-        .add_task(InitTask::new(
-            SET_GLOBAL,
-            "Set Global Context",
-            vec![DEV_DETECT],
-            Box::new(|ctx| {
-                let engine_context = ctx.engine_context.as_ref().ok_or_else(|| {
-                    init::InitError::MissingContext("Engine context not initialized")
-                })?;
-
-                engine_context.clone().set_global();
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        SET_GLOBAL,
+        "Set Global Context",
+        [DEV_DETECT],
+        steps::set_global::run
+    );
 
     // Task 9: Discord (depends on set_global)
-    graph
-        .add_task(InitTask::new(
-            DISCORD,
-            "Discord Rich Presence",
-            vec![SET_GLOBAL],
-            Box::new(|ctx| {
-                let engine_context = ctx.engine_context.as_ref().ok_or_else(|| {
-                    init::InitError::MissingContext("Engine context not initialized")
-                })?;
-
-                if let Err(e) = discord::init_discord(engine_context, consts::DISCORD_APP_ID) {
-                    tracing::warn!("Failed to initialize Discord Rich Presence: {}", e);
-                }
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        DISCORD,
+        "Discord Rich Presence",
+        [SET_GLOBAL],
+        steps::discord::run
+    );
 
     // Task 10: URI Registration (depends on runtime)
-    graph
-        .add_task(InitTask::new(
-            URI_REGISTRATION,
-            "URI Scheme Registration",
-            vec![RUNTIME],
-            Box::new(|ctx| {
-                let rt = ctx
-                    .runtime
-                    .as_ref()
-                    .ok_or_else(|| init::InitError::MissingContext("Runtime not initialized"))?;
-
-                rt.spawn(async {
-                    if let Err(e) = uri::ensure_uri_scheme_registered() {
-                        tracing::error!("Failed to register URI scheme: {}", e);
-                    }
-                });
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        URI_REGISTRATION,
+        "URI Scheme Registration",
+        [RUNTIME],
+        steps::uri_registration::run
+    );
 
     // Task 11: Project file association prompt (depends on global context)
-    graph
-        .add_task(InitTask::new(
-            FILE_ASSOCIATION,
-            "Project File Association",
-            vec![SET_GLOBAL],
-            Box::new(|_ctx| {
-                file_association::maybe_prompt_project_file_association();
-                Ok(())
-            }),
-        ))
-        .unwrap();
+    init_task!(
+        graph,
+        FILE_ASSOCIATION,
+        "Project File Association",
+        [SET_GLOBAL],
+        steps::file_association::run
+    );
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {
