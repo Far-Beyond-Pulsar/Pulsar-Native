@@ -48,7 +48,6 @@ ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = 
 
 # ---------- Core Engine ----------
 gpui-component-macros              = { path = "crates/macros" }
-type_db                            = { path = "crates/type_db" }
 profiling                          = { path = "crates/profiling" }
 engine_fs                          = { path = "crates/engine_fs" }
 pulsar_std                         = { path = "crates/pulsar_std" }
@@ -261,7 +260,6 @@ window_manager        = { path = "crates/window_manager" }
 engine_state          = { path = "crates/engine_state" }
 engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
-type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
@@ -276,7 +274,6 @@ ui_common             = { path = "ui-crates/ui_common" }
 
 [patch.crates-io]
 profiling             = { path = "crates/profiling" }
-type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
@@ -298,7 +295,6 @@ window_manager        = { path = "crates/window_manager" }
 engine_state          = { path = "crates/engine_state" }
 engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
-type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
@@ -320,7 +316,6 @@ window_manager        = { path = "crates/window_manager" }
 engine_state          = { path = "crates/engine_state" }
 engine_fs             = { path = "crates/engine_fs" }
 profiling             = { path = "crates/profiling" }
-type_db               = { path = "crates/type_db" }
 pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }

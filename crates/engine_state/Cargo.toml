@@ -5,8 +5,6 @@ edition = "2021"
 publish = false
 
 [dependencies]
-# Type database
-type_db.workspace = true
 gpui-ce.workspace = true
 window_manager.workspace = true
 

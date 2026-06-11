@@ -178,7 +178,7 @@ impl Render for DevPopover {
         let uri_project_path: String;
         let window_count: usize;
         let renderer_count: usize;
-        let has_type_db: bool;
+        let has_user_types: bool;
         let verbose_launch: bool;
         let default_level_size: String;
         let has_discord: bool;
@@ -258,7 +258,7 @@ impl Render for DevPopover {
 
             has_discord = ctx.discord.read().is_some();
             has_window_manager = ctx.window_manager.read().is_some();
-            has_type_db = ctx.type_database.read().is_some();
+            has_user_types = ctx.user_types.read().is_some();
 
             {
                 let mu_guard = ctx.multiuser.read();
@@ -343,7 +343,7 @@ impl Render for DevPopover {
             default_level_size = "—".to_string();
             has_discord = false;
             has_window_manager = false;
-            has_type_db = false;
+            has_user_types = false;
             window_count = 0;
             renderer_count = 0;
             mu_active = false;
@@ -491,12 +491,12 @@ impl Render for DevPopover {
                             .child(pill(&format!("Windows {}", window_count), fg, bg))
                             .child(pill(&format!("Renderers {}", renderer_count), fg, bg))
                             .child(pill(
-                                if has_type_db {
-                                    "Type DB loaded"
+                                if has_user_types {
+                                    "User types loaded"
                                 } else {
-                                    "Type DB missing"
+                                    "User types missing"
                                 },
-                                if has_type_db { success } else { warning },
+                                if has_user_types { success } else { warning },
                                 bg,
                             ))
                             .child(pill(

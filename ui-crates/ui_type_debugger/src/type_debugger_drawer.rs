@@ -6,7 +6,7 @@ use plugin_editor_api::FileTypeId;
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use type_db::TypeInfo;
+use engine_fs::UserTypeInfo as TypeInfo;
 use ui::StyledExt;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -127,8 +127,9 @@ impl TypeDebuggerDrawer {
                         .as_ref()
                         .is_some_and(|d| d.to_lowercase().contains(&query))
                     || t.file_path
-                        .as_ref()
-                        .is_some_and(|p| p.to_string_lossy().to_lowercase().contains(&query))
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .contains(&query)
             });
         }
 
@@ -179,7 +180,7 @@ impl TypeDebuggerDrawer {
 
     fn navigate_to_type(&mut self, type_info: &TypeInfo, cx: &mut Context<Self>) {
         cx.emit(NavigateToType {
-            file_path: type_info.file_path.clone(),
+            file_path: Some(type_info.file_path.clone()),
             type_name: type_info.name.clone(),
         });
     }
@@ -542,7 +543,7 @@ impl TypeDebuggerDrawer {
                                         .text_xs()
                                         .font_family("monospace")
                                         .text_color(cx.theme().muted_foreground)
-                                        .child(format!("ID: {}", type_info.id)),
+                                        .child(format!("ID: {}", type_info.uuid)),
                                 ),
                         )
                         // Display name
@@ -567,7 +568,7 @@ impl TypeDebuggerDrawer {
                             )
                         })
                         // File path
-                        .when_some(type_info.file_path.as_ref(), |container, file_path| {
+                        .when_some(Some(type_info.file_path.as_path()), |container, file_path| {
                             let display_path = self.get_display_path(file_path);
                             container.child(
                                 div()

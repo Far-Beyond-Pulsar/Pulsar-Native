@@ -69,12 +69,12 @@ impl FileOperations {
 
             match engine_fs::EngineFs::new(root) {
                 Ok(fs) => {
-                    // Register the TypeDatabase with global EngineContext
+                    // Register the UserTypeRegistry with global EngineContext
                     if let Some(engine_context) = engine_state::EngineContext::global() {
-                        engine_context.set_type_database(fs.type_database().clone());
+                        engine_context.set_user_types(fs.user_types().clone());
                         tracing::debug!(
-                            "🗄️  TypeDatabase registered with {} types",
-                            fs.type_database().all().len()
+                            "🗄️  UserTypeRegistry registered with {} types",
+                            fs.user_types().all().len()
                         );
                     }
                     Some(fs)

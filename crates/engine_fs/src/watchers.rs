@@ -9,13 +9,19 @@ use anyhow::Result;
 use notify::{Event, EventKind, RecursiveMode, Watcher};
 use std::path::PathBuf;
 use std::sync::Arc;
-use type_db::TypeDatabase;
+
+use crate::asset_index::AssetIndex;
+use crate::user_types::UserTypeRegistry;
 
 /// Start watching the project directory for changes
 ///
 /// Note: Currently only handles file removal events. File creation/modification detection
 /// requires plugin registry access which isn't thread-safe yet.
-pub fn start_watcher(project_root: PathBuf, type_database: Arc<TypeDatabase>) -> Result<()> {
+pub fn start_watcher(
+    project_root: PathBuf,
+    asset_index: Arc<AssetIndex>,
+    user_types: Arc<UserTypeRegistry>,
+) -> Result<()> {
     let (tx, rx) = std::sync::mpsc::channel();
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| {
@@ -34,7 +40,7 @@ pub fn start_watcher(project_root: PathBuf, type_database: Arc<TypeDatabase>) ->
             profiling::set_thread_name("FS Watcher");
             while let Ok(event) = rx.recv() {
                 profiling::profile_scope!("fs_event_handle");
-                handle_fs_event(&event, &type_database);
+                handle_fs_event(&event, &asset_index, &user_types);
             }
             // Keep watcher alive
             drop(watcher);
@@ -43,7 +49,7 @@ pub fn start_watcher(project_root: PathBuf, type_database: Arc<TypeDatabase>) ->
     Ok(())
 }
 
-fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
+fn handle_fs_event(event: &Event, asset_index: &AssetIndex, user_types: &UserTypeRegistry) {
     profiling::profile_scope!("handle_fs_event");
     tracing::debug!("Filesystem event: {:?}", event);
 
@@ -51,7 +57,8 @@ fn handle_fs_event(event: &Event, type_database: &TypeDatabase) {
         EventKind::Remove(_) => {
             // File removed - we can safely unregister
             for path in &event.paths {
-                type_database.unregister_by_path(path);
+                asset_index.unregister_by_path(path);
+                user_types.unregister_by_path(path);
             }
         }
         EventKind::Create(_) | EventKind::Modify(_) => {

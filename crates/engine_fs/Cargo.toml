@@ -5,7 +5,9 @@ edition = "2021"
 
 [dependencies]
 ui_types_common = { workspace = true }
-type_db = { workspace = true }
+pulsar_reflection = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
 plugin_manager = { workspace = true }
 plugin_editor_api = { workspace = true }
 anyhow = { workspace = true }

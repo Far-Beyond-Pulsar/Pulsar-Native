@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
-use type_db::TypeDatabase;
+use engine_fs::UserTypeRegistry;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 use window_manager;
 
@@ -175,8 +175,8 @@ pub struct EngineContext {
     /// Authenticated user profile (if signed in).
     pub auth_profile: Arc<RwLock<Option<AuthProfile>>>,
 
-    /// Global type database for reflection
-    pub type_database: Arc<RwLock<Option<Arc<TypeDatabase>>>>,
+    /// Global user type registry for reflection
+    pub user_types: Arc<RwLock<Option<Arc<UserTypeRegistry>>>>,
 
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
@@ -207,7 +207,7 @@ impl EngineContext {
             discord: Arc::new(RwLock::new(None)),
             multiuser: Arc::new(RwLock::new(None)),
             auth_profile: Arc::new(RwLock::new(None)),
-            type_database: Arc::new(RwLock::new(None)),
+            user_types: Arc::new(RwLock::new(None)),
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
             dev: Arc::new(RwLock::new(DevContext::default())),
             default_level_bytes: Arc::new(RwLock::new(None)),
@@ -293,9 +293,9 @@ impl EngineContext {
         }
     }
 
-    /// Set global type database
-    pub fn set_type_database(&self, type_database: Arc<TypeDatabase>) {
-        *self.type_database.write() = Some(type_database);
+    /// Set global user type registry
+    pub fn set_user_types(&self, user_types: Arc<UserTypeRegistry>) {
+        *self.user_types.write() = Some(user_types);
     }
 
     /// Set authenticated user profile.
@@ -313,9 +313,9 @@ impl EngineContext {
         self.auth_profile.read().clone()
     }
 
-    /// Get global type database
-    pub fn type_database(&self) -> Option<Arc<TypeDatabase>> {
-        self.type_database.read().clone()
+    /// Get global user type registry
+    pub fn user_types(&self) -> Option<Arc<UserTypeRegistry>> {
+        self.user_types.read().clone()
     }
 
     /// Set multiuser session context

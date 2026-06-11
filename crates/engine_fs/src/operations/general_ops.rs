@@ -6,22 +6,22 @@ use anyhow::{Context, Result};
 use plugin_editor_api::FileTypeId;
 use std::path::PathBuf;
 use std::sync::Arc;
-use type_db::TypeDatabase;
 
+use crate::asset_index::AssetIndex;
 use crate::templates::AssetKind;
 use crate::{events, FsChangeKind};
 
 /// General asset operations handler
 pub struct GeneralOperations {
     project_root: PathBuf,
-    type_database: Arc<TypeDatabase>,
+    asset_index: Arc<AssetIndex>,
 }
 
 impl GeneralOperations {
-    pub fn new(project_root: PathBuf, type_database: Arc<TypeDatabase>) -> Self {
+    pub fn new(project_root: PathBuf, asset_index: Arc<AssetIndex>) -> Self {
         Self {
             project_root,
-            type_database,
+            asset_index,
         }
     }
 
@@ -85,15 +85,14 @@ impl GeneralOperations {
             _ => return Ok(()), // Other asset types don't need indexing yet
         };
 
-        if let Err(e) = self.type_database.register_with_path(
+        if let Err(e) = self.asset_index.register_with_path(
             name.clone(),
             file_path.to_path_buf(),
             file_type_id.clone(),
             None,
             Some(format!("{:?}: {}", file_type_id, name)),
-            None,
         ) {
-            tracing::warn!("Failed to register type '{}': {:?}", name, e);
+            tracing::warn!("Failed to register asset '{}': {:?}", name, e);
         }
 
         Ok(())
@@ -101,8 +100,8 @@ impl GeneralOperations {
 
     /// Delete any asset file
     pub fn delete_asset(&self, file_path: &PathBuf) -> Result<()> {
-        // Unregister from type database
-        self.type_database.unregister_by_path(file_path);
+        // Unregister from asset index
+        self.asset_index.unregister_by_path(file_path);
 
         // Delete file
         std::fs::remove_file(file_path).context("Failed to delete asset file")?;
@@ -113,8 +112,8 @@ impl GeneralOperations {
 
     /// Rename/move any asset file
     pub fn move_asset(&self, old_path: &PathBuf, new_path: &PathBuf) -> Result<()> {
-        // Unregister from type database
-        self.type_database.unregister_by_path(old_path);
+        // Unregister from asset index
+        self.asset_index.unregister_by_path(old_path);
 
         // Create parent directory for new path
         if let Some(parent) = new_path.parent() {
@@ -138,15 +137,14 @@ impl GeneralOperations {
                             .unwrap_or("unknown")
                             .to_string();
 
-                        if let Err(e) = self.type_database.register_with_path(
+                        if let Err(e) = self.asset_index.register_with_path(
                             name.clone(),
                             new_path.clone(),
                             file_type_id,
                             None,
                             Some(format!("{}: {}", file_type_def.display_name, name)),
-                            None,
                         ) {
-                            tracing::warn!("Failed to register renamed type '{}': {:?}", name, e);
+                            tracing::warn!("Failed to register renamed asset '{}': {:?}", name, e);
                         }
                     }
                 }

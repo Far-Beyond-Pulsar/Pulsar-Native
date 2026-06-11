@@ -3011,6 +3011,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64",
+ "dashmap",
  "futures",
  "helio-snapshot",
  "image",
@@ -3020,6 +3021,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar-multiplayer-core",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tempfile",
@@ -3027,10 +3029,10 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "type_db",
  "ui_types_common",
  "ureq",
  "urlencoding",
+ "uuid",
  "walkdir",
 ]
 
@@ -3054,7 +3056,6 @@ dependencies = [
  "smol",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "type_db",
  "ui_types_common",
  "window_manager",
 ]
@@ -12654,15 +12655,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ea3136b675547379c4bd395ca6b938e5ad3c3d20fad76e7fe85f9e0d011419c"
 
 [[package]]
-name = "type_db"
-version = "0.1.0"
-dependencies = [
- "dashmap",
- "plugin_editor_api",
- "ui_types_common",
-]
-
-[[package]]
 name = "typeid"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13202,10 +13194,10 @@ dependencies = [
 name = "ui_type_debugger"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n 4.1.0",
- "type_db",
  "ui",
  "ui_common",
  "window_manager",

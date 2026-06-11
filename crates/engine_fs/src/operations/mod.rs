@@ -9,9 +9,10 @@ mod type_ops;
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
-use type_db::TypeDatabase;
 
+use crate::asset_index::AssetIndex;
 use crate::templates::AssetKind;
+use crate::user_types::UserTypeRegistry;
 
 // Re-export operation handlers
 pub use general_ops::GeneralOperations;
@@ -24,10 +25,14 @@ pub struct AssetOperations {
 }
 
 impl AssetOperations {
-    pub fn new(project_root: PathBuf, type_database: Arc<TypeDatabase>) -> Self {
+    pub fn new(
+        project_root: PathBuf,
+        asset_index: Arc<AssetIndex>,
+        user_types: Arc<UserTypeRegistry>,
+    ) -> Self {
         Self {
-            type_ops: TypeOperations::new(project_root.clone(), type_database.clone()),
-            general_ops: GeneralOperations::new(project_root, type_database),
+            type_ops: TypeOperations::new(project_root.clone(), user_types),
+            general_ops: GeneralOperations::new(project_root, asset_index),
         }
     }
 

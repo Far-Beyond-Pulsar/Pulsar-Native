@@ -1,32 +1,42 @@
 //! Project scanning and indexing
 //!
-//! Handles scanning the project directory and registering assets in the type database.
+//! Handles scanning the project directory and registering assets in the asset index,
+//! and registering user-defined type aliases in the user type registry.
 
 use anyhow::Result;
 use std::path::PathBuf;
 use std::sync::Arc;
-use type_db::TypeDatabase;
+
+use crate::asset_index::AssetIndex;
+use crate::user_types::UserTypeRegistry;
 
 /// Project scanner for indexing assets
 pub struct ProjectScanner {
     project_root: PathBuf,
-    type_database: Arc<TypeDatabase>,
+    asset_index: Arc<AssetIndex>,
+    user_types: Arc<UserTypeRegistry>,
 }
 
 impl ProjectScanner {
-    pub fn new(project_root: PathBuf, type_database: Arc<TypeDatabase>) -> Self {
+    pub fn new(
+        project_root: PathBuf,
+        asset_index: Arc<AssetIndex>,
+        user_types: Arc<UserTypeRegistry>,
+    ) -> Self {
         Self {
             project_root,
-            type_database,
+            asset_index,
+            user_types,
         }
     }
 
-    /// Scan the entire project and build type database
+    /// Scan the entire project and build the asset index and user type registry
     pub fn scan_project(&mut self) -> Result<()> {
         use walkdir::WalkDir;
 
-        // Clear existing type database
-        self.type_database.clear();
+        // Clear existing indexes
+        self.asset_index.clear();
+        self.user_types.clear();
 
         // Walk the project directory
         for entry in WalkDir::new(&self.project_root)
@@ -71,15 +81,26 @@ impl ProjectScanner {
                             .to_string();
 
                         // Register with FileTypeId from registry
-                        if let Err(e) = self.type_database.register_with_path(
+                        if let Err(e) = self.asset_index.register_with_path(
                             type_name.clone(),
                             path.clone(),
-                            file_type_id,
+                            file_type_id.clone(),
                             None,
                             Some(format!("{}: {}", file_type_def.display_name, type_name)),
-                            None,
                         ) {
-                            tracing::warn!("Failed to register type '{}': {:?}", type_name, e);
+                            tracing::warn!("Failed to register asset '{}': {:?}", type_name, e);
+                        }
+
+                        // Additionally register user-defined type aliases in the
+                        // dynamic type registry
+                        if file_type_id.as_str() == "alias" {
+                            if let Err(e) = self.user_types.register_alias_file(&path) {
+                                tracing::warn!(
+                                    "Failed to register type alias at {:?}: {:?}",
+                                    path,
+                                    e
+                                );
+                            }
                         }
                     }
                 }

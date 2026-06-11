@@ -1,9 +1,0 @@
-[package]
-name = "type_db"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-dashmap = { workspace = true }
-plugin_editor_api = { workspace = true }
-ui_types_common = { workspace = true }

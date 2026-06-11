@@ -23,6 +23,7 @@
 //! will automatically target the right backend.
 
 // Module declarations
+pub mod asset_index;
 mod engine_fs;
 pub mod events;
 pub mod operations;
@@ -31,11 +32,14 @@ mod scanner;
 pub mod templates;
 pub mod thumbnails;
 pub mod tooling;
+pub mod user_types;
 pub mod virtual_fs;
 pub mod watchers;
 
 // Re-export main types
+pub use asset_index::{AssetIndex, AssetInfo};
 pub use engine_fs::EngineFs;
+pub use user_types::{UserTypeInfo, UserTypeRegistry};
 
 // Re-export provider types
 pub use providers::{
