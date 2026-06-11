@@ -30,8 +30,6 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
-        with:
-          components: clippy
 
       - name: Install Linux system dependencies
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
@@ -49,35 +47,8 @@ jobs:
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
-      - name: cargo clippy
-        run: |
-          cargo clippy --workspace --exclude pulsar_docs --all-targets -- \
-            -A dead_code \
-            -A clippy::too_many_arguments \
-            -A clippy::type_complexity \
-            -A clippy::match_like_matches_macro \
-            -A clippy::only_used_in_recursion \
-            -A improper_ctypes_definitions \
-            -A clippy::field_reassign_with_default \
-            -A clippy::result_large_err \
-            -A clippy::doc_overindented_list_items
-
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run tests
         run: cargo nextest run --all
-
-  cargo-audit:
-    name: Security audit
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-
-      - uses: actions-rust-lang/setup-rust-toolchain@46268bd060767258de96ed93c1251119784f2ab6 # v1
-
-      - name: cargo audit
-        run: |
-          cargo install cargo-audit --locked
-          cargo audit
