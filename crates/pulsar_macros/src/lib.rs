@@ -13,6 +13,14 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{parse_macro_input, Expr, FnArg, ItemFn, Pat, ReturnType, Stmt};
 
+mod derive_into_plot;
+
+/// Derive `gpui::IntoElement` and `gpui::Element` for a type that implements `Plot`.
+#[proc_macro_derive(IntoPlot)]
+pub fn derive_into_plot(input: TokenStream) -> TokenStream {
+    derive_into_plot::derive_into_plot(input)
+}
+
 /// Convert an SVG filename to a PascalCase identifier.
 ///
 /// Convention: lowercase the filename, strip `.svg`, split on `-`,

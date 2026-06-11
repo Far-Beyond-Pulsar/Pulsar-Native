@@ -47,7 +47,6 @@ gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "3458d9873
 ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "3e386a01cf3e0e3c0f86eed7f3e3b9835ce54f70" }
 
 # ---------- Core Engine ----------
-gpui-component-macros              = { path = "crates/macros" }
 profiling                          = { path = "crates/profiling" }
 engine_fs                          = { path = "crates/engine_fs" }
 pulsar_std                         = { path = "crates/pulsar_std" }
@@ -278,7 +277,6 @@ pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
 pulsar_core           = { path = "crates/pulsar_core" }
@@ -299,7 +297,6 @@ pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
 pulsar_core           = { path = "crates/pulsar_core" }
@@ -320,7 +317,6 @@ pulsar_settings       = { path = "crates/pulsar_settings" }
 pulsar_lsp            = { path = "crates/pulsar_lsp" }
 blueprint_compiler    = { path = "crates/blueprint_compiler" }
 pulsar_graph          = { path = "crates/pulsar_graph" }
-gpui-component-macros = { path = "crates/macros" }
 engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
 pulsar_core           = { path = "crates/pulsar_core" }
