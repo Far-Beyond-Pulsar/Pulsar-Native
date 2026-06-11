@@ -9,7 +9,6 @@ env:
   # First crate is used for version checking
   CRATES_TO_BUILD: |
     crates/engine
-    crates/pulsar-studio
     crates/pulsar-relay
 
   # Crates to build examples for (newline-separated list)
@@ -303,7 +302,15 @@ jobs:
           exit 0
 
   validation-gate:
-    needs: [check-version, fmt-check, clippy, unit-tests, check-lockfile, cargo-audit]
+    needs:
+      [
+        check-version,
+        fmt-check,
+        clippy,
+        unit-tests,
+        check-lockfile,
+        cargo-audit,
+      ]
     if: always() && needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     outputs:
@@ -490,12 +497,7 @@ jobs:
           prerelease: false
 
   build-release:
-    needs:
-      [
-        check-version,
-        create-release,
-        validation-gate,
-      ]
+    needs: [check-version, create-release, validation-gate]
     if: always() && needs.check-version.outputs.should_release == 'true' && needs.create-release.result == 'success' && needs.validation-gate.outputs.release_allowed == 'true'
     permissions:
       contents: write
@@ -703,12 +705,7 @@ jobs:
           if-no-files-found: warn
 
   cross-builds:
-    needs:
-      [
-        check-version,
-        create-release,
-        validation-gate,
-      ]
+    needs: [check-version, create-release, validation-gate]
     if: always() && needs.check-version.outputs.should_release == 'true' && needs.create-release.result == 'success' && needs.validation-gate.outputs.release_allowed == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -969,9 +966,6 @@ jobs:
           - name: pulsar-relay
             context: .
             dockerfile: crates/pulsar-relay/Dockerfile
-          - name: pulsar-studio
-            context: .
-            dockerfile: crates/pulsar-studio/Dockerfile
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -1036,14 +1030,12 @@ jobs:
 
           \`\`\`bash
           docker pull ghcr.io/${OWNER_LC}/pulsar-relay:${TAG}
-          docker pull ghcr.io/${OWNER_LC}/pulsar-studio:${TAG}
+
           \`\`\`
 
           | Image | Package page | Tags |
           |---|---|---|
           | \`pulsar-relay\` | [ghcr.io/${OWNER_LC}/pulsar-relay](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-relay) | \`${TAG}\`, \`latest\` |
-          | \`pulsar-studio\` | [ghcr.io/${OWNER_LC}/pulsar-studio](https://github.com/${OWNER_LC}/Pulsar-Native/pkgs/container/pulsar-studio) | \`${TAG}\`, \`latest\` |
-
           ---
 
           SECTION
