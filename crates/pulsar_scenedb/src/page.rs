@@ -94,6 +94,10 @@ impl PageLayout {
     pub fn column_count(&self) -> usize {
         self.column_descs.len()
     }
+
+    pub fn column_descs(&self) -> &[ColumnDesc] {
+        &self.column_descs
+    }
 }
 
 #[inline]
@@ -151,6 +155,10 @@ impl Page {
     #[inline]
     pub fn capacity(&self) -> u32 {
         self.layout.capacity
+    }
+
+    pub fn layout(&self) -> &PageLayout {
+        &self.layout
     }
 
     /// Reserve the next row, returning its index. None when full.
