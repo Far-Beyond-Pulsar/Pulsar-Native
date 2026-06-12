@@ -5,19 +5,14 @@
 //! proper types instead of string key-value pairs.
 
 use dashmap::DashMap;
-use gpui::AppContext;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::OnceLock;
 use engine_fs::UserTypeRegistry;
 use ui_types_common::window_types::{WindowId, WindowRequest};
-use window_manager;
-
 use crate::DiscordPresence;
 
-use gpui::Render;
 use window_manager::WindowManager;
 
 /// Context for a specific window
@@ -171,10 +166,6 @@ pub struct EngineContext {
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
 
-    /// Monotonically increasing window ID counter (no cross-thread ordering
-    /// needed — uniqueness is all that matters for IDs).
-    next_id: Arc<AtomicU64>,
-
     /// Generic, type-safe global resource table.
     ///
     /// This is the extension point for new engine-wide singleton state.
@@ -199,20 +190,9 @@ impl EngineContext {
             windows: Arc::new(DashMap::new()),
             multiuser,
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
-            next_id: Arc::new(AtomicU64::new(1)),
             window_state: crate::keyed_store::KeyedStore::new(),
             store,
         }
-    }
-
-    /// Allocate the next unique window ID
-    pub fn next_window_id(&self) -> WindowId {
-        self.next_id.fetch_add(1, Ordering::Relaxed)
-    }
-
-    /// Register a window context
-    pub fn register_window(&self, window_id: WindowId, context: WindowContext) {
-        self.windows.insert(window_id, context);
     }
 
     /// Unregister a window
@@ -251,13 +231,6 @@ impl EngineContext {
         self.store
             .get_or_init::<Option<ProjectContext>>()
             .set(Some(project));
-    }
-
-    /// Clear current project
-    pub fn clear_project(&self) {
-        self.store
-            .get_or_init::<Option<ProjectContext>>()
-            .set(None);
     }
 
     /// Initialize Discord Rich Presence
@@ -395,24 +368,7 @@ impl EngineContext {
             .unwrap_or(false)
     }
 
-    /// Update multiuser connection status
-    pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
-        let _ = self.update_multiuser(|ctx| ctx.set_status(status));
-    }
-
-    /// Add a participant to the current multiuser session
-    pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
-        let peer_id = peer_id.into();
-        let _ = self.update_multiuser(|ctx| ctx.add_participant(peer_id));
-    }
-
-    /// Replace participant list for the active session.
-    pub fn set_multiuser_participants(&self, participants: Vec<String>) {
-        let _ = self.update_multiuser(|ctx| {
-            ctx.participants = participants;
-        });
-    }
-
+    
     pub fn set_multiuser_participant_profiles(
         &self,
         participants: Vec<crate::multiuser::MultiuserParticipant>,
@@ -426,11 +382,6 @@ impl EngineContext {
         let _ = self.update_multiuser(|ctx| {
             ctx.latency_ms = latency_ms;
         });
-    }
-
-    /// Remove a participant from the current multiuser session
-    pub fn remove_multiuser_participant(&self, peer_id: &str) {
-        let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
     }
 
     /// Notify listeners that the multiuser snapshot changed.
@@ -456,42 +407,6 @@ impl Default for EngineContext {
 }
 
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
-
-// (legacy metadata system removed)
-pub mod migration {
-
-    /// Extract window ID from metadata string (used during migration)
-    pub fn parse_window_id_u64(id_str: &str) -> Option<u64> {
-        id_str.parse::<u64>().ok()
-    }
-
-    /// Format window ID as string (used during migration)
-    pub fn format_window_id_u64(id: u64) -> String {
-        id.to_string()
-    }
-
-    /// Map old metadata key to new context access
-    ///
-    /// This documents the migration path from string metadata to typed contexts.
-    ///
-    /// Old: `engine_state.get_metadata("current_project_path")`
-    /// New: `engine_context.project.read().as_ref().map(|p| &p.path)`
-    ///
-    /// Old: `engine_state.set_metadata("uri_project_path", path)`
-    /// New: `engine_context.launch.write().uri_project_path = Some(path)`
-    ///
-    /// Old: `engine_state.get_metadata("latest_window_id")`
-    /// New: Use the actual WindowId from the window creation event
-    pub struct MetadataKeyMapping;
-
-    impl MetadataKeyMapping {
-        pub const URI_PROJECT_PATH: &'static str = "uri_project_path";
-        pub const CURRENT_PROJECT_PATH: &'static str = "current_project_path";
-        pub const CURRENT_PROJECT_WINDOW_ID: &'static str = "current_project_window_id";
-        pub const LATEST_WINDOW_ID: &'static str = "latest_window_id";
-        pub const HAS_PENDING_VIEWPORT_RENDERER: &'static str = "has_pending_viewport_renderer";
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -525,7 +440,7 @@ mod tests {
     #[test]
     fn test_engine_context_window_count() {
         let context = EngineContext::new();
-        assert_eq!(context.window_count(), 0);
+        assert_eq!(context.windows.len(), 0);
 
         // Would need real WindowId to test further
     }
@@ -546,7 +461,7 @@ mod tests {
             PathBuf::from("/test")
         );
 
-        context.clear_project();
+        project_handle.set(None);
         assert!(project_handle.read().is_none());
     }
 }

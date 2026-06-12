@@ -71,42 +71,6 @@ impl DiscordPresence {
         Ok(())
     }
 
-    /// Disconnect from Discord
-    pub fn disconnect(&self) {
-        let mut inner = self.inner.write();
-        inner.client = None;
-        inner.enabled = false;
-    }
-
-    /// Check if Discord Rich Presence is enabled and connected
-    pub fn is_enabled(&self) -> bool {
-        self.inner.read().enabled && self.inner.read().client.is_some()
-    }
-
-    /// Set the current project name
-    pub fn set_project(&self, project_name: Option<String>) {
-        let mut inner = self.inner.write();
-        inner.project_name = project_name;
-        drop(inner);
-        self.update_presence();
-    }
-
-    /// Set the active editor tab type
-    pub fn set_active_tab(&self, tab_name: Option<String>) {
-        let mut inner = self.inner.write();
-        inner.active_tab = tab_name;
-        drop(inner);
-        self.update_presence();
-    }
-
-    /// Set the active file being edited
-    pub fn set_active_file(&self, file_path: Option<String>) {
-        let mut inner = self.inner.write();
-        inner.active_file = file_path;
-        drop(inner);
-        self.update_presence();
-    }
-
     /// Update all presence information at once
     pub fn update_all(
         &self,
@@ -248,20 +212,6 @@ impl DiscordPresence {
         }
     }
 
-    /// Get current project name
-    pub fn get_project(&self) -> Option<String> {
-        self.inner.read().project_name.clone()
-    }
-
-    /// Get current active tab
-    pub fn get_active_tab(&self) -> Option<String> {
-        self.inner.read().active_tab.clone()
-    }
-
-    /// Get current active file
-    pub fn get_active_file(&self) -> Option<String> {
-        self.inner.read().active_file.clone()
-    }
 }
 
 impl Clone for DiscordPresence {
