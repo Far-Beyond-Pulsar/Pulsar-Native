@@ -49,6 +49,7 @@ pub mod page;
 pub mod query;
 pub mod registry;
 pub mod schedule;
+pub mod spatial;
 pub mod world;
 
 pub use actor::{Actor, ActorRegistry};
@@ -67,4 +68,5 @@ pub use pulsar_core::GameTime;
 pub use query::{QueryIter, WorldQuery};
 pub use registry::{HandleRegistry, NULL_ROW};
 pub use schedule::Schedule;
+pub use spatial::{Aabb, SpatialCell, SPATIAL_COLUMNS};
 pub use world::World;
