@@ -52,6 +52,20 @@ impl SpatialCell {
     /// aligned row tokens into `out` (spec §8.3): `out[row] = row` on hit,
     /// `NULL_ROW` on miss/dead. `out.len()` must be ≥ `rows_in_use()`.
     /// Returns the hit count. Allocates nothing (spec §8.1).
+    ///
+    /// Entries `out[rows_in_use()..]` (when `out` is larger than the live
+    /// frontier) are **left unchanged** — not zeroed or sentinel-filled.
+    /// Re-using an oversized scratch buffer across frames is safe as long as
+    /// the caller only reads `out[0..rows_in_use()]`. M1b SIMD paths must
+    /// replicate this: no full-buffer clear is performed.
+    ///
+    /// # Float semantics
+    ///
+    /// All comparisons use Rust's `<=`/`>=`, which are IEEE 754 **ordered**
+    /// comparisons: a NaN bound makes every comparison false, so the row is a
+    /// miss. M1b SIMD paths must use **ordered** comparison predicates
+    /// (e.g. `_CMP_LE_OS`/`_CMP_GE_OS` in AVX, `fcmle`/`fcmge` in NEON) — not
+    /// unordered variants — to stay bit-identical to this reference.
     pub fn query_aabb(&self, q: &Aabb, out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
         assert!(out.len() >= len, "scratch buffer too small");
@@ -65,6 +79,9 @@ impl SpatialCell {
 
         let mut hits = 0u32;
         for row in 0..len {
+            // Scalar reference: one atomic liveness load per row. M1b SIMD
+            // should instead load liveness.words()[row / 64] once per 64-row
+            // block and extract per-lane mask bits from the cached u64.
             let visible = min_x[row] <= q.max[0]
                 && max_x[row] >= q.min[0]
                 && min_y[row] <= q.max[1]
