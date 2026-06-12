@@ -43,6 +43,7 @@ pub mod component;
 pub mod component_store;
 pub mod entity;
 pub mod handle;
+pub mod liveness;
 pub mod page;
 pub mod query;
 pub mod registry;
@@ -55,6 +56,7 @@ pub use component::{component_id, Component, ComponentId};
 pub use component_store::{__bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, ComponentStore};
 pub use entity::Entity;
 pub use handle::Handle;
+pub use liveness::LivenessMask;
 pub use page::{
     ColumnDesc, LayoutError, Page, PageLayout, Pod, DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY,
     MAX_STRIDE_BYTES,
