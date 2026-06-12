@@ -184,7 +184,7 @@ impl Page {
     }
 
     /// Mutable raw pointer to a column's first element.
-    fn column_ptr_mut(&mut self, col: usize) -> *mut u8 {
+    pub(crate) fn column_ptr_mut(&mut self, col: usize) -> *mut u8 {
         // SAFETY: offset is within the allocation by PageLayout construction.
         unsafe { self.data.add(self.layout.column_offsets[col]) }
     }
