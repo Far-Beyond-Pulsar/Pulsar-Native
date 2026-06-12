@@ -1,41 +1,23 @@
-//! Archetype-based Entity Component System for the Pulsar engine.
+//! SceneDB 2.0 — Layer 1 storage core (spec Rev 2.2, CONTRACTS.md C1–C4).
 //!
-//! # Design
+//! Seeded from `pulsar_ecs` (which remains in-tree as the reference
+//! implementation). This crate adds the spec-conformant storage layer:
 //!
-//! - **Dense `u32` ComponentId** â€” each component type is assigned a dense ID on
-//!   first access.  Columns are stored in a `Vec` indexed by this ID, so hot-path
-//!   component lookups require no hashing.
-//! - **Archetype bitmask** â€” each archetype stores a `u64` bitmask of its
-//!   component types.  Queries check the bitmask before touching any column,
-//!   which skips non-matching archetypes in constant time.
-//! - **`swap_remove` slot reuse** â€” entity removal swaps the last entity into
-//!   the vacated slot.  No tombstones, no compaction passes.
-//! - **Thread-local CID cache** â€” `component_id::<T>()` caches its result per
-//!   thread, avoiding atomic or mutex operations on the hot query path.
+//! - [`Handle`] — packed u64, stable slot index + generation, gen 0 invalid
+//! - [`HandleRegistry`] — slot allocator, generation validation, slot→row
+//!   indirection, permanent retirement at gen `u32::MAX`
+//! - [`Page`]/[`PageLayout`] — single-allocation 64-byte-aligned SoA pages,
+//!   128-byte stride guardrail, 1024-element ceiling
+//! - [`LivenessMask`] — atomic per-element liveness, deferred deletion
+//! - [`CellStorage`] — alloc/free/deref + frame-boundary swap-and-pop
+//!   compaction that preserves handle validity
+//! - [`SpatialCell`] — six SoA bounds columns + the §8 AABB query writing
+//!   sentinel-aligned row tokens into caller scratch (scalar reference;
+//!   SIMD paths land in M1b and must match bit-for-bit)
 //!
-//! # Safety
-//!
-//! All `unsafe` blocks are accompanied by `// SAFETY:` comments explaining the
-//! invariants.  The test suite includes adversarial tests (interleaved mutation,
-//! dangling entity rejection, component churn) in addition to correctness tests.
-//!
-//! # Quick start
-//!
-//! ```
-//! use pulsar_scenedb::{World, Component, QueryIter, WorldQuery};
-//!
-//! struct Pos(f32, f32);
-//! struct Vel(f32, f32);
-//!
-//! let mut world = World::new();
-//! let e = world.spawn();
-//! world.insert(e, Pos(0.0, 0.0));
-//! world.insert(e, Vel(1.0, 0.0));
-//! for (pos, vel) in world.query::<(&Pos, &Vel)>() {
-//!     // ...
-//! }
-//! world.despawn(e);
-//! ```
+//! The inherited archetype ECS modules (`world`, `archetype`, `query`, …)
+//! are retained and will be migrated onto paged storage in later milestones
+//! (the SceneDB-replaces-ECS path, design doc §7).
 
 pub mod actor;
 pub mod archetype;
