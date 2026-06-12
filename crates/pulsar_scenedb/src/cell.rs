@@ -71,8 +71,9 @@ impl CellStorage {
                 self.page.pop_row();
             }
             if len == row + 1 {
-                // The dead row is the tail — just drop it. (`len` is not read
-                // again after this branch, so we needn't decrement it.)
+                // The dead row is the tail. pop_row drops it; page.len() is now
+                // `row`, which equals the surviving live count (rows 0..row are all
+                // live). The local `len` is dead after `break`, so we don't decrement it.
                 self.page.pop_row();
                 break;
             }
@@ -94,7 +95,7 @@ impl CellStorage {
     fn swap_rows(&mut self, a: u32, b: u32) {
         for col in 0..self.user_column_count + 1 {
             let desc_size = self.column_size(col);
-            let base = self.page.column_ptr(col) as *mut u8;
+            let base = self.page.column_ptr_mut(col);
             // SAFETY: rows a, b < capacity; regions are disjoint (a != b)
             // and within the column span.
             unsafe {
