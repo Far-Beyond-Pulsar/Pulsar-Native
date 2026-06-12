@@ -1,5 +1,6 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use pulsar_scenedb::{Aabb, SpatialCell};
+use std::hint::black_box;
 
 fn bench_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("spatial_query");
