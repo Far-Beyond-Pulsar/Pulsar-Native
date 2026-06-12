@@ -212,6 +212,10 @@ mod tests {
                 .copied()
                 .filter(|&t| t != crate::registry::NULL_ROW)
                 .collect();
+            // Ordered-vector comparison is valid here ONLY because no free/
+            // compact runs in this test, so physical row order == insertion
+            // order. If a future variant adds compaction, compare as sets
+            // (row order would then differ from insertion order).
             assert_eq!(hits, expected);
             assert_eq!(n, expected.len());
         }
