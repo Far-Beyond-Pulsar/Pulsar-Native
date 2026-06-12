@@ -65,9 +65,14 @@ impl CellStorage {
                 row += 1;
                 continue;
             }
-            // Shrink trailing dead rows first.
+            // Shrink trailing dead rows first. Each trimmed row is already
+            // dead (that's why this body runs); set_dead is a defensive no-op
+            // that makes the post-compaction invariant explicit: every
+            // liveness bit at a position >= page.len() is dead. M1b uploads
+            // the raw liveness words to the GPU, which relies on this.
             while len > row + 1 && !self.liveness.is_live(len - 1) {
                 len -= 1;
+                self.liveness.set_dead(len);
                 self.page.pop_row();
             }
             if len == row + 1 {
