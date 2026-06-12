@@ -30,3 +30,7 @@ harness = false
 [[bench]]
 name = "ecs_detailed_bench"
 harness = false
+
+[[bench]]
+name = "scenedb_bench"
+harness = false
