@@ -6,6 +6,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// frame-boundary compaction. Bits are set/cleared with relaxed RMW atomics:
 /// cross-thread visibility of the *aggregate* mask is guaranteed by the
 /// phase-boundary synchronization in Layer 2, not by per-bit ordering.
+///
+/// # Memory ordering contract
+///
+/// `set_live` / `set_dead` use `Relaxed` atomics intentionally. Correct
+/// visibility to harvest-phase readers is NOT self-contained here; it depends
+/// on the Layer 2 phase-boundary barrier (Milestone 2) emitting a **Release**
+/// fence (or equivalent) after all simulation-phase writes complete, and every
+/// harvest-phase reader acquiring through an **Acquire** fence (or equivalent)
+/// before calling `is_live`, `live_count`, or `dead_rows`. Without that
+/// barrier a harvest reader on another core may observe a stale word — a
+/// `Relaxed` load may return any previously stored value. This is a silent
+/// correctness bug, not a compile error.
 pub struct LivenessMask {
     words: Vec<AtomicU64>,
 }
@@ -18,13 +30,18 @@ impl LivenessMask {
         }
     }
 
+    /// Marks `row` live. `row` must be `< capacity` (caller contract).
     #[inline]
     pub fn set_live(&self, row: u32) {
+        debug_assert!((row / 64) < self.words.len() as u32, "row {row} out of range");
         self.words[(row / 64) as usize].fetch_or(1u64 << (row % 64), Ordering::Relaxed);
     }
 
+    /// Marks `row` dead (deferred — physical removal happens at compaction).
+    /// `row` must be `< capacity` (caller contract).
     #[inline]
     pub fn set_dead(&self, row: u32) {
+        debug_assert!((row / 64) < self.words.len() as u32, "row {row} out of range");
         self.words[(row / 64) as usize].fetch_and(!(1u64 << (row % 64)), Ordering::Relaxed);
     }
 
@@ -33,6 +50,9 @@ impl LivenessMask {
         self.words[(row / 64) as usize].load(Ordering::Relaxed) & (1u64 << (row % 64)) != 0
     }
 
+    /// Number of live elements. Must only be called in the harvest phase
+    /// (no concurrent `set_live`/`set_dead`); the result is not a consistent
+    /// snapshot if writers run concurrently.
     pub fn live_count(&self) -> u32 {
         self.words
             .iter()
@@ -41,7 +61,11 @@ impl LivenessMask {
     }
 
     /// Iterate dead row indices in `[0, len)` — the compaction work list.
+    ///
+    /// Harvest-phase only (no concurrent writers). `len` must not exceed the
+    /// mask capacity rounded up to a multiple of 64.
     pub fn dead_rows(&self, len: u32) -> impl Iterator<Item = u32> + '_ {
+        debug_assert!(len as usize <= self.words.len() * 64, "len {len} exceeds mask capacity");
         (0..len).filter(move |&row| !self.is_live(row))
     }
 
@@ -107,6 +131,8 @@ mod tests {
         for h in handles {
             h.join().unwrap();
         }
+        // join() above provides the happens-before that makes this live_count()
+        // well-defined; in production the Layer 2 phase barrier plays that role.
         assert_eq!(m.live_count(), 0);
     }
 }
