@@ -14,7 +14,8 @@ impl SettingsWindow {
 
         // Get the current project path from the engine context
         let project_path = engine_state::EngineContext::global().and_then(|ctx| {
-            ctx.project
+            ctx.store
+                .get_or_init::<Option<engine_state::ProjectContext>>()
                 .read()
                 .as_ref()
                 .map(|project| project.path.clone())

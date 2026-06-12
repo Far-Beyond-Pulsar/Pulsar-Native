@@ -1,6 +1,6 @@
 //! Central script-event registry for Pulsar Engine.
 //!
-//! [`SCRIPT_REGISTRY`] is a process-global, lock-protected map from actor keys
+//! [`script_registry`] provides a handle to a process-global map from actor keys
 //! to [`ScriptRegistration`] entries.  It is written by [`ScriptComponent`]'s
 //! `sync_component` every render/sync pass and read by the game runtime's
 //! [`BlueprintDispatcher`] to know which scene objects have scripts attached and
@@ -12,8 +12,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use once_cell::sync::Lazy;
-use parking_lot::Mutex;
+use engine_state::{EngineContext, ResourceHandle};
 use serde::{Deserialize, Serialize};
 
 // ── Registration entry ────────────────────────────────────────────────────────
@@ -39,12 +38,15 @@ pub struct ScriptRegistry {
     entries: HashMap<String, ScriptRegistration>,
 }
 
-impl ScriptRegistry {
-    fn new() -> Self {
+impl Default for ScriptRegistry {
+    fn default() -> Self {
         Self {
             entries: HashMap::new(),
         }
     }
+}
+
+impl ScriptRegistry {
 
     /// Insert or replace the registration for `reg.actor_key`.
     pub fn register(&mut self, reg: ScriptRegistration) {
@@ -92,9 +94,13 @@ impl ScriptRegistry {
 
 // ── Global singleton ──────────────────────────────────────────────────────────
 
-/// Process-global script registry.
+/// Returns a handle to the process-global script registry.
 ///
 /// Written each sync/render pass by [`ScriptComponent::sync_component`].
 /// Read by the game runtime to build its [`BlueprintDispatcher`] instance map.
-pub static SCRIPT_REGISTRY: Lazy<Mutex<ScriptRegistry>> =
-    Lazy::new(|| Mutex::new(ScriptRegistry::new()));
+pub fn script_registry() -> ResourceHandle<ScriptRegistry> {
+    EngineContext::global()
+        .expect("EngineContext not initialized")
+        .store
+        .get_or_init::<ScriptRegistry>()
+}

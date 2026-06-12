@@ -23,11 +23,7 @@ impl PluginManagerWindow {
     pub fn new_global(cx: &mut Context<Self>) -> Self {
         // Load initial plugin list from global
         let plugins = if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(pm) = pm_lock.read() {
-                pm.get_plugins().into_iter().cloned().collect()
-            } else {
-                Vec::new()
-            }
+            pm_lock.read().get_plugins().into_iter().cloned().collect()
         } else {
             Vec::new()
         };
@@ -41,9 +37,7 @@ impl PluginManagerWindow {
     /// Refresh the plugin list
     pub fn refresh(&mut self, cx: &mut Context<Self>) {
         if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(pm) = pm_lock.read() {
-                self.plugins = pm.get_plugins().into_iter().cloned().collect();
-            }
+            self.plugins = pm_lock.read().get_plugins().into_iter().cloned().collect();
         }
         cx.notify();
     }

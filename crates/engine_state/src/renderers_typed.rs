@@ -183,39 +183,3 @@ impl Default for TypedRendererRegistry {
     }
 }
 
-/// Migration helper to convert from old RendererHandle (Arc<dyn Any>) to TypedRendererHandle
-///
-/// During the transition period, code may need to work with both old and new renderer types.
-pub mod migration {
-    use super::*;
-
-    /// Try to convert old Arc<dyn Any> renderer handle to typed handle
-    ///
-    /// This is used during migration when we receive an old-style renderer handle
-    /// and need to convert it to the new typed system.
-    pub fn from_any_helio<T: Send + Sync + 'static>(
-        window_id: WindowId,
-        handle: Arc<dyn std::any::Any + Send + Sync>,
-    ) -> Option<TypedRendererHandle> {
-        handle
-            .downcast::<T>()
-            .ok()
-            .map(|renderer| TypedRendererHandle::helio(window_id, renderer))
-    }
-
-    /// Convert u64 window ID to WindowId
-    ///
-    /// This is a no-op since WindowId is now defined as u64 in engine_state.
-    /// Kept for API compatibility during migration.
-    pub fn u64_to_window_id(id: u64) -> WindowId {
-        id
-    }
-
-    /// Convert WindowId to u64
-    ///
-    /// This is a no-op since WindowId is now defined as u64 in engine_state.
-    /// Kept for API compatibility during migration.
-    pub fn window_id_to_u64(window_id: WindowId) -> u64 {
-        window_id
-    }
-}

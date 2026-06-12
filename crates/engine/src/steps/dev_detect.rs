@@ -18,13 +18,19 @@ pub fn run(ctx: &mut InitContext) -> Result<(), InitError> {
     } else {
         tracing::debug!("Running from installed/distributed binary");
     }
-    *engine_context.dev.write() = dev;
+    engine_context
+        .store
+        .get_or_init::<engine_state::DevContext>()
+        .set(dev);
 
     // Stash the embedded default level bytes so the level editor can
     // seed new projects without depending on the engine crate directly.
     if let Some(file) = Assets::get("default.level") {
         tracing::info!("Embedded default.level found ({} bytes)", file.data.len());
-        *engine_context.default_level_bytes.write() = Some(file.data.into_owned());
+        engine_context
+            .store
+            .get_or_init::<Option<Vec<u8>>>()
+            .set(Some(file.data.into_owned()));
     } else {
         tracing::debug!("No embedded default.level — new projects start empty");
     }

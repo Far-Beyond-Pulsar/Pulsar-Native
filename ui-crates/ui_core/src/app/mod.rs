@@ -182,7 +182,7 @@ impl PulsarApp {
 
     /// Update Discord Rich Presence with current editor state
     pub(crate) fn update_discord_presence(&self, cx: &App) {
-        if let Some(engine_state) = engine_state::EngineState::global() {
+        if let Some(engine_state) = engine_state::EngineContext::global() {
             let project_name = self.state.project_path.as_ref().and_then(|path| {
                 path.file_name()
                     .and_then(|n| n.to_str())

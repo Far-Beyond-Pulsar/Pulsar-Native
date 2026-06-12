@@ -5,20 +5,13 @@
 //! proper types instead of string key-value pairs.
 
 use dashmap::DashMap;
-use gpui::AppContext;
-use parking_lot::RwLock;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::OnceLock;
 use engine_fs::UserTypeRegistry;
 use ui_types_common::window_types::{WindowId, WindowRequest};
-use window_manager;
-
 use crate::DiscordPresence;
-
-use gpui::Render;
 
 use window_manager::WindowManager;
 
@@ -151,7 +144,7 @@ impl Default for LaunchContext {
     }
 }
 
-/// Main engine context - replaces EngineState's string metadata system
+/// Main engine context - typed, thread-safe access to all engine state
 ///
 /// This provides type-safe access to engine state across different domains.
 /// Instead of `get_metadata("current_project_path")`, you use `context.project.read().path`.
@@ -160,71 +153,46 @@ pub struct EngineContext {
     /// Per-window contexts indexed by WindowId
     pub windows: Arc<DashMap<WindowId, WindowContext>>,
 
-    /// Current project context (if any)
-    pub project: Arc<RwLock<Option<ProjectContext>>>,
-
-    /// Launch parameters (URI, command-line args, etc.)
-    pub launch: Arc<RwLock<LaunchContext>>,
-
-    /// Discord Rich Presence integration
-    pub discord: Arc<RwLock<Option<DiscordPresence>>>,
-
-    /// Multiuser session context (if in a collaborative session)
-    pub multiuser: Arc<RwLock<Option<crate::multiuser::MultiuserContext>>>,
-
-    /// Authenticated user profile (if signed in).
-    pub auth_profile: Arc<RwLock<Option<AuthProfile>>>,
-
-    /// Global user type registry for reflection
-    pub user_types: Arc<RwLock<Option<Arc<UserTypeRegistry>>>>,
+    /// Multiuser session context (if in a collaborative session).
+    ///
+    /// Backed by [`crate::store::StateStore`] — this is the first field
+    /// migrated to the generic resource system. `.read()` works exactly as
+    /// before; mutation goes through [`Self::set_multiuser`] /
+    /// [`Self::update_multiuser`] / [`Self::clear_multiuser`], which now
+    /// notify *every* subscriber via [`crate::resource::ResourceHandle::changed`]
+    /// instead of a single-consumer channel.
+    pub multiuser: crate::resource::ResourceHandle<Option<crate::multiuser::MultiuserContext>>,
 
     /// Typed renderer registry (replaces old Arc<dyn Any> system)
     pub renderers: crate::renderers_typed::TypedRendererRegistry,
 
-    /// Developer / source-build context.  Populated during engine init.
-    pub dev: Arc<RwLock<DevContext>>,
+    /// Generic, type-safe global resource table.
+    ///
+    /// This is the extension point for new engine-wide singleton state.
+    /// Instead of adding a new named field here or a new `OnceLock` in some
+    /// other crate, store your type here:
+    pub store: crate::store::StateStore,
 
-    /// Bytes of the embedded `assets/default.level` file, set during init.
-    /// `None` if the asset was not compiled into the binary (e.g. no file exists yet).
-    /// Used by the level editor to seed new projects with the engine's default scene.
-    pub default_level_bytes: Arc<RwLock<Option<Vec<u8>>>>,
-
-    /// Monotonically increasing window ID counter (no cross-thread ordering
-    /// needed — uniqueness is all that matters for IDs).
-    next_id: Arc<AtomicU64>,
-
-    /// Optional window manager instance (enabled via feature)
-    pub window_manager: Arc<RwLock<Option<window_manager::WindowManager>>>,
+    /// Generic, type-safe per-window resource table.
+    ///
+    /// The extension point for new per-window state (replaces ad-hoc
+    /// per-window registries):
+    pub window_state: crate::keyed_store::KeyedStore<WindowId>,
 }
 
 impl EngineContext {
     /// Create a new engine context
     pub fn new() -> Self {
+        let store = crate::store::StateStore::new();
+        let multiuser = store.get_or_init::<Option<crate::multiuser::MultiuserContext>>();
+
         Self {
             windows: Arc::new(DashMap::new()),
-            project: Arc::new(RwLock::new(None)),
-            launch: Arc::new(RwLock::new(LaunchContext::new())),
-            discord: Arc::new(RwLock::new(None)),
-            multiuser: Arc::new(RwLock::new(None)),
-            auth_profile: Arc::new(RwLock::new(None)),
-            user_types: Arc::new(RwLock::new(None)),
+            multiuser,
             renderers: crate::renderers_typed::TypedRendererRegistry::new(),
-            dev: Arc::new(RwLock::new(DevContext::default())),
-            default_level_bytes: Arc::new(RwLock::new(None)),
-            next_id: Arc::new(AtomicU64::new(1)),
-
-            window_manager: Arc::new(RwLock::new(None)),
+            window_state: crate::keyed_store::KeyedStore::new(),
+            store,
         }
-    }
-
-    /// Allocate the next unique window ID
-    pub fn next_window_id(&self) -> WindowId {
-        self.next_id.fetch_add(1, Ordering::Relaxed)
-    }
-
-    /// Register a window context
-    pub fn register_window(&self, window_id: WindowId, context: WindowContext) {
-        self.windows.insert(window_id, context);
     }
 
     /// Unregister a window
@@ -260,25 +228,27 @@ impl EngineContext {
 
     /// Set current project
     pub fn set_project(&self, project: ProjectContext) {
-        *self.project.write() = Some(project);
-    }
-
-    /// Clear current project
-    pub fn clear_project(&self) {
-        *self.project.write() = None;
+        self.store
+            .get_or_init::<Option<ProjectContext>>()
+            .set(Some(project));
     }
 
     /// Initialize Discord Rich Presence
     pub fn init_discord(&self, application_id: impl Into<String>) -> anyhow::Result<()> {
         let presence = DiscordPresence::new(application_id);
         presence.connect()?;
-        *self.discord.write() = Some(presence);
+        self.store
+            .get_or_init::<Option<DiscordPresence>>()
+            .set(Some(presence));
         Ok(())
     }
 
     /// Get Discord presence handle
     pub fn discord(&self) -> Option<DiscordPresence> {
-        self.discord.read().clone()
+        self.store
+            .get_or_init::<Option<DiscordPresence>>()
+            .read()
+            .clone()
     }
 
     /// Update Discord presence
@@ -288,34 +258,48 @@ impl EngineContext {
         tab_name: Option<String>,
         file_path: Option<String>,
     ) {
-        if let Some(discord) = self.discord.read().as_ref() {
+        let handle = self.store.get_or_init::<Option<DiscordPresence>>();
+        let guard = handle.read();
+        if let Some(discord) = guard.as_ref() {
             discord.update_all(project_name, tab_name, file_path);
         }
     }
 
     /// Set global user type registry
     pub fn set_user_types(&self, user_types: Arc<UserTypeRegistry>) {
-        *self.user_types.write() = Some(user_types);
+        self.store
+            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
+            .set(Some(user_types));
     }
 
     /// Set authenticated user profile.
     pub fn set_auth_profile(&self, profile: AuthProfile) {
-        *self.auth_profile.write() = Some(profile);
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .set(Some(profile));
     }
 
     /// Clear authenticated user profile.
     pub fn clear_auth_profile(&self) {
-        *self.auth_profile.write() = None;
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .set(None);
     }
 
     /// Get authenticated user profile.
     pub fn auth_profile(&self) -> Option<AuthProfile> {
-        self.auth_profile.read().clone()
+        self.store
+            .get_or_init::<Option<AuthProfile>>()
+            .read()
+            .clone()
     }
 
     /// Get global user type registry
     pub fn user_types(&self) -> Option<Arc<UserTypeRegistry>> {
-        self.user_types.read().clone()
+        self.store
+            .get_or_init::<Option<Arc<UserTypeRegistry>>>()
+            .read()
+            .clone()
     }
 
     /// Set multiuser session context
@@ -335,33 +319,34 @@ impl EngineContext {
     /// engine_context.set_multiuser(multiuser_ctx);
     /// ```
     pub fn set_multiuser(&self, context: crate::multiuser::MultiuserContext) {
-        *self.multiuser.write() = Some(context);
-        emit_multiuser_update();
+        self.multiuser.set(Some(context));
     }
 
     /// Mutate multiuser context in place if active.
     ///
-    /// Returns `true` when a context existed and was updated.
+    /// Returns `true` when a context existed and was updated. Subscribers
+    /// (via [`crate::resource::ResourceHandle::changed`]) are only notified
+    /// when an update actually happened.
     pub fn update_multiuser<F>(&self, update: F) -> bool
     where
         F: FnOnce(&mut crate::multiuser::MultiuserContext),
     {
-        let mut guard = self.multiuser.write();
-        if let Some(ctx) = guard.as_mut() {
-            update(ctx);
-            emit_multiuser_update();
-            true
-        } else {
-            false
+        if self.multiuser.read().is_none() {
+            return false;
         }
+        self.multiuser.update(|guard| {
+            if let Some(ctx) = guard.as_mut() {
+                update(ctx);
+            }
+        });
+        true
     }
 
     /// Clear multiuser session context
     ///
     /// Call this when disconnecting from a session.
     pub fn clear_multiuser(&self) {
-        *self.multiuser.write() = None;
-        emit_multiuser_update();
+        self.multiuser.set(None);
     }
 
     /// Get multiuser session context (if active)
@@ -383,24 +368,7 @@ impl EngineContext {
             .unwrap_or(false)
     }
 
-    /// Update multiuser connection status
-    pub fn set_multiuser_status(&self, status: crate::multiuser::MultiuserStatus) {
-        let _ = self.update_multiuser(|ctx| ctx.set_status(status));
-    }
-
-    /// Add a participant to the current multiuser session
-    pub fn add_multiuser_participant(&self, peer_id: impl Into<String>) {
-        let peer_id = peer_id.into();
-        let _ = self.update_multiuser(|ctx| ctx.add_participant(peer_id));
-    }
-
-    /// Replace participant list for the active session.
-    pub fn set_multiuser_participants(&self, participants: Vec<String>) {
-        let _ = self.update_multiuser(|ctx| {
-            ctx.participants = participants;
-        });
-    }
-
+    
     pub fn set_multiuser_participant_profiles(
         &self,
         participants: Vec<crate::multiuser::MultiuserParticipant>,
@@ -416,14 +384,9 @@ impl EngineContext {
         });
     }
 
-    /// Remove a participant from the current multiuser session
-    pub fn remove_multiuser_participant(&self, peer_id: &str) {
-        let _ = self.update_multiuser(|ctx| ctx.remove_participant(peer_id));
-    }
-
     /// Notify listeners that the multiuser snapshot changed.
     pub fn notify_multiuser_changed(&self) {
-        emit_multiuser_update();
+        self.multiuser.update(|_| {});
     }
 
     /// Set as global instance (for GPUI views that need global access)
@@ -444,71 +407,6 @@ impl Default for EngineContext {
 }
 
 static GLOBAL_CONTEXT: OnceLock<EngineContext> = OnceLock::new();
-static MULTIUSER_UPDATE_BUS: OnceLock<(
-    smol::channel::Sender<()>,
-    Mutex<Option<smol::channel::Receiver<()>>>,
-)> = OnceLock::new();
-
-fn multiuser_update_bus() -> &'static (
-    smol::channel::Sender<()>,
-    Mutex<Option<smol::channel::Receiver<()>>>,
-) {
-    MULTIUSER_UPDATE_BUS.get_or_init(|| {
-        let (tx, rx) = smol::channel::unbounded();
-        (tx, Mutex::new(Some(rx)))
-    })
-}
-
-pub fn subscribe_multiuser_updates() -> smol::channel::Receiver<()> {
-    multiuser_update_bus()
-        .1
-        .lock()
-        .expect("multiuser update bus poisoned")
-        .take()
-        .expect("multiuser updates already subscribed")
-}
-
-fn emit_multiuser_update() {
-    let _ = multiuser_update_bus().0.try_send(());
-}
-
-/// Migration helpers for transitioning from EngineState metadata to EngineContext
-///
-/// These provide a compatibility layer during the migration period.
-pub mod migration {
-
-    /// Extract window ID from metadata string (used during migration)
-    pub fn parse_window_id_u64(id_str: &str) -> Option<u64> {
-        id_str.parse::<u64>().ok()
-    }
-
-    /// Format window ID as string (used during migration)
-    pub fn format_window_id_u64(id: u64) -> String {
-        id.to_string()
-    }
-
-    /// Map old metadata key to new context access
-    ///
-    /// This documents the migration path from string metadata to typed contexts.
-    ///
-    /// Old: `engine_state.get_metadata("current_project_path")`
-    /// New: `engine_context.project.read().as_ref().map(|p| &p.path)`
-    ///
-    /// Old: `engine_state.set_metadata("uri_project_path", path)`
-    /// New: `engine_context.launch.write().uri_project_path = Some(path)`
-    ///
-    /// Old: `engine_state.get_metadata("latest_window_id")`
-    /// New: Use the actual WindowId from the window creation event
-    pub struct MetadataKeyMapping;
-
-    impl MetadataKeyMapping {
-        pub const URI_PROJECT_PATH: &'static str = "uri_project_path";
-        pub const CURRENT_PROJECT_PATH: &'static str = "current_project_path";
-        pub const CURRENT_PROJECT_WINDOW_ID: &'static str = "current_project_window_id";
-        pub const LATEST_WINDOW_ID: &'static str = "latest_window_id";
-        pub const HAS_PENDING_VIEWPORT_RENDERER: &'static str = "has_pending_viewport_renderer";
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -542,7 +440,7 @@ mod tests {
     #[test]
     fn test_engine_context_window_count() {
         let context = EngineContext::new();
-        assert_eq!(context.window_count(), 0);
+        assert_eq!(context.windows.len(), 0);
 
         // Would need real WindowId to test further
     }
@@ -550,19 +448,20 @@ mod tests {
     #[test]
     fn test_engine_context_project() {
         let context = EngineContext::new();
+        let project_handle = context.store.get_or_init::<Option<ProjectContext>>();
 
-        assert!(context.project.read().is_none());
+        assert!(project_handle.read().is_none());
 
         let project = ProjectContext::new(PathBuf::from("/test"));
         context.set_project(project.clone());
 
-        assert!(context.project.read().is_some());
+        assert!(project_handle.read().is_some());
         assert_eq!(
-            context.project.read().as_ref().unwrap().path,
+            project_handle.read().as_ref().unwrap().path,
             PathBuf::from("/test")
         );
 
-        context.clear_project();
-        assert!(context.project.read().is_none());
+        project_handle.set(None);
+        assert!(project_handle.read().is_none());
     }
 }

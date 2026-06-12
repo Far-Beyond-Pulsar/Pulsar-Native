@@ -117,21 +117,20 @@ impl PulsarApp {
 
         // Update plugin manager with current project root
         if let Some(pm_lock) = plugin_manager::global() {
-            if let Ok(mut pm) = pm_lock.write() {
-                pm.set_project_root(self.state.project_path.clone());
+            let mut pm = pm_lock.write();
+            pm.set_project_root(self.state.project_path.clone());
 
-                // Let the plugin system handle everything - no match statements needed!
-                match pm.create_editor_for_file(&path, window, cx) {
-                    Ok(panel) => {
-                        tracing::debug!("Successfully created editor for: {:?}", path);
-                        self.state.center_tabs.update(cx, |tabs, cx| {
-                            tabs.add_panel(panel, window, cx);
-                        });
-                        self.refresh_open_editor_snapshot(cx);
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to open file {:?}: {}", path, e);
-                    }
+            // Let the plugin system handle everything - no match statements needed!
+            match pm.create_editor_for_file(&path, window, cx) {
+                Ok(panel) => {
+                    tracing::debug!("Successfully created editor for: {:?}", path);
+                    self.state.center_tabs.update(cx, |tabs, cx| {
+                        tabs.add_panel(panel, window, cx);
+                    });
+                    self.refresh_open_editor_snapshot(cx);
+                }
+                Err(e) => {
+                    tracing::error!("Failed to open file {:?}: {}", path, e);
                 }
             }
         }

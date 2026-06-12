@@ -73,6 +73,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "engine_fs",
+ "engine_state",
  "plugin_manager",
  "serde_json",
  "tool_registry",
@@ -3032,6 +3033,7 @@ dependencies = [
  "dashmap",
  "directories 6.0.0",
  "engine_fs",
+ "event-listener 5.4.1",
  "futures",
  "gpui-ce",
  "parking_lot",
@@ -8000,6 +8002,7 @@ dependencies = [
  "gpui-ce",
  "libloading 0.9.0",
  "once_cell",
+ "parking_lot",
  "plugin_editor_api",
  "serde_json",
  "sha2 0.11.0",
@@ -8642,8 +8645,7 @@ dependencies = [
 name = "pulsar_events"
 version = "0.1.0"
 dependencies = [
- "once_cell",
- "parking_lot",
+ "engine_state",
  "serde",
  "tracing",
 ]
@@ -12910,6 +12912,7 @@ name = "ui_fab_search"
 version = "0.1.0"
 dependencies = [
  "dirs 6.0.0",
+ "engine_state",
  "gpui-ce",
  "image",
  "linkme",

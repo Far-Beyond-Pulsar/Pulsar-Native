@@ -5,7 +5,6 @@ edition = "2024"
 description = "Central script-event registry for Pulsar Engine blueprint dispatch"
 
 [dependencies]
-parking_lot = { workspace = true }
-once_cell   = { workspace = true }
-serde       = { workspace = true, features = ["derive"] }
-tracing     = { workspace = true }
+engine_state = { workspace = true }
+serde        = { workspace = true, features = ["derive"] }
+tracing      = { workspace = true }

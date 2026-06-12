@@ -66,7 +66,8 @@ impl ProjectScanner {
     fn register_asset(&self, path: PathBuf) -> Result<()> {
         // Use the global registry to determine file type
         if let Some(plugin_manager) = plugin_manager::global() {
-            if let Ok(pm) = plugin_manager.read() {
+            {
+                let pm = plugin_manager.read();
                 if let Some(file_type_id) = pm.file_type_registry().get_file_type_for_path(&path) {
                     if let Some(file_type_def) =
                         pm.file_type_registry().get_file_type(&file_type_id)

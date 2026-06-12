@@ -12,7 +12,7 @@ use helio::{
     MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer, RendererConfig, SceneActor,
     SceneActorId, ScenePicker, SkyActor,
 };
-use pulsar_events::SCRIPT_REGISTRY;
+use pulsar_events::script_registry;
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
@@ -803,7 +803,8 @@ impl HelioRenderer {
         }
 
         // Cull script registrations for objects no longer in the scene.
-        SCRIPT_REGISTRY.lock().retain_keys(live_keys.inner());
+        let registry = script_registry();
+        registry.write().retain_keys(live_keys.inner());
 
         // Rebuild scene picker BVH after any insertions or removals.
         let t_picker = std::time::Instant::now();

@@ -222,9 +222,7 @@ impl ManualToolPanel {
         let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
             let pm_lock = plugin_manager::global()
                 .ok_or_else(|| "Global plugin manager not available".to_string())?;
-            let mut pm = pm_lock
-                .write()
-                .map_err(|_| "Failed to lock plugin manager".to_string())?;
+            let mut pm = pm_lock.write();
 
             pm.set_project_root(project_path);
             let panel = pm
@@ -348,7 +346,8 @@ impl ManualToolPanel {
 
         // ── Plugin tools ──────────────────────────────────────────────────
         if let Some(manager_lock) = plugin_manager::global() {
-            if let Ok(manager) = manager_lock.read() {
+            {
+                let manager = manager_lock.read();
                 let bridge = manager.build_tool_bridge();
                 let mut plugin_tools = bridge.all_tools();
                 // Sort for stable display order
@@ -538,15 +537,13 @@ impl ManualToolPanel {
                 }
             };
 
-            let result = plugin_manager::global().and_then(|lock| {
-                lock.read().ok().map(|m| {
-                    m.execute_plugin_ai_tool(
-                        &plugin_editor_api::PluginId::new(&plugin_id),
-                        &file_path,
-                        &tool_name,
-                        Value::Object(args),
-                    )
-                })
+            let result = plugin_manager::global().map(|lock| {
+                lock.read().execute_plugin_ai_tool(
+                    &plugin_editor_api::PluginId::new(&plugin_id),
+                    &file_path,
+                    &tool_name,
+                    Value::Object(args),
+                )
             });
 
             self.result_text = match result {
@@ -618,12 +615,8 @@ impl ManualToolPanel {
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."));
 
-        let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
-            manager_lock
-                .read()
-                .ok()
-                .map(|manager| Arc::new(RwLock::new(manager.build_tool_bridge())))
-        });
+        let plugin_bridge = plugin_manager::global()
+            .map(|manager_lock| Arc::new(RwLock::new(manager_lock.read().build_tool_bridge())));
 
         let ctx = agent_chat_tools::make_tool_context(
             workspace_root,

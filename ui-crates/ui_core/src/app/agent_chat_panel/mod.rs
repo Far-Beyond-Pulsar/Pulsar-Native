@@ -275,12 +275,8 @@ impl AgentChatPanel {
             let tb = tier(b.id);
             ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
         });
-        let plugin_bridge = plugin_manager::global().and_then(|manager_lock| {
-            manager_lock
-                .read()
-                .ok()
-                .map(|manager| Arc::new(RwLock::new(manager.build_tool_bridge())))
-        });
+        let plugin_bridge = plugin_manager::global()
+            .map(|manager_lock| Arc::new(RwLock::new(manager_lock.read().build_tool_bridge())));
 
         let prompt_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Ask the engine assistant..."));
@@ -516,9 +512,7 @@ impl AgentChatPanel {
         let update_result = cx.update_window(self.parent_window_handle, |_root, window, cx| {
             let pm_lock = plugin_manager::global()
                 .ok_or_else(|| "Global plugin manager not available".to_string())?;
-            let mut pm = pm_lock
-                .write()
-                .map_err(|_| "Failed to lock plugin manager".to_string())?;
+            let mut pm = pm_lock.write();
 
             pm.set_project_root(project_path);
             let panel = pm

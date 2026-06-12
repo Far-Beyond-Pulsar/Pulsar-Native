@@ -1,9 +1,11 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use super::{
     DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets, DevSaveAsDefaultLevel,
     DevShowBuildInfo, ToggleProblems,
 };
+use engine_fs::UserTypeRegistry;
 use engine_state::EngineContext;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
@@ -206,42 +208,47 @@ impl Render for DevPopover {
             engine_version = env!("CARGO_PKG_VERSION").to_string();
             build_info = option_env!("BUILD_INFO").unwrap_or("dev").to_string();
 
-            let dev = ctx.dev.read();
-            is_source_build = dev.is_source_build;
-            source_path = dev
-                .source_path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "—".to_string());
-            drop(dev);
+            {
+                let dev = ctx.store.get_or_init::<engine_state::DevContext>().get();
+                is_source_build = dev.is_source_build;
+                source_path = dev
+                    .source_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "—".to_string());
+            }
 
-            let (pp, pw) = ctx
-                .project
-                .read()
-                .as_ref()
-                .map(|p| {
-                    (
-                        p.path.display().to_string(),
-                        p.window_id
-                            .map(|id| id.to_string())
-                            .unwrap_or_else(|| "—".to_string()),
-                    )
-                })
-                .unwrap_or_else(|| ("—".to_string(), "—".to_string()));
-            project_path = pp;
-            project_window_id = pw;
+            {
+                let project_handle = ctx.store.get_or_init::<Option<engine_state::ProjectContext>>();
+                let (pp, pw) = project_handle
+                    .read()
+                    .as_ref()
+                    .map(|p| {
+                        (
+                            p.path.display().to_string(),
+                            p.window_id
+                                .map(|id| id.to_string())
+                                .unwrap_or_else(|| "—".to_string()),
+                        )
+                    })
+                    .unwrap_or_else(|| ("—".to_string(), "—".to_string()));
+                project_path = pp;
+                project_window_id = pw;
+            }
 
-            let launch = ctx.launch.read();
-            uri_project_path = launch
-                .uri_project_path
-                .as_ref()
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|| "—".to_string());
-            verbose_launch = launch.verbose;
-            drop(launch);
+            {
+                let launch = ctx.store.get_or_init::<engine_state::LaunchContext>().get();
+                uri_project_path = launch
+                    .uri_project_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "—".to_string());
+                verbose_launch = launch.verbose;
+            }
 
             default_level_size = ctx
-                .default_level_bytes
+                .store
+                .get_or_init::<Option<Vec<u8>>>()
                 .read()
                 .as_ref()
                 .map(|b| {
@@ -256,9 +263,9 @@ impl Render for DevPopover {
                 })
                 .unwrap_or_else(|| "—".to_string());
 
-            has_discord = ctx.discord.read().is_some();
-            has_window_manager = ctx.window_manager.read().is_some();
-            has_user_types = ctx.user_types.read().is_some();
+            has_discord = ctx.store.get_or_init::<Option<engine_state::DiscordPresence>>().read().is_some();
+            has_window_manager = ctx.store.get_or_init::<Option<window_manager::WindowManager>>().read().is_some();
+            has_user_types = ctx.store.get_or_init::<Option<Arc<engine_fs::UserTypeRegistry>>>().read().is_some();
 
             {
                 let mu_guard = ctx.multiuser.read();

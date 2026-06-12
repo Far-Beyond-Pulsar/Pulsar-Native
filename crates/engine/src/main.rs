@@ -274,9 +274,12 @@ fn main() {
         // Runs every inventory::submit! registrant from all linked crates automatically.
         window_manager::register_all_windows(cx);
 
-        let mut launch = engine_context.launch.write();
+        let uri_path = engine_context
+            .store
+            .get_or_init::<engine_state::LaunchContext>()
+            .update(|l| l.uri_project_path.take());
 
-        if let Some(path) = launch.uri_project_path.take() {
+        if let Some(path) = uri_path {
             tracing::info!("Opening project splash from URI: {}", path.display());
             open_via_loading_screen(path, cx);
         } else {
