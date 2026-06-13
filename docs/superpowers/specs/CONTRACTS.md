@@ -1,7 +1,41 @@
 # SceneDB 2.0 — Frozen Cross-Layer Contracts
 
-**Source of truth:** SceneDB2.0.md Rev 2.2. Changes require editing the spec
+**Source of truth:** SceneDB2.0.md Rev 2.3. Changes require editing the spec
 first, then this file, then code. Code-first contract drift is a review reject.
+
+## C0. Ownership Law (foundational — binds every other contract)
+
+**SceneDB owns all scene data, CPU and GPU.** SceneDB allocates and owns the
+persistent device buffers holding scene object state (instance transforms, mesh
+and material registries, vertex/index/geometry, the live-generation buffer,
+cluster/meshlet buffers), relates each object's CPU and GPU representation via
+its stable slot id (C1), owns the CPU→GPU delta-sync, and owns the queries and
+indices serving the whole system including the renderer hot loop.
+
+**Helio owns no scene state.** It owns only renderer-internal derived data
+(pipelines, shaders, Hi-Z, framebuffers, draw-command and payload scratch) —
+everything except the scene object data. It binds SceneDB-owned buffers and
+reads them.
+
+**Dependency direction (enforced):** Helio depends on SceneDB; **SceneDB never
+depends on Helio** and stays renderer-agnostic. Crate shape: Layer 1
+`pulsar_scenedb` is graphics-free; a Layer 2 GPU crate (`pulsar_scenedb_gpu`)
+depends on wgpu + `pulsar_scenedb` and owns the device-side scene buffers; Helio
+depends on `pulsar_scenedb_gpu` for those buffers. No edge from any `pulsar_scenedb*`
+crate to Helio.
+
+**Device ownership:** the wgpu `Device`/`Queue` is an engine-level context that
+outlives any renderer instance. SceneDB's GPU crate allocates scene buffers on
+it; Helio is handed the context + SceneDB's buffer/bind-group references.
+Dropping Helio must not drop the device or any scene buffer.
+
+**Acceptance criterion (C0 is unsatisfied until this passes):** Test 13 —
+Stateless Renderer Teardown. With a scene resident and rendering, drop the
+entire Helio instance and rebuild it against the same SceneDB; the scene renders
+identically with **zero scene-data reload** (no disk read, no CPU re-marshal, no
+buffer re-upload) and every scene SSBO + the device survive the teardown.
+Companion: Test 14 — device-loss re-materialization (SceneDB rebuilds the GPU
+side from its CPU-authoritative columns).
 
 ## C1. Handle
 

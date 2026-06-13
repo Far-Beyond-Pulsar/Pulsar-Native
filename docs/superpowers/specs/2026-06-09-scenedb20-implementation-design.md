@@ -1,8 +1,8 @@
 # SceneDB 2.0 Implementation Design
 
-**Date:** 2026-06-09
-**Status:** Approved (design); implementation plan to follow
-**Spec of record:** `Dev/Research/public/drafts/SceneDB2.0.md` (Rev 2.1, to be revised to 2.2 in Stage 0)
+**Date:** 2026-06-09 (revised 2026-06-12)
+**Status:** In execution — Stage 0 + Milestone 1 (Layer 1) complete; M2 next
+**Spec of record:** `Dev/Research/public/drafts/SceneDB2.0.md` (Rev 2.3)
 **Repos in scope:** `Pulsar-Native` (branch `scenedb`), `Helio` (branch `scenedb20`), `Research` (spec revisions)
 
 ---
@@ -14,33 +14,59 @@ The SceneDB 2.0 / Helio specification (Rev 2.1) defines an engine-wide spatial d
 SIMD spatial queries) and a GPU-driven renderer contract (persistent SSBOs, Hi-Z compute
 culling, indirect draws, virtual geometry, HLOD proxies, token-driven slot retirement).
 
-**None of it is implemented.** Today's reality:
+### 1.0 The Ownership Law (governs every milestone — see spec §0 / CONTRACTS.md C0)
+
+**SceneDB owns all scene data, CPU and GPU.** It owns the persistent device
+buffers holding scene object state, relates each object's CPU and GPU sides via
+its stable slot id, owns the CPU→GPU delta-sync, and owns the queries/indices
+serving the whole engine — physics, editor, and the renderer hot loop. **Helio
+owns no scene state** — only renderer-internal derived data (Hi-Z, command
+scratch, framebuffers, pipelines). **Helio depends on SceneDB; SceneDB never
+depends on Helio.** The wgpu device/queue is an engine-level context that
+outlives any renderer. This is the proof obligation behind the whole design and
+is gated by spec Test 13 (Stateless Renderer Teardown). Every milestone below is
+a consequence of this law, not a negotiation with it.
+
+### 1.1 Current progress (2026-06-12)
+
+- **Stage 0 — DONE.** Spec Rev 2.3, frozen `CONTRACTS.md` (C0–C7) mirrored to Helio.
+- **Milestone 1 (Layer 1) — DONE.** `crates/pulsar_scenedb` (seeded from `pulsar_ecs`,
+  which stays as reference; graphics-free): handles, paged 64B-aligned SoA, liveness +
+  swap-and-pop compaction, `TypeToken`/`CellType` bridged to `pulsar_reflection`,
+  runtime-dispatched SIMD AABB+frustum queries (AVX2 verified bit-for-bit vs scalar),
+  leases/scratchpads, double-buffered liveness snapshot, Part VI Test 1 + Test 2-host
+  gates. All tasks dual-reviewed + holistic APPROVE.
+- **M2/M3/M4 — NOT STARTED.**
+
+### 1.2 The world being replaced
 
 - Scene state lives in `engine_backend/src/scene/`: legacy `SceneDb`
   (flat `DashMap<ObjectId, Arc<SceneEntry>>` with atomic transforms — no SoA, no paging,
   no spatial index) plus `SceneMetadataDb`/`ComponentDb`/`HierarchyManager`.
 - Persistence is divergent JSON: runtime `SceneFile` (v1/v2.x) in `pulsar_scene`,
   editor `LevelFile` (v2.1) in `ui_level_editor`.
-- `pulsar_ecs` is a fresh archetype ECS (dense `ComponentId`, u64 archetype bitmasks,
-  swap-remove, generational entities) — the closest existing ancestor to Layer 1.
-- `pulsar_reflection` provides the working type system: `EngineClass` derive,
-  inventory-based registration, property metadata, JSON codec, runtime behavior dispatch.
+- `pulsar_reflection` provides the working type system: `Reflectable` derive,
+  inventory-based registration (`RUNTIME_TYPE_REGISTRY`), property metadata with byte
+  offsets, JSON codec.
 - Helio is a wgpu-based GPU-driven renderer consumed as a pinned git dep (`f7e0a54`);
-  it already has a compute-based virtual-geometry pass
-  (`helio-pass-virtual-geometry`: meshlet cull compute → `DrawIndexedIndirect` per
-  meshlet → `multi_draw_indexed_indirect`). The engine reconciles it via per-frame
-  `sync_scene()`.
+  it already has a compute-based virtual-geometry pass. **Critically, today the engine
+  reconciles it via per-frame `sync_scene()` — Helio currently owns GPU scene state and
+  the engine pushes to it. That is the legacy push-model the Ownership Law (§1.0)
+  overturns:** under 2.0, Helio owns no scene state and reads SceneDB's buffers.
 
 The goal is the full spec, both repos, with SceneDB 2.0 ultimately **replacing the ECS**
-as the engine's cross-device memory management system.
+as the engine's single authoritative cross-device memory management system.
 
 ## 2. Locked Decisions
 
 | Decision | Choice | Rationale |
 |---|---|---|
+| **Data ownership (LAW)** | **SceneDB owns all scene data CPU+GPU; Helio owns no scene state and depends on SceneDB** | Spec §0 / CONTRACTS.md C0; single authoritative cross-device store, enforced by dependency direction; gated by Test 13 |
+| **Crate structure** | Layer 1 `pulsar_scenedb` (graphics-free, done) + Layer 2 `pulsar_scenedb_gpu` (wgpu + `pulsar_scenedb`; owns device scene buffers) + Helio (depends on `pulsar_scenedb_gpu`) | Keeps Layer 1 graphics-free per spec; puts GPU-buffer ownership in SceneDB; forbids any `pulsar_scenedb*`→Helio edge |
+| **GPU device ownership** | wgpu `Device`/`Queue` is an engine-level context shared by reference; outlives any renderer | Required so scene buffers survive a Helio teardown (Test 13) |
 | Scope | Full spec, both repos, one master plan | User decision |
-| Core home | `cp crates/pulsar_ecs → crates/pulsar_scenedb`; original kept as reference; copy evolves into Layer 1 | Preserves working ECS lineage (handles, archetype concepts, benches) while allowing a clean break |
-| Type system | `pulsar_reflection` backs Part III's compile-time type contract | Working, already integrated with editor + serialization |
+| Core home | `cp crates/pulsar_ecs → crates/pulsar_scenedb`; original kept as reference; copy evolved into Layer 1 (done) | Preserves working ECS lineage (handles, dense ids, benches) while allowing a clean break |
+| Type system | `pulsar_reflection` (`Reflectable`/`RUNTIME_TYPE_REGISTRY`) backs Part III's type contract | Working, already integrated with editor + serialization; field byte offsets available |
 | GPU strategy | Adapt spec to wgpu/WGSL | Keeps the working renderer and the existing VG pass; spec gets a mapping appendix |
 | Migration | Parallel build + feature-flag switchover; one-time JSON migration tool | Architectures too different for in-place evolution; editor must keep working |
 | Ordering | Bottom-up by layer: Stage 0 → L1 → L2 → L3 → integration | User decision; each layer fully verified before the next |
@@ -121,39 +147,69 @@ Test 2 host half (stale-handle rejection), property tests comparing SIMD scans a
 a scalar reference, criterion benches extending `pulsar_ecs/benches/ecs_bench.rs`
 (SoA page scan vs archetype iteration vs legacy `SceneDb` DashMap).
 
-## 5. Milestone 2 — Layer 2: Orchestration & Streaming
+## 5. Milestone 2 — Layer 2: Orchestration & the SceneDB GPU-Resident Store
 
-1. **2.1 Frame-phase state machine.** Simulate → harvest → cull → draw →
+**This is where the Ownership Law (§1.0) becomes real.** M2 creates the new
+`pulsar_scenedb_gpu` crate — the SceneDB-owned device-side store — and the
+delta-sync that keeps it current from Layer 1's columns. The persistent SSBOs and
+the asset registries (previously mis-filed under "Helio") are **owned here**, not
+in Helio.
+
+1. **2.0 GPU-resident store + device context (`pulsar_scenedb_gpu`).** A new crate
+   depending on `wgpu` + `pulsar_scenedb` (never Helio). Owns the engine-level
+   `Device`/`Queue` handle (shared by reference, outlives any renderer) and the
+   persistent scene SSBOs from spec §10 (instance 64 B, material 32 B, mesh
+   configurator 72 B, generation buffer u32/slot, vertex/index/geometry, cluster/
+   meshlet buffers), allocated once. Exposes buffer/bind-group references for Helio
+   to bind. Byte-layouts per CONTRACTS.md C5; **Test 3** (host↔naga byte-exact) lands
+   here, not in Helio.
+2. **2.1 Delta-sync.** Per-slot dirty tracking on Layer 1 writes (transform / column
+   changes); at the sync sub-phase, only dirty rows are memcpy'd into the resident
+   SSBOs (byte-identical layout, no conversion). This is the mechanism that ends
+   constant CPU↔GPU re-upload. Generation-buffer updates piggyback the retirement path.
+3. **2.2 Frame-phase state machine.** Simulate → harvest → cull → draw →
    retire/compact, enforced with API types (phase-scoped guards) so out-of-phase
    access fails to compile rather than at runtime.
-2. **2.2 Concentric cell grid.** Uniform grid of cells; inner-core / active-margin /
+4. **2.3 Concentric cell grid.** Uniform grid of cells; inner-core / active-margin /
    outer-buffer domain classification from the union of all observer AABBs;
    promotion/demotion only at frame boundaries; hysteresis padding; per-cell HLOD
    cross-fade weight state.
-3. **2.3 Harvest pipeline.** Single-scan partitioning of query output into
+5. **2.4 Harvest pipeline.** Single-scan partitioning of query output into
    traditional-LOD / VG / HLOD staging arrays; DEI computation and dense SIMD
-   compaction when DEI < 25%; zero allocation during the frame.
-4. **2.4 Retirement engine.** Deferred eviction list tagged with submission serials;
+   compaction when DEI < 25%; threads the M1b `Scratchpad` through so the path is
+   **zero-allocation during the frame** (adds `Scratchpad::get_u64` for the liveness
+   snapshot — the §8.1 carry-forward from M1b).
+6. **2.5 Retirement engine.** Deferred eviction list tagged with submission serials;
    wgpu `on_submitted_work_done` as the completion signal; generation increment +
-   VRAM generation-buffer update scheduling before slot reuse.
-5. **2.5 Asset registry.** Host-side flat registries byte-identical to GPU layouts:
-   72-byte mesh metadata (WGSL-adapted), 32-byte materials, HLOD proxy entries with
-   cell-level handles.
+   VRAM generation-buffer update scheduling before slot reuse. Owns both the slot
+   allocator (via Layer 1) and the GPU buffer (via 2.0), so retirement is one
+   coherent cross-device operation (the reason C0 requires single ownership).
+7. **2.6 Asset registry.** Host-side flat registries byte-identical to GPU layouts,
+   uploaded directly into the 2.0 SSBOs: 72-byte mesh metadata, 32-byte materials,
+   HLOD proxy entries with cell-level handles.
 
-**Verification:** Test 6 (timeline recovery under simulated stutter), Test 10
-(editor lease stall), Test 11 (grid boundary oscillation), Test 12 (sparse-cell DEI
-compaction) — all host-side with a mock GPU timeline.
+**Verification:** Test 3 (host↔shader byte-exact), Test 6 (timeline recovery under
+simulated stutter), Test 10 (editor lease stall), Test 11 (grid boundary oscillation),
+Test 12 (sparse-cell DEI compaction). The **Test 14** device-loss re-materialization
+path (rebuild the GPU side from Layer 1's authoritative columns) is exercised here
+since `pulsar_scenedb_gpu` owns that rebuild.
 
-## 6. Milestone 3 — Layer 3: Helio Upgrades
+## 6. Milestone 3 — Layer 3: Helio (stateless consumer)
 
 Runs in the Helio repo against staged/mock harvest data; can overlap Milestone 2 once
-Stage 0 contracts are frozen.
+Stage 0 contracts are frozen. **Per the Ownership Law (§1.0): Helio allocates and owns
+NO scene buffers — those are created and owned by `pulsar_scenedb_gpu` (M2.0). Helio
+depends on `pulsar_scenedb_gpu`, receives the device context + buffer/bind-group
+references, and owns only the derived per-frame data it produces.** Helio's work is
+passes, not ownership.
 
-1. **3.1 Persistent SSBO contracts.** Global instance storage (64 B/instance),
-   material registry, mesh configurator (72 B/mesh), bindless texture array,
-   generation validation buffer — allocated at startup, never reallocated.
-   **Test 3** in CI: byte-offset comparison of host Rust structs vs naga-reflected
-   WGSL, per target platform.
+1. **3.1 Bind SceneDB's buffers + own only derived data.** Helio takes the engine
+   device context and SceneDB's persistent SSBO/bind-group handles (instance, material,
+   mesh configurator, generation buffer, geometry, cluster/meshlet — all owned by M2.0)
+   and binds them. Helio creates and owns ONLY: pipelines, shaders, the Hi-Z pyramid,
+   per-view draw-command/counter buffers, task payload scratch, framebuffers. **No scene
+   buffer is allocated in Helio.** This is the precondition for **Test 13** (drop Helio,
+   scene survives) — Helio must hold no handle that is the sole owner of scene state.
 2. **3.2 Cull compute pass.** Frustum test, near-plane W≤0 bypass with near-clip flag,
    Hi-Z occlusion with same-frame pyramid rebuild, floor-mip selection with 5%
    boundary dual-sampling and dynamically expanded 3×3/4×4 gather kernels,
@@ -169,8 +225,12 @@ Stage 0 contracts are frozen.
    buffer cells, Bayer-matrix stippled cross-fade on domain transitions, distance-based
    transition duration. **Test 7** (horizon continuity).
 
-Plus GPU-side **Test 2** (stale handle injected into the cull shader) and **Test 4**
-(transformation persistence sweeps with the absolute-matrix AABB method).
+Plus GPU-side **Test 2** (stale handle injected into the cull shader), **Test 4**
+(transformation persistence sweeps with the absolute-matrix AABB method), and — the
+gate that proves the Ownership Law holds — **Test 13** (drop the Helio instance, rebuild
+it against the same SceneDB, scene renders identically with zero scene-data reload; the
+device and every scene SSBO survive). **Test 13 is a hard merge gate for M3/M4: C0 is
+unsatisfied until it passes.**
 
 ## 7. Milestone 4 — Integration, Switchover, ECS Replacement
 
@@ -181,8 +241,10 @@ Plus GPU-side **Test 2** (stale handle injected into the cull shader) and **Test
 3. **4.3 Persistence unification.** One scene file format; one-time migration tool
    covering runtime `SceneFile` v1/v2.x and editor `LevelFile` 2.1; `SceneLoader`
    ported to the new path.
-4. **4.4 Switchover.** Tests 1–12 green in CI on both repos; benchmark report vs
-   legacy; default flag flipped; legacy `SceneDb`/`SceneMetadataDb` deleted.
+4. **4.4 Switchover.** Tests 1–14 green in CI on both repos — including **Test 13
+   (Stateless Renderer Teardown)** and **Test 14 (device-loss re-materialization)**, the
+   Ownership Law gates; benchmark report vs legacy; default flag flipped; legacy
+   `SceneDb`/`SceneMetadataDb` and the per-frame `sync_scene()` push-path deleted.
 5. **4.5 ECS replacement.** Gameplay components registered as SceneDB cell types;
    `World`/query API surface (inherited from the pulsar_ecs copy) maintained for
    gameplay code; `pulsar_ecs` deprecated and removed from the workspace once no
@@ -207,12 +269,14 @@ Plus GPU-side **Test 2** (stale handle injected into the cull shader) and **Test
 
 ## 10. Testing Strategy
 
-- Part VI tests 1–8 plus Corrections tests 10–12 are the acceptance gates, assigned
-  to milestones as listed above.
+- Part VI tests 1–8, Corrections tests 10–12, and **Ownership Law gates 13–14** are the
+  acceptance gates, assigned to milestones as listed above. **Test 13 (teardown) is the
+  binding acceptance criterion for CONTRACTS.md C0.**
 - Every SIMD path has a scalar reference implementation and property tests.
 - Byte-layout contracts enforced mechanically (naga reflection diff), not by review.
 - Benchmarks (criterion) track: SoA scan throughput, query latency vs entity count,
-  harvest cost per frame, cull dispatch + readback latency.
+  delta-sync cost per frame (dirty rows only), harvest cost per frame, cull dispatch +
+  readback latency.
 
 ## 11. Out of Scope (deferred per spec Appendix B)
 

@@ -1,7 +1,14 @@
 # SceneDB 2.0 & Helio — Unified Engine Specification
 
-> **Revision 2.2** · Tristan J. Poland (tristanpoland), Sepehr (sepehrnour),  · June 2026
+> **Revision 2.3** · Tristan J. Poland (tristanpoland), Sepehr (sepehrnour),  · June 2026
 
+> **Rev 2.3 changes:** the **Ownership Law** is made explicit and foundational
+> (§0) — SceneDB owns all scene data, CPU and GPU; Helio owns no scene state and
+> depends on SceneDB; §10/Part IV reframed as SceneDB-owned / Helio-bound; the
+> GPU device/queue is an engine-level context that outlives any renderer; new
+> verification gates Test 13 (Stateless Renderer Teardown) and Test 14 (device-
+> loss re-materialization).
+>
 > **Rev 2.2 changes:** stable-slot/row-indirection handle semantics (§3.1, §4.4);
 > physics writeback sub-phase (§2, §22); intra-frame Hi-Z rebuild pass (§13, §18);
 > WGSL layout contract replacing GLSL scalar layout (§6.1, §10); near-plane
@@ -98,6 +105,67 @@ Notice that mutation (phase 1) is fully separated from reading (phase 2), which 
 
 ## Part I — Core Architecture
 
+### 0. The Ownership Law (Foundational — LAW)
+
+> This section is binding on every layer, milestone, and implementation task. It
+> resolves the single most important question the rest of the document depends
+> on: **who owns scene data.** Everything else — the three-layer model, the
+> persistent SSBOs, retirement, streaming — is a consequence of this law.
+
+**SceneDB owns all scene data, CPU and GPU.** It allocates and owns the
+persistent device buffers that hold scene object state (instance transforms,
+mesh and material registries, vertex/index/geometry, the live-generation buffer,
+cluster and meshlet buffers). It relates every object's CPU and GPU
+representation through the object's stable slot identity (§3). It owns the
+CPU→GPU **delta-sync**, and it owns the **queries and indices** that serve the
+entire system — physics, the editor, and the **renderer hot loop**.
+
+**Helio owns no scene state.** Helio is a pure stateless consumer. It owns only
+renderer-internal *derived* data — pipelines, shaders, the Hi-Z pyramid it
+builds, framebuffers and render targets, the transient draw-command and task
+payload scratch buffers — i.e. **everything except the scene object data.** It
+binds SceneDB-owned buffers and runs passes over them; it never holds an
+authoritative copy of scene state.
+
+**The dependency direction is the enforcement.** Helio depends on SceneDB (for
+SceneDB's scene-state buffers); **SceneDB never depends on Helio** and remains
+renderer-agnostic. A leaf that depends on the store cannot become a second
+source of truth — it can only bind and read what the store owns. Reversing the
+arrow would recreate the legacy push-model in which the renderer holds a copy
+that must be reconciled every frame; that is the exact pattern this architecture
+exists to end.
+
+**The GPU device/queue is an engine-level context, not a renderer resource.**
+Because SceneDB must own GPU buffers that **outlive any renderer instance**
+(Test 13), the `Device`/`Queue` is owned above both SceneDB's GPU layer and
+Helio and shared by reference. SceneDB's GPU layer allocates scene buffers on
+that shared context; Helio is handed the context plus SceneDB's buffer/bind-group
+references. Dropping Helio must never drop the device or any scene buffer.
+
+**Why this is law (the rationale that must survive into implementation):**
+
+1. **One authoritative representation across both devices.** An object's CPU and
+   GPU data are two views of a single owned thing. "Syncing" is therefore
+   SceneDB writing its own resident buffer when its own column changed — a
+   memcpy into a byte-identical layout (§6, §10) — not two systems reconciling
+   separate copies. This is the elimination of the copy-and-sync overhead that
+   the whole engine exists to remove.
+2. **GPU-driven rendering requires resident, authoritative GPU state.** The GPU
+   culls and emits its own draws from data that lives on the device; the CPU is
+   out of the inner loop. That is only possible if the store owns the persistent
+   device buffers and keeps them current — not if a renderer is fed a pushed
+   copy each frame.
+3. **Safe generation-based slot retirement across the device boundary.** A slot
+   may be recycled only after the GPU has finished consuming it (§20). The owner
+   of the slot allocator and the owner of the GPU buffer must be the same system,
+   or safe recycling is impossible. SceneDB owning both makes retirement one
+   coherent operation.
+4. **A stateless, swappable, multi-view renderer.** Because Helio owns no scene
+   state it can be torn down and rebuilt without losing the scene (Test 13), run
+   as many simultaneous views over the *same* buffers (split-screen, shadow
+   cascades, reflection probes), and be replaced by a different backend — all
+   impossible the moment the renderer owns scene state.
+
 ### 1. The Three-Layer Execution Model
 
 The engine enforces a strict three-layer boundary. No data dependency may skip a layer. This constraint exists because each layer has a different concurrency profile, a different hardware consumer, and a different tolerance for latency.
@@ -105,18 +173,18 @@ The engine enforces a strict three-layer boundary. No data dependency may skip a
 ```mermaid
 flowchart TD
     L1["Layer 1 — Storage & Data Repository\nSceneDB 2.0 Core\n\nOwns the physical state of the 3D world.\nSoA pages, registries, index allocations.\nNo graphics API dependency whatsoever."]
-    L2["Layer 2 — Orchestration & Harvesting\nClient Systems & Engine Threads\n\nCoordinates simulation threads.\nHarvests spatial data via scratchpads.\nManages GPU timeline tokens."]
-    L3["Layer 3 — Native Execution\nHelio Renderer\n\nPure stateless hardware consumer.\nIngests persistent SSBOs.\nDrives compute culling, emits indirect draws."]
+    L2["Layer 2 — Orchestration & GPU-Resident Store\nSceneDB GPU layer + engine threads\n\nOwns the persistent scene SSBOs (on the\nshared device context). Delta-syncs CPU\ncolumns → device. Harvests via scratchpads.\nManages GPU timeline tokens."]
+    L3["Layer 3 — Native Execution\nHelio Renderer (stateless)\n\nOwns NO scene state. Binds SceneDB's\nbuffers. Owns only derived data (Hi-Z,\ncommand scratch, framebuffers, pipelines).\nDrives compute culling, emits indirect draws."]
 
-    L1 -->|"index arrays\n& VRAM sync"| L2
-    L2 -->|"staging buffers\n& draw tokens"| L3
+    L1 -->|"index arrays\n& column deltas"| L2
+    L2 -->|"bound buffers\n& draw tokens"| L3
 ```
 
-**Layer 1** knows nothing about graphics APIs, gameplay logic, or specific frame structure. It manages memory and answers queries.
+**Layer 1** knows nothing about graphics APIs, gameplay logic, or specific frame structure. It manages CPU memory and answers queries. Per §0 it is the authoritative store; it has **no graphics-API dependency** — the device-side ownership lives in Layer 2.
 
-**Layer 2** is the transactional bridge. It enforces the simulation-before-query ordering, coordinates timeline semaphores, and owns the scratchpad pools that prevent mid-frame heap allocation.
+**Layer 2** is the transactional bridge **and SceneDB's GPU-resident store**. It owns the persistent scene SSBOs (allocated on the engine-level device context, never on Helio's), delta-syncs Layer 1's columns into them, enforces the simulation-before-query ordering, coordinates timeline tokens, and owns the scratchpad pools that prevent mid-frame heap allocation. This is where "SceneDB owns GPU data" (§0) physically lives.
 
-**Layer 3** operates under the assumption that everything it needs to draw the world is already in VRAM. Its runtime work is visibility evaluation and command generation — nothing more.
+**Layer 3** operates under the assumption that everything it needs to draw the world is already resident in buffers **SceneDB owns** (§0). It binds those buffers and does visibility evaluation and command generation — nothing more. It holds no scene state and can be torn down and rebuilt without disturbing the scene (Test 13).
 
 ### 2. System Clients
 
@@ -488,7 +556,16 @@ the same client are a bug in that client (Test 10). The frame-boundary isolation
 
 ### 10. VRAM Data Contracts
 
-Helio operates on four globally persistent SSBO regions. These are allocated once at engine startup and persist for the lifetime of the process. They are never reallocated; their capacity is set at initialization based on configured scene maximums.
+The four globally persistent SSBO regions below hold scene object state and are
+therefore **owned and allocated by SceneDB's Layer 2 GPU-resident store** (§0),
+on the engine-level device context — **not by Helio.** Helio **binds** them.
+They are allocated once at engine startup and persist for the lifetime of the
+process — and, critically, for the lifetime of the *scene*, which outlives any
+renderer instance (Test 13). They are never reallocated; their capacity is set
+at initialization based on configured scene maximums. SceneDB delta-syncs its
+CPU columns into these buffers; Helio reads them and may write only the
+*derived* per-frame data it owns (draw-command and payload scratch, Hi-Z), never
+the scene buffers themselves.
 
 ```mermaid
 flowchart TD
@@ -858,7 +935,7 @@ This ensures the GPU always validates against a consistent generation state even
 
 ### 21. Structural Test Suite
 
-Six core structural tests validate the correctness contracts of SceneDB 2.0 and the traditional rendering pipeline. Two additional tests cover the virtual geometry and HLOD extensions.
+Six core structural tests validate the correctness contracts of SceneDB 2.0 and the traditional rendering pipeline. Two additional tests cover the virtual geometry and HLOD extensions (Tests 7–8). Tests 10–12 are the orchestration compliance gates (lease stall, grid oscillation, sparse compaction). Tests 13–14 are the **Ownership Law gates** (§0): stateless renderer teardown and device-loss re-materialization — Contract C0 is unsatisfied until both pass.
 
 ```mermaid
 flowchart TD
@@ -949,6 +1026,39 @@ recreation requests (hysteresis per §5.5 absorbs the jitter).
 Populates a cell with 10,000 logic-only entities and 5 meshes, then harvests.
 Pass: DEI < 25% triggers dense compaction per §8.5; the VRAM payload contains
 no null-token cascades.
+
+#### Test 13 — Stateless Renderer Teardown (the Ownership Law gate)
+
+The operational discriminator for §0. With a populated scene resident and
+rendering — entities allocated, SceneDB's GPU scene buffers live, frames
+drawing — **drop the entire Helio instance** (release all pipelines, shaders,
+Hi-Z, draw-command and payload scratch, framebuffers, bind groups), then
+construct a **fresh Helio bound to the same SceneDB**. The test verifies:
+
+- The scene renders **identically** after rebuild, with **zero scene-data
+  reload** — no disk read, no CPU re-marshal, no re-upload of any scene buffer.
+  SceneDB's CPU columns and GPU buffers are bit-unchanged across the teardown.
+- The wgpu `Device`/`Queue` and every scene SSBO **survive** Helio's drop
+  (proving the device context is engine-owned, not Helio-owned, per §0).
+- The only work performed on rebuild is recreation of Helio's *derived*
+  resources (pipelines, Hi-Z, command scratch).
+
+A failure here means Helio held scene state — the Ownership Law is violated and
+the architecture has regressed to the legacy push-model. **Contract C0 is not
+satisfied unless this test passes.**
+
+#### Test 14 — Device-loss re-materialization
+
+The harder companion to Test 13. Simulate full GPU **device loss** (device and
+all its buffers destroyed). The engine context creates a fresh device; SceneDB,
+whose CPU columns are authoritative, **re-materializes the entire GPU side**
+(re-allocates the persistent SSBOs and re-uploads from its CPU columns); Helio,
+owning nothing, rebuilds trivially. The test verifies:
+
+- After recovery the scene is identical to before device loss, reconstructed
+  **entirely from SceneDB's CPU-authoritative state** — no reload from disk.
+- No scene data was lost that existed only on the GPU (proving the CPU side is
+  the true authority, and the GPU side is a derived mirror).
 
 ---
 
