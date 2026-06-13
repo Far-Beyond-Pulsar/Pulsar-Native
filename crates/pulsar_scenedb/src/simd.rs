@@ -217,6 +217,10 @@ pub(crate) fn frustum_scan_scalar(
 /// # Safety
 /// Caller must ensure the `avx2` target feature is available (the dispatcher
 /// and tests guard with `is_x86_feature_detected!("avx2")`).
+///
+/// The dot product MUST use separate `_mm256_mul_ps`/`_mm256_add_ps` (never
+/// `_mm256_fmadd_ps`): FMA's single rounding would diverge from the scalar
+/// reference's mul-then-add and break the bit-for-bit contract.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
 pub(crate) unsafe fn frustum_scan_avx2(
@@ -229,6 +233,9 @@ pub(crate) unsafe fn frustum_scan_avx2(
     use std::arch::x86_64::*;
     debug_assert!(out.len() >= len);
     debug_assert_eq!(liveness_words.len(), len.div_ceil(64));
+    debug_assert!(cols.min_x.len() >= len && cols.max_x.len() >= len, "x columns shorter than len");
+    debug_assert!(cols.min_y.len() >= len && cols.max_y.len() >= len, "y columns shorter than len");
+    debug_assert!(cols.min_z.len() >= len && cols.max_z.len() >= len, "z columns shorter than len");
     let mut hits = 0u32;
     let mut row = 0usize;
     while row + 8 <= len {
@@ -279,7 +286,8 @@ pub(crate) unsafe fn frustum_scan_avx2(
         }
         row += 8;
     }
-    // Scalar tail (identical predicate to frustum_scan_scalar).
+    // Scalar tail (identical predicate to frustum_scan_scalar). Its short-circuit
+    // is equivalent to the SIMD body's all-planes AND — order-independent.
     while row < len {
         let live = liveness_words[row / 64] & (1u64 << (row % 64)) != 0;
         let bmin = [cols.min_x[row], cols.min_y[row], cols.min_z[row]];
