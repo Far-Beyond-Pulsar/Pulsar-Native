@@ -22,6 +22,9 @@ pub struct Columns<'a> {
 /// reference). `liveness_words` is the raw `LivenessMask` word slice;
 /// `len` is the physical row count.
 ///
+/// `liveness_words.len()` must equal `(len + 63) / 64` — the words covering
+/// exactly rows `0..len` (not the full page capacity).
+///
 /// Writes `out[r] = r` on hit, `NULL_ROW` on miss/dead, for `r in 0..len`.
 /// Returns the hit count. `out.len()` must be >= `len`.
 #[inline]
@@ -33,7 +36,7 @@ pub fn aabb_scan(q: &QueryBounds, cols: &Columns, liveness_words: &[u64], len: u
 
 /// Scalar reference. The §8.2 predicate with ordered IEEE comparisons,
 /// liveness ANDed last. M1b SIMD arms must match this bit-for-bit.
-pub fn aabb_scan_scalar(
+pub(crate) fn aabb_scan_scalar(
     q: &QueryBounds,
     cols: &Columns,
     liveness_words: &[u64],
