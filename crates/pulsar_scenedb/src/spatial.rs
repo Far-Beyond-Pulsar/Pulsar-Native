@@ -63,7 +63,7 @@ impl SpatialCell {
     /// All comparisons use Rust's `<=`/`>=`, which are IEEE 754 **ordered**
     /// comparisons: a NaN bound makes every comparison false, so the row is a
     /// miss. M1b SIMD paths must use **ordered** comparison predicates
-    /// (e.g. `_CMP_LE_OS`/`_CMP_GE_OS` in AVX, `fcmle`/`fcmge` in NEON) — not
+    /// (e.g. `_CMP_LE_OQ`/`_CMP_GE_OQ` in AVX, `fcmle`/`fcmge` in NEON) — not
     /// unordered variants — to stay bit-identical to this reference.
     pub fn query_aabb(&self, q: &Aabb, out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;

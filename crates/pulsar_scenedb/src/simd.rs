@@ -60,6 +60,10 @@ pub(crate) unsafe fn aabb_scan_avx2(
 ) -> u32 {
     use std::arch::x86_64::*;
     debug_assert!(out.len() >= len);
+    debug_assert_eq!(liveness_words.len(), len.div_ceil(64), "liveness_words must cover exactly rows 0..len");
+    debug_assert!(cols.min_x.len() >= len && cols.max_x.len() >= len, "x columns shorter than len");
+    debug_assert!(cols.min_y.len() >= len && cols.max_y.len() >= len, "y columns shorter than len");
+    debug_assert!(cols.min_z.len() >= len && cols.max_z.len() >= len, "z columns shorter than len");
 
     // Broadcast query bounds. Ordered comparisons (_CMP_*_OQ) so a NaN bound
     // yields false — bit-identical to the scalar `<=`/`>=` reference.
@@ -93,15 +97,11 @@ pub(crate) unsafe fn aabb_scan_avx2(
         let live8 = ((lw >> (row % 64)) & 0xFF) as u32;
         mask &= live8;
 
-        // Scatter results for the 8 lanes.
+        // POPCNT the hit count once, then scatter row indices per lane.
+        hits += mask.count_ones();
         for lane in 0..8usize {
             let r = row + lane;
-            if (mask >> lane) & 1 != 0 {
-                out[r] = r as u32;
-                hits += 1;
-            } else {
-                out[r] = NULL_ROW;
-            }
+            out[r] = if (mask >> lane) & 1 != 0 { r as u32 } else { NULL_ROW };
         }
         row += 8;
     }
@@ -133,6 +133,10 @@ pub(crate) fn aabb_scan_scalar(
     out: &mut [u32],
 ) -> u32 {
     debug_assert!(out.len() >= len);
+    debug_assert_eq!(liveness_words.len(), len.div_ceil(64), "liveness_words must cover exactly rows 0..len");
+    debug_assert!(cols.min_x.len() >= len && cols.max_x.len() >= len, "x columns shorter than len");
+    debug_assert!(cols.min_y.len() >= len && cols.max_y.len() >= len, "y columns shorter than len");
+    debug_assert!(cols.min_z.len() >= len && cols.max_z.len() >= len, "z columns shorter than len");
     let mut hits = 0u32;
     for row in 0..len {
         let live = liveness_words[row / 64] & (1u64 << (row % 64)) != 0;
