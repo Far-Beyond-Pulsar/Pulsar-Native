@@ -157,6 +157,55 @@ pub(crate) fn aabb_scan_scalar(
     hits
 }
 
+/// Six frustum planes, each `[nx, ny, nz, d]` with inward normal; a point `p`
+/// is inside the plane iff `nx*px + ny*py + nz*pz + d >= 0`.
+#[derive(Copy, Clone)]
+pub struct FrustumPlanes {
+    pub planes: [[f32; 4]; 6],
+}
+
+/// Scalar frustum scan. A box passes iff, for every plane, its positive
+/// vertex (the corner farthest along the inward normal) is inside. Writes
+/// `out[r] = r` on pass, `NULL_ROW` on cull/dead. Returns the pass count.
+/// `liveness_words.len()` must equal `(len + 63) / 64`.
+pub(crate) fn frustum_scan_scalar(
+    f: &FrustumPlanes,
+    cols: &Columns,
+    liveness_words: &[u64],
+    len: usize,
+    out: &mut [u32],
+) -> u32 {
+    debug_assert!(out.len() >= len);
+    debug_assert_eq!(liveness_words.len(), len.div_ceil(64), "liveness_words must cover exactly rows 0..len");
+    let mut hits = 0u32;
+    for row in 0..len {
+        let live = liveness_words[row / 64] & (1u64 << (row % 64)) != 0;
+        let bmin = [cols.min_x[row], cols.min_y[row], cols.min_z[row]];
+        let bmax = [cols.max_x[row], cols.max_y[row], cols.max_z[row]];
+        let mut inside = live;
+        let mut p = 0;
+        while inside && p < 6 {
+            let pl = f.planes[p];
+            // Positive vertex: pick max-projection corner per axis.
+            let px = if pl[0] >= 0.0 { bmax[0] } else { bmin[0] };
+            let py = if pl[1] >= 0.0 { bmax[1] } else { bmin[1] };
+            let pz = if pl[2] >= 0.0 { bmax[2] } else { bmin[2] };
+            if pl[0] * px + pl[1] * py + pl[2] * pz + pl[3] < 0.0 {
+                inside = false; // positive vertex behind plane → fully outside
+            }
+            p += 1;
+        }
+        out[row] = if inside { hits += 1; row as u32 } else { NULL_ROW };
+    }
+    hits
+}
+
+/// Runtime-dispatched frustum scan (scalar for now; AVX2 arm in Task 6).
+#[inline]
+pub fn frustum_scan(f: &FrustumPlanes, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
+    frustum_scan_scalar(f, cols, liveness_words, len, out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
