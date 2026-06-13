@@ -206,9 +206,111 @@ pub(crate) fn frustum_scan_scalar(
     hits
 }
 
-/// Runtime-dispatched frustum scan (scalar for now; AVX2 arm in Task 6).
+/// AVX2 backend for the frustum scan, processing 8 rows per iteration.
+///
+/// Produces bit-identical `out` buffers and pass counts to
+/// [`frustum_scan_scalar`]. The dot-product association
+/// `((nx*px + ny*py) + nz*pz) + d` and ordered (`_CMP_GE_OQ`) comparisons
+/// exactly mirror the scalar reference; no FMA contraction is used so the
+/// rounding matches.
+///
+/// # Safety
+/// Caller must ensure the `avx2` target feature is available (the dispatcher
+/// and tests guard with `is_x86_feature_detected!("avx2")`).
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+pub(crate) unsafe fn frustum_scan_avx2(
+    f: &FrustumPlanes,
+    cols: &Columns,
+    liveness_words: &[u64],
+    len: usize,
+    out: &mut [u32],
+) -> u32 {
+    use std::arch::x86_64::*;
+    debug_assert!(out.len() >= len);
+    debug_assert_eq!(liveness_words.len(), len.div_ceil(64));
+    let mut hits = 0u32;
+    let mut row = 0usize;
+    while row + 8 <= len {
+        let minx = _mm256_loadu_ps(cols.min_x.as_ptr().add(row));
+        let maxx = _mm256_loadu_ps(cols.max_x.as_ptr().add(row));
+        let miny = _mm256_loadu_ps(cols.min_y.as_ptr().add(row));
+        let maxy = _mm256_loadu_ps(cols.max_y.as_ptr().add(row));
+        let minz = _mm256_loadu_ps(cols.min_z.as_ptr().add(row));
+        let maxz = _mm256_loadu_ps(cols.max_z.as_ptr().add(row));
+        // inside accumulator: all-ones, ANDed by each plane's "inside" mask.
+        let mut inside = _mm256_castsi256_ps(_mm256_set1_epi32(-1));
+        for pl in f.planes.iter() {
+            let nx = _mm256_set1_ps(pl[0]);
+            let ny = _mm256_set1_ps(pl[1]);
+            let nz = _mm256_set1_ps(pl[2]);
+            let d = _mm256_set1_ps(pl[3]);
+            // positive vertex per axis: nx>=0 ? maxx : minx (blend on the sign
+            // mask of the plane normal component, ordered GE matching scalar).
+            let selx = _mm256_cmp_ps(nx, _mm256_setzero_ps(), _CMP_GE_OQ);
+            let sely = _mm256_cmp_ps(ny, _mm256_setzero_ps(), _CMP_GE_OQ);
+            let selz = _mm256_cmp_ps(nz, _mm256_setzero_ps(), _CMP_GE_OQ);
+            let px = _mm256_blendv_ps(minx, maxx, selx);
+            let py = _mm256_blendv_ps(miny, maxy, sely);
+            let pz = _mm256_blendv_ps(minz, maxz, selz);
+            // dot = ((nx*px + ny*py) + nz*pz) + d
+            // Association MUST match the scalar reference exactly —
+            // `((a+b)+c)+d` — because f32 addition is not associative and the
+            // property test asserts bit-identical results. Separate mul+add
+            // (no FMA contraction) matches the scalar path's rounding.
+            let dot = _mm256_add_ps(
+                _mm256_add_ps(
+                    _mm256_add_ps(_mm256_mul_ps(nx, px), _mm256_mul_ps(ny, py)),
+                    _mm256_mul_ps(nz, pz),
+                ),
+                d,
+            );
+            // inside-this-plane iff dot >= 0 (ordered).
+            let inplane = _mm256_cmp_ps(dot, _mm256_setzero_ps(), _CMP_GE_OQ);
+            inside = _mm256_and_ps(inside, inplane);
+        }
+        let mut mask = _mm256_movemask_ps(inside) as u32;
+        let lw = liveness_words[row / 64];
+        mask &= ((lw >> (row % 64)) & 0xFF) as u32;
+        hits += mask.count_ones();
+        for lane in 0..8usize {
+            let r = row + lane;
+            out[r] = if (mask >> lane) & 1 != 0 { r as u32 } else { NULL_ROW };
+        }
+        row += 8;
+    }
+    // Scalar tail (identical predicate to frustum_scan_scalar).
+    while row < len {
+        let live = liveness_words[row / 64] & (1u64 << (row % 64)) != 0;
+        let bmin = [cols.min_x[row], cols.min_y[row], cols.min_z[row]];
+        let bmax = [cols.max_x[row], cols.max_y[row], cols.max_z[row]];
+        let mut inside = live;
+        let mut p = 0;
+        while inside && p < 6 {
+            let pl = f.planes[p];
+            let px = if pl[0] >= 0.0 { bmax[0] } else { bmin[0] };
+            let py = if pl[1] >= 0.0 { bmax[1] } else { bmin[1] };
+            let pz = if pl[2] >= 0.0 { bmax[2] } else { bmin[2] };
+            if pl[0] * px + pl[1] * py + pl[2] * pz + pl[3] < 0.0 { inside = false; }
+            p += 1;
+        }
+        out[row] = if inside { hits += 1; row as u32 } else { NULL_ROW };
+        row += 1;
+    }
+    hits
+}
+
+/// Runtime-dispatched frustum scan. Selects AVX2 when available, else scalar;
+/// all backends produce bit-identical `out` buffers (scalar is the reference).
 #[inline]
 pub fn frustum_scan(f: &FrustumPlanes, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            // SAFETY: guarded by the runtime feature check.
+            return unsafe { frustum_scan_avx2(f, cols, liveness_words, len, out) };
+        }
+    }
     frustum_scan_scalar(f, cols, liveness_words, len, out)
 }
 
@@ -302,6 +404,32 @@ mod tests {
             let hv = unsafe { aabb_scan_avx2(&q, &cols, &words, len, &mut out_v) };
             assert_eq!(out_s, out_v, "AVX2 diverged from scalar at len={len}");
             assert_eq!(hs, hv);
+        }
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn avx2_frustum_matches_scalar() {
+        if !is_x86_feature_detected!("avx2") { return; }
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xF2057);
+        for _ in 0..200 {
+            let len = rng.gen_range(0..=300usize);
+            let col = |rng: &mut rand::rngs::StdRng| (0..len).map(|_| rng.gen_range(-50.0f32..50.0)).collect::<Vec<_>>();
+            let min_x = col(&mut rng); let max_x: Vec<f32> = min_x.iter().map(|&m| m + rng.gen_range(0.0..5.0)).collect();
+            let min_y = col(&mut rng); let max_y: Vec<f32> = min_y.iter().map(|&m| m + rng.gen_range(0.0..5.0)).collect();
+            let min_z = col(&mut rng); let max_z: Vec<f32> = min_z.iter().map(|&m| m + rng.gen_range(0.0..5.0)).collect();
+            let words: Vec<u64> = (0..len.div_ceil(64)).map(|_| rng.gen::<u64>()).collect();
+            let mut planes = [[0.0f32; 4]; 6];
+            for pl in &mut planes { for v in pl.iter_mut() { *v = rng.gen_range(-20.0..20.0); } }
+            let f = FrustumPlanes { planes };
+            let cols = Columns { min_x: &min_x, max_x: &max_x, min_y: &min_y, max_y: &max_y, min_z: &min_z, max_z: &max_z };
+            let mut a = vec![0u32; len]; let mut b = vec![0u32; len];
+            let ha = frustum_scan_scalar(&f, &cols, &words, len, &mut a);
+            // SAFETY: guarded by the runtime feature check above.
+            let hb = unsafe { frustum_scan_avx2(&f, &cols, &words, len, &mut b) };
+            assert_eq!(a, b, "AVX2 frustum diverged at len={len}");
+            assert_eq!(ha, hb);
         }
     }
 }
