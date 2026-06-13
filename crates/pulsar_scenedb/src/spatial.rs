@@ -1,7 +1,6 @@
 use crate::cell::CellStorage;
 use crate::handle::Handle;
 use crate::page::{ColumnDesc, LayoutError};
-use crate::registry::NULL_ROW;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Aabb {
@@ -75,28 +74,19 @@ impl SpatialCell {
         let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
         let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
         let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
-        let liveness = self.storage.liveness();
-
-        let mut hits = 0u32;
-        for row in 0..len {
-            // Scalar reference: one atomic liveness load per row. M1b SIMD
-            // should instead load liveness.words()[row / 64] once per 64-row
-            // block and extract per-lane mask bits from the cached u64.
-            let visible = min_x[row] <= q.max[0]
-                && max_x[row] >= q.min[0]
-                && min_y[row] <= q.max[1]
-                && max_y[row] >= q.min[1]
-                && min_z[row] <= q.max[2]
-                && max_z[row] >= q.min[2]
-                && liveness.is_live(row as u32);
-            out[row] = if visible {
-                hits += 1;
-                row as u32
-            } else {
-                NULL_ROW
-            };
-        }
-        hits
+        // Liveness snapshot. This allocates; the §8.1 no-allocation contract is
+        // honored end-to-end in M2, which threads the Task 7 Scratchpad through
+        // the harvest path. Acceptable here because M1b proves the kernels.
+        let words: Vec<u64> = self
+            .storage
+            .liveness()
+            .words()
+            .iter()
+            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed))
+            .collect();
+        let qb = crate::simd::QueryBounds { min: q.min, max: q.max };
+        let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
+        crate::simd::aabb_scan(&qb, &cols, &words, len, out)
     }
 
     // ── delegation ─────────────────────────────────────────────────────────
