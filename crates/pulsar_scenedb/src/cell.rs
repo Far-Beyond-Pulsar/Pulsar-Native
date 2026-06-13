@@ -1,7 +1,9 @@
+use crate::cell_type::RegisteredCellType;
 use crate::handle::Handle;
 use crate::liveness::LivenessMask;
 use crate::page::{ColumnDesc, LayoutError, Page, PageLayout};
 use crate::registry::HandleRegistry;
+use crate::token::TypeToken;
 
 /// Layer 1 storage for one cell: page + liveness + handle registry, wired
 /// per spec §4.4 / CONTRACTS.md C1–C3.
@@ -19,6 +21,8 @@ pub struct CellStorage {
     liveness: LivenessMask,
     registry: HandleRegistry,
     user_column_count: usize,
+    /// Token id → user-column index, populated only via `from_cell_type`.
+    token_index: Vec<(crate::component::ComponentId, usize)>,
 }
 
 impl CellStorage {
@@ -32,7 +36,47 @@ impl CellStorage {
             liveness: LivenessMask::new(capacity),
             registry: HandleRegistry::new(),
             user_column_count: user_columns.len(),
+            token_index: Vec::new(),
         })
+    }
+
+    /// Build a cell from a registered cell type (token-keyed). Preferred over
+    /// `new` for typed call sites.
+    pub fn from_cell_type(
+        cell_type: &RegisteredCellType,
+        capacity: u32,
+    ) -> Result<Self, crate::page::LayoutError> {
+        let descs = cell_type.user_descs();
+        let mut storage = Self::new(&descs, capacity)?;
+        storage.token_index = cell_type
+            .token_ids()
+            .into_iter()
+            .enumerate()
+            .map(|(idx, id)| (id, idx))
+            .collect();
+        Ok(storage)
+    }
+
+    /// Typed column access by token (resolves token → user-column index).
+    /// Returns None if the token isn't a column of this cell.
+    pub fn column_for<T: crate::page::Pod + 'static>(&self) -> Option<&[T]> {
+        let id = TypeToken::of::<T>().id();
+        let idx = self
+            .token_index
+            .iter()
+            .find(|(tid, _)| *tid == id)
+            .map(|(_, i)| *i)?;
+        Some(self.user_column::<T>(idx))
+    }
+
+    pub fn column_for_mut<T: crate::page::Pod + 'static>(&mut self) -> Option<&mut [T]> {
+        let id = TypeToken::of::<T>().id();
+        let idx = self
+            .token_index
+            .iter()
+            .find(|(tid, _)| *tid == id)
+            .map(|(_, i)| *i)?;
+        Some(self.user_column_mut::<T>(idx))
     }
 
     /// Allocate an element: claims a row, marks it live, issues a handle.
@@ -251,5 +295,22 @@ mod tests {
         for &h in &[hs[1], hs[3], hs[5]] {
             assert_eq!(c.row_of(h), None);
         }
+    }
+
+    #[test]
+    fn token_keyed_column_access() {
+        use crate::cell_type::CellType;
+        use crate::token::TypeToken;
+        let ct = CellType::new("xy")
+            .with(TypeToken::of::<f32>())
+            .build()
+            .unwrap();
+        let mut c = CellStorage::from_cell_type(&ct, 16).unwrap();
+        let h = c.alloc().unwrap();
+        let row = c.row_of(h).unwrap() as usize;
+        c.column_for_mut::<f32>().unwrap()[row] = 9.0;
+        assert_eq!(c.column_for::<f32>().unwrap()[row], 9.0);
+        // u64 is not a user column of this cell type → None.
+        assert!(c.column_for::<u64>().is_none());
     }
 }
