@@ -83,7 +83,7 @@ impl SpatialCell {
         // Liveness snapshot. This allocates; the §8.1 no-allocation contract is
         // honored end-to-end in M2, which threads the Task 7 Scratchpad through
         // the harvest path. Acceptable here because M1b proves the kernels.
-        let n_words = (len as u64).div_ceil(64) as usize;
+        let n_words = len.div_ceil(64);
         let words: Vec<u64> = self
             .storage
             .liveness()
@@ -100,6 +100,10 @@ impl SpatialCell {
     /// Frustum query (§8.1). Same positional-token output contract as
     /// `query_aabb` (`out[r] = r` on pass, `NULL_ROW` on cull/dead;
     /// `out[rows_in_use()..]` untouched).
+    ///
+    /// Float semantics: `dot >= 0.0` is an ordered comparison — a NaN plane
+    /// normal makes the dot NaN, which compares false, so the row is culled.
+    /// M1b SIMD arms must use ordered predicates (`_CMP_GE_OQ` in AVX2).
     pub fn query_frustum(&self, f: &Frustum, out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
         assert!(out.len() >= len, "scratch buffer too small");
@@ -112,7 +116,7 @@ impl SpatialCell {
         // Liveness snapshot, sliced to the words covering rows 0..len (the
         // `liveness_words.len() == ceil(len/64)` kernel contract; M2 threads the
         // Task 7 Scratchpad through to honor §8.1 no-alloc).
-        let n_words = (len as u64).div_ceil(64) as usize;
+        let n_words = len.div_ceil(64);
         let words: Vec<u64> = self.storage.liveness().words().iter().take(n_words)
             .map(|w| w.load(std::sync::atomic::Ordering::Relaxed)).collect();
         let fp = crate::simd::FrustumPlanes { planes: f.planes };

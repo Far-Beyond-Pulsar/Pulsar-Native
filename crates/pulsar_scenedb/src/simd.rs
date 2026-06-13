@@ -177,6 +177,9 @@ pub(crate) fn frustum_scan_scalar(
 ) -> u32 {
     debug_assert!(out.len() >= len);
     debug_assert_eq!(liveness_words.len(), len.div_ceil(64), "liveness_words must cover exactly rows 0..len");
+    debug_assert!(cols.min_x.len() >= len && cols.max_x.len() >= len, "x columns shorter than len");
+    debug_assert!(cols.min_y.len() >= len && cols.max_y.len() >= len, "y columns shorter than len");
+    debug_assert!(cols.min_z.len() >= len && cols.max_z.len() >= len, "z columns shorter than len");
     let mut hits = 0u32;
     for row in 0..len {
         let live = liveness_words[row / 64] & (1u64 << (row % 64)) != 0;
@@ -184,6 +187,9 @@ pub(crate) fn frustum_scan_scalar(
         let bmax = [cols.max_x[row], cols.max_y[row], cols.max_z[row]];
         let mut inside = live;
         let mut p = 0;
+        // Short-circuit on first failing plane (scalar only; the AVX2 arm in
+        // Task 6 evaluates all 6 planes and ANDs the masks — result is
+        // identical, plane order irrelevant).
         while inside && p < 6 {
             let pl = f.planes[p];
             // Positive vertex: pick max-projection corner per axis.
@@ -209,6 +215,27 @@ pub fn frustum_scan(f: &FrustumPlanes, cols: &Columns, liveness_words: &[u64], l
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frustum_scalar_keeps_inside_culls_outside_and_dead() {
+        // 3 rows: inside box, box outside the x<=10 plane, dead box.
+        let min_x = [0.0f32, 100.0, 0.0]; let max_x = [1.0f32, 101.0, 1.0];
+        let min_y = [0.0f32; 3]; let max_y = [1.0f32; 3];
+        let min_z = [0.0f32; 3]; let max_z = [1.0f32; 3];
+        let live = 0b011u64; // rows 0,1 live; row 2 dead
+        let planes = [
+            [1.0, 0.0, 0.0, 10.0], [-1.0, 0.0, 0.0, 10.0],
+            [0.0, 1.0, 0.0, 10.0], [0.0, -1.0, 0.0, 10.0],
+            [0.0, 0.0, 1.0, 10.0], [0.0, 0.0, -1.0, 10.0],
+        ];
+        let f = FrustumPlanes { planes };
+        let cols = Columns { min_x: &min_x, max_x: &max_x, min_y: &min_y, max_y: &max_y, min_z: &min_z, max_z: &max_z };
+        let mut out = [0u32; 3];
+        let hits = frustum_scan_scalar(&f, &cols, &[live], 3, &mut out);
+        // row 0 inside → 0; row 1 (x=100) culled by x<=10 → NULL; row 2 dead → NULL.
+        assert_eq!(out, [0, crate::registry::NULL_ROW, crate::registry::NULL_ROW]);
+        assert_eq!(hits, 1);
+    }
 
     #[test]
     fn scalar_arm_matches_manual_predicate() {
