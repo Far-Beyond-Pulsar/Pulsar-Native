@@ -124,10 +124,12 @@ mod tests {
 
     // Four DISTINCT 32-byte Pod column types for the stride test (using the
     // same token twice would trip the duplicate check before the stride check).
-    #[derive(Copy, Clone)] struct B32([u8; 32]);
-    #[derive(Copy, Clone)] struct C32([u8; 32]);
-    #[derive(Copy, Clone)] struct D32([u8; 32]);
-    #[derive(Copy, Clone)] struct E32([u8; 32]);
+    // These exist only as distinct column types for the stride fixture; their
+    // field is never read (TypeToken::of keys on the type, not the value).
+    #[allow(dead_code)] #[derive(Copy, Clone)] struct B32([u8; 32]);
+    #[allow(dead_code)] #[derive(Copy, Clone)] struct C32([u8; 32]);
+    #[allow(dead_code)] #[derive(Copy, Clone)] struct D32([u8; 32]);
+    #[allow(dead_code)] #[derive(Copy, Clone)] struct E32([u8; 32]);
     // SAFETY: all-zero is valid for a byte array; Copy, no Drop.
     unsafe impl crate::page::Pod for B32 {}
     unsafe impl crate::page::Pod for C32 {}
