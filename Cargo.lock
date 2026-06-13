@@ -4400,6 +4400,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphy"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Graphy.git?rev=f8e8cae8daf47803a84ca9031f95eace4812e553#f8e8cae8daf47803a84ca9031f95eace4812e553"
+dependencies = [
+ "quote",
+ "rayon",
+ "rustc-hash 2.1.2",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "syn 2.0.117",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "grid"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8437,6 +8453,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "psgc"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=e8c66560a0785c0a005e2440628201c43984360c#e8c66560a0785c0a005e2440628201c43984360c"
+dependencies = [
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy.git?rev=f8e8cae8daf47803a84ca9031f95eace4812e553)",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "wgsl_std",
+]
+
+[[package]]
 name = "psm"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10498,6 +10527,39 @@ dependencies = [
  "cfg-if 1.0.4",
  "cpufeatures 0.3.0",
  "digest 0.11.3",
+]
+
+[[package]]
+name = "shader_editor_plugin"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=e8c66560a0785c0a005e2440628201c43984360c#e8c66560a0785c0a005e2440628201c43984360c"
+dependencies = [
+ "anyhow",
+ "arboard",
+ "bytemuck",
+ "chrono",
+ "fontdue",
+ "futures",
+ "gpui-ce",
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy.git?rev=f8e8cae8daf47803a84ca9031f95eace4812e553)",
+ "log",
+ "parking_lot",
+ "plugin_editor_api",
+ "psgc",
+ "pulsar_reflection",
+ "schemars",
+ "serde",
+ "serde_json",
+ "smol",
+ "tool_registry",
+ "tool_registry_macros",
+ "tracing",
+ "ui",
+ "ui_common",
+ "uuid",
+ "wgpu",
+ "wgsl_std",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -12835,6 +12897,7 @@ dependencies = [
  "script_editor_plugin",
  "serde",
  "serde_json",
+ "shader_editor_plugin",
  "smol",
  "tracing",
  "ui",
@@ -14025,6 +14088,17 @@ dependencies = [
  "log",
  "raw-window-handle",
  "web-sys",
+]
+
+[[package]]
+name = "wgsl_std"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=e8c66560a0785c0a005e2440628201c43984360c#e8c66560a0785c0a005e2440628201c43984360c"
+dependencies = [
+ "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy.git?rev=f8e8cae8daf47803a84ca9031f95eace4812e553)",
+ "linkme",
+ "serde",
+ "tracing",
 ]
 
 [[package]]

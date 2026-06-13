@@ -391,6 +391,77 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Shader Editor — built-in provider (no DLL boundary)
+// ---------------------------------------------------------------------------
+
+/// Wraps the shader_editor_plugin crate as a built-in editor provider.
+/// Opens `.material` files in the visual Shader Graph Editor.
+pub struct ShaderEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.shader-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        shader_editor_plugin::ShaderEditorPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        shader_editor_plugin::ShaderEditorPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "shader-editor"
+    }
+
+    fn ai_tools(&self) -> Vec<AiToolDefinition> {
+        shader_editor_plugin::ShaderEditorPlugin::default().ai_tools()
+    }
+
+    fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
+        shader_editor_plugin::ShaderEditorPlugin::default().capabilities_for_file(file_path)
+    }
+
+    fn execute_ai_tool(
+        &self,
+        file_path: &Path,
+        tool_name: &str,
+        tool_args: JsonValue,
+    ) -> Result<JsonValue, PluginError> {
+        shader_editor_plugin::execute_compiled_tool(file_path, tool_name, tool_args)
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let panel = cx.new(|cx| {
+            match shader_editor_plugin::ShaderEditorPanel::new_with_path(
+                file_path.clone(),
+                window,
+                cx,
+            ) {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Failed to load material {:?}: {}", file_path, e);
+                    shader_editor_plugin::ShaderEditorPanel::new(window, cx)
+                }
+            }
+        });
+
+        // Keep plugin AI tools aligned with the currently opened material's graph state.
+        let graph_snapshot = panel.read(cx).graph.clone();
+        shader_editor_plugin::upsert_ai_session(file_path.clone(), graph_snapshot);
+
+        Ok(Arc::new(panel))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Matter Editor — built-in provider (Pulsar Image Format / texture painter)
 // ---------------------------------------------------------------------------
 
@@ -547,6 +618,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Matter editor (opens .pif Pulsar Image Format texture files)
     registry.register_provider(Arc::new(MatterEditorBuiltinProvider));
+
+    // Shader editor (opens .material files)
+    registry.register_provider(Arc::new(ShaderEditorBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

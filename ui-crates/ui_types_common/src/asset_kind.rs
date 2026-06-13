@@ -45,7 +45,7 @@ impl AssetKind {
             "png" | "jpg" | "jpeg" | "exr" | "hdr" | "tga" | "webp" | "bmp" | "dds" | "ktx" => {
                 Self::Texture
             }
-            "pulsarmat" => Self::Material,
+            "pulsarmat" | "material" => Self::Material,
             "wav" | "ogg" | "mp3" | "flac" | "aiff" => Self::Audio,
             "pulsarscene" => Self::Scene,
             "blueprint" => Self::Blueprint,
