@@ -76,6 +76,11 @@ impl Drop for Lease<'_> {
 /// Thread-local scratchpad with the 8-frame / 50% decay policy (spec §9.1).
 /// Holds reusable query buffers so the harvest path never touches the heap
 /// mid-frame after warm-up.
+///
+/// Note: M1b provides only a `u32` buffer (`get_u32`) for query token output.
+/// The M2 harvest path also needs `u64` liveness-word scratch (to replace the
+/// per-call `Vec<u64>` snapshot in `query_aabb`/`query_frustum`); a `get_u64`
+/// companion is deferred to M2.
 pub struct Scratchpad {
     u32_buf: Vec<u32>,
     peak_this_window: usize,

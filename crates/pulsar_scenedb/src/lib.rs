@@ -16,7 +16,7 @@
 //!   SIMD paths land in M1b and must match bit-for-bit)
 //! - [`TypeToken`]/[`CellType`] — dense column-type tokens bridged to
 //!   `pulsar_reflection`; holistic-stride-checked cell composition
-//! - SIMD query dispatch ([`aabb_scan`]) — AVX2 arms verified
+//! - SIMD query dispatch (internal `simd` kernels) — AVX2 arms verified
 //!   bit-for-bit against the scalar reference; frustum + AABB
 //! - [`LeaseMask`]/[`Scratchpad`]/[`LivenessSnapshot`] — read-lease pool,
 //!   decaying scratchpads, double-buffered revocation (§9; phase machine is M2)
@@ -67,7 +67,6 @@ pub use pulsar_core::GameTime;
 pub use query::{QueryIter, WorldQuery};
 pub use registry::{HandleRegistry, NULL_ROW};
 pub use schedule::Schedule;
-pub use simd::{aabb_scan, QueryBounds};
 pub use snapshot::{LivenessSnapshot, RevocationFlag};
 pub use spatial::{Aabb, Frustum, SpatialCell, SPATIAL_COLUMNS};
 pub use token::TypeToken;

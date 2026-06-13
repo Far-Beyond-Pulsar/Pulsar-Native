@@ -2,13 +2,13 @@ use crate::registry::NULL_ROW;
 
 /// Query AABB in the kernel's own scalar layout (min/max per axis).
 #[derive(Copy, Clone)]
-pub struct QueryBounds {
+pub(crate) struct QueryBounds {
     pub min: [f32; 3],
     pub max: [f32; 3],
 }
 
 /// Borrowed bounds columns for one cell, sliced to the row count.
-pub struct Columns<'a> {
+pub(crate) struct Columns<'a> {
     pub min_x: &'a [f32],
     pub max_x: &'a [f32],
     pub min_y: &'a [f32],
@@ -28,7 +28,7 @@ pub struct Columns<'a> {
 /// Writes `out[r] = r` on hit, `NULL_ROW` on miss/dead, for `r in 0..len`.
 /// Returns the hit count. `out.len()` must be >= `len`.
 #[inline]
-pub fn aabb_scan(q: &QueryBounds, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
+pub(crate) fn aabb_scan(q: &QueryBounds, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") {
@@ -160,7 +160,7 @@ pub(crate) fn aabb_scan_scalar(
 /// Six frustum planes, each `[nx, ny, nz, d]` with inward normal; a point `p`
 /// is inside the plane iff `nx*px + ny*py + nz*pz + d >= 0`.
 #[derive(Copy, Clone)]
-pub struct FrustumPlanes {
+pub(crate) struct FrustumPlanes {
     pub planes: [[f32; 4]; 6],
 }
 
@@ -232,7 +232,7 @@ pub(crate) unsafe fn frustum_scan_avx2(
 ) -> u32 {
     use std::arch::x86_64::*;
     debug_assert!(out.len() >= len);
-    debug_assert_eq!(liveness_words.len(), len.div_ceil(64));
+    debug_assert_eq!(liveness_words.len(), len.div_ceil(64), "liveness_words must cover exactly rows 0..len");
     debug_assert!(cols.min_x.len() >= len && cols.max_x.len() >= len, "x columns shorter than len");
     debug_assert!(cols.min_y.len() >= len && cols.max_y.len() >= len, "y columns shorter than len");
     debug_assert!(cols.min_z.len() >= len && cols.max_z.len() >= len, "z columns shorter than len");
@@ -311,7 +311,7 @@ pub(crate) unsafe fn frustum_scan_avx2(
 /// Runtime-dispatched frustum scan. Selects AVX2 when available, else scalar;
 /// all backends produce bit-identical `out` buffers (scalar is the reference).
 #[inline]
-pub fn frustum_scan(f: &FrustumPlanes, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
+pub(crate) fn frustum_scan(f: &FrustumPlanes, cols: &Columns, liveness_words: &[u64], len: usize, out: &mut [u32]) -> u32 {
     #[cfg(target_arch = "x86_64")]
     {
         if is_x86_feature_detected!("avx2") {
@@ -398,7 +398,7 @@ mod tests {
             let min_x = gen_col(&mut rng); let max_x: Vec<f32> = min_x.iter().map(|&m| m + rng.gen_range(0.0..10.0)).collect();
             let min_y = gen_col(&mut rng); let max_y: Vec<f32> = min_y.iter().map(|&m| m + rng.gen_range(0.0..10.0)).collect();
             let min_z = gen_col(&mut rng); let max_z: Vec<f32> = min_z.iter().map(|&m| m + rng.gen_range(0.0..10.0)).collect();
-            let n_words = (len + 63) / 64;
+            let n_words = len.div_ceil(64);
             let words: Vec<u64> = (0..n_words).map(|_| rng.gen::<u64>()).collect();
             let q = QueryBounds {
                 min: [rng.gen_range(-100.0..100.0), rng.gen_range(-100.0..100.0), rng.gen_range(-100.0..100.0)],
