@@ -14,10 +14,20 @@
 //! - [`SpatialCell`] — six SoA bounds columns + the §8 AABB query writing
 //!   sentinel-aligned row tokens into caller scratch (scalar reference;
 //!   SIMD paths land in M1b and must match bit-for-bit)
+//! - [`TypeToken`]/[`CellType`] — dense column-type tokens bridged to
+//!   `pulsar_reflection`; holistic-stride-checked cell composition
+//! - SIMD query dispatch ([`aabb_scan`]) — AVX2 arms verified
+//!   bit-for-bit against the scalar reference; frustum + AABB
+//! - [`LeaseMask`]/[`Scratchpad`]/[`LivenessSnapshot`] — read-lease pool,
+//!   decaying scratchpads, double-buffered revocation (§9; phase machine is M2)
 //!
 //! The inherited archetype ECS modules (`world`, `archetype`, `query`, …)
 //! are retained and will be migrated onto paged storage in later milestones
 //! (the SceneDB-replaces-ECS path, design doc §7).
+//!
+//! Milestone status: M1a (storage core) + M1b (type bridge, SIMD, leases) —
+//! Layer 1 complete. Verified by Part VI Test 1 (contention) and Test 2 host
+//! half (stale-handle). Layer 2 orchestration is M2.
 
 pub mod actor;
 pub mod archetype;
