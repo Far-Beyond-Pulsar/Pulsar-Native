@@ -23,13 +23,11 @@ pub struct TypeToken {
 }
 
 // `ColumnDesc` does not implement `Hash`, so `Hash` is implemented by hand.
-// `type_id` (and equivalently `id`) uniquely determines the type and therefore
-// `desc`, so hashing those two is consistent with the derived `Eq`: equal
-// tokens hash equal (the `Hash`/`Eq` contract).
 impl Hash for TypeToken {
     fn hash<H: Hasher>(&self, state: &mut H) {
+        // `id` is the dense canonical key (an injective function of the type);
+        // hashing it alone is sufficient and consistent with the derived `Eq`.
         self.id.hash(state);
-        self.type_id.hash(state);
     }
 }
 
@@ -63,6 +61,7 @@ impl TypeToken {
     /// (via `#[derive(Reflectable)]` / `#[pulsar_type]`). `None` for bare Pod
     /// types with no reflection registration — those still work as columns;
     /// they just carry no serialization/editor metadata.
+    #[inline]
     #[must_use]
     pub fn type_info(self) -> Option<&'static RuntimeTypeInfo> {
         RUNTIME_TYPE_REGISTRY.get_by_id(self.type_id)
