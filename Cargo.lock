@@ -7652,7 +7652,7 @@ dependencies = [
 [[package]]
 name = "pbgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PBGC?rev=71504e3fb9c27d53f144a08636d4f32eb7eb085c#71504e3fb9c27d53f144a08636d4f32eb7eb085c"
+source = "git+https://github.com/j4flmao/PBGC?branch=fix-pure-node-bytecode-caching#83e20f31c2efa608061f0916486d37b874d6a3c9"
 dependencies = [
  "graphy 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Graphy?rev=e89c5c7b42ed23b06cc8f53dfc618ac8adfb3bb2)",
  "pulsar_std",

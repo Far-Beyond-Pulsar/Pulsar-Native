@@ -247,6 +247,9 @@ files.extend-exclude = ["**/fixtures/*"]
 # every crate, causing duplicate linkme slices and trait mismatches.
 ###################################
 
+[patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
+pbgc                  = { git = "https://github.com/j4flmao/PBGC", branch = "fix-pure-node-bytecode-caching" }
+
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
 ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
