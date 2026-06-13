@@ -77,11 +77,13 @@ impl SpatialCell {
         // Liveness snapshot. This allocates; the §8.1 no-allocation contract is
         // honored end-to-end in M2, which threads the Task 7 Scratchpad through
         // the harvest path. Acceptable here because M1b proves the kernels.
+        let n_words = (len as u64).div_ceil(64) as usize;
         let words: Vec<u64> = self
             .storage
             .liveness()
             .words()
             .iter()
+            .take(n_words)
             .map(|w| w.load(std::sync::atomic::Ordering::Relaxed))
             .collect();
         let qb = crate::simd::QueryBounds { min: q.min, max: q.max };
