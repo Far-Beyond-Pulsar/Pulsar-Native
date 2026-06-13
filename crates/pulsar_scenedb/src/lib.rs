@@ -22,6 +22,7 @@
 pub mod actor;
 pub mod archetype;
 pub mod cell;
+pub mod cell_type;
 pub mod component;
 pub mod component_store;
 pub mod entity;
@@ -38,6 +39,7 @@ pub mod world;
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use cell::CellStorage;
+pub use cell_type::{CellType, CellTypeError, RegisteredCellType};
 pub use component::{component_id, Component, ComponentId};
 pub use component_store::{__bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, ComponentStore};
 pub use entity::Entity;
