@@ -101,13 +101,17 @@ impl Scratchpad {
         &mut self.u32_buf[..len]
     }
 
+    /// Logical size of the u32 scratch buffer (number of elements it currently
+    /// maintains; grows on demand, shrinks on decay).
     #[must_use]
-    pub fn capacity_u32(&self) -> usize {
+    pub fn buf_len_u32(&self) -> usize {
         self.u32_buf.len()
     }
 
     /// Advance the decay window. After `DECAY_FRAMES` frames whose peak usage
-    /// stayed below 50% of capacity, halve the buffer.
+    /// stayed below 50% of the buffer size, truncates the buffer to half and
+    /// *requests* that the allocator release the surplus (via `shrink_to_fit`;
+    /// not guaranteed to return memory immediately).
     pub fn end_frame(&mut self) {
         self.frames_in_window += 1;
         if self.frames_in_window >= DECAY_FRAMES {
@@ -165,7 +169,7 @@ mod tests {
             let buf = pad.get_u32(1000);
             assert!(buf.len() >= 1000);
         }
-        let cap_before = pad.capacity_u32();
+        let cap_before = pad.buf_len_u32();
         assert!(cap_before >= 1000);
         // First decay window: the burst's peak (1000) lands in THIS window, so
         // peak*2 >= cap → no decay (the window's peak must drop below 50% first).
@@ -178,6 +182,6 @@ mod tests {
             let _ = pad.get_u32(10);
             pad.end_frame();
         }
-        assert!(pad.capacity_u32() < cap_before, "capacity decayed after a low-usage window");
+        assert!(pad.buf_len_u32() < cap_before, "capacity decayed after a low-usage window");
     }
 }
