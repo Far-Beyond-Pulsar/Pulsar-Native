@@ -19,6 +19,12 @@ const COL_MAX_Z: usize = 5;
 /// Number of bounds columns; cell-type-specific columns start after these.
 pub const SPATIAL_COLUMNS: usize = 6;
 
+/// Six inward-normal frustum planes (spec §8.1 frustum query input).
+#[derive(Copy, Clone, Debug)]
+pub struct Frustum {
+    pub planes: [[f32; 4]; 6],
+}
+
 /// CellStorage + spatial bounds columns + the §8 query.
 ///
 /// `query_aabb` is the **scalar reference implementation**: M1b's SIMD paths
@@ -89,6 +95,29 @@ impl SpatialCell {
         let qb = crate::simd::QueryBounds { min: q.min, max: q.max };
         let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
         crate::simd::aabb_scan(&qb, &cols, &words, len, out)
+    }
+
+    /// Frustum query (§8.1). Same positional-token output contract as
+    /// `query_aabb` (`out[r] = r` on pass, `NULL_ROW` on cull/dead;
+    /// `out[rows_in_use()..]` untouched).
+    pub fn query_frustum(&self, f: &Frustum, out: &mut [u32]) -> u32 {
+        let len = self.storage.rows_in_use() as usize;
+        assert!(out.len() >= len, "scratch buffer too small");
+        let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
+        let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
+        let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
+        let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
+        let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
+        let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
+        // Liveness snapshot, sliced to the words covering rows 0..len (the
+        // `liveness_words.len() == ceil(len/64)` kernel contract; M2 threads the
+        // Task 7 Scratchpad through to honor §8.1 no-alloc).
+        let n_words = (len as u64).div_ceil(64) as usize;
+        let words: Vec<u64> = self.storage.liveness().words().iter().take(n_words)
+            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed)).collect();
+        let fp = crate::simd::FrustumPlanes { planes: f.planes };
+        let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
+        crate::simd::frustum_scan(&fp, &cols, &words, len, out)
     }
 
     // ── delegation ─────────────────────────────────────────────────────────
@@ -211,5 +240,32 @@ mod tests {
             assert_eq!(hits, expected);
             assert_eq!(n, expected.len());
         }
+    }
+
+    fn unit_box(at: [f32; 3]) -> Aabb {
+        Aabb { min: at, max: [at[0] + 1.0, at[1] + 1.0, at[2] + 1.0] }
+    }
+
+    #[test]
+    fn frustum_keeps_inside_culls_outside() {
+        let mut c = SpatialCell::new(64).unwrap();
+        let _inside = c.alloc(unit_box([0.0, 0.0, 0.0])).unwrap();
+        let _outside = c.alloc(unit_box([100.0, 0.0, 0.0])).unwrap();
+        // Six planes of an axis-aligned box [-10,10]^3, inward normals.
+        // Plane: (nx,ny,nz,d) with point inside iff n·p + d >= 0.
+        let planes = [
+            [1.0, 0.0, 0.0, 10.0],   // x >= -10
+            [-1.0, 0.0, 0.0, 10.0],  // x <= 10
+            [0.0, 1.0, 0.0, 10.0],
+            [0.0, -1.0, 0.0, 10.0],
+            [0.0, 0.0, 1.0, 10.0],
+            [0.0, 0.0, -1.0, 10.0],
+        ];
+        let f = Frustum { planes };
+        let mut out = vec![0u32; c.rows_in_use() as usize];
+        let n = c.query_frustum(&f, &mut out);
+        assert_eq!(n, 1, "only the box at origin is inside");
+        assert_eq!(out[0], 0);
+        assert_eq!(out[1], crate::registry::NULL_ROW);
     }
 }

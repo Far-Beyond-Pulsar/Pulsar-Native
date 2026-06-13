@@ -55,6 +55,6 @@ pub use query::{QueryIter, WorldQuery};
 pub use registry::{HandleRegistry, NULL_ROW};
 pub use schedule::Schedule;
 pub use simd::{aabb_scan, QueryBounds};
-pub use spatial::{Aabb, SpatialCell, SPATIAL_COLUMNS};
+pub use spatial::{Aabb, Frustum, SpatialCell, SPATIAL_COLUMNS};
 pub use token::TypeToken;
 pub use world::World;
