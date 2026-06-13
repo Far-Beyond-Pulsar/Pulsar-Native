@@ -4,7 +4,7 @@
 //! All editors (built-in and plugin-based) are handled through the trait system.
 
 use gpui::{App, Context, Entity, Window};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ui::dock::{DockItem, TabPanel};
 use ui_file_manager::FileSelected;
 
@@ -109,11 +109,55 @@ impl PulsarApp {
         find_and_activate(&items, &mut current_index, target_index, window, cx)
     }
 
+    fn activate_open_editor_by_path(
+        &self,
+        target_path: &Path,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        fn find_and_activate(
+            item: &DockItem,
+            target_path: &Path,
+            window: &mut Window,
+            cx: &mut Context<PulsarApp>,
+        ) -> bool {
+            match item {
+                DockItem::Split { items, .. } => items
+                    .iter()
+                    .any(|item| find_and_activate(item, target_path, window, cx)),
+                DockItem::Tabs { view, .. } => {
+                    let panels = view.read(cx).all_panels();
+                    if let Some(index) = panels
+                        .iter()
+                        .position(|panel| panel.panel_file_path(cx).as_deref() == Some(target_path))
+                    {
+                        view.update(cx, |tabs, cx| {
+                            tabs.set_active_tab(index, window, cx);
+                        });
+                        true
+                    } else {
+                        false
+                    }
+                }
+                DockItem::Tiles { .. } | DockItem::Panel { .. } => false,
+            }
+        }
+
+        let items = self.state.dock_area.read(cx).items().clone();
+        find_and_activate(&items, target_path, window, cx)
+    }
+
     /// Open a path in the appropriate editor using the plugin system.
     ///
     /// This is the ONLY method needed for file opening - the plugin system handles everything.
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         tracing::debug!("Opening path: {:?}", path);
+
+        if self.activate_open_editor_by_path(&path, window, cx) {
+            tracing::debug!("Activated existing editor for: {:?}", path);
+            self.refresh_open_editor_snapshot(cx);
+            return;
+        }
 
         // Update plugin manager with current project root
         if let Some(pm_lock) = plugin_manager::global() {
