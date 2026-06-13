@@ -951,7 +951,11 @@ impl SpatialCell {
         let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
         let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
         let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
-        let words: Vec<u64> = self.storage.liveness().words().iter()
+        // Liveness snapshot, sliced to the words covering rows 0..len (the
+        // `liveness_words.len() == ceil(len/64)` kernel contract; M2 threads the
+        // Task 7 Scratchpad through to honor §8.1 no-alloc).
+        let n_words = (len as u64).div_ceil(64) as usize;
+        let words: Vec<u64> = self.storage.liveness().words().iter().take(n_words)
             .map(|w| w.load(std::sync::atomic::Ordering::Relaxed)).collect();
         let fp = crate::simd::FrustumPlanes { planes: f.planes };
         let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
