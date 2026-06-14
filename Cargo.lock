@@ -2879,6 +2879,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "editor_table_plugin"
+version = "0.1.4"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_DBTable?rev=8eadda58655e1a1b40f160956dddc552dec61283#8eadda58655e1a1b40f160956dddc552dec61283"
+dependencies = [
+ "anyhow",
+ "engine_state",
+ "futures",
+ "gpui-ce",
+ "log",
+ "open",
+ "parking_lot",
+ "plugin_editor_api",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tracing",
+ "ui",
+ "ui_common",
+ "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f413a294c1360d0e14c9c28e9d86b2f83596bc40)",
+ "uuid",
+]
+
+[[package]]
 name = "effective-limits"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3018,7 +3041,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "ureq",
  "urlencoding",
  "uuid",
@@ -3046,7 +3069,7 @@ dependencies = [
  "smol",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "window_manager",
 ]
 
@@ -8006,7 +8029,7 @@ dependencies = [
  "serde_json",
  "tracing",
  "ui",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "window_manager",
 ]
 
@@ -10220,7 +10243,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "uuid",
 ]
 
@@ -12884,6 +12907,7 @@ dependencies = [
  "blueprint_editor_plugin",
  "directories 6.0.0",
  "dirs 6.0.0",
+ "editor_table_plugin",
  "engine_backend",
  "engine_state",
  "futures",
@@ -12917,7 +12941,7 @@ dependencies = [
  "ui_problems",
  "ui_settings",
  "ui_type_debugger",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "window_manager",
 ]
 
@@ -13012,7 +13036,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "window_manager",
 ]
 
@@ -13103,7 +13127,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_types_common",
+ "ui_types_common 0.1.0",
  "wgpu",
  "winapi",
  "window_manager",
@@ -13251,6 +13275,20 @@ dependencies = [
 [[package]]
 name = "ui_types_common"
 version = "0.1.0"
+dependencies = [
+ "chrono",
+ "lazy_static",
+ "regex",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "ui_types_common"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f413a294c1360d0e14c9c28e9d86b2f83596bc40#f413a294c1360d0e14c9c28e9d86b2f83596bc40"
 dependencies = [
  "chrono",
  "lazy_static",
@@ -14204,7 +14242,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "ui_gen_macros",
- "ui_types_common",
+ "ui_types_common 0.1.0",
 ]
 
 [[package]]

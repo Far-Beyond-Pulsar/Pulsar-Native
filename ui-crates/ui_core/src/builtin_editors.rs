@@ -462,6 +462,47 @@ impl BuiltinEditorProvider for ShaderEditorBuiltinProvider {
 }
 
 // ---------------------------------------------------------------------------
+// Table Editor — built-in provider (no DLL boundary)
+// ---------------------------------------------------------------------------
+
+/// Wraps the editor_table_plugin crate as a built-in editor provider.
+/// Opens `.db`, `.sqlite`, and `.sqlite3` files in the SQLite table editor.
+pub struct TableEditorBuiltinProvider;
+
+impl BuiltinEditorProvider for TableEditorBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.table-editor"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        editor_table_plugin::TableEditorPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        editor_table_plugin::TableEditorPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "table-editor"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        editor_table_plugin::TableEditorPlugin::default().create_editor(
+            EditorId::new("table-editor"),
+            file_path,
+            window,
+            cx,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Matter Editor — built-in provider (Pulsar Image Format / texture painter)
 // ---------------------------------------------------------------------------
 
@@ -621,6 +662,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Shader editor (opens .material files)
     registry.register_provider(Arc::new(ShaderEditorBuiltinProvider));
+
+    // Table editor (opens .db, .sqlite, .sqlite3 SQLite database files)
+    registry.register_provider(Arc::new(TableEditorBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }
