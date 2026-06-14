@@ -42,7 +42,7 @@ blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_B
 script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "58e329e04dece59d9f2f6edbe03556a308bf4be1" }
 plugin_matter = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Matter", rev = "d0bf7c5fc82fc7c0e89f9c526825fc1f49259474"}
 #plugin_matter = { path = "../../../Plugin_Matter" }
-shader_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Shaders", rev = "e8c66560a0785c0a005e2440628201c43984360c" }
+shader_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Shaders", rev = "fd4bfd2f3ba6baafbc3e365d9866ecd0e4454478" }
 editor_table_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_DBTable", rev = "8eadda58655e1a1b40f160956dddc552dec61283" }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
