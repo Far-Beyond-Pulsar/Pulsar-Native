@@ -10555,7 +10555,7 @@ dependencies = [
 [[package]]
 name = "shader_editor_plugin"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=fd4bfd2f3ba6baafbc3e365d9866ecd0e4454478#fd4bfd2f3ba6baafbc3e365d9866ecd0e4454478"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=969abdbac459a62c217b7e3f58c6c599cff8abb2#969abdbac459a62c217b7e3f58c6c599cff8abb2"
 dependencies = [
  "anyhow",
  "arboard",
