@@ -98,16 +98,14 @@ pub struct EntryScreen {
     pub(crate) create_project_description: String,
     pub(crate) create_project_name_input: Entity<InputState>,
     pub(crate) create_project_description_input: Entity<InputState>,
-    // Auth / identity
+    // Auth / identity (sign-in flow state — avatar + menu are in profile_dropdown)
     pub(crate) auth_loading: bool,
     pub(crate) auth_message: Option<String>,
-    pub(crate) auth_avatar_image: Option<Arc<RenderImage>>,
-    pub(crate) auth_avatar_url_loaded: Option<String>,
-    pub(crate) auth_account_menu_open: bool,
     pub(crate) auth_device_code: Option<String>,
     pub(crate) auth_device_verification_url: Option<String>,
     pub(crate) auth_device_modal_visible: bool,
     pub(crate) auth_device_copy_notice: Option<String>,
+    pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
 }
 
 #[derive(Clone, Debug)]
@@ -225,13 +223,11 @@ impl EntryScreen {
             create_project_description_input: create_project_description_input.clone(),
             auth_loading: false,
             auth_message: None,
-            auth_avatar_image: None,
-            auth_avatar_url_loaded: None,
-            auth_account_menu_open: false,
             auth_device_code: None,
             auth_device_verification_url: None,
             auth_device_modal_visible: false,
             auth_device_copy_notice: None,
+            profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -242,7 +238,32 @@ impl EntryScreen {
                 }
             }
         }
-        screen.ensure_auth_avatar_loaded(cx);
+        // Subscribe to the profile dropdown so we can handle the sign-in flow
+        // (which lives on EntryScreen because it involves the device-code modal).
+        cx.subscribe(
+            &screen.profile_dropdown,
+            |this: &mut Self,
+             _,
+             event: &ui_common::ProfileDropdownEvent,
+             cx| {
+                match event {
+                    ui_common::ProfileDropdownEvent::SignInRequested => {
+                        this.begin_github_sign_in(cx);
+                    }
+                    ui_common::ProfileDropdownEvent::SignedOut => {
+                        // Reset device-flow state if sign-out happened mid-flow.
+                        this.auth_loading = false;
+                        this.auth_device_code = None;
+                        this.auth_device_verification_url = None;
+                        this.auth_device_modal_visible = false;
+                        this.auth_device_copy_notice = None;
+                        this.auth_message = Some("Signed out".to_string());
+                        cx.notify();
+                    }
+                }
+            },
+        )
+        .detach();
 
         // Store own entity for virtualization helpers.
         screen.entity = Some(cx.entity().clone());
@@ -1613,7 +1634,6 @@ default_scene = "scenes/main.scene"
 
         self.auth_loading = true;
         self.auth_message = Some("Starting GitHub sign-in…".to_string());
-        self.auth_account_menu_open = false;
         self.auth_device_code = None;
         self.auth_device_verification_url = None;
         self.auth_device_modal_visible = false;
@@ -1701,9 +1721,13 @@ default_scene = "scenes/main.scene"
                                 ec.set_auth_profile(profile.clone());
                             }
                             this.auth_message = Some(format!("Signed in as @{}", profile.login));
-                            this.auth_avatar_image = None;
-                            this.auth_avatar_url_loaded = None;
-                            this.ensure_auth_avatar_loaded(cx);
+                            // Reset the dropdown's avatar cache so it reloads with
+                            // the new profile's avatar.
+                            this.profile_dropdown.update(cx, |pd, cx| {
+                                pd.avatar_url_loaded = None;
+                                pd.avatar_image = None;
+                                pd.ensure_avatar_loaded(cx);
+                            });
                         }
                         Err(err) => {
                             this.auth_message = Some(format!("GitHub sign-in failed: {err}"));
@@ -1714,197 +1738,6 @@ default_scene = "scenes/main.scene"
             });
         })
         .detach();
-    }
-
-    pub(crate) fn sign_out_github(&mut self, cx: &mut Context<Self>) {
-        let _ = pulsar_auth::sign_out();
-        if let Some(ec) = engine_state::EngineContext::global() {
-            ec.clear_auth_profile();
-        }
-        self.auth_avatar_image = None;
-        self.auth_avatar_url_loaded = None;
-        self.auth_account_menu_open = false;
-        self.auth_device_code = None;
-        self.auth_device_verification_url = None;
-        self.auth_device_modal_visible = false;
-        self.auth_device_copy_notice = None;
-        self.auth_message = Some("Signed out".to_string());
-        cx.notify();
-    }
-
-    pub(crate) fn ensure_auth_avatar_loaded(&mut self, cx: &mut Context<Self>) {
-        let Some(profile) = self.auth_profile() else {
-            self.auth_avatar_image = None;
-            self.auth_avatar_url_loaded = None;
-            return;
-        };
-        let Some(url) = profile.avatar_url else {
-            self.auth_avatar_image = None;
-            self.auth_avatar_url_loaded = None;
-            return;
-        };
-
-        if self.auth_avatar_url_loaded.as_deref() == Some(url.as_str()) {
-            return;
-        }
-        self.auth_avatar_url_loaded = Some(url.clone());
-        self.auth_avatar_image = None;
-
-        let (tx, rx) = smol::channel::bounded::<Option<Arc<RenderImage>>>(1);
-        std::thread::spawn(move || {
-            let image = fetch_avatar_render_image(&url).ok();
-            let _ = smol::block_on(tx.send(image));
-        });
-
-        cx.spawn(async move |this, cx| {
-            if let Ok(maybe_image) = rx.recv().await {
-                cx.update(|cx| {
-                    this.update(cx, |this, cx| {
-                        this.auth_avatar_image = maybe_image;
-                        cx.notify();
-                    });
-                });
-            }
-        })
-        .detach();
-    }
-
-    fn render_auth_titlebar_identity(&self, cx: &mut Context<Self>) -> AnyElement {
-        let profile = self.auth_profile();
-        let name = profile
-            .as_ref()
-            .map(|p| p.login.clone())
-            .unwrap_or_else(|| "Guest".to_string());
-        let initials = name
-            .chars()
-            .next()
-            .map(|c| c.to_ascii_uppercase().to_string())
-            .unwrap_or_else(|| "?".to_string());
-
-        let avatar = if let Some(render_img) = self.auth_avatar_image.clone() {
-            div()
-                .w(px(22.))
-                .h(px(22.))
-                .rounded_full()
-                .overflow_hidden()
-                .child(
-                    img(ImageSource::Render(render_img))
-                        .w_full()
-                        .h_full()
-                        .rounded_full()
-                        .object_fit(ObjectFit::Cover),
-                )
-                .into_any_element()
-        } else {
-            div()
-                .w(px(22.))
-                .h(px(22.))
-                .rounded_full()
-                .bg(cx.theme().primary.opacity(0.16))
-                .flex()
-                .items_center()
-                .justify_center()
-                .child(
-                    div()
-                        .text_xs()
-                        .font_weight(gpui::FontWeight::BOLD)
-                        .text_color(cx.theme().primary)
-                        .child(initials),
-                )
-                .into_any_element()
-        };
-
-        div()
-            .id("entry-auth-avatar")
-            .cursor_pointer()
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.auth_account_menu_open = !this.auth_account_menu_open;
-                cx.notify();
-            }))
-            .child(avatar)
-            .into_any_element()
-    }
-
-    fn render_auth_account_menu_overlay(&self, cx: &mut Context<Self>) -> AnyElement {
-        let profile = self.auth_profile();
-        let login = profile
-            .as_ref()
-            .map(|p| p.login.clone())
-            .unwrap_or_else(|| "Guest".to_string());
-
-        div()
-            .absolute()
-            .size_full()
-            .on_mouse_down(
-                MouseButton::Left,
-                cx.listener(|this, _, _, cx| {
-                    this.auth_account_menu_open = false;
-                    cx.notify();
-                }),
-            )
-            .child(
-                v_flex()
-                    .absolute()
-                    .top(px(34.))
-                    .right(px(8.))
-                    .w(px(240.))
-                    .p_2()
-                    .gap_1()
-                    .rounded_lg()
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .bg(cx.theme().background)
-                    .shadow_lg()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                    .child(
-                        div()
-                            .px_2()
-                            .pb_1()
-                            .text_xs()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(format!("@{login}")),
-                    )
-                    .when(profile.is_some(), |menu| {
-                        menu.child(
-                            Button::new("entry-auth-open-github")
-                                .w_full()
-                                .ghost()
-                                .label("Open GitHub Profile")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    if let Some(login) = this.auth_profile().map(|p| p.login) {
-                                        cx.open_url(&format!("https://github.com/{login}"));
-                                    }
-                                    this.auth_account_menu_open = false;
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            Button::new("entry-auth-sign-out")
-                                .w_full()
-                                .ghost()
-                                .label("Sign Out")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.sign_out_github(cx);
-                                    this.auth_account_menu_open = false;
-                                    cx.notify();
-                                })),
-                        )
-                    })
-                    .when(profile.is_none(), |menu| {
-                        menu.child(
-                            Button::new("entry-auth-sign-in")
-                                .w_full()
-                                .ghost()
-                                .label("Sign In with GitHub")
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.begin_github_sign_in(cx);
-                                    this.auth_account_menu_open = false;
-                                    cx.notify();
-                                })),
-                        )
-                    }),
-            )
-            .into_any_element()
     }
 
     fn render_github_code_modal(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2002,26 +1835,6 @@ default_scene = "scenes/main.scene"
             )
             .into_any_element()
     }
-}
-
-fn fetch_avatar_render_image(url: &str) -> Result<Arc<RenderImage>, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Pulsar-Native/1.0")
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let response = client.get(url).send().map_err(|e| e.to_string())?;
-    if !response.status().is_success() {
-        return Err(format!("HTTP {}", response.status()));
-    }
-
-    let bytes = response.bytes().map_err(|e| e.to_string())?;
-    let rgba = image::load_from_memory(&bytes)
-        .map_err(|e| format!("decode: {e}"))?
-        .into_rgba8();
-    let frame = image::Frame::new(rgba);
-    Ok(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
 }
 
 /// Synchronously fetch server connectivity info and project list.
@@ -2194,7 +2007,6 @@ impl Render for EntryScreen {
         let width: f32 = f32::from(bounds.width);
         let available_width: f32 = (width - 220.0 - 64.0).max(0.0);
         let view = self.view;
-        self.ensure_auth_avatar_loaded(cx);
 
         // Trigger git fetch when viewing recent projects
         if view == EntryScreenView::Recent && !self.is_fetching_updates {
@@ -2230,7 +2042,7 @@ impl Render for EntryScreen {
                         .justify_end()
                         .px_2()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child(self.render_auth_titlebar_identity(cx)),
+                        .child(self.profile_dropdown.clone()),
                 ),
             )
             .child(
@@ -2268,9 +2080,6 @@ impl Render for EntryScreen {
             )
             .when(self.auth_device_modal_visible, |this| {
                 this.child(self.render_github_code_modal(cx))
-            })
-            .when(self.auth_account_menu_open, |this| {
-                this.child(self.render_auth_account_menu_overlay(cx))
             })
             .into_any_element()
     }
