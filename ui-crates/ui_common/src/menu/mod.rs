@@ -1378,7 +1378,7 @@ impl Render for AppTitleBar {
                         |el| {
                             el.child(
                                 ui::popover::Popover::<DevPopover>::new("dev-popover")
-                                    .anchor(Corner::BottomLeft)
+                                    .anchor(Corner::TopRight)
                                     .trigger(
                                         Button::new("dev-menu")
                                             .label("Dev")
@@ -1396,7 +1396,7 @@ impl Render for AppTitleBar {
                         ui::popover::Popover::<crate::theme_dropdown::ThemePicker>::new(
                             "theme-picker",
                         )
-                        .anchor(Corner::BottomRight)
+                        .anchor(Corner::TopRight)
                         .trigger(
                             Button::new("theme-picker-btn")
                                 .icon(IconName::Palette)

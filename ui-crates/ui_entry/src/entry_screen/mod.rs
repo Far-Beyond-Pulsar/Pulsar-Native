@@ -2051,7 +2051,7 @@ impl Render for EntryScreen {
                             ui::popover::Popover::<ui_common::ThemePicker>::new(
                                 "entry-theme-picker",
                             )
-                            .anchor(gpui::Corner::BottomRight)
+                            .anchor(gpui::Corner::TopRight)
                             .trigger(
                                 Button::new("entry-theme-picker-btn")
                                     .icon(ui::IconName::Palette)
