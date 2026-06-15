@@ -203,10 +203,14 @@ impl AgentChatPanel {
         }
 
         // --- Build provider catalog from registry (providers own their metadata) ---
+        // catalog_no_models() skips the models() call so providers that discover
+        // their model list via a network round-trip (Ollama, LM Studio, GitHub
+        // Models…) do not block the main thread at startup. Models are fetched
+        // lazily in the background the first time a provider is selected.
         let env = agent_chat_core::ProcessEnvironment;
-        let mut provider_catalog: Vec<ProviderDefinition> = provider_registry
-            .catalog(&env)
-            .into_iter()
+        let catalog_entries = provider_registry.catalog_no_models(&env);
+        let mut provider_catalog: Vec<ProviderDefinition> = catalog_entries
+            .iter()
             .map(|entry| ProviderDefinition {
                 id: entry.metadata.id,
                 label: entry.metadata.display_name,
@@ -215,19 +219,7 @@ impl AgentChatPanel {
                     agent_chat_core::ProviderKind::Local => ProviderKind::Local,
                 },
                 endpoint: entry.metadata.endpoint,
-                models: Arc::new(
-                    entry
-                        .models
-                        .iter()
-                        .map(|m| ModelDefinition {
-                            id: m.id,
-                            label: m.label,
-                            supports_tools: m.supports_tools,
-                            context_tokens: m.context_tokens,
-                            compact_model: m.compact_model,
-                        })
-                        .collect(),
-                ),
+                models: Arc::new(vec![]),
             })
             .collect();
 
@@ -242,7 +234,7 @@ impl AgentChatPanel {
         // Locked: implemented but no API key — lock icon, still selectable for auth.
         let mut wip_providers: HashMap<&'static str, String> = HashMap::new();
         let mut locked_providers: HashMap<&'static str, String> = HashMap::new();
-        for e in provider_registry.catalog(&env) {
+        for e in &catalog_entries {
             match e.availability.state {
                 agent_chat_core::AvailabilityState::Wip => {
                     wip_providers.insert(e.metadata.id, "Not yet implemented".to_string());
@@ -252,6 +244,7 @@ impl AgentChatPanel {
                         e.metadata.id,
                         e.availability
                             .reason
+                            .clone()
                             .unwrap_or_else(|| "API key not configured".to_string()),
                     );
                 }
@@ -451,6 +444,9 @@ impl AgentChatPanel {
         };
 
         this.bootstrap_chat_storage(cx);
+        // Kick off a background model fetch for whichever provider is shown first.
+        let initial_ix = this.active_provider_ix;
+        this.fetch_models_in_background(initial_ix, cx);
         this
     }
 

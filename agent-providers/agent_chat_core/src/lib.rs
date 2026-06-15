@@ -270,4 +270,20 @@ impl ProviderRegistry {
             })
             .collect()
     }
+
+    /// Like `catalog()` but skips calling `models()` on each provider.
+    /// Use this at startup to avoid blocking network calls from providers whose
+    /// model list requires a remote round-trip (Ollama, LM Studio, GitHub Models…).
+    /// Models are fetched lazily in the background when a provider is selected.
+    pub fn catalog_no_models(&self, env: &dyn ProviderEnvironment) -> Vec<ProviderCatalogEntry> {
+        self.providers
+            .values()
+            .map(|provider| ProviderCatalogEntry {
+                metadata: provider.metadata(),
+                models: vec![],
+                availability: provider.availability(env),
+                auth_methods: provider.auth_methods(),
+            })
+            .collect()
+    }
 }

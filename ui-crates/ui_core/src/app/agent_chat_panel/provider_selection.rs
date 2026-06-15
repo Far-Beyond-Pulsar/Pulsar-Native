@@ -31,8 +31,12 @@ impl AgentChatPanel {
                 .map(|provider| provider.models.as_ref().clone())
                 .unwrap_or_default();
             self.model_list.update(cx, |list, cx| {
-                list.set_items(models, cx);
+                list.set_items(models.clone(), cx);
             });
+
+            if models.is_empty() {
+                self.fetch_models_in_background(index, cx);
+            }
 
             self.maybe_require_auth_for_active_provider(cx);
 
@@ -47,6 +51,57 @@ impl AgentChatPanel {
                 cx.notify();
             }
         }
+    }
+
+    /// Fetches models for `provider_ix` on a background thread via `list_models_api`
+    /// and updates the catalog + model list when done.  Safe to call at any time;
+    /// stale results are discarded if the user has already switched providers.
+    pub(super) fn fetch_models_in_background(
+        &mut self,
+        provider_ix: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(provider_id) = self.provider_catalog.get(provider_ix).map(|p| p.id) else {
+            return;
+        };
+        let Some(provider_impl) = self.provider_registry.get(provider_id).cloned() else {
+            return;
+        };
+        let token = self
+            .auth_token_for_provider(provider_id)
+            .unwrap_or_default();
+
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { provider_impl.list_models_api(&token) })
+                .await;
+
+            cx.update(|cx| {
+                this.update(cx, |panel, cx| {
+                    let Ok(models) = result else { return };
+                    if models.is_empty() {
+                        return;
+                    }
+                    let defs = models
+                        .iter()
+                        .map(|m| ModelDefinition {
+                            id: Self::static_str(m.id.to_string()),
+                            label: Self::static_str(m.label.to_string()),
+                            supports_tools: m.supports_tools,
+                            context_tokens: m.context_tokens,
+                            compact_model: m.compact_model,
+                        })
+                        .collect::<Vec<_>>();
+                    panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
+                    if panel.active_provider_ix == provider_ix {
+                        panel.model_list.update(cx, |list, cx| list.set_items(defs, cx));
+                        cx.notify();
+                    }
+                });
+            });
+        })
+        .detach();
     }
 
     pub(super) fn refresh_models_for_active_provider(&mut self, cx: &mut Context<Self>) {
