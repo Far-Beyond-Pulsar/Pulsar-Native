@@ -99,15 +99,16 @@ impl ObjectTypeFieldsSection {
                         .when(accent.is_none(), |el| el.text_color(muted)),
                     );
 
-                // Expanded: left-side accent bar + content column side by side.
-                // Collapsed: just the header row, no decoration.
-                h_flex()
-                    .w_full()
-                    .items_stretch()
-                    .gap_1()
-                    // Left accent bar — visible only when expanded.
-                    .when(!is_collapsed, |el| {
-                        el.child(
+                if is_collapsed {
+                    // Collapsed: plain header row, no bar, no container.
+                    header.into_any_element()
+                } else {
+                    // Expanded: left accent bar + content column.
+                    h_flex()
+                        .w_full()
+                        .items_stretch()
+                        .gap_1()
+                        .child(
                             div()
                                 .w(px(3.))
                                 .rounded_full()
@@ -115,15 +116,15 @@ impl ObjectTypeFieldsSection {
                                 .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
                                 .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
                         )
-                    })
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_0()
-                            .child(header)
-                            .when(!is_collapsed, |el| el.children(category_rows)),
-                    )
-                    .into_any_element()
+                        .child(
+                            v_flex()
+                                .flex_1()
+                                .gap_0()
+                                .child(header)
+                                .children(category_rows),
+                        )
+                        .into_any_element()
+                }
             })
             .collect()
     }
