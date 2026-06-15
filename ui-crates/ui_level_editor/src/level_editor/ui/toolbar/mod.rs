@@ -29,7 +29,7 @@ use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
 
-use super::state::LevelEditorState;
+use super::state::{request_thumbnail_capture, LevelEditorState};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
 ///
@@ -165,9 +165,12 @@ impl ToolbarPanel {
 
                 match save_result {
                     Ok(_) => {
-                        let mut state = state_clone.write();
-                        state.current_scene = Some(path);
-                        state.has_unsaved_changes = false;
+                        {
+                            let mut state = state_clone.write();
+                            state.current_scene = Some(path);
+                            state.has_unsaved_changes = false;
+                        }
+                        request_thumbnail_capture(&state_clone);
                     }
                     Err(e) => {
                         tracing::error!("Save failed: {e}");
