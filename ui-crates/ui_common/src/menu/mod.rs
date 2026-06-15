@@ -1256,6 +1256,7 @@ pub struct AppTitleBar {
     locale_selector: Entity<LocaleSelector>,
     font_size_selector: Entity<FontSizeSelector>,
     theme_switcher: Entity<ThemeSwitcher>,
+    theme_picker: Entity<crate::theme_dropdown::ThemePicker>,
     title: SharedString,
     last_locale: String,
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
@@ -1276,6 +1277,7 @@ impl AppTitleBar {
         let locale_selector = cx.new(|cx| LocaleSelector::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
+        let theme_picker = cx.new(|cx| crate::theme_dropdown::ThemePicker::new(window, cx));
         let profile_dropdown =
             cx.new(crate::profile_dropdown::ProfileDropdown::new);
 
@@ -1302,6 +1304,7 @@ impl AppTitleBar {
             locale_selector,
             font_size_selector,
             theme_switcher,
+            theme_picker,
             title: title_str,
             last_locale: locale().to_string(),
             child: Rc::new(|_, _| div().into_any_element()),
@@ -1388,6 +1391,21 @@ impl Render for AppTitleBar {
                             )
                         },
                     )
+                    .child({
+                        let theme_picker = self.theme_picker.clone();
+                        ui::popover::Popover::<crate::theme_dropdown::ThemePicker>::new(
+                            "theme-picker",
+                        )
+                        .anchor(Corner::BottomRight)
+                        .trigger(
+                            Button::new("theme-picker-btn")
+                                .icon(IconName::Palette)
+                                .small()
+                                .ghost()
+                                .tooltip("Switch theme"),
+                        )
+                        .content(move |_, _| theme_picker.clone())
+                    })
                     .child(
                         Button::new("theme-mode")
                             .map(|this| {

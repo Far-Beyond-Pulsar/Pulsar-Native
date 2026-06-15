@@ -36,6 +36,7 @@ pub mod property_editor_registry;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
+pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 pub use open_window::PulsarWindowExt;
@@ -49,6 +50,7 @@ pub use shared_state::SharedState;
 pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use menu::AppTitleBar;
 pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
+pub use theme_dropdown::ThemePicker;
 pub use panel::{PanelBase, PanelEvent};
 pub use reflected_properties_panel::{
     render_property_row_runtime, PropertyStateManager, ReflectedPropertiesPanelConfig,

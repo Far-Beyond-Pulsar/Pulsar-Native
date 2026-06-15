@@ -38,7 +38,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::InputState,
-    v_flex, ActiveTheme as _, TitleBar, VirtualListScrollHandle,
+    v_flex, ActiveTheme as _, Sizable as _, TitleBar, VirtualListScrollHandle,
 };
 
 static LOGO_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
@@ -106,6 +106,7 @@ pub struct EntryScreen {
     pub(crate) auth_device_modal_visible: bool,
     pub(crate) auth_device_copy_notice: Option<String>,
     pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
+    pub(crate) theme_picker: gpui::Entity<ui_common::ThemePicker>,
 }
 
 #[derive(Clone, Debug)]
@@ -228,6 +229,7 @@ impl EntryScreen {
             auth_device_modal_visible: false,
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
+            theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -2041,7 +2043,24 @@ impl Render for EntryScreen {
                         .w_full()
                         .justify_end()
                         .px_2()
+                        .gap_1()
+                        .items_center()
                         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                        .child({
+                            let theme_picker = self.theme_picker.clone();
+                            ui::popover::Popover::<ui_common::ThemePicker>::new(
+                                "entry-theme-picker",
+                            )
+                            .anchor(gpui::Corner::BottomRight)
+                            .trigger(
+                                Button::new("entry-theme-picker-btn")
+                                    .icon(ui::IconName::Palette)
+                                    .small()
+                                    .ghost()
+                                    .tooltip("Switch theme"),
+                            )
+                            .content(move |_, _| theme_picker.clone())
+                        })
                         .child(self.profile_dropdown.clone()),
                 ),
             )
