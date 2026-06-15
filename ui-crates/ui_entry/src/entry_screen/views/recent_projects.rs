@@ -161,7 +161,9 @@ fn render_project_grid(
 ) -> impl IntoElement {
     // Match the layout used by `EntryScreen::calculate_columns`
     const CARD_WIDTH: f32 = 320.0;
-    const CARD_HEIGHT: f32 = 200.0;
+    const THUMB_HEIGHT: f32 = 168.0;
+    const STRIP_HEIGHT: f32 = 76.0;
+    const CARD_HEIGHT: f32 = THUMB_HEIGHT + STRIP_HEIGHT;
     const GAP: f32 = 24.0;
     const PADDING: f32 = 24.0;
 
@@ -176,7 +178,6 @@ fn render_project_grid(
         PADDING,
         &screen.recent_projects_scroll_handle,
         move |view, idx, card_w, _window, cx| {
-            let theme = cx.theme();
             let project = view.recent_projects.projects[idx].clone();
             let proj_path = project.path.clone();
             let proj_path_for_click = proj_path.clone();
@@ -203,6 +204,13 @@ fn render_project_grid(
                     &std::path::PathBuf::from(&proj_path),
                 );
 
+            // Kick off (or continue) loading this project's thumbnail.
+            view.ensure_project_thumbnail_loaded(&proj_path, cx);
+            let thumb_state = view.project_thumbnails.get(&proj_path).cloned();
+            let thumb_loading = matches!(thumb_state, None | Some(None));
+            let thumb_arc = thumb_state.flatten();
+
+            let theme = cx.theme();
             let accent_color = match (&git_status, is_git) {
                 (GitFetchStatus::UpdatesAvailable(_), true) => cx.theme().info,
                 (GitFetchStatus::Error(_), true) => cx.theme().danger,
@@ -212,173 +220,96 @@ fn render_project_grid(
                 }
                 _ => cx.theme().muted,
             };
+            let overlay_btn_bg = hsla(0.0, 0.0, 0.0, 0.45);
+            let updates_count = match &git_status {
+                GitFetchStatus::UpdatesAvailable(count) => Some(*count),
+                _ => None,
+            };
 
             v_flex()
                 .id(SharedString::from(format!("project-{}", proj_path)))
                 .w(px(card_w))
                 .h(px(CARD_HEIGHT))
-                .relative()
                 .overflow_hidden()
-                .gap_3()
-                .p_5()
                 .border_1()
                 .border_color(theme.border)
                 .rounded_xl()
                 .bg(theme.sidebar)
                 .shadow_sm()
-                .hover(|this| {
-                    this.border_color(theme.primary)
-                        .shadow_lg()
-                        .bg(hsla(
-                            theme.sidebar.h,
-                            theme.sidebar.s,
-                            theme.sidebar.l * 1.05,
-                            theme.sidebar.a,
-                        ))
-                })
+                .hover(|this| this.border_color(theme.primary).shadow_lg())
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, _, cx| {
                     let path_buf = normalize_project_path(&proj_path_for_click);
                     this.launch_project(path_buf, cx);
                 }))
+                // ── Thumbnail with overlaid controls ────────────────────────────
                 .child(
-                    div().absolute().top_0().left_0().w_full().h(px(3.0)).bg(accent_color)
-                )
-                .child(
-                    h_flex()
-                        .items_start()
-                        .gap_3()
+                    div()
+                        .id(SharedString::from(format!("project-thumb-{}", proj_path)))
+                        .relative()
                         .w_full()
+                        .h(px(THUMB_HEIGHT))
+                        .flex_shrink_0()
                         .overflow_hidden()
-                        .child(
-                            div()
-                                .flex_shrink_0()
-                                .w(px(48.))
-                                .h(px(48.))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_lg()
-                                .bg(hsla(
-                                    theme.primary.h,
-                                    theme.primary.s,
-                                    theme.primary.l,
-                                    0.15,
-                                ))
-                                .child(
-                                    Icon::new(IconName::Folder)
-                                        .size(px(28.))
-                                        .text_color(theme.primary),
+                        .bg(theme.muted)
+                        .map(|el| {
+                            if let Some(arc) = thumb_arc {
+                                el.child(
+                                    img(gpui::ImageSource::Render(arc))
+                                        .w_full()
+                                        .h_full()
+                                        .object_fit(gpui::ObjectFit::Cover),
                                 )
-                        )
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .gap_1()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .text_lg()
-                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(theme.foreground)
-                                        .overflow_hidden()
-                                        .text_ellipsis()
-                                        .whitespace_nowrap()
-                                        .child(proj_name),
+                            } else if thumb_loading {
+                                el.flex().items_center().justify_center().child(
+                                    Spinner::new()
+                                        .with_size(ui::Size::Medium)
+                                        .color(theme.muted_foreground),
                                 )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .overflow_hidden()
-                                        .text_ellipsis()
-                                        .whitespace_nowrap()
-                                        .child(proj_path.clone()),
-                                )
-                        )
-                        .child(
-                            if is_git {
-                                Tag::secondary().xsmall().rounded_full().child("GIT").into_any_element()
                             } else {
-                                Tag::secondary().xsmall().rounded_full().child("LOCAL").into_any_element()
-                            }
-                        )
-                )
-                .child(
-                    v_flex()
-                        .flex_1()
-                        .justify_end()
-                        .gap_2()
-                        .when(is_git, |this| {
-                            match &git_status {
-                                GitFetchStatus::UpdatesAvailable(count) => {
-                                    this.child(
-                                        div()
-                                            .px_3()
-                                            .py_1p5()
-                                            .rounded_md()
-                                            .bg(hsla(
-                                                theme.accent_foreground.h,
-                                                theme.accent_foreground.s,
-                                                theme.accent_foreground.l,
-                                                0.3,
-                                            ))
-                                            .child(
-                                                h_flex()
-                                                    .gap_1p5()
-                                                    .items_center()
-                                                    .child(
-                                                        Icon::new(IconName::ArrowUp)
-                                                            .size(px(12.))
-                                                            .text_color(theme.accent),
-                                                    )
-                                                    .child(
-                                                        div()
-                                                            .text_xs()
-                                                            .font_weight(gpui::FontWeight::MEDIUM)
-                                                            .text_color(theme.accent)
-                                                            .child(format!(
-                                                                "{} update{} available",
-                                                                count,
-                                                                if *count == 1 { "" } else { "s" }
-                                                            )),
-                                                    ),
-                                            ),
-                                    )
-                                }
-                                _ => this,
-                            }
-                        })
-                )
-                .child(div().w_full().h(px(1.)).bg(theme.border))
-                .child(
-                    h_flex()
-                        .justify_between()
-                        .items_center()
-                        .child(
-                            h_flex()
-                                .gap_1p5()
-                                .items_center()
-                                .child(
-                                    Icon::new(IconName::Clock)
-                                        .size(px(12.))
+                                el.flex().items_center().justify_center().child(
+                                    Icon::new(IconName::Folder)
+                                        .size(px(40.))
                                         .text_color(theme.muted_foreground),
                                 )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(theme.muted_foreground)
-                                        .child(last_opened),
-                                )
+                            }
+                        })
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .w_full()
+                                .h(px(3.0))
+                                .bg(accent_color),
                         )
                         .child(
+                            div().absolute().top_2().left_2().child(
+                                if is_git {
+                                    Tag::secondary().xsmall().rounded_full().child("GIT")
+                                } else {
+                                    Tag::secondary().xsmall().rounded_full().child("LOCAL")
+                                },
+                            ),
+                        )
+                        // Overlaid action controls
+                        .child(
                             h_flex()
-                                .gap_1p5()
-                                // Add integration buttons if defaults are set
+                                .absolute()
+                                .top_2()
+                                .right_2()
+                                .gap_1()
+                                .p_1()
+                                .rounded_md()
+                                .bg(overlay_btn_bg)
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .when_some(preferred_editor.clone(), |this, editor: String| {
                                     this.child(
                                         Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
                                             .icon(IconName::Code)
+                                            .xsmall()
                                             .tooltip(format!("Open in {}", get_tool_display_name(&editor)))
                                             .with_variant(ui::button::ButtonVariant::Ghost)
                                             .on_click({
@@ -396,6 +327,7 @@ fn render_project_grid(
                                         this2.child(
                                             Button::new(SharedString::from(format!("open-git-{}", proj_path)))
                                                 .icon(IconName::Github)
+                                                .xsmall()
                                                 .tooltip(format!("Open in {}", get_tool_display_name(&git_tool)))
                                                 .with_variant(ui::button::ButtonVariant::Ghost)
                                                 .on_click({
@@ -410,45 +342,10 @@ fn render_project_grid(
                                     })
                                 })
                                 .when(is_git, |this| {
-                                    match &git_status {
-                                        GitFetchStatus::UpdatesAvailable(count) => {
-                                            this.child(
-                                                Button::new(SharedString::from(format!("update-{}", proj_path)))
-                                                    .label(format!(
-                                                        "Pull {} update{}",
-                                                        count,
-                                                        if *count == 1 { "" } else { "s" }
-                                                    ))
-                                                    .icon(IconName::ArrowUp)
-                                                    .with_variant(ui::button::ButtonVariant::Primary)
-                                                    .on_click(cx.listener({
-                                                        let path = proj_path.clone();
-                                                        move |this, _, _, cx| {
-                                                            this.pull_project_updates(path.clone(), cx);
-                                                        }
-                                                    })),
-                                            )
-                                        }
-                                        _ => this,
-                                    }
-                                })
-                                .child(
-                                    Button::new(SharedString::from(format!("settings-{}", proj_path)))
-                                        .icon(IconName::Settings)
-                                        .tooltip("Project settings")
-                                        .with_variant(ui::button::ButtonVariant::Ghost)
-                                        .on_click(cx.listener({
-                                            let path = proj_path.clone();
-                                            let name = proj_name_for_settings.clone();
-                                            move |this, _, _, cx| {
-                                                this.open_project_settings(std::path::PathBuf::from(&path), name.clone(), cx);
-                                            }
-                                        })),
-                                )
-                                .when(is_git, |this| {
                                     this.child(
                                         Button::new(SharedString::from(format!("git-manager-{}", proj_path)))
                                             .icon(IconName::GitBranch)
+                                            .xsmall()
                                             .tooltip("Open Git Manager")
                                             .with_variant(ui::button::ButtonVariant::Ghost)
                                             .on_click(cx.listener({
@@ -462,6 +359,7 @@ fn render_project_grid(
                                 .child(
                                     Button::new(SharedString::from(format!("location-{}", proj_path)))
                                         .icon(IconName::FolderOpen)
+                                        .xsmall()
                                         .tooltip("Open in file manager")
                                         .with_variant(ui::button::ButtonVariant::Ghost)
                                         .on_click({
@@ -473,8 +371,23 @@ fn render_project_grid(
                                         }),
                                 )
                                 .child(
+                                    Button::new(SharedString::from(format!("settings-{}", proj_path)))
+                                        .icon(IconName::Settings)
+                                        .xsmall()
+                                        .tooltip("Project settings")
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
+                                        .on_click(cx.listener({
+                                            let path = proj_path.clone();
+                                            let name = proj_name_for_settings.clone();
+                                            move |this, _, _, cx| {
+                                                this.open_project_settings(std::path::PathBuf::from(&path), name.clone(), cx);
+                                            }
+                                        })),
+                                )
+                                .child(
                                     Button::new(SharedString::from(format!("remove-{}", proj_path)))
                                         .icon(IconName::Trash)
+                                        .xsmall()
                                         .tooltip("Remove from recent")
                                         .with_variant(ui::button::ButtonVariant::Ghost)
                                         .on_click(cx.listener({
@@ -483,7 +396,113 @@ fn render_project_grid(
                                                 this.remove_recent_project(path.clone(), cx);
                                             }
                                         })),
+                                ),
+                        )
+                        // Pull-updates banner
+                        .when_some(updates_count, |el, count| {
+                            el.child(
+                                h_flex()
+                                    .absolute()
+                                    .bottom_0()
+                                    .left_0()
+                                    .w_full()
+                                    .px_2()
+                                    .py_1p5()
+                                    .justify_between()
+                                    .items_center()
+                                    .bg(hsla(0.0, 0.0, 0.0, 0.55))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .child(
+                                        h_flex()
+                                            .gap_1p5()
+                                            .items_center()
+                                            .child(
+                                                Icon::new(IconName::ArrowUp)
+                                                    .size(px(12.))
+                                                    .text_color(gpui::white()),
+                                            )
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                                    .text_color(gpui::white())
+                                                    .child(format!(
+                                                        "{} update{} available",
+                                                        count,
+                                                        if count == 1 { "" } else { "s" }
+                                                    )),
+                                            ),
+                                    )
+                                    .child(
+                                        Button::new(SharedString::from(format!("update-{}", proj_path)))
+                                            .label("Pull")
+                                            .xsmall()
+                                            .icon(IconName::ArrowUp)
+                                            .with_variant(ui::button::ButtonVariant::Primary)
+                                            .on_click(cx.listener({
+                                                let path = proj_path.clone();
+                                                move |this, _, _, cx| {
+                                                    this.pull_project_updates(path.clone(), cx);
+                                                }
+                                            })),
+                                    ),
+                            )
+                        }),
+                )
+                // ── Title + meta strip ──────────────────────────────────────────
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_h_0()
+                        .justify_center()
+                        .gap_1()
+                        .px_3()
+                        .py_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(theme.foreground)
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .child(proj_name),
+                        )
+                        .child(
+                            h_flex()
+                                .justify_between()
+                                .items_center()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .text_xs()
+                                        .text_color(theme.muted_foreground)
+                                        .overflow_hidden()
+                                        .text_ellipsis()
+                                        .whitespace_nowrap()
+                                        .child(proj_path.clone()),
                                 )
+                                .child(
+                                    h_flex()
+                                        .flex_shrink_0()
+                                        .gap_1p5()
+                                        .items_center()
+                                        .child(
+                                            Icon::new(IconName::Clock)
+                                                .size(px(12.))
+                                                .text_color(theme.muted_foreground),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(theme.muted_foreground)
+                                                .child(last_opened),
+                                        ),
+                                ),
                         ),
                 )
         },

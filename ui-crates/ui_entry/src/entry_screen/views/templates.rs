@@ -1,7 +1,14 @@
 use crate::entry_screen::{virtual_grid::render_card_grid, EntryScreen};
 use gpui::{prelude::*, *};
 use ui::Sizable;
-use ui::{h_flex, progress::Progress, tag::Tag, v_flex, ActiveTheme as _, Icon, IconName};
+use ui::{
+    button::{Button, ButtonVariants as _},
+    h_flex,
+    progress::Progress,
+    spinner::Spinner,
+    tag::Tag,
+    v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 pub fn render_templates(
     screen: &mut EntryScreen,
@@ -72,27 +79,13 @@ pub fn render_templates(
 fn render_template_grid(
     screen: &mut EntryScreen,
     available_width: f32,
-    cx: &mut Context<EntryScreen>,
+    _cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
-    let theme = cx.theme();
-    let border_col = theme.border;
-    let sidebar_bg = theme.sidebar;
-    let primary = theme.primary;
-    let primary_h = theme.primary.h;
-    let primary_s = theme.primary.s;
-    let primary_l = theme.primary.l;
-    let fg = theme.foreground;
-    let muted_fg = theme.muted_foreground;
-    let sidebar_hover_bg = hsla(
-        theme.sidebar.h,
-        theme.sidebar.s,
-        theme.sidebar.l * 1.05,
-        theme.sidebar.a,
-    );
-
     // Match the layout used by `EntryScreen::calculate_columns`
     const CARD_WIDTH: f32 = 320.0;
-    const CARD_HEIGHT: f32 = 220.0;
+    const THUMB_HEIGHT: f32 = 160.0;
+    const STRIP_HEIGHT: f32 = 84.0;
+    const CARD_HEIGHT: f32 = THUMB_HEIGHT + STRIP_HEIGHT;
     const GAP: f32 = 24.0;
     const PADDING: f32 = 24.0;
 
@@ -112,6 +105,23 @@ fn render_template_grid(
             let desc = template.description.clone();
             let category = template.category.clone();
             let icon = template.icon.clone();
+            let repo_url = template.repo_url.clone();
+
+            // Kick off (or continue) loading this template's thumbnail.
+            view.ensure_template_thumbnail_loaded(&template, cx);
+            let thumb_state = view.template_thumbnails.get(&template.repo_url).cloned();
+            let thumb_loading = matches!(thumb_state, None | Some(None));
+            let thumb_arc = thumb_state.flatten();
+
+            let theme = cx.theme();
+            let border_col = theme.border;
+            let sidebar_bg = theme.sidebar;
+            let primary = theme.primary;
+            let primary_h = theme.primary.h;
+            let primary_s = theme.primary.s;
+            let primary_l = theme.primary.l;
+            let fg = theme.foreground;
+            let muted_fg = theme.muted_foreground;
 
             let category_accent = match category.as_str() {
                 "2D" => cx.theme().success,
@@ -121,99 +131,127 @@ fn render_template_grid(
                 "Racing" => cx.theme().danger,
                 _ => cx.theme().muted,
             };
+            let category_tag = match category.as_str() {
+                "2D" => Tag::success(),
+                "3D" => Tag::primary(),
+                "Strategy" => Tag::warning(),
+                "RPG" => Tag::info(),
+                "Racing" => Tag::danger(),
+                _ => Tag::secondary(),
+            }
+            .xsmall()
+            .rounded_full()
+            .child(category.clone());
 
             v_flex()
                 .id(SharedString::from(format!("template-{}", name)))
                 .w(px(card_w))
                 .h(px(CARD_HEIGHT))
-                .relative()
                 .overflow_hidden()
-                .gap_3()
-                .p_5()
                 .border_1()
                 .border_color(border_col)
                 .rounded_xl()
                 .bg(sidebar_bg)
                 .shadow_sm()
-                .hover(|this| this.border_color(primary).shadow_lg().bg(sidebar_hover_bg))
+                .hover(|this| this.border_color(primary).shadow_lg())
                 .cursor_pointer()
                 .on_click(cx.listener(move |this, _, window, cx| {
                     this.clone_template(&template, window, cx);
                 }))
+                // ── Thumbnail with overlaid controls ────────────────────────────
                 .child(
                     div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
+                        .id(SharedString::from(format!("template-thumb-{}", name)))
+                        .relative()
                         .w_full()
-                        .h(px(3.0))
-                        .bg(category_accent),
-                )
-                .child(
-                    h_flex()
-                        .items_start()
-                        .gap_3()
+                        .h(px(THUMB_HEIGHT))
+                        .flex_shrink_0()
+                        .overflow_hidden()
+                        .bg(hsla(primary_h, primary_s, primary_l, 0.15))
+                        .map(|el| {
+                            if let Some(arc) = thumb_arc {
+                                el.child(
+                                    img(gpui::ImageSource::Render(arc))
+                                        .w_full()
+                                        .h_full()
+                                        .object_fit(gpui::ObjectFit::Cover),
+                                )
+                            } else if thumb_loading {
+                                el.flex().items_center().justify_center().child(
+                                    Spinner::new()
+                                        .with_size(ui::Size::Medium)
+                                        .color(muted_fg),
+                                )
+                            } else {
+                                el.flex().items_center().justify_center().child(
+                                    Icon::new(icon).size(px(48.0)).text_color(primary),
+                                )
+                            }
+                        })
                         .child(
                             div()
-                                .flex_shrink_0()
-                                .w(px(56.0))
-                                .h(px(56.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded_xl()
-                                .bg(hsla(primary_h, primary_s, primary_l, 0.15))
-                                .child(Icon::new(icon).size(px(32.0)).text_color(primary)),
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .w_full()
+                                .h(px(3.0))
+                                .bg(category_accent),
                         )
+                        .child(div().absolute().top_2().left_2().child(category_tag))
                         .child(
-                            v_flex()
-                                .flex_1()
-                                .gap_1p5()
+                            h_flex()
+                                .absolute()
+                                .top_2()
+                                .right_2()
+                                .gap_1()
+                                .p_1()
+                                .rounded_md()
+                                .bg(hsla(0.0, 0.0, 0.0, 0.45))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .child(
-                                    div()
-                                        .text_lg()
-                                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                                        .text_color(fg)
-                                        .child(name),
-                                )
-                                .child(
-                                    match category.as_str() {
-                                        "2D" => Tag::success(),
-                                        "3D" => Tag::primary(),
-                                        "Strategy" => Tag::warning(),
-                                        "RPG" => Tag::info(),
-                                        "Racing" => Tag::danger(),
-                                        _ => Tag::secondary(),
-                                    }
-                                    .xsmall()
-                                    .rounded_full()
-                                    .child(category),
+                                    Button::new(SharedString::from(format!("template-github-{}", name)))
+                                        .icon(IconName::Github)
+                                        .xsmall()
+                                        .tooltip("View on GitHub")
+                                        .with_variant(ui::button::ButtonVariant::Ghost)
+                                        .on_click({
+                                            let url = repo_url.clone();
+                                            move |_, _, _| {
+                                                let _ = open::that(&url);
+                                            }
+                                        }),
                                 ),
                         ),
                 )
+                // ── Title + meta strip ──────────────────────────────────────────
                 .child(
-                    div()
+                    v_flex()
                         .flex_1()
-                        .text_sm()
-                        .line_height(rems(1.4))
-                        .text_color(muted_fg)
-                        .child(desc),
-                )
-                .child(div().w_full().h(px(1.0)).bg(border_col))
-                .child(
-                    h_flex()
-                        .items_center()
-                        .gap_2()
+                        .min_h_0()
+                        .justify_center()
+                        .gap_1()
+                        .px_3()
+                        .py_2()
                         .child(
-                            Icon::new(IconName::Github)
-                                .size(px(14.0))
-                                .text_color(muted_fg),
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .text_color(fg)
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .child(name),
                         )
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(muted_fg)
-                                .child("Click to clone from template"),
+                                .overflow_hidden()
+                                .text_ellipsis()
+                                .whitespace_nowrap()
+                                .child(desc),
                         ),
                 )
         },

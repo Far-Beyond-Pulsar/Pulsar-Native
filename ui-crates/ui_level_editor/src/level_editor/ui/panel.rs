@@ -17,6 +17,7 @@ use ui::settings::EngineSettings;
 use ui_common::StatusBar;
 
 use super::actions::*;
+use super::state::request_thumbnail_capture;
 use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
@@ -940,6 +941,7 @@ impl LevelEditorPanel {
             {
                 Ok(_) => {
                     self.shared_state.write().has_unsaved_changes = false;
+                    request_thumbnail_capture(&self.shared_state);
                     cx.notify();
                 }
                 Err(e) => {}
@@ -969,6 +971,7 @@ impl LevelEditorPanel {
                                 }
                                 state_arc.write().current_scene = Some(path);
                                 state_arc.write().has_unsaved_changes = false;
+                                request_thumbnail_capture(&state_arc);
                                 if let Some(open_path) = state_arc.read().current_scene.clone() {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }

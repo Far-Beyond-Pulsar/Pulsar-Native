@@ -111,6 +111,21 @@ pub struct LevelEditorState {
     pub game_running: bool,
     /// Handle to the running game process, shared so the stop button can kill it.
     pub game_process: Arc<parking_lot::Mutex<Option<std::process::Child>>>,
+    /// Set by the save handlers to request a viewport framebuffer capture, written to
+    /// this path as a PNG. Consumed (and cleared) by the viewport's render loop.
+    pub pending_thumbnail_capture: Option<PathBuf>,
+}
+
+/// Requests that the viewport capture its framebuffer to `<project>/.pulsar/thumbnail.png`
+/// on the next render. Consumed by `HelioViewport::render`. Call this from any scene-save
+/// success path (toolbar Save button, Save/Save As actions, etc).
+pub fn request_thumbnail_capture(shared_state: &Arc<parking_lot::RwLock<LevelEditorState>>) {
+    if let Some(project_path) = engine_state::get_project_path() {
+        let thumbnail_path = PathBuf::from(project_path)
+            .join(".pulsar")
+            .join("thumbnail.png");
+        shared_state.write().pending_thumbnail_capture = Some(thumbnail_path);
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -308,6 +323,7 @@ impl Default for LevelEditorState {
             build_mode: BuildMode::Build,
             game_running: false,
             game_process: Arc::new(parking_lot::Mutex::new(None)),
+            pending_thumbnail_capture: None,
         }
     }
 }

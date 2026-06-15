@@ -2,6 +2,7 @@ mod git_operations;
 mod integration_launcher;
 pub mod project_selector;
 pub mod recent_projects;
+pub(crate) mod thumbnails;
 mod types;
 pub mod views;
 mod virtual_grid;
@@ -15,7 +16,6 @@ use types::{
     CloudServerStatus, EntryScreenView, GitFetchStatus, SharedCloneProgress, Template,
 };
 
-use gpui::StyledImage as _;
 use gpui::{prelude::*, *};
 
 /// Returns `true` when the `PULSAR_INSECURE_TLS` environment variable is set to `"1"`.
@@ -31,7 +31,7 @@ fn insecure_tls_enabled() -> bool {
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
@@ -107,6 +107,13 @@ pub struct EntryScreen {
     pub(crate) auth_device_copy_notice: Option<String>,
     pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
     pub(crate) theme_picker: gpui::Entity<ui_common::ThemePicker>,
+    // Thumbnails for the redesigned recent-projects / templates cards
+    pub(crate) project_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
+    pub(crate) project_thumbnail_inflight: usize,
+    pub(crate) project_thumbnail_queue: VecDeque<String>,
+    pub(crate) template_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
+    pub(crate) template_thumbnail_inflight: usize,
+    pub(crate) template_thumbnail_queue: VecDeque<Template>,
 }
 
 #[derive(Clone, Debug)]
@@ -230,6 +237,12 @@ impl EntryScreen {
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
             theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
+            project_thumbnails: HashMap::new(),
+            project_thumbnail_inflight: 0,
+            project_thumbnail_queue: VecDeque::new(),
+            template_thumbnails: HashMap::new(),
+            template_thumbnail_inflight: 0,
+            template_thumbnail_queue: VecDeque::new(),
         };
 
         // Restore persisted auth profile into engine context at launcher startup.

@@ -217,6 +217,110 @@ impl HelioViewport {
     }
 }
 
+/// Renders the current Helio scene into an offscreen texture, reads it back
+/// from the GPU, and writes it to `out_path` as a PNG. Used to capture
+/// project thumbnails on scene save.
+fn capture_viewport_thumbnail(
+    engine: &mut GpuRenderer,
+    surface: &WgpuSurfaceHandle,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    out_path: &std::path::Path,
+) {
+    let device = surface.device();
+    let queue = surface.queue();
+
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("thumbnail-capture"),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+    engine.render_frame_to_surface(device, queue, &view, width, height, format);
+
+    let bytes_per_row = align_up(width * 4, 256);
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("thumbnail-staging"),
+        size: (bytes_per_row * height) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("thumbnail-readback"),
+    });
+    encoder.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &staging,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: None,
+            },
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit([encoder.finish()]);
+
+    let slice = staging.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |r| {
+        let _ = tx.send(r);
+    });
+    let _ = device.poll(wgpu::PollType::wait_indefinitely());
+
+    match rx.recv() {
+        Ok(Ok(())) => {}
+        _ => {
+            tracing::warn!("[THUMBNAIL] Failed to map readback buffer");
+            return;
+        }
+    }
+
+    let data = slice.get_mapped_range();
+    let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+    for row in 0..height {
+        let start = (row * bytes_per_row) as usize;
+        let end = start + (width * 4) as usize;
+        pixels.extend_from_slice(&data[start..end]);
+    }
+    drop(data);
+    staging.unmap();
+
+    let Some(rgba) = image::RgbaImage::from_raw(width, height, pixels) else {
+        tracing::warn!("[THUMBNAIL] Pixel buffer size mismatch for {}x{}", width, height);
+        return;
+    };
+
+    if let Some(parent) = out_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match rgba.save(out_path) {
+        Ok(()) => tracing::info!("[THUMBNAIL] Saved viewport thumbnail to {}", out_path.display()),
+        Err(e) => tracing::warn!("[THUMBNAIL] Failed to save {}: {}", out_path.display(), e),
+    }
+}
+
+fn align_up(n: u32, align: u32) -> u32 {
+    (n + align - 1) & !(align - 1)
+}
+
 impl Focusable for HelioViewport {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -287,6 +391,14 @@ impl Render for HelioViewport {
                     }
                     drop(view);
                     surface.swap_buffers();
+
+                    // Capture a project thumbnail if a save just requested one.
+                    let capture_path = self.shared_state.write().pending_thumbnail_capture.take();
+                    if let Some(path) = capture_path {
+                        if let Ok(mut engine) = self.gpu_engine.try_lock() {
+                            capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);
+                        }
+                    }
                 }
             }
         }
