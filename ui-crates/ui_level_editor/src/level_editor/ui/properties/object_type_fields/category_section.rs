@@ -58,64 +58,71 @@ impl ObjectTypeFieldsSection {
                     .as_deref()
                     .and_then(parse_hex_category_color);
 
-                v_flex()
+                let muted = cx.theme().muted_foreground;
+
+                // Header row — shared between collapsed and expanded states.
+                let header = h_flex()
                     .w_full()
+                    .items_center()
+                    .justify_between()
+                    .py(px(2.))
+                    .cursor_pointer()
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(move |this, _event, _window, cx| {
+                            if was_collapsed {
+                                this.collapsed_property_categories.remove(&toggle_key);
+                                this.expanded_property_categories.insert(toggle_key.clone());
+                            } else {
+                                this.expanded_property_categories.remove(&toggle_key);
+                                this.collapsed_property_categories.insert(toggle_key.clone());
+                            }
+                            cx.notify();
+                        }),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .when_some(accent, |el, color| el.text_color(color))
+                            .when(accent.is_none(), |el| el.text_color(muted))
+                            .child(category_name),
+                    )
+                    .child(
+                        Icon::new(if is_collapsed {
+                            IconName::ChevronRight
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .xsmall()
+                        .when_some(accent, |el, color| el.text_color(color))
+                        .when(accent.is_none(), |el| el.text_color(muted)),
+                    );
+
+                // Expanded: left-side accent bar + content column side by side.
+                // Collapsed: just the header row, no decoration.
+                h_flex()
+                    .w_full()
+                    .items_stretch()
                     .gap_1()
-                    .p_2()
-                    .rounded(px(6.0))
-                    .border_1()
-                    .when_some(accent, |el, color| {
-                        el.border_color(color.opacity(0.7)).bg(color.opacity(0.08))
-                    })
-                    .when(accent.is_none(), |el| {
-                        el.border_color(cx.theme().border)
-                            .bg(cx.theme().border.opacity(0.08))
+                    // Left accent bar — visible only when expanded.
+                    .when(!is_collapsed, |el| {
+                        el.child(
+                            div()
+                                .w(px(3.))
+                                .rounded_full()
+                                .flex_shrink_0()
+                                .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
+                                .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
+                        )
                     })
                     .child(
-                        h_flex()
-                            .w_full()
-                            .items_center()
-                            .justify_between()
-                            .cursor_pointer()
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |this, _event, _window, cx| {
-                                    if was_collapsed {
-                                        this.collapsed_property_categories.remove(&toggle_key);
-                                        this.expanded_property_categories
-                                            .insert(toggle_key.clone());
-                                    } else {
-                                        this.expanded_property_categories.remove(&toggle_key);
-                                        this.collapsed_property_categories
-                                            .insert(toggle_key.clone());
-                                    }
-                                    cx.notify();
-                                }),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .when_some(accent, |el, color| el.text_color(color))
-                                    .when(accent.is_none(), |el| {
-                                        el.text_color(cx.theme().muted_foreground)
-                                    })
-                                    .child(category_name),
-                            )
-                            .child(
-                                Icon::new(if is_collapsed {
-                                    IconName::ChevronRight
-                                } else {
-                                    IconName::ChevronDown
-                                })
-                                .xsmall()
-                                .when_some(accent, |el, color| el.text_color(color))
-                                .when(accent.is_none(), |el| {
-                                    el.text_color(cx.theme().muted_foreground)
-                                }),
-                            ),
+                        v_flex()
+                            .flex_1()
+                            .gap_0()
+                            .child(header)
+                            .when(!is_collapsed, |el| el.children(category_rows)),
                     )
-                    .when(!is_collapsed, |el| el.children(category_rows))
                     .into_any_element()
             })
             .collect()
