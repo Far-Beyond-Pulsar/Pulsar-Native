@@ -302,6 +302,9 @@ fn render_project_grid(
                                 .p_1()
                                 .rounded_md()
                                 .bg(overlay_btn_bg)
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .when_some(preferred_editor.clone(), |this, editor: String| {
                                     this.child(
                                         Button::new(SharedString::from(format!("open-editor-{}", proj_path)))
@@ -408,6 +411,9 @@ fn render_project_grid(
                                     .justify_between()
                                     .items_center()
                                     .bg(hsla(0.0, 0.0, 0.0, 0.55))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
                                     .child(
                                         h_flex()
                                             .gap_1p5()

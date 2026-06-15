@@ -207,6 +207,9 @@ fn render_template_grid(
                                 .p_1()
                                 .rounded_md()
                                 .bg(hsla(0.0, 0.0, 0.0, 0.45))
+                                .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                    cx.stop_propagation();
+                                })
                                 .child(
                                     Button::new(SharedString::from(format!("template-github-{}", name)))
                                         .icon(IconName::Github)
