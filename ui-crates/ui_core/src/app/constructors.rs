@@ -95,12 +95,14 @@ impl PulsarApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let _t_total = std::time::Instant::now();
+        let t_total = std::time::Instant::now();
         tracing::info!("[PulsarApp] new_internal start");
 
-        // Create the main dock area
+        // ── Dock area ──────────────────────────────────────────────────────────
+        let t = std::time::Instant::now();
         let dock_area = cx.new(|cx| ui::dock::DockArea::new("main-dock", Some(1), window, cx));
         let weak_dock = dock_area.downgrade();
+        tracing::info!("[PulsarApp] dock area: {}ms", t.elapsed().as_millis());
 
         // Propagate project path into EngineContext BEFORE constructing the level editor
         // so that ensure_default_level_file() can resolve the project root correctly.
@@ -109,7 +111,8 @@ impl PulsarApp {
             tracing::info!("Set engine project path to {:?}", path);
         }
 
-        // Create center dock item with level editor tab if requested
+        // ── Level editor ───────────────────────────────────────────────────────
+        let t = std::time::Instant::now();
         let center_dock_item = if create_level_editor {
             let level_editor = if let Some(wid) = window_id {
                 cx.new(|cx| LevelEditorPanel::new_with_window_id(wid, window, cx))
@@ -126,6 +129,7 @@ impl PulsarApp {
         } else {
             DockItem::tabs(vec![], None, &weak_dock, window, cx)
         };
+        tracing::info!("[PulsarApp] level editor panel: {}ms", t.elapsed().as_millis());
 
         let center_tabs = match &center_dock_item {
             DockItem::Tabs { view, .. } => view.clone(),
@@ -135,7 +139,8 @@ impl PulsarApp {
             }
         };
 
-        // Build left dock tabs before mutating DockArea to avoid re-entrant DockArea reads.
+        // ── Left-dock side panels ──────────────────────────────────────────────
+        let t = std::time::Instant::now();
         let agent_chat_panel =
             cx.new(|cx| AgentChatPanel::new(dock_area.clone(), center_tabs.clone(), window, cx));
         let manual_tool_panel =
@@ -155,6 +160,7 @@ impl PulsarApp {
             dock.set_center(center_dock_item, window, cx);
             dock.set_left_dock(left_dock, Some(gpui::px(420.0)), false, window, cx);
         });
+        tracing::info!("[PulsarApp] left dock + layout: {}ms", t.elapsed().as_millis());
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -167,12 +173,14 @@ impl PulsarApp {
         // Store project_path before moving it
         let has_project = project_path.is_some();
 
-        // Create drawers
+        // ── Drawers ────────────────────────────────────────────────────────────
+        let t = std::time::Instant::now();
         let file_manager_drawer =
             cx.new(|cx| FileManagerDrawer::new(project_path.clone(), window, cx));
         let problems_drawer = cx.new(|cx| ProblemsDrawer::new(window, cx));
         let type_debugger_drawer = cx.new(|cx| TypeDebuggerDrawer::new(window, cx));
         let mission_control = cx.new(MissionControlPanel::new);
+        tracing::info!("[PulsarApp] drawers: {}ms", t.elapsed().as_millis());
 
         // Register entity-capturing openers so the registry can open these windows
         // without callers knowing the concrete types or holding the entities.
@@ -397,6 +405,13 @@ impl PulsarApp {
             use ui::IconName;
             use ui_common::command_palette::PaletteManager;
 
+            // Drain the file list pre-scanned by the loading-screen background
+            // thread.  When the normal loading-screen path is used this is
+            // already populated; the vec is empty only when the editor is opened
+            // without a loading screen (e.g. first launch / entry-screen path).
+            let preloaded_files = ui_loading_screen::take_preloaded_files();
+            let had_preloaded_files = !preloaded_files.is_empty();
+
             let (palette_id, palette_ref) =
                 PaletteManager::register_palette("commands", window, cx);
 
@@ -487,33 +502,66 @@ impl PulsarApp {
                     cx,
                 );
 
-                // Add files if we have a project path
-                if let Some(ref project_path) = app.state.project_path {
-                    use ui_common::file_utils::find_openable_files;
-                    let files = find_openable_files(project_path, Some(1000));
-
-                    for file in files {
-                        let path = file.path.clone();
-                        palette.add_item(
-                            file.name.clone(),
-                            file.path.to_string_lossy().to_string(),
-                            IconName::SubmitDocument,
-                            "Files",
-                            move |window, cx| {
-                                window
-                                    .dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
-                            },
-                            cx,
-                        );
-                    }
+                // Fast path: use the file list that the loading-screen background
+                // thread already scanned — no disk I/O on the main thread.
+                for entry in preloaded_files {
+                    let path = entry.path.clone();
+                    palette.add_item(
+                        entry.name,
+                        entry.path.to_string_lossy().to_string(),
+                        IconName::SubmitDocument,
+                        "Files",
+                        move |window, cx| {
+                            window.dispatch_action(Box::new(OpenFile { path: path.clone() }), cx);
+                        },
+                        cx,
+                    );
                 }
             });
 
             app.state.command_palette_id = Some(palette_id);
-            app.state.command_palette = Some(palette_ref);
+            app.state.command_palette = Some(palette_ref.clone());
+
+            // Slow-path fallback: when there were no pre-loaded files (entry-screen
+            // launch, project-switcher, URI open without loading screen) scan the
+            // project directory on the background executor so the main thread never
+            // blocks.  The palette entries appear shortly after the window opens.
+            if !had_preloaded_files {
+                if let Some(ref project_path) = app.state.project_path {
+                    use ui_common::file_utils::find_openable_files;
+                    let project_path_bg = project_path.clone();
+                    cx.spawn(async move |_, cx| {
+                        let files = cx
+                            .background_executor()
+                            .spawn(async move { find_openable_files(&project_path_bg, Some(1000)) })
+                            .await;
+                        cx.update(|cx| {
+                            palette_ref.update(cx, |palette, cx| {
+                                for file in files {
+                                    let path = file.path.clone();
+                                    palette.add_item(
+                                        file.name.clone(),
+                                        file.path.to_string_lossy().to_string(),
+                                        IconName::SubmitDocument,
+                                        "Files",
+                                        move |window, cx| {
+                                            window.dispatch_action(
+                                                Box::new(OpenFile { path: path.clone() }),
+                                                cx,
+                                            );
+                                        },
+                                        cx,
+                                    );
+                                }
+                            });
+                        });
+                    })
+                    .detach();
+                }
+            }
         }
 
-        tracing::info!("[PulsarApp] new_internal total: {:?}", _t_total.elapsed());
+        tracing::info!("[PulsarApp] new_internal total: {}ms", t_total.elapsed().as_millis());
 
         // Focus this app's handle so menus built before any editor interaction have
         // a valid action_context that routes back to PulsarApp's .on_action() handlers.

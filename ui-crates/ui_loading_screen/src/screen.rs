@@ -56,11 +56,42 @@ impl LoadingScreen {
 
         let analyzer = cx.new(|cx| RustAnalyzerManager::new(window, cx));
 
-        // Background thread: run tasks sequentially with minimum display times.
+        // Pre-loading work runs immediately in a sub-thread, in parallel with the
+        // visual task display, so that by the time the animation finishes:
+        //   • the default scene directory is guaranteed to exist on disk
+        //   • the default.level file is in the OS page cache (if it exists)
+        //   • the palette file list is ready in memory
+        //
+        // This means PulsarApp::new_internal never has to do blocking disk I/O on
+        // the GPUI main thread — the transition from loading screen to editor is
+        // essentially instant.
+        // Background thread: run every task in order, measure real wall-clock
+        // time for each one, and report results back to the UI thread.
+        // There are no artificial sleeps — the loading screen advances as fast
+        // as the work actually takes.
+        let project_path_for_thread = project_path.clone();
         std::thread::spawn(move || {
-            for (idx, (_label, min_ms)) in TASKS.iter().enumerate() {
-                std::thread::sleep(Duration::from_millis(*min_ms));
-                if tx.send(LoadingEvent::TaskDone(idx)).is_err() {
+            let project = project_path_for_thread.as_path();
+            for (idx, (label, task_fn)) in TASKS.iter().enumerate() {
+                let result = task_fn(project);
+                tracing::info!(
+                    "[Loading] {:>3}ms  {}{}",
+                    result.elapsed.as_millis(),
+                    label,
+                    result
+                        .detail
+                        .as_deref()
+                        .map(|d| format!(" — {d}"))
+                        .unwrap_or_default(),
+                );
+                if tx
+                    .send(LoadingEvent::TaskDone {
+                        idx,
+                        elapsed: result.elapsed,
+                        detail: result.detail,
+                    })
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -85,16 +116,24 @@ impl LoadingScreen {
         }
     }
 
-    fn advance(&mut self, idx: usize) {
+    fn advance(&mut self, idx: usize, elapsed: Duration, _detail: Option<String>) {
         if idx < self.statuses.len() {
-            self.statuses[idx] = TaskStatus::Done;
+            self.statuses[idx] = TaskStatus::Done(elapsed);
         }
         let next = idx + 1;
         if next < self.statuses.len() {
             self.statuses[next] = TaskStatus::Running;
             self.message = TASKS[next].0.to_string();
         } else {
-            self.message = "Ready!".to_string();
+            let total_ms: u128 = self
+                .statuses
+                .iter()
+                .map(|s| match s {
+                    TaskStatus::Done(d) => d.as_millis(),
+                    _ => 0,
+                })
+                .sum();
+            self.message = format!("Ready! ({total_ms}ms total)");
             self.all_done = true;
         }
         self.progress = (idx + 1) as f32 / TASKS.len() as f32;
@@ -104,8 +143,8 @@ impl LoadingScreen {
 impl Render for LoadingScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Drain pending task-done events
-        while let Ok(LoadingEvent::TaskDone(idx)) = self.rx.try_recv() {
-            self.advance(idx);
+        while let Ok(LoadingEvent::TaskDone { idx, elapsed, detail }) = self.rx.try_recv() {
+            self.advance(idx, elapsed, detail);
             cx.notify();
         }
 
@@ -233,12 +272,12 @@ impl Render for LoadingScreen {
                                                 let status = self.statuses[i];
                                                 let label = TASKS[i].0;
                                                 let dist_above = running.saturating_sub(i);
-                                                let (icon, base_opacity): (&str, f32) = match status
-                                                {
-                                                    TaskStatus::Done => ("✓", 0.9),
-                                                    TaskStatus::Running => (spinner, 1.0),
-                                                    TaskStatus::Pending => ("·", 0.35),
-                                                };
+                                                let (icon, base_opacity): (&str, f32) =
+                                                    match status {
+                                                        TaskStatus::Done(_) => ("✓", 0.9),
+                                                        TaskStatus::Running => (spinner, 1.0),
+                                                        TaskStatus::Pending => ("·", 0.35),
+                                                    };
                                                 let opacity = if dist_above > 0 {
                                                     (base_opacity - dist_above as f32 * 0.25)
                                                         .max(0.18)
@@ -246,16 +285,34 @@ impl Render for LoadingScreen {
                                                     base_opacity
                                                 };
                                                 let color: Hsla = gpui::white().opacity(opacity);
-                                                let weight = if status == TaskStatus::Running {
+                                                let is_running =
+                                                    matches!(status, TaskStatus::Running);
+                                                let weight = if is_running {
                                                     FontWeight::SEMIBOLD
                                                 } else {
                                                     FontWeight::NORMAL
                                                 };
+                                                // Show real elapsed time for completed tasks.
+                                                let timing_label: Option<String> =
+                                                    if let TaskStatus::Done(d) = status {
+                                                        Some(format!("{}ms", d.as_millis()))
+                                                    } else {
+                                                        None
+                                                    };
                                                 div()
                                                     .flex()
                                                     .flex_row()
                                                     .items_center()
                                                     .gap(px(8.0))
+                                                    .children(timing_label.map(|t| {
+                                                        div()
+                                                            .text_xs()
+                                                            .font_weight(FontWeight::NORMAL)
+                                                            .text_color(
+                                                                gpui::white().opacity(opacity * 0.6),
+                                                            )
+                                                            .child(t)
+                                                    }))
                                                     .child(
                                                         div()
                                                             .text_sm()

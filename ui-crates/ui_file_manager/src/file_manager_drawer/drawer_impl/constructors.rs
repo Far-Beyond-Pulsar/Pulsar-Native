@@ -42,8 +42,14 @@ impl FileManagerDrawer {
         let operations = FileOperations::new(project_path.clone());
         let fs_metadata = FsMetadataManager::new();
 
+        // Use the folder tree pre-built by the loading screen if available,
+        // falling back to a synchronous scan for code paths that skip the
+        // loading screen (entry screen, project switcher, URI launch).
+        let folder_tree = crate::preload::take_preloaded_tree()
+            .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
+
         let mut this = Self {
-            folder_tree: project_path.as_ref().and_then(|p| FolderNode::from_path(p)),
+            folder_tree,
             project_path: project_path.clone(),
             selected_folder: project_path.clone(),
             selected_items: HashSet::new(),

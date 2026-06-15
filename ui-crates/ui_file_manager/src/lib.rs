@@ -7,11 +7,13 @@ rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod drawer;
 mod file_manager_drawer;
+pub mod preload;
 pub mod window;
 
 // Re-export main types
-pub use drawer::{FileSelected, PopoutFileManagerEvent};
+pub use drawer::{FileSelected, FolderNode, PopoutFileManagerEvent};
 pub use file_manager_drawer::FileManagerDrawer;
+pub use preload::{store_preloaded_tree, take_preloaded_tree};
 pub use window::FileManagerWindow;
 
 /// Get current locale

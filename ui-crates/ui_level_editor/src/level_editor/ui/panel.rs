@@ -61,15 +61,45 @@ pub struct LevelEditorPanel {
 
 impl LevelEditorPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut panel = Self::new_internal(None, window, cx);
-        panel.ensure_default_level_file();
+        let panel = Self::new_internal(None, window, cx);
+        Self::spawn_level_load(cx);
         panel
     }
 
     pub fn new_with_window_id(window_id: u64, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let mut panel = Self::new_internal(Some(window_id), window, cx);
-        panel.ensure_default_level_file();
+        let panel = Self::new_internal(Some(window_id), window, cx);
+        Self::spawn_level_load(cx);
         panel
+    }
+
+    /// Defers `ensure_default_level_file` to run after the editor window has
+    /// rendered its first frame.
+    ///
+    /// By the time the loading screen closes, the scene directory already exists
+    /// and the `default.level` file is in the OS page cache (both pre-warmed by
+    /// the loading-screen background thread).  Even so, the actual deserialization
+    /// happens here on the GPUI main thread — deferring it means the window
+    /// becomes visible first, avoiding the "frozen / locked up" appearance on
+    /// Windows.
+    fn spawn_level_load(cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            // Yield once so the event loop can paint the first frame and make
+            // the editor window visible before we touch disk.
+            cx.background_executor()
+                .timer(std::time::Duration::ZERO)
+                .await;
+
+            // Back on the GPUI main thread: load the level file and notify
+            // the viewport / panels to re-render with the scene contents.
+            cx.update(|cx| {
+                this.update(cx, |panel, cx| {
+                    panel.ensure_default_level_file();
+                    panel.notify_sub_panels(cx);
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     /// If no project is open, do nothing. Otherwise resolve `<project>/scene/default.level`:

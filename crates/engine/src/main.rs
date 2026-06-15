@@ -259,11 +259,22 @@ fn main() {
 
     gpui_app.run(move |cx: &mut gpui::App| {
         use ui_common::PulsarWindowExt as _;
+        let t_gpui = std::time::Instant::now();
+        tracing::info!("[GPUI startup] begin");
 
         cx.activate(true);
+
+        let t = std::time::Instant::now();
         ui::init(cx);
+        tracing::info!("[GPUI startup] ui::init {}ms", t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
         ui::themes::init(cx);
+        tracing::info!("[GPUI startup] ui::themes::init {}ms", t.elapsed().as_millis());
+
+        let t = std::time::Instant::now();
         ui_core::init(cx);
+        tracing::info!("[GPUI startup] ui_core::init {}ms", t.elapsed().as_millis());
 
         {
             use window_manager::{WindowManager, WindowRegistry};
@@ -272,12 +283,16 @@ fn main() {
         }
 
         // Runs every inventory::submit! registrant from all linked crates automatically.
+        let t = std::time::Instant::now();
         window_manager::register_all_windows(cx);
+        tracing::info!("[GPUI startup] register_all_windows {}ms", t.elapsed().as_millis());
 
         let uri_path = engine_context
             .store
             .get_or_init::<engine_state::LaunchContext>()
             .update(|l| l.uri_project_path.take());
+
+        tracing::info!("[GPUI startup] pre-window total {}ms", t_gpui.elapsed().as_millis());
 
         if let Some(path) = uri_path {
             tracing::info!("Opening project splash from URI: {}", path.display());

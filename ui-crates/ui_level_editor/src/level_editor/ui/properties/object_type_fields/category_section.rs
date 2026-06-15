@@ -82,7 +82,7 @@ impl ObjectTypeFieldsSection {
                     )
                     .child(
                         div()
-                            .text_xs()
+                            .text_sm()
                             .font_weight(FontWeight::SEMIBOLD)
                             .when_some(accent, |el, color| el.text_color(color))
                             .when(accent.is_none(), |el| el.text_color(muted))
@@ -101,27 +101,36 @@ impl ObjectTypeFieldsSection {
 
                 if is_collapsed {
                     // Collapsed: plain header row, no bar, no container.
-                    header.into_any_element()
+                    div()
+                        .w_full()
+                        .pb(px(6.))
+                        .child(header)
+                        .into_any_element()
                 } else {
                     // Expanded: left accent bar + content column.
-                    h_flex()
+                    div()
                         .w_full()
-                        .items_stretch()
-                        .gap_1()
+                        .pb(px(10.))
                         .child(
-                            div()
-                                .w(px(3.))
-                                .rounded_full()
-                                .flex_shrink_0()
-                                .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
-                                .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
-                        )
-                        .child(
-                            v_flex()
-                                .flex_1()
-                                .gap_0()
-                                .child(header)
-                                .children(category_rows),
+                            h_flex()
+                                .w_full()
+                                .items_stretch()
+                                .gap_1()
+                                .child(
+                                    div()
+                                        .w(px(3.))
+                                        .rounded_full()
+                                        .flex_shrink_0()
+                                        .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
+                                        .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
+                                )
+                                .child(
+                                    v_flex()
+                                        .flex_1()
+                                        .gap_0()
+                                        .child(header)
+                                        .children(category_rows),
+                                ),
                         )
                         .into_any_element()
                 }
