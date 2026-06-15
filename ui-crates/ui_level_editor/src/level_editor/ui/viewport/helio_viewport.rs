@@ -303,6 +303,19 @@ fn capture_viewport_thumbnail(
     drop(data);
     staging.unmap();
 
+    // The captured texture stores correctly sRGB-encoded bytes, but the live editor
+    // viewport is composited via a shader that samples this `_Srgb` texture (auto
+    // decoding sRGB -> linear) and writes the result directly into a non-sRGB
+    // swapchain target (no re-encode). That makes the on-screen viewport appear
+    // darker than the raw captured bytes. Apply the same sRGB -> linear decode here
+    // so the saved thumbnail matches what the user actually sees in the editor.
+    let srgb_to_linear_lut = srgb_to_linear_lut();
+    for px in pixels.chunks_exact_mut(4) {
+        px[0] = srgb_to_linear_lut[px[0] as usize];
+        px[1] = srgb_to_linear_lut[px[1] as usize];
+        px[2] = srgb_to_linear_lut[px[2] as usize];
+    }
+
     let Some(rgba) = image::RgbaImage::from_raw(width, height, pixels) else {
         tracing::warn!("[THUMBNAIL] Pixel buffer size mismatch for {}x{}", width, height);
         return;
@@ -319,6 +332,22 @@ fn capture_viewport_thumbnail(
 
 fn align_up(n: u32, align: u32) -> u32 {
     (n + align - 1) & !(align - 1)
+}
+
+/// Builds an 8-bit sRGB-decode (EOTF) lookup table, mapping each sRGB-encoded
+/// byte value to its linear-light equivalent (also expressed as a byte 0-255).
+fn srgb_to_linear_lut() -> [u8; 256] {
+    let mut lut = [0u8; 256];
+    for (i, entry) in lut.iter_mut().enumerate() {
+        let c = i as f32 / 255.0;
+        let linear = if c <= 0.04045 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        };
+        *entry = (linear * 255.0).round().clamp(0.0, 255.0) as u8;
+    }
+    lut
 }
 
 impl Focusable for HelioViewport {
