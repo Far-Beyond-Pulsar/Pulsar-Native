@@ -2038,15 +2038,15 @@ impl Render for EntryScreen {
             .size_full()
             .bg(cx.theme().background)
             .child(
-                TitleBar::new().child(
-                    h_flex()
-                        .w_full()
-                        .justify_end()
-                        .px_2()
-                        .gap_1()
-                        .items_center()
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-                        .child({
+                TitleBar::new()
+                    .child(div().flex_1())
+                    .child(
+                        h_flex()
+                            .px_2()
+                            .gap_1()
+                            .items_center()
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                            .child({
                             let theme_picker = self.theme_picker.clone();
                             ui::popover::Popover::<ui_common::ThemePicker>::new(
                                 "entry-theme-picker",
