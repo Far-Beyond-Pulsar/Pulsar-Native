@@ -13,6 +13,7 @@ const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
 const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const GITHUB_USER_URL: &str = "https://api.github.com/user";
 const PROFILE_CACHE_FILE: &str = "auth_profile.json";
+const TOKEN_CACHE_FILE: &str = "auth_token.txt";
 static ENV_LOADED: std::sync::Once = std::sync::Once::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -76,7 +77,7 @@ pub fn start_device_flow(client_id: &str) -> Result<DeviceCodeResponse> {
     let response = client
         .post(GITHUB_DEVICE_CODE_URL)
         .header("Accept", "application/json")
-        .form(&[("client_id", client_id), ("scope", "read:user")])
+        .form(&[("client_id", client_id), ("scope", "read:user,gist")])
         .send()
         .context("Failed to request GitHub device code")?;
 
@@ -177,20 +178,30 @@ pub fn store_access_token(access_token: &str) -> Result<()> {
         .context("Failed to initialize keyring entry")?;
     entry
         .set_password(access_token)
-        .context("Failed to store GitHub token in keyring")
+        .context("Failed to store GitHub token in keyring")?;
+    let _ = save_token_to_cache(access_token);
+    Ok(())
 }
 
 pub fn load_access_token() -> Result<Option<String>> {
-    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
-        .context("Failed to initialize keyring entry")?;
-    match entry.get_password() {
-        Ok(token) => Ok(Some(token)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(anyhow::anyhow!("Failed to read token from keyring: {e}")),
+    match (|| -> Result<Option<String>> {
+        let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
+            .context("Failed to initialize keyring entry")?;
+        match entry.get_password() {
+            Ok(token) => return Ok(Some(token)),
+            Err(keyring::Error::NoEntry) => {}
+            Err(e) => anyhow::bail!("Failed to read token from keyring: {e}"),
+        }
+        Ok(None)
+    })() {
+        Ok(Some(token)) => Ok(Some(token)),
+        Ok(None) => load_token_from_cache().or(Ok(None)),
+        Err(_) => load_token_from_cache().or(Ok(None)),
     }
 }
 
 pub fn clear_access_token() -> Result<()> {
+    let _ = clear_token_cache();
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_ACCOUNT)
         .context("Failed to initialize keyring entry")?;
     match entry.delete_credential() {
@@ -258,6 +269,38 @@ fn profile_cache_path() -> Result<PathBuf> {
     let dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
         .context("Could not resolve Pulsar project directories")?;
     Ok(dirs.data_dir().join(PROFILE_CACHE_FILE))
+}
+
+fn token_cache_path() -> Result<PathBuf> {
+    let dirs = ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        .context("Could not resolve Pulsar project directories")?;
+    Ok(dirs.data_dir().join(TOKEN_CACHE_FILE))
+}
+
+fn save_token_to_cache(token: &str) -> Result<()> {
+    let path = token_cache_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, token)?;
+    Ok(())
+}
+
+fn load_token_from_cache() -> Result<Option<String>> {
+    let path = token_cache_path()?;
+    if path.exists() {
+        Ok(Some(std::fs::read_to_string(path)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn clear_token_cache() -> Result<()> {
+    let path = token_cache_path()?;
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    Ok(())
 }
 
 fn load_dotenv_once() {

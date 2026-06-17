@@ -91,8 +91,10 @@ fn find_pulsar_gist(token: &str, username: &str) -> Result<Option<String>, Frien
         .send()
         .map_err(|e| FriendsError::Network(e.to_string()))?;
 
-    if !resp.status().is_success() {
-        return Err(FriendsError::Api(format!("HTTP {}", resp.status())));
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().unwrap_or_default();
+        return Err(FriendsError::Api(format!("HTTP {}: {}", status, body)));
     }
 
     let gists: Vec<serde_json::Value> = resp

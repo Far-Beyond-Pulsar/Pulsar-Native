@@ -3,7 +3,6 @@ use friends_engine::{FriendInfo, FriendsError, RelationStatus};
 use gpui::{prelude::*, *};
 use std::collections::HashMap;
 use std::sync::Arc;
-use ui::StyledExt as _;
 use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
@@ -18,7 +17,6 @@ pub struct FriendsScreen {
     pub add_friend_input: Entity<InputState>,
     pub add_friend_username: String,
     pub add_friend_state: AddFriendState,
-    pub authenticated: bool,
     pub avatar_cache: HashMap<String, Option<Arc<RenderImage>>>,
 }
 
@@ -34,7 +32,6 @@ impl FriendsScreen {
             add_friend_input: add_friend_input.clone(),
             add_friend_username: String::new(),
             add_friend_state: AddFriendState::Idle,
-            authenticated: friends_engine::is_authenticated(),
             avatar_cache: HashMap::new(),
         };
 
@@ -69,11 +66,10 @@ impl FriendsScreen {
         self.loading = true;
         cx.notify();
 
-        let authenticated = self.authenticated;
         cx.spawn(async move |this, cx| {
-            if !authenticated {
+            if !friends_engine::is_authenticated() {
                 cx.update(|cx| {
-                    this.update(cx, |screen, cx| {
+                    let _ = this.update(cx, |screen, cx| {
                         screen.loading = false;
                         cx.notify();
                     });
@@ -84,7 +80,7 @@ impl FriendsScreen {
             let result = std::thread::spawn(|| friends_engine::get_friends_list()).join();
 
             cx.update(|cx| {
-                this.update(cx, |screen, cx| {
+                let _ = this.update(cx, |screen, cx| {
                     screen.loading = false;
                     match result {
                         Ok(Ok(list)) => {
@@ -129,7 +125,7 @@ impl FriendsScreen {
         cx.spawn(async move |this, cx| {
             if let Ok(maybe_image) = rx.recv().await {
                 cx.update(|cx| {
-                    this.update(cx, |screen, cx| {
+                    let _ = this.update(cx, |screen, cx| {
                         screen.avatar_cache.insert(url, maybe_image);
                         cx.notify();
                     });
@@ -166,7 +162,7 @@ impl FriendsScreen {
                 std::thread::spawn(move || friends_engine::send_friend_request(&target)).join();
 
             cx.update(|cx| {
-                this.update(cx, |screen, cx| {
+                let _ = this.update(cx, |screen, cx| {
                     match result {
                         Ok(Ok(())) => {
                             screen.add_friend_state = AddFriendState::Success;
@@ -203,7 +199,7 @@ impl FriendsScreen {
             let _ =
                 std::thread::spawn(move || friends_engine::accept_friend_request(&target)).join();
             cx.update(|cx| {
-                this.update(cx, |screen, cx| {
+                let _ = this.update(cx, |screen, cx| {
                     screen.refresh_friends(cx);
                 });
             });
@@ -217,7 +213,7 @@ impl FriendsScreen {
             let _ =
                 std::thread::spawn(move || friends_engine::decline_friend_request(&target)).join();
             cx.update(|cx| {
-                this.update(cx, |screen, cx| {
+                let _ = this.update(cx, |screen, cx| {
                     screen.refresh_friends(cx);
                 });
             });
@@ -289,8 +285,6 @@ fn fetch_avatar_image(url: &str) -> Result<Arc<RenderImage>, anyhow::Error> {
 impl Render for FriendsScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let foreground = theme.foreground;
-        let muted_fg = theme.muted_foreground;
         let border = theme.border;
         let bg = theme.background;
 
@@ -340,7 +334,7 @@ impl Render for FriendsScreen {
                             .gap_3()
                             .children(if self.loading {
                                 vec![self.render_loading_state(cx).into_any_element()]
-                            } else if !self.authenticated {
+                            } else if !friends_engine::is_authenticated() {
                                 vec![self.render_not_authenticated(cx).into_any_element()]
                             } else if filtered.is_empty() {
                                 vec![self.render_empty_state(cx).into_any_element()]
