@@ -9,6 +9,7 @@ pub enum EntryScreenView {
     NewProject,
     CloneGit,
     CloudProjects,
+    Friends,
 }
 
 /// Template definition with Git repository info

@@ -107,6 +107,7 @@ pub struct EntryScreen {
     pub(crate) auth_device_copy_notice: Option<String>,
     pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
     pub(crate) theme_picker: gpui::Entity<ui_common::ThemePicker>,
+    pub(crate) friends_screen: gpui::Entity<ui_friends::FriendsScreen>,
     // Thumbnails for the redesigned recent-projects / templates cards
     pub(crate) project_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
     pub(crate) project_thumbnail_inflight: usize,
@@ -237,6 +238,7 @@ impl EntryScreen {
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
             theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
+            friends_screen: cx.new(|cx| ui_friends::FriendsScreen::new(_window, cx)),
             project_thumbnails: HashMap::new(),
             project_thumbnail_inflight: 0,
             project_thumbnail_queue: VecDeque::new(),
@@ -2106,6 +2108,9 @@ impl Render for EntryScreen {
                                 }
                                 EntryScreenView::CloudProjects => {
                                     views::render_cloud_projects(self, cx).into_any_element()
+                                }
+                                EntryScreenView::Friends => {
+                                    self.friends_screen.clone().into_any_element()
                                 }
                             }),
                     ),

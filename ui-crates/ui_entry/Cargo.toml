@@ -22,6 +22,10 @@ pulsar_auth.workspace = true
 # Git manager window dependency
 ui_git_manager.workspace = true
 
+# Friends system
+ui_friends.workspace = true
+friends_engine.workspace = true
+
 # Loading screen is used by entry for splash/progress
 ui_loading_screen.workspace = true
 
