@@ -25,19 +25,18 @@ pub use ui_types_common::window_types::WindowRequest;
 pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 
 pub use manager::WindowManager;
-pub use registry::{WindowRegistry, WINDOW_REGISTRANTS};
+pub use inventory;
+pub use registry::{WindowRegistrant, WindowRegistry};
 pub use ui_gen_macros::register_window;
 pub use wrappers::{apply_window_wrapper, register_window_wrapper, WindowContentWrapper};
 
 /// Call once after [`WindowManager`] and [`WindowRegistry`] globals are installed.
-/// Iterates every element contributed to [`WINDOW_REGISTRANTS`] via
+/// Iterates every `inventory::submit!`-ed [`WindowRegistrant`] via
 /// `#[window_manager::register_window]` — no per-crate `init()` calls needed.
 pub fn register_all_windows(cx: &mut gpui::App) {
-    tracing::info!(
-        "[WindowManager] register_all_windows: {} registrants",
-        WINDOW_REGISTRANTS.len()
-    );
-    for f in WINDOW_REGISTRANTS.iter() {
-        f(cx);
+    let registrants: Vec<_> = inventory::iter::<registry::WindowRegistrant>().collect();
+    tracing::info!("[WindowManager] register_all_windows: {} registrants", registrants.len());
+    for registrant in &registrants {
+        (registrant.register)(cx);
     }
 }

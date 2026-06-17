@@ -20,7 +20,7 @@ engine_state.workspace = true
 tracing.workspace = true
 
 window_manager.workspace = true
-linkme.workspace = true
+inventory.workspace = true
 # Utilities
 anyhow = { workspace = true }
 chrono = { workspace = true }
