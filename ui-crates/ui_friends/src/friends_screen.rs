@@ -188,7 +188,26 @@ impl FriendsScreen {
                     match result {
                         Ok(Ok(())) => {
                             screen.add_friend_state = AddFriendState::Success;
+                            let added = username.clone();
                             screen.add_friend_username.clear();
+                            // Optimistically insert so the user sees feedback immediately,
+                            // even if GitHub's gist list cache hasn't propagated yet.
+                            if !screen.friends.iter().any(|f| f.username == added) {
+                                screen.friends.push(FriendEntry {
+                                    username: added.clone(),
+                                    pfp_url: format!("https://github.com/{}.png", added),
+                                    relation_status: RelationStatus::PendingOutbound,
+                                    current_project: None,
+                                    current_project_version: None,
+                                    online: false,
+                                    last_seen: None,
+                                    is_self: false,
+                                });
+                                screen.ensure_avatar_loaded(
+                                    &format!("https://github.com/{}.png", added),
+                                    cx,
+                                );
+                            }
                             screen.refresh_friends(cx);
                         }
                         Ok(Err(FriendsError::NotAuthenticated)) => {
@@ -628,10 +647,15 @@ impl FriendsScreen {
             }))
     }
 
-    fn render_self_row(&self, cx: &Context<Self>) -> impl IntoElement {
+    fn render_self_row(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
-        let border_col = theme.border;
-        let muted_fg = theme.muted_foreground;
+
+        // Find the self entry to get its pfp_url for the avatar
+        let self_entry = self.friends.iter().find(|f| f.is_self);
+        let avatar = self_entry.and_then(|f| {
+            self.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone())
+        });
+        let pfp_url = self_entry.map(|f| f.pfp_url.clone()).unwrap_or_default();
 
         h_flex()
             .w_full()
@@ -648,15 +672,23 @@ impl FriendsScreen {
                     .w(px(36.))
                     .h(px(36.))
                     .rounded_full()
-                    .bg(theme.warning.opacity(0.2))
+                    .bg(theme.muted.opacity(0.2))
+                    .overflow_hidden()
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(
+                    .child(if let Some(avatar_img) = avatar {
+                        img(ImageSource::Render(avatar_img))
+                            .w(px(36.))
+                            .h(px(36.))
+                            .object_fit(ObjectFit::Cover)
+                            .into_any_element()
+                    } else {
                         Icon::new(IconName::Heart)
                             .size(px(16.))
-                            .text_color(theme.warning),
-                    ),
+                            .text_color(theme.warning)
+                            .into_any_element()
+                    }),
             )
             .child(
                 v_flex()
@@ -665,7 +697,7 @@ impl FriendsScreen {
                     .child(
                         div()
                             .text_sm()
-                            .font_weight(600)
+                            .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.foreground)
                             .child("Yourself"),
                     )
@@ -687,14 +719,15 @@ impl FriendsScreen {
                     .child(
                         div()
                             .text_xs()
-                            .font_weight(500)
+                            .font_weight(FontWeight::MEDIUM)
                             .text_color(theme.warning)
                             .child("Friend"),
                     ),
             )
+            .into_any_element()
     }
 
-    fn render_friend_row(&self, friend: &FriendEntry, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_friend_row(&self, friend: &FriendEntry, cx: &mut Context<Self>) -> AnyElement {
         if friend.is_self {
             return self.render_self_row(cx);
         }
@@ -790,6 +823,7 @@ impl FriendsScreen {
                     }),
             )
             .child(div().w_full().h(px(1.)).bg(border_col.opacity(0.4)).mx_4())
+            .into_any_element()
     }
 
     fn render_pending_inbound_actions(
