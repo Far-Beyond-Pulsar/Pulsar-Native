@@ -49,6 +49,20 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
         }
     }
 
+    let inbound = gist_storage::search_inbound_requests(&username);
+    for inbound_username in &inbound {
+        if own_set.contains(inbound_username.as_str()) || inbound_username == &username {
+            continue;
+        }
+        result.push(FriendInfo {
+            username: inbound_username.clone(),
+            pfp: format!("https://github.com/{}.png", inbound_username),
+            relation_status: RelationStatus::PendingInbound,
+            current_project: None,
+            last_seen: None,
+        });
+    }
+
     Ok(result)
 }
 

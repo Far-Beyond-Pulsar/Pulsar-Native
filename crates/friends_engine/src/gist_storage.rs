@@ -196,7 +196,7 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
     } else {
         let body = GistRequest {
             description: GIST_DESCRIPTION.to_string(),
-            public: false,
+            public: true,
             files,
         };
         let resp = client
@@ -215,8 +215,76 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
     Ok(())
 }
 
+#[derive(Deserialize)]
+struct SearchResponse {
+    items: Vec<SearchItem>,
+}
+
+#[derive(Deserialize)]
+struct SearchItem {
+    repository: SearchRepo,
+}
+
+#[derive(Deserialize)]
+struct SearchRepo {
+    owner: SearchOwner,
+}
+
+#[derive(Deserialize)]
+struct SearchOwner {
+    login: String,
+}
+
 pub fn read_user_friends_list(username: &str) -> Result<Vec<String>, FriendsError> {
     read_engine_friends(username)
+}
+
+pub fn search_inbound_requests(username: &str) -> Vec<String> {
+    let token = match github_token() {
+        Ok(t) => t,
+        Err(_) => return Vec::new(),
+    };
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    let url = format!(
+        "https://api.github.com/search/code?q={username}+filename:{filename}&per_page=50",
+        username = username,
+        filename = GIST_FILENAME,
+    );
+
+    let resp = match client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "Pulsar-Engine")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+    {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+
+    if !resp.status().is_success() {
+        return Vec::new();
+    }
+
+    let search: SearchResponse = match resp.json() {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+
+    search
+        .items
+        .into_iter()
+        .map(|item| item.repository.owner.login)
+        .filter(|login| login != username)
+        .collect()
 }
 
 pub fn get_own_username() -> Result<String, FriendsError> {

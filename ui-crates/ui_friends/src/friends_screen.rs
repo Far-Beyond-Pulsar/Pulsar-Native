@@ -144,12 +144,34 @@ impl FriendsScreen {
             current_project_version: None,
             online: false,
             last_seen: info.last_seen,
+            is_self: false,
         }
     }
 
     pub fn do_send_friend_request(&mut self, cx: &mut Context<Self>) {
         let username = self.add_friend_username.trim().to_string();
         if username.is_empty() {
+            return;
+        }
+
+        let own_username = friends_engine::get_own_username().ok();
+        if own_username.as_deref() == Some(&username) {
+            let self_entry = FriendEntry {
+                username: "yourself".to_string(),
+                pfp_url: format!("https://github.com/{}.png", &username),
+                relation_status: RelationStatus::Mutual,
+                current_project: Some("self-love".to_string()),
+                current_project_version: None,
+                online: true,
+                last_seen: None,
+                is_self: true,
+            };
+            self.add_friend_state = AddFriendState::SelfFriended;
+            self.add_friend_username.clear();
+            if !self.friends.iter().any(|f| f.is_self) {
+                self.friends.insert(0, self_entry);
+            }
+            cx.notify();
             return;
         }
 
@@ -484,6 +506,22 @@ impl FriendsScreen {
                     )
                 },
             )
+            .when(
+                matches!(self.add_friend_state, AddFriendState::SelfFriended),
+                |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.warning)
+                                    .child("You can't be friends with yourself... or can you? 🌟"),
+                            ),
+                    )
+                },
+            )
             .when_some(
                 match &self.add_friend_state {
                     AddFriendState::Error(msg) => Some(msg.clone()),
@@ -590,7 +628,76 @@ impl FriendsScreen {
             }))
     }
 
+    fn render_self_row(&self, cx: &Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let border_col = theme.border;
+        let muted_fg = theme.muted_foreground;
+
+        h_flex()
+            .w_full()
+            .px_3()
+            .py_2()
+            .rounded_lg()
+            .gap_3()
+            .items_center()
+            .border_1()
+            .border_color(theme.warning.opacity(0.3))
+            .bg(theme.warning.opacity(0.05))
+            .child(
+                div()
+                    .w(px(36.))
+                    .h(px(36.))
+                    .rounded_full()
+                    .bg(theme.warning.opacity(0.2))
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .child(
+                        Icon::new(IconName::Heart)
+                            .size(px(16.))
+                            .text_color(theme.warning),
+                    ),
+            )
+            .child(
+                v_flex()
+                    .flex_1()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(600)
+                            .text_color(theme.foreground)
+                            .child("Yourself"),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.warning)
+                            .child("Self-love is the best love 💫"),
+                    ),
+            )
+            .child(
+                div()
+                    .px_2()
+                    .py_0p5()
+                    .rounded_full()
+                    .bg(theme.warning.opacity(0.15))
+                    .border_1()
+                    .border_color(theme.warning.opacity(0.3))
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_weight(500)
+                            .text_color(theme.warning)
+                            .child("Friend"),
+                    ),
+            )
+    }
+
     fn render_friend_row(&self, friend: &FriendEntry, cx: &mut Context<Self>) -> impl IntoElement {
+        if friend.is_self {
+            return self.render_self_row(cx);
+        }
         let border_col = cx.theme().border;
         let bg_col = cx.theme().background;
         let fg = cx.theme().foreground;
