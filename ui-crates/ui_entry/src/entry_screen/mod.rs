@@ -239,7 +239,7 @@ impl EntryScreen {
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
             theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
-            friends_screen: cx.new(|cx| ui_friends::FriendsScreen::new(_window, cx)),
+            friends_screen: cx.new(|cx| ui_friends::FriendsScreen::new_without_invite(_window, cx)),
             project_thumbnails: HashMap::new(),
             project_thumbnail_inflight: 0,
             project_thumbnail_queue: VecDeque::new(),

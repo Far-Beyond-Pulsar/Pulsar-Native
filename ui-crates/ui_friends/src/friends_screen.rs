@@ -17,8 +17,9 @@ pub struct FriendsScreen {
     pub view: FriendTab,
     pub friends: Vec<FriendEntry>,
     pub loading: bool,
+    pub show_invite: bool,
     pub friends_list: Entity<SearchableList<String>>,
-    pub add_friend_input: Entity<InputState>,
+    pub add_friend_input: Option<Entity<InputState>>,
     pub add_friend_username: String,
     pub add_friend_state: AddFriendState,
     pub avatar_cache: HashMap<String, Option<Arc<RenderImage>>>,
@@ -29,6 +30,14 @@ impl EventEmitter<DismissEvent> for FriendsScreen {}
 
 impl FriendsScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_options(window, cx, true)
+    }
+
+    pub fn new_without_invite(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_options(window, cx, false)
+    }
+
+    fn new_with_options(window: &mut Window, cx: &mut Context<Self>, show_invite: bool) -> Self {
         let friends_list = cx.new(|cx| {
             SearchableList::<String>::new(window, cx, Vec::<String>::new(), |u: &String| u.clone())
                 .with_empty_text("No friends yet")
@@ -36,48 +45,55 @@ impl FriendsScreen {
                 .with_max_height(px(360.0))
         });
 
-        let add_friend_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("GitHub username"));
+        let mut subscriptions = vec![cx.subscribe(
+            &friends_list,
+            |_this: &mut Self, _list, event: &SearchableListEvent<String>, cx| {
+                if let SearchableListEvent::Select(_) = event {
+                    cx.emit(DismissEvent);
+                }
+            },
+        )];
 
-        let subscriptions = vec![
-            cx.subscribe(
-                &friends_list,
-                |_this: &mut Self, _list, event: &SearchableListEvent<String>, cx| {
-                    if let SearchableListEvent::Select(_) = event {
-                        cx.emit(DismissEvent);
-                    }
-                },
-            ),
-            cx.subscribe(
-                &add_friend_input,
-                |this: &mut Self, _input, event: &InputEvent, cx| match event {
-                    InputEvent::Change => {
-                        this.add_friend_username =
-                            this.add_friend_input.read(cx).text().to_string();
-                        if matches!(
-                            this.add_friend_state,
-                            AddFriendState::Success | AddFriendState::GistNotFound | AddFriendState::Error(_)
-                        ) {
-                            this.add_friend_state = AddFriendState::Idle;
+        let add_friend_input;
+        if show_invite {
+            add_friend_input =
+                Some(cx.new(|cx| InputState::new(window, cx).placeholder("GitHub username")));
+            if let Some(ref input) = add_friend_input {
+                let input = input.clone();
+                subscriptions.push(cx.subscribe(
+                    &input,
+                    |this: &mut Self, _input, event: &InputEvent, cx| match event {
+                        InputEvent::Change => {
+                            this.add_friend_username =
+                                this.add_friend_input.as_ref().unwrap().read(cx).text().to_string();
+                            if matches!(
+                                this.add_friend_state,
+                                AddFriendState::Success | AddFriendState::GistNotFound | AddFriendState::Error(_)
+                            ) {
+                                this.add_friend_state = AddFriendState::Idle;
+                            }
+                            cx.notify();
                         }
-                        cx.notify();
-                    }
-                    InputEvent::PressEnter { .. } => {
-                        if !this.add_friend_username.trim().is_empty() {
-                            this.do_send_friend_request(cx);
+                        InputEvent::PressEnter { .. } => {
+                            if !this.add_friend_username.trim().is_empty() {
+                                this.do_send_friend_request(cx);
+                            }
                         }
-                    }
-                    _ => {}
-                },
-            ),
-        ];
+                        _ => {}
+                    },
+                ));
+            }
+        } else {
+            add_friend_input = None;
+        }
 
         let mut screen = Self {
             view: FriendTab::Online,
             friends: Vec::new(),
             loading: false,
+            show_invite,
             friends_list,
-            add_friend_input: add_friend_input.clone(),
+            add_friend_input,
             add_friend_username: String::new(),
             add_friend_state: AddFriendState::Idle,
             avatar_cache: HashMap::new(),
@@ -444,7 +460,7 @@ impl Render for FriendsScreen {
                     .pb_6()
                     .gap_6()
                     .child(self.render_header(total, online_count, pending_count, cx))
-                    .child(self.render_add_friend_bar(cx))
+                    .when(self.show_invite, |this| this.child(self.render_add_friend_bar(cx)))
                     .child(self.render_tabs(pending_count, cx)),
             )
             .child(div().w_full().h(px(1.)).bg(border))
@@ -599,7 +615,7 @@ impl FriendsScreen {
                                     )
                                     .child(
                                         div().flex_1().h_full().child(ui::input::TextInput::new(
-                                            &self.add_friend_input,
+                                            self.add_friend_input.as_ref().unwrap(),
                                         )),
                                     ),
                             ),
