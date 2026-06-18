@@ -429,6 +429,12 @@ struct PublicGistEntry {
     files: Option<std::collections::HashMap<String, serde_json::Value>>,
 }
 
+pub fn check_user_has_gist(username: &str) -> Result<bool, FriendsError> {
+    let token = github_token()?;
+    let gist_id = find_pulsar_gist(&token, username)?;
+    Ok(gist_id.is_some())
+}
+
 pub fn read_user_friends_list(username: &str) -> Result<Vec<String>, FriendsError> {
     read_engine_friends(username)
 }

@@ -111,6 +111,10 @@ pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
     gist_storage::set_home_servers(home_servers)
 }
 
+pub fn check_user_has_gist(username: &str) -> Result<bool, FriendsError> {
+    gist_storage::check_user_has_gist(username)
+}
+
 pub fn is_authenticated() -> bool {
     if let Some(ec) = engine_state::EngineContext::global() {
         if ec.auth_profile().is_some() {

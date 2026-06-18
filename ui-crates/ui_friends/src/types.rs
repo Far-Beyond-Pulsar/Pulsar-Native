@@ -21,6 +21,8 @@ pub struct FriendEntry {
 
 pub enum AddFriendState {
     Idle,
+    CheckingGist,
+    GistNotFound,
     Sending,
     Success,
     SelfFriended,

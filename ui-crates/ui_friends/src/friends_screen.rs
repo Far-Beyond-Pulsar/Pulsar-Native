@@ -56,7 +56,7 @@ impl FriendsScreen {
                             this.add_friend_input.read(cx).text().to_string();
                         if matches!(
                             this.add_friend_state,
-                            AddFriendState::Success | AddFriendState::Error(_)
+                            AddFriendState::Success | AddFriendState::GistNotFound | AddFriendState::Error(_)
                         ) {
                             this.add_friend_state = AddFriendState::Idle;
                         }
@@ -203,18 +203,64 @@ impl FriendsScreen {
 
         let is_self = friends_engine::get_own_username().ok().as_deref() == Some(&username);
 
-        self.add_friend_state = AddFriendState::Sending;
+        if is_self {
+            self.add_friend_state = AddFriendState::Sending;
+            cx.notify();
+            self.do_complete_invite(&username, cx);
+            return;
+        }
+
+        self.add_friend_state = AddFriendState::CheckingGist;
         cx.notify();
 
-        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
         let target = username.clone();
-
+        let (tx, rx) = smol::channel::bounded::<Result<bool, FriendsError>>(1);
         std::thread::spawn(move || {
-            let result = friends_engine::send_friend_request(&target);
+            let result = friends_engine::check_user_has_gist(&target);
             let _ = smol::block_on(tx.send(result));
         });
 
-        let target_for_self = username.clone();
+        let target_for_complete = username.clone();
+        cx.spawn(async move |this, cx| {
+            let has_gist = rx.recv().await.unwrap_or(Err(FriendsError::Network(
+                "Channel closed".to_string(),
+            )));
+            cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    match has_gist {
+                        Ok(true) => {
+                            screen.add_friend_state = AddFriendState::Sending;
+                            cx.notify();
+                            screen.do_complete_invite(&target_for_complete, cx);
+                        }
+                        Ok(false) => {
+                            screen.add_friend_state = AddFriendState::GistNotFound;
+                            cx.notify();
+                        }
+                        Err(e) => {
+                            screen.add_friend_state =
+                                AddFriendState::Error(format!("{:?}", e));
+                            cx.notify();
+                        }
+                    }
+                });
+            });
+        })
+        .detach();
+    }
+
+    fn do_complete_invite(&mut self, username: &str, cx: &mut Context<Self>) {
+        let target = username.to_string();
+        let is_self = friends_engine::get_own_username().ok().as_deref() == Some(&target);
+
+        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
+        let target_for_thread = target.clone();
+        std::thread::spawn(move || {
+            let result = friends_engine::send_friend_request(&target_for_thread);
+            let _ = smol::block_on(tx.send(result));
+        });
+
+        let target_for_self = target.clone();
         cx.spawn(async move |this, cx| {
             let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
                 "Channel closed".to_string(),
@@ -517,7 +563,10 @@ impl FriendsScreen {
 
     fn render_add_friend_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let is_sending = matches!(self.add_friend_state, AddFriendState::Sending);
+        let is_busy = matches!(
+            self.add_friend_state,
+            AddFriendState::Sending | AddFriendState::CheckingGist
+        );
 
         v_flex()
             .w_full()
@@ -558,12 +607,32 @@ impl FriendsScreen {
                     .child(
                         Button::new("send-friend-request")
                             .primary()
-                            .label("Add Friend")
-                            .disabled(is_sending || self.add_friend_username.trim().is_empty())
+                            .label(if matches!(self.add_friend_state, AddFriendState::CheckingGist) {
+                                "Checking"
+                            } else {
+                                "Add Friend"
+                            })
+                            .disabled(is_busy || self.add_friend_username.trim().is_empty())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.do_send_friend_request(cx);
                             })),
                     ),
+            )
+            .when(
+                matches!(self.add_friend_state, AddFriendState::CheckingGist),
+                |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.muted_foreground)
+                                    .child("Checking if user has Pulsar Engine set up..."),
+                            ),
+                    )
+                },
             )
             .when(
                 matches!(self.add_friend_state, AddFriendState::Success),
@@ -582,6 +651,27 @@ impl FriendsScreen {
                                     .text_sm()
                                     .text_color(theme.success)
                                     .child("Request Sent!"),
+                            ),
+                    )
+                },
+            )
+            .when(
+                matches!(self.add_friend_state, AddFriendState::GistNotFound),
+                |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::TriangleAlert)
+                                    .size(px(13.))
+                                    .text_color(theme.warning),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.warning)
+                                    .child("This user hasn't set up Pulsar Engine friends yet"),
                             ),
                     )
                 },
