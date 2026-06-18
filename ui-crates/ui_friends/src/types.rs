@@ -18,11 +18,3 @@ pub struct FriendEntry {
     pub last_seen: Option<String>,
     pub is_self: bool,
 }
-
-pub enum AddFriendState {
-    Idle,
-    Sending,
-    Success,
-    SelfFriended,
-    Error(String),
-}

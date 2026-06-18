@@ -29,6 +29,7 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
                     relation_status: RelationStatus::PendingOutbound,
                     current_project: None,
                     last_seen: None,
+                    home_server: None,
                 });
                 continue;
             }
@@ -45,6 +46,7 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
                 relation_status: RelationStatus::Mutual,
                 current_project: None,
                 last_seen: None,
+                home_server: None,
             });
         } else {
             tracing::info!("[mutual_detection] compute_friends_list: {} -> {} is PendingOutbound", username, friend_username);
@@ -54,6 +56,7 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
                 relation_status: RelationStatus::PendingOutbound,
                 current_project: None,
                 last_seen: None,
+                home_server: None,
             });
         }
     }
@@ -71,6 +74,7 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
             relation_status: RelationStatus::PendingInbound,
             current_project: None,
             last_seen: None,
+            home_server: None,
         });
     }
 

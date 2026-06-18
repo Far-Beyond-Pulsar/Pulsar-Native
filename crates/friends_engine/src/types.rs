@@ -17,6 +17,7 @@ pub struct FriendInfo {
     pub relation_status: RelationStatus,
     pub current_project: Option<String>,
     pub last_seen: Option<String>,
+    pub home_server: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,6 +35,24 @@ impl FriendsList {
 pub struct EngineFriendsFile {
     #[serde(default)]
     pub friends: Vec<String>,
+    #[serde(default)]
+    pub home_servers: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FriendsNotificationType {
+    FriendRequest,
+    FriendRequestAccepted,
+    FriendRequestDeclined,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FriendNotification {
+    pub notification_type: FriendsNotificationType,
+    pub from_username: String,
+    pub from_home_server: Option<String>,
+    pub target_username: String,
+    pub target_home_server: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

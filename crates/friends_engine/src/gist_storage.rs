@@ -9,6 +9,41 @@ const GIST_DESCRIPTION: &str = "Pulsar Engine - Friends List";
 // Keyed by (own_username, gist_id) so it is never returned for other users' lookups.
 static CACHED_OWN_GIST: RwLock<Option<(String, String)>> = RwLock::new(None);
 
+/// Read only the metadata fields (home_servers) from the gist without parsing friends.
+pub(crate) fn read_engine_friends_file_meta(username: &str) -> Result<Vec<String>, FriendsError> {
+    let token = github_token()?;
+    let gist_id = find_pulsar_gist(&token, username)?;
+    let gist_id = match gist_id {
+        Some(id) => id,
+        None => return Ok(Vec::new()),
+    };
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| FriendsError::Network(e.to_string()))?;
+    let resp = client
+        .get(format!("https://api.github.com/gists/{}", gist_id))
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "Pulsar-Engine")
+        .send()
+        .map_err(|e| FriendsError::Network(e.to_string()))?;
+    if !resp.status().is_success() {
+        return Ok(Vec::new());
+    }
+    let gist: GistResponse = resp.json().map_err(|_| FriendsError::Api("Parse error".to_string()))?;
+    let content = match gist.files.and_then(|mut f| f.remove(GIST_FILENAME)).and_then(|f| f.content) {
+        Some(c) => c,
+        None => return Ok(Vec::new()),
+    };
+    #[derive(serde::Deserialize)]
+    struct FileMeta {
+        #[serde(default)]
+        home_servers: Vec<String>,
+    }
+    let meta: FileMeta = serde_json::from_str(&content).unwrap_or(FileMeta { home_servers: Vec::new() });
+    Ok(meta.home_servers)
+}
+
 fn cached_own_gist_id(username: &str) -> Option<String> {
     let lock = CACHED_OWN_GIST.read().ok()?;
     lock.as_ref().and_then(|(u, id)| if u == username { Some(id.clone()) } else { None })
@@ -221,7 +256,7 @@ pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> 
                 let parsed: crate::types::EngineFriendsFile =
                     serde_json::from_str(content).unwrap_or_else(|e| {
                         tracing::info!("[gist_storage] read_engine_friends: parse error: {}", e);
-                        crate::types::EngineFriendsFile { friends: Vec::new() }
+                        crate::types::EngineFriendsFile { friends: Vec::new(), home_servers: Vec::new() }
                     });
                 tracing::info!("[gist_storage] read_engine_friends: parsed {} friends for {}: {:?}", parsed.friends.len(), username, parsed.friends);
                 return Ok(parsed.friends);
@@ -243,8 +278,15 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
     tracing::info!("[gist_storage] write_engine_friends: own username resolved as {}", username);
     let gist_id = find_pulsar_gist(&token, &username)?;
 
+    // Preserve existing home_servers from the gist
+    let existing_home_servers = match &gist_id {
+        Some(_) => read_engine_friends_file_meta(&username).ok().unwrap_or_default(),
+        None => Vec::new(),
+    };
+
     let content = serde_json::to_string_pretty(&serde_json::json!({
         "friends": friends,
+        "home_servers": existing_home_servers,
         "updated_at": chrono::Utc::now().to_rfc3339()
     }))
     .map_err(|e| FriendsError::Api(e.to_string()))?;
@@ -312,6 +354,67 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
     }
 
     tracing::info!("[gist_storage] write_engine_friends: write complete for {}", username);
+    Ok(())
+}
+
+pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
+    let token = github_token()?;
+    let username = github_username()?;
+    let friends = get_own_friends()?;
+    let gist_id = find_pulsar_gist(&token, &username)?;
+
+    let content = serde_json::to_string_pretty(&serde_json::json!({
+        "friends": friends,
+        "home_servers": home_servers,
+        "updated_at": chrono::Utc::now().to_rfc3339()
+    }))
+    .map_err(|e| FriendsError::Api(e.to_string()))?;
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| FriendsError::Network(e.to_string()))?;
+
+    let mut files = std::collections::HashMap::new();
+    files.insert(
+        GIST_FILENAME.to_string(),
+        GistFile {
+            content: content.clone(),
+        },
+    );
+
+    if let Some(id) = gist_id {
+        let url = format!("https://api.github.com/gists/{}", id);
+        let patch_body = serde_json::json!({ "files": files });
+        let resp = client
+            .patch(&url)
+            .json(&patch_body)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "Pulsar-Engine")
+            .send()
+            .map_err(|e| FriendsError::Network(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(FriendsError::Api(format!("HTTP {}", resp.status())));
+        }
+    } else {
+        let body = GistRequest {
+            description: GIST_DESCRIPTION.to_string(),
+            public: true,
+            files,
+        };
+        let resp = client
+            .post("https://api.github.com/gists")
+            .json(&body)
+            .header("Authorization", format!("Bearer {}", token))
+            .header("User-Agent", "Pulsar-Engine")
+            .send()
+            .map_err(|e| FriendsError::Network(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(FriendsError::Api(format!("HTTP {}", resp.status())));
+        }
+    }
+
+    tracing::info!("[gist_storage] set_home_servers: wrote {} home servers for {}", home_servers.len(), username);
     Ok(())
 }
 

@@ -171,6 +171,7 @@ impl EntryScreen {
         } else {
             Vec::new()
         };
+        let cloud_urls: Vec<String> = cloud_servers.iter().map(|s| s.url.clone()).collect();
         let add_server_alias_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("My Studio Server"));
         let add_server_url_input =
@@ -268,13 +269,15 @@ impl EntryScreen {
                         this.begin_github_sign_in(cx);
                     }
                     ui_common::ProfileDropdownEvent::SignedOut => {
-                        // Reset device-flow state if sign-out happened mid-flow.
                         this.auth_loading = false;
                         this.auth_device_code = None;
                         this.auth_device_verification_url = None;
                         this.auth_device_modal_visible = false;
                         this.auth_device_copy_notice = None;
                         this.auth_message = Some("Signed out".to_string());
+                        this.friends_screen.update(cx, |fs, cx| {
+                            fs.refresh_friends(cx);
+                        });
                         cx.notify();
                     }
                 }
@@ -399,6 +402,22 @@ impl EntryScreen {
 
         // Check dependencies on background thread
         screen.check_dependencies_async(cx);
+
+        // Sync cloud server URLs to friends engine home_servers and trigger initial friend list load
+        if friends_engine::is_authenticated() && !cloud_urls.is_empty() {
+            let _ = friends_engine::set_home_servers(&cloud_urls);
+        }
+        if friends_engine::is_authenticated() {
+            let fs = screen.friends_screen.clone();
+            cx.spawn(async move |_this, cx| {
+                cx.update(|cx| {
+                    fs.update(cx, |fs, cx| {
+                        fs.refresh_friends(cx);
+                    });
+                });
+            })
+            .detach();
+        }
 
         screen
     }
@@ -1738,12 +1757,22 @@ default_scene = "scenes/main.scene"
                                 ec.set_auth_profile(profile.clone());
                             }
                             this.auth_message = Some(format!("Signed in as @{}", profile.login));
-                            // Reset the dropdown's avatar cache so it reloads with
-                            // the new profile's avatar.
                             this.profile_dropdown.update(cx, |pd, cx| {
                                 pd.avatar_url_loaded = None;
                                 pd.avatar_image = None;
                                 pd.ensure_avatar_loaded(cx);
+                            });
+                            // Sync cloud URLs as home_servers and refresh friends
+                            let cloud_urls: Vec<String> = this
+                                .cloud_servers
+                                .iter()
+                                .map(|s| s.url.clone())
+                                .collect();
+                            if !cloud_urls.is_empty() {
+                                let _ = friends_engine::set_home_servers(&cloud_urls);
+                            }
+                            this.friends_screen.update(cx, |fs, cx| {
+                                fs.refresh_friends(cx);
                             });
                         }
                         Err(err) => {

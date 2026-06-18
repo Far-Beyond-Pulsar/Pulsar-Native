@@ -69,6 +69,9 @@ anyhow = { workspace = true }
 # Pulsar multiplayer core
 pulsar-multiplayer-core = { workspace = true }
 
+# HTTP client (GitHub API verification)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
 # Utilities
 uuid = { workspace = true, features = ["v4", "serde"] }
 bytes = "1.7"

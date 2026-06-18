@@ -24,6 +24,7 @@ use pulsar_multiplayer_core::session::Role;
 use crate::config::Config;
 use crate::health::HealthChecker;
 use crate::metrics::METRICS;
+use crate::notifications::{GitHubAuthRequest, GitHubAuthResponse, Notification, NotificationStore, PushNotificationRequest};
 use crate::rendezvous::RendezvousCoordinator;
 use crate::session::SessionStore;
 
@@ -34,6 +35,7 @@ pub struct AppState {
     pub sessions: Arc<SessionStore>,
     pub health: Arc<HealthChecker>,
     pub rendezvous: Arc<RendezvousCoordinator>,
+    pub notifications: Arc<NotificationStore>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -84,12 +86,15 @@ pub async fn run_server(config: Arc<Config>, shutdown: mpsc::Receiver<()>) -> Re
     let health = Arc::new(HealthChecker::new(config.clone()));
     let rendezvous = Arc::new(RendezvousCoordinator::new(auth.clone(), (*config).clone()));
 
+    let notifications = Arc::new(NotificationStore::new());
+
     let state = AppState {
         config,
         auth,
         sessions,
         health,
         rendezvous,
+        notifications,
     };
 
     let app = create_router(state);
@@ -125,7 +130,11 @@ fn create_router(state: AppState) -> Router {
         .route("/v1/sessions/{id}", get(get_session))
         // WebSocket signaling
         .route("/v1/signaling", get(websocket_handler))
-        .route("/ws", get(websocket_handler)) // Simple /ws endpoint for client compatibility
+        .route("/ws", get(websocket_handler))
+        // GitHub auth & notifications
+        .route("/api/v1/auth/github", post(github_auth_handler))
+        .route("/api/v1/notifications", get(get_notifications).post(push_notification_handler))
+        .route("/api/v1/notifications/relay", post(relay_notification_handler))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -325,6 +334,98 @@ async fn websocket_handler(
 async fn shutdown_signal(mut shutdown: mpsc::Receiver<()>) {
     shutdown.recv().await;
     info!("🛑 HTTP server shutdown signal received");
+}
+
+// ── GitHub Auth & Notification Handlers ─────────────────────
+
+async fn github_auth_handler(
+    State(state): State<AppState>,
+    Json(req): Json<GitHubAuthRequest>,
+) -> Result<Json<GitHubAuthResponse>, ErrorResponse> {
+    info!("🔐 GitHub auth request received");
+
+    let (github_login, github_id) = state
+        .notifications
+        .verify_github_token(&req.token)
+        .await
+        .map_err(|e| ErrorResponse {
+            error: "auth_failed".to_string(),
+            message: e.to_string(),
+        })?;
+
+    // Issue a short-lived server JWT for subsequent API calls
+    let server_token = state
+        .auth
+        .create_token(
+            github_login.clone(),
+            "auth".to_string(),
+            pulsar_multiplayer_core::session::Role::Editor,
+            std::time::Duration::from_secs(3600),
+        )
+        .map_err(|e| ErrorResponse {
+            error: "token_creation_failed".to_string(),
+            message: e.to_string(),
+        })?;
+
+    info!("✅ GitHub auth successful for {}", github_login);
+
+    Ok(Json(GitHubAuthResponse {
+        github_login,
+        github_id,
+        server_token,
+    }))
+}
+
+async fn get_notifications(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<Vec<Notification>>, ErrorResponse> {
+    let username = params.get("username").ok_or_else(|| ErrorResponse {
+        error: "missing_parameter".to_string(),
+        message: "username query parameter is required".to_string(),
+    })?;
+
+    if !state.notifications.is_user_verified(username) {
+        return Err(ErrorResponse {
+            error: "unverified_user".to_string(),
+            message: "User must authenticate via /api/v1/auth/github first".to_string(),
+        });
+    }
+
+    let notes = state.notifications.take_notifications(username);
+    info!("📬 Returning {} notifications for {}", notes.len(), username);
+    Ok(Json(notes))
+}
+
+async fn push_notification_handler(
+    State(state): State<AppState>,
+    Json(notification): Json<Notification>,
+) -> Result<impl IntoResponse, ErrorResponse> {
+    state.notifications.push_notification(notification);
+    info!("📨 Notification stored");
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn relay_notification_handler(
+    State(state): State<AppState>,
+    Json(req): Json<PushNotificationRequest>,
+) -> Result<impl IntoResponse, ErrorResponse> {
+    info!(
+        "🔄 Relaying notification from {} to {} at {}",
+        req.from_username, req.target_username, req.target_home_server
+    );
+
+    state
+        .notifications
+        .relay_notification(&req)
+        .await
+        .map_err(|e| ErrorResponse {
+            error: "relay_failed".to_string(),
+            message: e.to_string(),
+        })?;
+
+    info!("✅ Notification relayed successfully");
+    Ok(StatusCode::ACCEPTED)
 }
 
 #[cfg(test)]
