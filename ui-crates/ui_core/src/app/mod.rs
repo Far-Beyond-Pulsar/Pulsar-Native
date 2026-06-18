@@ -3,6 +3,7 @@
 mod agent_chat_panel;
 mod constructors;
 pub mod event_handlers;
+mod friends_panel;
 mod manual_tool_panel;
 mod open_editors;
 mod panel_window;
@@ -74,6 +75,15 @@ impl PulsarApp {
         cx: &mut Context<Self>,
     ) {
         self.toggle_flamegraph(window, cx);
+    }
+
+    fn on_toggle_friends(
+        &mut self,
+        _: &ToggleFriends,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.toggle_friends_panel(window, cx);
     }
 
     fn on_toggle_agent_chat(
