@@ -7,6 +7,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputEvent, InputState},
+    skeleton::Skeleton,
     v_flex, ActiveTheme as _, Disableable, Icon, IconName,
 };
 
@@ -25,7 +26,7 @@ impl FriendsScreen {
         let add_friend_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("GitHub username"));
 
-        let mut screen = Self {
+        let screen = Self {
             view: FriendTab::Online,
             friends: Vec::new(),
             loading: false,
@@ -65,33 +66,37 @@ impl FriendsScreen {
         self.loading = true;
         cx.notify();
 
+        if !friends_engine::is_authenticated() {
+            self.loading = false;
+            self.friends.clear();
+            cx.notify();
+            return;
+        }
+
+        let (tx, rx) = smol::channel::bounded::<Result<Vec<FriendInfo>, FriendsError>>(1);
+
+        std::thread::spawn(move || {
+            let result = friends_engine::get_friends_list();
+            let _ = smol::block_on(tx.send(result));
+        });
+
         cx.spawn(async move |this, cx| {
-            if !friends_engine::is_authenticated() {
-                cx.update(|cx| {
-                    let _ = this.update(cx, |screen, cx| {
-                        screen.loading = false;
-                        cx.notify();
-                    });
-                });
-                return;
-            }
-
-            let result = std::thread::spawn(|| friends_engine::get_friends_list()).join();
-
+            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
+                "Channel closed".to_string(),
+            )));
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.loading = false;
                     match result {
-                        Ok(Ok(list)) => {
-                            screen.friends =
-                                list.into_iter().map(Self::friend_info_to_entry).collect();
+                        Ok(list) => {
+                            let own = friends_engine::get_own_username().ok();
+                            screen.friends = list
+                                .into_iter()
+                                .map(|info| Self::friend_info_to_entry(info, own.as_deref()))
+                                .collect();
                         }
-                        Ok(Err(e)) => {
+                        Err(e) => {
                             tracing::error!("[FriendsScreen] Failed to load friends: {:?}", e);
-                            screen.friends = Vec::new();
-                        }
-                        Err(_) => {
-                            tracing::error!("[FriendsScreen] Thread panicked loading friends");
                             screen.friends = Vec::new();
                         }
                     }
@@ -134,7 +139,8 @@ impl FriendsScreen {
         .detach();
     }
 
-    fn friend_info_to_entry(info: FriendInfo) -> FriendEntry {
+    fn friend_info_to_entry(info: FriendInfo, own_username: Option<&str>) -> FriendEntry {
+        let is_self = own_username == Some(&info.username);
         FriendEntry {
             username: info.username.clone(),
             pfp_url: info.pfp.clone(),
@@ -143,7 +149,7 @@ impl FriendsScreen {
             current_project_version: None,
             online: false,
             last_seen: info.last_seen,
-            is_self: false,
+            is_self,
         }
     }
 
@@ -155,98 +161,67 @@ impl FriendsScreen {
             return;
         }
 
-        let own_username = friends_engine::get_own_username().ok();
-        tracing::info!("[FriendsScreen] do_send_friend_request: own_username={:?}", own_username);
+        let is_self = friends_engine::get_own_username().ok().as_deref() == Some(&username);
+        tracing::info!("[FriendsScreen] do_send_friend_request: target={}, is_self={}", username, is_self);
 
-        if own_username.as_deref() == Some(&username) {
-            tracing::info!("[FriendsScreen] do_send_friend_request: self-friend branch");
-            let self_entry = FriendEntry {
-                username: "yourself".to_string(),
-                pfp_url: format!("https://github.com/{}.png", &username),
-                relation_status: RelationStatus::Mutual,
-                current_project: Some("self-love".to_string()),
-                current_project_version: None,
-                online: true,
-                last_seen: None,
-                is_self: true,
-            };
-            self.add_friend_state = AddFriendState::SelfFriended;
-            self.add_friend_username.clear();
-            if !self.friends.iter().any(|f| f.is_self) {
-                self.friends.insert(0, self_entry);
-            }
-            cx.notify();
-            return;
-        }
-
-        tracing::info!("[FriendsScreen] do_send_friend_request: spawning task for {}", username);
         self.add_friend_state = AddFriendState::Sending;
         cx.notify();
 
-        cx.spawn(async move |this, cx| {
-            tracing::info!("[FriendsScreen] spawn task running for target={}", username);
-            let target = username.clone();
-            let result = std::thread::spawn(move || {
-                tracing::info!("[FriendsScreen] blocking thread: calling send_friend_request({})", target);
-                let r = friends_engine::send_friend_request(&target);
-                tracing::info!("[FriendsScreen] blocking thread: send_friend_request({}) returned {:?}", target, r.as_ref().map(|_| "Ok").unwrap_or("Err"));
-                r
-            }).join();
-            tracing::info!("[FriendsScreen] blocking thread joined, thread_panicked={}", result.is_err());
+        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
+        let target = username.clone();
 
+        std::thread::spawn(move || {
+            let result = friends_engine::send_friend_request(&target);
+            let _ = smol::block_on(tx.send(result));
+        });
+
+        let target_for_self = username.clone();
+        cx.spawn(async move |this, cx| {
+            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
+                "Channel closed".to_string(),
+            )));
             cx.update(|cx| {
-                tracing::info!("[FriendsScreen] cx.update running, updating entity");
-                let update_result = this.update(cx, |screen, cx| {
-                    tracing::info!("[FriendsScreen] entity update: result={:?}",
-                        match &result {
-                            Ok(Ok(())) => "Ok(Ok(()))",
-                            Ok(Err(_)) => "Ok(Err(...))",
-                            Err(_) => "Err(panic)",
-                        }
-                    );
+                let _ = this.update(cx, |screen, cx| {
                     match result {
-                        Ok(Ok(())) => {
-                            screen.add_friend_state = AddFriendState::Success;
-                            let added = username.clone();
-                            screen.add_friend_username.clear();
-                            if !screen.friends.iter().any(|f| f.username == added) {
-                                screen.friends.push(FriendEntry {
-                                    username: added.clone(),
-                                    pfp_url: format!("https://github.com/{}.png", added),
-                                    relation_status: RelationStatus::PendingOutbound,
-                                    current_project: None,
+                        Ok(()) => {
+                            if is_self {
+                                screen.add_friend_state = AddFriendState::SelfFriended;
+                                let self_entry = FriendEntry {
+                                    username: "yourself".to_string(),
+                                    pfp_url: format!("https://github.com/{}.png", &target_for_self),
+                                    relation_status: RelationStatus::Mutual,
+                                    current_project: Some("self-love".to_string()),
                                     current_project_version: None,
-                                    online: false,
+                                    online: true,
                                     last_seen: None,
-                                    is_self: false,
-                                });
-                                screen.ensure_avatar_loaded(
-                                    &format!("https://github.com/{}.png", added),
-                                    cx,
-                                );
+                                    is_self: true,
+                                };
+                                if !screen.friends.iter().any(|f| f.is_self) {
+                                    screen.friends.insert(0, self_entry);
+                                }
+                            } else {
+                                screen.add_friend_state = AddFriendState::Success;
                             }
-                            screen.refresh_friends(cx);
+                            screen.add_friend_username.clear();
+                            if !is_self {
+                                screen.refresh_friends(cx);
+                            }
                         }
-                        Ok(Err(FriendsError::NotAuthenticated)) => {
+                        Err(FriendsError::NotAuthenticated) => {
                             screen.add_friend_state =
                                 AddFriendState::Error("Sign in with GitHub first".to_string());
                         }
-                        Ok(Err(FriendsError::NotFound)) => {
+                        Err(FriendsError::NotFound) => {
                             screen.add_friend_state =
                                 AddFriendState::Error("User not found".to_string());
                         }
-                        Ok(Err(e)) => {
+                        Err(e) => {
                             screen.add_friend_state =
                                 AddFriendState::Error(format!("Error: {:?}", e));
-                        }
-                        Err(_) => {
-                            screen.add_friend_state =
-                                AddFriendState::Error("Request failed".to_string());
                         }
                     }
                     cx.notify();
                 });
-                tracing::info!("[FriendsScreen] entity update result: {}", if update_result.is_ok() { "ok" } else { "entity dropped" });
             });
         })
         .detach();
@@ -254,9 +229,13 @@ impl FriendsScreen {
 
     pub fn do_accept_request(&mut self, username: &str, cx: &mut Context<Self>) {
         let target = username.to_string();
+        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
+        std::thread::spawn(move || {
+            let result = friends_engine::accept_friend_request(&target);
+            let _ = smol::block_on(tx.send(result));
+        });
         cx.spawn(async move |this, cx| {
-            let _ =
-                std::thread::spawn(move || friends_engine::accept_friend_request(&target)).join();
+            let _ = rx.recv().await;
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.refresh_friends(cx);
@@ -268,9 +247,13 @@ impl FriendsScreen {
 
     pub fn do_decline_request(&mut self, username: &str, cx: &mut Context<Self>) {
         let target = username.to_string();
+        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
+        std::thread::spawn(move || {
+            let result = friends_engine::decline_friend_request(&target);
+            let _ = smol::block_on(tx.send(result));
+        });
         cx.spawn(async move |this, cx| {
-            let _ =
-                std::thread::spawn(move || friends_engine::decline_friend_request(&target)).join();
+            let _ = rx.recv().await;
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.refresh_friends(cx);
@@ -687,7 +670,6 @@ impl FriendsScreen {
         let avatar = self_entry.and_then(|f| {
             self.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone())
         });
-        let pfp_url = self_entry.map(|f| f.pfp_url.clone()).unwrap_or_default();
 
         h_flex()
             .w_full()
@@ -936,18 +918,42 @@ impl FriendsScreen {
 
     fn render_loading_state(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
+        let border_col = theme.border;
+
         v_flex()
             .w_full()
-            .items_center()
-            .justify_center()
-            .py_16()
-            .gap_4()
-            .child(
-                div()
-                    .text_base()
-                    .text_color(theme.muted_foreground)
-                    .child("Loading friends..."),
-            )
+            .gap_3()
+            .children((0..5).map(|i| {
+                h_flex()
+                    .id(SharedString::from(format!("friend-skel-{}", i)))
+                    .w_full()
+                    .gap_3()
+                    .items_center()
+                    .px_4()
+                    .py_3()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(border_col)
+                    .child(
+                        Skeleton::new()
+                            .w(px(40.))
+                            .h(px(40.))
+                            .rounded(px(40.)),
+                    )
+                    .child(
+                        v_flex()
+                            .flex_1()
+                            .gap_2()
+                            .child(Skeleton::new().w(px(140.)).h_4())
+                            .child(Skeleton::new().secondary(true).w(px(90.)).h_3()),
+                    )
+                    .child(
+                        Skeleton::new()
+                            .w(px(70.))
+                            .h(px(28.))
+                            .rounded(px(6.)),
+                    )
+            }))
     }
 
     fn render_not_authenticated(&self, cx: &mut Context<Self>) -> impl IntoElement {
