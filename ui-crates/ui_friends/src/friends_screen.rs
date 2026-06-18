@@ -1,4 +1,4 @@
-use crate::types::{FriendEntry, FriendTab};
+use crate::types::{AddFriendState, FriendEntry, FriendTab};
 use friends_engine::{FriendInfo, FriendsError, RelationStatus};
 use gpui::{prelude::*, *};
 use std::collections::HashMap;
@@ -7,17 +7,20 @@ use ui::{
     button::{Button, ButtonVariants as _},
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
+    input::{InputEvent, InputState},
     popover::Popover,
     skeleton::Skeleton,
-    v_flex, ActiveTheme as _, Icon, IconName,
+    v_flex, ActiveTheme as _, Disableable, Icon, IconName,
 };
 
 pub struct FriendsScreen {
     pub view: FriendTab,
     pub friends: Vec<FriendEntry>,
     pub loading: bool,
-    pub invite_list: Entity<SearchableList<String>>,
-    pub pending_inbound: Vec<String>,
+    pub friends_list: Entity<SearchableList<String>>,
+    pub add_friend_input: Entity<InputState>,
+    pub add_friend_username: String,
+    pub add_friend_state: AddFriendState,
     pub avatar_cache: HashMap<String, Option<Arc<RenderImage>>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -26,66 +29,61 @@ impl EventEmitter<DismissEvent> for FriendsScreen {}
 
 impl FriendsScreen {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let invite_list = cx.new(|cx| {
+        let friends_list = cx.new(|cx| {
             SearchableList::<String>::new(window, cx, Vec::<String>::new(), |u: &String| u.clone())
-                .with_empty_text("No pending invites")
+                .with_empty_text("No friends yet")
                 .with_max_width(px(280.0))
                 .with_max_height(px(360.0))
         });
 
-        let subscriptions = vec![cx.subscribe(
-            &invite_list,
-            |_this: &mut Self, _list, event: &SearchableListEvent<String>, cx| {
-                if let SearchableListEvent::Select(username) = event {
-                    let target = username.clone();
-                    let target_for_log = target.clone();
-                    let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
-                    std::thread::spawn(move || {
-                        let result = friends_engine::send_friend_request(&target);
-                        let _ = smol::block_on(tx.send(result));
-                    });
-                    cx.spawn(async move |this, cx| {
-                        let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
-                            "Channel closed".to_string(),
-                        )));
-                        cx.update(|cx| {
-                            let _ = this.update(cx, |screen, cx| {
-                                match result {
-                                    Ok(()) => {
-                                        tracing::info!(
-                                            "[FriendsScreen] Accepted invite from {}",
-                                            target_for_log
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::error!(
-                                            "[FriendsScreen] Failed to accept invite from {}: {:?}",
-                                            target_for_log,
-                                            e
-                                        );
-                                    }
-                                }
-                                cx.emit(DismissEvent);
-                                screen.refresh_friends(cx);
-                            });
-                        });
-                    })
-                    .detach();
-                }
-            },
-        )];
+        let add_friend_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("GitHub username"));
+
+        let subscriptions = vec![
+            cx.subscribe(
+                &friends_list,
+                |_this: &mut Self, _list, event: &SearchableListEvent<String>, cx| {
+                    if let SearchableListEvent::Select(_) = event {
+                        cx.emit(DismissEvent);
+                    }
+                },
+            ),
+            cx.subscribe(
+                &add_friend_input,
+                |this: &mut Self, _input, event: &InputEvent, cx| match event {
+                    InputEvent::Change => {
+                        this.add_friend_username =
+                            this.add_friend_input.read(cx).text().to_string();
+                        if matches!(
+                            this.add_friend_state,
+                            AddFriendState::Success | AddFriendState::Error(_)
+                        ) {
+                            this.add_friend_state = AddFriendState::Idle;
+                        }
+                        cx.notify();
+                    }
+                    InputEvent::PressEnter { .. } => {
+                        if !this.add_friend_username.trim().is_empty() {
+                            this.do_send_friend_request(cx);
+                        }
+                    }
+                    _ => {}
+                },
+            ),
+        ];
 
         let mut screen = Self {
             view: FriendTab::Online,
             friends: Vec::new(),
             loading: false,
-            invite_list,
-            pending_inbound: Vec::new(),
+            friends_list,
+            add_friend_input: add_friend_input.clone(),
+            add_friend_username: String::new(),
+            add_friend_state: AddFriendState::Idle,
             avatar_cache: HashMap::new(),
             _subscriptions: subscriptions,
         };
 
-        // Use initial auth state to trigger a first load
         if friends_engine::is_authenticated() {
             screen.loading = true;
         }
@@ -100,8 +98,7 @@ impl FriendsScreen {
         if !friends_engine::is_authenticated() {
             self.loading = false;
             self.friends.clear();
-            self.pending_inbound.clear();
-            self.invite_list.update(cx, |list, cx| list.set_items(Vec::new(), cx));
+            self.friends_list.update(cx, |list, cx| list.set_items(Vec::new(), cx));
             cx.notify();
             return;
         }
@@ -127,21 +124,22 @@ impl FriendsScreen {
                                 .into_iter()
                                 .map(|info| Self::friend_info_to_entry(info, own.as_deref()))
                                 .collect();
-                            screen.pending_inbound = screen
+                            let friends_usernames: Vec<String> = screen
                                 .friends
                                 .iter()
-                                .filter(|f| f.relation_status == RelationStatus::PendingInbound)
+                                .filter(|f| f.relation_status == RelationStatus::Mutual)
                                 .map(|f| f.username.clone())
                                 .collect();
-                    screen
-                        .invite_list
-                        .update(cx, |list, cx| list.set_items(screen.pending_inbound.clone(), cx));
+                            screen.friends_list.update(cx, |list, cx| {
+                                list.set_items(friends_usernames, cx)
+                            });
                         }
                         Err(e) => {
                             tracing::error!("[FriendsScreen] Failed to load friends: {:?}", e);
                             screen.friends = Vec::new();
-                            screen.pending_inbound.clear();
-                            screen.invite_list.update(cx, |list, cx| list.set_items(Vec::new(), cx));
+                            screen.friends_list.update(cx, |list, cx| {
+                                list.set_items(Vec::new(), cx)
+                            });
                         }
                     }
                     let urls: Vec<String> =
@@ -195,6 +193,77 @@ impl FriendsScreen {
             last_seen: info.last_seen,
             is_self,
         }
+    }
+
+    pub fn do_send_friend_request(&mut self, cx: &mut Context<Self>) {
+        let username = self.add_friend_username.trim().to_string();
+        if username.is_empty() {
+            return;
+        }
+
+        let is_self = friends_engine::get_own_username().ok().as_deref() == Some(&username);
+
+        self.add_friend_state = AddFriendState::Sending;
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<Result<(), FriendsError>>(1);
+        let target = username.clone();
+
+        std::thread::spawn(move || {
+            let result = friends_engine::send_friend_request(&target);
+            let _ = smol::block_on(tx.send(result));
+        });
+
+        let target_for_self = username.clone();
+        cx.spawn(async move |this, cx| {
+            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
+                "Channel closed".to_string(),
+            )));
+            cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    match result {
+                        Ok(()) => {
+                            if is_self {
+                                screen.add_friend_state = AddFriendState::SelfFriended;
+                                let self_entry = FriendEntry {
+                                    username: "yourself".to_string(),
+                                    pfp_url: format!("https://github.com/{}.png", &target_for_self),
+                                    relation_status: RelationStatus::Mutual,
+                                    current_project: Some("self-love".to_string()),
+                                    current_project_version: None,
+                                    online: true,
+                                    last_seen: None,
+                                    is_self: true,
+                                };
+                                if !screen.friends.iter().any(|f| f.is_self) {
+                                    screen.friends.insert(0, self_entry);
+                                }
+                            } else {
+                                screen.add_friend_state = AddFriendState::Success;
+                            }
+                            screen.add_friend_username.clear();
+                            if !is_self {
+                                screen.refresh_friends(cx);
+                            }
+                        }
+                        Err(FriendsError::NotAuthenticated) => {
+                            screen.add_friend_state =
+                                AddFriendState::Error("Sign in with GitHub first".to_string());
+                        }
+                        Err(FriendsError::NotFound) => {
+                            screen.add_friend_state =
+                                AddFriendState::Error("User not found".to_string());
+                        }
+                        Err(e) => {
+                            screen.add_friend_state =
+                                AddFriendState::Error(format!("Error: {:?}", e));
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     pub fn do_accept_request(&mut self, username: &str, cx: &mut Context<Self>) {
@@ -329,6 +398,7 @@ impl Render for FriendsScreen {
                     .pb_6()
                     .gap_6()
                     .child(self.render_header(total, online_count, pending_count, cx))
+                    .child(self.render_add_friend_bar(cx))
                     .child(self.render_tabs(pending_count, cx)),
             )
             .child(div().w_full().h(px(1.)).bg(border))
@@ -429,19 +499,127 @@ impl FriendsScreen {
                             })),
                     )
                     .child(
-                        Popover::<SearchableList<String>>::new("invite-popover")
+                        Popover::<SearchableList<String>>::new("friends-popover")
                             .anchor(Corner::BottomRight)
                             .trigger(
-                                Button::new("invite-user")
-                                    .primary()
-                                    .icon(Icon::new(IconName::UserPlus).size(px(13.)))
-                                    .label("Invite"),
+                                Button::new("friends-list-btn")
+                                    .ghost()
+                                    .icon(Icon::new(IconName::Group).size(px(13.)))
+                                    .label("Friends"),
                             )
                             .content({
-                                let list = self.invite_list.clone();
+                                let list = self.friends_list.clone();
                                 move |_window, _cx| list.clone()
                             }),
                     ),
+            )
+    }
+
+    fn render_add_friend_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let is_sending = matches!(self.add_friend_state, AddFriendState::Sending);
+
+        v_flex()
+            .w_full()
+            .gap_2()
+            .child(
+                h_flex()
+                    .w_full()
+                    .gap_3()
+                    .items_center()
+                    .child(
+                        div()
+                            .flex_1()
+                            .h(px(40.))
+                            .rounded_lg()
+                            .border_1()
+                            .border_color(theme.border)
+                            .bg(theme.popover)
+                            .overflow_hidden()
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .h_full()
+                                    .px_3()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Icon::new(IconName::Search)
+                                            .size(px(15.))
+                                            .text_color(theme.muted_foreground),
+                                    )
+                                    .child(
+                                        div().flex_1().h_full().child(ui::input::TextInput::new(
+                                            &self.add_friend_input,
+                                        )),
+                                    ),
+                            ),
+                    )
+                    .child(
+                        Button::new("send-friend-request")
+                            .primary()
+                            .label("Add Friend")
+                            .disabled(is_sending || self.add_friend_username.trim().is_empty())
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.do_send_friend_request(cx);
+                            })),
+                    ),
+            )
+            .when(
+                matches!(self.add_friend_state, AddFriendState::Success),
+                |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::Check)
+                                    .size(px(13.))
+                                    .text_color(theme.success),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.success)
+                                    .child("Request Sent!"),
+                            ),
+                    )
+                },
+            )
+            .when(
+                matches!(self.add_friend_state, AddFriendState::SelfFriended),
+                |this| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(theme.warning)
+                                    .child("You can't be friends with yourself... or can you? 🌟"),
+                            ),
+                    )
+                },
+            )
+            .when_some(
+                match &self.add_friend_state {
+                    AddFriendState::Error(msg) => Some(msg.clone()),
+                    _ => None,
+                },
+                |this, msg| {
+                    this.child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::TriangleAlert)
+                                    .size(px(13.))
+                                    .text_color(theme.danger),
+                            )
+                            .child(div().text_sm().text_color(theme.danger).child(msg)),
+                    )
+                },
             )
     }
 
@@ -533,7 +711,6 @@ impl FriendsScreen {
     fn render_self_row(&self, cx: &Context<Self>) -> AnyElement {
         let theme = cx.theme();
 
-        // Find the self entry to get its pfp_url for the avatar
         let self_entry = self.friends.iter().find(|f| f.is_self);
         let avatar = self_entry.and_then(|f| {
             self.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone())
@@ -868,7 +1045,7 @@ impl FriendsScreen {
             FriendTab::All => (
                 IconName::Group,
                 "No friends yet",
-                "Click the Invite button above to search for friends.",
+                "Type a GitHub username above and click Add Friend to get started.",
             ),
         };
 
