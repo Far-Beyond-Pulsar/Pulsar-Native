@@ -28,7 +28,7 @@ impl FriendsScreen {
         let mut screen = Self {
             view: FriendTab::Online,
             friends: Vec::new(),
-            loading: true,
+            loading: false,
             add_friend_input: add_friend_input.clone(),
             add_friend_username: String::new(),
             add_friend_state: AddFriendState::Idle,
@@ -58,7 +58,6 @@ impl FriendsScreen {
         )
         .detach();
 
-        screen.refresh_friends(cx);
         screen
     }
 
@@ -150,12 +149,17 @@ impl FriendsScreen {
 
     pub fn do_send_friend_request(&mut self, cx: &mut Context<Self>) {
         let username = self.add_friend_username.trim().to_string();
+        tracing::info!("[FriendsScreen] do_send_friend_request: target={:?}", username);
         if username.is_empty() {
+            tracing::info!("[FriendsScreen] do_send_friend_request: empty username, aborting");
             return;
         }
 
         let own_username = friends_engine::get_own_username().ok();
+        tracing::info!("[FriendsScreen] do_send_friend_request: own_username={:?}", own_username);
+
         if own_username.as_deref() == Some(&username) {
+            tracing::info!("[FriendsScreen] do_send_friend_request: self-friend branch");
             let self_entry = FriendEntry {
                 username: "yourself".to_string(),
                 pfp_url: format!("https://github.com/{}.png", &username),
@@ -175,23 +179,36 @@ impl FriendsScreen {
             return;
         }
 
+        tracing::info!("[FriendsScreen] do_send_friend_request: spawning task for {}", username);
         self.add_friend_state = AddFriendState::Sending;
         cx.notify();
 
         cx.spawn(async move |this, cx| {
+            tracing::info!("[FriendsScreen] spawn task running for target={}", username);
             let target = username.clone();
-            let result =
-                std::thread::spawn(move || friends_engine::send_friend_request(&target)).join();
+            let result = std::thread::spawn(move || {
+                tracing::info!("[FriendsScreen] blocking thread: calling send_friend_request({})", target);
+                let r = friends_engine::send_friend_request(&target);
+                tracing::info!("[FriendsScreen] blocking thread: send_friend_request({}) returned {:?}", target, r.as_ref().map(|_| "Ok").unwrap_or("Err"));
+                r
+            }).join();
+            tracing::info!("[FriendsScreen] blocking thread joined, thread_panicked={}", result.is_err());
 
             cx.update(|cx| {
-                let _ = this.update(cx, |screen, cx| {
+                tracing::info!("[FriendsScreen] cx.update running, updating entity");
+                let update_result = this.update(cx, |screen, cx| {
+                    tracing::info!("[FriendsScreen] entity update: result={:?}",
+                        match &result {
+                            Ok(Ok(())) => "Ok(Ok(()))",
+                            Ok(Err(_)) => "Ok(Err(...))",
+                            Err(_) => "Err(panic)",
+                        }
+                    );
                     match result {
                         Ok(Ok(())) => {
                             screen.add_friend_state = AddFriendState::Success;
                             let added = username.clone();
                             screen.add_friend_username.clear();
-                            // Optimistically insert so the user sees feedback immediately,
-                            // even if GitHub's gist list cache hasn't propagated yet.
                             if !screen.friends.iter().any(|f| f.username == added) {
                                 screen.friends.push(FriendEntry {
                                     username: added.clone(),
@@ -229,6 +246,7 @@ impl FriendsScreen {
                     }
                     cx.notify();
                 });
+                tracing::info!("[FriendsScreen] entity update result: {}", if update_result.is_ok() { "ok" } else { "entity dropped" });
             });
         })
         .detach();
@@ -296,6 +314,7 @@ impl FriendsScreen {
                 img(ImageSource::Render(avatar_img))
                     .w(px(40.))
                     .h(px(40.))
+                    .rounded_full()
                     .object_fit(ObjectFit::Cover)
                     .into_any_element()
             } else {
@@ -446,11 +465,24 @@ impl FriendsScreen {
                     ),
             )
             .child(
-                Button::new("open-fab-marketplace")
-                    .ghost()
-                    .icon(Icon::new(IconName::ExternalLink).size(px(13.)))
-                    .label("Discover")
-                    .tooltip("Find friends on the FAB Marketplace"),
+                h_flex()
+                    .gap_2()
+                    .child(
+                        Button::new("refresh-friends")
+                            .ghost()
+                            .icon(Icon::new(IconName::Refresh).size(px(13.)))
+                            .tooltip("Refresh friends list")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.refresh_friends(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("open-fab-marketplace")
+                            .ghost()
+                            .icon(Icon::new(IconName::ExternalLink).size(px(13.)))
+                            .label("Discover")
+                            .tooltip("Find friends on the FAB Marketplace"),
+                    ),
             )
     }
 
@@ -681,6 +713,7 @@ impl FriendsScreen {
                         img(ImageSource::Render(avatar_img))
                             .w(px(36.))
                             .h(px(36.))
+                            .rounded_full()
                             .object_fit(ObjectFit::Cover)
                             .into_any_element()
                     } else {

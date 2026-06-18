@@ -1,8 +1,24 @@
 use crate::types::FriendsError;
 use serde::{Deserialize, Serialize};
+use std::sync::RwLock;
 
 const GIST_FILENAME: &str = "engine_friends.json";
 const GIST_DESCRIPTION: &str = "Pulsar Engine - Friends List";
+
+// In-process cache of our own gist ID to avoid hitting the stale list endpoint on every write.
+// Keyed by (own_username, gist_id) so it is never returned for other users' lookups.
+static CACHED_OWN_GIST: RwLock<Option<(String, String)>> = RwLock::new(None);
+
+fn cached_own_gist_id(username: &str) -> Option<String> {
+    let lock = CACHED_OWN_GIST.read().ok()?;
+    lock.as_ref().and_then(|(u, id)| if u == username { Some(id.clone()) } else { None })
+}
+
+fn set_cached_own_gist_id(username: &str, id: &str) {
+    if let Ok(mut lock) = CACHED_OWN_GIST.write() {
+        *lock = Some((username.to_string(), id.to_string()));
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GistFile {
@@ -91,6 +107,16 @@ fn fetch_username(token: &str) -> Result<String, FriendsError> {
 }
 
 fn find_pulsar_gist(token: &str, username: &str) -> Result<Option<String>, FriendsError> {
+    // Only use the cache for our own gist — never short-circuit lookups for other users.
+    if let Ok(own) = github_username() {
+        if own == username {
+            if let Some(id) = cached_own_gist_id(username) {
+                tracing::info!("[gist_storage] find_pulsar_gist: using cached own gist id {} for {}", id, username);
+                return Ok(Some(id));
+            }
+        }
+    }
+
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
@@ -128,6 +154,13 @@ fn find_pulsar_gist(token: &str, username: &str) -> Result<Option<String>, Frien
             if files.contains_key(GIST_FILENAME) {
                 let id = gist.get("id").and_then(|id| id.as_str().map(String::from));
                 tracing::info!("[gist_storage] find_pulsar_gist: found pulsar gist id={:?} for {}", id, username);
+                if let Some(ref id_str) = id {
+                    if let Ok(own) = github_username() {
+                        if own == username {
+                            set_cached_own_gist_id(username, id_str);
+                        }
+                    }
+                }
                 return Ok(id);
             }
         }
@@ -231,53 +264,8 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
 
     if let Some(id) = gist_id {
         let url = format!("https://api.github.com/gists/{}", id);
-
-        // Read the live gist content before patching so we don't lose entries that
-        // weren't returned by the (potentially cached) gist-list endpoint.
-        tracing::info!("[gist_storage] write_engine_friends: reading live content from {} before patch", url);
-        let live_resp = client
-            .get(&url)
-            .header("Authorization", format!("Bearer {}", token))
-            .header("User-Agent", "Pulsar-Engine")
-            .send()
-            .map_err(|e| FriendsError::Network(e.to_string()))?;
-        let live_status = live_resp.status();
-        tracing::info!("[gist_storage] write_engine_friends: GET {} -> HTTP {}", url, live_status);
-
-        let mut merged: Vec<String> = friends.to_vec();
-        if live_status.is_success() {
-            if let Ok(live_gist) = live_resp.json::<GistResponse>() {
-                if let Some(live_files) = live_gist.files {
-                    if let Some(live_file) = live_files.get(GIST_FILENAME) {
-                        if let Some(live_content) = &live_file.content {
-                            if let Ok(existing) = serde_json::from_str::<crate::types::EngineFriendsFile>(live_content) {
-                                tracing::info!("[gist_storage] write_engine_friends: live gist has {} entries: {:?}", existing.friends.len(), existing.friends);
-                                // Union: keep everything in the incoming list plus any existing
-                                // entries not already present (preserves entries missed by stale cache read).
-                                for entry in existing.friends {
-                                    if !merged.contains(&entry) {
-                                        tracing::info!("[gist_storage] write_engine_friends: merging in missing entry {}", entry);
-                                        merged.push(entry);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        tracing::info!("[gist_storage] write_engine_friends: merged list ({} entries): {:?}", merged.len(), merged);
-        let merged_content = serde_json::to_string_pretty(&serde_json::json!({
-            "friends": merged,
-            "updated_at": chrono::Utc::now().to_rfc3339()
-        }))
-        .map_err(|e| FriendsError::Api(e.to_string()))?;
-        let mut merged_files = std::collections::HashMap::new();
-        merged_files.insert(GIST_FILENAME.to_string(), GistFile { content: merged_content });
-
-        tracing::info!("[gist_storage] write_engine_friends: PATCHing {}", url);
-        let patch_body = serde_json::json!({ "files": merged_files });
+        tracing::info!("[gist_storage] write_engine_friends: PATCHing {} with {} friends: {:?}", url, friends.len(), friends);
+        let patch_body = serde_json::json!({ "files": files });
         let resp = client
             .patch(&url)
             .json(&patch_body)
@@ -314,6 +302,12 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
             let body = resp.text().unwrap_or_default();
             tracing::info!("[gist_storage] write_engine_friends: POST error body: {}", body);
             return Err(FriendsError::Api(format!("HTTP {}: {}", status, body)));
+        }
+        if let Ok(created) = resp.json::<GistResponse>() {
+            if let Some(ref new_id) = created.id {
+                tracing::info!("[gist_storage] write_engine_friends: caching new gist id {}", new_id);
+                set_cached_own_gist_id(&username, new_id);
+            }
         }
     }
 
