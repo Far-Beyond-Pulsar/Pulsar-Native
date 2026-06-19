@@ -9,7 +9,7 @@ Deploy the Pulsar relay server on **Rancher** (or any Kubernetes cluster) using 
 - A **Kubernetes cluster** managed by Rancher (v2.7+)
 - **Rancher UI access** (or `kubectl` if you prefer the CLI)
 - A **container registry** where the `pulsar-relay` image is published
-  (e.g., Docker Hub, GitHub Container Registry, or your private registry)
+  (e.g., GitHub Container Registry at `ghcr.io/far-beyond-pulsar/pulsar-relay`)
 
 ---
 
