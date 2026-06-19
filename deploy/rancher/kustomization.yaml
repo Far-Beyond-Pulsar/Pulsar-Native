@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulsar-relay
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+
+# Override values per environment by creating overlay directories:
+#   deploy/rancher/overlays/production/kustomization.yaml
+#   deploy/rancher/overlays/staging/kustomization.yaml
+#
+# Example overlay:
+#   resources:
+#     - ../../base
+#   patches:
+#     - path: replica-count.yaml
