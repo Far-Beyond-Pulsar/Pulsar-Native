@@ -1,4 +1,5 @@
-# Multi-stage Docker build for Pulsar MultiEdit
+# Multi-stage Docker build for Pulsar Relay
+# Builds only the pulsar-relay binary from the workspace.
 
 # Stage 1: Builder
 FROM rust:1.96-slim@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS builder
@@ -14,38 +15,12 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy workspace manifests for dependency caching
-COPY Cargo.toml Cargo.lock ./
-COPY crates/pulsar-relay/build.rs crates/pulsar-relay/
-COPY crates/pulsar-relay/proto crates/pulsar-relay/proto
+# Copy everything — the whole workspace.
+# This is the simplest and most maintainable approach.
+COPY . .
 
-# Copy every workspace member's Cargo.toml and a matching stub src file
-# so Cargo can resolve the full workspace without needing real source
-RUN --mount=type=bind,target=/src \
-    find /src/crates /src/ui-crates /src/agent-providers -maxdepth 2 -name 'Cargo.toml' | while read f; do \
-      rel="${f#/src/}"; \
-      dir="/app/$(dirname $rel)"; \
-      mkdir -p "$dir/src"; \
-      cp "$f" "/app/$rel"; \
-      if grep -q '^\[\[bin\]\]' "$f"; then \
-        echo 'fn main() {}' > "$dir/src/main.rs"; \
-      else \
-        touch "$dir/src/lib.rs"; \
-      fi; \
-    done
-
-# Create dummy main to cache dependencies
-RUN mkdir -p crates/pulsar-relay/src && \
-    echo "fn main() {}" > crates/pulsar-relay/src/main.rs && \
-    cargo build --release -p pulsar-relay && \
-    rm -rf crates/pulsar-relay/src
-
-# Copy actual source code
-COPY crates/pulsar-relay/src crates/pulsar-relay/src
-
-# Build the application
-RUN touch crates/pulsar-relay/src/main.rs && \
-  cargo build --release -p pulsar-relay --bin pulsar-relay
+# Build only the relay binary
+RUN cargo build --release -p pulsar-relay --bin pulsar-relay
 
 # Stage 2: Runtime
 FROM debian:bookworm-slim@sha256:0104b334637a5f19aa9c983a91b54c89887c0984081f2068983107a6f6c21eeb
