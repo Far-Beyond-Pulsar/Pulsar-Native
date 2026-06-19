@@ -22,6 +22,7 @@ use ui::{
 mod dev_popover;
 use dev_popover::DevPopover;
 use ui::themes::ThemeSwitcher;
+use crate::profile_dropdown::ProfileDropdownEvent;
 
 // Define UI preference actions
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -1251,6 +1252,12 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
     cx.set_global(ui::AppMenusCache(owned));
 }
 
+/// Events emitted by `AppTitleBar` that parent shells can subscribe to.
+pub enum AppTitleBarEvent {
+    /// User wants to open the multiplayer sessions / friends panel.
+    MultiplayerSessionsRequested,
+}
+
 pub struct AppTitleBar {
     app_menu_bar: Entity<AppMenuBar>,
     locale_selector: Entity<LocaleSelector>,
@@ -1263,6 +1270,8 @@ pub struct AppTitleBar {
     profile_dropdown: Entity<crate::profile_dropdown::ProfileDropdown>,
     _subscriptions: Vec<Subscription>,
 }
+
+impl gpui::EventEmitter<AppTitleBarEvent> for AppTitleBar {}
 
 impl AppTitleBar {
     pub fn new(
@@ -1289,11 +1298,15 @@ impl AppTitleBar {
                     cx.notify();
                 },
             ),
-            // In the editor the "sign in" button tells users to use the
-            // launcher — nothing extra to do on this end.
             cx.subscribe(
                 &profile_dropdown,
-                |_this, _, _event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
+                |this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
+                    match event {
+                        ProfileDropdownEvent::MultiplayerSessionsRequested => {
+                            cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
+                        }
+                        _ => {}
+                    }
                     cx.notify();
                 },
             ),

@@ -107,6 +107,7 @@ pub struct EntryScreen {
     pub(crate) auth_device_copy_notice: Option<String>,
     pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
     pub(crate) theme_picker: gpui::Entity<ui_common::ThemePicker>,
+    pub(crate) friends_screen: gpui::Entity<ui_friends::FriendsScreen>,
     // Thumbnails for the redesigned recent-projects / templates cards
     pub(crate) project_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
     pub(crate) project_thumbnail_inflight: usize,
@@ -114,6 +115,17 @@ pub struct EntryScreen {
     pub(crate) template_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
     pub(crate) template_thumbnail_inflight: usize,
     pub(crate) template_thumbnail_queue: VecDeque<Template>,
+    // Pending session invite from a friend
+    pub(crate) pending_invite: Option<PendingInvite>,
+}
+
+/// Represents an incoming session invite from a friend.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingInvite {
+    pub from_username: String,
+    pub from_home_server: Option<String>,
+    pub message: String,
+    pub notification_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -170,6 +182,7 @@ impl EntryScreen {
         } else {
             Vec::new()
         };
+        let cloud_urls: Vec<String> = cloud_servers.iter().map(|s| s.url.clone()).collect();
         let add_server_alias_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("My Studio Server"));
         let add_server_url_input =
@@ -237,12 +250,14 @@ impl EntryScreen {
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
             theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
+            friends_screen: cx.new(|cx| ui_friends::FriendsScreen::new_without_invite(_window, cx)),
             project_thumbnails: HashMap::new(),
             project_thumbnail_inflight: 0,
             project_thumbnail_queue: VecDeque::new(),
             template_thumbnails: HashMap::new(),
             template_thumbnail_inflight: 0,
             template_thumbnail_queue: VecDeque::new(),
+            pending_invite: None,
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -266,15 +281,19 @@ impl EntryScreen {
                         this.begin_github_sign_in(cx);
                     }
                     ui_common::ProfileDropdownEvent::SignedOut => {
-                        // Reset device-flow state if sign-out happened mid-flow.
+                        friends_engine::stop_notification_listener();
                         this.auth_loading = false;
                         this.auth_device_code = None;
                         this.auth_device_verification_url = None;
                         this.auth_device_modal_visible = false;
                         this.auth_device_copy_notice = None;
                         this.auth_message = Some("Signed out".to_string());
+                        this.friends_screen.update(cx, |fs, cx| {
+                            fs.refresh_friends(cx);
+                        });
                         cx.notify();
                     }
+                    _ => {}
                 }
             },
         )
@@ -397,6 +416,65 @@ impl EntryScreen {
 
         // Check dependencies on background thread
         screen.check_dependencies_async(cx);
+
+        // Sync cloud server URLs to friends engine home_servers and trigger initial friend list load
+        if friends_engine::is_authenticated() && !cloud_urls.is_empty() {
+            let _ = friends_engine::set_home_servers(&cloud_urls);
+        }
+        if friends_engine::is_authenticated() {
+            friends_engine::start_notification_listener();
+
+            let fs = screen.friends_screen.clone();
+            cx.spawn(async move |_this, cx| {
+                cx.update(|cx| {
+                    fs.update(cx, |fs, cx| {
+                        fs.refresh_friends(cx);
+                    });
+                });
+            })
+            .detach();
+
+            // Periodic check for in-memory notifications from the WebSocket listener
+            let fs2 = screen.friends_screen.clone();
+            let this = screen.entity.clone().unwrap();
+            cx.spawn(async move |_this, cx| {
+                loop {
+                    smol::Timer::after(std::time::Duration::from_secs(2)).await;
+                    let notes = friends_engine::take_notifications();
+                    if !notes.is_empty() {
+                        tracing::info!("[EntryScreen] {} notification(s) received via WebSocket", notes.len());
+                        for note in &notes {
+                            if let Some(ntype) = note.get("notification_type").and_then(|v| v.as_str()) {
+                                if ntype == "SessionInvite" {
+                                    let from = note.get("from_username").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                                    let msg = note.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let home = note.get("from_home_server").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    let nid = note.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    tracing::info!("[EntryScreen] Session invite from {}: {}", from, msg);
+                                    cx.update(|cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.pending_invite = Some(PendingInvite {
+                                                from_username: from.clone(),
+                                                from_home_server: home,
+                                                message: msg,
+                                                notification_id: nid,
+                                            });
+                                            cx.notify();
+                                        });
+                                    });
+                                }
+                            }
+                        }
+                        cx.update(|cx| {
+                            fs2.update(cx, |fs, cx| {
+                                fs.refresh_friends(cx);
+                            });
+                        });
+                    }
+                }
+            })
+            .detach();
+        }
 
         screen
     }
@@ -1736,12 +1814,23 @@ default_scene = "scenes/main.scene"
                                 ec.set_auth_profile(profile.clone());
                             }
                             this.auth_message = Some(format!("Signed in as @{}", profile.login));
-                            // Reset the dropdown's avatar cache so it reloads with
-                            // the new profile's avatar.
                             this.profile_dropdown.update(cx, |pd, cx| {
                                 pd.avatar_url_loaded = None;
                                 pd.avatar_image = None;
                                 pd.ensure_avatar_loaded(cx);
+                            });
+                            // Sync cloud URLs as home_servers and refresh friends
+                            let cloud_urls: Vec<String> = this
+                                .cloud_servers
+                                .iter()
+                                .map(|s| s.url.clone())
+                                .collect();
+                            if !cloud_urls.is_empty() {
+                                let _ = friends_engine::set_home_servers(&cloud_urls);
+                            }
+                            friends_engine::start_notification_listener();
+                            this.friends_screen.update(cx, |fs, cx| {
+                                fs.refresh_friends(cx);
                             });
                         }
                         Err(err) => {
@@ -2015,6 +2104,58 @@ pub struct FabSearchRequested;
 
 impl EventEmitter<FabSearchRequested> for EntryScreen {}
 
+impl EntryScreen {
+    fn accept_invite(&mut self, _: &gpui::ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(invite) = self.pending_invite.take() {
+            tracing::info!("[EntryScreen] accepted session invite from {}", invite.from_username);
+            cx.notify();
+        }
+    }
+
+    fn decline_invite(&mut self, _: &gpui::ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(invite) = self.pending_invite.take() {
+            tracing::info!("[EntryScreen] declined session invite from {}", invite.from_username);
+            cx.notify();
+        }
+    }
+
+    fn render_invite_banner<'a>(
+        &'a self,
+        invite: &'a PendingInvite,
+        cx: &'a Context<Self>,
+    ) -> impl IntoElement + 'a {
+        let theme = cx.theme();
+        h_flex()
+            .id("session-invite-banner")
+            .w_full()
+            .px_4()
+            .py_2()
+            .gap_3()
+            .items_center()
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.info.opacity(0.15))
+            .child(
+                div()
+                    .flex_1()
+                    .text_color(theme.info)
+                    .child(format!("Session Invite: {}", invite.message)),
+            )
+            .child(
+                Button::new("accept-invite")
+                    .small()
+                    .label("Accept")
+                    .on_click(cx.listener(Self::accept_invite)),
+            )
+            .child(
+                Button::new("decline-invite")
+                    .small()
+                    .label("Decline")
+                    .on_click(cx.listener(Self::decline_invite)),
+            )
+    }
+}
+
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
@@ -2050,6 +2191,9 @@ impl Render for EntryScreen {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .when_some(self.pending_invite.as_ref(), |this, invite| {
+                this.child(self.render_invite_banner(invite, cx))
+            })
             .child(
                 TitleBar::new()
                     .child(div().flex_1())
@@ -2106,6 +2250,9 @@ impl Render for EntryScreen {
                                 }
                                 EntryScreenView::CloudProjects => {
                                     views::render_cloud_projects(self, cx).into_any_element()
+                                }
+                                EntryScreenView::Friends => {
+                                    self.friends_screen.clone().into_any_element()
                                 }
                             }),
                     ),

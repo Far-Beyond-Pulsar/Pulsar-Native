@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulsar-relay-config
+  namespace: pulsar-relay
+data:
+  RUST_LOG: "info"
+  PULSAR_HTTP_BIND: "0.0.0.0:8080"
+  PULSAR_QUIC_BIND: "0.0.0.0:8443"
+  PULSAR_UDP_BIND: "0.0.0.0:7000"
+  PULSAR_LOG_LEVEL: "info"
+  PULSAR_JWT_SECRET: "change-this-secret-in-production"

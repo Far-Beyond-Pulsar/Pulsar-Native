@@ -1,0 +1,230 @@
+use crate::gist_storage;
+use crate::mutual_detection;
+use crate::notification_listener;
+use crate::types::*;
+use std::time::Duration;
+
+pub fn get_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
+    mutual_detection::compute_friends_list()
+}
+
+pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
+    let username = gist_storage::get_own_username()?;
+    tracing::info!("[FriendsService] send_friend_request: {} -> {}", username, target_username);
+    let mut entries = gist_storage::get_own_friend_entries()?;
+    tracing::info!("[FriendsService] send_friend_request: current entries: {:?}", entries);
+
+    if entries.iter().any(|e| e.username == target_username) {
+        tracing::info!("[FriendsService] send_friend_request: {} already in list, no-op", target_username);
+        return Ok(());
+    }
+
+    entries.push(GistFriendEntry {
+        username: target_username.to_string(),
+        mutual: false,
+        home_server: None,
+    });
+    tracing::info!("[FriendsService] send_friend_request: writing updated list");
+    gist_storage::write_engine_friends(&entries)?;
+    tracing::info!("[FriendsService] send_friend_request: write succeeded, {} -> {}", username, target_username);
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Always push notification to the target user's relay.
+    // For self-friending the target is ourselves, so it reaches our own sessions.
+    if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
+        let from_home_server = gist_storage::read_engine_friends_file_meta(&username)
+            .ok()
+            .and_then(|hs| hs.into_iter().next());
+
+        for home_server in &target_home_servers {
+            let body = serde_json::json!({
+                "id": format!("{}-{}-{}", username, target_username, now),
+                "notification_type": "FriendRequest",
+                "from_username": &username,
+                "to_username": target_username,
+                "from_home_server": from_home_server.clone(),
+                "message": format!("{} sent you a friend request", username),
+                "created_at": now,
+            });
+            let url = format!("{}/api/v1/notifications", home_server.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .user_agent("Pulsar-Engine")
+                .build()
+                .map_err(|e| FriendsError::Network(e.to_string()))?;
+            match client.post(&url).json(&body).send() {
+                Ok(r) if r.status().is_success() => {
+                    tracing::info!("[FriendsService] notification pushed to {}", home_server);
+                }
+                Ok(r) => {
+                    tracing::warn!("[FriendsService] notification push to {} returned HTTP {}", home_server, r.status());
+                }
+                Err(e) => {
+                    tracing::warn!("[FriendsService] failed to push notification to {}: {}", home_server, e);
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn accept_friend_request(target_username: &str) -> Result<(), FriendsError> {
+    let username = gist_storage::get_own_username()?;
+    let mut entries = gist_storage::get_own_friend_entries()?;
+
+    if !entries.iter().any(|e| e.username == target_username) {
+        entries.push(GistFriendEntry {
+            username: target_username.to_string(),
+            mutual: false,
+            home_server: None,
+        });
+    }
+
+    gist_storage::write_engine_friends(&entries)?;
+
+    tracing::info!(
+        "[FriendsService] {} accepted friend request from {}",
+        username,
+        target_username
+    );
+    Ok(())
+}
+
+pub fn decline_friend_request(target_username: &str) -> Result<(), FriendsError> {
+    let mut entries = gist_storage::get_own_friend_entries()?;
+
+    entries.retain(|e| e.username != target_username);
+
+    gist_storage::write_engine_friends(&entries)?;
+
+    tracing::info!(
+        "[FriendsService] Declined friend request from {}",
+        target_username
+    );
+    Ok(())
+}
+
+pub fn remove_friend(target_username: &str) -> Result<(), FriendsError> {
+    let mut entries = gist_storage::get_own_friend_entries()?;
+    entries.retain(|e| e.username != target_username);
+    gist_storage::write_engine_friends(&entries)
+}
+
+pub fn get_own_username() -> Result<String, FriendsError> {
+    gist_storage::get_own_username()
+}
+
+pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
+    gist_storage::set_home_servers(home_servers)
+}
+
+pub fn check_user_has_gist(username: &str) -> Result<bool, FriendsError> {
+    gist_storage::check_user_has_gist(username)
+}
+
+pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
+    mutual_detection::fetch_friend_homes()
+}
+
+/// Start the background WebSocket notification listener.
+/// Connects to the user's home server and receives notifications in real-time.
+pub fn start_notification_listener() {
+    notification_listener::start();
+}
+
+/// Stop the background WebSocket notification listener.
+pub fn stop_notification_listener() {
+    notification_listener::stop();
+}
+
+/// Take all pending notifications received via WebSocket.
+pub fn take_notifications() -> Vec<serde_json::Value> {
+    notification_listener::take_notifications()
+}
+
+/// Send a session invite notification to a mutual friend.
+/// Looks up the friend's home_server from cached entries and POSTs to their relay.
+pub fn send_session_invite(target_username: &str) -> Result<(), FriendsError> {
+    let username = gist_storage::get_own_username()?;
+    let entries = gist_storage::get_own_friend_entries()?;
+
+    let friend = entries.iter().find(|e| e.username == target_username);
+    let Some(friend) = friend else {
+        tracing::warn!("[FriendsService] send_session_invite: {} not in friends list", target_username);
+        return Err(FriendsError::NotFriends(target_username.to_string()));
+    };
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let from_home_server = gist_storage::read_engine_friends_file_meta(&username)
+        .ok()
+        .and_then(|hs| hs.into_iter().next());
+
+    // Determine which relay to send to: friend's home_server, or our own as fallback
+    let target_servers: Vec<String> = if let Some(hs) = &friend.home_server {
+        tracing::info!("[FriendsService] send_session_invite to {} using friend's home_server: {}", target_username, hs);
+        vec![hs.clone()]
+    } else {
+        // Fall back to our own home server (they might be on the same relay)
+        let own = gist_storage::read_engine_friends_file_meta(&username)
+            .ok()
+            .unwrap_or_default();
+        if own.is_empty() {
+            tracing::warn!("[FriendsService] send_session_invite: no home server known for {} or self", target_username);
+            return Err(FriendsError::Network("no home server configured".to_string()));
+        }
+        own
+    };
+
+    let body = serde_json::json!({
+        "id": format!("session_invite-{}-{}-{}", username, target_username, now),
+        "notification_type": "SessionInvite",
+        "from_username": &username,
+        "to_username": target_username,
+        "from_home_server": from_home_server.clone(),
+        "message": format!("{} wants to start a session with you", username),
+        "created_at": now,
+    });
+
+    for home_server in &target_servers {
+        let url = format!("{}/api/v1/notifications", home_server.trim_end_matches('/'));
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent("Pulsar-Engine")
+            .build()
+            .map_err(|e| FriendsError::Network(e.to_string()))?;
+        match client.post(&url).json(&body).send() {
+            Ok(r) if r.status().is_success() => {
+                tracing::info!("[FriendsService] session invite pushed to {} via {}", target_username, home_server);
+            }
+            Ok(r) => {
+                tracing::warn!("[FriendsService] session invite push to {} returned HTTP {}", home_server, r.status());
+            }
+            Err(e) => {
+                tracing::warn!("[FriendsService] failed to push session invite to {}: {}", home_server, e);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn is_authenticated() -> bool {
+    if let Some(ec) = engine_state::EngineContext::global() {
+        if ec.auth_profile().is_some() {
+            return true;
+        }
+    }
+    if let Some(_profile) = pulsar_auth::load_cached_profile() {
+        return true;
+    }
+    pulsar_auth::load_access_token().ok().flatten().is_some()
+}

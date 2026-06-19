@@ -1,0 +1,25 @@
+[package]
+name = "friends_engine"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+sha2.workspace = true
+base64.workspace = true
+pulsar_auth.workspace = true
+engine_state.workspace = true
+parking_lot.workspace = true
+chrono = { workspace = true, features = ["serde"] }
+directories.workspace = true
+once_cell.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
+async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
+futures = { workspace = true }
+
+[lints]
+workspace = true

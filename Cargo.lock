@@ -3631,6 +3631,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "friends_engine"
+version = "0.1.0"
+dependencies = [
+ "async-tungstenite",
+ "base64",
+ "chrono",
+ "directories 6.0.0",
+ "engine_state",
+ "futures",
+ "once_cell",
+ "parking_lot",
+ "pulsar_auth",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "fs_at"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8567,6 +8588,7 @@ dependencies = [
  "quinn",
  "rand 0.10.1",
  "rcgen",
+ "reqwest 0.12.28",
  "reqwest 0.13.4",
  "rustls",
  "rustls-pemfile",
@@ -12931,6 +12953,7 @@ dependencies = [
  "ui_entry",
  "ui_file_manager",
  "ui_flamegraph",
+ "ui_friends",
  "ui_git_manager",
  "ui_level_editor",
  "ui_loading_screen",
@@ -12969,6 +12992,7 @@ dependencies = [
  "engine_backend",
  "engine_fs",
  "engine_state",
+ "friends_engine",
  "git2",
  "gpui-ce",
  "image",
@@ -12989,6 +13013,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "ui_friends",
  "ui_git_manager",
  "ui_loading_screen",
  "window_manager",
@@ -13059,6 +13084,25 @@ dependencies = [
  "ui",
  "ui_common",
  "window_manager",
+]
+
+[[package]]
+name = "ui_friends"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "engine_state",
+ "friends_engine",
+ "gpui-ce",
+ "image",
+ "pulsar_auth",
+ "reqwest 0.12.28",
+ "smallvec",
+ "smol",
+ "tracing",
+ "ui",
+ "ui_common",
 ]
 
 [[package]]

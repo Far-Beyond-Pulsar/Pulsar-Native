@@ -48,7 +48,7 @@ pub use shared_state::SharedState;
 
 // Re-export commonly used types
 pub use file_utils::{find_openable_files, FileInfo, FileType};
-pub use menu::AppTitleBar;
+pub use menu::{AppTitleBar, AppTitleBarEvent};
 pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
 pub use theme_dropdown::ThemePicker;
 pub use panel::{PanelBase, PanelEvent};

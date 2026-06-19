@@ -53,6 +53,7 @@ pub mod http_server;
 pub mod logging;
 pub mod metrics;
 pub mod nat;
+pub mod notifications;
 pub mod persistence;
 pub mod rendezvous;
 pub mod session;

@@ -26,6 +26,7 @@ ui_git_manager = { workspace = true }
 ui_about.workspace = true
 ui_documentation.workspace = true
 ui_multiuser_status.workspace = true
+ui_friends.workspace = true
 
 
 # Engine

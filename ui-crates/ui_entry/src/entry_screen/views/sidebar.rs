@@ -20,6 +20,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
     let is_new = screen.view == EntryScreenView::NewProject;
     let is_clone = screen.view == EntryScreenView::CloneGit;
     let is_cloud = screen.view == EntryScreenView::CloudProjects;
+    let is_friends = screen.view == EntryScreenView::Friends;
 
     v_flex()
         .w(px(220.))
@@ -280,6 +281,58 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         )
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.view = EntryScreenView::CloudProjects;
+                            cx.notify();
+                        })),
+                ),
+        )
+        // ── Social section ───────────────────────────────────────
+        .child(
+            v_flex()
+                .w_full()
+                .px_3()
+                .pt_2()
+                .pb_2()
+                .gap_0p5()
+                .child(div().w_full().h(px(1.0)).bg(border).mb_2())
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(muted_fg)
+                        .px_2()
+                        .pb_1p5()
+                        .child("SOCIAL"),
+                )
+                .child(
+                    h_flex()
+                        .id("nav-friends")
+                        .w_full()
+                        .gap_2p5()
+                        .items_center()
+                        .px_3()
+                        .py_2()
+                        .rounded_lg()
+                        .cursor_pointer()
+                        .when(is_friends, |this| this.bg(accent_bg))
+                        .hover(|this| this.bg(hover_bg))
+                        .child(
+                            Icon::new(IconName::Group)
+                                .size(px(15.))
+                                .text_color(if is_friends { accent } else { muted_fg }),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(if is_friends {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
+                                .text_color(if is_friends { foreground } else { muted_fg })
+                                .child("Friends"),
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.view = EntryScreenView::Friends;
                             cx.notify();
                         })),
                 ),

@@ -953,7 +953,9 @@ jobs:
           done
 
   docker-release:
-    needs: [check-version, create-release]
+    # Only depend on check-version so images build even on forced re-releases
+    # where create-release might fail (tag already exists).
+    needs: [check-version]
     if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     permissions:
