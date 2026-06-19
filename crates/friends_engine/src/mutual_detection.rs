@@ -43,12 +43,17 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
         }
 
         tracing::info!("[mutual_detection] compute_friends_list: reading {}'s friends list", entry.username);
+        // Read the friend's home server from their gist's top-level home_servers array
+        let friend_home_server = gist_storage::read_engine_friends_file_meta(&entry.username)
+            .ok()
+            .and_then(|hs| hs.into_iter().next());
+
         match gist_storage::read_engine_friend_entries(&entry.username) {
             Ok(their_entries) => {
                 let their_usernames: Vec<String> = their_entries.iter().map(|e| e.username.clone()).collect();
                 let their_set: HashSet<&str> = their_usernames.iter().map(|s| s.as_str()).collect();
                 let is_mutual = their_set.contains(username.as_str());
-                let home_server = their_entries.first().and_then(|e| e.home_server.clone());
+                let home_server = friend_home_server.clone();
 
                 tracing::info!("[mutual_detection] compute_friends_list: {} <-> {} is_mutual={}, home_server={:?}", username, entry.username, is_mutual, home_server);
 
@@ -90,9 +95,18 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
                     relation_status: RelationStatus::PendingOutbound,
                     current_project: None,
                     last_seen: None,
-                    home_server: None,
+                    home_server: friend_home_server.clone(),
                 });
-                updated_entries.push(entry.clone());
+                // Still update home_server if we read it from meta
+                if friend_home_server.is_some() && friend_home_server != entry.home_server {
+                    updated_entries.push(GistFriendEntry {
+                        username: entry.username.clone(),
+                        mutual: entry.mutual,
+                        home_server: friend_home_server.clone(),
+                    });
+                } else {
+                    updated_entries.push(entry.clone());
+                }
             }
         }
     }
@@ -148,10 +162,10 @@ pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
         if entry.home_server.is_some() {
             continue;
         }
-        if let Ok(their_entries) = gist_storage::read_engine_friend_entries(&entry.username) {
-            if let Some(hs) = their_entries.first().and_then(|e| e.home_server.clone()) {
-                tracing::info!("[mutual_detection] fetch_friend_homes: {} home_server = {}", entry.username, hs);
-                entry.home_server = Some(hs);
+        if let Ok(hs) = gist_storage::read_engine_friends_file_meta(&entry.username) {
+            if let Some(server) = hs.into_iter().next() {
+                tracing::info!("[mutual_detection] fetch_friend_homes: {} home_server = {}", entry.username, server);
+                entry.home_server = Some(server);
                 updated += 1;
             }
         }
