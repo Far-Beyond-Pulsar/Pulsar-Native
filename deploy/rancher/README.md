@@ -31,23 +31,28 @@ openssl rand -base64 32
 [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Max 256 }))
 ```
 
-### 2. Ed25519 Server Key (optional but recommended)
+### 2. Update `secret.yaml` — JWT secret (REQUIRED)
 
-Persisting this key keeps session tokens valid across restarts. If you skip it, a new key is generated every time the pod restarts, invalidating all active sessions.
+Replace the placeholder in `deploy/rancher/secret.yaml`:
+
+```yaml
+stringData:
+  jwt-secret: "your-generated-base64-secret"
+  # Ed25519 key is optional — see step 3
+  server-ed25519-key: ""
+```
+
+### 3. Ed25519 Server Key (optional)
+
+Persisting this key keeps session tokens valid across restarts. If you skip it (default), a new ephemeral key is generated each pod restart, invalidating all active sessions.
 
 ```bash
 openssl rand -hex 32
 ```
 
-### 3. Update `secret.yaml`
-
-Replace the placeholder values in `deploy/rancher/secret.yaml`:
-
-```yaml
-stringData:
-  jwt-secret: "your-generated-base64-secret"
-  server-ed25519-key: "your-generated-64-char-hex-key"
-```
+To use it:
+1. Set `server-ed25519-key` in `secret.yaml` to the generated hex value
+2. Uncomment the `PULSAR_SERVER_ED25519_KEY` env block in `deployment.yaml`
 
 ---
 
@@ -177,6 +182,10 @@ Check the logs: **Workloads > Deployments > pulsar-relay > ⋮ > View Logs**.
 
 Common causes:
 - **Missing JWT secret**: The `secret.yaml` wasn't applied, or the values are empty.
+- **`Invalid Ed25519 key length`**: The `server-ed25519-key` in the Secret is empty
+  but the env var `PULSAR_SERVER_ED25519_KEY` is set in the deployment. Either
+  generate a real key, or comment out / remove the env var from `deployment.yaml`
+  so the relay uses an ephemeral key (the shipped YAML already has it commented out).
 - **Port conflict**: Another service is binding the same ports in the same namespace.
 - **Image not found**: The image name in `deployment.yaml` doesn't exist in your registry.
 

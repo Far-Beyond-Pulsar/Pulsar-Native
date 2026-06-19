@@ -49,11 +49,13 @@ spec:
                 secretKeyRef:
                   name: pulsar-relay-secrets
                   key: jwt-secret
-            - name: PULSAR_SERVER_ED25519_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: pulsar-relay-secrets
-                  key: server-ed25519-key
+            # 👇 Uncomment and set a persistent Ed25519 key to keep session
+            #    tokens valid across restarts. Generate: openssl rand -hex 32
+            #- name: PULSAR_SERVER_ED25519_KEY
+            #  valueFrom:
+            #    secretKeyRef:
+            #      name: pulsar-relay-secrets
+            #      key: server-ed25519-key
           livenessProbe:
             httpGet:
               path: /health/liveness
