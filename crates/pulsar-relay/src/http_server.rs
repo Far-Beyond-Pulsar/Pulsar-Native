@@ -135,6 +135,7 @@ fn create_router(state: AppState) -> Router {
         .route("/api/v1/auth/github", post(github_auth_handler))
         .route("/api/v1/notifications", get(get_notifications).post(push_notification_handler))
         .route("/api/v1/notifications/relay", post(relay_notification_handler))
+        .route("/api/v1/notifications/ws", get(notifications_websocket_handler))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -426,6 +427,15 @@ async fn relay_notification_handler(
 
     info!("✅ Notification relayed successfully");
     Ok(StatusCode::ACCEPTED)
+}
+
+async fn notifications_websocket_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| {
+        state.notifications.clone().handle_websocket(socket)
+    })
 }
 
 #[cfg(test)]

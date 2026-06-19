@@ -1,5 +1,6 @@
 use crate::gist_storage;
 use crate::mutual_detection;
+use crate::notification_listener;
 use crate::types::*;
 use std::time::Duration;
 
@@ -40,15 +41,18 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
                 .build()
                 .map_err(|e| FriendsError::Network(e.to_string()))?;
 
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
             let body = serde_json::json!({
+                "id": format!("{}-{}-{}", username, target_username, now),
                 "notification_type": "FriendRequest",
                 "from_username": &username,
+                "to_username": target_username,
                 "from_home_server": own_home_server.clone(),
                 "message": format!("{} sent you a friend request", username),
-                "created_at": std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0),
+                "created_at": now,
             });
 
             let url = format!("{}/api/v1/notifications", home_server.trim_end_matches('/'));
@@ -125,6 +129,22 @@ pub fn check_user_has_gist(username: &str) -> Result<bool, FriendsError> {
 
 pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
     mutual_detection::fetch_friend_homes()
+}
+
+/// Start the background WebSocket notification listener.
+/// Connects to the user's home server and receives notifications in real-time.
+pub fn start_notification_listener() {
+    notification_listener::start();
+}
+
+/// Stop the background WebSocket notification listener.
+pub fn stop_notification_listener() {
+    notification_listener::stop();
+}
+
+/// Take all pending notifications received via WebSocket.
+pub fn take_notifications() -> Vec<serde_json::Value> {
+    notification_listener::take_notifications()
 }
 
 pub fn is_authenticated() -> bool {

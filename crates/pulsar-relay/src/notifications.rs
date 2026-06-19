@@ -6,9 +6,13 @@
 //! - WebSocket push for online users
 
 use anyhow::{Context, Result};
+use axum::extract::ws::{Message, WebSocket};
 use dashmap::DashMap;
+use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitHubAuthRequest {
@@ -27,6 +31,7 @@ pub struct Notification {
     pub id: String,
     pub notification_type: NotificationType,
     pub from_username: String,
+    pub to_username: String,
     pub from_home_server: Option<String>,
     pub message: String,
     pub created_at: u64,
@@ -51,8 +56,9 @@ pub struct PushNotificationRequest {
 /// In-memory notification store, keyed by recipient GitHub username.
 pub struct NotificationStore {
     notifications: DashMap<String, Vec<Notification>>,
-    /// Cached GitHub profiles: github_username -> (github_id, verified_at)
     verified_users: DashMap<String, VerifiedUser>,
+    /// WebSocket connections per recipient username.
+    connected_users: DashMap<String, Vec<mpsc::UnboundedSender<Notification>>>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,14 +72,11 @@ impl NotificationStore {
         Self {
             notifications: DashMap::new(),
             verified_users: DashMap::new(),
+            connected_users: DashMap::new(),
         }
     }
 
-    /// Verify a GitHub token by calling the GitHub /user API.
-    pub async fn verify_github_token(
-        &self,
-        token: &str,
-    ) -> Result<(String, u64)> {
+    pub async fn verify_github_token(&self, token: &str) -> Result<(String, u64)> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .user_agent("Pulsar-Relay/1.0")
@@ -119,7 +122,6 @@ impl NotificationStore {
         Ok((user.login, user.id))
     }
 
-    /// Check if a user was recently verified (within 1 hour).
     pub fn is_user_verified(&self, username: &str) -> bool {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -131,16 +133,45 @@ impl NotificationStore {
             .unwrap_or(false)
     }
 
-    /// Store a notification for a recipient.
-    pub fn push_notification(&self, notification: Notification) {
-        let mut entries = self
-            .notifications
-            .entry(notification.from_username.clone())
-            .or_insert_with(Vec::new);
-        entries.push(notification);
+    /// Register a WebSocket connection for a user.
+    pub fn register_connection(&self, username: &str, tx: mpsc::UnboundedSender<Notification>) {
+        self.connected_users
+            .entry(username.to_string())
+            .or_insert_with(Vec::new)
+            .push(tx);
     }
 
-    /// Get all pending notifications for a user (and clear them).
+    /// Unregister a WebSocket connection for a user.
+    pub fn unregister_connection(&self, username: &str, tx: &mpsc::UnboundedSender<Notification>) {
+        let is_empty = {
+            if let Some(mut senders) = self.connected_users.get_mut(username) {
+                senders.retain(|t| !t.same_channel(tx));
+                senders.is_empty()
+            } else {
+                false
+            }
+        };
+        if is_empty {
+            self.connected_users.remove(username);
+        }
+    }
+
+    /// Store a notification and push to any open WebSocket for the recipient.
+    pub fn push_notification(&self, notification: Notification) {
+        // Store in-memory for HTTP poll fallback
+        self.notifications
+            .entry(notification.to_username.clone())
+            .or_insert_with(Vec::new)
+            .push(notification.clone());
+
+        // Push to open WebSocket connections for recipient
+        if let Some(entries) = self.connected_users.get(&notification.to_username) {
+            for tx in entries.value().iter() {
+                let _ = tx.send(notification.clone());
+            }
+        }
+    }
+
     pub fn take_notifications(&self, username: &str) -> Vec<Notification> {
         self.notifications
             .remove(username)
@@ -148,23 +179,22 @@ impl NotificationStore {
             .unwrap_or_default()
     }
 
-    /// Relay a notification from one home server to another.
-    pub async fn relay_notification(
-        &self,
-        req: &PushNotificationRequest,
-    ) -> Result<()> {
+    pub async fn relay_notification(&self, req: &PushNotificationRequest) -> Result<()> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(10))
             .user_agent("Pulsar-Relay/1.0")
             .build()
             .context("Failed to build HTTP client")?;
 
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
         let body = serde_json::json!({
+            "id": format!("relay-{}-{}-{}", req.from_username, req.target_username, now),
             "notification_type": req.notification_type,
             "from_username": req.from_username,
+            "to_username": req.target_username,
             "from_home_server": req.from_home_server,
             "message": format!("{} sent you a friend request", req.from_username),
-            "created_at": SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+            "created_at": now,
         });
 
         let target_url = format!(
@@ -180,11 +210,68 @@ impl NotificationStore {
 
         match resp {
             Ok(r) if r.status().is_success() => Ok(()),
-            Ok(r) => anyhow::bail!(
-                "Target server returned HTTP {}",
-                r.status()
-            ),
+            Ok(r) => anyhow::bail!("Target server returned HTTP {}", r.status()),
             Err(e) => anyhow::bail!("Failed to reach target server: {}", e),
         }
+    }
+
+    /// Handle an incoming WebSocket connection for notifications.
+    /// Expects a GitHub token as the first text message for authentication.
+    pub async fn handle_websocket(self: Arc<Self>, mut ws: WebSocket) {
+        // First message must be the GitHub token
+        let token = match ws.recv().await {
+            Some(Ok(Message::Text(t))) => t,
+            _ => return,
+        };
+
+        let username = match self.verify_github_token(&token).await {
+            Ok((uname, _)) => uname,
+            Err(e) => {
+                tracing::warn!("[NotificationWS] auth failed: {}", e);
+                let _ = ws.send(Message::Text(
+                    serde_json::json!({"error": "auth_failed"}).to_string().into(),
+                )).await;
+                return;
+            }
+        };
+
+        tracing::info!("[NotificationWS] {} connected", username);
+
+        let (tx, mut rx) = mpsc::unbounded_channel::<Notification>();
+        self.register_connection(&username, tx.clone());
+
+        // Send any pending in-memory notifications immediately
+        let pending = self.take_notifications(&username);
+        for note in &pending {
+            if let Ok(json) = serde_json::to_string(note) {
+                let _ = ws.send(Message::Text(json.into())).await;
+            }
+        }
+
+        // Forward new notifications from the channel to the WebSocket
+        let (mut ws_sender, mut ws_receiver) = ws.split();
+
+        let forward_task = tokio::spawn(async move {
+            while let Some(note) = rx.recv().await {
+                if let Ok(json) = serde_json::to_string(&note) {
+                    if ws_sender.send(Message::Text(json.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Drain any inbound messages until connection closes
+        while let Some(msg) = ws_receiver.next().await {
+            match msg {
+                Ok(Message::Close(_)) | Err(_) => break,
+                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,
+                _ => {}
+            }
+        }
+
+        forward_task.abort();
+        self.unregister_connection(&username, &tx);
+        tracing::info!("[NotificationWS] {} disconnected", username);
     }
 }

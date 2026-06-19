@@ -16,6 +16,10 @@ engine_state.workspace = true
 parking_lot.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 directories.workspace = true
+once_cell.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
+async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
+futures = { workspace = true }
 
 [lints]
 workspace = true

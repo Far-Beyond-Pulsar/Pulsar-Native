@@ -269,6 +269,7 @@ impl EntryScreen {
                         this.begin_github_sign_in(cx);
                     }
                     ui_common::ProfileDropdownEvent::SignedOut => {
+                        friends_engine::stop_notification_listener();
                         this.auth_loading = false;
                         this.auth_device_code = None;
                         this.auth_device_verification_url = None;
@@ -409,6 +410,8 @@ impl EntryScreen {
             let _ = friends_engine::set_home_servers(&cloud_urls);
         }
         if friends_engine::is_authenticated() {
+            friends_engine::start_notification_listener();
+
             let fs = screen.friends_screen.clone();
             cx.spawn(async move |_this, cx| {
                 cx.update(|cx| {
@@ -416,6 +419,24 @@ impl EntryScreen {
                         fs.refresh_friends(cx);
                     });
                 });
+            })
+            .detach();
+
+            // Periodic check for in-memory notifications from the WebSocket listener
+            let fs2 = screen.friends_screen.clone();
+            cx.spawn(async move |_this, cx| {
+                loop {
+                    smol::Timer::after(std::time::Duration::from_secs(2)).await;
+                    let notes = friends_engine::take_notifications();
+                    if !notes.is_empty() {
+                        tracing::info!("[EntryScreen] {} notification(s) received via WebSocket, refreshing friends", notes.len());
+                        cx.update(|cx| {
+                            fs2.update(cx, |fs, cx| {
+                                fs.refresh_friends(cx);
+                            });
+                        });
+                    }
+                }
             })
             .detach();
         }
@@ -1772,6 +1793,7 @@ default_scene = "scenes/main.scene"
                             if !cloud_urls.is_empty() {
                                 let _ = friends_engine::set_home_servers(&cloud_urls);
                             }
+                            friends_engine::start_notification_listener();
                             this.friends_screen.update(cx, |fs, cx| {
                                 fs.refresh_friends(cx);
                             });
