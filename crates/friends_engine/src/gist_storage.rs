@@ -205,14 +205,19 @@ fn find_pulsar_gist(token: &str, username: &str) -> Result<Option<String>, Frien
 }
 
 pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> {
-    tracing::info!("[gist_storage] read_engine_friends: reading friends for {}", username);
+    let entries = read_engine_friend_entries(username)?;
+    Ok(entries.into_iter().map(|e| e.username).collect())
+}
+
+pub fn read_engine_friend_entries(username: &str) -> Result<Vec<crate::types::GistFriendEntry>, FriendsError> {
+    tracing::info!("[gist_storage] read_engine_friend_entries: reading friend entries for {}", username);
     let token = github_token()?;
     let gist_id = find_pulsar_gist(&token, username)?;
 
     let gist_id = match gist_id {
         Some(id) => id,
         None => {
-            tracing::info!("[gist_storage] read_engine_friends: no gist found for {}, returning empty", username);
+            tracing::info!("[gist_storage] read_engine_friend_entries: no gist found for {}, returning empty", username);
             return Ok(Vec::new());
         }
     };
@@ -223,7 +228,7 @@ pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> 
         .map_err(|e| FriendsError::Network(e.to_string()))?;
 
     let url = format!("https://api.github.com/gists/{}", gist_id);
-    tracing::info!("[gist_storage] read_engine_friends: fetching gist content from {}", url);
+    tracing::info!("[gist_storage] read_engine_friend_entries: fetching gist content from {}", url);
 
     let resp = client
         .get(&url)
@@ -233,11 +238,11 @@ pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> 
         .map_err(|e| FriendsError::Network(e.to_string()))?;
 
     let status = resp.status();
-    tracing::info!("[gist_storage] read_engine_friends: GET {} -> HTTP {}", url, status);
+    tracing::info!("[gist_storage] read_engine_friend_entries: GET {} -> HTTP {}", url, status);
 
     if !status.is_success() {
         let body = resp.text().unwrap_or_default();
-        tracing::info!("[gist_storage] read_engine_friends: error body: {}", body);
+        tracing::info!("[gist_storage] read_engine_friend_entries: error body: {}", body);
         return Err(FriendsError::Api(format!("HTTP {}: {}", status, body)));
     }
 
@@ -245,34 +250,34 @@ pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> 
         .json()
         .map_err(|e| FriendsError::Api(e.to_string()))?;
 
-    tracing::info!("[gist_storage] read_engine_friends: gist files present: {}", gist.files.is_some());
+    tracing::info!("[gist_storage] read_engine_friend_entries: gist files present: {}", gist.files.is_some());
 
     if let Some(files) = gist.files {
-        tracing::info!("[gist_storage] read_engine_friends: file keys in response: {:?}", files.keys().collect::<Vec<_>>());
+        tracing::info!("[gist_storage] read_engine_friend_entries: file keys in response: {:?}", files.keys().collect::<Vec<_>>());
         if let Some(file) = files.get(GIST_FILENAME) {
-            tracing::info!("[gist_storage] read_engine_friends: file found, content present: {}, raw_url: {:?}", file.content.is_some(), file.raw_url);
+            tracing::info!("[gist_storage] read_engine_friend_entries: file found, content present: {}, raw_url: {:?}", file.content.is_some(), file.raw_url);
             if let Some(content) = &file.content {
-                tracing::info!("[gist_storage] read_engine_friends: raw content: {}", content);
+                tracing::info!("[gist_storage] read_engine_friend_entries: raw content: {}", content);
                 let parsed: crate::types::EngineFriendsFile =
                     serde_json::from_str(content).unwrap_or_else(|e| {
-                        tracing::info!("[gist_storage] read_engine_friends: parse error: {}", e);
+                        tracing::info!("[gist_storage] read_engine_friend_entries: parse error: {}", e);
                         crate::types::EngineFriendsFile { friends: Vec::new(), home_servers: Vec::new() }
                     });
-                tracing::info!("[gist_storage] read_engine_friends: parsed {} friends for {}: {:?}", parsed.friends.len(), username, parsed.friends);
+                tracing::info!("[gist_storage] read_engine_friend_entries: parsed {} entries for {}: {:?}", parsed.friends.len(), username, parsed.friends);
                 return Ok(parsed.friends);
             } else {
-                tracing::info!("[gist_storage] read_engine_friends: content field is null (truncated?), raw_url={:?}", file.raw_url);
+                tracing::info!("[gist_storage] read_engine_friend_entries: content field is null (truncated?), raw_url={:?}", file.raw_url);
             }
         } else {
-            tracing::info!("[gist_storage] read_engine_friends: {} key not found in gist files", GIST_FILENAME);
+            tracing::info!("[gist_storage] read_engine_friend_entries: {} key not found in gist files", GIST_FILENAME);
         }
     }
-    tracing::info!("[gist_storage] read_engine_friends: fell through, returning empty for {}", username);
+    tracing::info!("[gist_storage] read_engine_friend_entries: fell through, returning empty for {}", username);
     Ok(Vec::new())
 }
 
-pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
-    tracing::info!("[gist_storage] write_engine_friends: writing {} friends: {:?}", friends.len(), friends);
+pub fn write_engine_friends(friends: &[crate::types::GistFriendEntry]) -> Result<(), FriendsError> {
+    tracing::info!("[gist_storage] write_engine_friends: writing {} friend entries", friends.len());
     let token = github_token()?;
     let username = github_username()?;
     tracing::info!("[gist_storage] write_engine_friends: own username resolved as {}", username);
@@ -284,8 +289,19 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
         None => Vec::new(),
     };
 
+    let friends_json: Vec<serde_json::Value> = friends
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "username": e.username,
+                "mutual": e.mutual,
+                "home_server": e.home_server
+            })
+        })
+        .collect();
+
     let content = serde_json::to_string_pretty(&serde_json::json!({
-        "friends": friends,
+        "friends": friends_json,
         "home_servers": existing_home_servers,
         "updated_at": chrono::Utc::now().to_rfc3339()
     }))
@@ -360,11 +376,22 @@ pub fn write_engine_friends(friends: &[String]) -> Result<(), FriendsError> {
 pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
     let token = github_token()?;
     let username = github_username()?;
-    let friends = get_own_friends()?;
+    let entries = read_engine_friend_entries(&username)?;
     let gist_id = find_pulsar_gist(&token, &username)?;
 
+    let friends_json: Vec<serde_json::Value> = entries
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "username": e.username,
+                "mutual": e.mutual,
+                "home_server": e.home_server
+            })
+        })
+        .collect();
+
     let content = serde_json::to_string_pretty(&serde_json::json!({
-        "friends": friends,
+        "friends": friends_json,
         "home_servers": home_servers,
         "updated_at": chrono::Utc::now().to_rfc3339()
     }))
@@ -525,6 +552,12 @@ pub fn get_own_username() -> Result<String, FriendsError> {
 
 pub fn get_own_friends() -> Result<Vec<String>, FriendsError> {
     let username = github_username()?;
-    tracing::info!("[gist_storage] get_own_friends: fetching friends for own user {}", username);
+    tracing::info!("[gist_storage] get_own_friends: fetching friend usernames for own user {}", username);
     read_engine_friends(&username)
+}
+
+pub fn get_own_friend_entries() -> Result<Vec<crate::types::GistFriendEntry>, FriendsError> {
+    let username = github_username()?;
+    tracing::info!("[gist_storage] get_own_friend_entries: fetching friend entries for own user {}", username);
+    read_engine_friend_entries(&username)
 }

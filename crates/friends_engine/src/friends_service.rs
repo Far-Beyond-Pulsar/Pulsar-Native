@@ -10,17 +10,21 @@ pub fn get_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
 pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
     let username = gist_storage::get_own_username()?;
     tracing::info!("[FriendsService] send_friend_request: {} -> {}", username, target_username);
-    let mut friends = gist_storage::get_own_friends()?;
-    tracing::info!("[FriendsService] send_friend_request: current friends list: {:?}", friends);
+    let mut entries = gist_storage::get_own_friend_entries()?;
+    tracing::info!("[FriendsService] send_friend_request: current entries: {:?}", entries);
 
-    if friends.contains(&target_username.to_string()) {
+    if entries.iter().any(|e| e.username == target_username) {
         tracing::info!("[FriendsService] send_friend_request: {} already in list, no-op", target_username);
         return Ok(());
     }
 
-    friends.push(target_username.to_string());
-    tracing::info!("[FriendsService] send_friend_request: writing updated list: {:?}", friends);
-    gist_storage::write_engine_friends(&friends)?;
+    entries.push(GistFriendEntry {
+        username: target_username.to_string(),
+        mutual: false,
+        home_server: None,
+    });
+    tracing::info!("[FriendsService] send_friend_request: writing updated list");
+    gist_storage::write_engine_friends(&entries)?;
     tracing::info!("[FriendsService] send_friend_request: write succeeded, {} -> {}", username, target_username);
 
     // Push notification to target's home server(s)
@@ -67,13 +71,17 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
 
 pub fn accept_friend_request(target_username: &str) -> Result<(), FriendsError> {
     let username = gist_storage::get_own_username()?;
-    let mut friends = gist_storage::get_own_friends()?;
+    let mut entries = gist_storage::get_own_friend_entries()?;
 
-    if !friends.contains(&target_username.to_string()) {
-        friends.push(target_username.to_string());
+    if !entries.iter().any(|e| e.username == target_username) {
+        entries.push(GistFriendEntry {
+            username: target_username.to_string(),
+            mutual: false,
+            home_server: None,
+        });
     }
 
-    gist_storage::write_engine_friends(&friends)?;
+    gist_storage::write_engine_friends(&entries)?;
 
     tracing::info!(
         "[FriendsService] {} accepted friend request from {}",
@@ -84,11 +92,11 @@ pub fn accept_friend_request(target_username: &str) -> Result<(), FriendsError> 
 }
 
 pub fn decline_friend_request(target_username: &str) -> Result<(), FriendsError> {
-    let mut friends = gist_storage::get_own_friends()?;
+    let mut entries = gist_storage::get_own_friend_entries()?;
 
-    friends.retain(|f| f != target_username);
+    entries.retain(|e| e.username != target_username);
 
-    gist_storage::write_engine_friends(&friends)?;
+    gist_storage::write_engine_friends(&entries)?;
 
     tracing::info!(
         "[FriendsService] Declined friend request from {}",
@@ -98,9 +106,9 @@ pub fn decline_friend_request(target_username: &str) -> Result<(), FriendsError>
 }
 
 pub fn remove_friend(target_username: &str) -> Result<(), FriendsError> {
-    let mut friends = gist_storage::get_own_friends()?;
-    friends.retain(|f| f != target_username);
-    gist_storage::write_engine_friends(&friends)
+    let mut entries = gist_storage::get_own_friend_entries()?;
+    entries.retain(|e| e.username != target_username);
+    gist_storage::write_engine_friends(&entries)
 }
 
 pub fn get_own_username() -> Result<String, FriendsError> {
@@ -113,6 +121,10 @@ pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
 
 pub fn check_user_has_gist(username: &str) -> Result<bool, FriendsError> {
     gist_storage::check_user_has_gist(username)
+}
+
+pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
+    mutual_detection::fetch_friend_homes()
 }
 
 pub fn is_authenticated() -> bool {

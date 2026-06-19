@@ -17,6 +17,7 @@ pub struct FriendsScreen {
     pub view: FriendTab,
     pub friends: Vec<FriendEntry>,
     pub loading: bool,
+    pub fetching_homes: bool,
     pub show_invite: bool,
     pub friends_list: Entity<SearchableList<String>>,
     pub add_friend_input: Option<Entity<InputState>>,
@@ -91,6 +92,7 @@ impl FriendsScreen {
             view: FriendTab::Online,
             friends: Vec::new(),
             loading: false,
+            fetching_homes: false,
             show_invite,
             friends_list,
             add_friend_input,
@@ -105,6 +107,40 @@ impl FriendsScreen {
         }
 
         screen
+    }
+
+    pub fn do_fetch_friend_homes(&mut self, cx: &mut Context<Self>) {
+        self.fetching_homes = true;
+        cx.notify();
+
+        let (tx, rx) = smol::channel::bounded::<Result<usize, friends_engine::FriendsError>>(1);
+
+        std::thread::spawn(move || {
+            let result = friends_engine::fetch_friend_homes();
+            let _ = smol::block_on(tx.send(result));
+        });
+
+        cx.spawn(async move |this, cx| {
+            let result = rx.recv().await.unwrap_or(Err(
+                friends_engine::FriendsError::Network("Channel closed".to_string()),
+            ));
+            cx.update(|cx| {
+                let _ = this.update(cx, |screen, cx| {
+                    screen.fetching_homes = false;
+                    match result {
+                        Ok(count) => {
+                            tracing::info!("[FriendsScreen] Fetched home servers for {} friends", count);
+                            screen.refresh_friends(cx);
+                        }
+                        Err(e) => {
+                            tracing::error!("[FriendsScreen] Failed to fetch friend homes: {:?}", e);
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 
     pub fn refresh_friends(&mut self, cx: &mut Context<Self>) {
@@ -558,6 +594,17 @@ impl FriendsScreen {
                             .tooltip("Refresh friends list")
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.refresh_friends(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("fetch-friend-homes")
+                            .ghost()
+                            .icon(Icon::new(IconName::Globe).size(px(13.)))
+                            .label(if self.fetching_homes { "Fetching..." } else { "Fetch homes" })
+                            .disabled(self.fetching_homes)
+                            .tooltip("Fetch home server URLs for non-mutual friends")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.do_fetch_friend_homes(cx);
                             })),
                     )
                     .child(
