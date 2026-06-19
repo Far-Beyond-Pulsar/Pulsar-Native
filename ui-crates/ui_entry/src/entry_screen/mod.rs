@@ -280,6 +280,7 @@ impl EntryScreen {
                         });
                         cx.notify();
                     }
+                    _ => {}
                 }
             },
         )

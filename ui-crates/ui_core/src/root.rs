@@ -2,7 +2,8 @@
 
 use gpui::UpdateGlobal as _;
 use gpui::{
-    div, prelude::*, px, rgba, AnyView, Context, Entity, IntoElement, Render, SharedString, Window,
+    anchored, deferred, div, point, prelude::*, px, rgba, AnyView, Context, Entity, IntoElement,
+    Render, SharedString, Subscription, Window,
 };
 use std::path::PathBuf;
 use ui::{
@@ -10,8 +11,9 @@ use ui::{
     StyledExt as _,
 };
 use ui_common::menu::{
-    AboutApp, AppTitleBar, DevInspectEngineState, DevOpenWorkspaceRoot, DevReloadAssets,
-    DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings, ShowDocumentation,
+    AboutApp, AppTitleBar, AppTitleBarEvent, DevInspectEngineState, DevOpenWorkspaceRoot,
+    DevReloadAssets, DevSaveAsDefaultLevel, DevShowBuildInfo, Preferences, Settings,
+    ShowDocumentation,
 };
 
 use window_manager::{
@@ -29,6 +31,9 @@ pub struct PulsarRoot {
 struct EditorWindowShell {
     title_bar: Entity<AppTitleBar>,
     content: AnyView,
+    show_multiplayer: bool,
+    friends_screen: Entity<ui_friends::FriendsScreen>,
+    _subscriptions: Vec<Subscription>,
 }
 
 impl EditorWindowShell {
@@ -39,7 +44,27 @@ impl EditorWindowShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
-        Self { title_bar, content }
+        let friends_screen = cx.new(|cx| ui_friends::FriendsScreen::new(window, cx));
+
+        let subscriptions = vec![cx.subscribe(
+            &title_bar,
+            |this, _, event: &AppTitleBarEvent, cx| {
+                match event {
+                    AppTitleBarEvent::MultiplayerSessionsRequested => {
+                        this.show_multiplayer = !this.show_multiplayer;
+                        cx.notify();
+                    }
+                }
+            },
+        )];
+
+        Self {
+            title_bar,
+            content,
+            show_multiplayer: false,
+            friends_screen,
+            _subscriptions: subscriptions,
+        }
     }
 }
 
@@ -207,7 +232,9 @@ impl Render for PulsarRoot {
 }
 
 impl Render for EditorWindowShell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let vp = window.viewport_size();
+
         div()
             .size_full()
             .child(
@@ -216,6 +243,27 @@ impl Render for EditorWindowShell {
                     .child(self.title_bar.clone())
                     .child(div().flex_1().overflow_hidden().child(self.content.clone()))
             )
+            .when(self.show_multiplayer, |this| {
+                this.child(
+                    deferred(
+                        anchored()
+                            .anchor(gpui::Corner::TopRight)
+                            .position(point(vp.width - px(8.), px(34.)))
+                            .child(
+                                div()
+                                    .occlude()
+                                    .on_mouse_down_out(cx.listener(
+                                        |this, _: &gpui::MouseDownEvent, _, cx| {
+                                            this.show_multiplayer = false;
+                                            cx.notify();
+                                        },
+                                    ))
+                                    .child(self.friends_screen.clone()),
+                            ),
+                    )
+                    .with_priority(1),
+                )
+            })
     }
 }
 

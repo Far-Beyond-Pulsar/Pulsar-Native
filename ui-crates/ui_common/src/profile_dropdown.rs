@@ -19,6 +19,8 @@ pub enum ProfileDropdownEvent {
     SignInRequested,
     /// User signed out — profile cleared, avatar reset.
     SignedOut,
+    /// User clicked "Multiplayer Sessions" — parent should open the friends/invite UI.
+    MultiplayerSessionsRequested,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -341,8 +343,8 @@ impl ProfileDropdown {
                         "Multiplayer Sessions",
                         false,
                         cx.listener(|this, _: &ClickEvent, _, cx| {
-                            // TODO: open multiplayer panel
                             this.is_open = false;
+                            cx.emit(ProfileDropdownEvent::MultiplayerSessionsRequested);
                             cx.notify();
                         }),
                     )),

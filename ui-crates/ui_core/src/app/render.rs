@@ -676,7 +676,6 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_toggle_log_viewer))
             .on_action(cx.listener(Self::on_toggle_flamegraph))
             .on_action(cx.listener(Self::on_toggle_agent_chat))
-            .on_action(cx.listener(Self::on_toggle_friends))
             .on_action(cx.listener(Self::on_toggle_command_palette))
             .on_action(cx.listener(Self::on_open_file))
             .on_action(cx.listener(Self::on_open_asset))

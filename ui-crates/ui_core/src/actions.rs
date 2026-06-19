@@ -35,11 +35,6 @@ pub struct ToggleMultiplayer;
 #[action(namespace = pulsar_app)]
 pub struct ToggleAgentChat;
 
-/// Action to toggle the friends panel
-#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
-#[action(namespace = pulsar_app)]
-pub struct ToggleFriends;
-
 /// Action to toggle the flamegraph profiler
 #[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = pulsar_app)]

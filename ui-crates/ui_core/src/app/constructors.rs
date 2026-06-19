@@ -14,8 +14,7 @@ use ui_problems::ProblemsDrawer;
 use ui_type_debugger::TypeDebuggerDrawer;
 
 use super::{
-    agent_chat_panel::AgentChatPanel, event_handlers, friends_panel::FriendsPanel,
-    manual_tool_panel::ManualToolPanel, PulsarApp,
+    agent_chat_panel::AgentChatPanel, event_handlers, manual_tool_panel::ManualToolPanel, PulsarApp,
 };
 
 impl PulsarApp {
@@ -146,12 +145,10 @@ impl PulsarApp {
             cx.new(|cx| AgentChatPanel::new(dock_area.clone(), center_tabs.clone(), window, cx));
         let manual_tool_panel =
             cx.new(|cx| ManualToolPanel::new(dock_area.clone(), center_tabs.clone(), window, cx));
-        let friends_panel = cx.new(|cx| FriendsPanel::new(window, cx));
         let left_dock = DockItem::tabs(
             vec![
                 Arc::new(agent_chat_panel) as Arc<dyn ui::dock::PanelView>,
                 Arc::new(manual_tool_panel) as Arc<dyn ui::dock::PanelView>,
-                Arc::new(friends_panel) as Arc<dyn ui::dock::PanelView>,
             ],
             Some(0),
             &weak_dock,
@@ -460,17 +457,6 @@ impl PulsarApp {
                     "View",
                     |window, cx| {
                         window.dispatch_action(Box::new(ToggleAgentChat), cx);
-                    },
-                    cx,
-                );
-
-                palette.add_item(
-                    "Toggle Friends",
-                    "Show or hide the friends panel",
-                    IconName::Group,
-                    "View",
-                    |window, cx| {
-                        window.dispatch_action(Box::new(ToggleFriends), cx);
                     },
                     cx,
                 );

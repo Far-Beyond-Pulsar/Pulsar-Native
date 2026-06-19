@@ -100,13 +100,6 @@ impl PulsarApp {
         WindowRegistry::update_global(cx, |reg, cx| reg.open("MultiplayerWindow", cx));
     }
 
-    pub(super) fn toggle_friends_panel(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.state.dock_area.update(cx, |dock, cx| {
-            dock.toggle_dock(DockPlacement::Left, window, cx);
-        });
-        cx.notify();
-    }
-
     pub(super) fn toggle_agent_chat(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.state.dock_area.update(cx, |dock, cx| {
             dock.toggle_dock(DockPlacement::Left, window, cx);
