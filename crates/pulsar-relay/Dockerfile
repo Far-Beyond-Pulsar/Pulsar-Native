@@ -22,7 +22,7 @@ COPY crates/pulsar-relay/proto crates/pulsar-relay/proto
 # Copy every workspace member's Cargo.toml and a matching stub src file
 # so Cargo can resolve the full workspace without needing real source
 RUN --mount=type=bind,target=/src \
-    find /src/crates /src/ui-crates -maxdepth 2 -name 'Cargo.toml' | while read f; do \
+    find /src/crates /src/ui-crates /src/agent-providers -maxdepth 2 -name 'Cargo.toml' | while read f; do \
       rel="${f#/src/}"; \
       dir="/app/$(dirname $rel)"; \
       mkdir -p "$dir/src"; \
