@@ -28,11 +28,38 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
     gist_storage::write_engine_friends(&entries)?;
     tracing::info!("[FriendsService] send_friend_request: write succeeded, {} -> {}", username, target_username);
 
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let own_home_servers = gist_storage::read_engine_friends_file_meta(&username).unwrap_or_default();
+    let own_home_server = own_home_servers.first().cloned();
+
+    // Push notification to ALL our own sessions so the sender sees it too
+    if !own_home_servers.is_empty() {
+        let body = serde_json::json!({
+            "id": format!("self-{}-{}-{}", username, target_username, now),
+            "notification_type": "FriendRequest",
+            "from_username": &username,
+            "to_username": &username,
+            "from_home_server": own_home_server.clone(),
+            "message": format!("You sent a friend request to {}", target_username),
+            "created_at": now,
+        });
+        for hs in &own_home_servers {
+            let url = format!("{}/api/v1/notifications", hs.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(5))
+                .user_agent("Pulsar-Engine")
+                .build()
+                .map_err(|e| FriendsError::Network(e.to_string()))?;
+            let _ = client.post(&url).json(&body).send();
+        }
+    }
+
     // Push notification to target's home server(s)
     if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
-        let own_home_servers = gist_storage::read_engine_friends_file_meta(&username).unwrap_or_default();
-        let own_home_server = own_home_servers.first().cloned();
-
         for home_server in &target_home_servers {
             tracing::info!("[FriendsService] pushing notification to {}'s home server: {}", target_username, home_server);
             let client = reqwest::blocking::Client::builder()
@@ -41,12 +68,8 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
                 .build()
                 .map_err(|e| FriendsError::Network(e.to_string()))?;
 
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
             let body = serde_json::json!({
-                "id": format!("{}-{}-{}", username, target_username, now),
+                "id": format!("target-{}-{}-{}", username, target_username, now),
                 "notification_type": "FriendRequest",
                 "from_username": &username,
                 "to_username": target_username,
