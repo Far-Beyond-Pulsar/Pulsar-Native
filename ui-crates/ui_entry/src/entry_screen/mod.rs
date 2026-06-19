@@ -115,6 +115,17 @@ pub struct EntryScreen {
     pub(crate) template_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
     pub(crate) template_thumbnail_inflight: usize,
     pub(crate) template_thumbnail_queue: VecDeque<Template>,
+    // Pending session invite from a friend
+    pub(crate) pending_invite: Option<PendingInvite>,
+}
+
+/// Represents an incoming session invite from a friend.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingInvite {
+    pub from_username: String,
+    pub from_home_server: Option<String>,
+    pub message: String,
+    pub notification_id: String,
 }
 
 #[derive(Clone, Debug)]
@@ -246,6 +257,7 @@ impl EntryScreen {
             template_thumbnails: HashMap::new(),
             template_thumbnail_inflight: 0,
             template_thumbnail_queue: VecDeque::new(),
+            pending_invite: None,
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -424,12 +436,35 @@ impl EntryScreen {
 
             // Periodic check for in-memory notifications from the WebSocket listener
             let fs2 = screen.friends_screen.clone();
+            let this = screen.entity.clone().unwrap();
             cx.spawn(async move |_this, cx| {
                 loop {
                     smol::Timer::after(std::time::Duration::from_secs(2)).await;
                     let notes = friends_engine::take_notifications();
                     if !notes.is_empty() {
-                        tracing::info!("[EntryScreen] {} notification(s) received via WebSocket, refreshing friends", notes.len());
+                        tracing::info!("[EntryScreen] {} notification(s) received via WebSocket", notes.len());
+                        for note in &notes {
+                            if let Some(ntype) = note.get("notification_type").and_then(|v| v.as_str()) {
+                                if ntype == "SessionInvite" {
+                                    let from = note.get("from_username").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+                                    let msg = note.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    let home = note.get("from_home_server").and_then(|v| v.as_str()).map(|s| s.to_string());
+                                    let nid = note.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                    tracing::info!("[EntryScreen] Session invite from {}: {}", from, msg);
+                                    cx.update(|cx| {
+                                        this.update(cx, |screen, cx| {
+                                            screen.pending_invite = Some(PendingInvite {
+                                                from_username: from.clone(),
+                                                from_home_server: home,
+                                                message: msg,
+                                                notification_id: nid,
+                                            });
+                                            cx.notify();
+                                        });
+                                    });
+                                }
+                            }
+                        }
                         cx.update(|cx| {
                             fs2.update(cx, |fs, cx| {
                                 fs.refresh_friends(cx);
@@ -2069,6 +2104,58 @@ pub struct FabSearchRequested;
 
 impl EventEmitter<FabSearchRequested> for EntryScreen {}
 
+impl EntryScreen {
+    fn accept_invite(&mut self, _: &gpui::ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(invite) = self.pending_invite.take() {
+            tracing::info!("[EntryScreen] accepted session invite from {}", invite.from_username);
+            cx.notify();
+        }
+    }
+
+    fn decline_invite(&mut self, _: &gpui::ClickEvent, _window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(invite) = self.pending_invite.take() {
+            tracing::info!("[EntryScreen] declined session invite from {}", invite.from_username);
+            cx.notify();
+        }
+    }
+
+    fn render_invite_banner<'a>(
+        &'a self,
+        invite: &'a PendingInvite,
+        cx: &'a Context<Self>,
+    ) -> impl IntoElement + 'a {
+        let theme = cx.theme();
+        h_flex()
+            .id("session-invite-banner")
+            .w_full()
+            .px_4()
+            .py_2()
+            .gap_3()
+            .items_center()
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.info.opacity(0.15))
+            .child(
+                div()
+                    .flex_1()
+                    .text_color(theme.info)
+                    .child(format!("Session Invite: {}", invite.message)),
+            )
+            .child(
+                Button::new("accept-invite")
+                    .small()
+                    .label("Accept")
+                    .on_click(cx.listener(Self::accept_invite)),
+            )
+            .child(
+                Button::new("decline-invite")
+                    .small()
+                    .label("Decline")
+                    .on_click(cx.listener(Self::decline_invite)),
+            )
+    }
+}
+
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let bounds = window.viewport_size();
@@ -2104,6 +2191,9 @@ impl Render for EntryScreen {
         v_flex()
             .size_full()
             .bg(cx.theme().background)
+            .when_some(self.pending_invite.as_ref(), |this, invite| {
+                this.child(self.render_invite_banner(invite, cx))
+            })
             .child(
                 TitleBar::new()
                     .child(div().flex_1())
