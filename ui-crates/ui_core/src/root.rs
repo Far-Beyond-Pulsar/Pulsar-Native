@@ -32,7 +32,7 @@ struct EditorWindowShell {
     title_bar: Entity<AppTitleBar>,
     content: AnyView,
     show_multiplayer: bool,
-    invite_popover: Entity<ui_friends::InvitePopover>,
+    friends_popover: Entity<ui_friends::FriendsPopover>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -44,7 +44,7 @@ impl EditorWindowShell {
         cx: &mut Context<Self>,
     ) -> Self {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
-        let invite_popover = cx.new(|cx| ui_friends::InvitePopover::new(window, cx));
+        let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
         let subscriptions = vec![cx.subscribe(
             &title_bar,
@@ -62,7 +62,7 @@ impl EditorWindowShell {
             title_bar,
             content,
             show_multiplayer: false,
-            invite_popover,
+            friends_popover,
             _subscriptions: subscriptions,
         }
     }
@@ -258,7 +258,7 @@ impl Render for EditorWindowShell {
                                             cx.notify();
                                         },
                                     ))
-                                    .child(self.invite_popover.clone()),
+                                    .child(self.friends_popover.clone()),
                             ),
                     )
                     .with_priority(1),
