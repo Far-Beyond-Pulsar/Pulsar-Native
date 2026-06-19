@@ -33,52 +33,29 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let own_home_server = gist_storage::read_engine_friends_file_meta(&username)
-        .ok()
-        .and_then(|hs| hs.into_iter().next());
+    // Always push notification to the target user's relay.
+    // For self-friending the target is ourselves, so it reaches our own sessions.
+    if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
+        let from_home_server = gist_storage::read_engine_friends_file_meta(&username)
+            .ok()
+            .and_then(|hs| hs.into_iter().next());
 
-    // Push notification — if target is self, notify all our own sessions;
-    // otherwise notify the target's sessions only.
-    if target_username == username {
-        // Self-friending: notify all our sessions
-        if let Some(ref hs) = own_home_server {
-            let body = serde_json::json!({
-                "id": format!("{}-{}-{}", username, target_username, now),
-                "notification_type": "FriendRequest",
-                "from_username": &username,
-                "to_username": &username,
-                "from_home_server": own_home_server.clone(),
-                "message": format!("You sent a friend request to yourself"),
-                "created_at": now,
-            });
-            let url = format!("{}/api/v1/notifications", hs.trim_end_matches('/'));
-            let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(5))
-                .user_agent("Pulsar-Engine")
-                .build()
-                .map_err(|e| FriendsError::Network(e.to_string()))?;
-            let _ = client.post(&url).json(&body).send();
-        }
-    } else if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
         for home_server in &target_home_servers {
-            tracing::info!("[FriendsService] pushing notification to {}'s home server: {}", target_username, home_server);
-            let client = reqwest::blocking::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .user_agent("Pulsar-Engine")
-                .build()
-                .map_err(|e| FriendsError::Network(e.to_string()))?;
-
             let body = serde_json::json!({
                 "id": format!("{}-{}-{}", username, target_username, now),
                 "notification_type": "FriendRequest",
                 "from_username": &username,
                 "to_username": target_username,
-                "from_home_server": own_home_server.clone(),
+                "from_home_server": from_home_server.clone(),
                 "message": format!("{} sent you a friend request", username),
                 "created_at": now,
             });
-
             let url = format!("{}/api/v1/notifications", home_server.trim_end_matches('/'));
+            let client = reqwest::blocking::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .user_agent("Pulsar-Engine")
+                .build()
+                .map_err(|e| FriendsError::Network(e.to_string()))?;
             match client.post(&url).json(&body).send() {
                 Ok(r) if r.status().is_success() => {
                     tracing::info!("[FriendsService] notification pushed to {}", home_server);
