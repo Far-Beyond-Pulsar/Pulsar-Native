@@ -33,21 +33,24 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
 
-    let own_home_servers = gist_storage::read_engine_friends_file_meta(&username).unwrap_or_default();
-    let own_home_server = own_home_servers.first().cloned();
+    let own_home_server = gist_storage::read_engine_friends_file_meta(&username)
+        .ok()
+        .and_then(|hs| hs.into_iter().next());
 
-    // Push notification to ALL our own sessions so the sender sees it too
-    if !own_home_servers.is_empty() {
-        let body = serde_json::json!({
-            "id": format!("self-{}-{}-{}", username, target_username, now),
-            "notification_type": "FriendRequest",
-            "from_username": &username,
-            "to_username": &username,
-            "from_home_server": own_home_server.clone(),
-            "message": format!("You sent a friend request to {}", target_username),
-            "created_at": now,
-        });
-        for hs in &own_home_servers {
+    // Push notification — if target is self, notify all our own sessions;
+    // otherwise notify the target's sessions only.
+    if target_username == username {
+        // Self-friending: notify all our sessions
+        if let Some(ref hs) = own_home_server {
+            let body = serde_json::json!({
+                "id": format!("{}-{}-{}", username, target_username, now),
+                "notification_type": "FriendRequest",
+                "from_username": &username,
+                "to_username": &username,
+                "from_home_server": own_home_server.clone(),
+                "message": format!("You sent a friend request to yourself"),
+                "created_at": now,
+            });
             let url = format!("{}/api/v1/notifications", hs.trim_end_matches('/'));
             let client = reqwest::blocking::Client::builder()
                 .timeout(Duration::from_secs(5))
@@ -56,10 +59,7 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
                 .map_err(|e| FriendsError::Network(e.to_string()))?;
             let _ = client.post(&url).json(&body).send();
         }
-    }
-
-    // Push notification to target's home server(s)
-    if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
+    } else if let Ok(target_home_servers) = gist_storage::read_engine_friends_file_meta(target_username) {
         for home_server in &target_home_servers {
             tracing::info!("[FriendsService] pushing notification to {}'s home server: {}", target_username, home_server);
             let client = reqwest::blocking::Client::builder()
@@ -69,7 +69,7 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
                 .map_err(|e| FriendsError::Network(e.to_string()))?;
 
             let body = serde_json::json!({
-                "id": format!("target-{}-{}-{}", username, target_username, now),
+                "id": format!("{}-{}-{}", username, target_username, now),
                 "notification_type": "FriendRequest",
                 "from_username": &username,
                 "to_username": target_username,
