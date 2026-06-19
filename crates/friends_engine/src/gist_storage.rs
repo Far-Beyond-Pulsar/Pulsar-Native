@@ -379,6 +379,18 @@ pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
     let entries = read_engine_friend_entries(&username)?;
     let gist_id = find_pulsar_gist(&token, &username)?;
 
+    // Merge with existing home_servers from gist — never discard manual entries
+    let existing = match &gist_id {
+        Some(_) => read_engine_friends_file_meta(&username).ok().unwrap_or_default(),
+        None => Vec::new(),
+    };
+    let mut merged = existing;
+    for hs in home_servers {
+        if !merged.contains(hs) {
+            merged.push(hs.clone());
+        }
+    }
+
     let friends_json: Vec<serde_json::Value> = entries
         .iter()
         .map(|e| {
@@ -392,7 +404,7 @@ pub fn set_home_servers(home_servers: &[String]) -> Result<(), FriendsError> {
 
     let content = serde_json::to_string_pretty(&serde_json::json!({
         "friends": friends_json,
-        "home_servers": home_servers,
+        "home_servers": merged,
         "updated_at": chrono::Utc::now().to_rfc3339()
     }))
     .map_err(|e| FriendsError::Api(e.to_string()))?;
