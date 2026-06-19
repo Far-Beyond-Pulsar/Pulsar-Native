@@ -27,8 +27,8 @@ spec:
         fsGroup: 1000
       containers:
       - name: pulsar-relay
-        image: pulsar-relay:latest
-        imagePullPolicy: IfNotPresent
+        image: ghcr.io/far-beyond-pulsar/pulsar-relay:latest
+        imagePullPolicy: Always
         ports:
         - name: http
           containerPort: 8080
