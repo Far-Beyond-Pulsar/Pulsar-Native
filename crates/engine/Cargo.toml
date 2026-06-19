@@ -4,7 +4,7 @@ name = "pulsar_engine"
 description = "A modern high-performance game engine written in Rust"
 publish = false
 version = "0.2.38"
-
+#
 [[bin]]
 name = "pulsar_engine"
 path = "src/main.rs"
