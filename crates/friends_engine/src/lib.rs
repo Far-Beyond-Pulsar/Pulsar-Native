@@ -6,4 +6,5 @@ pub mod relay_integration;
 pub mod types;
 
 pub use friends_service::*;
+pub use gist_storage::normalize_relay_url;
 pub use types::*;

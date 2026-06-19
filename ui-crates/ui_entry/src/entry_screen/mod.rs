@@ -182,7 +182,6 @@ impl EntryScreen {
         } else {
             Vec::new()
         };
-        let cloud_urls: Vec<String> = cloud_servers.iter().map(|s| s.url.clone()).collect();
         let add_server_alias_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("My Studio Server"));
         let add_server_url_input =
@@ -417,10 +416,6 @@ impl EntryScreen {
         // Check dependencies on background thread
         screen.check_dependencies_async(cx);
 
-        // Sync cloud server URLs to friends engine home_servers and trigger initial friend list load
-        if friends_engine::is_authenticated() && !cloud_urls.is_empty() {
-            let _ = friends_engine::set_home_servers(&cloud_urls);
-        }
         if friends_engine::is_authenticated() {
             friends_engine::start_notification_listener();
 
@@ -1222,6 +1217,13 @@ default_scene = "scenes/main.scene"
                             screen.cloud_servers.push(server);
                             screen.save_cloud_servers();
                             screen.show_add_server = false;
+                            // Sync the updated server list to the gist home_servers
+                            let urls: Vec<String> = screen.cloud_servers.iter()
+                                .filter_map(|s| friends_engine::normalize_relay_url(&s.url))
+                                .collect();
+                            if !urls.is_empty() {
+                                let _ = friends_engine::set_home_servers(&urls);
+                            }
                             let new_idx = screen.cloud_servers.len() - 1;
                             screen.refresh_cloud_server(new_idx, cx);
                         }
@@ -1819,11 +1821,11 @@ default_scene = "scenes/main.scene"
                                 pd.avatar_image = None;
                                 pd.ensure_avatar_loaded(cx);
                             });
-                            // Sync cloud URLs as home_servers and refresh friends
+                            // Sync non-local cloud URLs as home_servers on login
                             let cloud_urls: Vec<String> = this
                                 .cloud_servers
                                 .iter()
-                                .map(|s| s.url.clone())
+                                .filter_map(|s| friends_engine::normalize_relay_url(&s.url))
                                 .collect();
                             if !cloud_urls.is_empty() {
                                 let _ = friends_engine::set_home_servers(&cloud_urls);

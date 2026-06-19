@@ -18,7 +18,7 @@ chrono = { workspace = true, features = ["serde"] }
 directories.workspace = true
 once_cell.workspace = true
 tokio = { workspace = true, features = ["rt", "sync", "macros", "time"] }
-async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
+async-tungstenite = { version = "0.34", features = ["tokio-runtime", "tokio-rustls-native-certs"] }
 futures = { workspace = true }
 
 [lints]
