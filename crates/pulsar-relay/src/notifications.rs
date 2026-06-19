@@ -42,6 +42,7 @@ pub enum NotificationType {
     FriendRequest,
     FriendRequestAccepted,
     FriendRequestDeclined,
+    SessionInvite,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

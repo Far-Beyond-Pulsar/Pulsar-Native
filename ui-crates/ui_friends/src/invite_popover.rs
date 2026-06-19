@@ -31,13 +31,16 @@ impl FriendsPopover {
                 if let SearchableListEvent::Select(username) = event {
                     let clicked = username.clone();
                     tracing::info!("[FriendsPopover] user selected: {}", clicked);
-                    // Check online status via relay (background thread, non-blocking)
+                    // Check online + send session invite (background thread, non-blocking)
                     std::thread::spawn(move || {
+                        tracing::info!("[FriendsPopover] checking online status for {}", clicked);
                         let online = friends_engine::relay_integration::is_user_online(&clicked);
-                        tracing::info!(
-                            "[FriendsPopover] online check for {}: {}",
-                            clicked, if online { "ONLINE" } else { "OFFLINE" }
-                        );
+                        tracing::info!("[FriendsPopover] {} is {}", clicked, if online { "ONLINE" } else { "OFFLINE" });
+                        // Always send the invite notification regardless of online status
+                        match friends_engine::friends_service::send_session_invite(&clicked) {
+                            Ok(()) => tracing::info!("[FriendsPopover] session invite sent to {}", clicked),
+                            Err(e) => tracing::error!("[FriendsPopover] failed to send invite to {}: {:?}", clicked, e),
+                        }
                     });
                     cx.emit(DismissEvent);
                 }

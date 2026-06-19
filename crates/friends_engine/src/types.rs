@@ -81,6 +81,7 @@ pub enum FriendsNotificationType {
     FriendRequest,
     FriendRequestAccepted,
     FriendRequestDeclined,
+    SessionInvite,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,5 +106,6 @@ pub enum FriendsError {
     Network(String),
     Api(String),
     NotFound,
+    NotFriends(String),
     RateLimited,
 }
