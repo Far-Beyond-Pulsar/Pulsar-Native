@@ -16,15 +16,27 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
     for entry in &own_entries {
         if entry.username == username {
             tracing::info!("[mutual_detection] compute_friends_list: self entry {} found, adding self-friend entry", entry.username);
+            let own_home_server = gist_storage::read_engine_friends_file_meta(&username)
+                .ok()
+                .and_then(|hs| hs.into_iter().next())
+                .or_else(|| entry.home_server.clone());
             result.push(FriendInfo {
                 username: username.clone(),
                 pfp: format!("https://github.com/{}.png", username),
                 relation_status: RelationStatus::Mutual,
                 current_project: None,
                 last_seen: None,
-                home_server: None,
+                home_server: own_home_server.clone(),
             });
-            updated_entries.push(entry.clone());
+            if own_home_server != entry.home_server {
+                updated_entries.push(GistFriendEntry {
+                    username: entry.username.clone(),
+                    mutual: entry.mutual,
+                    home_server: own_home_server,
+                });
+            } else {
+                updated_entries.push(entry.clone());
+            }
             continue;
         }
 
@@ -155,10 +167,6 @@ pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
     let mut updated = 0;
 
     for entry in &mut entries {
-        // Only fetch for non-mutual friends; mutual ones already have their home_server
-        if entry.username == gist_storage::get_own_username().ok().as_deref().unwrap_or("") {
-            continue;
-        }
         if entry.home_server.is_some() {
             continue;
         }
