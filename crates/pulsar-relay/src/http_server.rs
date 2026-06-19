@@ -402,8 +402,14 @@ async fn push_notification_handler(
     State(state): State<AppState>,
     Json(notification): Json<Notification>,
 ) -> Result<impl IntoResponse, ErrorResponse> {
+    info!(
+        "📨 push_notification_handler: id={} type={:?} from={} to={} msg={}",
+        notification.id, notification.notification_type,
+        notification.from_username, notification.to_username,
+        notification.message
+    );
     state.notifications.push_notification(notification);
-    info!("📨 Notification stored");
+    info!("📨 push_notification_handler: done");
     Ok(StatusCode::ACCEPTED)
 }
 
