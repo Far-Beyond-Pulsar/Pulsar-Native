@@ -136,6 +136,7 @@ fn create_router(state: AppState) -> Router {
         .route("/api/v1/notifications", get(get_notifications).post(push_notification_handler))
         .route("/api/v1/notifications/relay", post(relay_notification_handler))
         .route("/api/v1/notifications/ws", get(notifications_websocket_handler))
+        .route("/api/v1/users/{username}/online", get(user_online_handler))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -442,6 +443,15 @@ async fn notifications_websocket_handler(
     ws.on_upgrade(move |socket| {
         state.notifications.clone().handle_websocket(socket)
     })
+}
+
+async fn user_online_handler(
+    Path(username): Path<String>,
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let online = state.notifications.is_user_online(&username);
+    info!("👤 online check: {} -> {}", username, online);
+    Json(serde_json::json!({ "username": username, "online": online }))
 }
 
 #[cfg(test)]

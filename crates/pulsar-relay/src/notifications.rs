@@ -133,6 +133,15 @@ impl NotificationStore {
             .unwrap_or(false)
     }
 
+    /// Check if a user has an active WebSocket connection.
+    pub fn is_user_online(&self, username: &str) -> bool {
+        let online = self.connected_users.get(username)
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        tracing::info!("[NotificationStore] is_user_online: {} -> {}", username, online);
+        online
+    }
+
     /// Register a WebSocket connection for a user.
     pub fn register_connection(&self, username: &str, tx: mpsc::UnboundedSender<Notification>) {
         let count = {

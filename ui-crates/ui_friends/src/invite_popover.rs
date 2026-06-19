@@ -1,5 +1,6 @@
 use friends_engine::{FriendInfo, FriendsError, RelationStatus};
 use gpui::{prelude::*, *};
+use std::sync::Arc;
 use ui::{
     dropdown::{SearchableList, SearchableListEvent},
     h_flex,
@@ -27,7 +28,17 @@ impl FriendsPopover {
         let subscriptions = vec![cx.subscribe(
             &friends_list,
             |_this: &mut Self, _list, event: &SearchableListEvent<String>, cx| {
-                if let SearchableListEvent::Select(_) = event {
+                if let SearchableListEvent::Select(username) = event {
+                    let clicked = username.clone();
+                    tracing::info!("[FriendsPopover] user selected: {}", clicked);
+                    // Check online status via relay (background thread, non-blocking)
+                    std::thread::spawn(move || {
+                        let online = friends_engine::relay_integration::is_user_online(&clicked);
+                        tracing::info!(
+                            "[FriendsPopover] online check for {}: {}",
+                            clicked, if online { "ONLINE" } else { "OFFLINE" }
+                        );
+                    });
                     cx.emit(DismissEvent);
                 }
             },
