@@ -10,7 +10,7 @@
 //! - **Click chevron** - Expand/collapse components with children
 
 use crate::level_editor::scene_database::SceneDatabase;
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use engine_backend::ComponentInstance;
 use gpui::{prelude::*, *};
 use std::sync::Arc;
@@ -139,8 +139,8 @@ impl HierarchyItem for ComponentItem {
                 cx.stop_propagation();
                 let mut state = toggle_state.write();
                 if scene_db.set_component_enabled(&toggle_object_id, index, !enabled) {
-                    state.scene_revision = state.scene_revision.saturating_add(1);
-                    state.has_unsaved_changes = true;
+                    state.scene.revision = state.scene.revision.saturating_add(1);
+                    state.scene.has_unsaved_changes = true;
                 }
             });
 
@@ -169,16 +169,16 @@ impl HierarchyItem for ComponentItem {
                 .is_some()
             {
                 let mut state = duplicate_state.write();
-                state.scene_revision = state.scene_revision.saturating_add(1);
-                state.has_unsaved_changes = true;
+                state.scene.revision = state.scene.revision.saturating_add(1);
+                state.scene.has_unsaved_changes = true;
             }
         })
         .menu_handler_with_icon("Delete", IconName::Trash, move |_, app| {
             let _ = app;
             delete_scene_db.remove_component(&delete_object_id, delete_index);
             let mut state = delete_state.write();
-            state.scene_revision = state.scene_revision.saturating_add(1);
-            state.has_unsaved_changes = true;
+            state.scene.revision = state.scene.revision.saturating_add(1);
+            state.scene.has_unsaved_changes = true;
         })
     }
 }
@@ -320,6 +320,7 @@ impl ComponentHierarchyPanel {
             is_expanded: Arc::new(move |idx: &usize| {
                 state_arc_for_expand
                     .read()
+                    .hierarchy
                     .expanded_components
                     .contains(&(object_id.clone(), *idx))
             }),
@@ -328,10 +329,10 @@ impl ComponentHierarchyPanel {
                 move |idx: &usize, _window, _cx| {
                     let mut state = state_arc.write();
                     let key = (object_id.clone(), *idx);
-                    if state.expanded_components.contains(&key) {
-                        state.expanded_components.remove(&key);
+                    if state.hierarchy.expanded_components.contains(&key) {
+                        state.hierarchy.expanded_components.remove(&key);
                     } else {
-                        state.expanded_components.insert(key);
+                        state.hierarchy.expanded_components.insert(key);
                     }
                 }
             }),
@@ -370,6 +371,7 @@ impl ComponentHierarchyPanel {
                         // Auto-expand the parent to show the new child
                         state_arc_for_nest
                             .write()
+                            .hierarchy
                             .expanded_components
                             .insert((object_id.clone(), to_idx));
                     }

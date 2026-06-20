@@ -6,7 +6,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::DiagnosticMetric;
 
 /// Color palette for pipeline passes

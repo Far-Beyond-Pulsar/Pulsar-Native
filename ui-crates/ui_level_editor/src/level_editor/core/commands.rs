@@ -9,7 +9,7 @@
 /// `execute_command()`, giving a single auditable code path that is ready for
 /// undo / redo to be layered on top.
 use crate::level_editor::scene_database::SceneObjectData;
-use crate::level_editor::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 
 // ── Command types ─────────────────────────────────────────────────────────────
 
@@ -83,7 +83,7 @@ impl CommandResult {
 
 /// Apply `cmd` to `state`.
 ///
-/// Mutations go through `state.scene_database`, which writes to **both**
+/// Mutations go through `state.scene.database`, which writes to **both**
 /// `SceneDb` and the Helio renderer atomically.  `scene_revision` is bumped
 /// on every mutation, causing the polling task in `LevelEditorPanel` to notify
 /// the GPUI hierarchy and properties panels.
@@ -93,18 +93,18 @@ impl CommandResult {
 pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> CommandResult {
     match cmd {
         SceneCommand::AddObject { data, parent_id } => {
-            let id = state.scene_database.add_object(data, parent_id);
-            bump(state, true);
+            let id = state.scene.database.add_object(data, parent_id);
+            state.scene.bump_revision(true);
             CommandResult::ok(vec![id])
         }
 
         SceneCommand::RemoveObject { ref id } => {
-            let removed = state.scene_database.remove_object(id);
+            let removed = state.scene.database.remove_object(id);
             if removed {
-                if state.scene_database.get_selected_object_id().as_deref() == Some(id) {
-                    state.scene_database.select_object(None);
+                if state.scene.database.get_selected_object_id().as_deref() == Some(id) {
+                    state.scene.database.select_object(None);
                 }
-                bump(state, true);
+                state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
             } else {
                 CommandResult::noop("Object not found")
@@ -113,8 +113,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
 
         SceneCommand::UpdateObject { data } => {
             let id = data.id.clone();
-            if state.scene_database.update_object(data) {
-                bump(state, true);
+            if state.scene.database.update_object(data) {
+                state.scene.bump_revision(true);
                 CommandResult::ok(vec![id])
             } else {
                 CommandResult::noop("Object not found")
@@ -126,10 +126,11 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             ref new_parent_id,
         } => {
             let moved = state
-                .scene_database
+                .scene
+                .database
                 .reparent_object(id, new_parent_id.clone());
             if moved {
-                bump(state, true);
+                state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
             } else {
                 CommandResult::noop("Object not found or reparent rejected")
@@ -142,21 +143,22 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             position_offset,
         } => {
             let src_pos = state
-                .scene_database
+                .scene
+                .database
                 .get_object(source_id)
                 .map(|o| o.transform.position);
             let mut created = Vec::new();
             for i in 0..count {
-                if let Some(new_id) = state.scene_database.duplicate_object(source_id) {
+                if let Some(new_id) = state.scene.database.duplicate_object(source_id) {
                     if let (Some(off), Some(src)) = (position_offset, src_pos) {
                         let n = (i + 1) as f32;
-                        if let Some(mut copy) = state.scene_database.get_object(&new_id) {
+                        if let Some(mut copy) = state.scene.database.get_object(&new_id) {
                             copy.transform.position = [
                                 src[0] + off[0] * n,
                                 src[1] + off[1] * n,
                                 src[2] + off[2] * n,
                             ];
-                            state.scene_database.update_object(copy);
+                            state.scene.database.update_object(copy);
                         }
                     }
                     created.push(new_id);
@@ -167,14 +169,14 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             if created.is_empty() {
                 CommandResult::noop("Source object not found")
             } else {
-                bump(state, true);
+                state.scene.bump_revision(true);
                 CommandResult::ok(created)
             }
         }
 
         SceneCommand::SelectObject { id } => {
-            state.scene_database.select_object(id.clone());
-            bump(state, false);
+            state.scene.database.select_object(id.clone());
+            state.scene.bump_revision(false);
             CommandResult::ok(id.into_iter().collect())
         }
 
@@ -184,7 +186,7 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             rotation,
             scale,
         } => {
-            let Some(mut obj) = state.scene_database.get_object(id) else {
+            let Some(mut obj) = state.scene.database.get_object(id) else {
                 return CommandResult::noop("Object not found");
             };
             let mut changed = false;
@@ -210,8 +212,8 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
             if !changed {
                 return CommandResult::noop("No transform fields changed");
             }
-            if state.scene_database.update_object(obj.clone()) {
-                bump(state, true);
+            if state.scene.database.update_object(obj.clone()) {
+                state.scene.bump_revision(true);
                 CommandResult::ok(vec![id.clone()])
             } else {
                 CommandResult::noop("Transform update failed")
@@ -220,9 +222,4 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
     }
 }
 
-fn bump(state: &mut LevelEditorState, marks_unsaved: bool) {
-    state.scene_revision = state.scene_revision.saturating_add(1);
-    if marks_unsaved {
-        state.has_unsaved_changes = true;
-    }
-}
+

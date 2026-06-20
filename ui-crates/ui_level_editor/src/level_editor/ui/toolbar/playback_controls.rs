@@ -6,7 +6,7 @@ use ui::{
     IconName, Selectable,
 };
 
-use super::super::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 
 /// Playback controls - Play, Pause, Stop buttons for simulation
 pub struct PlaybackControls;
@@ -25,12 +25,12 @@ impl PlaybackControls {
             .items_center()
             .child({
                 let state_clone = state_arc.clone();
-                if state.is_edit_mode() {
+                if state.scene.is_edit_mode() {
                     Button::new("play")
                         .icon(IconName::Play)
                         .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
                         .on_click(move |_, _, _| {
-                            state_clone.write().enter_play_mode();
+                            state_clone.write().scene.enter_play_mode();
                         })
                         .into_any_element()
                 } else {
@@ -42,7 +42,7 @@ impl PlaybackControls {
                 }
             })
             .child({
-                let disabled = state.is_edit_mode();
+                let disabled = state.scene.is_edit_mode();
                 let btn = Button::new("pause")
                     .icon(IconName::Pause)
                     .tooltip(t!("LevelEditor.Toolbar.PauseSimulation"))
@@ -58,12 +58,12 @@ impl PlaybackControls {
             })
             .child({
                 let state_clone = state_arc.clone();
-                let disabled = state.is_edit_mode();
+                let disabled = state.scene.is_edit_mode();
                 let btn = Button::new("stop")
                     .icon(IconName::Square)
                     .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
                     .on_click(move |_, _, _| {
-                        state_clone.write().exit_play_mode();
+                        state_clone.write().scene.exit_play_mode();
                     });
                 if disabled {
                     btn.opacity(0.5).into_any_element()

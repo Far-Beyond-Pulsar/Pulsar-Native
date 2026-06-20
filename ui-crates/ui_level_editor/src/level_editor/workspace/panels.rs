@@ -1,8 +1,9 @@
 //! Workspace panels for Level Editor
 
+use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::ui::{
-    HierarchyPanel, LevelEditorState, ObjectHeaderSection, ObjectTypeFieldsSection,
-    PropertiesPanel, TransformSection, ViewportPanel, WorldSettingsReplicated,
+    HierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
+    ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::{Corner, *};
@@ -123,7 +124,7 @@ impl Render for HierarchyPanelWrapper {
         let self_entity_id = cx.entity().entity_id();
 
         let state = self.state.read();
-        let current_revision = state.scene_revision;
+        let current_revision = state.scene.revision;
         if current_revision != self.last_scene_revision {
             self.last_scene_revision = current_revision;
             cx.notify();
@@ -293,9 +294,9 @@ impl PropertiesPanelWrapper {
 
     fn update_transform_property(&self, property_path: &str, value: f32) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
-        let selected = self.state.read().selected_object();
+        let selected = self.state.read().scene.selected_object();
         if let Some(object_id) = selected {
-            let obj_opt = self.state.read().scene_database.get_object(&object_id);
+            let obj_opt = self.state.read().scene.database.get_object(&object_id);
             if let Some(mut obj) = obj_opt {
                 match property_path {
                     "position.x" => obj.transform.position[0] = value,
@@ -324,8 +325,8 @@ impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
-        let selected_object_id = state.selected_object();
-        let scene_revision = state.scene_revision;
+        let selected_object_id = state.scene.selected_object();
+        let scene_revision = state.scene.revision;
 
         if scene_revision != self.last_scene_revision {
             self.last_scene_revision = scene_revision;
@@ -337,7 +338,7 @@ impl Render for PropertiesPanelWrapper {
 
         if selection_changed {
             if let Some(ref object_id) = selected_object_id {
-                let scene_db = state.scene_database.clone();
+                let scene_db = state.scene.database.clone();
                 let object_id_clone = object_id.clone();
 
                 self.object_header_section = Some(cx.new(|cx| {

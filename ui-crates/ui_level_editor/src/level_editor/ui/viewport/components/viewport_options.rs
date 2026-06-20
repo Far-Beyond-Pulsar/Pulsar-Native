@@ -17,8 +17,7 @@ use ui::{
 
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
 use super::toggle_button::create_state_toggle;
-use crate::level_editor::ui::state::LevelEditorState;
-use crate::level_editor::ui::TransformTool;
+use crate::level_editor::state::{LevelEditorState, TransformTool};
 
 /// Visual toggle configuration.
 struct VisualToggle {
@@ -56,25 +55,25 @@ fn visual_toggles(
             "toggle_grid",
             IconName::LayoutDashboard,
             &t!("LevelEditor.Viewport.ToggleGrid").to_string(),
-            state.show_grid,
+            state.editor.show_grid,
             state_arc.clone(),
-            |s: &mut LevelEditorState| s.toggle_grid(),
+            |s: &mut LevelEditorState| s.editor.toggle_grid(),
         ))
         .child(create_state_toggle(
             "toggle_wireframe",
             IconName::Triangle,
             &t!("LevelEditor.Viewport.ToggleWireframe").to_string(),
-            state.show_wireframe,
+            state.editor.show_wireframe,
             state_arc.clone(),
-            |s: &mut LevelEditorState| s.toggle_wireframe(),
+            |s: &mut LevelEditorState| s.editor.toggle_wireframe(),
         ))
         .child(create_state_toggle(
             "toggle_lighting",
             IconName::Sun,
             &t!("LevelEditor.Viewport.ToggleLighting").to_string(),
-            state.show_lighting,
+            state.editor.show_lighting,
             state_arc.clone(),
-            |s: &mut LevelEditorState| s.toggle_lighting(),
+            |s: &mut LevelEditorState| s.editor.toggle_lighting(),
         ))
 }
 
@@ -103,9 +102,9 @@ where
                 .child({
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_perf")
-                        .checked(state.show_performance_overlay)
+                        .checked(state.overlays.state.show_performance_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().set_show_performance_overlay(*checked);
+                            state_clone.write().overlays.set_show_performance_overlay(*checked);
                         })
                 }),
         )
@@ -122,9 +121,9 @@ where
                 .child({
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_gpu")
-                        .checked(state.show_gpu_pipeline_overlay)
+                        .checked(state.overlays.state.show_gpu_pipeline_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
+                            state_clone.write().overlays.set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -148,9 +147,9 @@ where
                 .child({
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_gpu")
-                        .checked(state.show_gpu_pipeline_overlay)
+                        .checked(state.overlays.state.show_gpu_pipeline_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().set_show_gpu_pipeline_overlay(*checked);
+                            state_clone.write().overlays.set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -167,9 +166,9 @@ where
                 .child({
                     let state_clone = state_arc.clone();
                     Switch::new("toggle_cam")
-                        .checked(state.show_camera_mode_selector)
+                        .checked(state.overlays.state.show_camera_mode_selector)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().set_show_camera_mode_selector(*checked);
+                            state_clone.write().overlays.set_show_camera_mode_selector(*checked);
                         })
                 }),
         )
@@ -188,9 +187,9 @@ fn gizmo_tool_buttons(
                 .icon(IconName::PcMouse)
                 .ghost()
                 .tooltip("Select Tool (Q)")
-                .selected(state.current_tool == TransformTool::Select)
+                .selected(state.editor.current_tool == TransformTool::Select)
                 .on_click(move |_, _, _| {
-                    state_clone.write().set_tool(TransformTool::Select);
+                    state_clone.write().editor.set_tool(TransformTool::Select);
                 })
         })
         .child({
@@ -199,9 +198,9 @@ fn gizmo_tool_buttons(
                 .icon(IconName::ArrowUnion)
                 .ghost()
                 .tooltip("Move Tool (W)")
-                .selected(state.current_tool == TransformTool::Move)
+                .selected(state.editor.current_tool == TransformTool::Move)
                 .on_click(move |_, _, _| {
-                    state_clone.write().set_tool(TransformTool::Move);
+                    state_clone.write().editor.set_tool(TransformTool::Move);
                 })
         })
         .child({
@@ -210,9 +209,9 @@ fn gizmo_tool_buttons(
                 .icon(IconName::Refresh)
                 .ghost()
                 .tooltip("Rotate Tool (E)")
-                .selected(state.current_tool == TransformTool::Rotate)
+                .selected(state.editor.current_tool == TransformTool::Rotate)
                 .on_click(move |_, _, _| {
-                    state_clone.write().set_tool(TransformTool::Rotate);
+                    state_clone.write().editor.set_tool(TransformTool::Rotate);
                 })
         })
         .child({
@@ -221,9 +220,9 @@ fn gizmo_tool_buttons(
                 .icon(IconName::Maximize)
                 .ghost()
                 .tooltip("Scale Tool (R)")
-                .selected(state.current_tool == TransformTool::Scale)
+                .selected(state.editor.current_tool == TransformTool::Scale)
                 .on_click(move |_, _, _| {
-                    state_clone.write().set_tool(TransformTool::Scale);
+                    state_clone.write().editor.set_tool(TransformTool::Scale);
                 })
         })
 }
@@ -238,20 +237,20 @@ pub fn render_viewport_options<V>(
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
-    if state.viewport_options_collapsed {
+    if state.overlays.state.viewport_options_collapsed {
         return Button::new("expand_viewport_options")
             .icon(IconName::LayoutDashboard)
             .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
             .on_click(move |_, _, _| {
-                state_arc.write().set_viewport_options_collapsed(false);
+                state_arc.write().overlays.set_viewport_options_collapsed(false);
             })
             .into_any_element();
     }
 
     let drag_handle = create_drag_handle(
         state_arc.clone(),
-        |s: &mut LevelEditorState, pos| s.viewport_overlay_drag_start = pos,
-        |s: &mut LevelEditorState, dragging| s.is_dragging_viewport_overlay = dragging,
+        |s: &mut LevelEditorState, pos| s.overlays.positions.viewport_drag_start = pos,
+        |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_viewport = dragging,
         cx,
     );
 
@@ -268,7 +267,7 @@ where
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc.write().set_viewport_options_collapsed(true);
+                    state_arc.write().overlays.set_viewport_options_collapsed(true);
                 }),
         );
 

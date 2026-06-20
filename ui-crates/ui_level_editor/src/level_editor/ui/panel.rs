@@ -17,8 +17,8 @@ use ui::settings::EngineSettings;
 use ui_common::StatusBar;
 
 use super::actions::*;
-use super::state::request_thumbnail_capture;
-use super::{toolbar, CameraMode, LevelEditorState, ToolbarPanel, TransformTool, ViewportPanel};
+use super::{toolbar, ToolbarPanel, ViewportPanel};
+use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
     LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
@@ -122,7 +122,7 @@ impl LevelEditorPanel {
             }
         }
 
-        let scene_db = { self.shared_state.read().scene_database.clone() };
+        let scene_db = { self.shared_state.read().scene.database.clone() };
 
         if default_path.exists() {
             // File already on disk — load it into the shared scene db.
@@ -131,9 +131,9 @@ impl LevelEditorPanel {
                 Ok(editor_camera) => {
                     self.apply_editor_camera_state(editor_camera.as_ref());
                     let mut w = self.shared_state.write();
-                    w.current_scene = Some(default_path);
-                    w.has_unsaved_changes = false;
-                    if let Some(path) = w.current_scene.clone() {
+                    w.scene.current_scene = Some(default_path);
+                    w.scene.has_unsaved_changes = false;
+                    if let Some(path) = w.scene.current_scene.clone() {
                         ai_sessions::register_open_scene(&path, &self.shared_state);
                     }
                 }
@@ -173,9 +173,9 @@ impl LevelEditorPanel {
                         Err(e) => tracing::warn!("Seeded default level but reload failed: {e}"),
                     }
                     let mut w = self.shared_state.write();
-                    w.current_scene = Some(default_path);
-                    w.has_unsaved_changes = false;
-                    if let Some(path) = w.current_scene.clone() {
+                    w.scene.current_scene = Some(default_path);
+                    w.scene.has_unsaved_changes = false;
+                    if let Some(path) = w.scene.current_scene.clone() {
                         ai_sessions::register_open_scene(&path, &self.shared_state);
                     }
                 }
@@ -198,15 +198,15 @@ impl LevelEditorPanel {
     ) -> Result<Self, String> {
         let mut panel = Self::new_internal(None, window, cx);
         // Clear the default scene that was just populated, then load from file.
-        let scene_db = { panel.shared_state.read().scene_database.clone() };
+        let scene_db = { panel.shared_state.read().scene.database.clone() };
         scene_db.clear();
         let editor_camera = scene_db.load_from_file_with_editor_camera(&path)?;
         panel.apply_editor_camera_state(editor_camera.as_ref());
         {
             let mut state = panel.shared_state.write();
-            state.current_scene = Some(path);
-            state.has_unsaved_changes = false;
-            if let Some(open_path) = state.current_scene.clone() {
+            state.scene.current_scene = Some(path);
+            state.scene.has_unsaved_changes = false;
+            if let Some(open_path) = state.scene.current_scene.clone() {
                 ai_sessions::register_open_scene(&open_path, &panel.shared_state);
             }
         }
@@ -291,7 +291,7 @@ impl LevelEditorPanel {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
-                let current = poll_state.read().scene_revision;
+                let current = poll_state.read().scene.revision;
                 if current != last_seen {
                     last_seen = current;
                     cx.update(|cx| {
@@ -465,20 +465,20 @@ impl LevelEditorPanel {
 
     fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let state = self.shared_state.read();
-        let objects_count = state.scene_objects().len();
+        let objects_count = state.scene.scene_objects().len();
         let selected_name = state
-            .selected_object()
-            .and_then(|id| state.scene_database.get_object(&id))
+            .scene.selected_object()
+            .and_then(|id| state.scene.database.get_object(&id))
             .map(|obj| obj.name.clone())
             .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
 
-        let grid_status = if state.show_grid {
+        let grid_status = if state.editor.show_grid {
             t!("LevelEditor.StatusBar.GridOn").to_string()
         } else {
             t!("LevelEditor.StatusBar.GridOff").to_string()
         };
 
-        let camera_mode_str = match state.camera_mode {
+        let camera_mode_str = match state.editor.camera_mode {
             CameraMode::Perspective => t!("LevelEditor.CameraMode.Perspective").to_string(),
             CameraMode::Orthographic => t!("LevelEditor.CameraMode.Orthographic").to_string(),
             CameraMode::Top => t!("LevelEditor.CameraMode.Top").to_string(),
@@ -486,7 +486,7 @@ impl LevelEditorPanel {
             CameraMode::Side => t!("LevelEditor.CameraMode.Side").to_string(),
         };
 
-        let tool_name = match state.current_tool {
+        let tool_name = match state.editor.current_tool {
             TransformTool::Select => t!("LevelEditor.Tool.Select").to_string(),
             TransformTool::Move => t!("LevelEditor.Tool.Move").to_string(),
             TransformTool::Rotate => t!("LevelEditor.Tool.Rotate").to_string(),
@@ -516,7 +516,7 @@ impl LevelEditorPanel {
     }
 
     fn sync_gizmo_to_helio(&mut self) {
-        let tool = self.shared_state.read().current_tool;
+        let tool = self.shared_state.read().editor.current_tool;
         let (scene_type, helio_mode) = Self::tool_to_gizmo(tool);
         if let Ok(mut engine) = self.gpu_engine.lock() {
             engine.set_scene_gizmo_type(scene_type);
@@ -560,25 +560,25 @@ impl LevelEditorPanel {
 
     // Action handlers
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_tool(TransformTool::Select);
+        self.shared_state.write().editor.set_tool(TransformTool::Select);
         self.queue_gizmo_mode_for_tool(TransformTool::Select);
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_tool(TransformTool::Move);
+        self.shared_state.write().editor.set_tool(TransformTool::Move);
         self.queue_gizmo_mode_for_tool(TransformTool::Move);
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_tool(TransformTool::Rotate);
+        self.shared_state.write().editor.set_tool(TransformTool::Rotate);
         self.queue_gizmo_mode_for_tool(TransformTool::Rotate);
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_tool(TransformTool::Scale);
+        self.shared_state.write().editor.set_tool(TransformTool::Scale);
         self.queue_gizmo_mode_for_tool(TransformTool::Scale);
         cx.notify();
     }
@@ -590,7 +590,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().game_time_scale = action.0;
+        self.shared_state.write().play.time_scale = action.0;
         cx.notify();
     }
 
@@ -600,7 +600,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().multiplayer_mode = action.0;
+        self.shared_state.write().play.multiplayer_mode = action.0;
         cx.notify();
     }
 
@@ -610,7 +610,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().build_config = action.0;
+        self.shared_state.write().build.config = action.0;
         cx.notify();
     }
 
@@ -620,7 +620,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().target_platform = action.0;
+        self.shared_state.write().build.target_platform = action.0;
         cx.notify();
     }
 
@@ -630,7 +630,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().build_mode = action.0;
+        self.shared_state.write().build.mode = action.0;
         cx.notify();
     }
 
@@ -693,7 +693,7 @@ impl LevelEditorPanel {
 
     fn on_delete_object(&mut self, _: &DeleteObject, _: &mut Window, cx: &mut Context<Self>) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
-        let selected = self.shared_state.read().selected_object();
+        let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
             execute_command(&mut state, SceneCommand::RemoveObject { id });
@@ -706,7 +706,7 @@ impl LevelEditorPanel {
 
     fn on_duplicate_object(&mut self, _: &DuplicateObject, _: &mut Window, cx: &mut Context<Self>) {
         use crate::level_editor::commands::{execute_command, SceneCommand};
-        let selected = self.shared_state.read().selected_object();
+        let selected = self.shared_state.read().scene.selected_object();
         if let Some(id) = selected {
             let mut state = self.shared_state.write();
             execute_command(
@@ -725,7 +725,7 @@ impl LevelEditorPanel {
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state
             .write()
-            .select_object(Some(action.object_id.clone()));
+            .scene.select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
         self.notify_sub_panels(cx);
         cx.notify();
@@ -739,22 +739,22 @@ impl LevelEditorPanel {
     ) {
         self.shared_state
             .write()
-            .toggle_object_expanded(&action.object_id);
+            .hierarchy.toggle_object_expanded(&action.object_id);
         cx.notify();
     }
 
     fn on_toggle_grid(&mut self, _: &ToggleGrid, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().toggle_grid();
+        self.shared_state.write().editor.toggle_grid();
         cx.notify();
     }
 
     fn on_toggle_wireframe(&mut self, _: &ToggleWireframe, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().toggle_wireframe();
+        self.shared_state.write().editor.toggle_wireframe();
         cx.notify();
     }
 
     fn on_toggle_lighting(&mut self, _: &ToggleLighting, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().toggle_lighting();
+        self.shared_state.write().editor.toggle_lighting();
         cx.notify();
     }
 
@@ -764,7 +764,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_performance_overlay();
+        self.shared_state.write().overlays.toggle_performance_overlay();
         cx.notify();
     }
 
@@ -774,7 +774,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_camera_mode_selector();
+        self.shared_state.write().overlays.toggle_camera_mode_selector();
         cx.notify();
     }
 
@@ -784,7 +784,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_viewport_options();
+        self.shared_state.write().overlays.toggle_viewport_options();
         cx.notify();
     }
 
@@ -794,18 +794,18 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_fps_graph_type();
+        self.shared_state.write().overlays.toggle_fps_graph_type();
         cx.notify();
     }
 
     // Performance metrics toggles
     fn on_toggle_fps_graph(&mut self, _: &ToggleFpsGraph, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().toggle_fps_graph();
+        self.shared_state.write().overlays.toggle_fps_graph();
         cx.notify();
     }
 
     fn on_toggle_tps_graph(&mut self, _: &ToggleTpsGraph, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().toggle_tps_graph();
+        self.shared_state.write().overlays.toggle_tps_graph();
         cx.notify();
     }
 
@@ -815,7 +815,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_frame_time_graph();
+        self.shared_state.write().overlays.toggle_frame_time_graph();
         cx.notify();
     }
 
@@ -825,7 +825,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_memory_graph();
+        self.shared_state.write().overlays.toggle_memory_graph();
         cx.notify();
     }
 
@@ -835,7 +835,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_draw_calls_graph();
+        self.shared_state.write().overlays.toggle_draw_calls_graph();
         cx.notify();
     }
 
@@ -845,7 +845,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_vertices_graph();
+        self.shared_state.write().overlays.toggle_vertices_graph();
         cx.notify();
     }
 
@@ -855,7 +855,7 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_input_latency_graph();
+        self.shared_state.write().overlays.toggle_input_latency_graph();
         cx.notify();
     }
 
@@ -865,13 +865,13 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().toggle_ui_consistency_graph();
+        self.shared_state.write().overlays.toggle_ui_consistency_graph();
         cx.notify();
     }
 
     fn on_play_scene(&mut self, _: &PlayScene, _: &mut Window, cx: &mut Context<Self>) {
         // Enter play mode (saves scene snapshot)
-        self.shared_state.write().enter_play_mode();
+        self.shared_state.write().scene.enter_play_mode();
 
         // Disable gizmos in play mode
         self.sync_gizmo_to_helio();
@@ -881,7 +881,7 @@ impl LevelEditorPanel {
 
     fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
         // Exit play mode (restores scene from snapshot)
-        self.shared_state.write().exit_play_mode();
+        self.shared_state.write().scene.exit_play_mode();
 
         // Re-enable gizmos in edit mode
         self.sync_gizmo_to_helio();
@@ -892,7 +892,7 @@ impl LevelEditorPanel {
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state
             .write()
-            .set_camera_mode(CameraMode::Perspective);
+            .editor.set_camera_mode(CameraMode::Perspective);
         cx.notify();
     }
 
@@ -904,35 +904,35 @@ impl LevelEditorPanel {
     ) {
         self.shared_state
             .write()
-            .set_camera_mode(CameraMode::Orthographic);
+            .editor.set_camera_mode(CameraMode::Orthographic);
         cx.notify();
     }
 
     fn on_top_view(&mut self, _: &TopView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_camera_mode(CameraMode::Top);
+        self.shared_state.write().editor.set_camera_mode(CameraMode::Top);
         cx.notify();
     }
 
     fn on_front_view(&mut self, _: &FrontView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_camera_mode(CameraMode::Front);
+        self.shared_state.write().editor.set_camera_mode(CameraMode::Front);
         cx.notify();
     }
 
     fn on_side_view(&mut self, _: &SideView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().set_camera_mode(CameraMode::Side);
+        self.shared_state.write().editor.set_camera_mode(CameraMode::Side);
         cx.notify();
     }
 
     fn on_save_scene(&mut self, _: &SaveScene, _: &mut Window, cx: &mut Context<Self>) {
         // If no current scene path, do Save As
-        if self.shared_state.read().current_scene.is_none() {
+        if self.shared_state.read().scene.current_scene.is_none() {
             cx.dispatch_action(&SaveSceneAs);
             return;
         }
 
         let (scene_db, path_opt) = {
             let state = self.shared_state.read();
-            (state.scene_database.clone(), state.current_scene.clone())
+            (state.scene.database.clone(), state.scene.current_scene.clone())
         };
 
         if let Some(path) = path_opt {
@@ -940,7 +940,7 @@ impl LevelEditorPanel {
                 .save_to_file_with_editor_camera(&path, self.current_editor_camera_state())
             {
                 Ok(_) => {
-                    self.shared_state.write().has_unsaved_changes = false;
+                    self.shared_state.write().scene.has_unsaved_changes = false;
                     request_thumbnail_capture(&self.shared_state);
                     cx.notify();
                 }
@@ -951,7 +951,7 @@ impl LevelEditorPanel {
 
     fn on_save_scene_as(&mut self, _: &SaveSceneAs, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene_database.clone() };
+        let scene_db = { state_arc.read().scene.database.clone() };
         let editor_camera = self.current_editor_camera_state();
         let dialog = rfd::AsyncFileDialog::new()
             .set_title("Save Scene As")
@@ -965,14 +965,14 @@ impl LevelEditorPanel {
                     _this.update(cx, |_, cx| {
                         match result {
                             Ok(_) => {
-                                let previous = state_arc.write().current_scene.clone();
+                                let previous = state_arc.write().scene.current_scene.clone();
                                 if let Some(prev) = previous {
                                     ai_sessions::unregister_open_scene(&prev);
                                 }
-                                state_arc.write().current_scene = Some(path);
-                                state_arc.write().has_unsaved_changes = false;
+                                state_arc.write().scene.current_scene = Some(path);
+                                state_arc.write().scene.has_unsaved_changes = false;
                                 request_thumbnail_capture(&state_arc);
-                                if let Some(open_path) = state_arc.read().current_scene.clone() {
+                                if let Some(open_path) = state_arc.read().scene.current_scene.clone() {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }
                             }
@@ -988,10 +988,10 @@ impl LevelEditorPanel {
 
     fn on_open_scene(&mut self, _: &OpenScene, _window: &mut Window, cx: &mut Context<Self>) {
         let state_arc = self.shared_state.clone();
-        let scene_db = { state_arc.read().scene_database.clone() };
+        let scene_db = { state_arc.read().scene.database.clone() };
         let default_dir = state_arc
             .read()
-            .current_scene
+            .scene.current_scene
             .as_ref()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
@@ -1010,14 +1010,14 @@ impl LevelEditorPanel {
                             Ok(editor_camera) => {
                                 this.apply_editor_camera_state(editor_camera.as_ref());
                                 let mut state = state_arc.write();
-                                if let Some(prev) = state.current_scene.clone() {
+                                if let Some(prev) = state.scene.current_scene.clone() {
                                     ai_sessions::unregister_open_scene(&prev);
                                 }
-                                state.current_scene = Some(path);
-                                state.has_unsaved_changes = false;
+                                state.scene.current_scene = Some(path);
+                                state.scene.has_unsaved_changes = false;
                                 // Deselect so properties panel clears stale data.
-                                state.select_object(None);
-                                if let Some(open_path) = state.current_scene.clone() {
+                                state.scene.select_object(None);
+                                if let Some(open_path) = state.scene.current_scene.clone() {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }
                             }
@@ -1035,7 +1035,7 @@ impl LevelEditorPanel {
     fn on_new_scene(&mut self, _: &NewScene, _: &mut Window, cx: &mut Context<Self>) {
         // Warn if unsaved changes (TODO: modal dialog)
         // Clear the scene IN-PLACE so the renderer keeps its Arc<SceneDb>.
-        let scene_db = { self.shared_state.read().scene_database.clone() };
+        let scene_db = { self.shared_state.read().scene.database.clone() };
         let mut editor_camera = None;
         scene_db.clear();
 
@@ -1057,13 +1057,13 @@ impl LevelEditorPanel {
         self.notify_sub_panels(cx);
         {
             let mut state = self.shared_state.write();
-            if let Some(prev) = state.current_scene.clone() {
+            if let Some(prev) = state.scene.current_scene.clone() {
                 ai_sessions::unregister_open_scene(&prev);
             }
-            state.current_scene = None;
-            state.has_unsaved_changes = false;
+            state.scene.current_scene = None;
+            state.scene.has_unsaved_changes = false;
             // Deselect so properties panel clears stale data.
-            state.select_object(None);
+            state.scene.select_object(None);
         }
         cx.notify();
     }
@@ -1075,7 +1075,7 @@ impl LevelEditorPanel {
         cx: &mut Context<Self>,
     ) {
         // TODO: Frame selected object in viewport (move camera to focus on selection)
-        if let Some(_obj) = self.shared_state.read().get_selected_object() {
+        if let Some(_obj) = self.shared_state.read().scene.get_selected_object() {
             // For now just log - implementing camera movement would require Bevy camera manipulation
         }
         cx.notify();
@@ -1084,7 +1084,7 @@ impl LevelEditorPanel {
 
 impl Drop for LevelEditorPanel {
     fn drop(&mut self) {
-        if let Some(path) = self.shared_state.read().current_scene.clone() {
+        if let Some(path) = self.shared_state.read().scene.current_scene.clone() {
             ai_sessions::unregister_open_scene(&path);
         }
     }
@@ -1098,14 +1098,14 @@ impl Panel for LevelEditorPanel {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         let state = self.shared_state.read();
         div()
-            .child(if let Some(ref scene) = state.current_scene {
+            .child(if let Some(ref scene) = state.scene.current_scene {
                 format!(
                     "Level Editor - {}{}",
                     scene
                         .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Untitled"),
-                    if state.has_unsaved_changes { " *" } else { "" }
+                    if state.scene.has_unsaved_changes { " *" } else { "" }
                 )
             } else {
                 "Level Editor".to_string()
@@ -1121,12 +1121,12 @@ impl Panel for LevelEditorPanel {
     }
 
     fn panel_file_path(&self, _cx: &App) -> Option<std::path::PathBuf> {
-        self.shared_state.read().current_scene.clone()
+        self.shared_state.read().scene.current_scene.clone()
     }
 
     fn tab_icon(&self, _cx: &App) -> Option<ui::IconName> {
         let state = self.shared_state.read();
-        let file_path = state.current_scene.as_ref()?;
+        let file_path = state.scene.current_scene.as_ref()?;
 
         // Get the file type icon from the plugin manager registry
         if let Some(plugin_mgr) = plugin_manager::global() {
@@ -1139,7 +1139,7 @@ impl Panel for LevelEditorPanel {
     }
 
     fn tab_unsaved(&self, _cx: &App) -> bool {
-        self.shared_state.read().has_unsaved_changes
+        self.shared_state.read().scene.has_unsaved_changes
     }
 }
 
@@ -1153,7 +1153,7 @@ impl Render for LevelEditorPanel {
         self.initialize_workspace(window, cx);
 
         // Apply external scene mutations (e.g. AI tool calls) to panel UI.
-        let current_revision = self.shared_state.read().scene_revision;
+        let current_revision = self.shared_state.read().scene.revision;
         if current_revision != self.last_observed_scene_revision {
             self.last_observed_scene_revision = current_revision;
             self.notify_sub_panels(cx);
@@ -1162,7 +1162,7 @@ impl Render for LevelEditorPanel {
 
         // Sync selection and gizmo state to Helio each frame via GpuRenderer API.
         if let Ok(mut engine_guard) = self.gpu_engine.try_lock() {
-            let tool = self.shared_state.read().current_tool;
+            let tool = self.shared_state.read().editor.current_tool;
             let (scene_type, _) = Self::tool_to_gizmo(tool);
             if scene_type != engine_guard.get_scene_gizmo_type() {
                 engine_guard.set_scene_gizmo_type(scene_type);
@@ -1242,7 +1242,7 @@ impl Render for LevelEditorPanel {
                 match event.keystroke.key.as_ref() {
                     "escape" => {
                         // Update UI state unconditionally — always clear GPUI selection.
-                        this.shared_state.write().select_object(None);
+                        this.shared_state.write().scene.select_object(None);
                         // Signal the render thread to call editor_state.deselect() next frame.
                         if let Ok(engine) = this.gpu_engine.lock() {
                             engine.queue_deselect();
@@ -1272,17 +1272,17 @@ impl Render for LevelEditorPanel {
                 match event.keystroke.key.as_ref() {
                     "up" => {
                         // Move selected object up in hierarchy
-                        if let Some(id) = this.shared_state.read().selected_object() {
-                            this.shared_state.read().scene_database.move_object_up(&id);
+                        if let Some(id) = this.shared_state.read().scene.selected_object() {
+                            this.shared_state.read().scene.database.move_object_up(&id);
                             cx.notify();
                         }
                     }
                     "down" => {
                         // Move selected object down in hierarchy
-                        if let Some(id) = this.shared_state.read().selected_object() {
+                        if let Some(id) = this.shared_state.read().scene.selected_object() {
                             this.shared_state
                                 .read()
-                                .scene_database
+                                .scene.database
                                 .move_object_down(&id);
                             cx.notify();
                         }

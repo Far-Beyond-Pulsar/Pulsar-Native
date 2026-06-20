@@ -21,7 +21,7 @@ use ui::{v_flex, ActiveTheme};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
 use super::super::dialogs::add_component_dialog::AddComponentDialog;
-use super::super::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::scene_database::SceneDatabase;
 
 mod category_section;

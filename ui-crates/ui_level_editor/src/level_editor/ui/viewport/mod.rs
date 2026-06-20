@@ -28,7 +28,7 @@ use ui::Sizable;
 use ui::{v_flex, ActiveTheme};
 use ui_common::ViewportControls;
 
-use super::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::ui::viewport::components::camera_selector::CameraSpeedControl;
 use components::camera_selector::render_camera_selector;
 use components::gpu_pipeline_overlay::render_gpu_pipeline_overlay;
@@ -587,8 +587,8 @@ impl ViewportPanel {
 
                     // Handle overlay dragging
                     let mut state = state_arc_move.write();
-                    if state.is_dragging_camera_overlay {
-                        if let Some((start_x, start_y)) = state.camera_overlay_drag_start {
+                    if state.overlays.positions.is_dragging_camera {
+                        if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
@@ -596,28 +596,28 @@ impl ViewportPanel {
 
                             // Camera overlay positioned from right edge with .right(px(value))
                             // When dragging right, delta_x is positive, but right value should decrease
-                            state.camera_overlay_pos.0 =
-                                (state.camera_overlay_pos.0 - delta_x).max(0.0);
-                            state.camera_overlay_pos.1 =
-                                (state.camera_overlay_pos.1 + delta_y).max(0.0);
-                            state.camera_overlay_drag_start = Some((current_x, current_y));
+                            state.overlays.positions.camera.0 =
+                                (state.overlays.positions.camera.0 - delta_x).max(0.0);
+                            state.overlays.positions.camera.1 =
+                                (state.overlays.positions.camera.1 + delta_y).max(0.0);
+                            state.overlays.positions.camera_drag_start = Some((current_x, current_y));
                         }
                         return;
                     }
 
-                    if state.is_dragging_viewport_overlay {
-                        if let Some((start_x, start_y)) = state.viewport_overlay_drag_start {
+                    if state.overlays.positions.is_dragging_viewport {
+                        if let Some((start_x, start_y)) = state.overlays.positions.viewport_drag_start {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
                             let delta_y = current_y - start_y;
 
                             // Viewport overlay is positioned from left edge, normal drag
-                            state.viewport_overlay_pos.0 =
-                                (state.viewport_overlay_pos.0 + delta_x).max(0.0);
-                            state.viewport_overlay_pos.1 =
-                                (state.viewport_overlay_pos.1 + delta_y).max(0.0);
-                            state.viewport_overlay_drag_start = Some((current_x, current_y));
+                            state.overlays.positions.viewport.0 =
+                                (state.overlays.positions.viewport.0 + delta_x).max(0.0);
+                            state.overlays.positions.viewport.1 =
+                                (state.overlays.positions.viewport.1 + delta_y).max(0.0);
+                            state.overlays.positions.viewport_drag_start = Some((current_x, current_y));
                         }
                         return;
                     }
@@ -819,10 +819,10 @@ impl ViewportPanel {
                       _window: &mut gpui::Window,
                       _cx: &mut gpui::App| {
                     let mut state = state_arc_up.write();
-                    state.is_dragging_camera_overlay = false;
-                    state.is_dragging_viewport_overlay = false;
-                    state.camera_overlay_drag_start = None;
-                    state.viewport_overlay_drag_start = None;
+                    state.overlays.positions.is_dragging_camera = false;
+                    state.overlays.positions.is_dragging_viewport = false;
+                    state.overlays.positions.camera_drag_start = None;
+                    state.overlays.positions.viewport_drag_start = None;
                     drop(state);
 
                     if let Ok(mut engine) = gpu_engine_up.try_lock() {
@@ -884,36 +884,36 @@ impl ViewportPanel {
             .child(
                 div()
                     .absolute()
-                    .top(px(state.viewport_overlay_pos.1))
-                    .left(px(state.viewport_overlay_pos.0))
+                    .top(px(state.overlays.positions.viewport.1))
+                    .left(px(state.overlays.positions.viewport.0))
                     .child(render_viewport_options(
                         state,
                         state_arc.clone(),
-                        state.is_dragging_viewport_overlay,
+                        state.overlays.positions.is_dragging_viewport,
                         cx,
                     )),
             );
 
         // Top-right: Camera selector
-        if state.show_camera_mode_selector {
+        if state.overlays.state.show_camera_mode_selector {
             overlays = overlays.child(
                 div()
                     .absolute()
-                    .top(px(state.camera_overlay_pos.1))
-                    .right(px(state.camera_overlay_pos.0))
+                    .top(px(state.overlays.positions.camera.1))
+                    .right(px(state.overlays.positions.camera.0))
                     .child(render_camera_selector(
                         state,
                         state_arc.clone(),
-                        state.camera_mode,
+                        state.editor.camera_mode,
                         self.input_state.clone(),
-                        state.is_dragging_camera_overlay,
+                        state.overlays.positions.is_dragging_camera,
                         cx,
                     )),
             );
         }
 
         // Bottom-left: Performance overlay
-        if state.show_performance_overlay {
+        if state.overlays.state.show_performance_overlay {
             overlays = overlays.child(div().absolute().bottom_2().left_2().max_w(px(400.0)).child(
                 render_performance_overlay(
                     state,
@@ -935,8 +935,8 @@ impl ViewportPanel {
         }
 
         // GPU Pipeline overlay - positions next to performance overlay if both visible
-        if state.show_gpu_pipeline_overlay {
-            let overlay_div = if state.show_performance_overlay {
+        if state.overlays.state.show_gpu_pipeline_overlay {
+            let overlay_div = if state.overlays.state.show_performance_overlay {
                 // Position to the right of performance overlay
                 div().absolute().bottom_2().left(px(300.0)) // 400px width + 10px gap
             } else {

@@ -1,6 +1,7 @@
 pub mod tree_item_renderer;
 
-use super::state::{HierarchyDragPayload, LevelEditorState, SceneObject};
+use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
+use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
@@ -35,7 +36,7 @@ impl Render for HierarchyDragPayload {
 
 #[derive(Clone)]
 struct SceneObjectItem {
-    object: SceneObject,
+    object: SceneObjectData,
     state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     is_selected: bool,
     is_folder: bool,
@@ -134,7 +135,7 @@ impl HierarchyItem for SceneObjectItem {
                 let t0 = std::time::Instant::now();
                 let mut state = visibility_state.write();
                 tracing::info!("[HIER VIS] write lock acquired in {:?}", t0.elapsed());
-                if let Some(mut obj) = state.scene_database.get_object(&visibility_object_id) {
+                if let Some(mut obj) = state.scene.database.get_object(&visibility_object_id) {
                     obj.visible = !obj.visible;
                     let t1 = std::time::Instant::now();
                     execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
@@ -204,7 +205,7 @@ impl HierarchyPanel {
     }
 
     fn build_items(
-        all_objects: &[SceneObject],
+        all_objects: &[SceneObjectData],
         selected_object: Option<&String>,
         state_arc: &Arc<parking_lot::RwLock<LevelEditorState>>,
     ) -> Vec<SceneObjectItem> {
@@ -234,12 +235,12 @@ impl HierarchyPanel {
     where
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
-        let all_objects = state.scene_database.get_all_objects();
-        let items = Self::build_items(&all_objects, state.selected_object().as_ref(), &state_arc);
+        let all_objects = state.scene.database.get_all_objects();
+        let items = Self::build_items(&all_objects, state.scene.selected_object().as_ref(), &state_arc);
 
         // Root-level objects (those without parents)
         let root_ids: Vec<String> = state
-            .scene_objects()
+            .scene.scene_objects()
             .iter()
             .map(|obj| obj.id.clone())
             .collect();
@@ -299,7 +300,7 @@ impl HierarchyPanel {
                     .tooltip(t!("LevelEditor.Hierarchy.DeleteSelected"))
                     .on_click(move |_, _, _| {
                         use crate::level_editor::commands::{execute_command, SceneCommand};
-                        if let Some(id) = state_clone.read().selected_object() {
+                        if let Some(id) = state_clone.read().scene.selected_object() {
                             let mut state = state_clone.write();
                             execute_command(&mut state, SceneCommand::RemoveObject { id });
                         }
@@ -345,7 +346,7 @@ impl HierarchyPanel {
 
             // Callbacks
             is_expanded: Arc::new(move |id: &String| {
-                state_arc_for_expand.read().is_object_expanded(id)
+                state_arc_for_expand.read().hierarchy.is_object_expanded(id)
             }),
             on_toggle_expand: Arc::new(move |id: &String, _window, cx| {
                 let id = id.clone();
@@ -353,10 +354,10 @@ impl HierarchyPanel {
                 let wrapper = wrapper_for_toggle.clone();
                 cx.defer(move |cx| {
                     let mut state = state.write();
-                    if state.is_object_expanded(&id) {
-                        state.expanded_objects.remove(&id);
+                    if state.hierarchy.is_object_expanded(&id) {
+                        state.hierarchy.expanded_objects.remove(&id);
                     } else {
-                        state.expanded_objects.insert(id);
+                        state.hierarchy.expanded_objects.insert(id);
                     }
                     drop(state);
                     if let Some(wrapper) = wrapper.upgrade() {
@@ -371,7 +372,7 @@ impl HierarchyPanel {
                 cx.defer(move |cx| {
                     {
                         let mut guard = state.write();
-                        guard.select_object(Some(id));
+                        guard.scene.select_object(Some(id));
                     }
                     if let Some(wrapper) = wrapper.upgrade() {
                         cx.notify(wrapper.entity_id());
@@ -408,9 +409,9 @@ impl HierarchyPanel {
                             // Reorder doesn't fit a SceneCommand variant yet — call directly and
                             // bump revision so the polling task propagates the change.
                             state
-                                .scene_database
+                                .scene.database
                                 .reorder_object_siblings(&object_id, &target_id);
-                            state.scene_revision = state.scene_revision.saturating_add(1);
+                            state.scene.revision = state.scene.revision.saturating_add(1);
                         } else {
                             let result = execute_command(
                                 &mut state,
@@ -420,7 +421,7 @@ impl HierarchyPanel {
                                 },
                             );
                             if result.changed {
-                                state.expanded_objects.insert(target_id);
+                                state.hierarchy.expanded_objects.insert(target_id);
                             }
                         }
                         drop(state);

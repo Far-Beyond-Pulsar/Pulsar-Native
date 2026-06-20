@@ -13,7 +13,7 @@ use ui::{
 };
 
 use super::super::performance::*;
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 
 /// Compact stat display: label and value in a single line.
 fn stat_line<V>(
@@ -85,13 +85,13 @@ pub fn render_performance_overlay<V>(
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
-    if state.performance_overlay_collapsed {
+    if state.overlays.state.performance_overlay_collapsed {
         return Button::new("expand_performance")
             .icon(IconName::Activity)
             .ghost()
             .tooltip("Show Performance Stats")
             .on_click(move |_, _, _| {
-                state_arc.write().set_performance_overlay_collapsed(false);
+                state_arc.write().overlays.set_performance_overlay_collapsed(false);
             })
             .into_any_element();
     }
@@ -197,7 +197,7 @@ where
                         .ghost()
                         .tooltip("Close")
                         .on_click(move |_, _, _| {
-                            state_clone.write().set_performance_overlay_collapsed(true);
+                            state_clone.write().overlays.set_performance_overlay_collapsed(true);
                         })
                 }),
         )

@@ -2,7 +2,7 @@ use gpui::*;
 use std::sync::Arc;
 use ui::{button::Button, h_flex, Selectable};
 
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use engine_backend::subsystems::render::helio_renderer::RendererCommand;
 
 pub struct FeatureToggles;
@@ -22,7 +22,7 @@ impl FeatureToggles {
             .child(Self::render_toggle_button(
                 "toggle_materials",
                 "Materials",
-                state.feature_materials_enabled,
+                state.editor.feature_materials_enabled,
                 ui::IconName::Palette,
                 state_arc.clone(),
                 gpu_engine.clone(),
@@ -31,7 +31,7 @@ impl FeatureToggles {
             .child(Self::render_toggle_button(
                 "toggle_lighting",
                 "Lighting",
-                state.feature_lighting_enabled,
+                state.editor.feature_lighting_enabled,
                 ui::IconName::Sun,
                 state_arc.clone(),
                 gpu_engine.clone(),
@@ -40,7 +40,7 @@ impl FeatureToggles {
             .child(Self::render_toggle_button(
                 "toggle_shadows",
                 "Shadows",
-                state.feature_shadows_enabled,
+                state.editor.feature_shadows_enabled,
                 ui::IconName::Circle,
                 state_arc.clone(),
                 gpu_engine.clone(),
@@ -49,7 +49,7 @@ impl FeatureToggles {
             .child(Self::render_toggle_button(
                 "toggle_bloom",
                 "Bloom",
-                state.feature_bloom_enabled,
+                state.editor.feature_bloom_enabled,
                 ui::IconName::Star,
                 state_arc.clone(),
                 gpu_engine.clone(),
@@ -75,15 +75,15 @@ impl FeatureToggles {
                 let mut state = state_arc.write();
                 match feature_name {
                     "basic_materials" => {
-                        state.feature_materials_enabled = !state.feature_materials_enabled
+                        state.editor.feature_materials_enabled = !state.editor.feature_materials_enabled
                     }
                     "basic_lighting" => {
-                        state.feature_lighting_enabled = !state.feature_lighting_enabled
+                        state.editor.feature_lighting_enabled = !state.editor.feature_lighting_enabled
                     }
                     "procedural_shadows" => {
-                        state.feature_shadows_enabled = !state.feature_shadows_enabled
+                        state.editor.feature_shadows_enabled = !state.editor.feature_shadows_enabled
                     }
-                    "bloom" => state.feature_bloom_enabled = !state.feature_bloom_enabled,
+                    "bloom" => state.editor.feature_bloom_enabled = !state.editor.feature_bloom_enabled,
                     _ => {}
                 }
                 drop(state);

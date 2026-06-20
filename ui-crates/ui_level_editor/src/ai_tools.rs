@@ -630,9 +630,9 @@ fn execute_ai_tool_impl(
     match tool_name {
         "level_editor_query_scene" => {
             let state = state_arc.read();
-            let objects = state.scene_database.get_all_objects();
-            let roots = state.scene_database.get_root_objects();
-            let selected_object_id = state.scene_database.get_selected_object_id();
+            let objects = state.scene.database.get_all_objects();
+            let roots = state.scene.database.get_root_objects();
+            let selected_object_id = state.scene.database.get_selected_object_id();
 
             let mut counts_by_type = std::collections::BTreeMap::new();
             for object in &objects {
@@ -645,9 +645,9 @@ fn execute_ai_tool_impl(
                 "apply_mode": "editor_state",
                 "persists_to_disk": false,
                 "open_file": file_path.display().to_string(),
-                "current_scene": state.current_scene.as_ref().map(|p| p.display().to_string()),
-                "has_unsaved_changes": state.has_unsaved_changes,
-                "editor_mode": format!("{:?}", state.editor_mode),
+                "current_scene": state.scene.current_scene.as_ref().map(|p| p.display().to_string()),
+                "has_unsaved_changes": state.scene.has_unsaved_changes,
+                "editor_mode": format!("{:?}", state.scene.editor_mode),
                 "object_count": objects.len(),
                 "root_object_count": roots.len(),
                 "selected_object_id": selected_object_id,
@@ -656,7 +656,7 @@ fn execute_ai_tool_impl(
         }
         "level_editor_query_objects" => {
             let state = state_arc.read();
-            let objects = state.scene_database.get_all_objects();
+            let objects = state.scene.database.get_all_objects();
             let filter = tool_args.get("filter");
             let offset = tool_args
                 .get("offset")
@@ -699,7 +699,7 @@ fn execute_ai_tool_impl(
                 })?;
 
             let state = state_arc.read();
-            let object = state.scene_database.get_object(&object_id.to_string());
+            let object = state.scene.database.get_object(&object_id.to_string());
 
             Ok(json!({
                 "ok": true,
@@ -712,8 +712,8 @@ fn execute_ai_tool_impl(
         }
         "level_editor_query_selection" => {
             let state = state_arc.read();
-            let selected_id = state.scene_database.get_selected_object_id();
-            let selected_object = state.scene_database.get_selected_object();
+            let selected_id = state.scene.database.get_selected_object_id();
+            let selected_object = state.scene.database.get_selected_object();
 
             Ok(json!({
                 "ok": true,
@@ -781,7 +781,7 @@ fn execute_ai_tool_impl(
 
             let mut state = state_arc.write();
             let scene_path = state
-                .current_scene
+                .scene.current_scene
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
@@ -895,7 +895,7 @@ fn execute_ai_tool_impl(
                     children: vec![],
                     props: Default::default(),
                     scene_path: state
-                        .current_scene
+                        .scene.current_scene
                         .as_ref()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default(),
@@ -949,14 +949,14 @@ fn execute_ai_tool_impl(
             let state = state_arc.read();
 
             let (child_ids, child_objects) = if let Some(ref parent_id) = parent_id {
-                let ids = state.scene_database.get_children(parent_id);
+                let ids = state.scene.database.get_children(parent_id);
                 let objects = ids
                     .iter()
-                    .filter_map(|id| state.scene_database.get_object(id))
+                    .filter_map(|id| state.scene.database.get_object(id))
                     .collect::<Vec<_>>();
                 (ids, objects)
             } else {
-                let objects = state.scene_database.get_root_objects();
+                let objects = state.scene.database.get_root_objects();
                 let ids = objects.iter().map(|o| o.id.clone()).collect::<Vec<_>>();
                 (ids, objects)
             };
@@ -1125,7 +1125,7 @@ fn execute_ai_tool_impl(
                 .to_string();
 
             let mut state = state_arc.write();
-            let Some(mut object) = state.scene_database.get_object(&object_id) else {
+            let Some(mut object) = state.scene.database.get_object(&object_id) else {
                 return Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",
@@ -1171,7 +1171,7 @@ fn execute_ai_tool_impl(
         }
         "level_editor_save_scene" => {
             let mut state = state_arc.write();
-            let Some(path) = state.current_scene.clone() else {
+            let Some(path) = state.scene.current_scene.clone() else {
                 return Ok(json!({
                     "ok": false,
                     "apply_mode": "editor_state",
@@ -1181,10 +1181,10 @@ fn execute_ai_tool_impl(
                 }));
             };
 
-            match state.scene_database.save_to_file(&path) {
+            match state.scene.database.save_to_file(&path) {
                 Ok(_) => {
-                    state.has_unsaved_changes = false;
-                    state.scene_revision = state.scene_revision.saturating_add(1);
+                    state.scene.has_unsaved_changes = false;
+                    state.scene.revision = state.scene.revision.saturating_add(1);
                     Ok(json!({
                         "ok": true,
                         "apply_mode": "editor_state",
@@ -1213,7 +1213,7 @@ fn execute_ai_tool_impl(
             let filter = tool_args.get("filter");
 
             let mut state = state_arc.write();
-            let objects = state.scene_database.get_all_objects();
+            let objects = state.scene.database.get_all_objects();
             let mut updated_ids = Vec::new();
             let mut matched_count = 0usize;
 
@@ -1296,7 +1296,7 @@ fn execute_ai_tool_impl(
             let filter = tool_args.get("filter");
 
             let mut state = state_arc.write();
-            let objects = state.scene_database.get_all_objects();
+            let objects = state.scene.database.get_all_objects();
             let delete_ids = objects
                 .iter()
                 .filter(|object| object_matches_filter(object, filter))

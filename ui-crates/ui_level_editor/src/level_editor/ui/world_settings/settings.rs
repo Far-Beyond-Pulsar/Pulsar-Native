@@ -9,7 +9,7 @@ use ui::{
     v_flex, ActiveTheme, CollapsibleSection, IconName, Sizable, StyledExt,
 };
 
-use super::super::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::WorldSettingsPanel;
 
 /// World Settings Panel - Configure global world/scene settings

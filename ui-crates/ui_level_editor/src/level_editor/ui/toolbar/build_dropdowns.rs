@@ -6,7 +6,7 @@ use ui::{
     IconName, Sizable,
 };
 
-use super::super::state::{BuildConfig, LevelEditorState, TargetPlatform};
+use crate::level_editor::state::{BuildConfig, LevelEditorState, TargetPlatform};
 use super::actions::{SetBuildConfig, SetTargetPlatform};
 
 /// Build configuration and platform dropdowns - Comprehensive build settings for all 290+ Rust targets
@@ -108,17 +108,17 @@ impl BuildDropdowns {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let config_label = match state.build_config {
+        let config_label = match state.build.config {
             BuildConfig::Debug => "Debug",
             BuildConfig::Release => "Release",
             BuildConfig::Shipping => "Ship",
         };
 
-        let platform_label = Self::get_platform_label(state.target_platform);
-        let platform_icon = Self::get_platform_icon(state.target_platform);
+        let platform_label = Self::get_platform_label(state.build.target_platform);
+        let platform_icon = Self::get_platform_icon(state.build.target_platform);
 
-        let current_config = state.build_config;
-        let current_platform = state.target_platform;
+        let current_config = state.build.config;
+        let current_platform = state.build.target_platform;
 
         ui::h_flex()
             .gap_1p5()

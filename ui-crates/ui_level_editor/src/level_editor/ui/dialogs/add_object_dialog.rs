@@ -14,7 +14,7 @@ use ui::{
 };
 
 use crate::level_editor::scene_database::{ObjectType, SceneObjectData, Transform};
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
@@ -81,7 +81,7 @@ impl AddObjectDialog {
     }
 
     fn spawn_object(&self, cx: &mut Context<Self>) {
-        let objects_count = self.state_arc.read().scene_objects().len();
+        let objects_count = self.state_arc.read().scene.scene_objects().len();
         let new_object = SceneObjectData {
             id: format!("object_{}", objects_count + 1),
             name: "New Object".to_string(),
@@ -96,7 +96,7 @@ impl AddObjectDialog {
         };
         self.state_arc
             .read()
-            .scene_database
+            .scene.database
             .add_object(new_object, None);
         cx.emit(ObjectSpawnedEvent);
         cx.emit(DismissEvent);

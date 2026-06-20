@@ -14,7 +14,7 @@ use ui::{
 };
 
 use super::floating_toolbar::{create_drag_handle, toolbar_with_drag_handle};
-use crate::level_editor::ui::state::{CameraMode, LevelEditorState};
+use crate::level_editor::state::{CameraMode, LevelEditorState};
 
 /// Camera mode button configuration.
 struct CameraModeButton {
@@ -84,7 +84,7 @@ fn camera_mode_buttons(
                 .tooltip(tooltip)
                 .selected(matches!(current_mode, m if m == target_mode))
                 .on_click(move |_, _, _| {
-                    state_clone.write().set_camera_mode(target_mode);
+                    state_clone.write().editor.set_camera_mode(target_mode);
                 })
         }))
 }
@@ -156,20 +156,20 @@ where
     V: EventEmitter<ui::dock::PanelEvent> + Render + 'static,
     S: CameraSpeedControl + 'static,
 {
-    if state.camera_mode_selector_collapsed {
+    if state.overlays.state.camera_mode_selector_collapsed {
         return Button::new("expand_camera_mode")
             .icon(IconName::Cube)
             .tooltip(t!("LevelEditor.Camera.CameraMode"))
             .on_click(move |_, _, _| {
-                state_arc.write().set_camera_mode_selector_collapsed(false);
+                state_arc.write().overlays.set_camera_mode_selector_collapsed(false);
             })
             .into_any_element();
     }
 
     let drag_handle = create_drag_handle(
         state_arc.clone(),
-        |s: &mut LevelEditorState, pos| s.camera_overlay_drag_start = pos,
-        |s: &mut LevelEditorState, dragging| s.is_dragging_camera_overlay = dragging,
+        |s: &mut LevelEditorState, pos| s.overlays.positions.camera_drag_start = pos,
+        |s: &mut LevelEditorState, dragging| s.overlays.positions.is_dragging_camera = dragging,
         cx,
     );
 
@@ -184,7 +184,7 @@ where
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc.write().set_camera_mode_selector_collapsed(true);
+                    state_arc.write().overlays.set_camera_mode_selector_collapsed(true);
                 }),
         );
 

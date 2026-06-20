@@ -12,6 +12,7 @@
 /// - Toolbar: Transform tools and quick actions
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
 pub mod core;
+pub mod state;
 pub mod workspace;
 mod ui;
 
@@ -24,7 +25,11 @@ pub use workspace::panels as workspace_panels;
 // Public API
 pub use core::commands::{execute_command, CommandResult, SceneCommand};
 pub use core::scene_database::{SceneDatabase, SceneObjectData};
-pub use ui::LevelEditorPanel;
-pub use ui::LevelEditorState;
+pub use state::LevelEditorState;
+pub use state::request_thumbnail_capture;
+pub use state::{CameraMode, EditorMode, TransformTool};
 pub use workspace::panels::*;
 pub use core::world_settings_data::*;
+
+// Re-export LevelEditorPanel from ui
+pub use ui::LevelEditorPanel;

@@ -15,7 +15,7 @@ use ui::{notification::Notification, ActiveTheme as _, ContextModal};
 
 use crate::level_editor::commands::{execute_command, SceneCommand};
 use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
-use crate::level_editor::ui::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {
@@ -422,7 +422,7 @@ impl Render for HelioViewport {
                     surface.swap_buffers();
 
                     // Capture a project thumbnail if a save just requested one.
-                    let capture_path = self.shared_state.write().pending_thumbnail_capture.take();
+                    let capture_path = self.shared_state.write().build.pending_thumbnail_capture.take();
                     if let Some(path) = capture_path {
                         if let Ok(mut engine) = self.gpu_engine.try_lock() {
                             capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);

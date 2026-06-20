@@ -6,7 +6,7 @@ use ui::{
     ActiveTheme, IconName, Sizable,
 };
 
-use super::super::state::LevelEditorState;
+use crate::level_editor::state::LevelEditorState;
 use super::actions::SetTimeScale;
 
 /// Time scale dropdown - Polished, professional simulation speed control
@@ -22,7 +22,7 @@ impl TimeScaleDropdown {
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let theme = cx.theme();
-        let time_scale = state.game_time_scale;
+        let time_scale = state.play.time_scale;
 
         ui::h_flex()
             .gap_2()

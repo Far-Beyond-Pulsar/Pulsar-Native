@@ -6,7 +6,7 @@ use ui::{
     IconName, Sizable,
 };
 
-use super::super::state::{LevelEditorState, MultiplayerMode};
+use crate::level_editor::state::{LevelEditorState, MultiplayerMode};
 use super::actions::SetMultiplayerMode;
 
 /// Multiplayer mode dropdown - Styled appropriately for mode selection
@@ -21,19 +21,19 @@ impl MultiplayerDropdown {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let mode_label = match state.multiplayer_mode {
+        let mode_label = match state.play.multiplayer_mode {
             MultiplayerMode::Offline => "Offline",
             MultiplayerMode::Host => "Host",
             MultiplayerMode::Client => "Client",
         };
 
-        let mode_icon = match state.multiplayer_mode {
+        let mode_icon = match state.play.multiplayer_mode {
             MultiplayerMode::Offline => IconName::CircleX,
             MultiplayerMode::Host => IconName::Server,
             MultiplayerMode::Client => IconName::Network,
         };
 
-        let current_mode = state.multiplayer_mode;
+        let current_mode = state.play.multiplayer_mode;
 
         Button::new("multiplayer_dropdown")
             .label(mode_label)

@@ -26,7 +26,7 @@ use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
 use ui::{h_flex, ContextModal as _, Disableable as _, IconName, Sizable as _};
 
-use super::super::state::{BuildMode, EditorMode, LevelEditorState};
+use crate::level_editor::state::{BuildMode, EditorMode, LevelEditorState};
 use super::actions::SetBuildMode;
 
 struct BuildCoreNotification;
@@ -42,9 +42,9 @@ impl BuildCoreButton {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
-        let is_playing = state.editor_mode == EditorMode::Play;
-        let game_running = state.game_running;
-        let build_mode = state.build_mode;
+        let is_playing = state.scene.editor_mode == EditorMode::Play;
+        let game_running = state.build.game_running;
+        let build_mode = state.build.mode;
         let entity_id = cx.entity().entity_id();
 
         let (label, icon, tooltip) = mode_label_icon_tooltip(build_mode);
@@ -57,7 +57,7 @@ impl BuildCoreButton {
             .tooltip(tooltip)
             .when(is_playing || game_running, |b| b.disabled(true))
             .on_click(move |_, window, cx| {
-                let mode = state_for_click.read().build_mode;
+                let mode = state_for_click.read().build.mode;
                 trigger_build(mode, state_for_click.clone(), entity_id, window, cx);
             });
 
@@ -67,7 +67,7 @@ impl BuildCoreButton {
             .button(primary)
             .when(!is_playing && !game_running, |d| {
                 d.popup_menu(move |menu, _, _| {
-                    let current = state_for_menu.read().build_mode;
+                    let current = state_for_menu.read().build.mode;
                     menu.label("Build Mode")
                         .separator()
                         .menu_with_check(
@@ -123,11 +123,11 @@ impl BuildCoreButton {
             .tooltip("Stop the running game")
             .on_click(move |_, _, cx| {
                 let mut state = state_for_stop.write();
-                if let Some(mut child) = state.game_process.lock().take() {
+                if let Some(mut child) = state.build.game_process.lock().take() {
                     let _ = child.kill();
                     let _ = child.wait();
                 }
-                state.game_running = false;
+                state.build.game_running = false;
                 cx.notify(entity_id);
             });
 
@@ -819,8 +819,8 @@ async fn launch_and_monitor(
     // Store the handle and mark running.
     {
         let mut state = state_arc.write();
-        *state.game_process.lock() = Some(child);
-        state.game_running = true;
+        *state.build.game_process.lock() = Some(child);
+        state.build.game_running = true;
     }
     let _ = async_app.update_window(window_handle, |_, _, cx| cx.notify(entity_id));
 
@@ -833,7 +833,7 @@ async fn launch_and_monitor(
 
         let exit_status = {
             let state = state_arc.read();
-            let mut guard = state.game_process.lock();
+            let mut guard = state.build.game_process.lock();
             match guard.as_mut() {
                 None => Some(None), // Stop button already killed it — treat as exited.
                 Some(child) => match child.try_wait() {
@@ -847,8 +847,8 @@ async fn launch_and_monitor(
         if let Some(status) = exit_status {
             // Clean up the handle.
             let mut state = state_arc.write();
-            state.game_process.lock().take();
-            state.game_running = false;
+            state.build.game_process.lock().take();
+            state.build.game_running = false;
 
             // Surface a notification if the process exited with an error.
             let stderr = stderr_rx.try_recv().unwrap_or_default();

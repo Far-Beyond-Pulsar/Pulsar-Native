@@ -23,8 +23,9 @@ use ui::{
 };
 use ui_common::properties_inspector;
 
-use super::state::{LevelEditorState, Transform};
-use crate::level_editor::scene_database::ObjectType;
+use crate::level_editor::scene_database::{ObjectType, Transform};
+use crate::level_editor::state::LevelEditorState;
+use crate::level_editor::SceneObjectData;
 use crate::level_editor::workspace::panels::PropertiesPanelWrapper;
 
 /// Properties Panel - Inspector showing properties of the selected object
@@ -56,7 +57,7 @@ impl PropertiesPanel {
             // Main content area
             .child(div().flex_1().overflow_hidden().w_full().child(
                 div().size_full().scrollable(ScrollbarAxis::Vertical).child(
-                    if let Some(_selected) = state.get_selected_object() {
+                    if let Some(_selected) = state.scene.get_selected_object() {
                         let mut flex = v_flex().w_full().p_3().gap_4().min_w_full();
 
                         // Render new ObjectHeaderSection if available (new binding system)
@@ -95,7 +96,7 @@ impl PropertiesPanel {
         state: &LevelEditorState,
         cx: &Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
-        let has_selection = state.get_selected_object().is_some();
+        let has_selection = state.scene.get_selected_object().is_some();
 
         properties_inspector::render_header(
             t!("LevelEditor.Properties.Title").to_string(),
@@ -116,7 +117,7 @@ impl PropertiesPanel {
     }
 
     fn render_object_header(
-        object: &super::state::SceneObject,
+        object: &SceneObjectData,
         cx: &Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
         let icon_path = object
@@ -322,7 +323,7 @@ impl PropertiesPanel {
     }
 
     fn render_object_type_section(
-        object: &super::state::SceneObject,
+        object: &SceneObjectData,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
@@ -842,7 +843,7 @@ impl PropertiesPanel {
     }
 
     fn render_rendering_section(
-        object: &super::state::SceneObject,
+        object: &SceneObjectData,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {
@@ -876,7 +877,7 @@ impl PropertiesPanel {
     }
 
     fn render_physics_section(
-        object: &super::state::SceneObject,
+        object: &SceneObjectData,
         collapsed_sections: &HashSet<String>,
         cx: &mut Context<PropertiesPanelWrapper>,
     ) -> impl IntoElement {

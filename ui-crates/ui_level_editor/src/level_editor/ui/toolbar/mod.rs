@@ -29,7 +29,7 @@ use multiplayer_dropdown::MultiplayerDropdown;
 use playback_controls::PlaybackControls;
 use time_scale_dropdown::TimeScaleDropdown;
 
-use super::state::{request_thumbnail_capture, LevelEditorState};
+use crate::level_editor::{request_thumbnail_capture, LevelEditorState};
 
 /// Premium Toolbar - A beautifully crafted control panel for game development
 ///
@@ -128,7 +128,7 @@ impl ToolbarPanel {
                 let target_path = {
                     let state = state_clone.read();
                     state
-                        .current_scene
+                        .scene.current_scene
                         .clone()
                         .or_else(Self::default_level_path)
                 };
@@ -159,7 +159,7 @@ impl ToolbarPanel {
                             }
                         });
                     state
-                        .scene_database
+                        .scene.database
                         .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
@@ -167,8 +167,8 @@ impl ToolbarPanel {
                     Ok(_) => {
                         {
                             let mut state = state_clone.write();
-                            state.current_scene = Some(path);
-                            state.has_unsaved_changes = false;
+                            state.scene.current_scene = Some(path);
+                            state.scene.has_unsaved_changes = false;
                         }
                         request_thumbnail_capture(&state_clone);
                     }
@@ -235,7 +235,7 @@ impl ToolbarPanel {
                             }
                         });
                     state
-                        .scene_database
+                        .scene.database
                         .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
@@ -273,13 +273,13 @@ impl ToolbarPanel {
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
         let state_clone = state_arc.clone();
-        let is_profiling = state.show_performance_overlay;
+        let is_profiling = state.overlays.state.show_performance_overlay;
         let btn = Button::new("toggle_profiling")
             .icon(ui::IconName::Activity)
             .tooltip(t!("LevelEditor.Toolbar.TogglePerformance"))
             .on_click(move |_, _, _| {
                 let mut s = state_clone.write();
-                s.show_performance_overlay = !s.show_performance_overlay;
+                s.overlays.state.show_performance_overlay = !s.overlays.state.show_performance_overlay;
             });
         if is_profiling {
             btn.primary()
