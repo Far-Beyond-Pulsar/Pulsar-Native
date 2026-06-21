@@ -12,6 +12,7 @@ use pulsar_reflection::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use crate::subsystems::{load_mesh_upload, resolve_asset_path, MeshCache, SceneObjectCache};
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
@@ -167,6 +168,23 @@ fn render_mesh_asset_editor(
 #[allow(dead_code)]
 type RegisteredMeshAssetPath = MeshAssetPath;
 
+/// Tracks which (scene_object_id, mesh_asset) pairs have already been reported
+/// as errors, so we only log once per mesh-assignment cycle rather than every frame.
+static MESH_ERROR_LOG: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Returns `true` if an error was ALREADY logged for this exact (scene_id, mesh_asset) pair.
+fn already_reported(scene_id: &str, mesh_asset: &str) -> bool {
+    let Ok(mut map) = MESH_ERROR_LOG.lock() else { return false };
+    match map.get(scene_id) {
+        Some(prev) if prev == mesh_asset => true,
+        _ => {
+            map.insert(scene_id.to_string(), mesh_asset.to_string());
+            false
+        }
+    }
+}
+
 // ── StaticMeshComponent ───────────────────────────────────────────────────────
 
 /// Attaches a mesh asset to a scene object.
@@ -217,10 +235,12 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             .to_string();
 
         if mesh_asset.is_empty() {
-            context.report_error(format!(
-                "StaticMeshComponent on '{}' has no mesh_asset",
-                owner.scene_object_id
-            ));
+            if !already_reported(owner.scene_object_id, "") {
+                context.report_error(format!(
+                    "StaticMeshComponent on '{}' has no mesh_asset",
+                    owner.scene_object_id
+                ));
+            }
             return;
         }
 
@@ -259,14 +279,16 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             let upload = match load_mesh_upload(path) {
                 Some(u) => u,
                 None => {
-                    tracing::warn!(
-                        "[SMC] load_mesh_upload FAILED for {}",
-                        abs_path
-                    );
-                    context.report_error(format!(
-                        "StaticMeshComponent on '{}': failed to load '{}'",
-                        owner.scene_object_id, abs_path
-                    ));
+                    if !already_reported(owner.scene_object_id, &abs_path) {
+                        tracing::warn!(
+                            "[SMC] load_mesh_upload FAILED for {}",
+                            abs_path
+                        );
+                        context.report_error(format!(
+                            "StaticMeshComponent on '{}': failed to load '{}'",
+                            owner.scene_object_id, abs_path
+                        ));
+                    }
                     return;
                 }
             };
@@ -275,7 +297,9 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             let mid = match scene.insert_actor(SceneActor::mesh(upload)).as_mesh() {
                 Some(m) => m,
                 None => {
-                    tracing::warn!("[SMC] insert_actor returned no mesh id");
+                    if !already_reported(owner.scene_object_id, &abs_path) {
+                        tracing::warn!("[SMC] insert_actor returned no mesh id");
+                    }
                     return;
                 }
             };
