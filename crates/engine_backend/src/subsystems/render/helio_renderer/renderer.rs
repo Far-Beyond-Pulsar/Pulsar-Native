@@ -245,6 +245,7 @@ impl HelioRenderer {
         // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
         // multiple objects are selected and leaving drag trails behind moved objects.
         inner.renderer.debug_clear();
+        inner.renderer.set_gizmo_camera(&camera, height as f32);
         inner.editor_state.draw_gizmos(&mut inner.renderer);
 
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
@@ -570,11 +571,11 @@ impl HelioRenderer {
         // update_drag is called additionally when a drag is active.
         inner
             .editor_state
-            .update_hover(ray_o, ray_d, inner.renderer.scene());
+            .update_hover(ray_o, ray_d, &inner.renderer);
         if inner.editor_state.is_dragging() {
             inner
                 .editor_state
-                .update_drag(ray_o, ray_d, inner.renderer.scene_mut());
+                .update_drag(ray_o, ray_d, &mut inner.renderer);
         }
     }
 

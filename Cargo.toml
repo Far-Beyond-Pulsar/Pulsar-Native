@@ -123,8 +123,8 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "d436b99d9e373aaff2966b5548ec26115dc5cc1a" }
-helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "d436b99d9e373aaff2966b5548ec26115dc5cc1a" }
+helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
+helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
 glam           = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
@@ -192,7 +192,7 @@ rand = "0.10"
 core-foundation-sys = "0.8"
 libloading = "0.9"
 uuid = { version = "1.4", features = ["v4"] }
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "d436b99d9e373aaff2966b5548ec26115dc5cc1a" }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"
