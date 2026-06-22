@@ -154,6 +154,7 @@ impl Render for HierarchyPanelWrapper {
                     children: vec![],
                     scene_path: String::new(),
                     props: Default::default(),
+                    component_instances: None,
                 };
                 execute_command(
                     &mut state,

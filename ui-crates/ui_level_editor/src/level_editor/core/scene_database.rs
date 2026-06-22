@@ -66,12 +66,22 @@ pub struct SceneObjectData {
     pub scene_path: String,
     /// Type-specific properties that round-trip through the level file.
     /// Lights: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
+    ///
+    /// ⚠ This field does **not** contain `__component_instances`.  Component
+    /// data flows exclusively through `SceneDatabase::add_component` / etc.
     #[serde(default)]
     pub props: std::collections::HashMap<String, serde_json::Value>,
+    /// Reflection-based component instances (synced from metadata_db).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_instances: Option<serde_json::Value>,
 }
 
 impl SceneObjectData {
-    fn from_snapshot(snap: SceneObjectSnapshot) -> Self {
+    fn from_snapshot(mut snap: SceneObjectSnapshot) -> Self {
+        // Strip legacy __component_instances from props — it now lives in
+        // the dedicated component_instances field.  Setting it via props
+        // has no effect on the rendering subsystem.
+        let legacy = snap.props.remove("__component_instances");
         Self {
             id: snap.id,
             name: snap.name,
@@ -87,10 +97,14 @@ impl SceneObjectData {
             children: snap.children,
             scene_path: snap.scene_path,
             props: snap.props,
+            component_instances: snap.component_instances.or(legacy),
         }
     }
 
-    fn into_snapshot(self) -> SceneObjectSnapshot {
+    fn into_snapshot(mut self) -> SceneObjectSnapshot {
+        // Never write __component_instances into props — it goes in the
+        // dedicated field so the renderer cannot be bypassed.
+        self.props.remove("__component_instances");
         SceneObjectSnapshot {
             id: self.id,
             name: self.name,
@@ -104,6 +118,7 @@ impl SceneObjectData {
             children: self.children,
             scene_path: self.scene_path,
             props: self.props,
+            component_instances: self.component_instances,
         }
     }
 }
@@ -154,7 +169,7 @@ impl SceneDatabase {
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
         let blueprint_script_path = if obj.object_type == ObjectType::Blueprint {
-            Some(find_script_path(&obj.props))
+            Some(find_script_path(&obj.props, obj.component_instances.as_ref()))
         } else {
             None
         };
@@ -213,6 +228,7 @@ impl SceneDatabase {
         if let Some(entry) = self.scene_db.get_entry(&id) {
             entry.meta.write().props = obj.props;
         }
+        self.sync_registered_component_props_to_scene_db(&id);
         true
     }
 
@@ -226,10 +242,15 @@ impl SceneDatabase {
         component_index: usize,
         data: serde_json::Value,
     ) {
-        let _ = self
+        let ok = self
             .metadata_db
             .components()
             .update_component(object_id, component_index, data);
+        if !ok {
+            tracing::warn!(
+                "[UPDATE_COMPONENT] metadata_db.update_component returned false for {object_id} idx={component_index}"
+            );
+        }
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
@@ -406,6 +427,7 @@ impl SceneDatabase {
             children: vec![],
             scene_path: String::new(),
             props: Default::default(),
+            component_instances: None,
         };
         self.add_object(obj, parent)
     }
@@ -696,7 +718,7 @@ impl SceneDatabase {
                 apply_scene_props_for_class(class_name, &mut meta.props, data);
             }
 
-            let component_instances = components
+            let instances: Vec<serde_json::Value> = components
                 .iter()
                 .enumerate()
                 .filter(|(_, component)| component.enabled)
@@ -707,11 +729,8 @@ impl SceneDatabase {
                         "data": component.data
                     })
                 })
-                .collect::<Vec<_>>();
-            meta.props.insert(
-                "__component_instances".to_string(),
-                Value::Array(component_instances),
-            );
+                .collect();
+            meta.component_instances = Some(Value::Array(instances));
         }
     }
 
@@ -766,31 +785,46 @@ pub struct LevelEditorCameraState {
 
 // ── Blueprint helpers ──────────────────────────────────────────────────────
 
-/// Extract the script asset path for a Blueprint object from its props.
+/// Extract the script asset path for a Blueprint object.
 ///
-/// Checks `props["__component_instances"][ScriptComponent].data.script_asset`
-/// first, then falls back to the flat `props["script_asset"]`.  Returns an
-/// empty string if neither is present (the user will fill it in via the
-/// properties panel).
-fn find_script_path(props: &HashMap<String, Value>) -> String {
-    // Try __component_instances first — the authoritative location.
-    if let Some(path) = props
-        .get("__component_instances")
-        .and_then(|v| v.as_array())
-        .and_then(|arr| {
-            arr.iter().find(|inst| {
+/// Checks `component_instances[ScriptComponent].data.script_asset` first
+/// (modern path), falls back to the legacy `props["__component_instances"]`
+/// array, and finally the flat `props["script_asset"]`.  Returns an empty
+/// string if none are present (the user will fill it in via the properties panel).
+fn find_script_path(
+    props: &HashMap<String, Value>,
+    component_instances: Option<&Value>,
+) -> String {
+    // Helper: find ScriptComponent data in a component-instances array.
+    fn find_in(arr: &[Value]) -> Option<&str> {
+        arr.iter()
+            .find(|inst| {
                 inst.get("class_name").and_then(|v| v.as_str()) == Some("ScriptComponent")
             })
-        })
-        .and_then(|inst| inst.get("data"))
-        .and_then(|data| data.get("script_asset"))
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-    {
-        return path.to_string();
+            .and_then(|inst| inst.get("data"))
+            .and_then(|data| data.get("script_asset"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
     }
 
-    // Flat prop fallback (older scene files or explicit callers).
+    // 1. Dedicated field (modern).
+    if let Some(arr) = component_instances.and_then(|v| v.as_array()) {
+        if let Some(path) = find_in(arr) {
+            return path.to_string();
+        }
+    }
+
+    // 2. Legacy __component_instances inside props (older scene files).
+    if let Some(arr) = props
+        .get("__component_instances")
+        .and_then(|v| v.as_array())
+    {
+        if let Some(path) = find_in(arr) {
+            return path.to_string();
+        }
+    }
+
+    // 3. Flat prop fallback.
     props
         .get("script_asset")
         .and_then(|v| v.as_str())

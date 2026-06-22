@@ -692,7 +692,7 @@ impl HelioRenderer {
         fn component_instances_from_snap(
             snap: &SceneObjectSnapshot,
         ) -> Vec<(usize, String, serde_json::Value)> {
-            component_instances_from_props(&snap.props)
+            component_instances_from_props(&snap.props, snap.component_instances.as_ref())
         }
 
         struct HelioRuntimeContext<'a> {

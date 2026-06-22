@@ -93,6 +93,7 @@ impl AddObjectDialog {
             children: vec![],
             scene_path: String::new(),
             props: Default::default(),
+            component_instances: None,
         };
         self.state_arc
             .read()

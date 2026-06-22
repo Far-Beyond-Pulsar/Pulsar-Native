@@ -525,6 +525,7 @@ mod tests {
                 locked: false,
                 scene_path: String::new(),
                 props: Default::default(),
+                component_instances: None,
             },
             None,
         );

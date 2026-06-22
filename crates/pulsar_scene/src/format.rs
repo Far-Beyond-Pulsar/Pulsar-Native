@@ -130,8 +130,16 @@ pub struct SceneObject {
     pub visible: bool,
 
     /// Type-specific properties (material, light, etc.).
+    ///
+    /// ⚠ This field does NOT contain `__component_instances`.  Component data is
+    /// carried in the separate `component_instances` field below.
     #[serde(default)]
     pub props: HashMap<String, Value>,
+
+    /// Reflection-based component instances (v2.2+).
+    /// Falls back to `props["__component_instances"]` for older scene files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_instances: Option<Value>,
 
     // Editor-only fields — silently accepted and ignored at runtime.
     #[serde(default, skip_serializing)]
@@ -159,6 +167,7 @@ impl Default for SceneObject {
             parent: None,
             visible: true,
             props: HashMap::new(),
+            component_instances: None,
             locked: false,
             children: Value::Null,
             scene_path: None,
@@ -390,8 +399,22 @@ impl SceneObject {
 
     // ── Mesh asset path ───────────────────────────────────────────────────────
 
+    /// Helper: return the first component entry matching `class_name` from
+    /// the dedicated `component_instances` field, falling back to the legacy
+    /// `props["__component_instances"]` array.
+    fn component_instances(&self) -> Option<&Vec<Value>> {
+        self.component_instances
+            .as_ref()
+            .and_then(|v| v.as_array())
+            .or_else(|| {
+                self.props
+                    .get("__component_instances")
+                    .and_then(|v| v.as_array())
+            })
+    }
+
     /// Return the `mesh_asset` path from this object's props or its
-    /// `StaticMeshComponent` entry in `__component_instances`, if any.
+    /// `StaticMeshComponent` entry in component instances, if any.
     ///
     /// This is the authoritative mesh path set by the editor — prefer it over
     /// `object_type` when deciding what geometry to render.
@@ -403,9 +426,7 @@ impl SceneObject {
             }
         }
         // Fall back to StaticMeshComponent data.
-        self.props
-            .get("__component_instances")
-            .and_then(|v| v.as_array())
+        self.component_instances()
             .and_then(|arr| {
                 arr.iter().find(|inst| {
                     inst.get("class_name").and_then(|v| v.as_str()) == Some("StaticMeshComponent")
@@ -479,10 +500,10 @@ impl SceneObject {
         self.prop_f32("outer_angle", 45.0)
     }
 
-    // ── __component_instances helpers ─────────────────────────────────────────
+    // ── Component-instance helpers ────────────────────────────────────────────
 
     fn light_component_data(&self) -> Option<&Value> {
-        let instances = self.props.get("__component_instances")?.as_array()?;
+        let instances = self.component_instances()?;
         for inst in instances {
             let class = inst.get("class_name")?.as_str()?;
             if class == "LightComponent" {

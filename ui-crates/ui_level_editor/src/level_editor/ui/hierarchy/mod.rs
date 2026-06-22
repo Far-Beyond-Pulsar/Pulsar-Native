@@ -108,11 +108,16 @@ impl HierarchyItem for SceneObjectItem {
     where
         V: Render,
     {
-        let visibility_object_id = self.object.id.clone();
+        let visibility_id = self.object.id.clone();
         let visibility_state = self.state_arc.clone();
         let is_visible = self.object.visible;
 
-        let visibility_button = Button::new(format!("scene-visibility-{}", visibility_object_id))
+        let duplicate_id = self.object.id.clone();
+        let duplicate_state = self.state_arc.clone();
+        let delete_id = self.object.id.clone();
+        let delete_state = self.state_arc.clone();
+
+        let visibility_button = Button::new(format!("scene-visibility-{}", visibility_id))
             .ghost()
             .xsmall()
             .icon(if is_visible {
@@ -127,26 +132,61 @@ impl HierarchyItem for SceneObjectItem {
             })
             .on_click(move |_, _, cx| {
                 use crate::level_editor::commands::{execute_command, SceneCommand};
-
-                tracing::info!(
-                    "[HIER VIS] visibility click fired for id={}",
-                    visibility_object_id
-                );
-                let t0 = std::time::Instant::now();
                 let mut state = visibility_state.write();
-                tracing::info!("[HIER VIS] write lock acquired in {:?}", t0.elapsed());
-                if let Some(mut obj) = state.scene.database.get_object(&visibility_object_id) {
+                if let Some(mut obj) = state.scene.database.get_object(&visibility_id) {
                     obj.visible = !obj.visible;
-                    let t1 = std::time::Instant::now();
                     execute_command(&mut state, SceneCommand::UpdateObject { data: obj });
-                    tracing::info!("[HIER VIS] execute_command done in {:?}", t1.elapsed());
                 }
                 drop(state);
-                tracing::info!("[HIER VIS] write lock released; total {:?}", t0.elapsed());
                 cx.stop_propagation();
             });
 
-        Some(h_flex().gap_1().child(visibility_button).into_any_element())
+        let duplicate_button = Button::new(format!("scene-duplicate-{}", duplicate_id))
+            .ghost()
+            .xsmall()
+            .icon(IconName::Copy)
+            .tooltip("Duplicate object")
+            .on_click(move |_, _, cx| {
+                use crate::level_editor::commands::{execute_command, SceneCommand};
+                let mut state = duplicate_state.write();
+                execute_command(
+                    &mut state,
+                    SceneCommand::DuplicateObject {
+                        source_id: duplicate_id.clone(),
+                        count: 1,
+                        position_offset: None,
+                    },
+                );
+                drop(state);
+                cx.stop_propagation();
+            });
+
+        let delete_button = Button::new(format!("scene-delete-{}", delete_id))
+            .ghost()
+            .xsmall()
+            .icon(IconName::Trash)
+            .tooltip("Delete object")
+            .on_click(move |_, _, cx| {
+                use crate::level_editor::commands::{execute_command, SceneCommand};
+                let mut state = delete_state.write();
+                execute_command(
+                    &mut state,
+                    SceneCommand::RemoveObject {
+                        id: delete_id.clone(),
+                    },
+                );
+                drop(state);
+                cx.stop_propagation();
+            });
+
+        Some(
+            h_flex()
+                .gap_0p5()
+                .child(visibility_button)
+                .child(duplicate_button)
+                .child(delete_button)
+                .into_any_element(),
+        )
     }
 
     fn build_context_menu(
@@ -284,6 +324,7 @@ impl HierarchyPanel {
                                     children: vec![],
                                     scene_path: String::new(),
                                     props: Default::default(),
+                                    component_instances: None,
                                 },
                                 parent_id: None,
                             },

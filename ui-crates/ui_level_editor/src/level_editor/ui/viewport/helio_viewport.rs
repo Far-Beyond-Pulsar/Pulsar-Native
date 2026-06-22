@@ -103,18 +103,6 @@ impl HelioViewport {
                     .unwrap_or("Imported Asset")
                     .to_string();
 
-                // Build a __component_instances entry for StaticMeshComponent so the
-                // renderer's sync_scene() loop loads the FBX via the component path.
-                let mut props = std::collections::HashMap::new();
-                props.insert(
-                    "__component_instances".to_string(),
-                    serde_json::json!([{
-                        "class_name": "StaticMeshComponent",
-                        "enabled": true,
-                        "data": { "mesh_asset": asset_path }
-                    }]),
-                );
-
                 let mut state = shared_state.write();
                 let mesh_object = SceneObjectData {
                     id: String::new(),
@@ -125,8 +113,9 @@ impl HelioViewport {
                     locked: false,
                     parent: None,
                     children: vec![],
-                    props,
+                    props: std::collections::HashMap::new(),
                     scene_path: path.display().to_string(),
+                    component_instances: None,
                 };
 
                 let add_result = execute_command(
@@ -138,6 +127,13 @@ impl HelioViewport {
                 );
 
                 if let Some(id) = add_result.affected_ids.first() {
+                    // Add the StaticMeshComponent via the proper API so it is
+                    // registered in metadata_db and syncs correctly with the renderer.
+                    state.scene.database.add_component(
+                        id,
+                        "StaticMeshComponent".to_string(),
+                        serde_json::json!({ "mesh_asset": asset_path }),
+                    );
                     let _ = execute_command(
                         &mut state,
                         SceneCommand::SelectObject {
@@ -167,16 +163,6 @@ impl HelioViewport {
                     .to_string();
                 let script_path = path.to_string_lossy().replace('\\', "/");
 
-                let mut props = std::collections::HashMap::new();
-                props.insert(
-                    "__component_instances".to_string(),
-                    serde_json::json!([{
-                        "class_name": "ScriptComponent",
-                        "enabled": true,
-                        "data": { "script_asset": script_path }
-                    }]),
-                );
-
                 let mut state = shared_state.write();
                 let blueprint_object = SceneObjectData {
                     id: String::new(),
@@ -187,8 +173,9 @@ impl HelioViewport {
                     locked: false,
                     parent: None,
                     children: vec![],
-                    props,
+                    props: std::collections::HashMap::new(),
                     scene_path: path.display().to_string(),
+                    component_instances: None,
                 };
 
                 let add_result = execute_command(
@@ -200,6 +187,13 @@ impl HelioViewport {
                 );
 
                 if let Some(id) = add_result.affected_ids.first() {
+                    // Add the ScriptComponent via the proper API so it is
+                    // registered in metadata_db and syncs correctly with the renderer.
+                    state.scene.database.add_component(
+                        id,
+                        "ScriptComponent".to_string(),
+                        serde_json::json!({ "script_asset": script_path }),
+                    );
                     let _ = execute_command(
                         &mut state,
                         SceneCommand::SelectObject {

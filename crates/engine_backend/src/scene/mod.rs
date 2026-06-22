@@ -112,8 +112,19 @@ pub struct SceneObjectSnapshot {
     ///
     /// Lights store: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
     /// Any future object type can extend this without schema changes.
+    ///
+    /// ⚠ This field does NOT contain `__component_instances`.  Component data is
+    /// carried in the separate `component_instances` field below and is synced
+    /// exclusively through `SceneDatabase::sync_registered_component_props_to_scene_db`.
+    /// Setting `__component_instances` directly in `props` has no effect on the
+    /// rendering subsystem.
     #[serde(default)]
     pub props: HashMap<String, serde_json::Value>,
+    /// Reflection-based component instances synced from the editor's metadata
+    /// database by `sync_registered_component_props_to_scene_db`.  This is the
+    /// authoritative source that the renderer reads each frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub component_instances: Option<serde_json::Value>,
 }
 
 // ─── Live object entry ───────────────────────────────────────────────────────
@@ -145,6 +156,10 @@ pub struct SceneEntryMeta {
     pub scene_path: String,
     /// Type-specific properties — see `SceneObjectSnapshot::props`.
     pub props: HashMap<String, serde_json::Value>,
+    /// Reflection-based component instances (set by
+    /// `SceneDatabase::sync_registered_component_props_to_scene_db`).
+    /// Renderer reads this each frame instead of looking for `__component_instances` in props.
+    pub component_instances: Option<serde_json::Value>,
 }
 
 impl SceneEntry {
@@ -174,6 +189,7 @@ impl SceneEntry {
                 parent: snap.parent.clone(),
                 scene_path: snap.scene_path.clone(),
                 props: snap.props.clone(),
+                component_instances: snap.component_instances.clone(),
             }),
         }
     }
@@ -282,6 +298,7 @@ impl SceneEntry {
             visible: self.is_visible(),
             locked: self.is_locked(),
             props: meta.props.clone(),
+            component_instances: meta.component_instances.clone(),
         }
     }
 }

@@ -100,7 +100,7 @@ impl SceneLoader {
                 props: &obj.props,
             };
 
-            let instances = component_instances_from_props(&obj.props);
+            let instances = component_instances_from_props(&obj.props, obj.component_instances.as_ref());
             {
                 let mut subsystems = Subsystems::new();
                 subsystems.register_ref::<Renderer>(renderer);
@@ -155,15 +155,19 @@ impl ComponentRuntimeContext for SceneObjectContext<'_, '_> {
 
 // ── Shared public API (called by engine_backend too) ─────────────────────────
 
-/// Extract `(index, class_name, data)` from `__component_instances`.
-/// Identical to engine's `component_instances_from_snap`.
+/// Extract `(index, class_name, data)` from a component-instances value.
+///
+/// Prefers the explicit `component_instances` parameter (the modern path).
+/// Falls back to `props["__component_instances"]` for backward compatibility
+/// with v1/v2 scene files that embed this data inside the props map.
 pub fn component_instances_from_props(
     props: &HashMap<String, Value>,
+    component_instances: Option<&Value>,
 ) -> Vec<(usize, String, Value)> {
-    let Some(arr) = props
-        .get("__component_instances")
+    let arr = component_instances
         .and_then(|v| v.as_array())
-    else {
+        .or_else(|| props.get("__component_instances").and_then(|v| v.as_array()));
+    let Some(arr) = arr else {
         return Vec::new();
     };
     arr.iter()

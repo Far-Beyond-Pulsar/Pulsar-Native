@@ -802,6 +802,7 @@ fn execute_ai_tool_impl(
                 children: vec![],
                 props: Default::default(),
                 scene_path,
+                component_instances: None,
             };
             object.transform.position =
                 vec3_from_value(tool_args.get("position")).unwrap_or([0.0, 0.0, 0.0]);
@@ -899,6 +900,7 @@ fn execute_ai_tool_impl(
                         .as_ref()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default(),
+                    component_instances: None,
                 };
 
                 object.transform.position =
