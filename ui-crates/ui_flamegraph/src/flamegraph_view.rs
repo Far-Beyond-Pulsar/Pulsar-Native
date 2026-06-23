@@ -18,7 +18,7 @@ const SPAN_HOVER_HEIGHT_SCALE: f32 = 0.8;
 pub struct FlamegraphView {
     trace_data: TraceData,
     view_state: ViewState,
-    cache: Option<(Arc<TraceFrame>, SpanCache)>,
+    cache: Option<(Arc<TraceFrame>, Arc<SpanCache>)>,
     viewport_width: Arc<std::sync::RwLock<f32>>,
     viewport_height: Arc<std::sync::RwLock<f32>>,
     viewport_origin_x: Arc<std::sync::RwLock<f32>>,
@@ -143,7 +143,7 @@ impl FlamegraphView {
         self.view_state.pan_x = -((start - frame.min_time_ns) as f32 * new_zoom);
     }
 
-    fn get_or_build_cache(&mut self) -> (&Arc<TraceFrame>, &SpanCache) {
+    fn get_or_build_cache(&mut self) -> (Arc<TraceFrame>, Arc<SpanCache>) {
         let frame = self.trace_data.get_frame();
 
         let needs_rebuild = match &self.cache {
@@ -152,7 +152,7 @@ impl FlamegraphView {
         };
 
         if needs_rebuild {
-            let cache = SpanCache::build(&frame);
+            let cache = Arc::new(SpanCache::build(&frame));
 
             if self.view_state.zoom == 0.0 && frame.duration_ns() > 0 {
                 let effective_width = self.view_state.viewport_width - THREAD_LABEL_WIDTH;
@@ -167,7 +167,7 @@ impl FlamegraphView {
             .cache
             .as_ref()
             .expect("Cache should be populated by get_or_build_cache");
-        (frame_ref, cache_ref)
+        (Arc::clone(frame_ref), Arc::clone(cache_ref))
     }
 }
 
@@ -175,24 +175,20 @@ impl Render for FlamegraphView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let (frame, cache) = self.get_or_build_cache();
 
-        let frame = Arc::clone(frame);
+        let frame_for_graph = Arc::clone(&frame);
         let thread_offsets = Arc::clone(&cache.thread_offsets);
-        let lod_tree = Arc::clone(&cache.lod_tree);
         let view_state = self.view_state.clone();
         let theme = cx.theme().clone();
 
         let view_state_for_canvas = view_state.clone();
 
-        let framerate_graph = render_framerate_graph(&frame, &view_state, cx);
+        let framerate_graph = render_framerate_graph(&frame_for_graph, &view_state, cx);
 
         // Combined WGPU surface driver — renders ruler + main canvas in one pass
         let entity = cx.entity().clone();
         let driver = {
             let entity_pre = entity.clone();
             let entity_paint = entity.clone();
-            let frame_for_driver = Arc::clone(&frame);
-            let lod_tree_for_driver = Arc::clone(&lod_tree);
-            let thread_offsets_for_driver = Arc::clone(&thread_offsets);
 
             gpui::canvas(
                 move |bounds, window, cx| {
@@ -229,10 +225,13 @@ impl Render for FlamegraphView {
                         let surface_queue = surface_clone.queue();
                         let surface_fmt = surface_clone.format();
 
-                        // ── LOD selection (may mutably borrow view) ──
-                        let level = view.lod_level_for(w as f32, &frame_for_driver);
+                        // ── Read live frame + cache from view (never stale) ──
+                        let (frame, cache) = view.get_or_build_cache();
+
+                        // ── LOD selection ──
+                        let level = view.lod_level_for(w as f32, &frame);
                         if view.lod_level != Some(level) {
-                            view.rebuild_lod(level, &frame_for_driver, &lod_tree_for_driver);
+                            view.rebuild_lod(level, &frame, &cache.lod_tree);
                         }
 
                         // GPU spans — cached per-LOD, zero per-frame work
@@ -244,8 +243,8 @@ impl Render for FlamegraphView {
 
                         // Text labels — query LOD tree directly (only visible buckets)
                         let text_rects = crate::components::flamegraph_canvas::build_text_instances(
-                            &frame_for_driver,
-                            &lod_tree_for_driver,
+                            &frame,
+                            &cache.lod_tree,
                             level,
                             vs,
                             w as f32,
@@ -254,8 +253,8 @@ impl Render for FlamegraphView {
 
                         // Overlay rects (grid lines + thread separators)
                         let overlay_rects = crate::components::flamegraph_canvas::build_overlay_instances(
-                            &frame_for_driver,
-                            &thread_offsets_for_driver,
+                            &frame,
+                            &cache.thread_offsets,
                             vs,
                             w as f32,
                             h as f32,
@@ -263,15 +262,15 @@ impl Render for FlamegraphView {
 
                         // Ruler instances
                         let ruler_rects = crate::components::flamegraph_canvas::build_ruler_instances(
-                            &frame_for_driver,
+                            &frame,
                             vs,
                             w as f32,
                         );
 
                         // Debug overlay (stats)
                         let debug_rects = crate::components::flamegraph_canvas::build_debug_overlay(
-                            &frame_for_driver,
-                            &lod_tree_for_driver,
+                            &frame,
+                            &cache.lod_tree,
                             level,
                             vs,
                             w as f32,
@@ -465,6 +464,31 @@ impl Render for FlamegraphView {
                                     view.view_state.crop_end_time_ns = None;
                                     cx.notify();
                                 }),
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top(px(4.0))
+                                    .right(px(4.0))
+                                    .px_2()
+                                    .py_1()
+                                    .rounded(px(4.0))
+                                    .bg(theme.accent)
+                                    .text_color(theme.background)
+                                    .text_xs()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .cursor_pointer()
+                                    .hover(|style| style.bg(gpui::hsla(
+                                        205.0 / 360.0, 0.7, 0.55, 1.0,
+                                    )))
+                                    .child("Generate 64-Thread Trace")
+                                    .on_mouse_down(
+                                        MouseButton::Left,
+                                        cx.listener(|view, _event, _window, cx| {
+                                            view.trace_data.generate_massive_trace(64, 5, 500, 8000);
+                                            cx.notify();
+                                        }),
+                                    ),
                             ),
                     ),
             )
@@ -564,13 +588,13 @@ impl Render for FlamegraphView {
                                         {
                                             let x1 = time_to_x(
                                                 span.start_ns,
-                                                frame,
+                                                &frame,
                                                 viewport_width,
                                                 &view_state_copy,
                                             );
                                             let x2 = time_to_x(
                                                 span.end_ns(),
-                                                frame,
+                                                &frame,
                                                 viewport_width,
                                                 &view_state_copy,
                                             );

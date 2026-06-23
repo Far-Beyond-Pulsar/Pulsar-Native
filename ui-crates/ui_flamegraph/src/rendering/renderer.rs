@@ -54,6 +54,9 @@ struct Pipe {
     span_cap: u64,
     text_buf: wgpu::Buffer,
     text_cap: u64,
+    /// Tracking pointer + len of last uploaded span data to skip redundant uploads.
+    span_data_ptr: *const u8,
+    span_data_len: u64,
 }
 
 pub struct FlamegraphRenderer {
@@ -90,18 +93,25 @@ impl FlamegraphRenderer {
         let uni_bytes = bytemuck::bytes_of(uniforms);
         queue.write_buffer(&pipe.uni_buf, 0, uni_bytes);
 
-        // Span storage buffer
+        // Span storage buffer — skip upload if data hasn't changed
         let span_count = spans.len() as u32;
         if span_count > 0 {
             let span_bytes = bytemuck::cast_slice(spans);
-            Self::ensure_buf(
-                device,
-                &mut pipe.span_buf,
-                &mut pipe.span_cap,
-                span_bytes,
-                wgpu::BufferUsages::STORAGE,
-            );
-            queue.write_buffer(&pipe.span_buf, 0, span_bytes);
+            let data_ptr = spans.as_ptr() as *const u8;
+            let data_len = span_bytes.len() as u64;
+            let changed = pipe.span_data_ptr != data_ptr || pipe.span_data_len != data_len;
+            if changed {
+                Self::ensure_buf(
+                    device,
+                    &mut pipe.span_buf,
+                    &mut pipe.span_cap,
+                    span_bytes,
+                    wgpu::BufferUsages::STORAGE,
+                );
+                queue.write_buffer(&pipe.span_buf, 0, span_bytes);
+                pipe.span_data_ptr = data_ptr;
+                pipe.span_data_len = data_len;
+            }
         }
 
         // Text vertex buffer
@@ -373,6 +383,8 @@ impl FlamegraphRenderer {
             span_cap: span_init,
             text_buf,
             text_cap: text_init,
+            span_data_ptr: std::ptr::null(),
+            span_data_len: 0,
         }
     }
 }
