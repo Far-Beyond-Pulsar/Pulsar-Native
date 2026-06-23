@@ -1,297 +1,335 @@
-//! Main flamegraph canvas component with span rendering
-
-use crate::colors::get_palette;
 use crate::constants::*;
-use crate::coordinates::{time_to_x, visible_range};
-use crate::lod_tree::LODTree;
-use crate::state::{SpanTileCache, ViewState, TILE_ROW_HEIGHT, TILE_TIME_NS};
+use crate::coordinates::time_to_x;
+use crate::lod_tree::{LODTree, MergedSpan};
+use crate::rendering::text::{push_text, CHAR_H, CHAR_W};
+use crate::rendering::types::{GpuSpan, RectInstance};
+use crate::state::ViewState;
 use crate::trace_data::TraceFrame;
-use gpui::*;
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::ops::Range;
 
-const LABEL_MIN_WIDTH_PX: f32 = 64.0;
-const LABEL_FONT_SIZE_PX: f32 = 12.0;
-const LABEL_PADDING_X_PX: f32 = 4.0;
-const LABEL_AVG_CHAR_WIDTH_PX: f32 = 6.2;
-const SPAN_HEIGHT_SCALE: f32 = 0.8;
+const LABEL_MIN_PX: f32 = 40.0;
 
-fn truncate_label_to_width(label: &str, max_width_px: f32) -> Option<String> {
-    if max_width_px <= 0.0 {
-        return None;
+/// Return the effective zoom, falling back to frame-fit if unset.
+#[inline(always)]
+fn effective_zoom(vs: &ViewState, viewport_w: f32, frame: &TraceFrame) -> f32 {
+    if vs.zoom == 0.0 && frame.duration_ns() > 0 {
+        viewport_w / frame.duration_ns() as f32
+    } else {
+        vs.zoom
     }
-
-    let max_chars = (max_width_px / LABEL_AVG_CHAR_WIDTH_PX).floor() as usize;
-    if max_chars < 4 {
-        return None;
-    }
-
-    let char_count = label.chars().count();
-    if char_count <= max_chars {
-        return Some(label.to_string());
-    }
-
-    let keep = max_chars.saturating_sub(3);
-    if keep == 0 {
-        return None;
-    }
-
-    let mut out = String::new();
-    for c in label.chars().take(keep) {
-        out.push(c);
-    }
-    out.push_str("...");
-    Some(out)
 }
 
-/// Render the main flamegraph canvas with all spans
-pub fn render_flamegraph_canvas(
-    frame: Arc<TraceFrame>,
-    lod_tree: Arc<LODTree>,
-    thread_offsets: Arc<BTreeMap<u64, f32>>,
-    tile_cache: Arc<parking_lot::Mutex<SpanTileCache>>,
-    view_state: ViewState,
-    palette: Vec<Hsla>,
-) -> impl IntoElement {
-    let _setup_start = std::time::Instant::now();
-    canvas(
-        {
-            let _clone_start = std::time::Instant::now();
-            let frame = Arc::clone(&frame);
-            let lod_tree = Arc::clone(&lod_tree);
-            let thread_offsets = Arc::clone(&thread_offsets);
-            move |bounds, _window, _cx| {
-                let _closure_start = std::time::Instant::now();
-                let viewport_width: f32 = bounds.size.width.into();
-                let viewport_height: f32 = bounds.size.height.into();
+/// Minimum pixel gap between grid/ruler ticks.
+/// Grows at far zoom-out so density decreases — at default zoom ≈60px,
+/// at extreme zoom-out ≈300px (so only 5-8 lines across the viewport).
+#[inline(always)]
+fn tick_min_px(zoom: f32) -> f32 {
+    // t = 1.0 at default zoom (2e-6), → 0.0 at very far zoom
+    let t = (zoom * 5.0e5).min(1.0);
+    60.0 * (1.0 + (1.0 - t) * 4.0)
+}
 
-                (bounds, Arc::clone(&frame), Arc::clone(&lod_tree), Arc::clone(&thread_offsets), view_state.clone(), viewport_width, viewport_height, palette.clone())
-            }
-        },
-        move |bounds, state, window, _cx| {
-            let _paint_start = std::time::Instant::now();
-            let (_bounds_prep, frame, lod_tree, thread_offsets, view_state, viewport_width, viewport_height, _palette) = state;
+// ── GPU span passthrough ──────────────────────────────────────────────────
 
-            if frame.spans.is_empty() {
-                return;
-            }
+/// No-op: GpuSpans are pre-built once during SpanCache construction.
+/// Returns the pre-built data as-is for GPU vertex-pulling.
+pub fn build_instances(spans: &[GpuSpan]) -> &[GpuSpan] {
+    spans
+}
 
-            let _visible_range_start = std::time::Instant::now();
-            let visible_time = visible_range(&frame, viewport_width, &view_state);
+// ── Ruler (RectInstance overlays) ─────────────────────────────────────────
 
-            let _paint_layer_start = std::time::Instant::now();
-            window.paint_layer(bounds, |window| {
-                // Draw vertical grid lines aligned with timeline
-                let visible_range_for_grid = visible_range(&frame, viewport_width, &view_state);
-                let visible_duration = visible_range_for_grid.end.saturating_sub(visible_range_for_grid.start);
-                let visible_ms = visible_duration as f64 / 1_000_000.0;
+/// Build ruler tick + label instances.  Ticks are ≥ 60 px apart.
+pub fn build_ruler_instances(
+    frame: &TraceFrame,
+    vs: &ViewState,
+    surface_w: f32,
+) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
+    if frame.duration_ns() == 0 {
+        return rects;
+    }
 
-                let marker_interval_ms = if visible_ms < 10.0 {
-                    1.0
-                } else if visible_ms < 50.0 {
-                    5.0
-                } else if visible_ms < 100.0 {
-                    10.0
-                } else if visible_ms < 500.0 {
-                    50.0
+    let vr = crate::coordinates::visible_range(frame, surface_w, vs);
+    let zoom = effective_zoom(vs, surface_w, frame);
+
+    let min_px = tick_min_px(zoom);
+    let target_step_ns = (min_px / zoom.max(1e-10)) as u64;
+    let candidates: [u64; 16] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000];
+    let mut step_ms = 1u64;
+    for &c in &candidates {
+        if c * 1_000_000 >= target_step_ns {
+            step_ms = c;
+            break;
+        }
+    }
+    // Fallback: if no candidate matched, use the largest
+    if step_ms == 1 && target_step_ns > 1_000_000 {
+        step_ms = *candidates.last().unwrap();
+    }
+    let step_ns = step_ms * 1_000_000;
+
+    // Major ticks
+    let first = (vr.start / step_ns) * step_ns;
+    let mut t = first;
+    while t <= vr.end {
+        if t >= frame.min_time_ns {
+            let x = time_to_x(t, frame, surface_w, vs);
+            if x >= THREAD_LABEL_WIDTH && x <= surface_w {
+                rects.push(RectInstance {
+                    pos: [x, TIMELINE_HEIGHT - 8.0],
+                    size: [1.0, 8.0],
+                    color: [0.5, 0.5, 0.5, 0.6],
+                    kind: 0,
+                    _pad: [0; 3],
+                });
+
+                let ms = (t - frame.min_time_ns) as f64 / 1_000_000.0;
+                let label = if ms >= 1000.0 && step_ms >= 500 {
+                    format!("{:.1}s", ms / 1000.0)
+                } else if ms >= 100.0 || step_ms >= 50 {
+                    format!("{:.0}ms", ms)
+                } else if ms >= 10.0 {
+                    format!("{:.1}ms", ms)
                 } else {
-                    100.0
+                    format!("{:.2}ms", ms)
                 };
+                push_text(
+                    &label,
+                    x + 3.0,
+                    TIMELINE_HEIGHT - CHAR_H - 1.0,
+                    [0.6, 0.6, 0.6, 0.8],
+                    1.0,
+                    &mut rects,
+                );
+            }
+        }
+        t += step_ns;
+    }
 
-                let marker_interval_ns = (marker_interval_ms * 1_000_000.0) as u64;
-                let first_marker = (visible_range_for_grid.start / marker_interval_ns) * marker_interval_ns;
-                let mut current_time = first_marker;
+    // Minor ticks (fifth of major)
+    let minor_step = (step_ns / 5).max(1_000_000);
+    let mfirst = (vr.start / minor_step) * minor_step;
+    let mut mt = mfirst;
+    while mt <= vr.end {
+        if mt >= frame.min_time_ns && mt % step_ns != 0 {
+            let x = time_to_x(mt, frame, surface_w, vs);
+            if x >= THREAD_LABEL_WIDTH && x <= surface_w {
+                rects.push(RectInstance {
+                    pos: [x, TIMELINE_HEIGHT - 4.0],
+                    size: [1.0, 4.0],
+                    color: [0.5, 0.5, 0.5, 0.3],
+                    kind: 0,
+                    _pad: [0; 3],
+                });
+            }
+        }
+        mt += minor_step;
+    }
 
-                while current_time <= visible_range_for_grid.end {
-                    if current_time >= frame.min_time_ns {
-                        let x = time_to_x(current_time, &frame, viewport_width, &view_state);
+    rects
+}
 
-                        if x >= THREAD_LABEL_WIDTH && x <= viewport_width {
-                            let grid_bounds = Bounds {
-                                origin: point(bounds.origin.x + px(x), bounds.origin.y),
-                                size: size(px(1.0), px(viewport_height)),
-                            };
-                            window.paint_quad(fill(grid_bounds, hsla(0.0, 0.0, 0.25, 0.15)));
-                        }
-                    }
-                    current_time += marker_interval_ns;
-                }
+// ── Text labels ───────────────────────────────────────────────────────────
 
-                // Draw thread separators
-                for (idx, (_thread_id, y_offset)) in thread_offsets.iter().enumerate() {
-                    if idx > 0 {
-                        let separator_y = y_offset - THREAD_ROW_PADDING / 2.0 + view_state.pan_y;
-                        if separator_y >= 0.0 && separator_y < viewport_height {
-                            let separator_bounds = Bounds {
-                                origin: point(
-                                    bounds.origin.x + px(THREAD_LABEL_WIDTH),
-                                    bounds.origin.y + px(separator_y)
-                                ),
-                                size: size(
-                                    px(viewport_width - THREAD_LABEL_WIDTH),
-                                    px(1.0)
-                                ),
-                            };
-                            window.paint_quad(fill(separator_bounds, hsla(0.0, 0.0, 0.3, 0.3)));
-                        }
-                    }
-                }
+/// Visible time range with small tolerance — avoids edge rounding / underflow
+/// without the 100%+ padding that caused 80K-bucket walks.
+fn visible_range_tight(frame: &TraceFrame, viewport_w: f32, vs: &ViewState) -> Range<u64> {
+    if frame.duration_ns() == 0 {
+        return 0..0;
+    }
+    let effective_w = viewport_w - THREAD_LABEL_WIDTH;
+    let zoom = if vs.zoom == 0.0 {
+        effective_w / frame.duration_ns() as f32
+    } else {
+        vs.zoom
+    };
+    let left_ns = (-vs.pan_x as f64) / zoom as f64;
+    let right_ns = (effective_w as f64 - vs.pan_x as f64) / zoom as f64;
+    let tol = ((right_ns - left_ns) * 0.05).max(50_000.0);
+    let start = ((frame.min_time_ns as f64 + left_ns - tol).max(frame.min_time_ns as f64)) as u64;
+    let end = (frame.min_time_ns as f64 + right_ns + tol) as u64;
+    start..end
+}
 
-                // ========================================================================
-                // OFFSCREEN CULLING with careful coordinate handling
-                // Cull spans outside viewport to improve performance
-                // Uses padding to prevent edge popping during pan/zoom
-                // ========================================================================
+/// Build text label rects from the LOD tree — precisely culled to viewport.
+/// Labels appear as soon as the block is wide enough for ~5 characters.
+pub fn build_text_instances(
+    frame: &TraceFrame,
+    lod_tree: &LODTree,
+    level_idx: usize,
+    vs: &ViewState,
+    viewport_w: f32,
+    viewport_h: f32,
+) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
 
-                let vertical_min = -CULL_PADDING - view_state.pan_y;
-                let vertical_max = viewport_height + CULL_PADDING - view_state.pan_y;
+    // Use tight visible range (5% tolerance) — the padded version causes 80K-bucket walks
+    let vr = visible_range_tight(frame, viewport_w, vs);
+    if vr.start >= vr.end {
+        return rects;
+    }
 
-                // Debug: Print visible range to understand culling
-                static mut FRAME_COUNT: u32 = 0;
-                unsafe {
-                    FRAME_COUNT += 1;
-                    if FRAME_COUNT.is_multiple_of(60) {  // Log every 60 frames
-                        let duration_ms = (visible_time.end - visible_time.start) as f64 / 1_000_000.0;
-                        tracing::trace!("[FLAMEGRAPH] Visible range: {} - {} ({:.2}ms), pan_x: {:.1}, zoom: {:.8}",
-                            visible_time.start, visible_time.end, duration_ms, view_state.pan_x, view_state.zoom);
-                    }
-                }
+    let zoom = if vs.zoom == 0.0 {
+        let ew = viewport_w - THREAD_LABEL_WIDTH;
+        ew / frame.duration_ns().max(1) as f32
+    } else {
+        vs.zoom
+    };
 
-                let _paint_start = std::time::Instant::now();
-                let palette = get_palette();
-                let zoom = if view_state.zoom == 0.0 {
-                    let effective_width = viewport_width - THREAD_LABEL_WIDTH;
-                    effective_width / frame.duration_ns().max(1) as f32
+    let y_adj = -GRAPH_HEIGHT;
+    let y_min_lod = -y_adj - vs.pan_y - ROW_HEIGHT;
+    let y_max_lod = viewport_h - y_adj - vs.pan_y;
+
+    // Relaxed threshold — merged spans can cover 5+ buckets, so use 20% of the strict value
+    let min_dur_ns = (LABEL_MIN_PX / zoom.max(1e-10) * 0.20) as u64;
+
+    lod_tree.query_level_foreach(level_idx, vr.start, vr.end, y_min_lod, y_max_lod, |ms| {
+        // Pre-check: skip clearly too-short spans
+        let dur = ms.end_ns - ms.start_ns;
+        if dur < min_dur_ns {
+            return;
+        }
+
+        let x1 = time_to_x(ms.start_ns, frame, viewport_w, vs);
+        let x2 = time_to_x(ms.end_ns, frame, viewport_w, vs);
+        let rw = x2 - x1;
+
+        if rw >= LABEL_MIN_PX {
+            let sy = ms.y + y_adj + vs.pan_y + PADDING;
+            let sh = (ROW_HEIGHT - PADDING) * 0.8;
+            let avail = rw - (PADDING * 4.0);
+            let max_c = (avail / CHAR_W) as usize;
+
+            if max_c >= 5 {
+                let bytes = ms.label.as_bytes();
+                let end = bytes.len().min(max_c);
+                let label = if end >= bytes.len() {
+                    &ms.label
                 } else {
-                    view_state.zoom
+                    core::str::from_utf8(&bytes[..end]).unwrap_or(&ms.label)
                 };
+                push_text(
+                    label,
+                    x1 + PADDING + 1.0,
+                    sy + (sh - CHAR_H) / 2.0,
+                    [0.02, 0.02, 0.02, 0.92],
+                    1.0,
+                    &mut rects,
+                );
+            }
+        }
+    });
 
-                let time_start_index = visible_time
-                    .start
-                    .saturating_sub(frame.min_time_ns)
-                    / TILE_TIME_NS;
-                let time_end_index = visible_time
-                    .end
-                    .saturating_sub(frame.min_time_ns)
-                    / TILE_TIME_NS;
-                let row_start_index = (vertical_min.max(0.0) / TILE_ROW_HEIGHT).floor() as i32;
-                let row_end_index = (vertical_max.max(0.0) / TILE_ROW_HEIGHT).ceil() as i32;
+    rects
+}
 
-                let mut tile_cache = tile_cache.lock();
-                let mut total_cached_spans = 0usize;
+// ── Debug overlay ─────────────────────────────────────────────────────────
 
-                for time_index in time_start_index as i64..=time_end_index as i64 {
-                    for row_index in row_start_index..=row_end_index {
-                        let merged_spans = tile_cache.get_or_build_tile(
-                            &frame,
-                            &lod_tree,
-                            time_index,
-                            row_index,
-                            zoom,
-                        );
+/// Build a debug overlay with rendering stats (top-left corner).
+pub fn build_debug_overlay(
+    frame: &TraceFrame,
+    lod_tree: &LODTree,
+    level_idx: usize,
+    vs: &ViewState,
+    viewport_w: f32,
+) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
+    let zoom = if vs.zoom == 0.0 {
+        let ew = viewport_w - THREAD_LABEL_WIDTH;
+        ew / frame.duration_ns().max(1) as f32
+    } else {
+        vs.zoom
+    };
+    let vis_ms = if viewport_w > 0.0 {
+        let ew = viewport_w - THREAD_LABEL_WIDTH;
+        ew / zoom.max(1e-10) / 1_000_000.0
+    } else {
+        0.0
+    };
+    let bs = lod_tree.bucket_sizes[level_idx.min(lod_tree.bucket_sizes.len() - 1)];
+    let info = format!(
+        "LOD:{}  z:{:.2e}  {:.1}ms  bs:{}μs  bucket_w:{:.0}px",
+        level_idx,
+        zoom,
+        vis_ms,
+        bs / 1000,
+        bs as f32 * zoom,
+    );
+    push_text(&info, 4.0, 4.0, [0.0, 1.0, 0.0, 0.9], 1.0, &mut rects);
+    rects
+}
 
-                        total_cached_spans += merged_spans.len();
+// ── Overlays (grid lines + thread separators) ────────────────────────────
 
-                        for merged_span in merged_spans.iter() {
-                            let x1 = time_to_x(merged_span.start_ns, &frame, viewport_width, &view_state);
-                            let x2 = time_to_x(merged_span.end_ns, &frame, viewport_width, &view_state);
-                            let width = x2 - x1;
+/// Build grid lines and thread separators as RectInstance overlay.
+pub fn build_overlay_instances(
+    frame: &TraceFrame,
+    thread_offsets: &BTreeMap<u64, f32>,
+    vs: &ViewState,
+    viewport_w: f32,
+    viewport_h: f32,
+) -> Vec<RectInstance> {
+    let mut rects = Vec::new();
+    if frame.spans.is_empty() {
+        return rects;
+    }
 
-                            let rendered_width = if width < 1.0 {
-                                1.0
-                            } else if width < 3.0 {
-                                width
-                            } else {
-                                (width - PADDING * 2.0).max(MIN_SPAN_WIDTH)
-                            };
+    let vr = crate::coordinates::visible_range(frame, viewport_w, vs);
+    let zoom = effective_zoom(vs, viewport_w, frame);
+    let y_adj = -GRAPH_HEIGHT;
 
-                            let y = merged_span.y + view_state.pan_y;
+    // Vertical grid lines — density decreases as zoom decreases
+    let min_px = tick_min_px(zoom);
+    let target_step_ns = (min_px / zoom.max(1e-10)) as u64;
+    let candidates: [u64; 16] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000];
+    let mut step_ms = 1u64;
+    for &c in &candidates {
+        if c * 1_000_000 >= target_step_ns {
+            step_ms = c;
+            break;
+        }
+    }
+    if step_ms == 1 && target_step_ns > 1_000_000 {
+        step_ms = *candidates.last().unwrap();
+    }
+    let step_ns = step_ms * 1_000_000;
+    let gfirst = (vr.start / step_ns) * step_ns;
+    let mut gt = gfirst;
+    while gt <= vr.end {
+        if gt >= frame.min_time_ns {
+            let x = time_to_x(gt, frame, viewport_w, vs);
+            if x >= THREAD_LABEL_WIDTH && x <= viewport_w {
+                rects.push(RectInstance {
+                    pos: [x, 0.0],
+                    size: [1.0, viewport_h],
+                    color: [0.25, 0.25, 0.25, 0.15],
+                    kind: 0,
+                    _pad: [0; 3],
+                });
+            }
+        }
+        gt += step_ns;
+    }
 
-                            let base_color = palette[merged_span.color_index % palette.len()];
-                            let darker = if merged_span.span_count > 1 {
-                                hsla(base_color.h, base_color.s * 0.9, base_color.l * 0.8, 1.0)
-                            } else {
-                                hsla(base_color.h, base_color.s, base_color.l * 0.9, 1.0)
-                            };
-                            let color = hsla(
-                                darker.h,
-                                darker.s * 0.85,
-                                (darker.l + 0.2).min(0.92),
-                                1.0,
-                            );
+    // Thread separators
+    let mut idx = 0u32;
+    for (_tid, y_off) in thread_offsets.iter() {
+        if idx > 0 {
+            let sy = y_off + y_adj + vs.pan_y;
+            if sy >= 0.0 && sy < viewport_h {
+                rects.push(RectInstance {
+                    pos: [THREAD_LABEL_WIDTH, sy],
+                    size: [viewport_w - THREAD_LABEL_WIDTH, 1.0],
+                    color: [0.3, 0.3, 0.3, 0.3],
+                    kind: 0,
+                    _pad: [0; 3],
+                });
+            }
+        }
+        idx += 1;
+    }
 
-                            let span_bounds = Bounds {
-                                origin: point(
-                                    bounds.origin.x + px(x1 + if width < 3.0 { 0.0 } else { PADDING }),
-                                    bounds.origin.y + px(y + PADDING)
-                                ),
-                                size: size(px(rendered_width), px((ROW_HEIGHT - PADDING) * SPAN_HEIGHT_SCALE)),
-                            };
-
-                            window.paint_quad(fill(span_bounds, color));
-
-                            if rendered_width > 4.0 {
-                                let highlight_color = hsla(color.h, color.s * 0.7, (color.l * 1.15).min(0.95), 0.4);
-                                let top_border = Bounds {
-                                    origin: span_bounds.origin,
-                                    size: size(px(rendered_width), px(1.0)),
-                                };
-                                window.paint_quad(fill(top_border, highlight_color));
-
-                                let shadow_color = hsla(0.0, 0.0, 0.0, 0.3);
-                                let bottom_border = Bounds {
-                                    origin: point(span_bounds.origin.x, span_bounds.origin.y + span_bounds.size.height - px(1.0)),
-                                    size: size(px(rendered_width), px(1.0)),
-                                };
-                                window.paint_quad(fill(bottom_border, shadow_color));
-                            }
-
-                            if rendered_width >= LABEL_MIN_WIDTH_PX {
-                                let available_label_width = rendered_width - (LABEL_PADDING_X_PX * 2.0);
-                                if let Some(text) = truncate_label_to_width(&merged_span.label, available_label_width) {
-                                    let text_run = TextRun {
-                                        len: text.len(),
-                                        font: window.text_style().font(),
-                                        color: TextColor::from(hsla(0.0, 0.0, 0.0, 0.92)),
-                                        background_color: None,
-                                        underline: None,
-                                        strikethrough: None,
-                                    };
-
-                                    let line = window
-                                        .text_system()
-                                        .shape_line(text.into(), px(LABEL_FONT_SIZE_PX), &[text_run], None);
-                                    let text_origin = point(
-                                        span_bounds.origin.x + px(LABEL_PADDING_X_PX),
-                                        span_bounds.origin.y + px(2.0),
-                                    );
-                                    let _ = line.paint(
-                                        text_origin,
-                                        px(LABEL_FONT_SIZE_PX),
-                                        window,
-                                        _cx,
-                                    );
-                                }
-                            }
-
-                            if merged_span.span_count > 5 && width > 20.0 {
-                                let badge_bounds = Bounds {
-                                    origin: point(bounds.origin.x + px(x1 + width - 8.0), bounds.origin.y + px(y + PADDING)),
-                                    size: size(px(6.0), px(6.0)),
-                                };
-                                window.paint_quad(fill(badge_bounds, hsla(0.0, 0.0, 1.0, 0.3)));
-                            }
-                        }
-                    }
-                }
-
-                unsafe {
-                    if FRAME_COUNT.is_multiple_of(60) {
-                        tracing::trace!("[FLAMEGRAPH] Tile cache painted {} spans", total_cached_spans);
-                    }
-                }
-            });
-        },
-    )
-    .size_full()
+    rects
 }

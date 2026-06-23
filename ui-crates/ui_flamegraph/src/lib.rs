@@ -16,6 +16,7 @@ mod components;
 mod constants;
 mod coordinates;
 mod lod_tree;
+mod rendering;
 mod state;
 
 // Profiling module

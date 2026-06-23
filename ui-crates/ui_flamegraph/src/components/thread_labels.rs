@@ -1,7 +1,7 @@
 //! Thread labels component showing thread names on the left
 
 use crate::colors::get_thread_color;
-use crate::constants::{ROW_HEIGHT, THREAD_LABEL_WIDTH};
+use crate::constants::{GRAPH_HEIGHT, ROW_HEIGHT, THREAD_LABEL_WIDTH};
 use crate::state::ViewState;
 use crate::trace_data::TraceFrame;
 use gpui::*;
@@ -34,7 +34,9 @@ pub fn render_thread_labels(
         .overflow_hidden()
         .children(thread_offsets.iter().map(|(thread_id, y_offset)| {
             let thread = frame.threads.get(thread_id).unwrap();
-            let y = y_offset + view_state.pan_y;
+            // Apply the same y_adj as the WGPU span renderer (-GRAPH_HEIGHT)
+            // so thread labels align with span rows
+            let y = y_offset - GRAPH_HEIGHT + view_state.pan_y;
             let thread_color = get_thread_color(*thread_id);
 
             div()

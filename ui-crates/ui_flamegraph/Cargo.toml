@@ -13,6 +13,10 @@ window_manager.workspace = true
 inventory.workspace = true
 engine_backend = { workspace = true }
 
+# GPU rendering
+wgpu.workspace = true
+bytemuck = "1"
+
 # Profiling - instrumentation-based (Unreal Insights style)
 profiling = { workspace = true }
 parking_lot = { workspace = true }

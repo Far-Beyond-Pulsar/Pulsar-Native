@@ -13109,6 +13109,7 @@ dependencies = [
 name = "ui_flamegraph"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "engine_backend",
  "engine_state",
  "gpui-ce",
@@ -13123,6 +13124,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
+ "wgpu",
  "window_manager",
 ]
 

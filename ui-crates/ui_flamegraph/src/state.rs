@@ -3,6 +3,7 @@
 use crate::constants::*;
 use crate::lod_tree::LODTree;
 use crate::lod_tree::MergedSpan;
+use crate::rendering::types::GpuSpan;
 use crate::trace_data::TraceFrame;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -81,12 +82,14 @@ impl Rect {
     }
 }
 
-/// Cache with hierarchical LOD tree - O(output) queries!
-/// Uses Arc - NO CLONING!
+/// Cache with pre-built GPU span data + hierarchical LOD tree.
+/// Uses Arc - NO CLONING! All span data built once, zero per-frame iteration.
 pub struct SpanCache {
     pub thread_offsets: Arc<BTreeMap<u64, f32>>,
     pub lod_tree: Arc<LODTree>,
     pub tile_cache: Arc<parking_lot::Mutex<SpanTileCache>>,
+    /// All spans at finest LOD, converted to GpuSpan for GPU vertex-pulling.
+    pub gpu_spans: Arc<Vec<GpuSpan>>,
 }
 
 impl SpanCache {
@@ -94,11 +97,17 @@ impl SpanCache {
         let build_start = std::time::Instant::now();
         let thread_offsets = calculate_thread_y_offsets(frame);
         let lod_tree = LODTree::build(frame, &thread_offsets);
-        tracing::trace!("[CACHE] total cache build: {:?}", build_start.elapsed());
+        let gpu_spans = Arc::new(lod_tree.collect_level_gpu_spans(0, frame.min_time_ns));
+        tracing::trace!(
+            "[CACHE] built {} gpu_spans in {:?}",
+            gpu_spans.len(),
+            build_start.elapsed(),
+        );
         Self {
             thread_offsets: Arc::new(thread_offsets),
             lod_tree: Arc::new(lod_tree),
             tile_cache: Arc::new(parking_lot::Mutex::new(SpanTileCache::new())),
+            gpu_spans,
         }
     }
 }

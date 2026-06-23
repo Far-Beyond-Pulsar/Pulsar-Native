@@ -100,8 +100,8 @@ impl LODLevel {
         }
     }
 
-    /// Query spans in time range - O(output_size)!
-    fn query(
+    /// Query spans in time range — O(output_size)!
+    pub(crate) fn query(
         &self,
         time_start: u64,
         time_end: u64,
@@ -109,25 +109,31 @@ impl LODLevel {
         y_max: f32,
         result: &mut Vec<MergedSpan>,
     ) {
+        self.query_foreach(time_start, time_end, y_min, y_max, |s| result.push(s.clone()));
+    }
+
+    /// Walk visible buckets with a callback — avoids cloning spans into a Vec.
+    pub(crate) fn query_foreach(
+        &self,
+        time_start: u64,
+        time_end: u64,
+        y_min: f32,
+        y_max: f32,
+        mut f: impl FnMut(&MergedSpan),
+    ) {
         let start_bucket = self.bucket_index(time_start);
         let end_bucket = self.bucket_index(time_end);
 
         for bucket_idx in start_bucket..=end_bucket.min(self.num_buckets - 1) {
             for spans in self.buckets[bucket_idx].values() {
                 for span in spans {
-                    // RELAXED time culling - allow spans that are partially visible
-                    // Don't cull if there's ANY overlap with visible range
-                    // This prevents spans from disappearing during pan/zoom
                     if span.end_ns < time_start || span.start_ns > time_end {
-                        // But also check if span is within bucket range
-                        // (bucket iteration already gives us locality)
                         continue;
                     }
-                    // Y culling - keep this strict
                     if span.y + ROW_HEIGHT < y_min || span.y > y_max {
                         continue;
                     }
-                    result.push(span.clone());
+                    f(span);
                 }
             }
         }
@@ -138,6 +144,8 @@ impl LODLevel {
 /// NOT cloneable - use Arc to share!
 pub struct LODTree {
     levels: Vec<LODLevel>,
+    /// Bucket sizes for each level (ns).
+    pub bucket_sizes: Vec<u64>,
 }
 
 impl LODTree {
@@ -148,15 +156,22 @@ impl LODTree {
         let time_min = frame.min_time_ns;
         let time_max = frame.min_time_ns + frame.duration_ns().max(1);
 
-        // Create multiple LOD levels with increasing bucket sizes
+        // Create multiple LOD levels with increasing bucket sizes.
+        // Each merged span covers the FULL bucket range it belongs to,
+        // so a 1s-bucket span at far zoom-out is ~20px wide on a 1920px viewport.
+        // This ensures spans NEVER vanish — they just merge into wider coverage blocks.
         let bucket_sizes = vec![
-            50_000,     // 0.05ms - ultra fine (zoomed in 100x+)
-            100_000,    // 0.1ms  - very fine (zoomed in 20-100x)
-            500_000,    // 0.5ms  - fine (zoomed in 5-20x)
-            1_000_000,  // 1ms    - medium (zoomed in 2-5x)
-            5_000_000,  // 5ms    - coarse (normal view)
-            10_000_000, // 10ms   - very coarse (zoomed out 2-5x)
-            50_000_000, // 50ms   - ultra coarse (zoomed out 5x+)
+            50_000,      // 0.05ms   — zoomed in 1000x+
+            100_000,     // 0.1ms    — zoomed in 500x+
+            500_000,     // 0.5ms    — zoomed in 100x+
+            1_000_000,   // 1ms      — zoomed in 50x+
+            5_000_000,   // 5ms      — zoomed in 10x+
+            10_000_000,  // 10ms     — default / normal
+            50_000_000,  // 50ms     — zoomed out 5x
+            100_000_000, // 100ms    — zoomed out 10x
+            200_000_000, // 200ms    — zoomed out 20x
+            500_000_000, // 500ms    — zoomed out 50x
+            1_000_000_000, // 1s    — zoomed out 100x+
         ];
 
         let mut levels = Vec::new();
@@ -166,24 +181,31 @@ impl LODTree {
             levels.push(level);
         }
 
-        Self { levels }
+        Self { levels, bucket_sizes }
     }
 
-    /// Select best LOD level based on zoom (pixels per nanosecond)
+    /// Select best LOD level based on zoom (pixels per nanosecond).
+    /// Targets ~4+ pixels per merged bucket so spans NEVER vanish.
     fn select_level(&self, pixels_per_ns: f64) -> usize {
-        // Want ~2+ pixels per merged span for visibility
-        // pixels_per_ns * bucket_size_ns >= 2.0
-        // bucket_size_ns <= 2.0 / pixels_per_ns
+        // Want ~4+ pixels per merged span bucket
+        // pixels_per_ns * bucket_size_ns >= 4.0
+        // bucket_size_ns >= 4.0 / pixels_per_ns
+        // We find the level where bucket_size_ns is closest to but not below this target.
 
-        let ideal_bucket_size = (2.0 / pixels_per_ns) as u64;
+        let min_bucket_ns = (4.0 / pixels_per_ns) as u64;
 
-        // Find level with bucket size closest to (but not larger than) ideal
-        let mut best_level = 0;
+        // Fallback: if even the coarsest level isn't wide enough, return the coarsest
+        if min_bucket_ns >= self.levels.last().map(|l| l.bucket_size_ns).unwrap_or(1) {
+            return self.levels.len() - 1;
+        }
+
+        // Find level with bucket_size_ns >= min_bucket_ns (closest)
+        let mut best_level = self.levels.len() - 1;
         let mut best_diff = u64::MAX;
 
         for (i, level) in self.levels.iter().enumerate() {
-            if level.bucket_size_ns <= ideal_bucket_size {
-                let diff = ideal_bucket_size - level.bucket_size_ns;
+            if level.bucket_size_ns >= min_bucket_ns {
+                let diff = level.bucket_size_ns - min_bucket_ns;
                 if diff < best_diff {
                     best_diff = diff;
                     best_level = i;
@@ -192,6 +214,57 @@ impl LODTree {
         }
 
         best_level
+    }
+
+    /// Collect all merged spans from a specific LOD level as GpuSpans.
+    /// Called once when the LOD level changes — cached thereafter.
+    pub fn collect_level_gpu_spans(&self, level_idx: usize, min_time_ns: u64) -> Vec<crate::rendering::types::GpuSpan> {
+        let level = &self.levels[level_idx.min(self.levels.len() - 1)];
+        let mut out = Vec::with_capacity(65536);
+        for bucket in &level.buckets {
+            for spans in bucket.values() {
+                for span in spans {
+                    out.push(crate::rendering::types::GpuSpan {
+                        start_rel_ns: (span.start_ns - min_time_ns) as f32,
+                        end_rel_ns: (span.end_ns - min_time_ns) as f32,
+                        y: span.y,
+                        color_index: span.color_index as u32,
+                        span_count: span.span_count as u32,
+                        depth: span.depth,
+                        _pad: [0; 2],
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    /// Query a specific LOD level within time + Y bounds — O(visible_buckets).
+    pub(crate) fn query_level(
+        &self,
+        level_idx: usize,
+        time_start: u64,
+        time_end: u64,
+        y_min: f32,
+        y_max: f32,
+        result: &mut Vec<MergedSpan>,
+    ) {
+        self.levels[level_idx.min(self.levels.len() - 1)]
+            .query(time_start, time_end, y_min, y_max, result);
+    }
+
+    /// Walk visible buckets at a specific LOD level with a callback — no allocation.
+    pub(crate) fn query_level_foreach(
+        &self,
+        level_idx: usize,
+        time_start: u64,
+        time_end: u64,
+        y_min: f32,
+        y_max: f32,
+        f: impl FnMut(&MergedSpan),
+    ) {
+        self.levels[level_idx.min(self.levels.len() - 1)]
+            .query_foreach(time_start, time_end, y_min, y_max, f);
     }
 
     /// Query with automatic LOD selection - O(output) complexity!
@@ -203,7 +276,7 @@ impl LODTree {
         y_max: f32,
         viewport_width: f32,
     ) -> Vec<MergedSpan> {
-        let visible_duration = (time_end - time_start) as f64;
+        let visible_duration = (time_end - time_start).max(1) as f64;
         let pixels_per_ns = viewport_width as f64 / visible_duration;
 
         let level_idx = self.select_level(pixels_per_ns);
