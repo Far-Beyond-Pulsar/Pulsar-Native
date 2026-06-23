@@ -2,6 +2,17 @@
 //!
 //! Core application components including PulsarApp and PulsarRoot
 
+// Force-link window crates so their `inventory::submit!` registrants
+// are included in the binary and discovered by `register_all_windows`.
+extern crate ui_about;
+extern crate ui_documentation;
+extern crate ui_fab_search;
+extern crate ui_flamegraph;
+extern crate ui_git_manager;
+extern crate ui_multiplayer;
+extern crate ui_plugin_manager;
+extern crate ui_settings;
+
 // Initialize translations
 rust_i18n::i18n!("locales", fallback = "en");
 

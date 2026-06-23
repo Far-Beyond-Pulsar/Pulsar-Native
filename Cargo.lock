@@ -12990,6 +12990,7 @@ dependencies = [
  "ui_common",
  "ui_documentation",
  "ui_entry",
+ "ui_fab_search",
  "ui_file_manager",
  "ui_flamegraph",
  "ui_friends",
