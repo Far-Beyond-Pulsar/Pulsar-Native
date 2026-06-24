@@ -839,17 +839,6 @@ pub trait EditorPlugin: Send + Sync {
     ///
     /// Returns an `Arc<dyn PanelView>` that the engine will manage.
     ///
-    /// # Safety
-    ///
-    /// It is safe to return `Arc<dyn PanelView>` because the plugin is never unloaded.
-    /// The drop glue and vtable will remain valid for the process lifetime.
-    ///
-    /// # Memory Management
-    ///
-    /// The Arc refcount will keep the panel alive. When all references are dropped,
-    /// the panel's Drop implementation will be called (which is safe because the
-    /// plugin code is still loaded).
-    ///
     /// **Avoid Arc cycles**: Use `Weak<T>` for back-references to prevent memory leaks.
     fn create_editor(
         &self,
@@ -866,79 +855,31 @@ pub trait EditorPlugin: Send + Sync {
 
     /// Get statusbar buttons this plugin wants to register.
     ///
-    /// This is optional - plugins that don't need statusbar buttons can use the default implementation.
-    ///
-    /// # Returns
-    ///
-    /// A vector of statusbar button definitions. Return an empty vector if no buttons are needed.
-    ///
-    /// # Safety
-    ///
-    /// It is safe to return function pointers in `StatusbarButtonDefinition` because
-    /// plugins are never unloaded. The function pointers will remain valid for the
-    /// process lifetime.
+    /// This is optional — plugins that don't need statusbar buttons can use the default.
     fn statusbar_buttons(&self) -> Vec<StatusbarButtonDefinition> {
         Vec::new()
     }
 
     /// Declare which [`AssetKind`]s this plugin's editors are willing to accept
     /// when an asset is dropped onto one of their panels.
-    ///
-    /// The engine uses this at runtime to show/hide drop-accept indicators before
-    /// the user releases the drag. Returning an empty vec means the plugin does
-    /// not participate in asset drops.
     fn accepted_drop_kinds(&self) -> Vec<AssetKind> {
         Vec::new()
     }
 
     /// Get AI-accessible tools provided by this plugin.
     ///
-    /// Tools are typically defined using the `#[ai_tool]` proc macro, which
-    /// generates the necessary wrapper functions and documentation constants.
+    /// Tools are typically defined using the `#[ai_tool]` proc macro.
     ///
-    /// # Returns
+    /// # Note
     ///
-    /// A vector of `AiToolDefinition` objects. Return an empty vector if the
-    /// plugin provides no AI tools.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn ai_tools(&self) -> Vec<AiToolDefinition> {
-    ///     self.tool_registry.definitions()
-    /// }
-    /// ```
+    /// AI tools are moving to being per-editor. See `EditorMetadata` and
+    /// the `ai_tooling` field. New plugins should prefer registering
+    /// tools per-editor rather than per-plugin.
     fn ai_tools(&self) -> Vec<AiToolDefinition> {
         Vec::new()
     }
 
     /// Execute an AI tool provided by this plugin.
-    ///
-    /// Called by the agent system to execute a tool with parameters.
-    /// The tool name corresponds to a tool returned by `ai_tools()`.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - The current file being operated on (if any)
-    /// * `tool_name` - The name of the tool to execute
-    /// * `tool_args` - JSON object with tool parameters
-    ///
-    /// # Returns
-    ///
-    /// The tool result as a JSON value, or an error if execution failed.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn execute_ai_tool(
-    ///     &self,
-    ///     file_path: &Path,
-    ///     tool_name: &str,
-    ///     tool_args: JsonValue,
-    /// ) -> Result<JsonValue, PluginError> {
-    ///     self.tool_registry.execute(tool_name, tool_args)
-    /// }
-    /// ```
     fn execute_ai_tool(
         &self,
         file_path: &std::path::Path,
@@ -954,27 +895,6 @@ pub trait EditorPlugin: Send + Sync {
     /// Get capabilities for a specific file.
     ///
     /// Returns the list of tool names that apply to the given file type.
-    /// This allows plugins to expose different tool sets for different file types.
-    ///
-    /// # Arguments
-    ///
-    /// * `file_path` - The path to check capabilities for
-    ///
-    /// # Returns
-    ///
-    /// A vector of tool names that are applicable to this file type.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn capabilities_for_file(&self, file_path: &Path) -> Vec<String> {
-    ///     if file_path.extension().map_or(false, |ext| ext == "blueprint") {
-    ///         self.tool_registry.tool_names()
-    ///     } else {
-    ///         Vec::new()
-    ///     }
-    /// }
-    /// ```
     fn capabilities_for_file(&self, file_path: &std::path::Path) -> Vec<String> {
         let _ = file_path;
         Vec::new()
@@ -982,8 +902,63 @@ pub trait EditorPlugin: Send + Sync {
 }
 
 // ============================================================================
+// Extension Traits (optional capabilities)
+// ============================================================================
+
+/// Definition of a custom engine component that a plugin provides.
+///
+/// Components are the building blocks of game objects in the Pulsar engine.
+#[derive(Debug, Clone)]
+pub struct ComponentDefinition {
+    /// Unique identifier for this component type
+    pub id: String,
+    /// Human-readable name
+    pub display_name: String,
+    /// Category for organizing in the property panel (e.g., "Rendering", "Physics")
+    pub category: String,
+    /// Description of what this component does
+    pub description: String,
+    /// Optional icon for the component list
+    pub icon: Option<ui::IconName>,
+}
+
+/// Trait for plugins that register custom engine components.
+///
+/// Plugins implementing this trait can provide custom component types that
+/// behave identically to built-in engine components.
+pub trait EditorPluginComponents: EditorPlugin {
+    /// Returns all ComponentDefinitions for this plugin.
+    fn component_definitions(&self) -> Vec<ComponentDefinition>;
+}
+
+/// Definition of a statusbar badge that a plugin can display.
+#[derive(Debug, Clone)]
+pub struct StatusbarBadgeDefinition {
+    /// Unique identifier for this badge
+    pub id: String,
+    /// Text to display on the badge
+    pub text: String,
+    /// Optional color for the badge
+    pub color: Option<gpui::Hsla>,
+    /// Optional tooltip
+    pub tooltip: Option<String>,
+    /// Priority for ordering
+    pub priority: i32,
+}
+
+// ============================================================================
 // Plugin Declaration and Export
 // ============================================================================
+
+/// Combined trait encompassing all optional plugin capabilities.
+///
+/// This is the trait that DLL-loaded plugins must implement. It combines
+/// the base `EditorPlugin` with all optional capability traits, allowing
+/// the plugin manager to query any capability through a single trait object.
+pub trait EditorPluginFull:
+    EditorPlugin + EditorPluginComponents
+{
+}
 
 /// Type alias for the plugin constructor function.
 ///
@@ -994,7 +969,7 @@ pub trait EditorPlugin: Send + Sync {
 /// The returned reference has `'static` lifetime because the plugin is never unloaded.
 /// This is safe because the plugin code remains valid for the process lifetime.
 pub type PluginCreate =
-    unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> &'static mut dyn EditorPlugin;
+    unsafe extern "C" fn(theme_ptr: *const std::ffi::c_void) -> &'static mut dyn EditorPluginFull;
 
 /// Macro to export a plugin from a dynamic library.
 ///
@@ -1025,17 +1000,77 @@ pub type PluginCreate =
 macro_rules! export_plugin {
     ($plugin_type:ty) => {
         // Static storage for synced Theme data from main app
-        //
-        // SAFETY CONTRACT: The main app MUST ensure the Theme pointer remains valid for the
-        // entire lifetime of the process. This is guaranteed by storing Theme in static
-        // storage in the engine.
         static SYNCED_THEME: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+        // Wrapper that implements all plugin traits for DLL export.
+        // This ensures the exported trait object has access to all methods.
+        #[allow(non_camel_case_types)]
+        struct __PluginExport($plugin_type);
+
+        impl $crate::EditorPlugin for __PluginExport {
+            fn version_info(&self) -> $crate::VersionInfo {
+                $crate::EditorPlugin::version_info(&self.0)
+            }
+            fn metadata(&self) -> $crate::PluginMetadata {
+                $crate::EditorPlugin::metadata(&self.0)
+            }
+            fn file_types(&self) -> Vec<$crate::FileTypeDefinition> {
+                $crate::EditorPlugin::file_types(&self.0)
+            }
+            fn editors(&self) -> Vec<$crate::EditorMetadata> {
+                $crate::EditorPlugin::editors(&self.0)
+            }
+            fn create_editor(
+                &self,
+                editor_id: $crate::EditorId,
+                file_path: std::path::PathBuf,
+                window: &mut $crate::Window,
+                cx: &mut $crate::App,
+            ) -> std::result::Result<std::sync::Arc<dyn $crate::PanelView>, $crate::PluginError>
+            {
+                $crate::EditorPlugin::create_editor(&self.0, editor_id, file_path, window, cx)
+            }
+            fn on_load(&mut self) {
+                $crate::EditorPlugin::on_load(&mut self.0)
+            }
+            fn statusbar_buttons(&self) -> Vec<$crate::StatusbarButtonDefinition> {
+                $crate::EditorPlugin::statusbar_buttons(&self.0)
+            }
+            fn accepted_drop_kinds(&self) -> Vec<$crate::AssetKind> {
+                $crate::EditorPlugin::accepted_drop_kinds(&self.0)
+            }
+            fn ai_tools(&self) -> Vec<$crate::AiToolDefinition> {
+                $crate::EditorPlugin::ai_tools(&self.0)
+            }
+            fn execute_ai_tool(
+                &self,
+                file_path: &std::path::Path,
+                tool_name: &str,
+                tool_args: $crate::JsonValue,
+            ) -> std::result::Result<$crate::JsonValue, $crate::PluginError> {
+                $crate::EditorPlugin::execute_ai_tool(&self.0, file_path, tool_name, tool_args)
+            }
+            fn capabilities_for_file(
+                &self,
+                file_path: &std::path::Path,
+            ) -> Vec<String> {
+                $crate::EditorPlugin::capabilities_for_file(&self.0, file_path)
+            }
+        }
+
+        impl $crate::EditorPluginComponents for __PluginExport {
+            fn component_definitions(&self) -> Vec<$crate::ComponentDefinition> {
+                Vec::new()
+            }
+        }
+
+        impl $crate::EditorPluginFull for __PluginExport {}
 
         /// Create the plugin instance.
         ///
         /// # Safety
         ///
-        /// This function returns a `&'static mut dyn EditorPlugin` which is safe because:
+        /// This function returns a `&'static mut dyn EditorPluginFull` which is safe because:
         /// 1. The plugin is never unloaded (PermanentLibrary prevents dlclose/FreeLibrary)
         /// 2. The returned reference is leaked intentionally
         /// 3. All plugin code remains valid for process lifetime
@@ -1045,7 +1080,7 @@ macro_rules! export_plugin {
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_create(
             theme_ptr: *const std::ffi::c_void,
-        ) -> &'static mut dyn $crate::EditorPlugin {
+        ) -> &'static mut dyn $crate::EditorPluginFull {
             // Validate theme pointer
             if theme_ptr.is_null() {
                 panic!("[Plugin] ERROR: Received null theme pointer from host!");
@@ -1059,16 +1094,12 @@ macro_rules! export_plugin {
             // Register our theme accessor with the ui crate
             ui::theme::Theme::register_plugin_accessor(plugin_theme_unsafe);
 
-            // Create the plugin instance
+            // Create the plugin instance wrapped for full trait access
             let plugin = <$plugin_type>::default();
-            let boxed: Box<dyn $crate::EditorPlugin> = Box::new(plugin);
+            let wrapper = __PluginExport(plugin);
+            let boxed: Box<dyn $crate::EditorPluginFull> = Box::new(wrapper);
 
             // Leak the box to get a 'static reference
-            //
-            // SAFETY: This is intentional. Because the plugin is never unloaded:
-            // 1. This memory will be freed when the process exits (OS cleanup)
-            // 2. The reference remains valid for process lifetime
-            // 3. No use-after-free is possible
             Box::leak(boxed)
         }
 
@@ -1078,50 +1109,31 @@ macro_rules! export_plugin {
         ///
         /// SAFETY: Returns None if theme pointer is null or not initialized.
         /// The caller (ui crate) must handle None gracefully.
-        ///
-        /// The returned reference is valid because:
-        /// 1. The engine guarantees Theme stays in stable storage
-        /// 2. Plugins are never unloaded
-        /// 3. We validate the pointer is not null before dereferencing
         unsafe fn plugin_theme_unsafe() -> Option<&'static ui::theme::Theme> {
             let ptr = SYNCED_THEME.get().copied()? as *const std::ffi::c_void;
 
-            // Validate pointer is not null before dereferencing
             if ptr.is_null() {
                 return None;
             }
 
             // SAFETY: The engine contract guarantees this pointer remains valid.
-            // We never unload the plugin, so this reference is 'static.
             Some(&*(ptr as *const ui::theme::Theme))
         }
 
         /// Get the plugin's version information.
-        ///
-        /// This is called before plugin creation to verify compatibility.
         #[no_mangle]
         pub extern "C" fn _plugin_version() -> $crate::VersionInfo {
             $crate::VersionInfo::current()
         }
 
         /// Initialize the plugin's globals from the main app.
-        ///
-        /// This is called before each editor instance creation to ensure fresh state.
-        ///
-        /// # Safety
-        ///
-        /// The theme_ptr must point to valid Theme data that remains stable for the
-        /// process lifetime.
         #[no_mangle]
         pub unsafe extern "C" fn _plugin_init_globals(theme_ptr: *const std::ffi::c_void) {
-            // Validate theme pointer
             if theme_ptr.is_null() {
                 tracing::error!("[Plugin] ERROR: Received null theme pointer in init_globals!");
                 return;
             }
 
-            // OnceLock.set() will fail if already set, which is fine.
-            // The theme pointer should remain stable across the plugin lifetime.
             if SYNCED_THEME.get().is_none() {
                 SYNCED_THEME.set(theme_ptr as usize);
             }

@@ -68,6 +68,12 @@ pub trait BuiltinEditorProvider: Send + Sync {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<std::sync::Arc<dyn PanelView>, PluginError>;
+
+    /// Get component definitions provided by this provider (optional).
+    /// Override this to register custom engine components.
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        Vec::new()
+    }
 }
 
 /// Registry for all built-in editors.
@@ -98,6 +104,18 @@ impl BuiltinEditorRegistry {
         self.providers
             .iter()
             .find(|provider| provider.provider_id() == provider_id)
+    }
+
+    /// Get all component definitions from all built-in providers.
+    pub fn get_all_components(&self) -> Vec<(PluginId, ComponentDefinition)> {
+        let mut components = Vec::new();
+        for provider in &self.providers {
+            let plugin_id = PluginId::new(provider.provider_id());
+            for def in provider.component_definitions() {
+                components.push((plugin_id.clone(), def));
+            }
+        }
+        components
     }
 
     /// Register all built-in editors with the file type and editor registries.

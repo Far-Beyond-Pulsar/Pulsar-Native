@@ -71,7 +71,7 @@ impl PluginToolBridge {
     pub fn discover_plugin_tools(
         &mut self,
         plugin_id: PluginId,
-        plugin: &'static dyn EditorPlugin,
+        plugin: &'static dyn EditorPluginFull,
     ) {
         debug!(plugin_id = %plugin_id, "discover_plugin_tools start");
         let tool_defs = plugin.ai_tools();
@@ -172,7 +172,7 @@ impl PluginToolBridge {
     pub fn discover_plugin_tools_for_file(
         &mut self,
         plugin_id: PluginId,
-        plugin: &'static dyn EditorPlugin,
+        plugin: &'static dyn EditorPluginFull,
         file_path: &Path,
     ) {
         // Get tools available for this file from the plugin
@@ -260,7 +260,7 @@ impl PluginToolBridge {
         &self,
         tool_name: &str,
         tool_args: serde_json::Value,
-        plugin: &dyn EditorPlugin,
+        plugin: &dyn EditorPluginFull,
         file_path: &Path,
     ) -> Result<serde_json::Value, PluginError> {
         plugin.execute_ai_tool(file_path, tool_name, tool_args)
@@ -301,7 +301,7 @@ impl PluginToolBridge {
     }
 
     /// Refresh tools from a plugin
-    pub fn refresh_plugin(&mut self, plugin_id: &PluginId, plugin: &'static dyn EditorPlugin) {
+    pub fn refresh_plugin(&mut self, plugin_id: &PluginId, plugin: &'static dyn EditorPluginFull) {
         // Remove old tools from this plugin
         self.tools.retain(|_, tool| tool.plugin_id != *plugin_id);
         self.tool_to_plugin.retain(|_, (pid, _)| pid != plugin_id);

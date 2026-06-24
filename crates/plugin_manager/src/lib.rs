@@ -224,7 +224,7 @@ struct LoadedPlugin {
     /// 1. The plugin library is never unloaded (PermanentLibrary prevents it)
     /// 2. The plugin is created by leaking a Box (intentional permanent allocation)
     /// 3. The reference remains valid for the process lifetime
-    plugin: &'static dyn EditorPlugin,
+    plugin: &'static dyn EditorPluginFull,
 
     /// The dynamic library handle (must be kept alive).
     ///
@@ -287,7 +287,7 @@ pub struct PluginManager {
 }
 
 // SAFETY: PluginManager now contains only safe types:
-// - &'static mut dyn EditorPlugin (safe because plugin never unloads)
+// - &'static dyn EditorPluginFull (safe because plugin never unloads)
 // - PermanentLibrary (safe wrapper that prevents unload)
 // - Normal Rust collections (HashMap, Vec, etc.)
 //
@@ -565,7 +565,7 @@ impl PluginManager {
             create_fn(theme_ptr)
         };
 
-        let plugin: &'static mut dyn EditorPlugin = plugin;
+        let plugin: &'static mut dyn EditorPluginFull = plugin;
 
         // Get plugin metadata
         let metadata = plugin.metadata();
@@ -582,7 +582,7 @@ impl PluginManager {
         plugin.on_load();
 
         // After load-time initialization we keep only an immutable static plugin ref.
-        let plugin: &'static dyn EditorPlugin = plugin;
+        let plugin: &'static dyn EditorPluginFull = plugin;
 
         // Register file types
         let file_types = plugin.file_types();
@@ -840,6 +840,27 @@ impl PluginManager {
             .filter(|(_, btn)| btn.position == position)
             .map(|(_, btn)| btn)
             .collect()
+    }
+
+    // ========================================================================
+    // Component Registration (#269)
+    // ========================================================================
+
+    /// Get all component definitions registered by all plugins and built-in providers.
+    pub fn get_all_component_definitions(&self) -> Vec<ComponentDefinition> {
+        let mut all_defs = Vec::new();
+
+        // From DLL plugins
+        for loaded in self.plugins.values() {
+            all_defs.extend(loaded.plugin.component_definitions());
+        }
+
+        // From built-in providers
+        for (_, def) in self.builtin_registry.get_all_components() {
+            all_defs.push(def);
+        }
+
+        all_defs
     }
 
     /// Create an editor instance for a file.
