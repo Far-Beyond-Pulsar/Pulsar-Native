@@ -8085,6 +8085,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -12988,6 +12989,8 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
+ "pulsar_physics",
+ "pulsar_reflection",
  "rfd",
  "rust-i18n 4.1.0",
  "schemars",

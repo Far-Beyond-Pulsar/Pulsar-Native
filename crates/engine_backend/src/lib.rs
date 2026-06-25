@@ -45,39 +45,18 @@ pub struct EngineBackend {
 }
 
 impl EngineBackend {
-    /// Initialize engine backend with built-in subsystems.
+    /// Initialize engine backend with empty subsystem registry.
     ///
-    /// Built-in subsystems are registered and initialized immediately.
-    /// Plugin-provided subsystems are injected later via
-    /// [`inject_plugin_subsystems`](Self::inject_plugin_subsystems).
-    ///
-    /// # Built-in Subsystems
-    ///
-    /// - **PhysicsEngine** — Rapier3D physics simulation
-    ///
-    /// NOTE: World subsystem cannot be registered here because
-    /// PebbleVault::VaultManager doesn't implement `Send + Sync`.
-    /// It must be managed separately.
+    /// All subsystems (including built-in ones like PhysicsEngine) are
+    /// registered later via the plugin pipeline so that everything — built-in
+    /// and DLL-provided — goes through the same injection and initialization
+    /// path. See `inject_plugin_subsystems()` and `inject_plugin_components()`.
     pub async fn init() -> Self {
         profiling::profile_scope!("EngineBackend::Init");
-        tracing::debug!("Initializing Engine Backend with Subsystem Registry");
-
-        let mut registry = SubsystemRegistry::new();
-        let context = SubsystemContext::new(tokio::runtime::Handle::current());
-
-        registry
-            .register(PhysicsEngine::new())
-            .expect("Failed to register PhysicsEngine subsystem");
-
-        // Initialize built-in subsystems now so they are usable immediately.
-        registry
-            .init_all(&context)
-            .expect("Failed to initialize built-in subsystems");
-
-        tracing::info!("✅ Engine Backend initialized");
+        tracing::debug!("Initializing Engine Backend (empty subsystem registry)");
 
         EngineBackend {
-            subsystems: registry,
+            subsystems: SubsystemRegistry::new(),
             plugin_components: component_registry::PluginComponentRegistry::new(),
         }
     }
@@ -137,15 +116,8 @@ impl EngineBackend {
     /// Inject plugin-provided component factories into the engine backend.
     ///
     /// Called once by `ui_core` after `PluginManager` has loaded all DLLs.
-    /// Each entry is `(class_name, factory, default_data)`.
-    pub fn inject_plugin_components(
-        &mut self,
-        registrations: Vec<(
-            String,
-            component_registry::ComponentFactory,
-            serde_json::Value,
-        )>,
-    ) {
+    /// Each entry is `(class_name, factory)`.
+    pub fn inject_plugin_components(&mut self, registrations: Vec<(String, component_registry::ComponentFactory)>) {
         if registrations.is_empty() {
             return;
         }

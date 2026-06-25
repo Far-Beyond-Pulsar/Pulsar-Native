@@ -5,7 +5,6 @@
 //! Directly adds the component to the object when clicked.
 
 use gpui::{prelude::*, *};
-use plugin_editor_api::ComponentDefinition;
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
 use ui::{
@@ -20,7 +19,6 @@ use crate::level_editor::scene_database::SceneDatabase;
 #[derive(Debug, Clone)]
 pub struct ComponentAddedEvent {
     pub class_name: String,
-    pub is_plugin: bool,
 }
 
 // ── Entity ────────────────────────────────────────────────────────────────────
@@ -95,58 +93,52 @@ impl AddComponentDialog {
     }
 
     fn add_component(&self, class_name: &str, cx: &mut Context<Self>) {
+        // Try built-in reflection registry first, then plugin component registry.
         if REGISTRY.has_class(class_name) {
-            self.add_builtin_component(class_name, cx);
-        } else {
-            self.add_plugin_component(class_name, cx);
-        }
-    }
-
-    fn add_builtin_component(&self, class_name: &str, cx: &mut Context<Self>) {
-        if let Some(mut instance) = REGISTRY.create_instance(class_name) {
-            let props = instance.get_properties();
-            let mut map = serde_json::Map::new();
-            for prop in &props {
-                let v = (prop.getter)(instance.as_ref());
-                let json_value = RUNTIME_TYPE_REGISTRY
-                    .serialize_json_for_any(v.as_ref())
-                    .unwrap_or(serde_json::json!(null));
-                map.insert(prop.name.to_string(), json_value);
-            }
-            self.scene_db.add_component(
-                &self.object_id,
-                class_name.to_string(),
-                Value::Object(map),
-            );
-        }
-
-        cx.emit(ComponentAddedEvent {
-            class_name: class_name.to_string(),
-            is_plugin: false,
-        });
-        cx.emit(DismissEvent);
-    }
-
-    fn add_plugin_component(&self, class_name: &str, cx: &mut Context<Self>) {
-        let default_data = engine_backend::EngineBackend::global()
-            .map(|b| {
+            self.add_from_registry(class_name, cx);
+        } else if let Some(instance) = engine_backend::EngineBackend::global()
+            .and_then(|b| {
                 let guard = b.read();
-                guard
-                    .plugin_components()
-                    .get_default_data(class_name)
-                    .cloned()
+                guard.plugin_components().create_instance(class_name)
             })
-            .flatten()
-            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-
-        self.scene_db
-            .add_component(&self.object_id, class_name.to_string(), default_data);
+        {
+            self.add_from_engine_class(class_name, instance, cx);
+        }
 
         cx.emit(ComponentAddedEvent {
             class_name: class_name.to_string(),
-            is_plugin: true,
         });
         cx.emit(DismissEvent);
+    }
+
+    /// Serialize an EngineClass instance to JSON using its reflection metadata,
+    /// then add it to the scene database.
+    fn add_from_engine_class(
+        &self,
+        class_name: &str,
+        instance: Box<dyn pulsar_reflection::EngineClass>,
+        _cx: &mut Context<Self>,
+    ) {
+        let props = instance.get_properties();
+        let mut map = serde_json::Map::new();
+        for prop in &props {
+            let v = (prop.getter)(instance.as_ref());
+            let json_value = RUNTIME_TYPE_REGISTRY
+                .serialize_json_for_any(v.as_ref())
+                .unwrap_or(serde_json::json!(null));
+            map.insert(prop.name.to_string(), json_value);
+        }
+        self.scene_db.add_component(
+            &self.object_id,
+            class_name.to_string(),
+            Value::Object(map),
+        );
+    }
+
+    fn add_from_registry(&self, class_name: &str, _cx: &mut Context<Self>) {
+        if let Some(mut instance) = REGISTRY.create_instance(class_name) {
+            self.add_from_engine_class(class_name, instance, _cx);
+        }
     }
 }
 

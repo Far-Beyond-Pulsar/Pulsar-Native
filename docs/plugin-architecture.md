@@ -626,24 +626,24 @@ These are the building blocks of game objects in the Pulsar engine. For example,
 a scripting plugin might provide `ScriptComponent` and `EventDispatcherComponent`.
 The engine uses these definitions to populate component pickers in the editor UI.
 
-### 5.11.1 `component_registrations()`
+### 5.11.1 `component_factories()`
 
-In addition to metadata, plugins can provide factory functions and default
-serialized data for their components via `EditorPluginComponents::component_registrations()`:
+In addition to metadata, plugins can provide factory functions for their
+components via `EditorPluginComponents::component_factories()`:
 
 ```rust
-pub type ComponentFactory = Box<dyn Fn() -> Box<dyn Any + Send + Sync> + Send + Sync>;
-pub type DefaultComponentData = serde_json::Value;
+pub type ComponentFactory = Box<dyn Fn() -> Box<dyn EngineClass> + Send + Sync>;
 
-fn component_registrations(
+fn component_factories(
     &self,
-) -> Vec<(String, ComponentFactory, DefaultComponentData)> { Vec::new() }
+) -> Vec<(String, ComponentFactory)> { Vec::new() }
 ```
 
-Each entry maps a component class name (matching `ComponentDefinition.id`) to:
-- A **factory closure** that creates a default instance
-- **Default serialized data** (`serde_json::Value`) stored in the scene database
-  when a user adds this component to an object
+Each entry maps a component class name (matching `ComponentDefinition.id`) to
+a factory closure that creates a default `Box<dyn EngineClass>`. The returned
+`EngineClass` provides full reflection metadata via `get_properties()`, so
+plugin components participate in the same serialization and property-editing
+pipeline as built-in `#[engine_class]` components.
 
 The factory closure lives in the plugin DLL. Because plugins are never unloaded,
 the function pointer remains valid for the process lifetime. See [Safety Model](#6-safety-model).
@@ -1831,8 +1831,8 @@ Component definitions are consumed at startup through a two-phase pipeline:
 
 ```rust
 // Called on each loaded plugin:
-let defs = plugin.component_definitions();   // Vec<ComponentDefinition>
-let regs = plugin.component_registrations(); // Vec<(String, ComponentFactory, DefaultComponentData)>
+let defs = plugin.component_definitions();    // Vec<ComponentDefinition>
+let regs = plugin.component_factories();      // Vec<(String, ComponentFactory)>
 
 // PluginManager stores metadata and factories separately:
 self.plugin_component_registrations.extend(regs);
@@ -1850,10 +1850,7 @@ The `PluginComponentRegistry` in `engine_backend` stores factories by class name
 
 ```rust
 pub struct PluginComponentRegistry {
-    factories: HashMap<
-        String,
-        (Box<dyn Fn() -> Box<dyn Any + Send + Sync> + Send + Sync>, serde_json::Value),
-    >,
+    factories: HashMap<String, Box<dyn Fn() -> Box<dyn EngineClass> + Send + Sync>>,
 }
 ```
 
@@ -1861,17 +1858,15 @@ pub struct PluginComponentRegistry {
 
 1. Queries `PluginManager::global().get_all_component_definitions()` for names
 2. Shows plugin components alongside built-in `EngineClass` components
-3. On selection, looks up default data from `EngineBackend::plugin_components()`
-4. Stores the opaque JSON in the scene database as a `ComponentInstance`
+3. On selection, creates instance via `EngineBackend::plugin_components().create_instance(name)`
+4. Uses `EngineClass::get_properties()` + `RUNTIME_TYPE_REGISTRY` for JSON serialization
+5. Stores the serialized JSON in the scene database
 
 > [!NOTE]
-> Plugin components do not use `EngineClass` or `pulsar_reflection`. They are
-> stored as opaque JSON blobs in the scene database. The plugin is responsible
-> for deserializing the JSON when it needs to read or modify the component at
-> runtime. This mirrors how the scene system stores built-in components as
-> `ComponentInstance { class_name, data }`.  Built-in components use
-> `EngineClass::get_properties()` + `RUNTIME_TYPE_REGISTRY` for serialization;
-> plugin components have their structure defined entirely by the plugin author.
+> Plugin components go through the **exact same** `EngineClass` reflection pipeline
+> as built-in `#[engine_class]` components. There is no opaque-JSON shortcut.
+> The `AddComponentDialog` calls `get_properties()` and `RUNTIME_TYPE_REGISTRY`
+> for both built-in and plugin-provided components identically.
 
 ---
 
@@ -2427,7 +2422,7 @@ can now augment or replace them.
 
 `EditorPluginComponents` now supports full dynamic component registration.
 Plugins provide both metadata (`component_definitions()`) and factory functions
-(`component_registrations()`):
+(`component_factories()`):
 
 ```rust
 impl EditorPluginComponents for MyPlugin {
@@ -2441,28 +2436,51 @@ impl EditorPluginComponents for MyPlugin {
         }]
     }
 
-    fn component_registrations(&self) -> Vec<(String, ComponentFactory, DefaultComponentData)> {
+    fn component_factories(&self) -> Vec<(String, ComponentFactory)> {
         vec![(
             "my_plugin:custom_component".into(),
             Box::new(|| Box::new(MyCustomComponent::default())),
-            serde_json::json!({ "enabled": true }),
         )]
     }
 }
 ```
 
+The returned `Box<dyn EngineClass>` provides full reflection metadata via
+`EngineClass::get_properties()`, so the component is serialized, displayed,
+and edited identically to built-in `#[engine_class]` components.
+
 The engine backend stores factories in `PluginComponentRegistry`
 (`crates/engine_backend/src/component_registry.rs`). The `AddComponentDialog`
 in `ui_level_editor` picks up plugin component names automatically and uses
-the default data when adding components to objects.
+the `EngineClass` pipeline for serialization.
 
 **Injection flow:**
 
-1. `PluginManager::load_plugin()` collects registrations via `plugin.component_registrations()`
+1. `PluginManager::load_plugin()` collects factories via `plugin.component_factories()`
 2. `ui_core` calls `plugin_manager.drain_component_registrations()`
 3. `EngineBackend::inject_plugin_components()` registers factories
 4. `AddComponentDialog` shows plugin components alongside built-in ones
-5. On selection, uses default data from `PluginComponentRegistry` to create the component
+5. On selection, creates instance via factory, reflects properties via `get_properties()`,
+   serializes via `RUNTIME_TYPE_REGISTRY`, stores result in scene database
+
+### 20.4 Physics Migration
+
+The physics subsystem (`PhysicsEngine`) and physics components
+(`PhysicsComponent`, `RigidbodyComponent`) now go through the same plugin
+pipeline as DLL plugins:
+
+- `PhysicsEngine` is registered as a built-in subsystem via
+  `PluginManager::register_builtin_subsystem()` and drained through
+  `drain_subsystems()` alongside plugin subsystems
+- `PhysicsComponent` and `RigidbodyComponent` have `ComponentDefinition` entries
+  with `component_factories()` providing `Box<dyn EngineClass>` factories
+- `EngineBackend::init()` no longer hardcodes `PhysicsEngine` — it starts with
+  an empty registry and receives everything through the injection pipeline
+- Registration happens in `ui_core/src/app/constructors.rs`, the same place
+  where built-in editors are registered
+
+This demonstrates that the plugin pipeline works uniformly for both built-in
+and DLL-provided subsystems and components.
 
 ### 20.4 Plugin-to-Plugin Communication
 

@@ -901,34 +901,26 @@ pub trait EditorPlugin: Send + Sync {
     }
 }
 
+use pulsar_reflection::EngineClass as _;
+use pulsar_reflection::{EngineClass, PropertyMetadata};
+
 // ============================================================================
 // Extension Traits (optional capabilities)
 // ============================================================================
 
 /// Factory type for creating a default instance of a plugin-provided component.
 ///
-/// The factory returns a `Box<dyn Any + Send + Sync>` which the engine stores
-/// type-erased. When the component needs to be serialized or edited, the engine
-/// uses the `DefaultComponentData` from the corresponding `ComponentDefinition`
-/// as the initial JSON payload.
+/// The factory returns a `Box<dyn EngineClass>` which provides full reflection
+/// metadata via `EngineClass::get_properties()`. This allows plugin components
+/// to participate in the same serialization and property-editing pipeline as
+/// built-in components derived with `#[engine_class]`.
 ///
 /// # Safety
 ///
 /// This closure lives in the plugin DLL. Because plugins are never unloaded,
 /// the function pointer remains valid for the process lifetime.
 pub type ComponentFactory =
-    Box<dyn Fn() -> Box<dyn std::any::Any + Send + Sync> + Send + Sync>;
-
-/// Serialized default data for a plugin component.
-///
-/// When a user adds a plugin-provided component to an object, the engine
-/// stores this JSON blob as the initial component state. The plugin is
-/// responsible for deserializing the JSON when it needs to inspect or modify
-/// the component at runtime.
-///
-/// This mirrors how the built-in scene system stores components as
-/// `ComponentInstance { class_name, data }` — the data is opaque JSON.
-pub type DefaultComponentData = serde_json::Value;
+    Box<dyn Fn() -> Box<dyn EngineClass> + Send + Sync>;
 
 /// Definition of a custom engine component that a plugin provides.
 ///
@@ -955,21 +947,16 @@ pub trait EditorPluginComponents: EditorPlugin {
     /// Returns all ComponentDefinitions for this plugin.
     fn component_definitions(&self) -> Vec<ComponentDefinition>;
 
-    /// Returns factory functions and default data for this plugin's components.
+    /// Returns factory functions for this plugin's components.
     ///
     /// Each entry maps a component class name (matching `ComponentDefinition.id`)
-    /// to a factory + default data JSON pair. The factory creates a default
-    /// instance; the default data is the initial serialized state stored in
-    /// the scene database.
+    /// to a factory that creates a default instance. The returned `EngineClass`
+    /// provides full reflection metadata so the component can be serialized,
+    /// displayed in the property panel, and edited — exactly like a built-in
+    /// `#[engine_class]` component.
     ///
-    /// Default: empty (no factories — component can only be referenced, not instantiated).
-    fn component_registrations(
-        &self,
-    ) -> Vec<(
-        String,
-        ComponentFactory,
-        DefaultComponentData,
-    )> {
+    /// Default: empty (component can only be referenced, not instantiated).
+    fn component_factories(&self) -> Vec<(String, ComponentFactory)> {
         Vec::new()
     }
 }
@@ -1135,13 +1122,9 @@ macro_rules! export_plugin {
             fn component_definitions(&self) -> Vec<$crate::ComponentDefinition> {
                 Vec::new()
             }
-            fn component_registrations(
+            fn component_factories(
                 &self,
-            ) -> Vec<(
-                String,
-                $crate::ComponentFactory,
-                $crate::DefaultComponentData,
-            )> {
+            ) -> Vec<(String, $crate::ComponentFactory)> {
                 Vec::new()
             }
         }

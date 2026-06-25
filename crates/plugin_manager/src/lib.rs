@@ -289,13 +289,16 @@ pub struct PluginManager {
     /// Merged into the engine's SubsystemRegistry at startup.
     plugin_subsystems: Vec<Box<dyn engine_subsystems::Subsystem>>,
 
-    /// Component registrations from plugins, collected at load time.
-    /// Each entry is (class_name, factory, default_data).
+    /// Component factories from plugins, collected at load time.
+    /// Each entry is (class_name, factory).
     plugin_component_registrations: Vec<(
         String,
         plugin_editor_api::ComponentFactory,
-        plugin_editor_api::DefaultComponentData,
     )>,
+
+    /// Component definitions registered directly as built-ins (not from DLL plugins).
+    /// These supplement definitions from `BuiltinEditorRegistry` and DLL plugins.
+    builtin_component_definitions: Vec<ComponentDefinition>,
 }
 
 // SAFETY: PluginManager now contains only safe types:
@@ -340,6 +343,7 @@ impl PluginManager {
             statusbar_buttons: Vec::new(),
             plugin_subsystems: Vec::new(),
             plugin_component_registrations: Vec::new(),
+            builtin_component_definitions: Vec::new(),
         }
     }
 
@@ -362,6 +366,26 @@ impl PluginManager {
     pub fn register_builtin_editors(&mut self) {
         self.builtin_registry
             .register_all(&mut self.file_type_registry, &mut self.editor_registry);
+    }
+
+    /// Register a built-in subsystem that will be drained and injected alongside
+    /// plugin subsystems.
+    pub fn register_builtin_subsystem(&mut self, subsystem: Box<dyn engine_subsystems::Subsystem>) {
+        self.plugin_subsystems.push(subsystem);
+    }
+
+    /// Register built-in component definitions.
+    pub fn register_builtin_component_definitions(&mut self, defs: Vec<ComponentDefinition>) {
+        self.builtin_component_definitions.extend(defs);
+    }
+
+    /// Register built-in component factories that will be drained and injected
+    /// alongside plugin component factories.
+    pub fn register_builtin_component_factories(
+        &mut self,
+        factories: Vec<(String, plugin_editor_api::ComponentFactory)>,
+    ) {
+        self.plugin_component_registrations.extend(factories);
     }
 
     /// Load all plugins from a directory.
@@ -662,13 +686,13 @@ impl PluginManager {
         }
 
         // Collect plugin component registrations
-        let component_regs = plugin.component_registrations();
+        let component_regs = plugin.component_factories();
         if !component_regs.is_empty() {
             tracing::debug!(
                 "  🔧 Registering {} component(s) from plugin",
                 component_regs.len()
             );
-            for (name, _, _) in &component_regs {
+            for (name, _) in &component_regs {
                 tracing::debug!("    - Component: {}", name);
             }
             self.plugin_component_registrations.extend(component_regs);
@@ -898,6 +922,8 @@ impl PluginManager {
             all_defs.push(def);
         }
 
+        all_defs.extend(self.builtin_component_definitions.clone());
+
         all_defs
     }
 
@@ -913,15 +939,11 @@ impl PluginManager {
 
     /// Drain all plugin-provided component registrations (consumes them for engine registration).
     ///
-    /// Each entry is `(component_class_name, factory, default_data)`.
+    /// Each entry is `(component_class_name, factory)`.
     /// Injected into `EngineBackend::plugin_components` at startup.
     pub fn drain_component_registrations(
         &mut self,
-    ) -> Vec<(
-        String,
-        plugin_editor_api::ComponentFactory,
-        plugin_editor_api::DefaultComponentData,
-    )> {
+    ) -> Vec<(String, plugin_editor_api::ComponentFactory)> {
         std::mem::take(&mut self.plugin_component_registrations)
     }
 

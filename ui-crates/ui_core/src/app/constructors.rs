@@ -278,6 +278,54 @@ impl PulsarApp {
             t_plugins.elapsed()
         );
 
+        // Register built-in physics subsystem
+        plugin_manager.register_builtin_subsystem(Box::new(
+            engine_backend::PhysicsEngine::new(),
+        ));
+
+        // Register physics component definitions (for the component picker)
+        plugin_manager.register_builtin_component_definitions(vec![
+            plugin_editor_api::ComponentDefinition {
+                id: "PhysicsComponent".into(),
+                display_name: "Physics".into(),
+                category: "Physics".into(),
+                description: "Physical body with collision and simulation settings".into(),
+                icon: None,
+            },
+            plugin_editor_api::ComponentDefinition {
+                id: "RigidbodyComponent".into(),
+                display_name: "Rigidbody".into(),
+                category: "Physics".into(),
+                description: "Rigid body dynamics (mass, velocity, forces)".into(),
+                icon: None,
+            },
+        ]);
+
+        // Register physics component factories (for instantiation via EngineClass)
+        plugin_manager.register_builtin_component_factories(vec![
+            (
+                "PhysicsComponent".into(),
+                Box::new(|| {
+                    let c: Box<dyn pulsar_reflection::EngineClass> =
+                        Box::new(pulsar_physics::PhysicsComponent::default());
+                    c
+                }) as plugin_editor_api::ComponentFactory,
+            ),
+            (
+                "RigidbodyComponent".into(),
+                Box::new(|| {
+                    let c: Box<dyn pulsar_reflection::EngineClass> =
+                        Box::new(pulsar_physics::RigidbodyComponent::default());
+                    c
+                }) as plugin_editor_api::ComponentFactory,
+            ),
+        ]);
+
+        tracing::info!(
+            "[PulsarApp] built-in physics registered in {:?}",
+            t_plugins.elapsed()
+        );
+
         let plugins_dir = std::path::Path::new("plugins/editor");
         let t_load = std::time::Instant::now();
         match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {

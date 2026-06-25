@@ -17,6 +17,9 @@ ui.workspace = true
 
 # Subsystem framework (used by EditorPluginSubsystems)
 engine_subsystems = { workspace = true }
+
+# Reflection system (for EngineClass — plugin components use full reflection)
+pulsar_reflection = { workspace = true }
 [build-dependencies]
 tracing = { workspace = true }
 
