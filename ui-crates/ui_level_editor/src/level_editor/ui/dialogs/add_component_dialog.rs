@@ -1,9 +1,11 @@
 //! Add Component Picker
 //!
 //! Compact searchable popover listing all engine classes registered via
-//! `#[derive(EngineClass)]`. Directly adds the component to the object when clicked.
+//! `#[derive(EngineClass)]` and any plugin-provided components.
+//! Directly adds the component to the object when clicked.
 
 use gpui::{prelude::*, *};
+use plugin_editor_api::ComponentDefinition;
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
 use ui::{
@@ -18,12 +20,13 @@ use crate::level_editor::scene_database::SceneDatabase;
 #[derive(Debug, Clone)]
 pub struct ComponentAddedEvent {
     pub class_name: String,
+    pub is_plugin: bool,
 }
 
 // ── Entity ────────────────────────────────────────────────────────────────────
 
 pub struct AddComponentDialog {
-    searchable_list: Entity<SearchableList<&'static str>>,
+    searchable_list: Entity<SearchableList<String>>,
     _subscriptions: Vec<Subscription>,
     /// The object ID to add components to
     object_id: String,
@@ -47,11 +50,27 @@ impl AddComponentDialog {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let mut engine_classes = pulsar_reflection::REGISTRY.get_class_names();
-        engine_classes.sort();
+        let mut items: Vec<String> = REGISTRY
+            .get_class_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
+
+        // Also include plugin-provided component names
+        if let Some(pm) = plugin_manager::global() {
+            let pm = pm.read();
+            let plugin_defs = pm.get_all_component_definitions();
+            for def in &plugin_defs {
+                if !items.contains(&def.id) {
+                    items.push(def.id.clone());
+                }
+            }
+        }
+
+        items.sort();
 
         let searchable_list = cx.new(|cx| {
-            SearchableList::new(window, cx, engine_classes.clone(), |name| name.to_string())
+            SearchableList::new(window, cx, items, |name| name.clone())
                 .with_empty_text("No components found")
                 .with_max_width(px(240.0))
                 .with_max_height(px(320.0))
@@ -60,7 +79,7 @@ impl AddComponentDialog {
 
         let subscriptions = vec![cx.subscribe(
             &searchable_list,
-            |this, _, event: &SearchableListEvent<&'static str>, cx| {
+            |this, _, event: &SearchableListEvent<String>, cx| {
                 if let SearchableListEvent::Select(class_name) = event {
                     this.add_component(class_name, cx);
                 }
@@ -76,19 +95,19 @@ impl AddComponentDialog {
     }
 
     fn add_component(&self, class_name: &str, cx: &mut Context<Self>) {
-        // Allow multiple components of the same type
-        if !REGISTRY.has_class(class_name) {
-            cx.emit(DismissEvent);
-            return;
+        if REGISTRY.has_class(class_name) {
+            self.add_builtin_component(class_name, cx);
+        } else {
+            self.add_plugin_component(class_name, cx);
         }
+    }
 
-        // Build default values from reflection metadata
+    fn add_builtin_component(&self, class_name: &str, cx: &mut Context<Self>) {
         if let Some(mut instance) = REGISTRY.create_instance(class_name) {
             let props = instance.get_properties();
             let mut map = serde_json::Map::new();
             for prop in &props {
                 let v = (prop.getter)(instance.as_ref());
-                // Use runtime type registry for serialization
                 let json_value = RUNTIME_TYPE_REGISTRY
                     .serialize_json_for_any(v.as_ref())
                     .unwrap_or(serde_json::json!(null));
@@ -103,6 +122,29 @@ impl AddComponentDialog {
 
         cx.emit(ComponentAddedEvent {
             class_name: class_name.to_string(),
+            is_plugin: false,
+        });
+        cx.emit(DismissEvent);
+    }
+
+    fn add_plugin_component(&self, class_name: &str, cx: &mut Context<Self>) {
+        let default_data = engine_backend::EngineBackend::global()
+            .map(|b| {
+                let guard = b.read();
+                guard
+                    .plugin_components()
+                    .get_default_data(class_name)
+                    .cloned()
+            })
+            .flatten()
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+        self.scene_db
+            .add_component(&self.object_id, class_name.to_string(), default_data);
+
+        cx.emit(ComponentAddedEvent {
+            class_name: class_name.to_string(),
+            is_plugin: true,
         });
         cx.emit(DismissEvent);
     }

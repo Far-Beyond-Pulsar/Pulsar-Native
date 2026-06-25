@@ -2971,6 +2971,7 @@ dependencies = [
  "dashmap",
  "engine_fs",
  "engine_state",
+ "engine_subsystems",
  "flume",
  "futures",
  "git2",
@@ -3070,6 +3071,15 @@ dependencies = [
  "tracing",
  "ui_types_common 0.1.0",
  "window_manager",
+]
+
+[[package]]
+name = "engine_subsystems"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -8073,6 +8083,7 @@ dependencies = [
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
+ "engine_subsystems",
  "gpui-ce",
  "schemars",
  "serde",
@@ -8087,6 +8098,7 @@ dependencies = [
 name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
+ "engine_subsystems",
  "env_logger",
  "gpui-ce",
  "libloading 0.9.0",

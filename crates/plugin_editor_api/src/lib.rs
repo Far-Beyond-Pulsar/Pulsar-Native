@@ -905,6 +905,31 @@ pub trait EditorPlugin: Send + Sync {
 // Extension Traits (optional capabilities)
 // ============================================================================
 
+/// Factory type for creating a default instance of a plugin-provided component.
+///
+/// The factory returns a `Box<dyn Any + Send + Sync>` which the engine stores
+/// type-erased. When the component needs to be serialized or edited, the engine
+/// uses the `DefaultComponentData` from the corresponding `ComponentDefinition`
+/// as the initial JSON payload.
+///
+/// # Safety
+///
+/// This closure lives in the plugin DLL. Because plugins are never unloaded,
+/// the function pointer remains valid for the process lifetime.
+pub type ComponentFactory =
+    Box<dyn Fn() -> Box<dyn std::any::Any + Send + Sync> + Send + Sync>;
+
+/// Serialized default data for a plugin component.
+///
+/// When a user adds a plugin-provided component to an object, the engine
+/// stores this JSON blob as the initial component state. The plugin is
+/// responsible for deserializing the JSON when it needs to inspect or modify
+/// the component at runtime.
+///
+/// This mirrors how the built-in scene system stores components as
+/// `ComponentInstance { class_name, data }` — the data is opaque JSON.
+pub type DefaultComponentData = serde_json::Value;
+
 /// Definition of a custom engine component that a plugin provides.
 ///
 /// Components are the building blocks of game objects in the Pulsar engine.
@@ -929,6 +954,24 @@ pub struct ComponentDefinition {
 pub trait EditorPluginComponents: EditorPlugin {
     /// Returns all ComponentDefinitions for this plugin.
     fn component_definitions(&self) -> Vec<ComponentDefinition>;
+
+    /// Returns factory functions and default data for this plugin's components.
+    ///
+    /// Each entry maps a component class name (matching `ComponentDefinition.id`)
+    /// to a factory + default data JSON pair. The factory creates a default
+    /// instance; the default data is the initial serialized state stored in
+    /// the scene database.
+    ///
+    /// Default: empty (no factories — component can only be referenced, not instantiated).
+    fn component_registrations(
+        &self,
+    ) -> Vec<(
+        String,
+        ComponentFactory,
+        DefaultComponentData,
+    )> {
+        Vec::new()
+    }
 }
 
 /// Definition of a statusbar badge that a plugin can display.
@@ -950,13 +993,43 @@ pub struct StatusbarBadgeDefinition {
 // Plugin Declaration and Export
 // ============================================================================
 
+// ============================================================================
+// Plugin Subsystem Extension Trait
+// ============================================================================
+
+/// Trait for plugins that provide engine subsystems.
+///
+/// Subsystems are type-erased engine components (renderer, physics, audio, etc.)
+/// that participate in the engine's lifecycle (init, shutdown, per-frame update).
+/// Consumers downcast via `std::any::Any` to get their concrete type.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// impl EditorPluginSubsystems for MyPlugin {
+///     fn subsystems(&self) -> Vec<Box<dyn engine_subsystems::Subsystem>> {
+///         vec![Box::new(MyCustomRenderer::new())]
+///     }
+/// }
+/// ```
+pub trait EditorPluginSubsystems: EditorPlugin {
+    /// Returns all subsystems provided by this plugin.
+    fn subsystems(&self) -> Vec<Box<dyn engine_subsystems::Subsystem>>;
+}
+
+// Re-export subsystem types for plugin convenience.
+pub use engine_subsystems::{
+    Subsystem, SubsystemContext, SubsystemError, SubsystemId, SubsystemRegistry,
+    subsystem_ids,
+};
+
 /// Combined trait encompassing all optional plugin capabilities.
 ///
 /// This is the trait that DLL-loaded plugins must implement. It combines
 /// the base `EditorPlugin` with all optional capability traits, allowing
 /// the plugin manager to query any capability through a single trait object.
 pub trait EditorPluginFull:
-    EditorPlugin + EditorPluginComponents
+    EditorPlugin + EditorPluginComponents + EditorPluginSubsystems
 {
 }
 
@@ -1060,6 +1133,21 @@ macro_rules! export_plugin {
 
         impl $crate::EditorPluginComponents for __PluginExport {
             fn component_definitions(&self) -> Vec<$crate::ComponentDefinition> {
+                Vec::new()
+            }
+            fn component_registrations(
+                &self,
+            ) -> Vec<(
+                String,
+                $crate::ComponentFactory,
+                $crate::DefaultComponentData,
+            )> {
+                Vec::new()
+            }
+        }
+
+        impl $crate::EditorPluginSubsystems for __PluginExport {
+            fn subsystems(&self) -> Vec<Box<dyn $crate::Subsystem>> {
                 Vec::new()
             }
         }

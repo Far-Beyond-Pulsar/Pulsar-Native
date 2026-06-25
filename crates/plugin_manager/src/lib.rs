@@ -284,6 +284,18 @@ pub struct PluginManager {
     /// Statusbar buttons registered by all plugins
     /// Stored with plugin ownership tracking for proper cleanup
     statusbar_buttons: Vec<(PluginId, StatusbarButtonDefinition)>,
+
+    /// Subsystems provided by plugins, collected at load time.
+    /// Merged into the engine's SubsystemRegistry at startup.
+    plugin_subsystems: Vec<Box<dyn engine_subsystems::Subsystem>>,
+
+    /// Component registrations from plugins, collected at load time.
+    /// Each entry is (class_name, factory, default_data).
+    plugin_component_registrations: Vec<(
+        String,
+        plugin_editor_api::ComponentFactory,
+        plugin_editor_api::DefaultComponentData,
+    )>,
 }
 
 // SAFETY: PluginManager now contains only safe types:
@@ -326,6 +338,8 @@ impl PluginManager {
             engine_version: VersionInfo::current(),
             project_root: None,
             statusbar_buttons: Vec::new(),
+            plugin_subsystems: Vec::new(),
+            plugin_component_registrations: Vec::new(),
         }
     }
 
@@ -634,6 +648,32 @@ impl PluginManager {
             });
         }
 
+        // Collect plugin subsystems
+        let subsystems = plugin.subsystems();
+        if !subsystems.is_empty() {
+            tracing::debug!(
+                "  🧩 Registering {} subsystem(s) from plugin",
+                subsystems.len()
+            );
+            for ss in &subsystems {
+                tracing::debug!("    - Subsystem: {}", ss.id());
+            }
+            self.plugin_subsystems.extend(subsystems);
+        }
+
+        // Collect plugin component registrations
+        let component_regs = plugin.component_registrations();
+        if !component_regs.is_empty() {
+            tracing::debug!(
+                "  🔧 Registering {} component(s) from plugin",
+                component_regs.len()
+            );
+            for (name, _, _) in &component_regs {
+                tracing::debug!("    - Component: {}", name);
+            }
+            self.plugin_component_registrations.extend(component_regs);
+        }
+
         // Store the plugin
         // SAFETY: Both plugin reference and library handle have 'static lifetime
         // because the library is never unloaded
@@ -850,17 +890,39 @@ impl PluginManager {
     pub fn get_all_component_definitions(&self) -> Vec<ComponentDefinition> {
         let mut all_defs = Vec::new();
 
-        // From DLL plugins
         for loaded in self.plugins.values() {
             all_defs.extend(loaded.plugin.component_definitions());
         }
 
-        // From built-in providers
         for (_, def) in self.builtin_registry.get_all_components() {
             all_defs.push(def);
         }
 
         all_defs
+    }
+
+    /// Drain all plugin-provided subsystems (consumes them for engine registration).
+    ///
+    /// Called once by `EngineBackend::init()` after it has built its initial
+    /// registry of built-in subsystems. Plugin subsystems are merged into the
+    /// engine's `SubsystemRegistry` where first-registered wins (built-in wins
+    /// over plugin).
+    pub fn drain_subsystems(&mut self) -> Vec<Box<dyn engine_subsystems::Subsystem>> {
+        std::mem::take(&mut self.plugin_subsystems)
+    }
+
+    /// Drain all plugin-provided component registrations (consumes them for engine registration).
+    ///
+    /// Each entry is `(component_class_name, factory, default_data)`.
+    /// Injected into `EngineBackend::plugin_components` at startup.
+    pub fn drain_component_registrations(
+        &mut self,
+    ) -> Vec<(
+        String,
+        plugin_editor_api::ComponentFactory,
+        plugin_editor_api::DefaultComponentData,
+    )> {
+        std::mem::take(&mut self.plugin_component_registrations)
     }
 
     /// Create an editor instance for a file.

@@ -294,6 +294,41 @@ impl PulsarApp {
             }
         }
 
+        // Drain plugin subsystems and inject into the engine backend
+        // before the plugin manager becomes globally accessible.
+        let plugin_subsystems = plugin_manager.drain_subsystems();
+        if !plugin_subsystems.is_empty() {
+            tracing::debug!(
+                "🧩 Injecting {} plugin subsystem(s) into engine backend",
+                plugin_subsystems.len()
+            );
+            if let Some(backend) = engine_backend::EngineBackend::global() {
+                if let Err(e) = backend.update(|b| b.inject_plugin_subsystems(plugin_subsystems)) {
+                    tracing::error!("Failed to inject plugin subsystems: {}", e);
+                }
+            } else {
+                tracing::warn!(
+                    "EngineBackend not yet available — plugin subsystems will not be registered"
+                );
+            }
+        }
+
+        // Drain plugin component registrations and inject into the engine backend
+        let plugin_components = plugin_manager.drain_component_registrations();
+        if !plugin_components.is_empty() {
+            tracing::debug!(
+                "🔧 Injecting {} plugin component(s) into engine backend",
+                plugin_components.len()
+            );
+            if let Some(backend) = engine_backend::EngineBackend::global() {
+                backend.update(|b| b.inject_plugin_components(plugin_components));
+            } else {
+                tracing::warn!(
+                    "EngineBackend not yet available — plugin components will not be registered"
+                );
+            }
+        }
+
         // Initialize global plugin manager
         tracing::debug!("🌍 Initializing global plugin manager");
         plugin_manager::initialize_global(plugin_manager);

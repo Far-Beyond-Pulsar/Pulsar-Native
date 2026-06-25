@@ -15,6 +15,7 @@ tempfile = { workspace = true }
 workspace = true
 
 [dependencies]
+engine_subsystems = { workspace = true }
 ui_gen_macros = { workspace = true }
 pebble = { package = "PebbleVault", version = "0.7.0" }
 serde = { workspace = true, features = ["derive"] }

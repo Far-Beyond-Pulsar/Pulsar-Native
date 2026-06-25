@@ -254,6 +254,7 @@ The plugin system spans these crates in the workspace:
 | Crate | Path | Role |
 |---|---|---|
 | `plugin_editor_api` | `crates/plugin_editor_api/` | SDK that every plugin DLL links against. Defines traits, types, the `export_plugin!` macro. |
+| `engine_subsystems` | `crates/engine_subsystems/` | Shared `Subsystem` trait and `SubsystemRegistry`. No engine/UI deps — only `tokio`. |
 | `plugin_manager` | `crates/plugin_manager/` | Host-side runtime. Loads DLLs, manages registries, provides global access. |
 
 ### Supporting Crates
@@ -284,16 +285,23 @@ These crates cross the DLL boundary as types:
 graph LR
     subgraph Workspace
         PAPI[plugin_editor_api]
+        ESS[engine_subsystems]
         PM[plugin_manager]
+        EB[engine_backend]
         UC[ui_core]
         UPM[ui_plugin_manager]
         ENG[engine]
 
+        ESS --> PAPI
         PAPI --> PM
+        PM --> EB
         PM --> UC
         PM --> UPM
+        ESS --> EB
+        ESS --> PM
         UC --> ENG
         UPM --> ENG
+        EB --> ENG
     end
 
     subgraph External
@@ -1814,9 +1822,10 @@ if let Some(pm) = plugin_manager::global() {
 ```
 
 > [!NOTE]
-> Currently the consumption side is not fully implemented. The definitions
-> are collected and exposed, but the engine backend does not yet dynamically
-> instantiate them. This is part of the ongoing plugin-subsystem work.
+> The engine backend does not yet dynamically instantiate components from
+> these definitions. Consumption currently requires the engine developer
+> to read the definitions and match them to concrete Rust types manually.
+> Full dynamic type instantiation is planned for a future iteration.
 
 ---
 
@@ -2287,26 +2296,86 @@ pub trait EditorPlugin {
 > This provides the same effect and will be forwards-compatible with the
 > per-editor refactoring.
 
-### 20.2 Plugin Subsystems (Issue #270)
+### 20.2 Plugin Subsystems (Issue #270 — Resolved)
 
-The engine backend has a subsystem framework (`engine_backend::subsystems`)
-for systems like physics, rendering, and networking. Plugins will eventually
-be able to provide their own subsystems:
+> [!IMPORTANT]
+> Plugin subsystems are now implemented. The dedicated `engine_subsystems` crate
+> (`crates/engine_subsystems/`) provides the `Subsystem` trait and
+> `SubsystemRegistry` and has no engine or UI dependencies — only `tokio`
+> (for the async runtime handle).
+
+The `Subsystem` trait in `engine_subsystems` is the canonical definition:
 
 ```rust
-// Future API — not yet implemented
-pub trait PluginSubsystem: EditorPlugin {
-    fn subsystem_id(&self) -> &'static str;
-    fn dependencies(&self) -> Vec<&'static str>;
-    fn init(&mut self, engine: &mut EngineBackend) -> Result<(), SubsystemError>;
-    fn tick(&mut self, dt: f32);
-    fn shutdown(&mut self);
+pub trait Subsystem: Send + Sync + Any {
+    fn id(&self) -> SubsystemId;
+    fn dependencies(&self) -> Vec<SubsystemId>;
+    fn init(&mut self, context: &SubsystemContext) -> Result<(), SubsystemError>;
+    fn shutdown(&mut self) -> Result<(), SubsystemError>;
+    fn on_frame(&mut self, _delta_time: f32) {}
 }
 ```
 
-Subsystems would be registered with the engine backend and participate in
-its lifecycle (init, update, shutdown). This would enable plugin-provided
-scripting runtimes, custom physics engines, or networking layers.
+All subsystems are stored type-erased as `Box<dyn Subsystem>` in the registry.
+Consumers downcast through `Any` to get their concrete type:
+
+```rust,ignore
+use engine_subsystems::*;
+
+let ss = registry.get(subsystem_ids::RENDERING).unwrap();
+let any: &dyn Any = ss;
+let renderer = any.downcast_ref::<HelioRenderer>().unwrap();
+```
+
+**Plugin registration flow:**
+
+1. Plugin implements `EditorPluginSubsystems` (trait in `plugin_editor_api`):
+   ```rust,ignore
+   impl EditorPluginSubsystems for MyPlugin {
+       fn subsystems(&self) -> Vec<Box<dyn Subsystem>> {
+           vec![Box::new(MyCustomPhysics::new())]
+       }
+   }
+   ```
+2. `PluginManager::load_plugin()` collects them via `plugin.subsystems()`
+3. `ui_core` calls `plugin_manager.drain_subsystems()` (on the local mutable
+   `PluginManager` before `initialize_global()` is called)
+4. `EngineBackend::inject_plugin_subsystems()` registers and initializes each
+   one. Built-in subsystems (PhysicsEngine) win if a plugin provides a
+   duplicate ID.
+5. After injection, consumers access subsystems through `EngineBackend::global()`
+   and downcast.
+
+**Architecture:**
+
+```mermaid
+flowchart LR
+    subgraph Crate["engine_subsystems crate"]
+        ST[Subsystem trait]
+        SR[SubsystemRegistry]
+    end
+
+    subgraph Plugin["Plugin DLL"]
+        EP[EditorPluginSubsystems]
+        EP --> |subsystems()| SUBS[Box<dyn Subsystem>]
+    end
+
+    subgraph Host["Engine Host"]
+        PM[PluginManager<br/>drain_subsystems]
+        EB[EngineBackend<br/>inject_plugin_subsystems]
+        CON[Consumer code<br/>get + downcast_ref]
+    end
+
+    Plugin -- load --> PM
+    PM --> EB
+    EB --> SR
+    SR --> CON
+```
+
+This system replaces the previous hardcoded approach where subsystems like
+physics and rendering were directly instantiated in `EngineBackend::init()`.
+Built-in subsystems are still registered there, but plugin-provided subsystems
+can now augment or replace them.
 
 ### 20.3 Dynamic Component Registration
 

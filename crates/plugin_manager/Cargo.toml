@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 plugin_editor_api = { workspace = true }
+engine_subsystems = { workspace = true }
 parking_lot = { workspace = true }
 
 # Dynamic library loading
