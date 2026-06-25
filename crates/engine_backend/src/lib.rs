@@ -84,7 +84,7 @@ impl EngineBackend {
             subsystems.len()
         );
 
-        let context = SubsystemContext::new(tokio::runtime::Handle::current());
+        let context = SubsystemContext::new();
 
         for mut ss in subsystems {
             let id = ss.id();

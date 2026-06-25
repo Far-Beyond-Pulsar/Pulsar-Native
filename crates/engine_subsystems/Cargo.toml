@@ -5,6 +5,5 @@ edition = "2021"
 description = "Type-erased subsystem trait and registry for the Pulsar engine. Shared by engine_backend, plugin_manager, and plugin DLLs."
 
 [dependencies]
-tokio = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

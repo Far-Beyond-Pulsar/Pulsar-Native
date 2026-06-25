@@ -25,7 +25,6 @@
 
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
-use tokio::runtime::Handle;
 
 /// Unique identifier for a subsystem.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -61,15 +60,22 @@ pub mod subsystem_ids {
 }
 
 /// Shared context provided to all subsystems during initialization.
-#[derive(Clone)]
-pub struct SubsystemContext {
-    /// Tokio runtime handle for spawning async tasks.
-    pub runtime: Handle,
-}
+///
+/// Currently empty — reserved for future cross-subsystem services.
+/// No async runtime handle is exposed because tokio is not DLL-safe
+/// and the engine uses GPUI's own async primitives.
+#[derive(Clone, Debug)]
+pub struct SubsystemContext {}
 
 impl SubsystemContext {
-    pub fn new(runtime: Handle) -> Self {
-        Self { runtime }
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+impl Default for SubsystemContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
