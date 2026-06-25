@@ -626,6 +626,28 @@ These are the building blocks of game objects in the Pulsar engine. For example,
 a scripting plugin might provide `ScriptComponent` and `EventDispatcherComponent`.
 The engine uses these definitions to populate component pickers in the editor UI.
 
+### 5.11.1 `component_registrations()`
+
+In addition to metadata, plugins can provide factory functions and default
+serialized data for their components via `EditorPluginComponents::component_registrations()`:
+
+```rust
+pub type ComponentFactory = Box<dyn Fn() -> Box<dyn Any + Send + Sync> + Send + Sync>;
+pub type DefaultComponentData = serde_json::Value;
+
+fn component_registrations(
+    &self,
+) -> Vec<(String, ComponentFactory, DefaultComponentData)> { Vec::new() }
+```
+
+Each entry maps a component class name (matching `ComponentDefinition.id`) to:
+- A **factory closure** that creates a default instance
+- **Default serialized data** (`serde_json::Value`) stored in the scene database
+  when a user adds this component to an object
+
+The factory closure lives in the plugin DLL. Because plugins are never unloaded,
+the function pointer remains valid for the process lifetime. See [Safety Model](#6-safety-model).
+
 ### 5.12 `StatusbarBadgeDefinition`
 
 ```rust
@@ -1803,29 +1825,53 @@ flowchart LR
 
 ### 15.3 Consuming the Definitions
 
-The engine backend queries component definitions at startup:
+Component definitions are consumed at startup through a two-phase pipeline:
+
+**Phase 1 — Metadata collection** (done by `PluginManager` at load time):
 
 ```rust
-// In engine initialisation:
-if let Some(pm) = plugin_manager::global() {
-    let pm = pm.read();
-    let components = pm.get_all_component_definitions();
+// Called on each loaded plugin:
+let defs = plugin.component_definitions();   // Vec<ComponentDefinition>
+let regs = plugin.component_registrations(); // Vec<(String, ComponentFactory, DefaultComponentData)>
 
-    for def in &components {
-        // Register with ECS world
-        world.register_component::<PluginComponent>(&def.id);
+// PluginManager stores metadata and factories separately:
+self.plugin_component_registrations.extend(regs);
+```
 
-        // Add to component palette
-        palette.add_component(def.clone());
-    }
+**Phase 2 — Factory injection** (done by `ui_core` after all plugins load):
+
+```rust
+// In ui_core/src/app/constructors.rs:
+let registrations = plugin_manager.drain_component_registrations();
+engine_backend.update(|b| b.inject_plugin_components(registrations));
+```
+
+The `PluginComponentRegistry` in `engine_backend` stores factories by class name:
+
+```rust
+pub struct PluginComponentRegistry {
+    factories: HashMap<
+        String,
+        (Box<dyn Fn() -> Box<dyn Any + Send + Sync> + Send + Sync>, serde_json::Value),
+    >,
 }
 ```
 
+**UI consumption** happens in `AddComponentDialog`:
+
+1. Queries `PluginManager::global().get_all_component_definitions()` for names
+2. Shows plugin components alongside built-in `EngineClass` components
+3. On selection, looks up default data from `EngineBackend::plugin_components()`
+4. Stores the opaque JSON in the scene database as a `ComponentInstance`
+
 > [!NOTE]
-> The engine backend does not yet dynamically instantiate components from
-> these definitions. Consumption currently requires the engine developer
-> to read the definitions and match them to concrete Rust types manually.
-> Full dynamic type instantiation is planned for a future iteration.
+> Plugin components do not use `EngineClass` or `pulsar_reflection`. They are
+> stored as opaque JSON blobs in the scene database. The plugin is responsible
+> for deserializing the JSON when it needs to read or modify the component at
+> runtime. This mirrors how the scene system stores built-in components as
+> `ComponentInstance { class_name, data }`.  Built-in components use
+> `EngineClass::get_properties()` + `RUNTIME_TYPE_REGISTRY` for serialization;
+> plugin components have their structure defined entirely by the plugin author.
 
 ---
 
@@ -2379,17 +2425,44 @@ can now augment or replace them.
 
 ### 20.3 Dynamic Component Registration
 
-Currently, `EditorPluginComponents::component_definitions()` is queried at
-load time. Future work may allow plugins to register and unregister
-components at runtime, enabling dynamic type extension:
+`EditorPluginComponents` now supports full dynamic component registration.
+Plugins provide both metadata (`component_definitions()`) and factory functions
+(`component_registrations()`):
 
 ```rust
-// Future API — not yet implemented
-pub trait DynamicComponents: EditorPlugin {
-    fn register_component_types(&self, registry: &mut ComponentRegistry);
-    fn unregister_component_types(&self, registry: &mut ComponentRegistry);
+impl EditorPluginComponents for MyPlugin {
+    fn component_definitions(&self) -> Vec<ComponentDefinition> {
+        vec![ComponentDefinition {
+            id: "my_plugin:custom_component".into(),
+            display_name: "Custom Component".into(),
+            category: "Scripting".into(),
+            description: "A custom plugin component".into(),
+            icon: Some(IconName::Component),
+        }]
+    }
+
+    fn component_registrations(&self) -> Vec<(String, ComponentFactory, DefaultComponentData)> {
+        vec![(
+            "my_plugin:custom_component".into(),
+            Box::new(|| Box::new(MyCustomComponent::default())),
+            serde_json::json!({ "enabled": true }),
+        )]
+    }
 }
 ```
+
+The engine backend stores factories in `PluginComponentRegistry`
+(`crates/engine_backend/src/component_registry.rs`). The `AddComponentDialog`
+in `ui_level_editor` picks up plugin component names automatically and uses
+the default data when adding components to objects.
+
+**Injection flow:**
+
+1. `PluginManager::load_plugin()` collects registrations via `plugin.component_registrations()`
+2. `ui_core` calls `plugin_manager.drain_component_registrations()`
+3. `EngineBackend::inject_plugin_components()` registers factories
+4. `AddComponentDialog` shows plugin components alongside built-in ones
+5. On selection, uses default data from `PluginComponentRegistry` to create the component
 
 ### 20.4 Plugin-to-Plugin Communication
 
