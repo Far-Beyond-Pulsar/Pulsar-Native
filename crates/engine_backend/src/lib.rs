@@ -11,7 +11,7 @@ pub mod services;
 pub mod subsystems;
 
 pub use services::{GpuRenderer, RustAnalyzerManager};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
 pub use subsystems::physics::PhysicsEngine;
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
@@ -28,6 +28,9 @@ pub use scene::{
     ComponentInstance, EditorObjectId, HelioActorHandle, MetadataObjectType, SceneMetadataDb,
     SceneObjectMetadata, SceneSnapshot,
 };
+
+/// Global instance handle, set once during engine init.
+static GLOBAL_BACKEND: OnceLock<engine_state::ResourceHandle<EngineBackend>> = OnceLock::new();
 
 pub const ENGINE_THREADS: [&str; 7] = [
     "RenderThread",
@@ -170,15 +173,12 @@ impl EngineBackend {
 
     /// Set as global instance (for access from other parts of the engine)
     pub fn set_global(backend: Self) {
-        if let Some(ctx) = engine_state::EngineContext::global() {
-            ctx.store.insert(backend);
-        }
+        let handle = engine_state::ResourceHandle::new(backend);
+        let _ = GLOBAL_BACKEND.set(handle);
     }
 
     /// Get global instance
-    pub fn global() -> Option<engine_state::ResourceHandle<EngineBackend>> {
-        engine_state::EngineContext::global()?
-            .store
-            .get::<EngineBackend>()
+    pub fn global() -> Option<&'static engine_state::ResourceHandle<EngineBackend>> {
+        GLOBAL_BACKEND.get()
     }
 }
