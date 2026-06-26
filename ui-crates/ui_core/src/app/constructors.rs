@@ -278,6 +278,54 @@ impl PulsarApp {
             t_plugins.elapsed()
         );
 
+        // Register built-in physics subsystem
+        plugin_manager.register_builtin_subsystem(Box::new(
+            engine_backend::PhysicsEngine::new(),
+        ));
+
+        // Register physics component definitions (for the component picker)
+        plugin_manager.register_builtin_component_definitions(vec![
+            plugin_editor_api::ComponentDefinition {
+                id: "PhysicsComponent".into(),
+                display_name: "Physics".into(),
+                category: "Physics".into(),
+                description: "Physical body with collision and simulation settings".into(),
+                icon: None,
+            },
+            plugin_editor_api::ComponentDefinition {
+                id: "RigidbodyComponent".into(),
+                display_name: "Rigidbody".into(),
+                category: "Physics".into(),
+                description: "Rigid body dynamics (mass, velocity, forces)".into(),
+                icon: None,
+            },
+        ]);
+
+        // Register physics component factories (for instantiation via EngineClass)
+        plugin_manager.register_builtin_component_factories(vec![
+            (
+                "PhysicsComponent".into(),
+                Box::new(|| {
+                    let c: Box<dyn pulsar_reflection::EngineClass> =
+                        Box::new(pulsar_physics::PhysicsComponent::default());
+                    c
+                }) as plugin_editor_api::ComponentFactory,
+            ),
+            (
+                "RigidbodyComponent".into(),
+                Box::new(|| {
+                    let c: Box<dyn pulsar_reflection::EngineClass> =
+                        Box::new(pulsar_physics::RigidbodyComponent::default());
+                    c
+                }) as plugin_editor_api::ComponentFactory,
+            ),
+        ]);
+
+        tracing::info!(
+            "[PulsarApp] built-in physics registered in {:?}",
+            t_plugins.elapsed()
+        );
+
         let plugins_dir = std::path::Path::new("plugins/editor");
         let t_load = std::time::Instant::now();
         match plugin_manager.load_plugins_from_dir(plugins_dir, &*cx) {
@@ -290,6 +338,41 @@ impl PulsarApp {
                     "[PulsarApp] loaded {} plugin(s) in {:?}",
                     loaded_plugins.len(),
                     t_load.elapsed()
+                );
+            }
+        }
+
+        // Drain plugin subsystems and inject into the engine backend
+        // before the plugin manager becomes globally accessible.
+        let plugin_subsystems = plugin_manager.drain_subsystems();
+        if !plugin_subsystems.is_empty() {
+            tracing::debug!(
+                "🧩 Injecting {} plugin subsystem(s) into engine backend",
+                plugin_subsystems.len()
+            );
+            if let Some(backend) = engine_backend::EngineBackend::global() {
+                if let Err(e) = backend.update(|b| b.inject_plugin_subsystems(plugin_subsystems)) {
+                    tracing::error!("Failed to inject plugin subsystems: {}", e);
+                }
+            } else {
+                tracing::warn!(
+                    "EngineBackend not yet available — plugin subsystems will not be registered"
+                );
+            }
+        }
+
+        // Drain plugin component registrations and inject into the engine backend
+        let plugin_components = plugin_manager.drain_component_registrations();
+        if !plugin_components.is_empty() {
+            tracing::debug!(
+                "🔧 Injecting {} plugin component(s) into engine backend",
+                plugin_components.len()
+            );
+            if let Some(backend) = engine_backend::EngineBackend::global() {
+                backend.update(|b| b.inject_plugin_components(plugin_components));
+            } else {
+                tracing::warn!(
+                    "EngineBackend not yet available — plugin components will not be registered"
                 );
             }
         }

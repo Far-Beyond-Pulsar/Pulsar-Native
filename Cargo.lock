@@ -2971,6 +2971,7 @@ dependencies = [
  "dashmap",
  "engine_fs",
  "engine_state",
+ "engine_subsystems",
  "flume",
  "futures",
  "git2",
@@ -3070,6 +3071,14 @@ dependencies = [
  "tracing",
  "ui_types_common 0.1.0",
  "window_manager",
+]
+
+[[package]]
+name = "engine_subsystems"
+version = "0.1.0"
+dependencies = [
+ "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]
@@ -8073,7 +8082,9 @@ dependencies = [
 name = "plugin_editor_api"
 version = "0.1.0"
 dependencies = [
+ "engine_subsystems",
  "gpui-ce",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -8087,6 +8098,7 @@ dependencies = [
 name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
+ "engine_subsystems",
  "env_logger",
  "gpui-ce",
  "libloading 0.9.0",
@@ -12976,6 +12988,8 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "plugin_matter",
+ "pulsar_physics",
+ "pulsar_reflection",
  "rfd",
  "rust-i18n 4.1.0",
  "schemars",

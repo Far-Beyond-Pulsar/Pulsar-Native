@@ -33,6 +33,8 @@ ui_friends.workspace = true
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+pulsar_physics.workspace = true
+pulsar_reflection.workspace = true
 window_manager.workspace = true
 
 # Plugin system

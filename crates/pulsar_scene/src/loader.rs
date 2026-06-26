@@ -35,7 +35,7 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
     Subsystems,
 };
-use pulsar_rendering::subsystems::MeshCache;
+use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 
 use crate::format::{SceneFile, SceneLoadError};
 
@@ -105,6 +105,7 @@ impl SceneLoader {
                 let mut subsystems = Subsystems::new();
                 subsystems.register_ref::<Renderer>(renderer);
                 subsystems.register(MeshCache::new());
+                subsystems.register(SceneObjectCache::new());
                 subsystems.register(LiveKeySet::new());
                 let mut ctx = SceneObjectContext {
                     obj_id: &obj.id,

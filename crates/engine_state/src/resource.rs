@@ -42,7 +42,7 @@ impl<T> Clone for ResourceHandle<T> {
 }
 
 impl<T> ResourceHandle<T> {
-    pub(crate) fn new(value: T) -> Self {
+    pub fn new(value: T) -> Self {
         Self {
             value: Arc::new(RwLock::new(value)),
             version: Arc::new(AtomicU64::new(0)),
