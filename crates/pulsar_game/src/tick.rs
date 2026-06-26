@@ -258,6 +258,12 @@ impl TickLoop {
                 })
         };
 
+        // Set up EngineContext globally before any scene loading or
+        // component sync (e.g. ScriptComponent::sync_component calls
+        // script_registry() which reads EngineContext::global()).
+        let engine_ctx = engine_state::EngineContext::new();
+        engine_ctx.clone().set_global();
+
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open.
         let mut app = PulsarApp::new(bridge, self, initial_windows, project_root, default_scene);
