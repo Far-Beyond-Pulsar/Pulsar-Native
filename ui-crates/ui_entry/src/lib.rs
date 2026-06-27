@@ -47,63 +47,7 @@ pub fn create_entry_component(
     // Capture a window handle that can be safely sent across closures.
     let window_handle = window.window_handle();
 
-    // Check if we should show OOBE intro first
-    let seen_intro = has_seen_intro();
-    tracing::debug!("🎯 [ENTRY] has_seen_intro() = {}", seen_intro);
-
-    if !seen_intro {
-        tracing::debug!("🎉 [OOBE] Showing intro screen for first-time user");
-
-        // Create the intro screen
-        let intro_screen = cx.new(|cx| IntroScreen::new(window, cx));
-
-        // Clone all callbacks so the IntroComplete subscriber can open the entry screen.
-        let ec_oobe = engine_context.clone();
-        let on_proj_oobe = on_project_selected.clone();
-        let on_git_oobe = on_git_manager.clone();
-        let on_set_oobe = on_settings.clone();
-        let on_fab_oobe = on_fab_search.clone();
-
-        cx.subscribe(
-            &intro_screen,
-            move |_view: Entity<IntroScreen>, _event: &IntroComplete, cx: &mut App| {
-                tracing::debug!(
-                    "✅ [OOBE subscriber] IntroComplete received — opening entry screen"
-                );
-                mark_intro_seen();
-
-                let on_proj2 = on_proj_oobe.clone();
-                let on_git2 = on_git_oobe.clone();
-                let on_set2 = on_set_oobe.clone();
-                let on_fab2 = on_fab_oobe.clone();
-                let ec2 = ec_oobe.clone();
-
-                use gpui::UpdateGlobal as _;
-                let result = window_manager::WindowManager::update_global(cx, |wm, cx| {
-                    wm.create_window(
-                        window_manager::WindowRequest::Entry,
-                        window_manager::WindowConfig::entry(),
-                        move |window, cx| {
-                            tracing::debug!("✅ [OOBE] Entry window opened, building component");
-                            create_entry_component(
-                                window, cx, &ec2, 0, on_proj2, on_git2, on_set2, on_fab2,
-                            )
-                        },
-                        cx,
-                    )
-                })
-                .map(|_| ())
-                .map_err(|e| format!("{:?}", e));
-                tracing::debug!("✅ [OOBE] open_window result: {:?}", result.is_ok());
-                // The OOBE window closes itself via should_close flag in render()
-            },
-        )
-        .detach();
-
-        return cx.new(|cx| Root::new(intro_screen.into(), window, cx));
-    }
-
-    tracing::debug!("🎯 [ENTRY] Showing entry screen (intro already seen)");
+    tracing::debug!("🎯 [ENTRY] Showing entry screen (OOBE handled internally)");
     let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
 
     // Subscribe to ProjectSelected event - open loading window and close entry window

@@ -69,13 +69,24 @@ pub struct IntroScreen {
     pages: Vec<OobePage>,
     frame_count: u64,
     audio_muted: bool,
-    should_close: bool,
+    pub(crate) should_close: bool,
+    embedded: bool,
 }
 
 impl EventEmitter<IntroComplete> for IntroScreen {}
 
 impl IntroScreen {
+    /// Create a standalone intro screen (its own window — calls remove_window on skip/finish).
     pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_inner(_window, cx, false)
+    }
+
+    /// Create an embedded intro screen (rendered inside a parent entity — does NOT call remove_window).
+    pub fn new_embedded(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_inner(_window, cx, true)
+    }
+
+    fn new_inner(_window: &mut Window, cx: &mut Context<Self>, embedded: bool) -> Self {
         let instance_id = INSTANCE_COUNTER.fetch_add(1, Ordering::SeqCst);
         tracing::debug!("🎬 [IntroScreen] Instance #{} created", instance_id);
 
@@ -195,6 +206,7 @@ impl IntroScreen {
             frame_count: 0,
             audio_muted: false,
             should_close: false,
+            embedded,
         };
 
         // Start the animation loop only on first creation
@@ -703,10 +715,13 @@ fn ease_out_quart(t: f32) -> f32 {
 
 impl Render for IntroScreen {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Close this window if skip/finish was called
+        // Close this window if skip/finish was called (only if standalone, not embedded)
         if self.should_close {
-            tracing::debug!("🪟 [IntroScreen::render] should_close=true, removing window");
-            _window.remove_window();
+            if !self.embedded {
+                tracing::debug!("🪟 [IntroScreen::render] should_close=true, removing window");
+                _window.remove_window();
+            }
+            // When embedded, we just return empty and let the parent handle the transition.
         }
 
         // Capture all animation state ONCE at the start of render

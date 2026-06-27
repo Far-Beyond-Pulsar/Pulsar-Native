@@ -28,6 +28,7 @@ use gpui::{prelude::*, *};
 fn insecure_tls_enabled() -> bool {
     std::env::var("PULSAR_INSECURE_TLS").as_deref() == Ok("1")
 }
+use crate::oobe::{has_seen_intro, mark_intro_seen, IntroComplete, IntroScreen};
 use engine_backend::subsystems::networking::multiuser::MultiuserClient;
 use parking_lot::Mutex;
 use recent_projects::{RecentProject, RecentProjectsList};
@@ -121,6 +122,8 @@ pub struct EntryScreen {
     pub(crate) template_thumbnail_queue: VecDeque<Template>,
     // Pending session invite from a friend
     pub(crate) pending_invite: Option<PendingInvite>,
+    // Embedded OOBE intro screen (shown before onboarding on first launch)
+    pub(crate) intro_screen: Option<Entity<IntroScreen>>,
 }
 
 /// Represents an incoming session invite from a friend.
@@ -265,6 +268,7 @@ impl EntryScreen {
             template_thumbnail_inflight: 0,
             template_thumbnail_queue: VecDeque::new(),
             pending_invite: None,
+            intro_screen: None,
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -477,6 +481,25 @@ impl EntryScreen {
                 }
             })
             .detach();
+        }
+
+        // Create embedded OOBE intro screen if first-time user
+        if !has_seen_intro() {
+            let intro_screen = cx.new(|cx| IntroScreen::new_embedded(_window, cx));
+            let this = screen.entity.clone().unwrap();
+            cx.subscribe(
+                &intro_screen,
+                move |this: &mut Self, _, _event: &IntroComplete, cx| {
+                    tracing::debug!("🎬 [EntryScreen] OOBE IntroComplete — transitioning to onboarding");
+                    this.intro_screen = None;
+                    mark_intro_seen();
+                    // Show onboarding after OOBE; user can dismiss if deps are fine.
+                    this.show_onboarding = true;
+                    cx.notify();
+                },
+            )
+            .detach();
+            screen.intro_screen = Some(intro_screen);
         }
 
         screen
@@ -2181,6 +2204,17 @@ impl Render for EntryScreen {
         // Refresh cloud servers that haven't been polled yet
         if view == EntryScreenView::CloudProjects {
             self.refresh_all_unknown_cloud_servers(cx);
+        }
+
+        // Show OOBE intro screen if active (before onboarding)
+        if let Some(ref intro) = self.intro_screen {
+            if !intro.read(cx).should_close {
+                return intro.clone().into_any_element();
+            }
+            // should_close is true — clean up and fall through to onboarding
+            // (handles edge case where the subscriber hasn't fired yet)
+            self.intro_screen = None;
+            self.show_onboarding = true;
         }
 
         // Show onboarding overlay if needed
