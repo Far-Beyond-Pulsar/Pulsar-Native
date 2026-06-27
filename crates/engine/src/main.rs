@@ -232,13 +232,13 @@ fn main() {
     );
 
     // Task 11: Project file association prompt (depends on global context)
-    init_task!(
-        graph,
-        FILE_ASSOCIATION,
-        "Project File Association",
-        [SET_GLOBAL],
-        steps::file_association::run
-    );
+    // init_task!(
+    //     graph,
+    //     FILE_ASSOCIATION,
+    //     "Project File Association",
+    //     [SET_GLOBAL],
+    //     steps::file_association::run
+    // );
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {
@@ -270,7 +270,10 @@ fn main() {
 
         let t = std::time::Instant::now();
         ui::themes::init(cx);
-        tracing::info!("[GPUI startup] ui::themes::init {}ms", t.elapsed().as_millis());
+        tracing::info!(
+            "[GPUI startup] ui::themes::init {}ms",
+            t.elapsed().as_millis()
+        );
 
         let t = std::time::Instant::now();
         ui_core::init(cx);
@@ -285,14 +288,20 @@ fn main() {
         // Runs every inventory::submit! registrant from all linked crates automatically.
         let t = std::time::Instant::now();
         window_manager::register_all_windows(cx);
-        tracing::info!("[GPUI startup] register_all_windows {}ms", t.elapsed().as_millis());
+        tracing::info!(
+            "[GPUI startup] register_all_windows {}ms",
+            t.elapsed().as_millis()
+        );
 
         let uri_path = engine_context
             .store
             .get_or_init::<engine_state::LaunchContext>()
             .update(|l| l.uri_project_path.take());
 
-        tracing::info!("[GPUI startup] pre-window total {}ms", t_gpui.elapsed().as_millis());
+        tracing::info!(
+            "[GPUI startup] pre-window total {}ms",
+            t_gpui.elapsed().as_millis()
+        );
 
         if let Some(path) = uri_path {
             tracing::info!("Opening project splash from URI: {}", path.display());
