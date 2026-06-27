@@ -3,7 +3,9 @@
 //! Import the trait and call `TypeName::open(params, cx)`. All routing goes
 //! through the WindowManager so hooks, telemetry, and tracking apply uniformly.
 
-use gpui::{App, AppContext as _, UpdateGlobal as _};
+use gpui::{
+    App, AppContext as _, Bounds, UpdateGlobal as _, WindowBounds, WindowOptions,
+};
 use ui::Root;
 use window_manager::{apply_window_wrapper, PulsarWindow, WindowManager, WindowRegistry};
 
@@ -23,7 +25,12 @@ pub trait PulsarWindowExt: PulsarWindow {
     fn open(params: Self::Params, cx: &mut App) {
         let request = Self::window_request(&params);
         let profile = Self::window_profile(&params);
-        let options = Self::window_options(&params);
+        let mut options = Self::window_options(&params);
+        // Center windowed windows on the primary display
+        options.window_bounds = options.window_bounds.map(|b| match b {
+            WindowBounds::Windowed(bounds) => WindowBounds::centered(bounds.size, cx),
+            other => other,
+        });
         let _ = WindowManager::update_global(cx, |wm, cx| {
             if let Some(profile) = profile {
                 let wrapper_kind = profile.wrapper();

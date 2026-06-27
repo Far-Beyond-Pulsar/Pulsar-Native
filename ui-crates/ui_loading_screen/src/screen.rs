@@ -22,6 +22,8 @@ fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
 // Braille spinner frames
 const SPINNER: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+const MIN_DISPLAY_DURATION: Duration = Duration::from_secs(2);
+
 pub struct LoadingScreen {
     project_name: String,
     project_path: PathBuf,
@@ -31,6 +33,7 @@ pub struct LoadingScreen {
     all_done: bool,
     opened_editor: bool,
     anim_tick: u32,
+    created_at: std::time::Instant,
     on_complete: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
     splash: Option<Arc<RenderImage>>,
     rx: std::sync::mpsc::Receiver<LoadingEvent>,
@@ -109,6 +112,7 @@ impl LoadingScreen {
             all_done: false,
             opened_editor: false,
             anim_tick: 0,
+            created_at: std::time::Instant::now(),
             on_complete,
             splash: decode_png(SPLASH_PNG),
             rx,
@@ -154,18 +158,23 @@ impl Render for LoadingScreen {
             window.request_animation_frame();
         }
 
-        // Once all done: defer so we're outside the render borrow, then open
-        // editor first (so GPUI never sees 0 windows), then remove ourselves.
+        // Once all done: wait MIN_DISPLAY_DURATION so the splash is always
+        // visible for at least 2s, then defer the transition to the editor.
         if self.all_done && !self.opened_editor {
-            self.opened_editor = true;
-            update_recent_projects(&self.project_path);
-            let path = self.project_path.clone();
-            let on_complete = self.on_complete.clone();
-            let handle = window.window_handle();
-            cx.defer(move |cx| {
-                on_complete(path, cx);
-                cx.update_window(handle, |_, window, _| window.remove_window());
-            });
+            let elapsed = self.created_at.elapsed();
+            if elapsed < MIN_DISPLAY_DURATION {
+                window.request_animation_frame();
+            } else {
+                self.opened_editor = true;
+                update_recent_projects(&self.project_path);
+                let path = self.project_path.clone();
+                let on_complete = self.on_complete.clone();
+                let handle = window.window_handle();
+                cx.defer(move |cx| {
+                    on_complete(path, cx);
+                    cx.update_window(handle, |_, window, _| window.remove_window());
+                });
+            }
         }
 
         let _theme = cx.theme();
