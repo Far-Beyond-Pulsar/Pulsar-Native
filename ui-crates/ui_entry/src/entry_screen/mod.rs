@@ -70,9 +70,11 @@ pub struct EntryScreen {
     pub(crate) project_settings: Option<views::ProjectSettings>,
     pub(crate) recent_projects_scroll_handle: VirtualListScrollHandle,
     pub(crate) templates_scroll_handle: VirtualListScrollHandle,
+    pub(crate) show_onboarding: bool,
     pub(crate) show_dependency_setup: bool,
     pub(crate) dependency_status: Option<DependencyStatus>,
     pub(crate) install_progress: Option<InstallProgress>,
+
     // Input states for interactive text fields
     pub(crate) git_repo_url_input: Entity<InputState>,
     pub(crate) git_upstream_url_input: Entity<InputState>,
@@ -216,9 +218,11 @@ impl EntryScreen {
             project_settings: None,
             recent_projects_scroll_handle: VirtualListScrollHandle::new(),
             templates_scroll_handle: VirtualListScrollHandle::new(),
+            show_onboarding: false,
             show_dependency_setup: false,
             dependency_status: None,
             install_progress: None,
+
             git_repo_url_input: git_repo_url_input.clone(),
             git_upstream_url_input: git_upstream_url_input.clone(),
             new_project_name_input: new_project_name_input.clone(),
@@ -535,7 +539,7 @@ impl EntryScreen {
                 this.update(cx, |screen, cx| {
                     let missing = !status.rust_installed || !status.build_tools_installed;
                     screen.dependency_status = Some(status);
-                    screen.show_dependency_setup = missing;
+                    screen.show_onboarding = missing;
                     cx.notify();
                 });
             });
@@ -2173,6 +2177,11 @@ impl Render for EntryScreen {
         // Refresh cloud servers that haven't been polled yet
         if view == EntryScreenView::CloudProjects {
             self.refresh_all_unknown_cloud_servers(cx);
+        }
+
+        // Show onboarding overlay if needed
+        if self.show_onboarding {
+            return views::render_onboarding(self, cx).into_any_element();
         }
 
         // Show dependency setup if needed
