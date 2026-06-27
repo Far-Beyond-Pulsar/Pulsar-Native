@@ -420,6 +420,7 @@ fn render_account_card(
     let border = cx.theme().border;
     let muted = cx.theme().muted_foreground;
     let accent = cx.theme().accent;
+    let fg = cx.theme().foreground;
     let header = render_card_header(
         IconName::Group,
         "Account",
@@ -427,6 +428,7 @@ fn render_account_card(
         cx,
     );
 
+    let profile = screen.auth_profile();
     let code = screen.auth_device_code.clone();
     let message = screen.auth_message.clone();
     let loading = screen.auth_loading;
@@ -443,34 +445,81 @@ fn render_account_card(
             v_flex()
                 .gap_3()
                 .p_4()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(muted)
-                        .child("Sign in to enable cloud sync and multiplayer collaboration."),
-                )
-                .child(
-                    h_flex()
-                        .gap_3()
+                .when_some(profile.clone(), |this, profile| {
+                    let initial = profile
+                        .login
+                        .chars()
+                        .next()
+                        .map(|c| c.to_ascii_uppercase().to_string())
+                        .unwrap_or_else(|| "?".to_string());
+
+                    this.child(
+                        h_flex()
+                            .gap_4()
+                            .items_center()
+                            .child(
+                                div()
+                                    .w(px(56.))
+                                    .h(px(56.))
+                                    .rounded_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .bg(accent.opacity(0.2))
+                                    .child(
+                                        div()
+                                            .text_2xl()
+                                            .font_weight(FontWeight::BOLD)
+                                            .text_color(accent)
+                                            .child(initial),
+                                    ),
+                            )
+                            .child(
+                                v_flex()
+                                    .child(
+                                        div()
+                                            .text_base()
+                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_color(fg)
+                                            .child(profile.display_name.unwrap_or(profile.login.clone())),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(muted)
+                                            .child(format!("@{}", profile.login)),
+                                    ),
+                            ),
+                    )
+                })
+                .when(
+                    profile.is_none() && code.is_none() && !loading,
+                    |this| {
+                        this.child(
+                            div()
+                                .text_sm()
+                                .text_color(muted)
+                                .child("Sign in to enable cloud sync and multiplayer collaboration."),
+                        )
                         .child(
                             Button::new("signin-github-onboarding")
-                                .label(
-                                    if code.is_some() {
-                                        "Sign In with GitHub"
-                                    } else if loading {
-                                        "Signing in…"
-                                    } else {
-                                        "Sign In with GitHub"
-                                    },
-                                )
+                                .label("Sign In with GitHub")
                                 .primary()
-                                .disabled(loading)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.begin_github_sign_in(cx);
                                     cx.notify();
                                 })),
-                        ),
+                        )
+                    },
                 )
+                .when(loading, |this| {
+                    this.child(
+                        div()
+                            .text_sm()
+                            .text_color(muted)
+                            .child("Signing in…"),
+                    )
+                })
                 .when_some(code, |this, code| {
                     this.child(
                         v_flex()
@@ -484,14 +533,14 @@ fn render_account_card(
                                 div()
                                     .text_xs()
                                     .text_color(muted)
-                                    .child(" Paste this code in the browser window:"),
+                                    .child("Paste this code in the browser window:"),
                             )
                             .child(
                                 div()
                                     .text_center()
                                     .text_2xl()
                                     .font_weight(FontWeight::BOLD)
-                                    .text_color(cx.theme().foreground)
+                                    .text_color(fg)
                                     .child(code),
                             ),
                     )
