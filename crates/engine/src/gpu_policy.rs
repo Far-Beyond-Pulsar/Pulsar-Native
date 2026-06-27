@@ -61,6 +61,13 @@ fn prompt_continue_without_discrete_gpu() -> bool {
 /// 3. If not found, prompts user whether to continue
 /// 4. Exits the application if user declines
 pub fn enforce_discrete_gpu_policy_or_exit() {
+    // Apple Silicon (M-series) has an integrated GPU that's plenty capable,
+    // and the WGPU driver handles power management natively — skip the check.
+    if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+        tracing::info!("Apple Silicon detected; skipping discrete GPU policy check");
+        return;
+    }
+
     let probe = probe_gpu_policy();
 
     if probe.has_discrete_gpu {
