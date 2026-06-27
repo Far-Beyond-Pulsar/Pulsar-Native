@@ -969,7 +969,26 @@ pub fn has_seen_intro() -> bool {
         .map(|proj| proj.data_dir().join("oobe_complete"))
         .unwrap_or_else(|| std::path::PathBuf::from("oobe_complete"));
 
-    prefs_path.exists()
+    if !prefs_path.exists() {
+        return false;
+    }
+
+    // Compile-time OOBE expiry: bump this when a new release should replay the intro.
+    const OOBE_EXPIRY: &str = "2026-06-26T00:00:00Z";
+
+    if let Ok(expiry) = chrono::DateTime::parse_from_rfc3339(OOBE_EXPIRY) {
+        if let Ok(meta) = std::fs::metadata(&prefs_path) {
+            if let Ok(mtime) = meta.modified() {
+                let mtime: chrono::DateTime<chrono::Utc> = mtime.into();
+                if mtime < expiry {
+                    tracing::debug!("🎯 [OOBE] marker file mtime ({}) before expiry ({}), replaying OOBE", mtime, expiry);
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
 }
 
 /// Mark the intro as seen
