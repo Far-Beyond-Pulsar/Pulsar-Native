@@ -123,10 +123,21 @@ impl ProviderEnvironment for ProcessEnvironment {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChatRole {
+    /// Static agent identity and capability context. Set once; never compacted.
     System,
+    /// A human turn.
     User,
+    /// A model-generated turn.
     Assistant,
+    /// Result of a tool call; must be paired with a preceding Assistant turn
+    /// that carried the matching tool_call_id.
     Tool,
+    /// An engine-generated orchestration event (sub-agent result, background
+    /// notification). Not from a human; requires no tool-call pairing.
+    /// Serialised as `"system"` for OpenAI-compatible providers (mid-conversation
+    /// system messages are supported and carry the right "authoritative context"
+    /// semantics) and folded into the top-level system block for Anthropic.
+    AgentEvent,
 }
 
 #[derive(Clone, Debug)]

@@ -43,8 +43,11 @@ fn block_priority(block: &PromptBlock, block_index: usize, block_count: usize) -
     priority += match first_role {
         ChatRole::System => 900,
         ChatRole::User => 600,
-        ChatRole::Assistant => 450,
+        // AgentEvent carries sub-agent results — more important than plain
+        // assistant turns but lower than the human question that drives the work.
+        ChatRole::AgentEvent => 550,
         ChatRole::Tool => 500,
+        ChatRole::Assistant => 450,
     };
 
     if block_has_tool_chain(&block.messages) {
@@ -77,8 +80,9 @@ fn split_into_blocks(messages: Vec<ChatMessage>) -> Vec<PromptBlock> {
 
     for (index, message) in messages.into_iter().enumerate() {
         let starts_new_block = match message.role {
-            ChatRole::System => !current_messages.is_empty(),
-            ChatRole::User => !current_messages.is_empty(),
+            ChatRole::System | ChatRole::User | ChatRole::AgentEvent => {
+                !current_messages.is_empty()
+            }
             _ => current_messages.is_empty() && !blocks.is_empty(),
         };
 
@@ -173,6 +177,9 @@ pub(crate) fn compact_messages(
     let mut system_blocks = Vec::new();
     let mut dialog_blocks = Vec::new();
     for block in blocks.drain(..) {
+        // Pure System blocks are pinned and never dropped.
+        // AgentEvent blocks are compactable dialog even though they represent
+        // engine-generated context.
         if block
             .messages
             .iter()

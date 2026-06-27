@@ -411,30 +411,26 @@ fn launch_subagent_worker(
                                 "model_used": response.model_used,
                                 "chunk_count": response.streamed_chunks.len(),
                             }));
+                            // Only keep the assistant's final answer and the
+                            // assistant-only steps from the child transcript.
+                            // Stripping streamed_chunks, raw_response, tool results,
+                            // and workspace scan so the outer agent isn't overwhelmed.
+                            let assistant_steps: Vec<Value> = response
+                                .child_transcript
+                                .iter()
+                                .filter(|m| {
+                                    m.get("role").and_then(|v| v.as_str()) == Some("assistant")
+                                        && m.get("content")
+                                            .and_then(|v| v.as_str())
+                                            .map(|s| !s.trim().is_empty())
+                                            .unwrap_or(false)
+                                })
+                                .cloned()
+                                .collect();
                             record.result = Some(json!({
-                                "summary": format!("Subagent '{}' completed task with provider execution.", record.name),
-                                "task": record.task,
-                                "model": response.model_used,
-                                "requested_model": if record.model.is_empty() {
-                                    Value::Null
-                                } else {
-                                    Value::String(record.model.clone())
-                                },
-                                "instructions": record.instructions,
-                                "finished_at_ms": finished_at,
-                                "assistant_message": response.assistant_message,
-                                "streamed_chunks": response.streamed_chunks,
-                                "child_transcript": response.child_transcript,
-                                "raw_response": response.raw_response,
-                                "worker_evidence": {
-                                    "executor": "provider_backed_subagent",
-                                    "sequence": record.sequence,
-                                    "workspace_root": record.workspace_root,
-                                    "provider_id": response.provider_id,
-                                    "model_used": response.model_used,
-                                    "scan": workspace_summary,
-                                },
-                                "execution_log": record.execution_log,
+                                "answer": response.assistant_message,
+                                "model_used": response.model_used,
+                                "assistant_steps": assistant_steps,
                             }));
                         }
                         Err(err) => {
@@ -448,23 +444,8 @@ fn launch_subagent_worker(
                                 "error": err,
                             }));
                             record.result = Some(json!({
-                                "summary": format!("Subagent '{}' failed during provider execution.", record.name),
-                                "task": record.task,
-                                "model": if record.model.is_empty() {
-                                    Value::Null
-                                } else {
-                                    Value::String(record.model.clone())
-                                },
-                                "instructions": record.instructions,
-                                "finished_at_ms": finished_at,
-                                "worker_evidence": {
-                                    "executor": "provider_backed_subagent",
-                                    "sequence": record.sequence,
-                                    "workspace_root": record.workspace_root,
-                                    "scan": workspace_summary,
-                                },
+                                "answer": null,
                                 "error": record.error,
-                                "execution_log": record.execution_log,
                             }));
                         }
                     }
@@ -1174,20 +1155,31 @@ pub fn get_subagent_result(subagent_id: String) -> anyhow::Result<Value> {
 
     debug!("get_subagent_result end subagent_id={}", subagent_id);
 
+    // Extract just what the outer agent needs: the task, the answer, and any
+    // intermediate assistant reasoning steps. Metadata (timestamps, sequences,
+    // execution logs, workspace scans) is omitted — it only creates noise.
+    let answer = record
+        .result
+        .as_ref()
+        .and_then(|r| r.get("answer"))
+        .cloned()
+        .unwrap_or(Value::Null);
+
+    let assistant_steps = record
+        .result
+        .as_ref()
+        .and_then(|r| r.get("assistant_steps"))
+        .cloned()
+        .unwrap_or(Value::Array(vec![]));
+
     Ok(json!({
         "ok": true,
-        "subagent_id": record.id,
-        "sequence": record.sequence,
         "name": record.name,
         "task": record.task,
         "status": record.status.as_str(),
-        "created_at_ms": record.created_at_ms,
-        "started_at_ms": record.started_at_ms,
-        "finished_at_ms": record.finished_at_ms,
-        "result": record.result,
+        "answer": answer,
         "error": record.error,
-        "execution_events": record.execution_log.len(),
-        "execution_log": record.execution_log,
+        "assistant_steps": assistant_steps,
     }))
 }
 

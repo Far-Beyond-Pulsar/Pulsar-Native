@@ -45,6 +45,7 @@ impl OllamaProvider {
             ChatRole::User => "user",
             ChatRole::Assistant => "assistant",
             ChatRole::Tool => "tool",
+            ChatRole::AgentEvent => "system",
         }
     }
 

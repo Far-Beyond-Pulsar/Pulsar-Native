@@ -107,6 +107,14 @@ impl AnthropicProvider {
                     system_parts.push(message.content.clone());
                 }
 
+                // Engine events have no wire representation in Anthropic's messages
+                // array. Fold them into the top-level system block so the model
+                // receives them as authoritative context without confusing them with
+                // human speech.
+                ChatRole::AgentEvent => {
+                    system_parts.push(format!("[Engine event]\n{}", message.content));
+                }
+
                 ChatRole::User => {
                     out_messages.push(json!({
                         "role": "user",

@@ -47,6 +47,7 @@ impl AgentChatPanel {
             "assistant" => ChatRole::Assistant,
             "system" => ChatRole::System,
             "tool" => ChatRole::Tool,
+            "agent_event" => ChatRole::AgentEvent,
             _ => ChatRole::Assistant,
         }
     }
@@ -232,6 +233,7 @@ Plugin-provided tool execution should use call_plugin_tool with an explicit file
                         ChatRole::Assistant => "assistant",
                         ChatRole::System => "system",
                         ChatRole::Tool => "tool",
+                        ChatRole::AgentEvent => "agent_event",
                     }
                     .to_string(),
                     content: m.content.clone(),

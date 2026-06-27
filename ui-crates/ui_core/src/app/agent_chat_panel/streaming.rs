@@ -56,6 +56,9 @@ impl AgentChatPanel {
                     ChatRole::Assistant => "AI",
                     ChatRole::Tool => "Tool",
                     ChatRole::System => "System",
+                    // Summarise agent events as facts, not as conversation turns,
+                    // so the compaction model captures them as "what happened" context.
+                    ChatRole::AgentEvent => "Engine",
                 };
                 let snippet: String = m.content.chars().take(600).collect();
                 format!("[{role}]: {snippet}")
@@ -812,16 +815,13 @@ impl AgentChatPanel {
         }
     }
 
-    /// Deliver an internal engine event to the model without using ChatRole::User.
+    /// Deliver an engine orchestration event to the model.
     ///
-    /// Injects a synthetic Assistant message (containing an implicit
-    /// `check_subagent_completions` tool call) followed by the event payload as a
-    /// ChatRole::Tool result. The model sees this as the outcome of a tool it called,
-    /// not as a human speaking — eliminating the role-confusion bug where the model
-    /// describes "what the user said" instead of acting on the event.
-    ///
-    /// This matches the pattern used by Claude Code: async sub-agent results arrive
-    /// as Tool role messages, never as User turns.
+    /// Uses `ChatRole::AgentEvent` which serialises as a mid-conversation
+    /// `"system"` message for OpenAI-compatible providers and is folded into
+    /// the top-level system block for Anthropic. No synthetic tool-call
+    /// pairing is required, and the model never confuses the event with human
+    /// speech.
     fn launch_internal_agent_event(&mut self, content: String, cx: &mut Context<Self>) -> bool {
         let provider_id = self
             .active_provider()
@@ -842,27 +842,10 @@ impl AgentChatPanel {
             return false;
         }
 
-        // Unique call ID so compaction keeps this assistant→tool pair intact.
-        let call_id = format!("_internal_event_{}", now_ms());
-
-        // The assistant "called" check_subagent_completions — an empty-content
-        // assistant message with tool_calls is valid for all major providers.
         self.messages.push(ChatMessage {
-            role: ChatRole::Assistant,
-            content: String::new(),
-            tool_call_id: None,
-            tool_calls: vec![ToolCall {
-                id: call_id.clone(),
-                name: "check_subagent_completions".to_string(),
-                arguments_json: serde_json::json!({}),
-            }],
-        });
-
-        // The tool result is the actual event payload the model should act on.
-        self.messages.push(ChatMessage {
-            role: ChatRole::Tool,
+            role: ChatRole::AgentEvent,
             content,
-            tool_call_id: Some(call_id),
+            tool_call_id: None,
             tool_calls: vec![],
         });
 
@@ -1626,6 +1609,7 @@ impl AgentChatPanel {
                                                         ChatRole::User => "user",
                                                         ChatRole::Assistant => "assistant",
                                                         ChatRole::Tool => "tool",
+                                                        ChatRole::AgentEvent => "agent_event",
                                                     };
                                                     serde_json::json!({
                                                         "role": role,
