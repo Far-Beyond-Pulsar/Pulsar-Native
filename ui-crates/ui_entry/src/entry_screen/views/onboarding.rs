@@ -413,17 +413,23 @@ fn render_dep_item(
 // ── Account card ────────────────────────────────────────────
 
 fn render_account_card(
-    _screen: &mut EntryScreen,
+    screen: &mut EntryScreen,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
     let bg = cx.theme().background;
     let border = cx.theme().border;
+    let muted = cx.theme().muted_foreground;
+    let accent = cx.theme().accent;
     let header = render_card_header(
         IconName::Group,
         "Account",
         "Sync settings and collaborate",
         cx,
     );
+
+    let code = screen.auth_device_code.clone();
+    let message = screen.auth_message.clone();
+    let loading = screen.auth_loading;
 
     v_flex()
         .w_full()
@@ -440,7 +446,7 @@ fn render_account_card(
                 .child(
                     div()
                         .text_sm()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(muted)
                         .child("Sign in to enable cloud sync and multiplayer collaboration."),
                 )
                 .child(
@@ -448,25 +454,60 @@ fn render_account_card(
                         .gap_3()
                         .child(
                             Button::new("signin-github-onboarding")
-                                .label("Sign In with GitHub")
+                                .label(
+                                    if code.is_some() {
+                                        "Sign In with GitHub"
+                                    } else if loading {
+                                        "Signing in…"
+                                    } else {
+                                        "Sign In with GitHub"
+                                    },
+                                )
                                 .primary()
+                                .disabled(loading)
                                 .on_click(cx.listener(|this, _, _, cx| {
                                     this.begin_github_sign_in(cx);
                                     cx.notify();
                                 })),
-                        )
-                        .child(
-                            Button::new("signin-google-onboarding")
-                                .label("Sign In with Google")
-                                .on_click(|_, _, _| {
-                                    tracing::info!("Google sign-in not yet implemented");
-                                }),
                         ),
                 )
+                .when_some(code, |this, code| {
+                    this.child(
+                        v_flex()
+                            .gap_2()
+                            .p_3()
+                            .bg(accent.opacity(0.12))
+                            .rounded_lg()
+                            .border_1()
+                            .border_color(accent.opacity(0.35))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(" Paste this code in the browser window:"),
+                            )
+                            .child(
+                                div()
+                                    .text_center()
+                                    .text_2xl()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(cx.theme().foreground)
+                                    .child(code),
+                            ),
+                    )
+                })
+                .when_some(message, |this, msg| {
+                    this.child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(msg),
+                    )
+                })
                 .child(
                     div()
                         .text_xs()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(muted)
                         .child("Your data stays private. Sign-in is optional."),
                 ),
         )
