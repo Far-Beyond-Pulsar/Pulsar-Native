@@ -6,8 +6,16 @@
 use gpui::{prelude::*, *};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use ui::{h_flex, v_flex, Icon, IconName, Sizable};
+
+/// Decode raw PNG bytes into a GPU-compatible RenderImage.
+fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
+    let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
+    let frame = image::Frame::new(rgba);
+    Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+}
 
 use super::audio::IntroAudio;
 use super::gradient::AnimatedGradient;
@@ -57,6 +65,9 @@ struct OobePage {
     subtitle: &'static str,
     features: Vec<(&'static str, &'static str)>,
     gradient_hue_offset: f32,
+    /// Raw PNG bytes for a background screenshot, or None to use the gradient-only background.
+    /// Embed screenshots with `Some(include_bytes!("../../../assets/oobe/my_screenshot.png"))`.
+    background_image: Option<&'static [u8]>,
 }
 
 /// Event emitted when the intro is complete
@@ -67,6 +78,8 @@ pub struct IntroScreen {
     gradient: AnimatedGradient,
     audio: IntroAudio,
     pages: Vec<OobePage>,
+    /// Pre-decoded background images for each page (same index as `pages`).
+    page_backgrounds: Vec<Option<Arc<RenderImage>>>,
     frame_count: u64,
     audio_muted: bool,
     pub(crate) should_close: bool,
@@ -137,6 +150,7 @@ impl IntroScreen {
                     ("🎨", "Beautiful, customizable editor experience"),
                 ],
                 gradient_hue_offset: 0.0,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg1.png")),
             },
             OobePage {
                 icon: IconName::Code,
@@ -149,6 +163,7 @@ impl IntroScreen {
                     ("📚", "Extensive library of built-in nodes"),
                 ],
                 gradient_hue_offset: 0.1,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg2.png")),
             },
             OobePage {
                 icon: IconName::Folder,
@@ -161,6 +176,7 @@ impl IntroScreen {
                     ("📦", "Smart asset packaging for distribution"),
                 ],
                 gradient_hue_offset: 0.2,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg3.png")),
             },
             OobePage {
                 icon: IconName::Globe,
@@ -173,6 +189,7 @@ impl IntroScreen {
                     ("🎭", "Scene hierarchy management"),
                 ],
                 gradient_hue_offset: 0.3,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg4.png")),
             },
             OobePage {
                 icon: IconName::Group,
@@ -185,6 +202,7 @@ impl IntroScreen {
                     ("🔒", "Version control integration"),
                 ],
                 gradient_hue_offset: 0.4,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg4.png")),
             },
             OobePage {
                 icon: IconName::Rocket,
@@ -196,13 +214,20 @@ impl IntroScreen {
                     ("💡", "Active community and support"),
                 ],
                 gradient_hue_offset: 0.5,
+                background_image: Some(include_bytes!("../../../../assets/oobe/pg1.png")),
             },
         ];
+
+        let page_backgrounds = pages
+            .iter()
+            .map(|p| p.background_image.and_then(decode_png))
+            .collect();
 
         let screen = Self {
             gradient: AnimatedGradient::arc_style(),
             audio,
             pages,
+            page_backgrounds,
             frame_count: 0,
             audio_muted: false,
             should_close: false,
@@ -814,6 +839,12 @@ impl Render for IntroScreen {
         let bg_primary = hsla(color1.h, color1.s, color1.l * 0.4, bg_opacity);
         let bg_secondary = hsla(color2.h, color2.s, color2.l * 0.3, bg_opacity * 0.8);
 
+        // Current page's background screenshot (if any)
+        let page_bg = self
+            .page_backgrounds
+            .get(current_page)
+            .and_then(|b| b.clone());
+
         // Mute button state
         let muted = self.audio_muted;
 
@@ -827,28 +858,52 @@ impl Render for IntroScreen {
             .bg(bg_primary)
             // Overlay gradient
             .child(div().absolute().inset_0().bg(bg_secondary).opacity(0.6))
-            // Animated glow - top right
-            .child(
-                div()
-                    .absolute()
-                    .top(px(-100.0))
-                    .right(px(-100.0))
-                    .w(px(600.0))
-                    .h(px(600.0))
-                    .rounded_full()
-                    .bg(hsla(color1.h, 0.9, 0.5, bg_opacity * 0.25)),
+            // Background screenshot (if the page has one)
+            // TODO: Try not to clone here
+            .when_some(page_bg.clone(), |el, bg| {
+                el.child(
+                    img(ImageSource::Render(bg))
+                        .absolute()
+                        .inset_0()
+                        .size_full()
+                        .object_fit(ObjectFit::Cover)
+                        .opacity(1.0),
+                )
+            })
+            // Darker overlay when a screenshot is shown (improves text readability)
+            .when(
+                self.page_backgrounds
+                    .get(current_page)
+                    .and_then(|b| b.as_ref())
+                    .is_some(),
+                |el| el.child(div().absolute().inset_0().bg(gpui::black().opacity(0.3))),
             )
-            // Animated glow - bottom left
-            .child(
+            .when_none(&page_bg, |_| {
+                // Animated glow - top right
                 div()
-                    .absolute()
-                    .bottom(px(-150.0))
-                    .left(px(-150.0))
-                    .w(px(500.0))
-                    .h(px(500.0))
-                    .rounded_full()
-                    .bg(hsla(color3.h, 0.85, 0.45, bg_opacity * 0.2)),
-            )
+                    .id("glow_wrapper")
+                    .child(
+                        div()
+                            .absolute()
+                            .top(px(-100.0))
+                            .right(px(-100.0))
+                            .w(px(600.0))
+                            .h(px(600.0))
+                            .rounded_full()
+                            .bg(hsla(color1.h, 0.9, 0.5, bg_opacity * 0.25)),
+                    )
+                    // Animated glow - bottom left
+                    .child(
+                        div()
+                            .absolute()
+                            .bottom(px(-150.0))
+                            .left(px(-150.0))
+                            .w(px(500.0))
+                            .h(px(500.0))
+                            .rounded_full()
+                            .bg(hsla(color3.h, 0.85, 0.45, bg_opacity * 0.2)),
+                    )
+            })
             // Main content with swipe animation (only page content swipes, not navigation)
             .child(
                 v_flex()
@@ -981,7 +1036,11 @@ pub fn has_seen_intro() -> bool {
             if let Ok(mtime) = meta.modified() {
                 let mtime: chrono::DateTime<chrono::Utc> = mtime.into();
                 if mtime < expiry {
-                    tracing::debug!("🎯 [OOBE] marker file mtime ({}) before expiry ({}), replaying OOBE", mtime, expiry);
+                    tracing::debug!(
+                        "🎯 [OOBE] marker file mtime ({}) before expiry ({}), replaying OOBE",
+                        mtime,
+                        expiry
+                    );
                     return false;
                 }
             }
