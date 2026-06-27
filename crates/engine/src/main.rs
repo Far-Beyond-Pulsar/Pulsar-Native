@@ -308,7 +308,6 @@ fn main() {
             open_via_loading_screen(path, cx);
         } else {
             tracing::info!("Opening main entry window");
-            let ec = engine_context.clone();
             match engine_context.create_window(
                 WindowRequest::Entry,
                 window_manager::WindowConfig::entry(),
@@ -344,8 +343,6 @@ fn main() {
                     ui_entry::create_entry_component(
                         window,
                         cx,
-                        &ec,
-                        0,
                         project_cb,
                         git_cb,
                         settings_cb,

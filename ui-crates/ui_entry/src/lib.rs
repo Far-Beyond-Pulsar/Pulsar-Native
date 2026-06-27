@@ -24,7 +24,6 @@ pub use ui::OpenSettings;
 use gpui::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
 use ui::Root;
 
 // Component config
@@ -37,8 +36,6 @@ pub struct EntryScreenConfig {
 pub fn create_entry_component(
     window: &mut Window,
     cx: &mut App,
-    engine_context: &EngineContext,
-    window_id: u64,
     on_project_selected: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
     on_git_manager: Arc<dyn Fn(PathBuf, &mut App) + Send + Sync>,
     on_settings: Arc<dyn Fn(&mut App) + Send + Sync>,
@@ -51,7 +48,6 @@ pub fn create_entry_component(
     let entry_screen = cx.new(|cx| EntryScreen::new(window, cx));
 
     // Subscribe to ProjectSelected event - open loading window and close entry window
-    let engine_context_clone = engine_context.clone();
     let on_proj = on_project_selected.clone();
     cx.subscribe(
         &entry_screen,
@@ -60,23 +56,12 @@ pub fn create_entry_component(
             tracing::debug!("🎯 [ENTRY] Path exists: {}", event.path.exists());
             tracing::debug!("🎯 [ENTRY] Path is_dir: {}", event.path.is_dir());
 
-            // invoke callback provided by engine; it will handle opening splash
+            // invoke callback provided by engine; it will handle opening loading screen
             on_proj(event.path.clone(), cx);
 
-            // Close entry window after delay
-            if window_id != 0 {
-                let ec2 = engine_context_clone.clone();
-                let close_id = window_id;
-                // use the previously computed handle rather than capturing `window`
-                cx.spawn(async move |cx| {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(100))
-                        .await;
-                    tracing::debug!("🗑️ (delayed) Closing entry window {}", close_id);
-                    let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
-                    ec2.unregister_window(&close_id);
-                });
-            }
+            // Close entry window - launcher self-closes once loading window opens
+            tracing::debug!("🗑️ Closing entry window");
+            let _ = cx.update_window(window_handle, |_, window, _| window.remove_window());
         },
     )
     .detach();
