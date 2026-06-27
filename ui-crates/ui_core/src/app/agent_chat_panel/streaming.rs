@@ -706,35 +706,11 @@ impl AgentChatPanel {
             }
         }
 
-        let name = event
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("subagent");
-        let queue_text = if queue_depth_after_enqueue > 1 {
-            format!(
-                "Subagent '{}' finished and joined the completion queue ({} waiting).",
-                name, queue_depth_after_enqueue
-            )
-        } else {
-            format!(
-                "Subagent '{}' finished and is waiting for main-agent processing.",
-                name
-            )
-        };
-
-        let assistant_ix = self.messages.len();
-        self.messages.push(ChatMessage {
-            role: ChatRole::Assistant,
-            content: queue_text.clone(),
-            tool_call_id: None,
-            tool_calls: vec![],
-        });
-        self.display_items.push(DisplayItem::AssistantMessage {
-            content: queue_text,
-            message_index: assistant_ix,
-            is_streaming: false,
-        });
-        self.scroll_messages_to_bottom();
+        // The SubagentInvocation card step added above ("Waiting for main agent") is
+        // sufficient UI feedback. Do NOT push a fake assistant ChatMessage here —
+        // accumulating consecutive assistant messages before the AgentEvent breaks
+        // OpenAI-compatible conversation structure and causes the middle agent's
+        // processing to fail when multiple sub-agents complete around the same time.
         cx.notify();
     }
 
