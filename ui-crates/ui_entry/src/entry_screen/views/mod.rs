@@ -2,6 +2,7 @@ pub mod clone_git;
 pub mod cloud_projects;
 pub mod dependency_setup;
 pub mod new_project;
+pub mod onboarding;
 pub mod project_settings;
 pub mod recent_projects;
 pub mod sidebar;
@@ -12,6 +13,7 @@ pub use clone_git::render_clone_git;
 pub use cloud_projects::render_cloud_projects;
 pub use dependency_setup::render_dependency_setup;
 pub use new_project::render_new_project;
+pub use onboarding::render_onboarding;
 pub use project_settings::{
     render_project_settings, types::load_project_tool_preferences, ProjectSettings,
     ProjectSettingsTab,

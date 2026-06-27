@@ -441,7 +441,7 @@ pub fn render_sidebar(screen: &EntryScreen, cx: &mut Context<EntryScreen>) -> im
                         )
                         .child(div().text_sm().text_color(muted_fg).child("Dependencies"))
                         .on_click(cx.listener(|this, _, _, cx| {
-                            this.show_dependency_setup = true;
+                            this.show_onboarding = true;
                             cx.notify();
                         })),
                 )
