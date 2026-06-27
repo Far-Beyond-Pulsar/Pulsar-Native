@@ -1498,11 +1498,22 @@ impl AgentChatPanel {
                                             ChatMessage {
                                                 role: ChatRole::System,
                                                 content: format!(
-                                                    "You are a focused sub-agent. Complete the assigned task using available tools.\n\
-                                                     Workspace: {workspace}\n\
-                                                     Read files, search the codebase, gather concrete evidence.\n\
-                                                     Be specific: include file paths, line numbers, and direct quotes.\n\
-                                                     When you have sufficient findings, provide your final answer without calling more tools.",
+                                                    "You are an AI assistant completing a specific task.\n\
+                                                     \n\
+                                                     TASK NAME: {name}\n\
+                                                     \n\
+                                                     TASK: {task}\n\
+                                                     \n\
+                                                     INSTRUCTIONS: {instructions}\n\
+                                                     \n\
+                                                     WORKSPACE: {workspace}\n\
+                                                     \n\
+                                                     Use the available tools to read files, search the codebase, and gather evidence.\n\
+                                                     Include file paths, line numbers, and direct quotes in your answer.\n\
+                                                     When you have enough information, write your final answer and stop calling tools.",
+                                                    name = req.name,
+                                                    task = req.task,
+                                                    instructions = instructions,
                                                     workspace = req.workspace_root.display(),
                                                 ),
                                                 tool_call_id: None,
@@ -1510,12 +1521,7 @@ impl AgentChatPanel {
                                             },
                                             ChatMessage {
                                                 role: ChatRole::User,
-                                                content: format!(
-                                                    "Sub-agent: {name}\nTask: {task}\nInstructions: {instructions}",
-                                                    name = req.name,
-                                                    task = req.task,
-                                                    instructions = instructions,
-                                                ),
+                                                content: "Complete the task.".to_string(),
                                                 tool_call_id: None,
                                                 tool_calls: vec![],
                                             },
