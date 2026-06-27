@@ -84,7 +84,7 @@ impl WindowConfig {
         )
     }
 
-    /// Entry / project-selection window — 1100×700.
+    /// Entry / project-selection window — 1450×850.
     pub fn entry() -> WindowOptions {
         Self::entry_profile().options()
     }
@@ -92,7 +92,7 @@ impl WindowConfig {
     /// Entry / project-selection profile.
     pub fn entry_profile() -> WindowProfile {
         WindowProfile::new(
-            base(100.0, 100.0, 1100.0, 700.0, 800.0, 500.0),
+            base(100.0, 100.0, 1450.0, 850.0, 1000.0, 600.0),
             WindowContentWrapper::None,
         )
     }
