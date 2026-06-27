@@ -433,6 +433,46 @@ fn render_account_card(
     let message = screen.auth_message.clone();
     let loading = screen.auth_loading;
 
+    // Load avatar if profile has a new URL
+    if let Some(ref p) = profile {
+        let url = p.avatar_url.clone().unwrap_or_default();
+        if !url.is_empty() && screen.onboarding_avatar_url.as_deref() != Some(url.as_str()) {
+            screen.onboarding_avatar_url = Some(url.clone());
+            screen.onboarding_avatar = None;
+            let url_clone = url.clone();
+            cx.spawn(async move |this, cx| {
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let client = reqwest::blocking::Client::builder()
+                            .timeout(std::time::Duration::from_secs(10))
+                            .user_agent("Pulsar-Native/1.0")
+                            .build()
+                            .map_err(|e| e.to_string())?;
+                        let response = client.get(&url_clone).send().map_err(|e| e.to_string())?;
+                        let bytes = response.bytes().map_err(|e| e.to_string())?;
+                        let rgba = image::load_from_memory(&bytes)
+                            .map_err(|e| format!("decode: {e}"))?
+                            .into_rgba8();
+                        let frame = image::Frame::new(rgba);
+                        Ok::<_, String>(Arc::new(RenderImage::new(smallvec::smallvec![frame])))
+                    })
+                    .await;
+                if let Ok(img) = result {
+                    cx.update(|cx| {
+                        this.update(cx, |this, cx| {
+                            this.onboarding_avatar = Some(img);
+                            cx.notify();
+                        });
+                    });
+                }
+            })
+            .detach();
+        }
+    }
+
+    let avatar_img = screen.onboarding_avatar.clone();
+
     v_flex()
         .w_full()
         .bg(bg)
@@ -453,27 +493,46 @@ fn render_account_card(
                         .map(|c| c.to_ascii_uppercase().to_string())
                         .unwrap_or_else(|| "?".to_string());
 
+                    let avatar = if let Some(render_img) = avatar_img {
+                        div()
+                            .w(px(56.))
+                            .h(px(56.))
+                            .rounded_full()
+                            .overflow_hidden()
+                            .flex_shrink_0()
+                            .child(
+                                gpui::img(ImageSource::Render(render_img))
+                                    .w_full()
+                                    .h_full()
+                                    .rounded_full()
+                                    .object_fit(ObjectFit::Cover),
+                            )
+                            .into_any_element()
+                    } else {
+                        div()
+                            .w(px(56.))
+                            .h(px(56.))
+                            .rounded_full()
+                            .flex_shrink_0()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .bg(accent.opacity(0.2))
+                            .child(
+                                div()
+                                    .text_2xl()
+                                    .font_weight(FontWeight::BOLD)
+                                    .text_color(accent)
+                                    .child(initial),
+                            )
+                            .into_any_element()
+                    };
+
                     this.child(
                         h_flex()
                             .gap_4()
                             .items_center()
-                            .child(
-                                div()
-                                    .w(px(56.))
-                                    .h(px(56.))
-                                    .rounded_full()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .bg(accent.opacity(0.2))
-                                    .child(
-                                        div()
-                                            .text_2xl()
-                                            .font_weight(FontWeight::BOLD)
-                                            .text_color(accent)
-                                            .child(initial),
-                                    ),
-                            )
+                            .child(avatar)
                             .child(
                                 v_flex()
                                     .child(

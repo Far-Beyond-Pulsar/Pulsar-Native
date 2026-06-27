@@ -108,6 +108,8 @@ pub struct EntryScreen {
     pub(crate) auth_device_modal_visible: bool,
     pub(crate) auth_device_copy_notice: Option<String>,
     pub(crate) profile_dropdown: gpui::Entity<ui_common::ProfileDropdown>,
+    pub(crate) onboarding_avatar: Option<Arc<RenderImage>>,
+    pub(crate) onboarding_avatar_url: Option<String>,
     pub(crate) theme_picker: gpui::Entity<ui_common::ThemePicker>,
     pub(crate) friends_screen: gpui::Entity<ui_friends::FriendsScreen>,
     // Thumbnails for the redesigned recent-projects / templates cards
@@ -252,6 +254,8 @@ impl EntryScreen {
             auth_device_modal_visible: false,
             auth_device_copy_notice: None,
             profile_dropdown: cx.new(ui_common::ProfileDropdown::new),
+            onboarding_avatar: None,
+            onboarding_avatar_url: None,
             theme_picker: cx.new(|cx| ui_common::ThemePicker::new(_window, cx)),
             friends_screen: cx.new(|cx| ui_friends::FriendsScreen::new_without_invite(_window, cx)),
             project_thumbnails: HashMap::new(),
