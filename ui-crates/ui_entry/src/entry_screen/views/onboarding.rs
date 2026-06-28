@@ -9,8 +9,10 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ui::{
     button::{Button, ButtonVariants},
-    h_flex, input::InputState, scroll::ScrollbarAxis, v_flex, ActiveTheme, Disableable, Icon,
-    IconName, Sizable, StyledExt,
+    h_flex,
+    input::InputState,
+    scroll::ScrollbarAxis,
+    v_flex, ActiveTheme, Disableable, Icon, IconName, Sizable, StyledExt,
 };
 
 #[cfg(target_os = "windows")]
@@ -123,10 +125,7 @@ pub fn render_onboarding(
 
 // ── Left column: tabbed Theme / Plugins ─────────────────────
 
-fn render_left_column(
-    screen: &mut EntryScreen,
-    cx: &mut Context<EntryScreen>,
-) -> impl IntoElement {
+fn render_left_column(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let tab = screen.onboarding_tab;
     let bg = cx.theme().background;
     let border = cx.theme().border;
@@ -193,7 +192,11 @@ fn render_tab_button(
         .items_center()
         .cursor_pointer()
         .border_b_2()
-        .border_color(if is_active { theme.accent } else { gpui::transparent_white() })
+        .border_color(if is_active {
+            theme.accent
+        } else {
+            gpui::transparent_white()
+        })
         .bg(gpui::transparent_white())
         .hover(|s| s.bg(theme.accent.opacity(0.06)))
         .on_mouse_down(
@@ -212,16 +215,24 @@ fn render_tab_button(
                 cx.notify();
             }),
         )
-        .child(
-            Icon::new(icon)
-                .size_4()
-                .text_color(if is_active { theme.foreground } else { theme.muted_foreground }),
-        )
+        .child(Icon::new(icon).size_4().text_color(if is_active {
+            theme.foreground
+        } else {
+            theme.muted_foreground
+        }))
         .child(
             div()
                 .text_sm()
-                .font_weight(if is_active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                .text_color(if is_active { theme.foreground } else { theme.muted_foreground })
+                .font_weight(if is_active {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .text_color(if is_active {
+                    theme.foreground
+                } else {
+                    theme.muted_foreground
+                })
                 .child(label),
         )
 }
@@ -236,37 +247,22 @@ fn render_theme_content(cx: &mut Context<EntryScreen>) -> impl IntoElement {
         .cloned()
         .collect();
 
-    v_flex()
-        .flex_1()
-        .min_h_0()
-        .child(
-            div()
-                .px_5()
-                .pt_4()
-                .pb_2()
-                .text_xs()
-                .text_color(cx.theme().muted_foreground)
-                .child("Choose your editor appearance"),
-        )
-        .child(
-            v_flex()
-                .id("theme-scroll")
-                .flex_1()
-                .min_h_0()
-                .scrollable(ScrollbarAxis::Vertical)
-                .gap_3()
-                .p_4()
-                .child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_3()
-                        .children(
-                            themes
-                                .into_iter()
-                                .map(|config| render_theme_card(config, &current_name, cx)),
-                        ),
+    v_flex().flex_1().min_h_0().child(
+        v_flex()
+            .id("theme-scroll")
+            .flex_1()
+            .min_h_0()
+            .scrollable(ScrollbarAxis::Vertical)
+            .gap_3()
+            .p_4()
+            .child(
+                h_flex().flex_wrap().gap_3().children(
+                    themes
+                        .into_iter()
+                        .map(|config| render_theme_card(config, &current_name, cx)),
                 ),
-        )
+            ),
+    )
 }
 
 // ── Plugin content ───────────────────────────────────────────
@@ -380,11 +376,7 @@ fn render_plugin_content(
                             .py_10()
                             .items_center()
                             .gap_2()
-                            .child(
-                                Icon::new(IconName::Package)
-                                    .size_8()
-                                    .text_color(muted),
-                            )
+                            .child(Icon::new(IconName::Package).size_8().text_color(muted))
                             .child(
                                 div()
                                     .text_sm()
@@ -405,14 +397,10 @@ fn render_plugin_content(
                     )
                 })
                 // Plugin cards
-                .children(
-                    available
-                        .into_iter()
-                        .map(|plugin| {
-                            let is_installed = installed_urls.contains(&plugin.repo_url);
-                            render_registry_plugin_card(plugin, is_installed, cx)
-                        }),
-                )
+                .children(available.into_iter().map(|plugin| {
+                    let is_installed = installed_urls.contains(&plugin.repo_url);
+                    render_registry_plugin_card(plugin, is_installed, cx)
+                }))
                 // ── Custom-installed divider ─────────────────
                 .when(!custom_installed.is_empty(), |this| {
                     this.child(
@@ -420,24 +408,9 @@ fn render_plugin_content(
                             .mt_2()
                             .gap_2()
                             .items_center()
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .h(px(1.))
-                                    .bg(muted.opacity(0.25)),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child("Custom installed"),
-                            )
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .h(px(1.))
-                                    .bg(muted.opacity(0.25)),
-                            ),
+                            .child(div().flex_1().h(px(1.)).bg(muted.opacity(0.25)))
+                            .child(div().text_xs().text_color(muted).child("Custom installed"))
+                            .child(div().flex_1().h(px(1.)).bg(muted.opacity(0.25))),
                     )
                     .children(
                         custom_installed
@@ -531,12 +504,16 @@ fn render_registry_plugin_card(
                                 .child("Installed"),
                         )
                         .child(
-                            Button::new(SharedString::from(format!("remove-reg-{}", repo_url_for_remove)))
-                                .ghost()
-                                .small()
-                                .icon(IconName::Trash)
-                                .tooltip("Remove")
-                                .on_click(cx.listener(move |screen, _, _, cx| {
+                            Button::new(SharedString::from(format!(
+                                "remove-reg-{}",
+                                repo_url_for_remove
+                            )))
+                            .ghost()
+                            .small()
+                            .icon(IconName::Trash)
+                            .tooltip("Remove")
+                            .on_click(cx.listener(
+                                move |screen, _, _, cx| {
                                     if let Some(idx) = screen
                                         .installed_plugins
                                         .iter()
@@ -544,7 +521,8 @@ fn render_registry_plugin_card(
                                     {
                                         screen.remove_plugin(idx, cx);
                                     }
-                                })),
+                                },
+                            )),
                         )
                         .into_any_element()
                 } else {
@@ -653,18 +631,24 @@ fn render_plugin_phase(
                         .text_color(theme.foreground)
                         .child(headline),
                 )
-                .when(matches!(phase, PluginInstallPhase::Complete(_) | PluginInstallPhase::Error(_)), |this| {
-                    this.child(
-                        Button::new("dismiss-phase")
-                            .ghost()
-                            .small()
-                            .icon(IconName::X)
-                            .on_click(cx.listener(|screen, _, _, cx| {
-                                screen.plugin_install_phase = None;
-                                cx.notify();
-                            })),
-                    )
-                }),
+                .when(
+                    matches!(
+                        phase,
+                        PluginInstallPhase::Complete(_) | PluginInstallPhase::Error(_)
+                    ),
+                    |this| {
+                        this.child(
+                            Button::new("dismiss-phase")
+                                .ghost()
+                                .small()
+                                .icon(IconName::X)
+                                .on_click(cx.listener(|screen, _, _, cx| {
+                                    screen.plugin_install_phase = None;
+                                    cx.notify();
+                                })),
+                        )
+                    },
+                ),
         )
         .when(!sub.is_empty(), |this| {
             this.child(
@@ -722,7 +706,11 @@ fn render_custom_plugin_row(
         .bg(theme.secondary.opacity(0.15))
         .border_1()
         .border_color(theme.border)
-        .child(Icon::new(IconName::Package).size_4().text_color(theme.foreground))
+        .child(
+            Icon::new(IconName::Package)
+                .size_4()
+                .text_color(theme.foreground),
+        )
         .child(
             v_flex()
                 .flex_1()
@@ -736,16 +724,13 @@ fn render_custom_plugin_row(
                         .child(name),
                 )
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .truncate()
-                                .child(repo),
-                        ),
+                    h_flex().gap_2().items_center().child(
+                        div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .truncate()
+                            .child(repo),
+                    ),
                 ),
         )
         .child(
@@ -797,7 +782,11 @@ fn render_theme_card(
         .as_ref()
         .and_then(|h| gpui::Rgba::try_from(h.as_ref()).ok().map(gpui::Hsla::from))
         .unwrap_or_else(|| {
-            if is_dark { gpui::hsla(0., 0., 0.1, 1.) } else { gpui::hsla(0., 0., 0.97, 1.) }
+            if is_dark {
+                gpui::hsla(0., 0., 0.1, 1.)
+            } else {
+                gpui::hsla(0., 0., 0.97, 1.)
+            }
         });
     let swatch_fg = config
         .colors
@@ -805,7 +794,11 @@ fn render_theme_card(
         .as_ref()
         .and_then(|h| gpui::Rgba::try_from(h.as_ref()).ok().map(gpui::Hsla::from))
         .unwrap_or_else(|| {
-            if is_dark { gpui::hsla(0., 0., 0.95, 1.) } else { gpui::hsla(0., 0., 0.05, 1.) }
+            if is_dark {
+                gpui::hsla(0., 0., 0.95, 1.)
+            } else {
+                gpui::hsla(0., 0., 0.05, 1.)
+            }
         });
     let accent_col = config
         .colors
@@ -813,7 +806,11 @@ fn render_theme_card(
         .as_ref()
         .and_then(|h| gpui::Rgba::try_from(h.as_ref()).ok().map(gpui::Hsla::from))
         .unwrap_or_else(|| {
-            if is_dark { gpui::hsla(0.6, 0.7, 0.5, 1.) } else { gpui::hsla(0.6, 0.7, 0.4, 1.) }
+            if is_dark {
+                gpui::hsla(0.6, 0.7, 0.5, 1.)
+            } else {
+                gpui::hsla(0.6, 0.7, 0.4, 1.)
+            }
         });
 
     v_flex()
@@ -829,7 +826,11 @@ fn render_theme_card(
         })
         .hover(|this| this.bg(theme.secondary.opacity(0.3)))
         .border_1()
-        .border_color(if is_active { theme.accent } else { theme.border })
+        .border_color(if is_active {
+            theme.accent
+        } else {
+            theme.border
+        })
         .gap_2()
         .on_mouse_down(
             MouseButton::Left,
@@ -870,13 +871,11 @@ fn render_theme_card(
             h_flex()
                 .gap_1()
                 .items_center()
-                .child(
-                    div()
-                        .w(px(6.))
-                        .h(px(6.))
-                        .rounded_full()
-                        .bg(if is_dark { theme.primary } else { theme.warning }),
-                )
+                .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(if is_dark {
+                    theme.primary
+                } else {
+                    theme.warning
+                }))
                 .child(
                     div()
                         .text_xs()
@@ -899,22 +898,13 @@ fn render_right_column(
         .h_full()
         .flex_shrink_0()
         .gap_6()
-        .child(
-            div()
-                .flex_1()
-                .min_h_0()
-                .child(render_deps_card(
-                    rust_installed,
-                    build_tools_installed,
-                    screen,
-                    cx,
-                )),
-        )
-        .child(
-            div()
-                .flex_shrink_0()
-                .child(render_account_card(screen, cx)),
-        )
+        .child(div().flex_1().min_h_0().child(render_deps_card(
+            rust_installed,
+            build_tools_installed,
+            screen,
+            cx,
+        )))
+        .child(div().flex_shrink_0().child(render_account_card(screen, cx)))
 }
 
 // ── Deps card ───────────────────────────────────────────────
@@ -928,12 +918,22 @@ fn render_deps_card(
     let show_downloading = screen
         .install_progress
         .as_ref()
-        .map(|p| matches!(p.status, InstallStatus::Downloading | InstallStatus::Installing))
+        .map(|p| {
+            matches!(
+                p.status,
+                InstallStatus::Downloading | InstallStatus::Installing
+            )
+        })
         .unwrap_or(false);
     let bg = cx.theme().background;
     let border = cx.theme().border;
 
-    let header = render_card_header(IconName::Package, "Dependencies", "Required build tools for Pulsar projects", cx);
+    let header = render_card_header(
+        IconName::Package,
+        "Dependencies",
+        "Required build tools for Pulsar projects",
+        cx,
+    );
 
     v_flex()
         .w_full()
@@ -953,9 +953,7 @@ fn render_deps_card(
                 .scrollable(ScrollbarAxis::Vertical)
                 .gap_3()
                 .p_4()
-                .child(render_dep_item(
-                    "Rust Toolchain", rust_installed, None, cx,
-                ))
+                .child(render_dep_item("Rust Toolchain", rust_installed, None, cx))
                 .child(render_dep_item(
                     "C/C++ Build Tools",
                     build_tools_installed,
@@ -1148,55 +1146,45 @@ fn render_account_card(
                     };
 
                     this.child(
-                        h_flex()
-                            .gap_4()
-                            .items_center()
-                            .child(avatar)
-                            .child(
-                                v_flex()
-                                    .child(
-                                        div()
-                                            .text_base()
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_color(fg)
-                                            .child(profile.display_name.unwrap_or(profile.login.clone())),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_sm()
-                                            .text_color(muted)
-                                            .child(format!("@{}", profile.login)),
-                                    ),
-                            ),
+                        h_flex().gap_4().items_center().child(avatar).child(
+                            v_flex()
+                                .child(
+                                    div()
+                                        .text_base()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(fg)
+                                        .child(
+                                            profile.display_name.unwrap_or(profile.login.clone()),
+                                        ),
+                                )
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(muted)
+                                        .child(format!("@{}", profile.login)),
+                                ),
+                        ),
                     )
                 })
-                .when(
-                    profile.is_none() && code.is_none() && !loading,
-                    |this| {
-                        this.child(
-                            div()
-                                .text_sm()
-                                .text_color(muted)
-                                .child("Sign in to enable cloud sync and multiplayer collaboration."),
-                        )
-                        .child(
-                            Button::new("signin-github-onboarding")
-                                .label("Sign In with GitHub")
-                                .primary()
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.begin_github_sign_in(cx);
-                                    cx.notify();
-                                })),
-                        )
-                    },
-                )
-                .when(loading, |this| {
+                .when(profile.is_none() && code.is_none() && !loading, |this| {
                     this.child(
                         div()
                             .text_sm()
                             .text_color(muted)
-                            .child("Signing in…"),
+                            .child("Sign in to enable cloud sync and multiplayer collaboration."),
                     )
+                    .child(
+                        Button::new("signin-github-onboarding")
+                            .label("Sign In with GitHub")
+                            .primary()
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.begin_github_sign_in(cx);
+                                cx.notify();
+                            })),
+                    )
+                })
+                .when(loading, |this| {
+                    this.child(div().text_sm().text_color(muted).child("Signing in…"))
                 })
                 .when_some(code, |this, code| {
                     this.child(
@@ -1224,12 +1212,7 @@ fn render_account_card(
                     )
                 })
                 .when_some(message, |this, msg| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(msg),
-                    )
+                    this.child(div().text_xs().text_color(muted).child(msg))
                 })
                 .child(
                     div()
@@ -1347,17 +1330,12 @@ fn render_install_progress(
                 .bg(gpui::black().opacity(0.3))
                 .rounded_sm()
                 .overflow_y_scroll()
-                .children(
-                    progress
-                        .logs
-                        .iter()
-                        .rev()
-                        .take(20)
-                        .rev()
-                        .map(|log| {
-                            div().text_xs().text_color(theme.muted_foreground).child(log.clone())
-                        }),
-                ),
+                .children(progress.logs.iter().rev().take(20).rev().map(|log| {
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(log.clone())
+                })),
         )
 }
 
