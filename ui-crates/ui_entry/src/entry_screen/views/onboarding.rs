@@ -215,13 +215,13 @@ fn render_tab_button(
         .child(
             Icon::new(icon)
                 .size_4()
-                .text_color(if is_active { theme.accent } else { theme.foreground }),
+                .text_color(if is_active { theme.accent } else { theme.muted_foreground }),
         )
         .child(
             div()
                 .text_sm()
-                .font_weight(if is_active { FontWeight::BOLD } else { FontWeight::NORMAL })
-                .text_color(if is_active { theme.accent } else { theme.foreground })
+                .font_weight(if is_active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                .text_color(if is_active { theme.accent } else { theme.muted_foreground })
                 .child(label),
         )
 }
@@ -572,9 +572,10 @@ fn render_registry_plugin_card(
                             .px_2()
                             .py(px(1.))
                             .rounded_full()
-                            .bg(theme.accent.opacity(0.12))
+                            .bg(theme.accent)
                             .text_xs()
-                            .text_color(theme.accent)
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.accent_foreground)
                             .child(tag)
                     })),
             )
