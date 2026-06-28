@@ -215,13 +215,13 @@ fn render_tab_button(
         .child(
             Icon::new(icon)
                 .size_4()
-                .text_color(if is_active { theme.accent } else { theme.muted_foreground }),
+                .text_color(if is_active { theme.foreground } else { theme.muted_foreground }),
         )
         .child(
             div()
                 .text_sm()
                 .font_weight(if is_active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                .text_color(if is_active { theme.accent } else { theme.muted_foreground })
+                .text_color(if is_active { theme.foreground } else { theme.muted_foreground })
                 .child(label),
         )
 }
