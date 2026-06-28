@@ -55,7 +55,7 @@ pub fn render_onboarding(
                     h_flex()
                         .items_center()
                         .gap_3()
-                        .child(Icon::new(IconName::Star).size_8().text_color(accent))
+                        .child(Icon::new(IconName::Star).size_8().text_color(fg))
                         .child(
                             div()
                                 .text_3xl()
@@ -722,7 +722,7 @@ fn render_custom_plugin_row(
         .bg(theme.secondary.opacity(0.15))
         .border_1()
         .border_color(theme.border)
-        .child(Icon::new(IconName::Package).size_4().text_color(theme.accent))
+        .child(Icon::new(IconName::Package).size_4().text_color(theme.foreground))
         .child(
             v_flex()
                 .flex_1()
@@ -1256,7 +1256,7 @@ fn render_card_header(
         .gap_3()
         .items_center()
         .bg(theme.secondary.opacity(0.15))
-        .child(Icon::new(icon).size_5().text_color(theme.accent))
+        .child(Icon::new(icon).size_5().text_color(theme.foreground))
         .child(
             v_flex()
                 .child(
