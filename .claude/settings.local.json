@@ -78,7 +78,8 @@
       "Bash(disown)",
       "Bash(grep -n \"pub fn\\\\|fn capture\\\\|fn read\\\\|fn save\\\\|MapMode\\\\|copy_texture_to_buffer\\\\|fn render_to_png\\\\|ImageBuffer\" \"C:/Users/redst/.cargo/git/checkouts/helio-505f36e18090c4f2/f7e0a54/crates_other/helio-snapshot/src/lib.rs\" \"C:/Users/redst/.cargo/git/checkouts/helio-505f36e18090c4f2/f7e0a54/crates_other/helio-snapshot/src/renderer.rs\")",
       "Bash(kubectl apply *)",
-      "Bash(kubectl rollout *)"
+      "Bash(kubectl rollout *)",
+      "Bash(xargs -I{} basename {} .svg)"
     ]
   }
 }

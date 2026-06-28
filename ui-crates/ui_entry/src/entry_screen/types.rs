@@ -2,6 +2,69 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use ui::IconName;
 
+// ── Onboarding tab selection ────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub enum OnboardingTab {
+    #[default]
+    Theme,
+    Plugins,
+}
+
+// ── Plugin registry ─────────────────────────────────────────────────────────
+
+/// A configured plugin registry (a GitHub repo with a `plugins/` directory).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PluginRegistry {
+    pub name: String,
+    pub url: String,
+}
+
+/// A single plugin entry parsed from a registry's `plugins/<name>.json` file.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct RegistryPlugin {
+    pub name: String,
+    pub description: String,
+    pub repo_url: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Which registry repo this entry came from (populated at load time, not in JSON).
+    #[serde(skip)]
+    pub registry_url: String,
+}
+
+// ── Plugin install state ────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub enum PluginInstallMethod {
+    BinaryDownload,
+    BuiltFromSource,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct InstalledPlugin {
+    pub name: String,
+    pub repo_url: String,
+    pub version: String,
+    pub installed_at: String,
+    pub install_method: PluginInstallMethod,
+    /// Path to the installed DLL/SO/dylib on disk
+    pub library_path: String,
+}
+
+#[derive(Clone, Debug)]
+pub enum PluginInstallPhase {
+    FetchingMetadata,
+    Downloading { progress: f32 },
+    Building { logs: Vec<String> },
+    Complete(InstalledPlugin),
+    Error(String),
+}
+
+// ── Entry screen view ───────────────────────────────────────────────────────
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EntryScreenView {
     Recent,

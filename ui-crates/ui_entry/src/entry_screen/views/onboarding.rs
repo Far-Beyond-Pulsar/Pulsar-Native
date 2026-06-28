@@ -1,10 +1,16 @@
-use crate::entry_screen::{EntryScreen, InstallProgress, InstallStatus};
+use crate::entry_screen::{
+    types::{
+        InstalledPlugin, OnboardingTab, PluginInstallMethod, PluginInstallPhase, RegistryPlugin,
+    },
+    EntryScreen, InstallProgress, InstallStatus,
+};
 use gpui::{prelude::*, *};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use ui::{
     button::{Button, ButtonVariants},
-    h_flex, scroll::ScrollbarAxis, v_flex, ActiveTheme, Disableable, Icon, IconName, StyledExt,
+    h_flex, input::InputState, scroll::ScrollbarAxis, v_flex, ActiveTheme, Disableable, Icon,
+    IconName, Sizable, StyledExt,
 };
 
 #[cfg(target_os = "windows")]
@@ -75,7 +81,7 @@ pub fn render_onboarding(
                 .px_12()
                 .pb_6()
                 .gap_6()
-                .child(render_theme_column(screen, cx))
+                .child(render_left_column(screen, cx))
                 .child(render_right_column(
                     rust_installed,
                     build_tools_installed,
@@ -115,22 +121,22 @@ pub fn render_onboarding(
         )
 }
 
-// ── Theme column (left) ──────────────────────────────────────
+// ── Left column: tabbed Theme / Plugins ─────────────────────
 
-fn render_theme_column(
-    _screen: &mut EntryScreen,
+fn render_left_column(
+    screen: &mut EntryScreen,
     cx: &mut Context<EntryScreen>,
 ) -> impl IntoElement {
-    let current_name = cx.theme().theme_name().clone();
-    let themes: Vec<std::rc::Rc<ui::ThemeConfig>> = ui::ThemeRegistry::global(cx)
-        .sorted_themes()
-        .into_iter()
-        .cloned()
-        .collect();
+    let tab = screen.onboarding_tab;
     let bg = cx.theme().background;
     let border = cx.theme().border;
 
-    let header = render_card_header(IconName::Palette, "Theme", "Choose your editor appearance", cx);
+    let tab_bar = render_tab_bar(tab, cx);
+
+    let content: AnyElement = match tab {
+        OnboardingTab::Theme => render_theme_content(cx).into_any_element(),
+        OnboardingTab::Plugins => render_plugin_content(screen, cx).into_any_element(),
+    };
 
     v_flex()
         .flex_1()
@@ -141,7 +147,107 @@ fn render_theme_column(
         .border_color(border)
         .rounded_lg()
         .overflow_hidden()
-        .child(header)
+        .child(tab_bar)
+        .child(content)
+}
+
+fn render_tab_bar(active: OnboardingTab, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+    let theme = cx.theme();
+    h_flex()
+        .w_full()
+        .border_b_1()
+        .border_color(theme.border)
+        .bg(theme.background)
+        .child(render_tab_button(
+            "tab-theme",
+            IconName::Palette,
+            "Themes",
+            active == OnboardingTab::Theme,
+            OnboardingTab::Theme,
+            cx,
+        ))
+        .child(render_tab_button(
+            "tab-plugins",
+            IconName::Package,
+            "Plugins",
+            active == OnboardingTab::Plugins,
+            OnboardingTab::Plugins,
+            cx,
+        ))
+}
+
+fn render_tab_button(
+    id: &'static str,
+    icon: IconName,
+    label: &'static str,
+    is_active: bool,
+    tab: OnboardingTab,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    h_flex()
+        .id(id)
+        .px_5()
+        .py_3()
+        .gap_2()
+        .items_center()
+        .cursor_pointer()
+        .border_b_2()
+        .border_color(if is_active { theme.accent } else { gpui::transparent_white() })
+        .bg(gpui::transparent_white())
+        .hover(|s| s.bg(theme.accent.opacity(0.06)))
+        .on_mouse_down(
+            MouseButton::Left,
+            cx.listener(move |screen, _, _, cx| {
+                let was_on_plugin_tab = screen.onboarding_tab == OnboardingTab::Plugins;
+                screen.onboarding_tab = tab;
+                // Kick off a registry refresh the first time the plugin tab is opened
+                if tab == OnboardingTab::Plugins
+                    && !was_on_plugin_tab
+                    && screen.registry_plugins.is_empty()
+                    && !screen.registry_refresh_in_progress
+                {
+                    screen.refresh_registries(cx);
+                }
+                cx.notify();
+            }),
+        )
+        .child(
+            Icon::new(icon)
+                .size_4()
+                .text_color(if is_active { theme.accent } else { theme.foreground.opacity(0.6) }),
+        )
+        .child(
+            div()
+                .text_sm()
+                .font_weight(if is_active { FontWeight::SEMIBOLD } else { FontWeight::MEDIUM })
+                .text_color(if is_active { theme.foreground } else { theme.foreground.opacity(0.6) })
+                .child(label),
+        )
+}
+
+// ── Theme content ────────────────────────────────────────────
+
+fn render_theme_content(cx: &mut Context<EntryScreen>) -> impl IntoElement {
+    let current_name = cx.theme().theme_name().clone();
+    let themes: Vec<std::rc::Rc<ui::ThemeConfig>> = ui::ThemeRegistry::global(cx)
+        .sorted_themes()
+        .into_iter()
+        .cloned()
+        .collect();
+
+    v_flex()
+        .flex_1()
+        .min_h_0()
+        .child(
+            div()
+                .px_5()
+                .pt_4()
+                .pb_2()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child("Choose your editor appearance"),
+        )
         .child(
             v_flex()
                 .id("theme-scroll")
@@ -154,10 +260,522 @@ fn render_theme_column(
                     h_flex()
                         .flex_wrap()
                         .gap_3()
-                        .children(themes.into_iter().map(|config| {
-                            render_theme_card(config, &current_name, cx)
+                        .children(
+                            themes
+                                .into_iter()
+                                .map(|config| render_theme_card(config, &current_name, cx)),
+                        ),
+                ),
+        )
+}
+
+// ── Plugin content ───────────────────────────────────────────
+
+fn render_plugin_content(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
+    let search_input = screen.plugin_search_input.clone();
+    let query = screen.plugin_search_query.to_lowercase();
+    let is_refreshing = screen.registry_refresh_in_progress;
+    let phase: Option<PluginInstallPhase> = screen.plugin_install_phase.clone();
+    let has_phase = phase.is_some();
+
+    // Snapshot needed data before closures borrow cx
+    let muted = cx.theme().muted_foreground;
+    let accent = cx.theme().accent;
+
+    // Filter registry plugins by search query
+    let available: Vec<RegistryPlugin> = screen
+        .registry_plugins
+        .iter()
+        .filter(|p| {
+            query.is_empty()
+                || p.name.to_lowercase().contains(&query)
+                || p.description.to_lowercase().contains(&query)
+                || p.author.to_lowercase().contains(&query)
+                || p.tags.iter().any(|t| t.to_lowercase().contains(&query))
+        })
+        .cloned()
+        .collect();
+
+    // Set of installed repo URLs for quick lookup
+    let installed_urls: std::collections::HashSet<String> = screen
+        .installed_plugins
+        .iter()
+        .map(|p| p.repo_url.clone())
+        .collect();
+
+    // Collect installed plugins not in any registry (for the "custom" footer)
+    let custom_installed: Vec<InstalledPlugin> = screen
+        .installed_plugins
+        .iter()
+        .filter(|p| {
+            !screen
+                .registry_plugins
+                .iter()
+                .any(|rp| rp.repo_url == p.repo_url)
+        })
+        .cloned()
+        .collect();
+
+    let registries_empty = screen.registry_plugins.is_empty();
+
+    v_flex()
+        .flex_1()
+        .min_h_0()
+        // ── Toolbar ─────────────────────────────────────────
+        .child(
+            h_flex()
+                .px_4()
+                .pt_3()
+                .pb_2()
+                .gap_2()
+                .items_center()
+                .child(div().flex_1().child(ui::input::Input::new(&search_input)))
+                .child(
+                    Button::new("refresh-registries-btn")
+                        .icon(IconName::Refresh)
+                        .ghost()
+                        .small()
+                        .disabled(is_refreshing)
+                        .tooltip(if is_refreshing {
+                            "Refreshing…"
+                        } else {
+                            "Refresh plugin registries"
+                        })
+                        .on_click(cx.listener(|screen, _, _, cx| {
+                            screen.refresh_registries(cx);
                         })),
                 ),
+        )
+        // ── Install phase banner ─────────────────────────────
+        .when(has_phase, |this| {
+            this.child(render_plugin_phase(phase.unwrap(), cx))
+        })
+        // ── Registry plugin list ─────────────────────────────
+        .child(
+            v_flex()
+                .id("registry-plugin-scroll")
+                .flex_1()
+                .min_h_0()
+                .scrollable(ScrollbarAxis::Vertical)
+                .px_4()
+                .pb_2()
+                .gap_2()
+                // Empty / loading states
+                .when(is_refreshing && registries_empty, |this| {
+                    this.child(
+                        div()
+                            .py_10()
+                            .text_sm()
+                            .text_color(muted)
+                            .text_center()
+                            .child("Fetching plugin registry…"),
+                    )
+                })
+                .when(!is_refreshing && registries_empty, |this| {
+                    this.child(
+                        v_flex()
+                            .py_10()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                Icon::new(IconName::Package)
+                                    .size_8()
+                                    .text_color(muted),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .text_center()
+                                    .child("No plugins found. Click ↺ to refresh registries."),
+                            ),
+                    )
+                })
+                .when(!registries_empty && available.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .py_8()
+                            .text_sm()
+                            .text_color(muted)
+                            .text_center()
+                            .child("No plugins match your search"),
+                    )
+                })
+                // Plugin cards
+                .children(
+                    available
+                        .into_iter()
+                        .map(|plugin| {
+                            let is_installed = installed_urls.contains(&plugin.repo_url);
+                            render_registry_plugin_card(plugin, is_installed, cx)
+                        }),
+                )
+                // ── Custom-installed divider ─────────────────
+                .when(!custom_installed.is_empty(), |this| {
+                    this.child(
+                        h_flex()
+                            .mt_2()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h(px(1.))
+                                    .bg(muted.opacity(0.25)),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child("Custom installed"),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .h(px(1.))
+                                    .bg(muted.opacity(0.25)),
+                            ),
+                    )
+                    .children(
+                        custom_installed
+                            .into_iter()
+                            .enumerate()
+                            .map(|(idx, plugin)| render_custom_plugin_row(idx, plugin, cx)),
+                    )
+                }),
+        )
+}
+
+fn render_registry_plugin_card(
+    plugin: RegistryPlugin,
+    is_installed: bool,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let repo_url = plugin.repo_url.clone();
+    let repo_url_for_remove = repo_url.clone();
+    let name = plugin.name.clone();
+    let desc = plugin.description.clone();
+    let author = plugin.author.clone();
+    let tags = plugin.tags.clone();
+
+    v_flex()
+        .id(SharedString::from(format!("rp-{}", repo_url)))
+        .w_full()
+        .p_3()
+        .gap_2()
+        .rounded_lg()
+        .bg(theme.secondary.opacity(0.12))
+        .border_1()
+        .border_color(if is_installed {
+            theme.success_foreground.opacity(0.3)
+        } else {
+            theme.border
+        })
+        // ── Top row: name + action button ────────────────────
+        .child(
+            h_flex()
+                .gap_2()
+                .items_start()
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .min_w_0()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .items_center()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(theme.foreground)
+                                        .truncate()
+                                        .child(name),
+                                )
+                                .when(!author.is_empty(), |this| {
+                                    this.child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(theme.muted_foreground)
+                                            .child(format!("by {author}")),
+                                    )
+                                }),
+                        )
+                        .when(!desc.is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.muted_foreground)
+                                    .child(desc),
+                            )
+                        }),
+                )
+                .child(if is_installed {
+                    h_flex()
+                        .gap_1()
+                        .items_center()
+                        .flex_shrink_0()
+                        .child(
+                            div()
+                                .px_2()
+                                .py(px(2.))
+                                .rounded_full()
+                                .bg(theme.success_foreground.opacity(0.15))
+                                .text_xs()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(theme.success_foreground)
+                                .child("Installed"),
+                        )
+                        .child(
+                            Button::new(SharedString::from(format!("remove-reg-{}", repo_url_for_remove)))
+                                .ghost()
+                                .small()
+                                .icon(IconName::Trash)
+                                .tooltip("Remove")
+                                .on_click(cx.listener(move |screen, _, _, cx| {
+                                    if let Some(idx) = screen
+                                        .installed_plugins
+                                        .iter()
+                                        .position(|p| p.repo_url == repo_url_for_remove)
+                                    {
+                                        screen.remove_plugin(idx, cx);
+                                    }
+                                })),
+                        )
+                        .into_any_element()
+                } else {
+                    Button::new(SharedString::from(format!("install-reg-{}", repo_url)))
+                        .label("Install")
+                        .primary()
+                        .small()
+                        .on_click({
+                            let url = repo_url.clone();
+                            cx.listener(move |screen, _, _, cx| {
+                                screen.install_plugin(url.clone(), cx);
+                            })
+                        })
+                        .into_any_element()
+                }),
+        )
+        // ── Tags ─────────────────────────────────────────────
+        .when(!tags.is_empty(), |this| {
+            this.child(
+                h_flex()
+                    .gap_1()
+                    .flex_wrap()
+                    .children(tags.into_iter().map(|tag| {
+                        div()
+                            .px_2()
+                            .py(px(1.))
+                            .rounded_full()
+                            .bg(theme.accent.opacity(0.12))
+                            .text_xs()
+                            .text_color(theme.accent)
+                            .child(tag)
+                    })),
+            )
+        })
+}
+
+fn render_plugin_phase(
+    phase: PluginInstallPhase,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
+    let theme = cx.theme();
+
+    let (icon, color, headline, sub, progress_val, show_bar) = match &phase {
+        PluginInstallPhase::FetchingMetadata => (
+            IconName::Download,
+            theme.accent,
+            "Fetching release info…",
+            String::new(),
+            None,
+            false,
+        ),
+        PluginInstallPhase::Downloading { progress } => (
+            IconName::Download,
+            theme.accent,
+            "Downloading binary…",
+            format!("{:.0}%", progress * 100.0),
+            Some(*progress),
+            true,
+        ),
+        PluginInstallPhase::Building { logs } => (
+            IconName::Settings,
+            theme.accent,
+            "Building from source…",
+            logs.last().cloned().unwrap_or_default(),
+            None,
+            false,
+        ),
+        PluginInstallPhase::Complete(p) => (
+            IconName::Check,
+            theme.success_foreground,
+            "Installed successfully!",
+            format!("{} — {}", p.name, p.version),
+            Some(1.0),
+            true,
+        ),
+        PluginInstallPhase::Error(e) => (
+            IconName::WarningTriangle,
+            gpui::red(),
+            "Installation failed",
+            e.clone(),
+            None,
+            false,
+        ),
+    };
+
+    v_flex()
+        .mx_4()
+        .mb_3()
+        .p_3()
+        .rounded_lg()
+        .border_1()
+        .border_color(color.opacity(0.35))
+        .bg(color.opacity(0.08))
+        .gap_2()
+        .child(
+            h_flex()
+                .gap_2()
+                .items_center()
+                .child(Icon::new(icon).size_4().text_color(color))
+                .child(
+                    div()
+                        .flex_1()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .child(headline),
+                )
+                .when(matches!(phase, PluginInstallPhase::Complete(_) | PluginInstallPhase::Error(_)), |this| {
+                    this.child(
+                        Button::new("dismiss-phase")
+                            .ghost()
+                            .small()
+                            .icon(IconName::X)
+                            .on_click(cx.listener(|screen, _, _, cx| {
+                                screen.plugin_install_phase = None;
+                                cx.notify();
+                            })),
+                    )
+                }),
+        )
+        .when(!sub.is_empty(), |this| {
+            this.child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(sub),
+            )
+        })
+        .when(show_bar, |this| {
+            let pv = progress_val.unwrap_or(0.0);
+            this.child(
+                div()
+                    .w_full()
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(theme.secondary.opacity(0.3))
+                    .child(
+                        div()
+                            .h_full()
+                            .rounded_full()
+                            .bg(color)
+                            .w(relative(pv.max(0.0).min(1.0))),
+                    ),
+            )
+        })
+}
+
+fn render_custom_plugin_row(
+    idx: usize,
+    plugin: InstalledPlugin,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let method_label = match plugin.install_method {
+        PluginInstallMethod::BinaryDownload => "Binary",
+        PluginInstallMethod::BuiltFromSource => "Source",
+    };
+    let method_color = match plugin.install_method {
+        PluginInstallMethod::BinaryDownload => theme.success_foreground,
+        PluginInstallMethod::BuiltFromSource => theme.accent,
+    };
+    let name = plugin.name.clone();
+    let version = plugin.version.clone();
+    let repo = plugin.repo_url.clone();
+
+    h_flex()
+        .id(SharedString::from(format!("plugin-row-{idx}")))
+        .w_full()
+        .px_3()
+        .py_2()
+        .gap_3()
+        .items_center()
+        .rounded_lg()
+        .bg(theme.secondary.opacity(0.15))
+        .border_1()
+        .border_color(theme.border)
+        .child(Icon::new(IconName::Package).size_4().text_color(theme.accent))
+        .child(
+            v_flex()
+                .flex_1()
+                .min_w_0()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(theme.foreground)
+                        .truncate()
+                        .child(name),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
+                                .truncate()
+                                .child(repo),
+                        ),
+                ),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme.muted_foreground)
+                .child(version),
+        )
+        .child(
+            div()
+                .flex_shrink_0()
+                .px_2()
+                .py(px(2.))
+                .rounded_full()
+                .bg(method_color.opacity(0.15))
+                .text_xs()
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(method_color)
+                .child(method_label),
+        )
+        .child(
+            Button::new(SharedString::from(format!("remove-plugin-{idx}")))
+                .ghost()
+                .small()
+                .icon(IconName::Trash)
+                .tooltip("Remove plugin")
+                .on_click(cx.listener(move |screen, _, _, cx| {
+                    screen.remove_plugin(idx, cx);
+                })),
         )
 }
 

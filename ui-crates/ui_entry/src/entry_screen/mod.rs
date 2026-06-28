@@ -13,7 +13,9 @@ use git_operations::{
 };
 use types::{
     get_default_templates, CloneProgress, CloudProject, CloudProjectStatus, CloudServer,
-    CloudServerStatus, EntryScreenView, GitFetchStatus, SharedCloneProgress, Template,
+    CloudServerStatus, EntryScreenView, GitFetchStatus, InstalledPlugin, OnboardingTab,
+    PluginInstallMethod, PluginInstallPhase, PluginRegistry, RegistryPlugin, SharedCloneProgress,
+    Template,
 };
 
 use gpui::{prelude::*, *};
@@ -124,6 +126,26 @@ pub struct EntryScreen {
     pub(crate) pending_invite: Option<PendingInvite>,
     // Embedded OOBE intro screen (shown before onboarding on first launch)
     pub(crate) intro_screen: Option<Entity<IntroScreen>>,
+
+    // ── Onboarding tab ──────────────────────────────────────────────────────
+    pub(crate) onboarding_tab: OnboardingTab,
+
+    // ── Plugin system ────────────────────────────────────────────────────────
+    /// Configured registry repos (persisted)
+    pub(crate) plugin_registries: Vec<PluginRegistry>,
+    /// Aggregated, deduplicated list of available plugins from all registries
+    pub(crate) registry_plugins: Vec<RegistryPlugin>,
+    pub(crate) registry_refresh_in_progress: bool,
+    /// Already-installed plugins (persisted)
+    pub(crate) installed_plugins: Vec<InstalledPlugin>,
+    pub(crate) plugin_install_phase: Option<PluginInstallPhase>,
+    /// Root dir for plugin binaries and registry clones
+    pub(crate) plugins_path: std::path::PathBuf,
+    /// Subdir where registry repos are cloned
+    pub(crate) registries_path: std::path::PathBuf,
+    /// Search filter for the plugin browser
+    pub(crate) plugin_search_query: String,
+    pub(crate) plugin_search_input: Entity<ui::input::InputState>,
 }
 
 /// Represents an incoming session invite from a friend.
@@ -203,6 +225,38 @@ impl EntryScreen {
         let create_project_description_input =
             cx.new(|cx| InputState::new(_window, cx).placeholder("Optional project description"));
 
+        let plugin_search_input = cx.new(|cx| {
+            InputState::new(_window, cx).placeholder("Search plugins…")
+        });
+
+        let appdata = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+            .map(|d| d.data_dir().to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let plugins_path = appdata.join("plugins");
+        let registries_path = appdata.join("registries");
+
+        let installed_plugins: Vec<InstalledPlugin> = {
+            let manifest = plugins_path.join("plugins.json");
+            std::fs::read_to_string(&manifest)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default()
+        };
+
+        // Load or initialise the configured registry list
+        let registries_config_path = appdata.join("plugin_registries.json");
+        let plugin_registries: Vec<PluginRegistry> =
+            std::fs::read_to_string(&registries_config_path)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_else(|| {
+                    vec![PluginRegistry {
+                        name: "Official Pulsar Plugins".to_string(),
+                        url: "https://github.com/Far-Beyond-Pulsar/Plugins".to_string(),
+                    }]
+                });
+
         let mut screen = Self {
             entity: None,
             logo: decode_logo_png(LOGO_PNG),
@@ -269,6 +323,16 @@ impl EntryScreen {
             template_thumbnail_queue: VecDeque::new(),
             pending_invite: None,
             intro_screen: None,
+            onboarding_tab: OnboardingTab::default(),
+            plugin_registries,
+            registry_plugins: Vec::new(),
+            registry_refresh_in_progress: false,
+            installed_plugins,
+            plugin_install_phase: None,
+            plugins_path,
+            registries_path,
+            plugin_search_query: String::new(),
+            plugin_search_input: plugin_search_input.clone(),
         };
 
         // Restore persisted auth profile into engine context at launcher startup.
@@ -420,6 +484,17 @@ impl EntryScreen {
                         .read(cx)
                         .text()
                         .to_string();
+                }
+            },
+        )
+        .detach();
+
+        cx.subscribe(
+            &plugin_search_input,
+            |this, _input, event: &ui::input::InputEvent, _cx| {
+                if let ui::input::InputEvent::Change = event {
+                    this.plugin_search_query =
+                        this.plugin_search_input.read(_cx).text().to_string();
                 }
             },
         )
@@ -1972,6 +2047,536 @@ default_scene = "scenes/main.scene"
             )
             .into_any_element()
     }
+}
+
+// ── Plugin installer ──────────────────────────────────────────────────────
+
+impl EntryScreen {
+    pub(crate) fn save_installed_plugins(&self) {
+        if let Ok(json) = serde_json::to_string_pretty(&self.installed_plugins) {
+            let _ = std::fs::create_dir_all(&self.plugins_path);
+            let _ = std::fs::write(self.plugins_path.join("plugins.json"), json);
+        }
+    }
+
+    pub(crate) fn remove_plugin(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx < self.installed_plugins.len() {
+            let plugin = self.installed_plugins.remove(idx);
+            let _ = std::fs::remove_file(&plugin.library_path);
+            self.save_installed_plugins();
+            cx.notify();
+        }
+    }
+
+    pub(crate) fn install_plugin(&mut self, raw_url: String, cx: &mut Context<Self>) {
+        let url = raw_url.trim().trim_end_matches('/').trim_end_matches(".git").to_string();
+
+        // Extract owner/repo from the URL
+        let (owner, repo) = match parse_github_owner_repo(&url) {
+            Some(pair) => pair,
+            None => {
+                self.plugin_install_phase = Some(PluginInstallPhase::Error(
+                    "Could not parse GitHub URL. Expected https://github.com/owner/repo".to_string(),
+                ));
+                cx.notify();
+                return;
+            }
+        };
+
+        self.plugin_install_phase = Some(PluginInstallPhase::FetchingMetadata);
+        cx.notify();
+
+        let plugins_path = self.plugins_path.clone();
+        let repo_url = url.clone();
+
+        cx.spawn(async move |this, cx| {
+            // ── 1. Fetch releases from GitHub API ──────────────────────────
+            let releases_result = cx
+                .background_executor()
+                .spawn(async move { fetch_github_releases(&owner, &repo) })
+                .await;
+
+            let (version, binary_url, build_tag) = match releases_result {
+                Ok(Some((ver, Some(bin_url)))) => (ver, Some(bin_url), None::<String>),
+                Ok(Some((ver, None))) => (ver.clone(), None, Some(ver)),
+                Ok(None) => ("main".to_string(), None, None),
+                Err(e) => {
+                    cx.update(|cx| {
+                        this.update(cx, |s, cx| {
+                            s.plugin_install_phase = Some(PluginInstallPhase::Error(e));
+                            cx.notify();
+                        });
+                    });
+                    return;
+                }
+            };
+
+            // ── 2a. Download binary if available ───────────────────────────
+            if let Some(bin_url) = binary_url {
+                let plugins_path2 = plugins_path.clone();
+                let repo_url2 = repo_url.clone();
+                let version2 = version.clone();
+                let lib_name = format!(
+                    "{}_{}.{}",
+                    repo_url2.split('/').last().unwrap_or("plugin").replace(['-', '.'], "_"),
+                    version2,
+                    native_plugin_ext()
+                );
+
+                cx.update(|cx| {
+                    this.update(cx, |s, cx| {
+                        s.plugin_install_phase = Some(PluginInstallPhase::Downloading { progress: 0.0 });
+                        cx.notify();
+                    });
+                });
+
+                let result = cx
+                    .background_executor()
+                    .spawn(async move {
+                        download_plugin_binary(&bin_url, &plugins_path2, &lib_name)
+                    })
+                    .await;
+
+                cx.update(|cx| {
+                    this.update(cx, |s, cx| {
+                        match result {
+                            Ok(lib_path) => {
+                                let name = repo_url2
+                                    .split('/')
+                                    .last()
+                                    .unwrap_or("plugin")
+                                    .to_string();
+                                let plugin = InstalledPlugin {
+                                    name,
+                                    repo_url: repo_url2,
+                                    version: version2,
+                                    installed_at: chrono::Local::now()
+                                        .format("%Y-%m-%d %H:%M")
+                                        .to_string(),
+                                    install_method: PluginInstallMethod::BinaryDownload,
+                                    library_path: lib_path,
+                                };
+                                s.installed_plugins.retain(|p| p.repo_url != plugin.repo_url);
+                                s.installed_plugins.push(plugin.clone());
+                                s.save_installed_plugins();
+                                
+                                s.plugin_install_phase = Some(PluginInstallPhase::Complete(plugin));
+                            }
+                            Err(e) => {
+                                s.plugin_install_phase = Some(PluginInstallPhase::Error(e));
+                            }
+                        }
+                        cx.notify();
+                    });
+                });
+
+                return;
+            }
+
+            // ── 2b. Build from source ──────────────────────────────────────
+            cx.update(|cx| {
+                this.update(cx, |s, cx| {
+                    s.plugin_install_phase = Some(PluginInstallPhase::Building {
+                        logs: vec!["Preparing to build from source…".to_string()],
+                    });
+                    cx.notify();
+                });
+            });
+
+            let repo_url3 = repo_url.clone();
+            let plugins_path3 = plugins_path.clone();
+            let version3 = version.clone();
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    build_plugin_from_source(
+                        &repo_url3,
+                        build_tag.as_deref(),
+                        &plugins_path3,
+                        &version3,
+                    )
+                })
+                .await;
+
+            cx.update(|cx| {
+                this.update(cx, |s, cx| {
+                    match result {
+                        Ok((lib_path, logs)) => {
+                            let name = repo_url
+                                .split('/')
+                                .last()
+                                .unwrap_or("plugin")
+                                .to_string();
+                            let plugin = InstalledPlugin {
+                                name,
+                                repo_url: repo_url.clone(),
+                                version: version.clone(),
+                                installed_at: chrono::Local::now()
+                                    .format("%Y-%m-%d %H:%M")
+                                    .to_string(),
+                                install_method: PluginInstallMethod::BuiltFromSource,
+                                library_path: lib_path,
+                            };
+                            s.installed_plugins.retain(|p| p.repo_url != plugin.repo_url);
+                            s.installed_plugins.push(plugin.clone());
+                            s.save_installed_plugins();
+                            
+                            s.plugin_install_phase = Some(PluginInstallPhase::Building {
+                                logs,
+                            });
+                            // Transition to Complete after a brief moment so logs are visible
+                            s.plugin_install_phase = Some(PluginInstallPhase::Complete(plugin));
+                        }
+                        Err(e) => {
+                            s.plugin_install_phase = Some(PluginInstallPhase::Error(e));
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+}
+
+// ── Registry management ───────────────────────────────────────────────────
+
+impl EntryScreen {
+    /// Persist the current registry list to disk.
+    pub(crate) fn save_plugin_registries(&self) {
+        let appdata = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+            .map(|d| d.data_dir().to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let path = appdata.join("plugin_registries.json");
+        if let Ok(json) = serde_json::to_string_pretty(&self.plugin_registries) {
+            let _ = std::fs::create_dir_all(&appdata);
+            let _ = std::fs::write(path, json);
+        }
+    }
+
+    /// Add a registry URL, persist, and trigger a refresh.
+    pub(crate) fn add_plugin_registry(&mut self, url: String, cx: &mut Context<Self>) {
+        let url = url.trim().trim_end_matches('/').to_string();
+        if url.is_empty() || self.plugin_registries.iter().any(|r| r.url == url) {
+            return;
+        }
+        let name = url
+            .trim_end_matches(".git")
+            .split('/')
+            .last()
+            .unwrap_or(&url)
+            .to_string();
+        self.plugin_registries.push(PluginRegistry { name, url });
+        self.save_plugin_registries();
+        self.refresh_registries(cx);
+    }
+
+    /// Remove a registry by index, persist, and reload the plugin list.
+    pub(crate) fn remove_plugin_registry(&mut self, idx: usize, cx: &mut Context<Self>) {
+        if idx >= self.plugin_registries.len() {
+            return;
+        }
+        self.plugin_registries.remove(idx);
+        self.save_plugin_registries();
+        self.load_registry_plugins_from_disk();
+        cx.notify();
+    }
+
+    /// Clone or pull every configured registry in the background, then reload plugins.
+    pub(crate) fn refresh_registries(&mut self, cx: &mut Context<Self>) {
+        if self.registry_refresh_in_progress {
+            return;
+        }
+        self.registry_refresh_in_progress = true;
+        cx.notify();
+
+        let registries = self.plugin_registries.clone();
+        let registries_path = self.registries_path.clone();
+
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    clone_or_pull_registries(&registries, &registries_path)
+                })
+                .await;
+
+            if let Err(e) = result {
+                tracing::warn!("Registry refresh partial failure: {e}");
+            }
+
+            // Reload plugin list from disk on the UI thread
+            cx.update(|cx| {
+                this.update(cx, |screen, cx| {
+                    screen.load_registry_plugins_from_disk();
+                    screen.registry_refresh_in_progress = false;
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    /// Scan all local registry clones, parse their `plugins/*.json` files,
+    /// and populate `self.registry_plugins` (deduplicated by `repo_url`).
+    pub(crate) fn load_registry_plugins_from_disk(&mut self) {
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut result: Vec<RegistryPlugin> = Vec::new();
+
+        for registry in &self.plugin_registries {
+            let local_dir = registry_local_path(&self.registries_path, &registry.url);
+            let plugins_dir = local_dir.join("plugins");
+            let Ok(entries) = std::fs::read_dir(&plugins_dir) else {
+                continue;
+            };
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                let Ok(mut plugin) = serde_json::from_str::<RegistryPlugin>(&text) else {
+                    continue;
+                };
+                plugin.registry_url = registry.url.clone();
+                if seen.insert(plugin.repo_url.clone()) {
+                    result.push(plugin);
+                }
+            }
+        }
+
+        self.registry_plugins = result;
+    }
+}
+
+fn registry_local_path(registries_root: &std::path::Path, url: &str) -> std::path::PathBuf {
+    // Derive a safe directory name from the URL: take the last two path segments
+    // (owner/repo) and join with underscores.
+    let slug = url
+        .trim_end_matches('/')
+        .trim_end_matches(".git")
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .replace(['/', ':'], "_");
+    registries_root.join(slug)
+}
+
+fn clone_or_pull_registries(
+    registries: &[PluginRegistry],
+    registries_root: &std::path::Path,
+) -> Result<(), String> {
+    use std::process::Command;
+    let _ = std::fs::create_dir_all(registries_root);
+
+    for registry in registries {
+        let local_dir = registry_local_path(registries_root, &registry.url);
+
+        if local_dir.join(".git").exists() {
+            // Already cloned — pull latest
+            let out = Command::new("git")
+                .args(["-C", local_dir.to_str().unwrap_or("."), "pull", "--ff-only"])
+                .output()
+                .map_err(|e| format!("git pull {}: {e}", registry.url))?;
+            if !out.status.success() {
+                tracing::warn!(
+                    "git pull failed for {}: {}",
+                    registry.url,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        } else {
+            // Clone fresh
+            let out = Command::new("git")
+                .args([
+                    "clone",
+                    "--depth",
+                    "1",
+                    &registry.url,
+                    local_dir.to_str().unwrap_or("."),
+                ])
+                .output()
+                .map_err(|e| format!("git clone {}: {e}", registry.url))?;
+            if !out.status.success() {
+                tracing::warn!(
+                    "git clone failed for {}: {}",
+                    registry.url,
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+// ── GitHub helpers ────────────────────────────────────────────────────────
+
+fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {
+    // accepts https://github.com/owner/repo  or  github.com/owner/repo
+    let stripped = url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_start_matches("github.com/");
+    let mut parts = stripped.splitn(2, '/');
+    let owner = parts.next()?.to_string();
+    let repo = parts.next()?.trim_end_matches(".git").to_string();
+    if owner.is_empty() || repo.is_empty() {
+        return None;
+    }
+    Some((owner, repo))
+}
+
+#[cfg(target_os = "windows")]
+fn native_plugin_ext() -> &'static str { "dll" }
+#[cfg(target_os = "macos")]
+fn native_plugin_ext() -> &'static str { "dylib" }
+#[cfg(target_os = "linux")]
+fn native_plugin_ext() -> &'static str { "so" }
+
+/// Returns `(tag_name, Some(download_url))` where `download_url` is a
+/// platform-native binary from the latest release assets, or `None` when only
+/// source is available.  Returns `Ok(None)` when the repo has no releases.
+fn fetch_github_releases(owner: &str, repo: &str) -> Result<Option<(String, Option<String>)>, String> {
+    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .user_agent("Pulsar-Native/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client.get(&url).send().map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned {}", resp.status()));
+    }
+    let releases: serde_json::Value = resp.json().map_err(|e| e.to_string())?;
+    let arr = match releases.as_array() {
+        Some(a) if !a.is_empty() => a,
+        _ => return Ok(None),
+    };
+    let latest = &arr[0];
+    let tag = latest
+        .get("tag_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    let ext = native_plugin_ext();
+    let binary_url = latest
+        .get("assets")
+        .and_then(|a| a.as_array())
+        .and_then(|assets| {
+            assets.iter().find(|asset| {
+                asset
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|n| n.ends_with(ext))
+                    .unwrap_or(false)
+            })
+        })
+        .and_then(|asset| asset.get("browser_download_url"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    Ok(Some((tag, binary_url)))
+}
+
+fn download_plugin_binary(
+    url: &str,
+    plugins_dir: &std::path::Path,
+    lib_name: &str,
+) -> Result<String, String> {
+    use std::io::Write;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .user_agent("Pulsar-Native/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client.get(url).send().map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Download failed: HTTP {}", resp.status()));
+    }
+    let bytes = resp.bytes().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(plugins_dir).map_err(|e| e.to_string())?;
+    let dest = plugins_dir.join(lib_name);
+    let mut file = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+    file.write_all(&bytes).map_err(|e| e.to_string())?;
+    Ok(dest.to_string_lossy().to_string())
+}
+
+fn build_plugin_from_source(
+    repo_url: &str,
+    tag: Option<&str>,
+    plugins_dir: &std::path::Path,
+    version: &str,
+) -> Result<(String, Vec<String>), String> {
+    use std::process::Command;
+    let mut logs: Vec<String> = Vec::new();
+
+    // Clone into a temp dir
+    let tmp = std::env::temp_dir().join(format!(
+        "pulsar_plugin_build_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+
+    logs.push(format!("Cloning {}…", repo_url));
+    let mut clone_cmd = Command::new("git");
+    clone_cmd.args(["clone", "--depth", "1"]);
+    if let Some(t) = tag {
+        clone_cmd.args(["--branch", t]);
+    }
+    clone_cmd.args([repo_url, tmp.to_str().unwrap()]);
+    let clone_out = clone_cmd.output().map_err(|e| format!("git clone: {e}"))?;
+    logs.push(String::from_utf8_lossy(&clone_out.stderr).into_owned());
+    if !clone_out.status.success() {
+        return Err(format!("git clone failed:\n{}", logs.join("\n")));
+    }
+
+    logs.push("Building with cargo…".to_string());
+    let build_out = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&tmp)
+        .output()
+        .map_err(|e| format!("cargo build: {e}"))?;
+    logs.push(String::from_utf8_lossy(&build_out.stderr).into_owned());
+    if !build_out.status.success() {
+        return Err(format!("cargo build failed:\n{}", logs.join("\n")));
+    }
+
+    // Find the output library in target/release/
+    let ext = native_plugin_ext();
+    let release_dir = tmp.join("target").join("release");
+    let lib_file = std::fs::read_dir(&release_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .find(|p| {
+            p.extension().and_then(|e| e.to_str()) == Some(ext)
+                && !p
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .starts_with('.')
+        })
+        .ok_or_else(|| format!("No .{ext} file found in target/release/"))?;
+
+    let plugin_name = repo_url
+        .split('/')
+        .last()
+        .unwrap_or("plugin")
+        .replace(['-', '.'], "_");
+    let dest_name = format!("{plugin_name}_{version}.{ext}");
+    std::fs::create_dir_all(plugins_dir).map_err(|e| e.to_string())?;
+    let dest = plugins_dir.join(&dest_name);
+    std::fs::copy(&lib_file, &dest).map_err(|e| e.to_string())?;
+
+    // Clean up temp dir
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    logs.push(format!("Installed to {}", dest.display()));
+    Ok((dest.to_string_lossy().to_string(), logs))
 }
 
 /// Synchronously fetch server connectivity info and project list.
