@@ -255,7 +255,10 @@ fn main() {
     profiling::profile_scope!("Engine::EventLoop");
 
     // create and run GPUI application
-    let gpui_app = gpui::Application::new().with_assets(Assets);
+    let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
+        additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
+    })
+    .with_assets(Assets);
 
     gpui_app.run(move |cx: &mut gpui::App| {
         use ui_common::PulsarWindowExt as _;

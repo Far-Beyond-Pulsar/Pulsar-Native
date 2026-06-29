@@ -42,12 +42,12 @@ plugin_manager = { workspace = true }
 plugin_editor_api = { workspace = true }
 
 # Built-in plugins
-blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "d8d60b95fbc3e38308641dc878615159c2966375" }
-script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "58e329e04dece59d9f2f6edbe03556a308bf4be1" }
-plugin_matter = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Matter", rev = "d0bf7c5fc82fc7c0e89f9c526825fc1f49259474"}
+blueprint_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints", rev = "8db2298d161758e556df7909e318b7c4f8bada89" }
+script_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor", rev = "0ae6c16de51c7ccad447d92d7f546f7d6fba3612" }
+plugin_matter = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Matter", rev = "b209d26f56dbab7aef404e8d44e4396a263d0073"}
 #plugin_matter = { path = "../../../Plugin_Matter" }
-shader_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Shaders", rev = "969abdbac459a62c217b7e3f58c6c599cff8abb2" }
-editor_table_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_DBTable", rev = "8eadda58655e1a1b40f160956dddc552dec61283" }
+shader_editor_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_Shaders", rev = "f8a951edb12710d818e21b04bf23c2ea1a80e3bb" }
+editor_table_plugin = { git = "https://github.com/Far-Beyond-Pulsar/Plugin_DBTable", rev = "3bfac5770e592911a14b16b6fda08f3016f66445" }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

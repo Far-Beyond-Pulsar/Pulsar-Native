@@ -1,5 +1,5 @@
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "link-arg=/STACK:8000000"]
+rustflags = ["-C", "link-arg=/STACK:8000000", "-C", "link-args=/FORCE:MULTIPLE"]
 
 [build]
 jobs = 4
@@ -8,18 +8,12 @@ rustflags = ["-A", "warnings"]
 [alias]
 set-logo = "run --manifest-path tools/set-logo/Cargo.toml --"
 
-# Global environment for all platforms
 [env]
-# Fix aws-lc-sys build - use pregenerated sources to avoid C11 compilation issues
 AWS_LC_SYS_NO_PREFIX = "1"
-# Try forcing non-CMake builder
 AWS_LC_SYS_CMAKE_BUILDER = "0"
-# Set C standard
 AWS_LC_SYS_C_STD = "c11"
 CMAKE_C_STANDARD = "11"
 
-
-# macOS-specific environment variables
 [target.aarch64-apple-darwin.env]
 CFLAGS = "-std=c11"
 CMAKE_C_FLAGS = "-std=c11"

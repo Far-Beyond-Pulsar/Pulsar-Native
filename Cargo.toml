@@ -43,8 +43,8 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "3458d987317e30f6cda800e03822292e27ef4a33" }
-ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "3e386a01cf3e0e3c0f86eed7f3e3b9835ce54f70" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "2abda4ffb8542aad150fa4ff9ebc7263997fd731" }
+ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0fd58bb40d2e94e02831a198b76e20527f0150df" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/profiling" }
@@ -59,8 +59,11 @@ pulsar_lsp                         = { path = "crates/pulsar_lsp" }
 window_manager                     = { path = "crates/window_manager" }
 pulsar_graph                       = { path = "crates/pulsar_graph" }
 pulsar_game                        = { path = "crates/pulsar_game" }
-pulsar_core                        = { path = "crates/pulsar_core" }
-pulsar_ecs                         = { path = "crates/pulsar_ecs" }
+pulsar_core           = { path = "crates/pulsar_core" }
+pulsar_ecs            = { path = "crates/pulsar_ecs" }
+
+
+
 agent_chat_core                    = { path = "agent-providers/agent_chat_core" }
 agent_chat_tools                   = { path = "agent-providers/agent_chat_tools" }
 agent_provider_demo_random         = { path = "agent-providers/agent_provider_demo_random" }
@@ -124,8 +127,8 @@ plugin_editor_api = { path = "crates/plugin_editor_api"}
 plugin_manager    = { path = "crates/plugin_manager" }
 
 # ---------- Helio Renderer (wgpu-based) ----------
-helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
-helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
+helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
+helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
 glam           = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- PulsarConfig ----------
@@ -193,7 +196,7 @@ rand = "0.10"
 core-foundation-sys = "0.8"
 libloading = "0.9"
 uuid = { version = "1.4", features = ["v4"] }
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "127ecfbf78c638795142f29c87075daca40f10bd" }
+helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
 tokio = { version = "1", features = ["full"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.11"
@@ -255,7 +258,7 @@ pbgc                  = { git = "https://github.com/j4flmao/PBGC", branch = "fix
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
-ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0fd58bb40d2e94e02831a198b76e20527f0150df" }
 pulsar_std            = { path = "crates/pulsar_std" }
 pulsar_reflection     = { path = "crates/pulsar_reflection" }
 engine_backend        = { path = "crates/engine_backend" }
@@ -288,7 +291,7 @@ pulsar_ecs            = { path = "crates/pulsar_ecs" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0fd58bb40d2e94e02831a198b76e20527f0150df" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
@@ -307,7 +310,7 @@ pulsar_ecs            = { path = "crates/pulsar_ecs" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Plugin_Matter"]
 plugin_editor_api     = { path = "crates/plugin_editor_api" }
-ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "70adc5ccfba565cb1497a38857ab348470b06a2d" }
+ui                    = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0fd58bb40d2e94e02831a198b76e20527f0150df" }
 ui_common             = { path = "ui-crates/ui_common" }
 ui_types_common       = { path = "ui-crates/ui_types_common" }
 pulsar_std            = { path = "crates/pulsar_std" }
@@ -323,5 +326,3 @@ engine_class_derive   = { path = "crates/engine_class_derive" }
 pulsar_rendering      = { path = "crates/pulsar_rendering" }
 pulsar_core           = { path = "crates/pulsar_core" }
 pulsar_ecs            = { path = "crates/pulsar_ecs" }
-[patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
-gpui-ce = { git = "https://github.com/j4flmao/wgpui-fork-27957.git", branch = "fix/scroll-stutter-and-panic" }
