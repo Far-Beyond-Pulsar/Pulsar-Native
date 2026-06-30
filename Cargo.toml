@@ -43,8 +43,8 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "2abda4ffb8542aad150fa4ff9ebc7263997fd731" }
-ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "0fd58bb40d2e94e02831a198b76e20527f0150df" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "31fbf35800b4cfc2ddf202a1c16a2971251ca84c" }
+ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "eda5213258be50bf5a9556ff9a68221bd5f449cd" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/profiling" }
@@ -59,8 +59,8 @@ pulsar_lsp                         = { path = "crates/pulsar_lsp" }
 window_manager                     = { path = "crates/window_manager" }
 pulsar_graph                       = { path = "crates/pulsar_graph" }
 pulsar_game                        = { path = "crates/pulsar_game" }
-pulsar_core           = { path = "crates/pulsar_core" }
-pulsar_ecs            = { path = "crates/pulsar_ecs" }
+pulsar_core                        = { path = "crates/pulsar_core" }
+pulsar_ecs                         = { path = "crates/pulsar_ecs" }
 
 
 

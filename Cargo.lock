@@ -1236,7 +1236,7 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=8db2298d161758e556df7909e318b7c4f8bada89#8db2298d161758e556df7909e318b7c4f8bada89"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=5ecd5602415b1e15c2eb20cb852efeab0828f3ee#5ecd5602415b1e15c2eb20cb852efeab0828f3ee"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2880,7 +2880,7 @@ dependencies = [
 [[package]]
 name = "editor_table_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_DBTable?rev=3bfac5770e592911a14b16b6fda08f3016f66445#3bfac5770e592911a14b16b6fda08f3016f66445"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_DBTable?rev=c9f4b2a8c3d9b32ec1d739c3968e94aec7fafa2f#c9f4b2a8c3d9b32ec1d739c3968e94aec7fafa2f"
 dependencies = [
  "anyhow",
  "engine_state",
@@ -4220,7 +4220,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=2abda4ffb8542aad150fa4ff9ebc7263997fd731#2abda4ffb8542aad150fa4ff9ebc7263997fd731"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=31fbf35800b4cfc2ddf202a1c16a2971251ca84c#31fbf35800b4cfc2ddf202a1c16a2971251ca84c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -8151,7 +8151,7 @@ dependencies = [
 [[package]]
 name = "plugin_matter"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Matter?rev=b209d26f56dbab7aef404e8d44e4396a263d0073#b209d26f56dbab7aef404e8d44e4396a263d0073"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Matter?rev=00e992df8184df4a6ed2b9edcbf580d0df628b71#00e992df8184df4a6ed2b9edcbf580d0df628b71"
 dependencies = [
  "anyhow",
  "gpui-ce",
@@ -10324,7 +10324,7 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=0ae6c16de51c7ccad447d92d7f546f7d6fba3612#0ae6c16de51c7ccad447d92d7f546f7d6fba3612"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=d22e568601ff899423e7f7f8bca35e606a3413b2#d22e568601ff899423e7f7f8bca35e606a3413b2"
 dependencies = [
  "anyhow",
  "engine_backend",
@@ -10653,7 +10653,7 @@ dependencies = [
 [[package]]
 name = "shader_editor_plugin"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=f8a951edb12710d818e21b04bf23c2ea1a80e3bb#f8a951edb12710d818e21b04bf23c2ea1a80e3bb"
+source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=842dc06d9562fa876bf1ed1177976a08de1be455#842dc06d9562fa876bf1ed1177976a08de1be455"
 dependencies = [
  "anyhow",
  "arboard",
@@ -12861,7 +12861,7 @@ dependencies = [
 [[package]]
 name = "ui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -12939,7 +12939,7 @@ dependencies = [
 [[package]]
 name = "ui-macros"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -15567,3 +15567,18 @@ dependencies = [
  "syn 2.0.118",
  "winnow 1.0.3",
 ]
+
+[[patch.unused]]
+name = "ui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
+
+[[patch.unused]]
+name = "ui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
+
+[[patch.unused]]
+name = "ui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
