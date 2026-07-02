@@ -59,6 +59,9 @@ impl EntryScreen {
             entity: Some(self_entity),
         };
         this.load_thumbnails(cx);
+        if this.state.ui.show_onboarding {
+            this.refresh_plugin_registry(cx);
+        }
         this
     }
 

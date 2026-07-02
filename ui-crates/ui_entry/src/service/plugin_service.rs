@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use crate::core::types::*;
+use crate::service::git_service::GitService;
 
 fn registry_local_path(registries_root: &Path, url: &str) -> std::path::PathBuf {
     let slug = url.trim_end_matches('/').trim_end_matches(".git")
@@ -24,15 +25,12 @@ impl PluginService {
         for reg in registries {
             let local = registry_local_path(root, &reg.url);
             if local.join(".git").exists() {
-                let out = std::process::Command::new("git")
-                    .args(["-C", local.to_str().unwrap_or("."), "pull", "--ff-only"])
-                    .output().map_err(|e| format!("git pull: {e}"))?;
-                if !out.status.success() { tracing::warn!("git pull failed for {}: {}", reg.url, String::from_utf8_lossy(&out.stderr)); }
+                if let Err(e) = GitService::pull_updates(&local) {
+                    tracing::warn!("git pull failed for {}: {e}", reg.url);
+                }
             } else {
-                let out = std::process::Command::new("git")
-                    .args(["clone", "--depth", "1", &reg.url, local.to_str().unwrap_or(".")])
-                    .output().map_err(|e| format!("git clone: {e}"))?;
-                if !out.status.success() { tracing::warn!("git clone failed for {}: {}", reg.url, String::from_utf8_lossy(&out.stderr)); }
+                git2::Repository::clone(&reg.url, &local)
+                    .map_err(|e| format!("git clone {}: {e}", reg.url))?;
             }
         }
         Ok(())
