@@ -336,7 +336,7 @@ fn nav_item(
         .child(
             Icon::new(icon)
                 .size(px(15.))
-                .text_color(if is_active { accent } else { muted_fg }),
+                .text_color(if is_active { foreground } else { muted_fg }),
         )
         .child(
             div()
