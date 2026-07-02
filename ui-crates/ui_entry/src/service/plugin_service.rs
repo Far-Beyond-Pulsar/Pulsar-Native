@@ -20,6 +20,9 @@ fn native_plugin_ext() -> &'static str { "so" }
 pub struct PluginService;
 
 impl PluginService {
+    /// Clone or pull each plugin registry via git, then return the list of plugins found.
+    /// Falls back to HTTP-fetching the manifest files from GitHub if the local copy
+    /// does not exist (e.g. first launch, git unavailable, clone failure).
     pub fn clone_or_pull_registries(registries: &[PluginRegistry], root: &Path) -> Result<(), String> {
         let _ = std::fs::create_dir_all(root);
         for reg in registries {
@@ -28,30 +31,92 @@ impl PluginService {
                 if let Err(e) = GitService::pull_updates(&local) {
                     tracing::warn!("git pull failed for {}: {e}", reg.url);
                 }
-            } else {
-                git2::Repository::clone(&reg.url, &local)
-                    .map_err(|e| format!("git clone {}: {e}", reg.url))?;
+            } else if let Err(e) = git2::Repository::clone(&reg.url, &local) {
+                tracing::error!("git clone failed for {}: {e} — will fall back to HTTP fetch", reg.url);
             }
         }
         Ok(())
     }
 
+    /// Load all `RegistryPlugin` entries from the locally-cloned registry repos.
+    /// If a registry hasn't been cloned yet, fetches its manifest JSON files over
+    /// HTTPS from GitHub's raw content server as a fallback.
     pub fn load_plugins_from_registries(registries: &[PluginRegistry], registries_path: &Path) -> Vec<RegistryPlugin> {
+        let http_client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .user_agent("Pulsar-Native/1.0")
+            .build().ok();
         let mut seen = std::collections::HashSet::new();
         let mut result = Vec::new();
         for reg in registries {
-            let plugins_dir = registry_local_path(registries_path, &reg.url).join("plugins");
-            let Ok(entries) = std::fs::read_dir(&plugins_dir) else { continue; };
-            for entry in entries.filter_map(|e| e.ok()) {
-                let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) != Some("json") { continue; }
-                let Ok(text) = std::fs::read_to_string(&path) else { continue; };
-                let Ok(mut plugin) = serde_json::from_str::<RegistryPlugin>(&text) else { continue; };
-                plugin.registry_url = reg.url.clone();
-                if seen.insert(plugin.repo_url.clone()) { result.push(plugin); }
+            let local_dir = registry_local_path(registries_path, &reg.url);
+            let plugins_dir = local_dir.join("plugins");
+            if plugins_dir.exists() {
+                // Read from locally-cloned repo
+                if let Ok(entries) = std::fs::read_dir(&plugins_dir) {
+                    for entry in entries.filter_map(|e| e.ok()) {
+                        if let Some(plugin) = Self::load_single_plugin_file(entry.path(), &reg.url, &mut seen) {
+                            result.push(plugin);
+                        }
+                    }
+                    continue;
+                }
+            }
+            // Fallback: fetch manifest files over HTTPS
+            if let Some(ref client) = http_client {
+                if let Some(list) = Self::fetch_registry_via_http(&reg.url, client) {
+                    for plugin in list {
+                        if seen.insert(plugin.repo_url.clone()) {
+                            result.push(plugin);
+                        }
+                    }
+                }
             }
         }
         result
+    }
+
+    fn load_single_plugin_file(path: std::path::PathBuf, registry_url: &str, seen: &mut std::collections::HashSet<String>) -> Option<RegistryPlugin> {
+        if path.extension().and_then(|e| e.to_str()) != Some("json") { return None; }
+        let text = std::fs::read_to_string(&path).ok()?;
+        let mut plugin: RegistryPlugin = serde_json::from_str(&text).ok()?;
+        plugin.registry_url = registry_url.to_string();
+        if !seen.insert(plugin.repo_url.clone()) { return None; }
+        Some(plugin)
+    }
+
+    /// Fetch all plugin manifest `.json` files from a registry GitHub repo via
+    /// the GitHub Contents API and raw file downloads.
+    fn fetch_registry_via_http(registry_url: &str, client: &reqwest::blocking::Client) -> Option<Vec<RegistryPlugin>> {
+        // Extract owner/repo from a URL like https://github.com/owner/repo
+        let trimmed = registry_url
+            .trim_end_matches('/').trim_end_matches(".git");
+        let (owner, repo) = trimmed
+            .trim_start_matches("https://github.com/")
+            .trim_start_matches("http://github.com/")
+            .split_once('/')?;
+        // List JSON files in the plugins/ directory via GitHub Contents API
+        let list_url = format!("https://api.github.com/repos/{owner}/{repo}/contents/plugins");
+        let resp = client.get(&list_url).send().ok()?;
+        if !resp.status().is_success() {
+            tracing::warn!("GitHub API returned {} for {list_url}", resp.status());
+            return None;
+        }
+        let files: Vec<serde_json::Value> = resp.json().ok()?;
+        let mut plugins = Vec::new();
+        for file in files {
+            let name = file.get("name")?.as_str()?;
+            if !name.ends_with(".json") { continue; }
+            let download_url = file.get("download_url")?.as_str()?;
+            let raw_resp = client.get(download_url).send().ok()?;
+            if !raw_resp.status().is_success() { continue; }
+            let text: String = raw_resp.text().ok()?;
+            if let Ok(mut plugin) = serde_json::from_str::<RegistryPlugin>(&text) {
+                plugin.registry_url = registry_url.to_string();
+                plugins.push(plugin);
+            }
+        }
+        Some(plugins)
     }
 
     pub fn parse_github_owner_repo(url: &str) -> Option<(String, String)> {

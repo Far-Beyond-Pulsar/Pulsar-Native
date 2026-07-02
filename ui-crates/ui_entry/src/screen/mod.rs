@@ -579,10 +579,19 @@ impl EntryScreen {
         cx.spawn(async move |_handle, cx| {
             let regs = registries.clone();
             let rp = registries_path.clone();
-            let _ = cx.background_executor().spawn(async move { PluginService::clone_or_pull_registries(&regs, &rp) }).await;
+            let _ = cx.background_executor().spawn(async move {
+                match PluginService::clone_or_pull_registries(&regs, &rp) {
+                    Ok(()) => tracing::debug!("Plugin registries cloned/pulled successfully"),
+                    Err(e) => tracing::error!("Failed to clone/pull plugin registries: {e}"),
+                }
+            }).await;
             let regs2 = registries.clone();
             let rp2 = registries_path.clone();
-            let plugins = cx.background_executor().spawn(async move { PluginService::load_plugins_from_registries(&regs2, &rp2) }).await;
+            let plugins = cx.background_executor().spawn(async move {
+                let list = PluginService::load_plugins_from_registries(&regs2, &rp2);
+                tracing::debug!("Loaded {} plugins from registries", list.len());
+                list
+            }).await;
             cx.update(|cx| entity.update(cx, |this, cx| {
                 this.state.registry_plugins = plugins;
                 this.state.registry_refresh_in_progress = false;
