@@ -3,37 +3,23 @@ name = "ui_entry"
 version = "0.1.0"
 edition = "2021"
 publish = false
+description = "Modular project-entry screen with OOBE, project management, cloud, plugins, and auth"
 
 [dependencies]
-# Rust installer - drives platform-native rustup installation as a library
 rustup.workspace = true
-
-# UI framework
 gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
-# Engine
 engine_state.workspace = true
 engine_backend.workspace = true
 window_manager.workspace = true
 engine_fs.workspace = true
 pulsar_auth.workspace = true
-
-# Git manager window dependency
 ui_git_manager.workspace = true
-
-# Friends system
 ui_friends.workspace = true
 friends_engine.workspace = true
-
-# Loading screen is used by entry for splash/progress
 ui_loading_screen.workspace = true
-
-
-# Git operations
 git2 = { workspace = true }
-
-# File system
 directories = { workspace = true }
 rfd = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -43,14 +29,11 @@ chrono = { workspace = true, features = ["serde"] }
 parking_lot = { workspace = true }
 open = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "json", "rustls-no-provider", "system-proxy"] }
-tokio = { workspace = true, features = ["rt", "sync"] }
-smol = { workspace = true }
 tracing.workspace = true
 image.workspace = true
 smallvec.workspace = true
-
-# Audio
-rodio = { version = "0.22.2", default-features = false, features = ["mp3", "playback"] }
+uuid = { workspace = true }
+which = "7.0"
 
 [target.'cfg(windows)'.dependencies]
 runas = "1.2"

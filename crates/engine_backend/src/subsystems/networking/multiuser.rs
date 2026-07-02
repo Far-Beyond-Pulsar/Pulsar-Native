@@ -903,6 +903,18 @@ impl MultiuserClient {
         }
     }
 
+    /// Synchronous wrapper around [`connect_to_workspace`] that blocks on the global
+    /// Tokio runtime.  Lets callers from non-Tokio contexts (e.g. gpui background
+    /// threads) drive the async handshake without depending on tokio directly.
+    pub fn connect_to_workspace_sync(
+        &mut self,
+        workspace_id: String,
+        auth_token: String,
+        username: String,
+    ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
+        tokio_runtime().block_on(self.connect_to_workspace(workspace_id, auth_token, username))
+    }
+
     /// Send a message to the server
     pub async fn send(&self, message: ClientMessage) -> Result<()> {
         if let Some(tx) = &self.message_tx {
