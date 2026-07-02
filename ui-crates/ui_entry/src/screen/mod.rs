@@ -343,6 +343,8 @@ impl EntryScreen {
                 }));
                 return;
             };
+            let uri = flow.verification_uri.clone();
+            let _ = open::that(&uri);
             cx.update(|cx| entity.update(cx, |this, cx| {
                 this.state.auth.device_code = Some(flow.user_code.clone());
                 this.state.auth.device_verification_url = Some(flow.verification_uri.clone());
@@ -387,7 +389,6 @@ impl EntryScreen {
             if let Some(ec) = engine_state::EngineContext::global() {
                 ec.set_auth_profile(profile.clone());
             }
-            let profile2 = profile.clone();
             cx.update(|cx| entity.update(cx, |this, cx| {
                 this.state.auth.loading = false;
                 this.state.ui.auth_device_modal_visible = false;
@@ -814,7 +815,12 @@ impl EntryScreen {
 
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        crate::screen::layout::render_layout(self, window, cx)
+        let content = crate::screen::layout::render_layout(self, window, cx);
+        if self.state.ui.auth_device_modal_visible {
+            div().size_full().child(content).child(views::render_auth_modal(self, cx)).into_any_element()
+        } else {
+            content.into_any_element()
+        }
     }
 }
 

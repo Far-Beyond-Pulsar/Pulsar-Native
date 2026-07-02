@@ -1,3 +1,4 @@
+pub mod auth_modal;
 pub mod clone_git;
 pub mod cloud_projects;
 pub mod dependency_setup;
@@ -9,6 +10,7 @@ pub mod sidebar;
 pub mod templates;
 pub mod upstream_prompt;
 
+pub use auth_modal::render_auth_modal;
 pub use clone_git::render_clone_git;
 pub use cloud_projects::render_cloud_projects;
 pub use dependency_setup::render_dependency_setup;
