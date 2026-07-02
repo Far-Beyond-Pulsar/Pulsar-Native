@@ -6,6 +6,9 @@ use ui::{h_flex, v_virtual_list, VirtualListScrollHandle};
 
 use crate::screen::EntryScreen;
 
+//TODO: make this card grid adapt to the space available such that it fills the
+//      available width with an appropriate number of columns based on card min
+//      and max width values.
 pub fn render_card_grid<T: 'static + Clone>(
     items: &[T],
     scroll_handle: &VirtualListScrollHandle,
