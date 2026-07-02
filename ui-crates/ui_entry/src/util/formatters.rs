@@ -13,11 +13,21 @@ pub fn format_size(bytes: u64) -> String {
     }
 }
 
+fn parse_iso_timestamp(s: &str) -> Option<chrono::NaiveDateTime> {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.naive_local());
+    }
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
+        return Some(dt);
+    }
+    None
+}
+
 pub fn format_timestamp(timestamp: &str) -> String {
     if timestamp.is_empty() {
         return "Never".to_string();
     }
-    if let Ok(parsed) = chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%d %H:%M") {
+    if let Some(parsed) = parse_iso_timestamp(timestamp) {
         let now = chrono::Local::now().naive_local();
         let duration = now - parsed;
         if duration.num_minutes() < 1 {

@@ -130,6 +130,7 @@ fn render_template_card(
                 .h(px(140.))
                 .relative()
                 .overflow_hidden()
+                .rounded_t_xl()
                 .bg(theme.secondary.opacity(0.2))
                 .group("card-image")
                 .when_some(thumbnail.clone(), |this, render_img| {

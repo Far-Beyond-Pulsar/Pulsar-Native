@@ -30,7 +30,7 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                 .child(
                     div()
                         .flex_1()
-                        .text_xl()
+                        .text_2xl()
                         .font_weight(gpui::FontWeight::BOLD)
                         .text_color(theme.foreground)
                         .child(format!("Recent Projects")),
@@ -149,10 +149,14 @@ fn render_project_card(
         .border_color(theme.border)
         .bg(theme.secondary.opacity(0.08))
         .overflow_hidden()
+        .cursor_pointer()
         .hover(|this| {
             this.bg(theme.secondary.opacity(0.15))
                 .border_color(theme.accent.opacity(0.4))
         })
+        .on_click(cx.listener(move |this, _, _, cx| {
+            this.launch_project(std::path::PathBuf::from(&path_open), cx);
+        }))
         .child(
             div()
                 .w_full()
@@ -160,6 +164,7 @@ fn render_project_card(
                 .relative()
                 .overflow_hidden()
                 .bg(theme.secondary.opacity(0.2))
+                .rounded_t_xl()
                 .group("card-image")
                 .when_some(thumbnail.clone(), |this, render_img| {
                     this.child(
@@ -191,16 +196,6 @@ fn render_project_card(
                         .gap_1()
                         .opacity(0.0)
                         .group_hover("card-image", |this| this.opacity(1.0))
-                        .child(
-                            Button::new(SharedString::from(format!("open-{}", path)))
-                                .icon(IconName::Play)
-                                .compact()
-                                .ghost()
-                                .tooltip("Open in Editor")
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.launch_project(std::path::PathBuf::from(&path_open), cx);
-                                })),
-                        )
                         .child(
                             Button::new(SharedString::from(format!("git-{}", path)))
                                 .icon(IconName::GitBranch)

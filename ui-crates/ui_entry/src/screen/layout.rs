@@ -2,7 +2,7 @@ use gpui::prelude::*;
 use gpui::*;
 use ui::{
     button::{Button, ButtonVariants as _},
-    h_flex, v_flex, ActiveTheme as _, IconName, TitleBar,
+    h_flex, v_flex, ActiveTheme as _, Icon, IconName, TitleBar,
 };
 
 use crate::screen::EntryScreen;
@@ -49,20 +49,28 @@ pub fn render_layout(screen: &mut EntryScreen, window: &mut Window, cx: &mut Con
                         .bg(cx.theme().background)
                         .child(
                             TitleBar::new()
-                                .child(
-                                    div()
+                                .child(div().flex_1())
+                                .child({
+                                    let theme_picker = screen.state.theme_picker.clone();
+                                    h_flex()
                                         .flex()
                                         .items_center()
                                         .px_2()
                                         .gap_2()
+                                        .child(screen.state.auth.profile_dropdown.clone())
                                         .child(
-                                            div()
-                                                .text_sm()
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child(view_title(view)),
-                                        ),
-                                ),
+                                            ui::popover::Popover::<ui_common::ThemePicker>::new("titlebar-theme-popover")
+                                                .anchor(Corner::TopRight)
+                                                .trigger(
+                                                    Button::new("titlebar-theme-toggle")
+                                                        .icon(IconName::Palette)
+                                                        .compact()
+                                                        .ghost()
+                                                        .tooltip("Switch theme"),
+                                                )
+                                                .content(move |_, _| theme_picker.clone()),
+                                        )
+                                }),
                         )
                         .child(match view {
                             EntryScreenView::Recent => {

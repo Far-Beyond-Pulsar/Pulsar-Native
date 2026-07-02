@@ -307,28 +307,7 @@ pub fn render_sidebar(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -
                         })),
                 ),
         )
-        .child(
-            h_flex()
-                .w_full()
-                .px_3()
-                .py_3()
-                .border_t_1()
-                .border_color(border)
-                .gap_2()
-                .items_center()
-                .child(screen.state.auth.profile_dropdown.clone())
-                .child(div().flex_1())
-                .child(
-                    Button::new("sidebar-theme-toggle")
-                        .icon(IconName::Palette)
-                        .compact()
-                        .ghost()
-                        .tooltip("Switch theme")
-                        .on_click(cx.listener(|this, _, _, _cx| {
-                            // Theme toggle handled by ThemePicker popover
-                        })),
-                ),
-        )
+        .child(div().h(px(12.)))
 }
 
 fn nav_item(
