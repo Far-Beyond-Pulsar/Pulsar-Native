@@ -33,6 +33,7 @@
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
 use std::hash::DefaultHasher;
+use std::sync::atomic::Ordering;
 
 // --- Global Allocator Setup ---
 use gpui::AppContext;
