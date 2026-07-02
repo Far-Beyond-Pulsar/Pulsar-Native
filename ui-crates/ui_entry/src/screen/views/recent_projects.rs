@@ -171,6 +171,7 @@ fn render_project_card(
                         gpui::img(ImageSource::Render(render_img))
                             .w_full()
                             .h_full()
+                            .rounded_t_xl()
                             .object_fit(gpui::ObjectFit::Cover),
                     )
                 })
