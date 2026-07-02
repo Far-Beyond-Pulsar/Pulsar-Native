@@ -579,10 +579,23 @@ fn render_account_card(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) 
                         .on_click(cx.listener(|this, _, _, cx| { this.begin_github_sign_in(cx); cx.notify(); })))
                 })
                 .when(loading, |this| this.child(div().text_sm().text_color(theme.muted_foreground).child("Signing in...")))
-                .when_some(code, |this, code| {
+                .when_some(code.clone(), |this, code_display| {
+                    let url = screen.state.auth.device_verification_url.clone();
+                    let code_for_copy = code_display.clone();
                     this.child(v_flex().gap_2().p_3().bg(theme.accent.opacity(0.12)).rounded_lg().border_1().border_color(theme.accent.opacity(0.35))
                         .child(div().text_xs().text_color(theme.muted_foreground).child("Paste this code in the browser window:"))
-                        .child(div().text_center().text_2xl().font_weight(FontWeight::BOLD).text_color(theme.foreground).child(code)))
+                        .child(div().text_center().text_2xl().font_weight(FontWeight::BOLD).text_color(theme.foreground).child(code_display))
+                        .child(h_flex().gap_2().justify_center().pt_2()
+                            .child(Button::new("open-browser-code").label("Open Browser").ghost().icon(IconName::ExternalLink)
+                                .on_click(cx.listener(move |_, _, _, cx| {
+                                    if let Some(ref u) = url { cx.open_url(u); }
+                                })))
+                            .child(Button::new("copy-device-code").label("Copy Code").ghost()
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    cx.write_to_clipboard(gpui::ClipboardItem::new_string(code_for_copy.clone()));
+                                    this.state.ui.auth_device_copy_notice = Some("Code copied.".to_string());
+                                    cx.notify();
+                                })))))
                 })
                 .when_some(message, |this, msg| this.child(div().text_xs().text_color(theme.muted_foreground).child(msg)))
                 .child(div().text_xs().text_color(theme.muted_foreground).child("Your data stays private. Sign-in is optional.")),
