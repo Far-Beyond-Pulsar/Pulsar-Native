@@ -8,6 +8,7 @@ use crate::uri;
 #[derive(Clone)]
 pub struct ParsedArgs {
     pub verbose: bool,
+    pub force_oobe: bool,
     pub uri_command: Option<uri::UriCommand>,
 }
 
@@ -15,9 +16,11 @@ pub struct ParsedArgs {
 pub fn parse_args() -> ParsedArgs {
     let args: Vec<String> = std::env::args().collect();
     let verbose = args.iter().any(|a| a == "-v" || a == "--verbose");
+    let force_oobe = args.iter().any(|a| a == "--oobe" || a == "--force-oobe");
     let uri_command = uri::parse_launch_args().unwrap_or_default();
     ParsedArgs {
         verbose,
+        force_oobe,
         uri_command,
     }
 }

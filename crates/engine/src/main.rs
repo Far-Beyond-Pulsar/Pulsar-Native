@@ -139,6 +139,10 @@ fn main() {
     dotenv::dotenv();
     let parsed = args::parse_args();
 
+    if parsed.force_oobe {
+        ui_entry::FORCE_OOBE.store(true, Ordering::Relaxed);
+    }
+
     // Create initialization context
     let mut init_ctx = InitContext::new(parsed.clone());
 

@@ -15,8 +15,11 @@ pub use ui::OpenSettings;
 
 use gpui::*;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use ui::Root;
+
+pub static FORCE_OOBE: AtomicBool = AtomicBool::new(false);
 
 pub fn create_entry_component(
     window: &mut Window,

@@ -1,6 +1,7 @@
 pub mod views;
 
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use gpui::*;
@@ -40,12 +41,13 @@ impl EntryScreen {
             state.template_thumbnail_queue.push_back(tmpl.clone());
         }
 
-        let oobe_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
+        let oobe_marker = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|d| d.data_dir().join("oobe_complete"));
-        let is_first_run = oobe_path.as_ref().map(|p| !p.exists()).unwrap_or(true);
-        if is_first_run {
+        let is_fresh = oobe_marker.as_ref().map(|p| !p.exists()).unwrap_or(true);
+        let force_oobe = crate::FORCE_OOBE.swap(false, Ordering::Relaxed);
+        if is_fresh || force_oobe {
             state.ui.show_onboarding = true;
-            if let Some(ref path) = oobe_path {
+            if let Some(ref path) = oobe_marker {
                 let _ = std::fs::create_dir_all(path.parent().unwrap());
                 let _ = std::fs::write(path, "1");
             }
