@@ -112,6 +112,9 @@ pub struct CloudProject {
     pub last_modified: String,
     pub size_bytes: u64,
     pub owner: String,
+    /// The default/root environment ID on the Studio server, if one exists.
+    /// Used to connect to a per-environment session instead of the legacy lobby.
+    pub environment_id: Option<String>,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

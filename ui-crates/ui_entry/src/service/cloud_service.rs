@@ -69,7 +69,7 @@ impl CloudService {
             }
         };
 
-        let projects: Vec<CloudProject> = match build_req(&projects_url).send() {
+        let mut projects: Vec<CloudProject> = match build_req(&projects_url).send() {
             Ok(r) if r.status().is_success() => r.json::<serde_json::Value>().ok()
                 .and_then(|v| v.as_array().cloned())
                 .map(|arr| arr.into_iter().filter_map(|p| {
@@ -86,11 +86,36 @@ impl CloudService {
                         "error" => CloudProjectStatus::Error(p.get("error_msg").and_then(|v| v.as_str()).unwrap_or("unknown").to_string()),
                         _ => CloudProjectStatus::Idle,
                     };
-                    Some(CloudProject { id, name, description, status: proj_status, last_modified, size_bytes, owner })
+                    Some(CloudProject { id, name, description, status: proj_status, last_modified, size_bytes, owner, environment_id: None })
                 }).collect())
                 .unwrap_or_default(),
             _ => vec![],
         };
+
+        // Fetch default environment for each project so we can connect to
+        // a per-environment session (instead of the legacy lobby) for proper
+        // dashboard presence support.
+        let proj_ids: Vec<String> = projects.iter().map(|p| p.id.clone()).collect();
+        for pid in &proj_ids {
+            let env_url = format!("{}/api/v1/workspaces/{}/environments", base_url, pid);
+            if let Ok(r) = build_req(&env_url).send() {
+                if r.status().is_success() {
+                    if let Ok(envs) = r.json::<serde_json::Value>() {
+                        if let Some(arr) = envs.as_array() {
+                            let chosen = arr.iter().find(|e| e.get("is_root").and_then(|v| v.as_bool()).unwrap_or(false))
+                                .or_else(|| arr.first());
+                            if let Some(env) = chosen {
+                                if let Some(eid) = env.get("id").and_then(|v| v.as_str()) {
+                                    if let Some(proj) = projects.iter_mut().find(|cp| cp.id == *pid) {
+                                        proj.environment_id = Some(eid.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         Some((status, projects))
     }
@@ -143,7 +168,9 @@ impl CloudService {
 
     /// Open a cloud workspace by configuring the virtual filesystem and starting a session.
     /// Returns the virtual path for the editor to open.
-    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str, username: &str) -> PathBuf {
+    /// If `environment_id` is provided, connects to the per-environment session
+    /// endpoint so the web dashboard presence system tracks the connection correctly.
+    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str, username: &str, environment_id: Option<&str>) -> PathBuf {
         let token_opt: Option<String> = if auth_token.is_empty() { None } else { Some(auth_token.to_string()) };
         let remote_config = engine_fs::RemoteConfig {
             server_url: base_url.to_string(),
@@ -163,9 +190,10 @@ impl CloudService {
         let wid = workspace_id.to_string();
         let tok = auth_token.to_string();
         let user = username.to_string();
+        let eid = environment_id.map(|s| s.to_string());
         std::thread::spawn(move || {
             let mut client = MultiuserClient::new(bu);
-            match client.connect_to_workspace_sync(wid, tok, user) {
+            match client.connect_to_workspace_sync(wid, tok, user, eid) {
                 Ok(mut rx) => {
                     if let Some(ec) = engine_state::EngineContext::global() {
                         let _ = ec.update_multiuser(|mu| mu.set_status(engine_state::MultiuserStatus::Connected { relay_mode: None }));

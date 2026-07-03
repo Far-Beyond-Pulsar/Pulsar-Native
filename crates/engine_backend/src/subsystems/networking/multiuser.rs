@@ -621,6 +621,7 @@ impl MultiuserClient {
         workspace_id: String,
         auth_token: String,
         username: String,
+        environment_id: Option<String>,
     ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
         *self.status.write().await = ConnectionStatus::Connecting;
         *self.latency_ms.write().await = None;
@@ -636,10 +637,19 @@ impl MultiuserClient {
         } else {
             format!("ws://{server_url_clean}")
         };
-        let ws_url = format!(
-            "{}/api/v1/workspaces/{}/session?user={}&token={}",
-            ws_base, workspace_id, username, auth_token
-        );
+        // Use per-environment endpoint when available for proper dashboard presence;
+        // fall back to the legacy lobby endpoint.
+        let ws_url = if let Some(ref eid) = environment_id {
+            format!(
+                "{}/api/v1/workspaces/{}/environments/{}/session?user={}&token={}",
+                ws_base, workspace_id, eid, username, auth_token
+            )
+        } else {
+            format!(
+                "{}/api/v1/workspaces/{}/session?user={}&token={}",
+                ws_base, workspace_id, username, auth_token
+            )
+        };
 
         info!("🔗 Connecting to Studio workspace session: {:?}", ws_url);
 
@@ -906,13 +916,16 @@ impl MultiuserClient {
     /// Synchronous wrapper around [`connect_to_workspace`] that blocks on the global
     /// Tokio runtime.  Lets callers from non-Tokio contexts (e.g. gpui background
     /// threads) drive the async handshake without depending on tokio directly.
+    /// If `environment_id` is provided, connects to the per-environment session
+    /// endpoint for proper dashboard presence tracking.
     pub fn connect_to_workspace_sync(
         &mut self,
         workspace_id: String,
         auth_token: String,
         username: String,
+        environment_id: Option<String>,
     ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
-        tokio_runtime().block_on(self.connect_to_workspace(workspace_id, auth_token, username))
+        tokio_runtime().block_on(self.connect_to_workspace(workspace_id, auth_token, username, environment_id))
     }
 
     /// Send a message to the server
