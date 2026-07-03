@@ -189,10 +189,10 @@ impl CloudService {
         let wid = workspace_id.to_string();
         let tok = auth_token.to_string();
         let user = username.to_string();
-        let eid = environment_id.map(|s| s.to_string());
+        let ws_eid = if environment_id.is_empty() { None } else { Some(environment_id.to_string()) };
         std::thread::spawn(move || {
             let mut client = MultiuserClient::new(bu);
-            match client.connect_to_workspace_sync(wid, tok, user, eid) {
+            match client.connect_to_workspace_sync(wid, tok, user, ws_eid) {
                 Ok(mut rx) => {
                     if let Some(ec) = engine_state::EngineContext::global() {
                         let _ = ec.update_multiuser(|mu| mu.set_status(engine_state::MultiuserStatus::Connected { relay_mode: None }));
