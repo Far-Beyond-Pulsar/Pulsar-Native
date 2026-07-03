@@ -1240,7 +1240,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
+ "ui",
  "ui_common",
  "uuid",
  "wgpu",
@@ -2822,7 +2822,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
+ "ui",
  "ui_common",
  "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
  "uuid",
@@ -2925,7 +2925,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_gen_macros",
  "uuid",
  "walkdir",
@@ -5155,7 +5155,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core",
 ]
 
 [[package]]
@@ -7994,7 +7994,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_types_common 0.1.0",
  "window_manager",
 ]
@@ -8013,7 +8013,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "walkdir",
 ]
 
@@ -8033,7 +8033,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
+ "ui",
  "uuid",
  "wgpu",
 ]
@@ -8636,7 +8636,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "ui_core",
  "ui_entry",
@@ -8689,7 +8689,7 @@ dependencies = [
 name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
 ]
 
 [[package]]
@@ -8716,7 +8716,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
 ]
 
 [[package]]
@@ -8739,7 +8739,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
 ]
 
@@ -8757,7 +8757,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "uuid",
 ]
 
@@ -8786,7 +8786,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
 ]
 
@@ -10195,7 +10195,7 @@ dependencies = [
  "serde_json",
  "similar 2.7.0",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
+ "ui",
  "ui_common",
  "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
  "uuid",
@@ -10531,7 +10531,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
+ "ui",
  "ui_common",
  "uuid",
  "wgpu",
@@ -12668,7 +12668,7 @@ dependencies = [
 [[package]]
 name = "ui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -12737,76 +12737,16 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "tree-sitter-zig",
- "ui-macros 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui-macros",
  "unicode-segmentation",
  "uuid",
  "windows 0.62.2",
 ]
 
 [[package]]
-name = "ui"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
-dependencies = [
- "aho-corasick",
- "anyhow",
- "base64",
- "chrono",
- "directories 5.0.1",
- "enum-iterator",
- "gpui-ce",
- "gpui_sum_tree",
- "html5ever 0.39.0",
- "image",
- "itertools 0.14.0",
- "lazy_static",
- "linkme",
- "lsp-types",
- "markdown",
- "markup5ever_rcdom",
- "mathjax-svg-rs",
- "mermaid-rs-renderer",
- "notify 6.1.1",
- "num-traits",
- "once_cell",
- "open",
- "parking_lot",
- "paste",
- "regex",
- "resvg",
- "ropey",
- "rust-embed",
- "rust-i18n 3.1.5",
- "schemars",
- "serde",
- "serde_json",
- "serde_repr",
- "smallvec",
- "smol",
- "toml 0.8.23",
- "tracing",
- "tree-sitter",
- "tree-sitter-json",
- "ui-macros 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
- "unicode-segmentation",
- "uuid",
- "windows 0.58.0",
-]
-
-[[package]]
 name = "ui-macros"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "ui-macros"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -12822,7 +12762,7 @@ dependencies = [
  "image",
  "inventory",
  "smallvec",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -12847,7 +12787,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "window_manager",
 ]
 
@@ -12902,7 +12842,7 @@ dependencies = [
  "shader_editor_plugin",
  "smol",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_about",
  "ui_common",
  "ui_documentation",
@@ -12935,7 +12875,7 @@ dependencies = [
  "pulsar_docs",
  "regex",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -12965,7 +12905,7 @@ dependencies = [
  "smallvec",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "ui_friends",
  "ui_git_manager",
@@ -12991,7 +12931,7 @@ dependencies = [
  "smol",
  "tokio",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "urlencoding",
  "window_manager",
@@ -13015,7 +12955,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "ui_types_common 0.1.0",
  "window_manager",
@@ -13038,7 +12978,7 @@ dependencies = [
  "rust-i18n 4.1.0",
  "serde",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "wgpu",
  "window_manager",
@@ -13059,7 +12999,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
 ]
 
@@ -13089,7 +13029,7 @@ dependencies = [
  "similar 3.1.1",
  "smallvec",
  "smol",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -13128,7 +13068,7 @@ dependencies = [
  "smol",
  "tool_registry",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "ui_types_common 0.1.0",
  "wgpu",
@@ -13150,7 +13090,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "ui_file_manager",
  "window_manager",
@@ -13181,7 +13121,7 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "wgpu",
  "window_manager",
@@ -13203,7 +13143,7 @@ dependencies = [
  "similar 3.1.1",
  "tokio",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -13218,7 +13158,7 @@ dependencies = [
  "reqwest 0.13.4",
  "smallvec",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
 ]
 
 [[package]]
@@ -13230,7 +13170,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -13243,7 +13183,7 @@ dependencies = [
  "rust-i18n 4.1.0",
  "similar 3.1.1",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -13258,7 +13198,7 @@ dependencies = [
  "inventory",
  "pulsar_std",
  "tracing",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -13271,7 +13211,7 @@ dependencies = [
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n 4.1.0",
- "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "ui",
  "ui_common",
  "window_manager",
 ]
@@ -14073,7 +14013,7 @@ dependencies = [
  "web-sys",
  "wgpu-types",
  "windows 0.62.2",
- "windows-core 0.62.2",
+ "windows-core",
 ]
 
 [[package]]
@@ -14217,22 +14157,12 @@ dependencies = [
 
 [[package]]
 name = "windows"
-version = "0.58.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd04d41d93c4992d421894c18c8b43496aa748dd4c081bac0dc93eb0489272b6"
-dependencies = [
- "windows-core 0.58.0",
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows"
 version = "0.62.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "527fadee13e0c05939a6a05d5bd6eec6cd2e3dbd648b9f8e447c6518133d8580"
 dependencies = [
  "windows-collections",
- "windows-core 0.62.2",
+ "windows-core",
  "windows-future",
  "windows-numerics",
 ]
@@ -14243,20 +14173,7 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b2d95af1a8a14a3c7367e1ed4fc9c20e0a26e79551b1454d72583c97cc6610"
 dependencies = [
- "windows-core 0.62.2",
-]
-
-[[package]]
-name = "windows-core"
-version = "0.58.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ba6d44ec8c2591c134257ce647b7ea6b20335bf6379a27dac5f1641fcf59f99"
-dependencies = [
- "windows-implement 0.58.0",
- "windows-interface 0.58.0",
- "windows-result 0.2.0",
- "windows-strings 0.1.0",
- "windows-targets 0.52.6",
+ "windows-core",
 ]
 
 [[package]]
@@ -14265,8 +14182,8 @@ version = "0.62.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8e83a14d34d0623b51dce9581199302a221863196a1dde71a7663a4c2be9deb"
 dependencies = [
- "windows-implement 0.60.2",
- "windows-interface 0.59.3",
+ "windows-implement",
+ "windows-interface",
  "windows-link 0.2.1",
  "windows-result 0.4.1",
  "windows-strings 0.5.1",
@@ -14278,20 +14195,9 @@ version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e1d6f90251fe18a279739e78025bd6ddc52a7e22f921070ccdc67dde84c605cb"
 dependencies = [
- "windows-core 0.62.2",
+ "windows-core",
  "windows-link 0.2.1",
  "windows-threading",
-]
-
-[[package]]
-name = "windows-implement"
-version = "0.58.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bbd5b46c938e506ecbce286b6628a02171d56153ba733b6c741fc627ec9579b"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]
@@ -14299,17 +14205,6 @@ name = "windows-implement"
 version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "windows-interface"
-version = "0.58.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "053c4c462dc91d3b1504c6fe5a726dd15e216ba718e84a0e46a88fbe5ded3515"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -14345,7 +14240,7 @@ version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e2e40844ac143cdb44aead537bbf727de9b044e107a0f1220392177d15b0f26"
 dependencies = [
- "windows-core 0.62.2",
+ "windows-core",
  "windows-link 0.2.1",
 ]
 
@@ -14373,15 +14268,6 @@ dependencies = [
 
 [[package]]
 name = "windows-result"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d1043d8214f791817bab27572aaa8af63732e11bf84aa21a45a78d6c317ae0e"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-result"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56f42bd332cc6c8eac5af113fc0c1fd6a8fd2aa08a0119358686e5160d0586c6"
@@ -14396,16 +14282,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
 dependencies = [
  "windows-link 0.2.1",
-]
-
-[[package]]
-name = "windows-strings"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4cd9b125c486025df0eabcb585e62173c6c9eddcec5d117d3b6e8c30e2ee4d10"
-dependencies = [
- "windows-result 0.2.0",
- "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -15433,16 +15309,6 @@ dependencies = [
  "syn 2.0.118",
  "winnow 1.0.3",
 ]
-
-[[patch.unused]]
-name = "ui"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
-
-[[patch.unused]]
-name = "ui"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=0fd58bb40d2e94e02831a198b76e20527f0150df#0fd58bb40d2e94e02831a198b76e20527f0150df"
 
 [[patch.unused]]
 name = "ui"
