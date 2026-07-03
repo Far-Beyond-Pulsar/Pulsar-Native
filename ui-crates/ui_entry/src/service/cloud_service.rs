@@ -168,14 +168,12 @@ impl CloudService {
 
     /// Open a cloud workspace by configuring the virtual filesystem and starting a session.
     /// Returns the virtual path for the editor to open.
-    /// If `environment_id` is provided, connects to the per-environment session
-    /// endpoint so the web dashboard presence system tracks the connection correctly.
-    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str, username: &str, environment_id: Option<&str>) -> PathBuf {
+    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str, username: &str, environment_id: &str) -> PathBuf {
         let token_opt: Option<String> = if auth_token.is_empty() { None } else { Some(auth_token.to_string()) };
         let remote_config = engine_fs::RemoteConfig {
             server_url: base_url.to_string(),
             workspace_id: workspace_id.to_string(),
-            environment_id: environment_id.map(|s| s.to_string()),
+            environment_id: environment_id.to_string(),
             auth_token: token_opt,
         };
         engine_fs::virtual_fs::set_provider(std::sync::Arc::new(engine_fs::RemoteFsProvider::new(remote_config)));
@@ -185,8 +183,8 @@ impl CloudService {
             .with_workspace_id(workspace_id.to_string());
         let ctx = if !auth_token.is_empty() { ctx.with_auth_token(auth_token.to_string()) } else { ctx };
         if let Some(ec) = engine_state::EngineContext::global() { ec.set_multiuser(ctx); }
-        let virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}",
-            base_url.trim_start_matches("http://").trim_start_matches("https://"), workspace_id));
+        let virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}/{}",
+            base_url.trim_start_matches("http://").trim_start_matches("https://"), workspace_id, environment_id));
         let bu = base_url.to_string();
         let wid = workspace_id.to_string();
         let tok = auth_token.to_string();
