@@ -76,8 +76,6 @@ impl RemoteConfig {
     ///
     /// Returns `None` when the scheme does not match.
     pub fn from_cloud_path(path: &Path) -> Option<Self> {
-        // Normalize backslashes so the URI scheme prefix check works on Windows
-        // where PathBuf may have stored "cloud+pulsar:\\host\\proj".
         let s = path.to_string_lossy().replace('\\', "/");
         let without_scheme = s.strip_prefix("cloud+pulsar://")?;
         let slash = without_scheme.find('/')?;
@@ -88,10 +86,17 @@ impl RemoteConfig {
         if workspace_id.is_empty() {
             return None;
         }
+        let remaining = &rest[workspace_id_end + 1..];
+        let environment_id = if remaining.is_empty() {
+            return None;
+        } else {
+            let eid_end = remaining.find('/').unwrap_or(remaining.len());
+            remaining[..eid_end].to_string()
+        };
         Some(RemoteConfig {
             server_url: format!("http://{}", host),
             workspace_id,
-            environment_id: None,
+            environment_id,
             auth_token: None,
         })
     }
