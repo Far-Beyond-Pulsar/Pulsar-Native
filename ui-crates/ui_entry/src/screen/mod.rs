@@ -53,6 +53,8 @@ impl EntryScreen {
             }
         }
 
+        inputs.subscribe_all(self_entity.clone(), cx);
+
         let mut this = Self {
             state,
             inputs,
@@ -446,11 +448,6 @@ impl EntryScreen {
         let url_text = self.state.input.add_server_url_text.clone();
         let email = self.state.input.add_server_email_text.clone();
         let password = self.state.input.add_server_password_text.clone();
-        if alias.is_empty() || url_text.is_empty() || email.is_empty() || password.is_empty() {
-            self.state.add_server_error = Some("All fields are required".to_string());
-            cx.notify();
-            return;
-        }
         self.state.add_server_logging_in = true;
         self.state.add_server_error = None;
         cx.notify();

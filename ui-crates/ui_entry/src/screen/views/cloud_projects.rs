@@ -142,8 +142,7 @@ fn render_server_card(
         .cursor_pointer()
         .hover(|this| this.bg(theme.secondary.opacity(0.15)))
         .on_click(cx.listener(move |this, _, _, cx| {
-            this.state.selected_cloud_server = Some(idx);
-            cx.notify();
+            this.select_cloud_server(idx, cx);
         }))
         .child(
             h_flex()

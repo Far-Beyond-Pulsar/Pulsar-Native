@@ -118,6 +118,69 @@ impl InputEntities {
                 });
             }
         }).detach();
+        let s4 = screen.clone();
+        cx.subscribe(&self.add_server_alias, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s4.update(cx, |this, cx| {
+                    this.state.input.add_server_alias_text = this.inputs().add_server_alias.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s5 = screen.clone();
+        cx.subscribe(&self.add_server_url, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s5.update(cx, |this, cx| {
+                    this.state.input.add_server_url_text = this.inputs().add_server_url.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s6 = screen.clone();
+        cx.subscribe(&self.add_server_email, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s6.update(cx, |this, cx| {
+                    this.state.input.add_server_email_text = this.inputs().add_server_email.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s7 = screen.clone();
+        cx.subscribe(&self.add_server_password, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s7.update(cx, |this, cx| {
+                    this.state.input.add_server_password_text = this.inputs().add_server_password.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s8 = screen.clone();
+        cx.subscribe(&self.create_project_name, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s8.update(cx, |this, cx| {
+                    this.state.input.create_project_name_text = this.inputs().create_project_name.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s9 = screen.clone();
+        cx.subscribe(&self.create_project_description, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s9.update(cx, |this, cx| {
+                    this.state.input.create_project_description_text = this.inputs().create_project_description.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
+        let s10 = screen.clone();
+        cx.subscribe(&self.plugin_search, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+            if let InputEvent::Change = ev {
+                s10.update(cx, |this, cx| {
+                    this.state.input.plugin_search_query = this.inputs().plugin_search.read(cx).text().to_string();
+                    cx.notify();
+                });
+            }
+        }).detach();
     }
 }
 
