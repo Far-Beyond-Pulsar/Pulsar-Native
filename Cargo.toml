@@ -43,8 +43,9 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "31fbf35800b4cfc2ddf202a1c16a2971251ca84c" }
-ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "eda5213258be50bf5a9556ff9a68221bd5f449cd" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "faf94adae251716ba5d6f3b510335395b19365e8", features = ["inspector"] }
+ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "07a0910b7f0004c31dfc7bab8ece03158636c541" }
+ui-macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "07a0910b7f0004c31dfc7bab8ece03158636c541" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/profiling" }
@@ -255,6 +256,9 @@ files.extend-exclude = ["**/fixtures/*"]
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc                  = { git = "https://github.com/j4flmao/PBGC", branch = "fix-pure-node-bytecode-caching" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
+gpui-ce               = { git = "https://github.com/Far-Beyond-Pulsar//WGPUI", rev = "faf94adae251716ba5d6f3b510335395b19365e8" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates

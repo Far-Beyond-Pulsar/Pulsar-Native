@@ -1240,7 +1240,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "ui_common",
  "uuid",
  "wgpu",
@@ -2822,7 +2822,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "ui_common",
  "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
  "uuid",
@@ -2925,7 +2925,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_gen_macros",
  "uuid",
  "walkdir",
@@ -4148,7 +4148,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI?rev=31fbf35800b4cfc2ddf202a1c16a2971251ca84c#31fbf35800b4cfc2ddf202a1c16a2971251ca84c"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI?rev=faf94adae251716ba5d6f3b510335395b19365e8#faf94adae251716ba5d6f3b510335395b19365e8"
 dependencies = [
  "anyhow",
  "arboard",
@@ -7994,7 +7994,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_types_common 0.1.0",
  "window_manager",
 ]
@@ -8013,7 +8013,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "walkdir",
 ]
 
@@ -8033,7 +8033,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "uuid",
  "wgpu",
 ]
@@ -8636,7 +8636,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "ui_core",
  "ui_entry",
@@ -8689,7 +8689,7 @@ dependencies = [
 name = "pulsar_graph"
 version = "0.1.0"
 dependencies = [
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
 ]
 
 [[package]]
@@ -8716,7 +8716,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
 ]
 
 [[package]]
@@ -8739,7 +8739,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
 ]
 
@@ -8757,7 +8757,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "uuid",
 ]
 
@@ -8786,7 +8786,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
 ]
 
@@ -10195,7 +10195,7 @@ dependencies = [
  "serde_json",
  "similar 2.7.0",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "ui_common",
  "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
  "uuid",
@@ -10531,7 +10531,7 @@ dependencies = [
  "tool_registry",
  "tool_registry_macros",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "ui_common",
  "uuid",
  "wgpu",
@@ -12668,7 +12668,7 @@ dependencies = [
 [[package]]
 name = "ui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -12737,10 +12737,70 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "tree-sitter-zig",
- "ui-macros",
+ "ui-macros 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
+ "unicode-segmentation",
+ "uuid",
+ "windows 0.62.2",
+]
+
+[[package]]
+name = "ui"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd#eda5213258be50bf5a9556ff9a68221bd5f449cd"
+dependencies = [
+ "aho-corasick",
+ "anyhow",
+ "base64",
+ "chrono",
+ "directories 5.0.1",
+ "enum-iterator",
+ "gpui-ce",
+ "gpui_sum_tree",
+ "html5ever 0.39.0",
+ "image",
+ "itertools 0.14.0",
+ "lazy_static",
+ "linkme",
+ "lsp-types",
+ "markdown",
+ "markup5ever_rcdom",
+ "mathjax-svg-rs",
+ "mermaid-rs-renderer",
+ "notify 6.1.1",
+ "num-traits",
+ "once_cell",
+ "open",
+ "parking_lot",
+ "paste",
+ "regex",
+ "resvg",
+ "ropey",
+ "rust-embed",
+ "rust-i18n 3.1.5",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_repr",
+ "smallvec",
+ "smol",
+ "toml 0.8.23",
+ "tracing",
+ "tree-sitter",
+ "tree-sitter-json",
+ "ui-macros 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=eda5213258be50bf5a9556ff9a68221bd5f449cd)",
  "unicode-segmentation",
  "uuid",
  "windows 0.58.0",
+]
+
+[[package]]
+name = "ui-macros"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -12762,7 +12822,7 @@ dependencies = [
  "image",
  "inventory",
  "smallvec",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -12787,7 +12847,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "window_manager",
 ]
 
@@ -12842,7 +12902,7 @@ dependencies = [
  "shader_editor_plugin",
  "smol",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_about",
  "ui_common",
  "ui_documentation",
@@ -12875,7 +12935,7 @@ dependencies = [
  "pulsar_docs",
  "regex",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -12905,7 +12965,7 @@ dependencies = [
  "smallvec",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "ui_friends",
  "ui_git_manager",
@@ -12931,7 +12991,7 @@ dependencies = [
  "smol",
  "tokio",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "urlencoding",
  "window_manager",
@@ -12955,7 +13015,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "ui_types_common 0.1.0",
  "window_manager",
@@ -12978,7 +13038,7 @@ dependencies = [
  "rust-i18n 4.1.0",
  "serde",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "wgpu",
  "window_manager",
@@ -12999,7 +13059,7 @@ dependencies = [
  "smallvec",
  "smol",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
 ]
 
@@ -13029,7 +13089,7 @@ dependencies = [
  "similar 3.1.1",
  "smallvec",
  "smol",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -13068,7 +13128,7 @@ dependencies = [
  "smol",
  "tool_registry",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "ui_types_common 0.1.0",
  "wgpu",
@@ -13090,7 +13150,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "ui_file_manager",
  "window_manager",
@@ -13121,7 +13181,7 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "wgpu",
  "window_manager",
@@ -13143,7 +13203,7 @@ dependencies = [
  "similar 3.1.1",
  "tokio",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -13158,7 +13218,7 @@ dependencies = [
  "reqwest 0.13.4",
  "smallvec",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
 ]
 
 [[package]]
@@ -13170,7 +13230,7 @@ dependencies = [
  "plugin_editor_api",
  "plugin_manager",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -13183,7 +13243,7 @@ dependencies = [
  "rust-i18n 4.1.0",
  "similar 3.1.1",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -13198,7 +13258,7 @@ dependencies = [
  "inventory",
  "pulsar_std",
  "tracing",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
@@ -13211,7 +13271,7 @@ dependencies = [
  "gpui-ce",
  "plugin_editor_api",
  "rust-i18n 4.1.0",
- "ui",
+ "ui 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541)",
  "ui_common",
  "window_manager",
 ]
