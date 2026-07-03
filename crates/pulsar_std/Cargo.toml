@@ -17,6 +17,7 @@ native = ["dep:rlua", "dep:linkme"]
 [dependencies]
 pulsar_macros = { workspace = true }
 pulsar_reflection = { workspace = true }
+engine_fs = { workspace = true }
 linkme         = { workspace = true, optional = true }
 tracing        = { workspace = true }
 rand           = { workspace = true, features = [] }

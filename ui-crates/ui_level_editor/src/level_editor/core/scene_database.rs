@@ -10,7 +10,7 @@ use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_clas
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::fs;
+use engine_fs::virtual_fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -595,7 +595,7 @@ impl SceneDatabase {
         editor_camera: Option<LevelEditorCameraState>,
     ) -> Result<(), String> {
         if let Some(parent_dir) = path.as_ref().parent() {
-            fs::create_dir_all(parent_dir)
+            virtual_fs::create_dir_all(parent_dir)
                 .map_err(|e| format!("Failed to create directory: {e}"))?;
         }
         let objects = self.get_all_objects();
@@ -605,9 +605,10 @@ impl SceneDatabase {
             .collect::<HashMap<_, _>>();
         let now = chrono::Utc::now().to_rfc3339();
         let preserved_editor = if editor_camera.is_none() {
-            fs::read_to_string(path.as_ref())
+            virtual_fs::read_file(path.as_ref())
                 .ok()
-                .and_then(|json| serde_json::from_str::<LevelFile>(&json).ok())
+                .and_then(|bytes| String::from_utf8(bytes).ok())
+                .and_then(|json: String| serde_json::from_str::<LevelFile>(&json).ok())
                 .and_then(|file| file.editor)
         } else {
             None
@@ -629,7 +630,8 @@ impl SceneDatabase {
         };
         let json = serde_json::to_string_pretty(&level_file)
             .map_err(|e| format!("Failed to serialize: {e}"))?;
-        fs::write(&path, json).map_err(|e| format!("Failed to write file: {e}"))?;
+        virtual_fs::write_file(path.as_ref(), json.as_bytes())
+            .map_err(|e| format!("Failed to write file: {e}"))?;
         tracing::info!("Scene saved to: {}", path.as_ref().display());
         Ok(())
     }
@@ -644,7 +646,10 @@ impl SceneDatabase {
         &self,
         path: P,
     ) -> Result<Option<LevelEditorCameraState>, String> {
-        let json = fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {e}"))?;
+        let bytes = virtual_fs::read_file(path.as_ref())
+            .map_err(|e| format!("Failed to read file: {e}"))?;
+        let json = String::from_utf8(bytes)
+            .map_err(|e| format!("File is not valid UTF-8: {e}"))?;
         let level_file: LevelFile =
             serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
         if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {

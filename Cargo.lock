@@ -8794,6 +8794,7 @@ dependencies = [
 name = "pulsar_scene"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "glam 0.33.1",
  "helio",
  "helio-asset-compat",
@@ -8816,6 +8817,7 @@ dependencies = [
 name = "pulsar_std"
 version = "0.1.0"
 dependencies = [
+ "engine_fs",
  "linkme",
  "pulsar_macros",
  "pulsar_reflection",
@@ -13044,6 +13046,7 @@ dependencies = [
  "core-graphics2",
  "device_query 4.0.1",
  "engine_backend",
+ "engine_fs",
  "engine_state",
  "glam 0.33.1",
  "gpui-ce",

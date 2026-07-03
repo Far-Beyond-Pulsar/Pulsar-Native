@@ -15,6 +15,7 @@
 //! (e.g. via `../` path traversal) are rejected at runtime.
 
 use crate::blueprint;
+use engine_fs::virtual_fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
@@ -134,8 +135,8 @@ fn resolve_write_path(user_path: &str) -> Result<PathBuf, String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read(path: String) -> Result<String, String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::read_to_string(path) {
-        Ok(content) => Ok(content),
+    match virtual_fs::read_file(&path) {
+        Ok(bytes) => String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e)),
         Err(e) => Err(format!("Failed to read file: {}", e)),
     }
 }
@@ -159,7 +160,7 @@ pub fn file_read(path: String) -> Result<String, String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_write(path: String, content: String) -> Result<(), String> {
     let path = resolve_write_path(&path)?;
-    match std::fs::write(path, content) {
+    match virtual_fs::write_file(&path, content.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to write file: {}", e)),
     }
@@ -183,18 +184,12 @@ pub fn file_write(path: String, content: String) -> Result<(), String> {
 /// Appends content to the end of a file.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_append(path: String, content: String) -> Result<(), String> {
-    use std::io::Write;
     let path = resolve_write_path(&path)?;
-    match std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-    {
-        Ok(mut file) => match file.write_all(content.as_bytes()) {
-            Ok(()) => Ok(()),
-            Err(e) => Err(format!("Failed to write to file: {}", e)),
-        },
-        Err(e) => Err(format!("Failed to open file for append: {}", e)),
+    let mut existing = virtual_fs::read_file(&path).unwrap_or_default();
+    existing.extend_from_slice(content.as_bytes());
+    match virtual_fs::write_file(&path, &existing) {
+        Ok(()) => Ok(()),
+        Err(e) => Err(format!("Failed to write to file: {}", e)),
     }
 }
 
@@ -215,7 +210,7 @@ pub fn file_exists(path: String) -> bool {
     // We still need to check if the resolved path is inside the sandbox root
     // before reporting that it exists.
     if let Ok(resolved) = resolve_read_path(&path) {
-        resolved.exists()
+        virtual_fs::exists(&resolved).unwrap_or(false)
     } else {
         // Sandboxed: a path that escapes the sandbox is treated as non-existent
         // to avoid leaking information about files outside the project.
@@ -241,7 +236,7 @@ pub fn file_exists(path: String) -> bool {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_delete(path: String) -> Result<(), String> {
     let path = resolve_write_path(&path)?;
-    match std::fs::remove_file(path) {
+    match virtual_fs::delete_path(&path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to delete file: {}", e)),
     }
@@ -267,8 +262,8 @@ pub fn file_delete(path: String) -> Result<(), String> {
 pub fn file_copy(source: String, destination: String) -> Result<(), String> {
     let source = resolve_read_path(&source)?;
     let destination = resolve_write_path(&destination)?;
-    match std::fs::copy(source, destination) {
-        Ok(_) => Ok(()),
+    match virtual_fs::read_file(&source) {
+        Ok(data) => virtual_fs::write_file(&destination, &data).map_err(|e| format!("Failed to copy file: {}", e)),
         Err(e) => Err(format!("Failed to copy file: {}", e)),
     }
 }
@@ -293,7 +288,7 @@ pub fn file_copy(source: String, destination: String) -> Result<(), String> {
 pub fn file_move(source: String, destination: String) -> Result<(), String> {
     let source = resolve_write_path(&source)?;
     let destination = resolve_write_path(&destination)?;
-    match std::fs::rename(source, destination) {
+    match virtual_fs::rename(&source, &destination) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to move file: {}", e)),
     }
@@ -314,8 +309,8 @@ pub fn file_move(source: String, destination: String) -> Result<(), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_size(path: String) -> Result<u64, String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::metadata(path) {
-        Ok(metadata) => Ok(metadata.len()),
+    match virtual_fs::metadata(&path) {
+        Ok(metadata) => Ok(metadata.size),
         Err(e) => Err(format!("Failed to get file size: {}", e)),
     }
 }
@@ -338,15 +333,8 @@ pub fn file_size(path: String) -> Result<u64, String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::metadata(path) {
-        Ok(metadata) => {
-            let permissions = metadata.permissions();
-            Ok((
-                !permissions.readonly(), // writable
-                true,                    // readable (if we can get metadata, it's readable)
-                false,                   // executable (platform dependent)
-            ))
-        }
+    match virtual_fs::metadata(&path) {
+        Ok(_metadata) => Ok((true, true, false)),
         Err(e) => Err(format!("Failed to get file permissions: {}", e)),
     }
 }
@@ -369,13 +357,10 @@ pub fn file_permissions(path: String) -> Result<(bool, bool, bool), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_modified_time(path: String) -> Result<u64, String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::metadata(path) {
-        Ok(metadata) => match metadata.modified() {
-            Ok(time) => match time.duration_since(std::time::UNIX_EPOCH) {
-                Ok(duration) => Ok(duration.as_secs()),
-                Err(e) => Err(format!("Time error: {}", e)),
-            },
-            Err(e) => Err(format!("Failed to get modified time: {}", e)),
+    match virtual_fs::metadata(&path) {
+        Ok(metadata) => match metadata.modified {
+            Some(ts) => Ok(ts),
+            None => Err("Failed to get modified time: not available".to_string()),
         },
         Err(e) => Err(format!("Failed to get file metadata: {}", e)),
     }
@@ -395,7 +380,9 @@ pub fn file_modified_time(path: String) -> Result<u64, String> {
 /// Checks if a path exists and is a file.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_file(path: String) -> bool {
-    resolve_read_path(&path).map_or(false, |p| p.is_file())
+    resolve_read_path(&path).map_or(false, |p| {
+        virtual_fs::metadata(&p).map_or(false, |m| !m.is_dir)
+    })
 }
 
 /// Check if a path is a directory.
@@ -412,7 +399,9 @@ pub fn file_is_file(path: String) -> bool {
 /// Checks if a path exists and is a directory.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn file_is_dir(path: String) -> bool {
-    resolve_read_path(&path).map_or(false, |p| p.is_dir())
+    resolve_read_path(&path).map_or(false, |p| {
+        virtual_fs::metadata(&p).map_or(false, |m| m.is_dir)
+    })
 }
 
 /// Read a file and return its lines as a vector.
@@ -433,8 +422,11 @@ pub fn file_is_dir(path: String) -> bool {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::read_to_string(path) {
-        Ok(content) => Ok(content.lines().map(|s| s.to_string()).collect()),
+    match virtual_fs::read_file(&path) {
+        Ok(bytes) => {
+            let content = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e))?;
+            Ok(content.lines().map(|s| s.to_string()).collect())
+        }
         Err(e) => Err(format!("Failed to read file: {}", e)),
     }
 }
@@ -459,7 +451,7 @@ pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
 pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> {
     let path = resolve_write_path(&path)?;
     let content = lines.join("\n");
-    match std::fs::write(path, content) {
+    match virtual_fs::write_file(&path, content.as_bytes()) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to write file: {}", e)),
     }
@@ -487,7 +479,7 @@ pub fn file_write_lines(path: String, lines: Vec<String>) -> Result<(), String> 
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_create(path: String) -> Result<(), String> {
     let path = resolve_write_path(&path)?;
-    match std::fs::create_dir_all(path) {
+    match virtual_fs::create_dir_all(&path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to create directory: {}", e)),
     }
@@ -511,7 +503,7 @@ pub fn dir_create(path: String) -> Result<(), String> {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_remove(path: String) -> Result<(), String> {
     let path = resolve_write_path(&path)?;
-    match std::fs::remove_dir_all(path) {
+    match virtual_fs::delete_path(&path) {
         Ok(()) => Ok(()),
         Err(e) => Err(format!("Failed to remove directory: {}", e)),
     }
@@ -531,7 +523,9 @@ pub fn dir_remove(path: String) -> Result<(), String> {
 /// Checks if a directory exists at the specified path.
 #[blueprint(type: NodeTypes::pure, category: "File I/O", color: "#E67E22")]
 pub fn dir_exists(path: String) -> bool {
-    resolve_read_path(&path).map_or(false, |p| p.is_dir())
+    resolve_read_path(&path).map_or(false, |p| {
+        virtual_fs::metadata(&p).map_or(false, |m| m.is_dir)
+    })
 }
 
 /// List the contents of a directory.
@@ -552,18 +546,8 @@ pub fn dir_exists(path: String) -> bool {
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_list(path: String) -> Result<Vec<String>, String> {
     let path = resolve_read_path(&path)?;
-    match std::fs::read_dir(path) {
-        Ok(entries) => {
-            let mut files = Vec::new();
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    if let Some(name) = entry.file_name().to_str() {
-                        files.push(name.to_string());
-                    }
-                }
-            }
-            Ok(files)
-        }
+    match virtual_fs::list_dir(&path) {
+        Ok(entries) => Ok(entries.into_iter().map(|e| e.name).collect()),
         Err(e) => Err(format!("Failed to read directory: {}", e)),
     }
 }
@@ -585,28 +569,25 @@ pub fn dir_list(path: String) -> Result<Vec<String>, String> {
 /// Recursively walks through a directory tree and returns all file paths.
 #[blueprint(type: NodeTypes::fn_, category: "File I/O", color: "#E67E22")]
 pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
-    use std::fs;
-
     let path = resolve_read_path(&path)?;
-    let path_str = path.to_string_lossy().to_string();
 
-    fn walk_dir(dir: &str, files: &mut Vec<String>) -> Result<(), std::io::Error> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                if let Some(path_str) = path.to_str() {
-                    walk_dir(path_str, files)?;
-                }
-            } else if let Some(path_str) = path.to_str() {
-                files.push(path_str.to_string());
+    fn walk_dir(dir: &Path, files: &mut Vec<String>) -> Result<(), String> {
+        let entries = virtual_fs::list_dir(dir)
+            .map_err(|e| format!("Failed to walk directory: {}", e))?;
+        for entry in entries {
+            let child = dir.join(&entry.name);
+            let child_str = child.to_string_lossy().to_string();
+            if entry.is_dir {
+                walk_dir(&child, files)?;
+            } else {
+                files.push(child_str);
             }
         }
         Ok(())
     }
 
     let mut files = Vec::new();
-    match walk_dir(&path_str, &mut files) {
+    match walk_dir(&path, &mut files) {
         Ok(()) => Ok(files),
         Err(e) => Err(format!("Failed to walk directory: {}", e)),
     }

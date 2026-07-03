@@ -1,3 +1,4 @@
+use engine_fs::virtual_fs;
 use gpui::*;
 use std::path::{Path, PathBuf};
 use ui::ActiveTheme;
@@ -155,10 +156,14 @@ impl FileItem {
                 let is_folder_remote = d && file_type_def.is_none();
                 (s, m, is_folder_remote)
             } else {
-                let meta = std::fs::metadata(path).ok();
-                let s = meta.as_ref().map(|m| m.len()).unwrap_or(0);
-                let m = meta.as_ref().and_then(|m| m.modified().ok());
-                let d = path.is_dir() && file_type_def.is_none();
+                let meta = engine_fs::virtual_fs::metadata(path).ok();
+                let s = meta.as_ref().map(|m| m.size).unwrap_or(0);
+                let m = meta.as_ref().and_then(|m| {
+                    m.modified
+                        .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+                });
+                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false)
+                    && file_type_def.is_none();
                 (s, m, d)
             };
 

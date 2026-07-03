@@ -19,6 +19,7 @@
 //!
 //! Uses libgit2 for all git operations
 
+use engine_fs::virtual_fs;
 use git2::{DiffOptions, ObjectType, Oid, Repository, Signature};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -123,7 +124,7 @@ build/
 .DS_Store
 Thumbs.db
 ";
-                std::fs::write(gitignore_path, default_ignore);
+                virtual_fs::write_file(&gitignore_path, default_ignore.as_bytes());
             }
 
             Ok(repo)
@@ -509,9 +510,9 @@ pub fn create_commit_from_files(
     // Add files to working directory
     for (path, content) in &files {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent);
+            virtual_fs::create_dir_all(parent);
         }
-        std::fs::write(path, content);
+        virtual_fs::write_file(path, content);
     }
 
     // Stage and commit

@@ -1,3 +1,4 @@
+use engine_fs::virtual_fs;
 use std::path::{Path, PathBuf};
 
 // ============================================================================
@@ -45,20 +46,18 @@ impl FolderNode {
         }
 
         // Read child folders (skip files).
-        let children = std::fs::read_dir(path)
+        let children = engine_fs::virtual_fs::list_dir(path)
             .ok()?
+            .into_iter()
             .filter_map(|entry| {
-                let entry = entry.ok()?;
-                let entry_path = entry.path();
-
-                if !entry_path.is_dir() {
+                if !entry.is_dir {
                     return None;
                 }
-                if entry_path.file_name()?.to_str()?.starts_with('.') {
+                if entry.name.starts_with('.') {
                     return None;
                 }
 
-                FolderNode::from_path(&entry_path)
+                FolderNode::from_path(&path.join(&entry.name))
             })
             .collect();
 

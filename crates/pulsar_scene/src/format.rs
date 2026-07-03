@@ -13,6 +13,7 @@
 //! - `version` is an integer (`1`)
 //! - `position`, `rotation`, `scale` are top-level fields on each object
 
+use engine_fs::virtual_fs;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -47,7 +48,8 @@ impl SceneFile {
     /// Load a scene from a JSON file.
     pub fn load(path: &std::path::Path) -> Result<Self, SceneLoadError> {
         tracing::debug!(path = %path.display(), "Reading scene file from disk");
-        let text = std::fs::read_to_string(path).map_err(|e| SceneLoadError::Io(e.to_string()))?;
+        let bytes = virtual_fs::read_file(path).map_err(|e| SceneLoadError::Io(e.to_string()))?;
+        let text = String::from_utf8(bytes).map_err(|e| SceneLoadError::Io(e.to_string()))?;
         tracing::debug!(bytes = text.len(), "Scene file read OK, parsing JSON");
         let scene: Self =
             serde_json::from_str(&text).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
@@ -63,11 +65,11 @@ impl SceneFile {
     /// Save a scene to a JSON file (pretty-printed).
     pub fn save(&self, path: &std::path::Path) -> Result<(), SceneLoadError> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| SceneLoadError::Io(e.to_string()))?;
+            virtual_fs::create_dir_all(parent).map_err(|e| SceneLoadError::Io(e.to_string()))?;
         }
         let text =
             serde_json::to_string_pretty(self).map_err(|e| SceneLoadError::Parse(e.to_string()))?;
-        std::fs::write(path, text).map_err(|e| SceneLoadError::Io(e.to_string()))
+        virtual_fs::write_file(path, text.as_bytes()).map_err(|e| SceneLoadError::Io(e.to_string()))
     }
 }
 

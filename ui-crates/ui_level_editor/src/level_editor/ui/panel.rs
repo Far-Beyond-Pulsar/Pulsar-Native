@@ -9,6 +9,7 @@ use ui::{
 // HelioViewport — GPUI-native Helio 3D viewport
 use super::viewport::helio_viewport::HelioViewport;
 
+use engine_fs::virtual_fs;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -116,7 +117,7 @@ impl LevelEditorPanel {
             .join("default.level");
 
         if let Some(parent) = default_path.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
+            if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
                 tracing::warn!("Could not create default level directory {:?}: {e}", parent);
                 return;
             }
@@ -150,7 +151,7 @@ impl LevelEditorPanel {
             let seed_result = if let Some(bytes) = embedded {
                 // Write the embedded bytes directly — preserves whatever the developer
                 // designed as the default scene via "Save as Default Level".
-                std::fs::write(&default_path, &bytes)
+                engine_fs::virtual_fs::write_file(&default_path, &bytes)
                     .map_err(|e| format!("Failed to write embedded default level: {e}"))
             } else {
                 // No embedded asset yet — persist the current empty scene so the
@@ -1046,7 +1047,7 @@ impl LevelEditorPanel {
             .and_then(|ctx| ctx.store.get_or_init::<Option<Vec<u8>>>().read().clone())
         {
             let tmp = std::env::temp_dir().join("pulsar_new_scene_seed.level");
-            if std::fs::write(&tmp, &bytes).is_ok() {
+            if engine_fs::virtual_fs::write_file(&tmp, &bytes).is_ok() {
                 match scene_db.load_from_file_with_editor_camera(&tmp) {
                     Ok(loaded_camera) => editor_camera = loaded_camera,
                     Err(e) => {

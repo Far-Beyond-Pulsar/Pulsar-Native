@@ -1,6 +1,7 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
+use engine_fs::virtual_fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
@@ -139,7 +140,7 @@ impl ToolbarPanel {
                 };
 
                 if let Some(parent) = path.parent() {
-                    if let Err(e) = std::fs::create_dir_all(parent) {
+                    if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
                         tracing::error!("Save failed: could not create {:?}: {e}", parent);
                         return;
                     }
@@ -211,7 +212,7 @@ impl ToolbarPanel {
                 };
 
                 if let Some(parent) = path.parent() {
-                    if let Err(e) = std::fs::create_dir_all(parent) {
+                    if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
                         window.push_notification(
                             ui::notification::Notification::error("Save as Default Level")
                                 .message(format!("Could not create assets directory: {e}")),

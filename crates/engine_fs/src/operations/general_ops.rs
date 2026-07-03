@@ -44,7 +44,7 @@ impl GeneralOperations {
 
         // Create parent directories
         if let Some(parent) = file_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::virtual_fs::create_dir_all(parent)?;
         }
 
         // Special handling for data tables
@@ -58,7 +58,7 @@ impl GeneralOperations {
                 .context("Failed to create SQLite database")?;
         } else {
             // Write template content
-            std::fs::write(&file_path, content).context("Failed to write asset file")?;
+            crate::virtual_fs::write_file(&file_path, content.as_bytes()).context("Failed to write asset file")?;
         }
 
         // Register in appropriate index
@@ -104,7 +104,7 @@ impl GeneralOperations {
         self.asset_index.unregister_by_path(file_path);
 
         // Delete file
-        std::fs::remove_file(file_path).context("Failed to delete asset file")?;
+        crate::virtual_fs::delete_path(file_path).context("Failed to delete asset file")?;
         events::emit(file_path.clone(), FsChangeKind::Deleted);
 
         Ok(())
@@ -117,11 +117,11 @@ impl GeneralOperations {
 
         // Create parent directory for new path
         if let Some(parent) = new_path.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::virtual_fs::create_dir_all(parent)?;
         }
 
         // Move file
-        std::fs::rename(old_path, new_path).context("Failed to move asset file")?;
+        crate::virtual_fs::rename(old_path, new_path).context("Failed to move asset file")?;
 
         // Re-register at new location using registry
         if let Some(plugin_manager) = plugin_manager::global() {
