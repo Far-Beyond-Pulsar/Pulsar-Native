@@ -63,6 +63,10 @@ pub struct RemoteConfig {
     pub server_url: String,
     /// UUID of the workspace on the host server.
     pub workspace_id: String,
+    /// UUID of the environment (room) on the host server, if any.
+    /// When set, file operations use environment-scoped endpoints so that
+    /// changes appear in the web dashboard's per-environment file view.
+    pub environment_id: Option<String>,
     /// Optional Bearer token for password-protected servers.
     pub auth_token: Option<String>,
 }
@@ -87,6 +91,7 @@ impl RemoteConfig {
         Some(RemoteConfig {
             server_url: format!("http://{}", host),
             workspace_id,
+            environment_id: None,
             auth_token: None,
         })
     }
@@ -121,10 +126,17 @@ impl RemoteFsProvider {
     // ── Internal helpers ──────────────────────────────────────────────────────
 
     fn files_base(&self) -> String {
-        format!(
-            "{}/api/v1/workspaces/{}/files",
-            self.config.server_url, self.config.workspace_id
-        )
+        if let Some(ref eid) = self.config.environment_id {
+            format!(
+                "{}/api/v1/workspaces/{}/environments/{}/files",
+                self.config.server_url, self.config.workspace_id, eid
+            )
+        } else {
+            format!(
+                "{}/api/v1/workspaces/{}/files",
+                self.config.server_url, self.config.workspace_id
+            )
+        }
     }
 
     /// Inject the `Authorization` header when the config carries a token.

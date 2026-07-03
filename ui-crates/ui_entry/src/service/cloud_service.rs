@@ -175,6 +175,7 @@ impl CloudService {
         let remote_config = engine_fs::RemoteConfig {
             server_url: base_url.to_string(),
             workspace_id: workspace_id.to_string(),
+            environment_id: environment_id.map(|s| s.to_string()),
             auth_token: token_opt,
         };
         engine_fs::virtual_fs::set_provider(std::sync::Arc::new(engine_fs::RemoteFsProvider::new(remote_config)));
