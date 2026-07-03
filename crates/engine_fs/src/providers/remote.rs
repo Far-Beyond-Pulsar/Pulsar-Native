@@ -147,26 +147,25 @@ impl RemoteFsProvider {
     }
 
     /// Convert `path` to a forward-slash-separated string relative to the
-    /// workspace root, stripping any leading `cloud+pulsar://HOST/WORKSPACE_ID`.
+    /// environment root, stripping `cloud+pulsar://HOST/WORKSPACE_ID/ENVIRONMENT_ID`.
     ///
     /// Also rejects path-traversal attempts (`..`).
     fn to_rel(&self, path: &Path) -> Result<String> {
-        // Normalise Windows backslashes → forward slashes *before* any string
-        // comparisons.  PathBuf::join() on Windows inserts '\' between
-        // components, which would otherwise cause the scheme-prefix strip and
-        // subsequent '/' searches to silently produce an empty relative path.
         let s = path.to_string_lossy().replace('\\', "/");
 
         let rel = if let Some(tail) = s.strip_prefix("cloud+pulsar://") {
-            // Strip  HOST / WORKSPACE_ID /  to get the bare relative path.
+            // Strip HOST / WORKSPACE_ID / ENVIRONMENT_ID / to get the bare relative path.
             let after_host = tail.find('/').map(|i| &tail[i + 1..]).unwrap_or("");
             let after_proj = after_host
                 .find('/')
                 .map(|i| &after_host[i + 1..])
                 .unwrap_or("");
-            after_proj.to_string()
+            let after_env = after_proj
+                .find('/')
+                .map(|i| &after_proj[i + 1..])
+                .unwrap_or("");
+            after_env.to_string()
         } else {
-            // Already a relative path (or some other non-cloud form).
             s
         };
 
