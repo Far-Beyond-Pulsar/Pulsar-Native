@@ -523,7 +523,8 @@ impl EntryScreen {
         let server = self.state.cloud_servers[server_idx].clone();
         if project_idx >= server.projects.len() { return; }
         let project = server.projects[project_idx].clone();
-        let path = CloudService::open_workspace(&server.url, &project.id, &server.auth_token, &server.username, project.environment_id.as_deref());
+        let eid = project.environment_id.as_deref().unwrap_or("");
+        let path = CloudService::open_workspace(&server.url, &project.id, &server.auth_token, &server.username, eid);
         cx.emit(ProjectSelected { path });
     }
 
