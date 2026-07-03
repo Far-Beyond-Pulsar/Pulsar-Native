@@ -457,12 +457,12 @@ impl EntryScreen {
             let nu = normalized_url.clone();
             let em = email.clone();
             let pw = password.clone();
-            let token = cx.background_executor().spawn(async move { CloudService::login(&nu, &em, &pw) }).await;
+            let result = cx.background_executor().spawn(async move { CloudService::login(&nu, &em, &pw) }).await;
             cx.update(|cx| entity.update(cx, |this, cx| {
                 this.state.add_server_logging_in = false;
-                if let Some(t) = token {
+                if let Some((token, username)) = result {
                     this.state.cloud_servers.push(CloudServer {
-                        id: uuid::Uuid::new_v4().to_string(), alias, url: normalized_url, auth_token: t,
+                        id: uuid::Uuid::new_v4().to_string(), alias, url: normalized_url, auth_token: token, username,
                         status: CloudServerStatus::Unknown, projects: Vec::new(),
                     });
                     this.save_cloud_servers();
@@ -518,12 +518,13 @@ impl EntryScreen {
         std::thread::spawn(move || CloudService::prepare_workspace(&server.url, &project.id, &server.auth_token));
     }
 
-    pub(crate) fn open_cloud_project(&self, server_idx: usize, project_idx: usize, _cx: &mut Context<Self>) {
+    pub(crate) fn open_cloud_project(&mut self, server_idx: usize, project_idx: usize, cx: &mut Context<Self>) {
         if server_idx >= self.state.cloud_servers.len() { return; }
         let server = self.state.cloud_servers[server_idx].clone();
         if project_idx >= server.projects.len() { return; }
         let project = server.projects[project_idx].clone();
-        std::thread::spawn(move || CloudService::open_workspace(&server.url, &project.id, &server.auth_token));
+        let path = CloudService::open_workspace(&server.url, &project.id, &server.auth_token, &server.username);
+        cx.emit(ProjectSelected { path });
     }
 
     pub(crate) fn stop_cloud_project(&self, server_idx: usize, project_idx: usize, _cx: &mut Context<Self>) {

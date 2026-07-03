@@ -120,6 +120,7 @@ pub struct CloudServer {
     pub alias: String,
     pub url: String,
     pub auth_token: String,
+    pub username: String,
     #[serde(skip)]
     pub status: CloudServerStatus,
     #[serde(skip)]
@@ -128,7 +129,7 @@ pub struct CloudServer {
 
 impl Default for CloudServer {
     fn default() -> Self {
-        Self { id: String::new(), alias: String::new(), url: String::new(), auth_token: String::new(), status: CloudServerStatus::Unknown, projects: Vec::new() }
+        Self { id: String::new(), alias: String::new(), url: String::new(), auth_token: String::new(), username: String::new(), status: CloudServerStatus::Unknown, projects: Vec::new() }
     }
 }
 

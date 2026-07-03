@@ -20,8 +20,8 @@ fn normalize_url(raw: &str) -> String {
 pub struct CloudService;
 
 impl CloudService {
-    /// Authenticate and return a JWT token, or None on failure
-    pub fn login(base_url: &str, email: &str, password: &str) -> Option<String> {
+    /// Authenticate and return a JWT token and username, or None on failure
+    pub fn login(base_url: &str, email: &str, password: &str) -> Option<(String, String)> {
         let login_url = format!("{}/api/v1/auth/login", base_url);
         let body = serde_json::json!({ "email": email, "password": password });
         let client = reqwest::blocking::Client::builder()
@@ -31,7 +31,9 @@ impl CloudService {
         let resp = client.post(&login_url).json(&body).send().ok()?;
         if !resp.status().is_success() { return None; }
         let data: serde_json::Value = resp.json().ok()?;
-        data.get("token")?.as_str().map(String::from)
+        let token = data.get("token")?.as_str()?.to_string();
+        let username = data.get("user")?.get("username")?.as_str()?.to_string();
+        Some((token, username))
     }
 
     /// Fetch server info and project list
@@ -139,8 +141,9 @@ impl CloudService {
         let _ = req.send();
     }
 
-    /// Open a cloud workspace by configuring the virtual filesystem and starting a session
-    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str) {
+    /// Open a cloud workspace by configuring the virtual filesystem and starting a session.
+    /// Returns the virtual path for the editor to open.
+    pub fn open_workspace(base_url: &str, workspace_id: &str, auth_token: &str, username: &str) -> PathBuf {
         let token_opt: Option<String> = if auth_token.is_empty() { None } else { Some(auth_token.to_string()) };
         let remote_config = engine_fs::RemoteConfig {
             server_url: base_url.to_string(),
@@ -154,14 +157,15 @@ impl CloudService {
             .with_workspace_id(workspace_id.to_string());
         let ctx = if !auth_token.is_empty() { ctx.with_auth_token(auth_token.to_string()) } else { ctx };
         if let Some(ec) = engine_state::EngineContext::global() { ec.set_multiuser(ctx); }
-        let _virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}",
+        let virtual_path = PathBuf::from(format!("cloud+pulsar://{}/{}",
             base_url.trim_start_matches("http://").trim_start_matches("https://"), workspace_id));
         let bu = base_url.to_string();
         let wid = workspace_id.to_string();
         let tok = auth_token.to_string();
+        let user = username.to_string();
         std::thread::spawn(move || {
             let mut client = MultiuserClient::new(bu);
-            match client.connect_to_workspace_sync(wid, tok, "editor".to_string()) {
+            match client.connect_to_workspace_sync(wid, tok, user) {
                 Ok(mut rx) => {
                     if let Some(ec) = engine_state::EngineContext::global() {
                         let _ = ec.update_multiuser(|mu| mu.set_status(engine_state::MultiuserStatus::Connected { relay_mode: None }));
@@ -172,5 +176,6 @@ impl CloudService {
                 Err(e) => tracing::error!("Cloud session connect failed: {e}"),
             }
         });
+        virtual_path
     }
 }
