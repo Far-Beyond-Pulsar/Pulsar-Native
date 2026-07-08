@@ -702,12 +702,12 @@ impl PluginManager {
         }
 
         // Collect editor factories from the plugin
-        let mut editor_registry = EditorRegistry::new();
-        EditorPluginEditor::register_editors(plugin, &mut editor_registry);
-        if !editor_registry.factories().is_empty() {
+        let mut editor_factories = EditorFactoryRegistry::new();
+        EditorPluginEditor::register_editors(plugin, &mut editor_factories);
+        if !editor_factories.factories().is_empty() {
             tracing::debug!(
                 "  📝 Registering {} editor factories",
-                editor_registry.factories().len()
+                editor_factories.factories().len()
             );
         }
 
@@ -718,7 +718,7 @@ impl PluginManager {
             plugin,
             library,
             metadata: metadata.clone(),
-            editor_registry,
+            editor_factories,
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
