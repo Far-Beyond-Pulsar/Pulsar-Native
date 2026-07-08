@@ -1094,7 +1094,7 @@ impl PluginManager {
         // 2. The drop glue lives in the plugin's .text section (never unmapped)
         // 3. We can safely share the Arc across the boundary
         let factory = plugin
-            .editor_registry
+            .editor_factories
             .get(editor_id)
             .ok_or_else(|| PluginManagerError::EditorNotFound {
                 editor_id: editor_id.clone(),
