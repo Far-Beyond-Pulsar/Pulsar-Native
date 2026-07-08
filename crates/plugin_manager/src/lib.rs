@@ -55,7 +55,6 @@
 
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
-use plugin_editor_api::editor_element::EditorRegistry;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -238,7 +237,7 @@ struct LoadedPlugin {
     metadata: PluginMetadata,
 
     /// Editor factories registered by this plugin (populated at load time).
-    editor_registry: EditorRegistry,
+    editor_factories: EditorFactoryRegistry,
 }
 
 // ============================================================================
