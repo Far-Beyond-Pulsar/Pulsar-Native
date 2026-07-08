@@ -493,12 +493,16 @@ impl BuiltinEditorProvider for TableEditorBuiltinProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Result<Arc<dyn PanelView>, PluginError> {
-        editor_table_plugin::TableEditorPlugin::default().create_editor(
-            EditorId::new("table-editor"),
-            file_path,
-            window,
-            cx,
-        )
+        use editor_table_plugin::DataTableEditor;
+
+        let panel = cx.new(|cx| {
+            DataTableEditor::open_database(file_path.clone(), window, cx).unwrap_or_else(|e| {
+                tracing::error!("Failed to open database: {}", e);
+                DataTableEditor::new(window, cx)
+            })
+        });
+
+        Ok(Arc::new(panel))
     }
 }
 
