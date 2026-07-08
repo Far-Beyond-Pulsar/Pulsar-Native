@@ -13,8 +13,10 @@
 <p align="center">
   <strong>A next‑generation, experimental game engine focused on scalability, modularity, and modern systems design.</strong>
 </p>
-
-<img width="4343" height="2467" alt="Frame 1" src="https://github.com/user-attachments/assets/69314162-e900-44de-ba2f-67bf40a4d745" />
+<img width="3840" height="1649" alt="deviceframes" src="https://github.com/user-attachments/assets/c850a05b-c863-4c1f-bd4d-4dd79c6b9fe1" />
+<p align="center">
+  Device Mockup created from <a href="https://deviceframes.com/templates/macbook-pro-m1-14">MacBook Pro mockups</a>
+</p>
 
 <p align="center">
 <a href="https://github.com/Far-Beyond-Pulsar/Pulsar-Native/stargazers"><img src="https://img.shields.io/github/stars/Far-Beyond-Pulsar/Pulsar-Native?style=for-the-badge&color=gold" alt="GitHub Stars" /></a>
