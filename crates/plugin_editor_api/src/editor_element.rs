@@ -16,7 +16,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gpui::{AnyElement, App, Window};
+use gpui::{
+    AnyElement, App, Bounds, Element, ElementId, GlobalElementId, InspectorElementId, IntoElement,
+    LayoutId, Pixels, Window,
+};
 use ui::dock::PanelView;
 
 use crate::error::PluginError;
@@ -260,28 +263,82 @@ impl<H: EditorHandle> Clone for EditorElement<H> {
 }
 
 // ============================================================================
+// Element Trait Implementation
+// ============================================================================
+
+/// Implementation of GPUI's [`Element`] trait for [`EditorElement`].
+///
+/// Each frame, [`Element::request_layout`] calls [`EditorHandle::render_frame`]
+/// to obtain the child element tree, then delegates layout/prepaint/paint to it.
+impl<H: EditorHandle> Element for EditorElement<H> {
+    type RequestLayoutState = AnyElement;
+    type PrepaintState = ();
+
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
+
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
+
+    fn request_layout(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> (LayoutId, Self::RequestLayoutState) {
+        let mut ctx = EditorFrameCtx { window, cx };
+        let mut element = self.handle.render_frame(&mut ctx).into_any_element();
+        let layout_id = element.request_layout(ctx.window, ctx.cx);
+        (layout_id, element)
+    }
+
+    fn prepaint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        element: &mut AnyElement,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        element.prepaint(window, cx);
+    }
+
+    fn paint(
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        element: &mut Self::RequestLayoutState,
+        _prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        element.paint(window, cx);
+    }
+}
+
+// ============================================================================
+// IntoElement Trait Implementation
+// ============================================================================
+
+impl<H: EditorHandle> IntoElement for EditorElement<H> {
+    type Element = Self;
+
+    fn into_element(self) -> Self::Element {
+        self
+    }
+}
+
+// ============================================================================
 // Into GPUI AnyElement
 // ============================================================================
 
-/// Convert an [`EditorElement`] into a GPUI-compatible `AnyElement` for
-/// direct use in the element tree.
-///
-/// This casts the element via its `AnyElement` representation so it can
-/// participate in GPUI's standard lifecycle without plugin code needing
-/// to interact with GPUI's element traits directly.
 impl<H: EditorHandle> From<EditorElement<H>> for AnyElement {
     fn from(element: EditorElement<H>) -> Self {
-        // This conversion works through GPUI's element system:
-        // 1. EditorElement implements IntoElement (via derive or manual)
-        // 2. IntoElement produces an AnyElement
-        // 3. AnyElement participates in request_layout → prepaint → paint
-        //
-        // At runtime, the EditorElement's render_frame is called each frame
-        // via the IntoElement implementation.
-        //
-        // NOTE: This is a placeholder for the actual GPUI element integration.
-        // In practice, EditorElement would implement IntoElement by delegating
-        // to the handle's render_frame method each frame.
-        todo!("GPUI element integration — EditorElement must implement IntoElement via the ui crate's element system")
+        element.into_any_element()
     }
 }
