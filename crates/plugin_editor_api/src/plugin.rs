@@ -138,7 +138,7 @@ macro_rules! export_plugin {
         }
 
         impl $crate::editor_element::EditorPluginEditor for __PluginExport {
-            fn register_editors(&self, registry: &mut $crate::editor_element::EditorRegistry) {
+            fn register_editors(&'static self, registry: &mut $crate::editor_element::EditorFactoryRegistry) {
                 $crate::editor_element::EditorPluginEditor::register_editors(&self.0, registry)
             }
         }
