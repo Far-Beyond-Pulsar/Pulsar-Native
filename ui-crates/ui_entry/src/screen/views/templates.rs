@@ -120,9 +120,11 @@ fn render_template_card(
             this.bg(theme.secondary.opacity(0.15))
                 .border_color(theme.accent.opacity(0.4))
         })
-        .on_click(cx.listener(move |this, _, _window, cx| {
-            let t = Template::new(&name, &description, template_icon_listener.clone(), &repo_url, &category);
-            this.clone_template(t, cx);
+        .on_click(cx.listener(move |this, _, window, cx| {
+            if !window.default_prevented() {
+                let t = Template::new(&name, &description, template_icon_listener.clone(), &repo_url, &category);
+                this.clone_template(t, cx);
+            }
         }))
         .child(
             div()
@@ -164,6 +166,9 @@ fn render_template_card(
                         .gap_1()
                         .opacity(0.0)
                         .group_hover("card-image", |this| this.opacity(1.0))
+                        .capture_any_mouse_up(|_, window, _| {
+                            window.prevent_default();
+                        })
                         .child(
                             Button::new(SharedString::from(format!("view-on-github-{}", name_button)))
                                 .icon(IconName::Eye)

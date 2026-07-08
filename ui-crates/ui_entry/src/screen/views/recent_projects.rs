@@ -154,8 +154,10 @@ fn render_project_card(
             this.bg(theme.secondary.opacity(0.15))
                 .border_color(theme.accent.opacity(0.4))
         })
-        .on_click(cx.listener(move |this, _, _, cx| {
-            this.launch_project(std::path::PathBuf::from(&path_open), cx);
+        .on_click(cx.listener(move |this, _, window, cx| {
+            if !window.default_prevented() {
+                this.launch_project(std::path::PathBuf::from(&path_open), cx);
+            }
         }))
         .child(
             div()
@@ -197,6 +199,9 @@ fn render_project_card(
                         .gap_1()
                         .opacity(0.0)
                         .group_hover("card-image", |this| this.opacity(1.0))
+                        .capture_any_mouse_up(|_, window, _| {
+                            window.prevent_default();
+                        })
                         .child(
                             Button::new(SharedString::from(format!("git-{}", path)))
                                 .icon(IconName::GitBranch)
