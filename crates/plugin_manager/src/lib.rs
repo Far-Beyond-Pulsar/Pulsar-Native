@@ -55,6 +55,7 @@
 
 use once_cell::sync::OnceCell;
 use parking_lot::RwLock;
+use plugin_editor_api::editor_element::EditorRegistry;
 use plugin_editor_api::*;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -235,6 +236,9 @@ struct LoadedPlugin {
 
     /// Metadata for quick access (owned by main app)
     metadata: PluginMetadata,
+
+    /// Editor factories registered by this plugin (populated at load time).
+    editor_registry: EditorRegistry,
 }
 
 // ============================================================================
@@ -698,6 +702,16 @@ impl PluginManager {
             self.plugin_component_registrations.extend(component_regs);
         }
 
+        // Collect editor factories from the plugin
+        let mut editor_registry = EditorRegistry::new();
+        EditorPluginEditor::register_editors(plugin, &mut editor_registry);
+        if !editor_registry.factories().is_empty() {
+            tracing::debug!(
+                "  📝 Registering {} editor factories",
+                editor_registry.factories().len()
+            );
+        }
+
         // Store the plugin
         // SAFETY: Both plugin reference and library handle have 'static lifetime
         // because the library is never unloaded
@@ -705,6 +719,7 @@ impl PluginManager {
             plugin,
             library,
             metadata: metadata.clone(),
+            editor_registry,
         };
 
         self.plugins.insert(plugin_id.clone(), loaded_plugin);
@@ -1074,15 +1089,19 @@ impl PluginManager {
             }
         }
 
-        // Call create_editor on the plugin
-        // SAFETY: The plugin reference is valid because the library is never unloaded.
-        // The returned Arc<dyn PanelView> is safe because:
+        // Look up the editor factory and create the editor
+        // SAFETY: The returned Arc<dyn PanelView> is safe because:
         // 1. The vtable lives in the plugin's .rodata section (never unmapped)
         // 2. The drop glue lives in the plugin's .text section (never unmapped)
         // 3. We can safely share the Arc across the boundary
-        plugin
-            .plugin
-            .create_editor(editor_id.clone(), file_path, window, cx)
+        let factory = plugin
+            .editor_registry
+            .get(editor_id)
+            .ok_or_else(|| PluginManagerError::EditorNotFound {
+                editor_id: editor_id.clone(),
+            })?;
+
+        (factory.create)(file_path, window, cx)
             .map(|panel| self.decorate_editor_panel_for_path(panel, &file_path_for_decoration))
             .map_err(|e| PluginManagerError::PluginError {
                 plugin_id: plugin_id.clone(),

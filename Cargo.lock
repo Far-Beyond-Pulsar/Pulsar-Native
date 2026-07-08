@@ -1214,7 +1214,6 @@ dependencies = [
 [[package]]
 name = "blueprint_editor_plugin"
 version = "0.7.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints?rev=5ecd5602415b1e15c2eb20cb852efeab0828f3ee#5ecd5602415b1e15c2eb20cb852efeab0828f3ee"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2808,7 +2807,6 @@ dependencies = [
 [[package]]
 name = "editor_table_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_DBTable?rev=c9f4b2a8c3d9b32ec1d739c3968e94aec7fafa2f#c9f4b2a8c3d9b32ec1d739c3968e94aec7fafa2f"
 dependencies = [
  "anyhow",
  "engine_state",
@@ -8020,7 +8018,6 @@ dependencies = [
 [[package]]
 name = "plugin_matter"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Matter?rev=00e992df8184df4a6ed2b9edcbf580d0df628b71#00e992df8184df4a6ed2b9edcbf580d0df628b71"
 dependencies = [
  "anyhow",
  "gpui-ce",
@@ -10182,7 +10179,6 @@ dependencies = [
 [[package]]
 name = "script_editor_plugin"
 version = "0.1.4"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor?rev=d22e568601ff899423e7f7f8bca35e606a3413b2#d22e568601ff899423e7f7f8bca35e606a3413b2"
 dependencies = [
  "anyhow",
  "engine_backend",
@@ -10511,7 +10507,6 @@ dependencies = [
 [[package]]
 name = "shader_editor_plugin"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Plugin_Shaders?rev=842dc06d9562fa876bf1ed1177976a08de1be455#842dc06d9562fa876bf1ed1177976a08de1be455"
 dependencies = [
  "anyhow",
  "arboard",
