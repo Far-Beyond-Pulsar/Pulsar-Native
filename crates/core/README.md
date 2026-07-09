@@ -8,6 +8,7 @@ Engine platform crates. These live under `crates/core/` and are the backbone of 
 | `engine_backend` | Window/context/input backend abstraction |
 | `engine_class_derive` | Derive macro for engine class system |
 | `engine_fs` | Virtual filesystem with asset mounts |
+| `friends_engine` | Multiplayer friends backend (presence, invites) |
 | `engine_state` | Global engine state and app lifecycle |
 | `plugin_editor_api` | Plugin SDK — traits for editor plugins |
 | `plugin_manager` | Plugin loading, lifecycle, and registry |

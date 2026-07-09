@@ -122,7 +122,7 @@ ui_git_manager        = { path = "crates/editor/ui_git_manager" }
 ui_fab_search         = { path = "crates/editor/ui_fab_search" }
 ui_multiuser_status   = { path = "crates/editor/ui_multiuser_status" }
 ui_friends            = { path = "crates/editor/ui_friends" }
-friends_engine        = { path = "crates/subsystems/friends_engine" }
+friends_engine        = { path = "crates/core/friends_engine" }
 
 # ---------- Plugin System ----------
 plugin_editor_api = { path = "crates/core/plugin_editor_api"}
