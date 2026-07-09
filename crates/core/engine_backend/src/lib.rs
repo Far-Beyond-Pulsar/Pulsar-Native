@@ -142,10 +142,12 @@ impl EngineBackend {
 
     /// Get the physics query service for raycasting
     pub fn get_physics_query_service(&self) -> Option<Arc<crate::services::PhysicsQueryService>> {
-        use crate::subsystems::framework::subsystem_ids;
+        use engine_subsystems::SubsystemId;
+
+        const PHYSICS: SubsystemId = SubsystemId::new("physics");
 
         self.subsystems
-            .get(subsystem_ids::PHYSICS)
+            .get(PHYSICS)
             .and_then(|subsystem| {
                 // Downcast to PhysicsEngine
                 (subsystem as &dyn std::any::Any)

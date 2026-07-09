@@ -1,7 +1,5 @@
 use crate::services::PhysicsQueryService;
-use crate::subsystems::framework::{
-    subsystem_ids, Subsystem, SubsystemContext, SubsystemError, SubsystemId,
-};
+use crate::subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
 use rapier3d::prelude::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -111,7 +109,7 @@ impl PhysicsEngine {
 
 impl Subsystem for PhysicsEngine {
     fn id(&self) -> SubsystemId {
-        subsystem_ids::PHYSICS
+        SubsystemId::new("physics")
     }
 
     fn dependencies(&self) -> Vec<SubsystemId> {

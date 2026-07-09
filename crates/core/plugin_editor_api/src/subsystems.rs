@@ -25,7 +25,8 @@ pub trait EditorPluginSubsystems: EditorPlugin {
 }
 
 // Re-export subsystem types for plugin convenience.
+// Well-known subsystem IDs are not defined centrally — each consumer
+// that needs to downcast uses `SubsystemId::new("...")` directly.
 pub use engine_subsystems::{
     Subsystem, SubsystemContext, SubsystemError, SubsystemId, SubsystemRegistry,
-    subsystem_ids,
 };
