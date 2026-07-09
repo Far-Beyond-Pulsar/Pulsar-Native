@@ -313,7 +313,7 @@ impl AppState {
             .unwrap_or_else(|| vec![PluginRegistry { name: "Official Pulsar Plugins".to_string(), url: "https://github.com/Far-Beyond-Pulsar/Plugins".to_string() }]);
 
         let logo = {
-            let bytes: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
+            let bytes: &[u8] = include_bytes!("../../../../../assets/images/logo_sqrkl.png");
             image::load_from_memory(bytes).ok().map(|i| {
                 let rgba = i.into_rgba8();
                 let frame = image::Frame::new(rgba);

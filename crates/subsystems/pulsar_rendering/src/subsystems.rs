@@ -62,13 +62,13 @@ impl SceneObjectCache {
 
 /// The engine's built-in assets — resolved at compile time so embedded
 /// primitives (SM_Cube, SM_Sphere, etc.) are always available.
-const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets");
+const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
 
 macro_rules! prim_bytes {
     ($name:literal) => {
         include_bytes!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/meshes/primitives/",
+            "/../../../assets/meshes/primitives/",
             $name,
             ".fbx"
         ))

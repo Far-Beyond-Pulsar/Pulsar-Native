@@ -42,11 +42,11 @@ plugin_manager = { workspace = true }
 plugin_editor_api = { workspace = true }
 
 # Built-in plugins (local vendor clones)
-blueprint_editor_plugin = { path = "../../plugins/vendor/blueprint_editor" }
-script_editor_plugin = { path = "../../plugins/vendor/code_editor" }
-plugin_matter = { path = "../../plugins/vendor/matter_editor" }
-shader_editor_plugin = { path = "../../plugins/vendor/shader_editor" }
-editor_table_plugin = { path = "../../plugins/vendor/table_editor" }
+blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor" }
+script_editor_plugin = { path = "../../../plugins/vendor/code_editor" }
+plugin_matter = { path = "../../../plugins/vendor/matter_editor" }
+shader_editor_plugin = { path = "../../../plugins/vendor/shader_editor" }
+editor_table_plugin = { path = "../../../plugins/vendor/table_editor" }
 serde = { workspace = true, features = ["derive"] }
 schemars = { workspace = true }
 tracing.workspace = true

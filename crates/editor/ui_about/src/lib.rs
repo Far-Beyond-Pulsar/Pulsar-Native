@@ -8,7 +8,7 @@ use ui::{
 };
 use ui_common::translate;
 
-static LOGO_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+static LOGO_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
 
 fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
     let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();

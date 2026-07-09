@@ -11,7 +11,7 @@ use engine_backend::services::RustAnalyzerManager;
 use crate::recent_projects::update_recent_projects;
 use crate::tasks::{LoadingEvent, TaskStatus, TASKS};
 
-static SPLASH_PNG: &[u8] = include_bytes!("../../../assets/images/Splash.png");
+static SPLASH_PNG: &[u8] = include_bytes!("../../../../assets/images/Splash.png");
 
 fn decode_png(bytes: &[u8]) -> Option<Arc<RenderImage>> {
     let rgba = image::load_from_memory(bytes).ok()?.into_rgba8();
@@ -384,9 +384,9 @@ impl window_manager::PulsarWindow for LoadingScreen {
             px, Bounds, Point, Size, WindowBounds, WindowDecorations, WindowIcon, WindowKind,
         };
         #[cfg(not(target_os = "macos"))]
-        static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+        static ICON_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
         #[cfg(target_os = "macos")]
-        static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl_mac.png");
+        static ICON_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl_mac.png");
         let app_icon = WindowIcon::from_png_bytes(ICON_PNG)
             .map_err(|e| tracing::warn!("Failed to decode app icon: {e}"))
             .ok();

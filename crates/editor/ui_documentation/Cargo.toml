@@ -9,7 +9,7 @@ ui = { workspace = true }
 ui_common = { workspace = true }
 window_manager = { workspace = true }
 inventory.workspace = true
-pulsar_docs = { path = "../../crates/pulsar_docs" }
+pulsar_docs = { path = "../../core/pulsar_docs" }
 engine_state = { workspace = true }
 regex = { workspace = true }
 tracing.workspace = true

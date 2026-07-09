@@ -276,7 +276,7 @@ fn main() {{
 /// so user-overrides aren't clobbered.
 fn ensure_engine_primitives(project_root: &Path) {
     // CARGO_MANIFEST_DIR = <repo>/crates/engine_backend  →  ../../  = <repo>
-    const ENGINE_ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets");
+    const ENGINE_ASSETS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
 
     let src_prims = std::path::Path::new(ENGINE_ASSETS).join("meshes/primitives");
     if !src_prims.exists() {

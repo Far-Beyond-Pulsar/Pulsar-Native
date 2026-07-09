@@ -36,7 +36,7 @@ use rust_embed::{EmbeddedFile, RustEmbed};
 use std::borrow::Cow;
 
 #[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/../../assets"]
+#[folder = "$CARGO_MANIFEST_DIR/../../../assets"]
 #[include = "fonts/**/*.ttf"]
 #[include = "images/**/*.png"]
 #[include = "meshes/**"]

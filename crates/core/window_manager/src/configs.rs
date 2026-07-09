@@ -10,10 +10,10 @@ use gpui::{
 use crate::wrappers::WindowContentWrapper;
 
 #[cfg(target_os = "macos")]
-static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl_mac.png");
+static ICON_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl_mac.png");
 
 #[cfg(not(target_os = "macos"))]
-static ICON_PNG: &[u8] = include_bytes!("../../../assets/images/logo_sqrkl.png");
+static ICON_PNG: &[u8] = include_bytes!("../../../../assets/images/logo_sqrkl.png");
 
 fn app_icon() -> Option<WindowIcon> {
     WindowIcon::from_png_bytes(ICON_PNG)
