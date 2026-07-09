@@ -2822,7 +2822,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
+ "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326)",
  "uuid",
 ]
 
@@ -4146,7 +4146,7 @@ dependencies = [
 [[package]]
 name = "gpui-ce"
 version = "1.0.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI?rev=faf94adae251716ba5d6f3b510335395b19365e8#faf94adae251716ba5d6f3b510335395b19365e8"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI?rev=313b82eb92887e6c9c2e92a9ff266ffdcd3ae1d5#313b82eb92887e6c9c2e92a9ff266ffdcd3ae1d5"
 dependencies = [
  "anyhow",
  "arboard",
@@ -10195,7 +10195,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
+ "ui_types_common 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326)",
  "uuid",
 ]
 
@@ -12665,7 +12665,7 @@ dependencies = [
 [[package]]
 name = "ui"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=b43b1cca194b591f079d1b2a9b50bb68b55d67a3#b43b1cca194b591f079d1b2a9b50bb68b55d67a3"
 dependencies = [
  "aho-corasick",
  "anyhow",
@@ -12743,7 +12743,7 @@ dependencies = [
 [[package]]
 name = "ui-macros"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=07a0910b7f0004c31dfc7bab8ece03158636c541#07a0910b7f0004c31dfc7bab8ece03158636c541"
+source = "git+https://github.com/Far-Beyond-Pulsar//WGPUI-Component?rev=b43b1cca194b591f079d1b2a9b50bb68b55d67a3#b43b1cca194b591f079d1b2a9b50bb68b55d67a3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -13230,7 +13230,7 @@ dependencies = [
 [[package]]
 name = "ui_types_common"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733#62bb5c130603c3d823a3ee9633cc4c374bdd2733"
+source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326#f91bbba2b90ebad0afa6b9940ecd52da0430e326"
 dependencies = [
  "chrono",
  "lazy_static",

@@ -43,9 +43,9 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (WGPUI) ----------
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "faf94adae251716ba5d6f3b510335395b19365e8", features = ["inspector"] }
-ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "07a0910b7f0004c31dfc7bab8ece03158636c541" }
-ui-macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "07a0910b7f0004c31dfc7bab8ece03158636c541" }
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI", rev = "313b82eb92887e6c9c2e92a9ff266ffdcd3ae1d5", features = ["inspector"] }
+ui      = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "b43b1cca194b591f079d1b2a9b50bb68b55d67a3" }
+ui-macros = { git = "https://github.com/Far-Beyond-Pulsar/WGPUI-Component", rev = "b43b1cca194b591f079d1b2a9b50bb68b55d67a3" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/profiling" }
@@ -266,10 +266,10 @@ pbgc                  = { git = "https://github.com/j4flmao/PBGC", branch = "fix
 # Sidenote: Cargo can we PLEASE FIX THIS?????
 ###################################
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI"]
-gpui-ce               = { git = "https://github.com/Far-Beyond-Pulsar//WGPUI", rev = "faf94adae251716ba5d6f3b510335395b19365e8" }
+gpui-ce               = { git = "https://github.com/Far-Beyond-Pulsar//WGPUI", rev = "313b82eb92887e6c9c2e92a9ff266ffdcd3ae1d5" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI-Component"]
-ui               = { git = "https://github.com/Far-Beyond-Pulsar//WGPUI-Component", rev = "07a0910b7f0004c31dfc7bab8ece03158636c541" }
+ui               = { git = "https://github.com/Far-Beyond-Pulsar//WGPUI-Component", rev = "b43b1cca194b591f079d1b2a9b50bb68b55d67a3" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
 # Core engine crates
