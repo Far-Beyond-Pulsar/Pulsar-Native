@@ -2,29 +2,58 @@
 
 > A next-generation game engine and editor built in Rust.
 >
-> Pulsar is not a "game engine" in the Unity/Unreal sense — it is a **platform for
-> building interactive worlds** where the editor IS the runtime, the runtime IS the
-> editor, and the boundary between "tool" and "game" is a compile-time choice.
+> Unlike Unity or Unreal, Pulsar **code-generates a separate project** that
+> compiles and runs independently. Your game is not a script running inside the
+> engine — it is its own binary with minimal dependencies on the engine's API
+> surface. This produces a tiny game with strong compile-time guarantees that
+> it is compatible with the engine's file types, formats, and protocols.
 
 ## The core insight
 
-Most game engines keep the editor and the runtime in separate processes (or at
-least separate binary modes). The editor is a tool that produces data; the
-runtime consumes it. This split creates a fundamental impedance mismatch:
-editor systems cannot access runtime data directly, runtime systems cannot
-leverage editor tooling, and every change requires a serialization round-trip.
+Most game engines follow one of two models:
 
-Pulsar collapses this. The engine is a library that can be linked in two modes:
+1. **Embedded scripting** (Unity/Unreal) — your game logic runs inside the
+   editor process or a runtime VM. You depend on the full engine. Your binary
+   is the engine with your script bolted on.
+2. **Library + codegen** (Pulsar) — the engine is a toolkit that **generates
+   a standalone Rust project**. Your game links only the runtime crates it
+   actually uses. The generated project has compile-time guarantees that its
+   types, assets, and blueprints are compatible with the engine's formats.
 
-1. **Editor mode** — everything loaded: the GPUI-based editor shell, reflection
-   system, blueprint graph runtime, AI copilots, plugin system, asset pipeline.
-2. **Runtime mode** — headless: the ECS, physics, rendering, scene graph, and
-   blueprint executor with no GPUI dependency.
+Pulsar is not a runtime you ship — it is a **factory that produces your runtime**.
 
-The same `EngineClass` components, the same ECS archetypes, and the same
-subsystems serve both modes. An `#[engine_class]` defined in a plugin DLL
-is editable in the editor's property panel AND ticked by the runtime's ECS
-schedule — no conversion step, no serialization boundary.
+### How it works
+
+You build your game in the Pulsar editor. When you export, the engine:
+
+1. **Code-generates a Rust crate** containing your game's reflected types,
+   blueprint graphs, scene definitions, and asset manifests as Rust code
+2. **This crate compiles standalone** against `pulsar_core`, `pulsar_ecs`,
+   `pulsar_reflection`, and the renderer — minimal deps, no editor, no GPUI
+3. **Compile-time guarantees** — if the generated code compiles, your types
+   match the engine's expectations. No runtime format mismatch, no missing
+   fields, no serialization surprises
+4. **Tiny binaries** — your game doesn't carry the editor shell, the plugin
+   system, the AI copilot, or the asset pipeline
+
+The editor itself also runs as a Pulsar project — `Pulsar-Native/crates/core/engine`
+is the editor binary. The same codegen path produces it. The plugin system
+(`plugin_editor_api`, `plugin_manager`) exists for editor extensions, not for
+game logic.
+
+### Comparison
+
+| | Unity/Unreal | Pulsar |
+|---|---|---|
+| Your game is... | Scripts in the engine process | A standalone Rust binary |
+| Binary size | Engine + your script (~100 MB+) | Only what you use (~1-10 MB) |
+| Format safety | Runtime deserialization | Compile-time type checking |
+| Engine dep | Full engine required | Minimal runtime API surface |
+| Editor in game | Ships editor DLLs | Zero editor code |
+
+The same `EngineClass` components, ECS archetypes, and reflection types serve
+both the editor (for inspection/editing) and the compiled game (for runtime
+performance) — but the game only pays for what it uses.
 
 ## Architecture philosophy
 
