@@ -123,6 +123,8 @@ impl FileManagerDrawer {
 }
 
 pub fn cancel_drag(d: &mut FileManagerDrawer, cx: &mut gpui::Context<FileManagerDrawer>) {
+    d.breadcrumb_hover_timer = None;
+    d.breadcrumb_hover_path = None;
     if d.asset_drag_emitted {
         d.asset_drag_emitted = false;
         cx.emit(ui_types_common::DragEvent::AssetDragCancelled);

@@ -336,15 +336,17 @@ pub fn render_file_content(
                         m
                     }
                 })
-                .on_drag_move::<plugin_editor_api::AssetPayload>(cx.listener(
-                    move |d, event: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
-                        if !event.bounds.contains(&event.event.position) && !d.asset_drag_emitted {
+                .on_drag_hover::<plugin_editor_api::AssetPayload>(cx.listener(
+                    move |d, is_hovered: &bool, _w, cx| {
+                        if !*is_hovered && !d.asset_drag_emitted {
                             d.asset_drag_emitted = true;
-                            let payload: ui_types_common::AssetPayload =
-                                event.drag(cx).clone().into();
-                            cx.emit(ui_types_common::DragEvent::AssetDragStarted(
-                                payload,
-                            ));
+                            if let Some(payload) = cx.active_drag_value::<plugin_editor_api::AssetPayload>() {
+                                cx.emit(
+                                    ui_types_common::DragEvent::AssetDragStarted(
+                                        payload.clone().into(),
+                                    ),
+                                );
+                            }
                         }
                     },
                 ));
