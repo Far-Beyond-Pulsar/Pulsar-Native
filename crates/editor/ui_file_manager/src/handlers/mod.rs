@@ -488,14 +488,12 @@ pub fn handle_set_color_override(
     }
 }
 
-pub fn set_project_path(
-    d: &mut FileManagerDrawer,
-    path: PathBuf,
-    cx: &mut Context<FileManagerDrawer>,
-) {
-    d.project_path = Some(path.clone());
-    d.folder_tree = FolderNode::from_path(&path);
-    d.selected_folder = Some(path);
-    d.mark_directory_cache_dirty();
-    cx.notify();
+impl FileManagerDrawer {
+    pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        self.project_path = Some(path.clone());
+        self.folder_tree = FolderNode::from_path(&path);
+        self.selected_folder = Some(path);
+        self.mark_directory_cache_dirty();
+        cx.notify();
+    }
 }
