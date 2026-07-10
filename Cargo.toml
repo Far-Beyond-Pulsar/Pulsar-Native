@@ -44,9 +44,9 @@ ttf-parser = { opt-level = 3 }
 [workspace.dependencies]
 
 # ---------- GPUI (vendored) ----------
-gpui-ce = { path = "crates/ui/wgpui", features = ["inspector"] }
-ui      = { path = "crates/ui/wgpui-component/crates/ui" }
-ui-macros = { path = "crates/ui/wgpui-component/crates/ui-macros" }
+gpui-ce      = { path = "crates/ui/wgpui", features = ["inspector"] }
+ui           = { path = "crates/ui/wgpui-component/crates/ui" }
+ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/core/profiling" }
@@ -63,10 +63,10 @@ pulsar_graph                       = { path = "crates/core/pulsar_graph" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_ecs                         = { path = "crates/core/pulsar_ecs" }
-pulsar_reflection     = { path = "crates/core/pulsar_reflection" }
-pulsar_events         = { path = "crates/core/pulsar_events" }
-engine_class_derive   = { path = "crates/core/engine_class_derive" }
-pulsar_scene          = { path = "crates/subsystems/pulsar_scene" }
+pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
+pulsar_events                      = { path = "crates/core/pulsar_events" }
+engine_class_derive                = { path = "crates/core/engine_class_derive" }
+pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
 
 # ---------- Agent Providers ----------
 agent_chat_core                    = { path = "crates/agent-providers/agent_chat_core" }
@@ -93,8 +93,6 @@ agent_provider_azure_openai        = { path = "crates/agent-providers/agent_prov
 agent_provider_aws_bedrock         = { path = "crates/agent-providers/agent_provider_aws_bedrock" }
 agent_provider_vertex_ai           = { path = "crates/agent-providers/agent_provider_vertex_ai" }
 agent_provider_cohere              = { path = "crates/agent-providers/agent_provider_cohere" }
-
-
 
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
@@ -125,21 +123,21 @@ ui_friends            = { path = "crates/editor/ui_friends" }
 friends_engine        = { path = "crates/core/friends_engine" }
 
 # ---------- Plugin System ----------
-plugin_editor_api = { path = "crates/core/plugin_editor_api"}
-plugin_manager    = { path = "crates/core/plugin_manager" }
+plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
+plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio          = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
-helio-snapshot = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
-helio-asset-compat = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
-glam           = { version = "0.33", features = ["bytemuck"] }
+helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
+helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
+helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
+glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
-pulsar-config = { path = "crates/third-party/pulsar-config" }
-pbgc = { path = "crates/third-party/pbgc" }
-graphy = { path = "crates/third-party/graphy" }
-tool_registry = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
-tool_registry_macros = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+pulsar-config         = { path = "crates/third-party/pulsar-config" }
+pbgc                  = { path = "crates/third-party/pbgc" }
+graphy                = { path = "crates/third-party/graphy" }
+tool_registry         = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 
 # ---------- Installer ----------
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
@@ -284,5 +282,3 @@ pulsar-config = { path = "crates/third-party/pulsar-config" }
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI-Component"]
 ui = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros = { path = "crates/ui/wgpui-component/crates/ui-macros" }
-
-
