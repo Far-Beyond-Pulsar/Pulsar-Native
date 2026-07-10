@@ -9,6 +9,16 @@ members = [
 default-members = ["crates/core/engine"]
 resolver = "2"
 
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/anomalyco/Pulsar-Native"
+rust-version = "1.81"
+authors = ["Pulsar Team"]
+homepage = "https://pulsar.engine"
+keywords = ["game-engine"]
+
 ###################################
 # Profiles
 ###################################
@@ -59,7 +69,6 @@ pulsar_settings                    = { path = "crates/core/pulsar_settings" }
 engine_backend                     = { path = "crates/core/engine_backend" }
 pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
 window_manager                     = { path = "crates/core/window_manager" }
-pulsar_graph                       = { path = "crates/core/pulsar_graph" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_ecs                         = { path = "crates/core/pulsar_ecs" }
@@ -282,3 +291,7 @@ pulsar-config = { path = "crates/third-party/pulsar-config" }
 [patch."https://github.com/Far-Beyond-Pulsar/WGPUI-Component"]
 ui = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros = { path = "crates/ui/wgpui-component/crates/ui-macros" }
+
+[patch."https://github.com/Far-Beyond-Pulsar/PSGC"]
+psgc = { path = "crates/third-party/psgc/crates/psgc" }
+wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }

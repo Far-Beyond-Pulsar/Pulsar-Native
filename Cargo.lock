@@ -8927,7 +8927,6 @@ dependencies = [
 [[package]]
 name = "psgc"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PSGC?rev=c2650ed0aba111eb7e0c781c73d5933f1290e410#c2650ed0aba111eb7e0c781c73d5933f1290e410"
 dependencies = [
  "graphy",
  "serde",
@@ -9184,7 +9183,6 @@ dependencies = [
  "pulsar_bp_executor",
  "pulsar_core",
  "pulsar_ecs",
- "pulsar_graph",
  "pulsar_reflection",
  "pulsar_scene",
  "pulsar_settings",
@@ -9192,16 +9190,10 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "ui",
  "uuid",
  "wgpu",
  "winit",
-]
-
-[[package]]
-name = "pulsar_graph"
-version = "0.1.0"
-dependencies = [
- "ui",
 ]
 
 [[package]]
@@ -13336,7 +13328,6 @@ dependencies = [
  "chrono",
  "gpui-ce",
  "image",
- "inventory",
  "smallvec",
  "ui",
  "ui_common",
@@ -13545,7 +13536,6 @@ dependencies = [
  "engine_backend",
  "engine_state",
  "gpui-ce",
- "inventory",
  "parking_lot",
  "profiling 0.1.0",
  "rand 0.10.1",
@@ -13715,7 +13705,6 @@ dependencies = [
  "engine_state",
  "futures",
  "gpui-ce",
- "inventory",
  "serde_json",
  "similar 3.1.1",
  "tokio",
@@ -13772,7 +13761,6 @@ dependencies = [
  "directories 6.0.0",
  "engine_state",
  "gpui-ce",
- "inventory",
  "pulsar_std",
  "tracing",
  "ui",
@@ -14610,7 +14598,6 @@ dependencies = [
 [[package]]
 name = "wgsl_std"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/PSGC?rev=c2650ed0aba111eb7e0c781c73d5933f1290e410#c2650ed0aba111eb7e0c781c73d5933f1290e410"
 dependencies = [
  "graphy",
  "linkme",

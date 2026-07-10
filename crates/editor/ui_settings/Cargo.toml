@@ -10,7 +10,6 @@ gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 window_manager.workspace = true
-inventory.workspace = true
 # Engine
 engine_state.workspace = true
 pulsar_std.workspace = true

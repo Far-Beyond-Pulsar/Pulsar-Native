@@ -5,7 +5,7 @@
 
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
 use pbgc::{compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription};
-use pulsar_graph::{BlueprintAsset, ClassVariable, GraphDescription};
+use ui::graph::{BlueprintAsset, ClassVariable, GraphDescription};
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -177,8 +177,8 @@ impl BytecodeCompiler {
     }
 
     /// Get size and alignment for a data type.
-    fn get_type_size_align(&self, data_type: &pulsar_graph::DataType) -> (usize, usize) {
-        use pulsar_graph::DataType;
+    fn get_type_size_align(&self, data_type: &ui::graph::DataType) -> (usize, usize) {
+        use ui::graph::DataType;
 
         match data_type {
             DataType::Execution => (0, 1), // Execution has no data
@@ -187,7 +187,7 @@ impl BytecodeCompiler {
 
                 // Check for wrapper types that affect size
                 if !type_info.wrappers.is_empty() {
-                    use pulsar_graph::WrapperType;
+                    use ui::graph::WrapperType;
 
                     // Most wrappers are pointer-sized structures
                     for wrapper in &type_info.wrappers {
@@ -235,10 +235,10 @@ impl BytecodeCompiler {
     /// Parse default value from string to bytes.
     fn parse_default_value(
         &self,
-        data_type: &pulsar_graph::DataType,
+        data_type: &ui::graph::DataType,
         default: Option<&str>,
     ) -> Result<Vec<u8>, CompilerError> {
-        use pulsar_graph::DataType;
+        use ui::graph::DataType;
 
         if default.is_none() {
             // Return zero bytes for the type
@@ -388,7 +388,7 @@ mod tests {
     fn test_type_sizes() {
         let compiler = BytecodeCompiler::new();
 
-        use pulsar_graph::{DataType, TypeInfo};
+        use ui::graph::{DataType, TypeInfo};
 
         let i32_type = DataType::Data(TypeInfo {
             base_type: "i32".to_string(),
@@ -417,7 +417,7 @@ mod tests {
     fn test_parse_default_values() {
         let compiler = BytecodeCompiler::new();
 
-        use pulsar_graph::{DataType, TypeInfo};
+        use ui::graph::{DataType, TypeInfo};
 
         let i32_type = DataType::Data(TypeInfo {
             base_type: "i32".to_string(),

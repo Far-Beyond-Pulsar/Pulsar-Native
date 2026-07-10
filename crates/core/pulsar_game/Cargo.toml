@@ -14,7 +14,7 @@ profiling   = { workspace = true }
 tracing     = { workspace = true }
 
 # Blueprint runtime dependencies
-pulsar_graph = { workspace = true }
+ui = { workspace = true }
 pbgc = { workspace = true }
 pulsar_bp_executor = { workspace = true }
 pulsar_std_bundle = { workspace = true }

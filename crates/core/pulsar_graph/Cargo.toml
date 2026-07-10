@@ -1,8 +1,0 @@
-[package]
-name = "pulsar_graph"
-version = "0.1.0"
-edition = "2021"
-description = "Blueprint graph data model for Pulsar (BlueprintAsset, GraphDescription, type system)"
-
-[dependencies]
-ui.workspace = true

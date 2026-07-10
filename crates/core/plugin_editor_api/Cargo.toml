@@ -25,11 +25,5 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 tracing = { workspace = true }
-
-[features]
-default = []
-# Feature flag to indicate this is being built as a plugin
-plugin = []
-
 [lib]
 crate-type = ["lib", "cdylib"]
