@@ -181,7 +181,7 @@ impl FileManagerDrawer {
         } else {
             IconName::Folder
         };
-        let ic = ui::hierarchical_tree::tree_colors::FOLDER;
+        let ic = self.fs_metadata.get_color_override(&node.path).unwrap_or(ui::hierarchical_tree::tree_colors::FOLDER);
         let tc = if sel {
             cx.theme().accent_foreground
         } else {

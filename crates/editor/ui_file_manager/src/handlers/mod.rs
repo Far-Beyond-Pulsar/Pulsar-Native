@@ -492,7 +492,8 @@ impl FileManagerDrawer {
     pub fn set_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         self.project_path = Some(path.clone());
         self.folder_tree = FolderNode::from_path(&path);
-        self.selected_folder = Some(path);
+        self.selected_folder = Some(path.clone());
+        self.fs_metadata.load_from_project_root(&path);
         self.mark_directory_cache_dirty();
         cx.notify();
     }

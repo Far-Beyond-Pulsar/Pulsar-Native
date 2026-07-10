@@ -2,7 +2,7 @@ use gpui::{Context, Styled, Window};
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use ui::Icon;
+use ui::{Icon, Sizable as _};
 
 use crate::utils::actions::*;
 
@@ -71,7 +71,7 @@ pub fn folder_context_menu(
                     top_level_items.sort_by(|a, b| a.display_name.cmp(&b.display_name));
 
                     for file_type in top_level_items {
-                        let icon = Icon::new(file_type.icon.clone()).text_color(file_type.color);
+                        let icon = Icon::new(file_type.icon.clone()).size_4().text_color(file_type.color);
                         submenu = submenu.menu_with_icon(
                             file_type.display_name.clone(),
                             icon,

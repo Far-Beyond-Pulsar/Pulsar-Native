@@ -90,7 +90,8 @@ impl FileManagerDrawer {
         .detach();
 
         let operations = FileOperations::new(project_path.clone());
-        let fs_metadata = FsMetadataManager::new();
+        let mut fs_metadata = FsMetadataManager::new();
+        if let Some(ref p) = project_path { fs_metadata.load_from_project_root(p); }
         let folder_tree = crate::preload::take_preloaded_tree()
             .or_else(|| project_path.as_ref().and_then(|p| FolderNode::from_path(p)));
 

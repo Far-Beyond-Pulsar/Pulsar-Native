@@ -44,13 +44,30 @@ impl FsMetadataManager {
         }
     }
 
-    fn load(&mut self, project_path: &Path) {
+    pub fn load_from_project_root(&mut self, project_path: &Path) {
         let meta_path = project_path.join(METADATA_FILE);
         if let Ok(content) = std::fs::read_to_string(&meta_path) {
             if let Ok(meta) = serde_json::from_str::<Metadata>(&content) {
                 self.metadata = meta;
                 self.path = Some(project_path.to_path_buf());
+                return;
             }
+        }
+        self.path = Some(project_path.to_path_buf());
+    }
+
+    fn load_from_parents(&mut self, start_path: &Path) {
+        let mut current = Some(start_path);
+        while let Some(dir) = current {
+            let meta_path = dir.join(METADATA_FILE);
+            if let Ok(content) = std::fs::read_to_string(&meta_path) {
+                if let Ok(meta) = serde_json::from_str::<Metadata>(&content) {
+                    self.metadata = meta;
+                    self.path = Some(dir.to_path_buf());
+                    return;
+                }
+            }
+            current = dir.parent();
         }
     }
 
@@ -66,7 +83,7 @@ impl FsMetadataManager {
     pub fn get_color_override(&mut self, file_path: &Path) -> Option<gpui::Hsla> {
         if self.path.is_none() {
             if let Some(parent) = file_path.parent() {
-                self.load(parent);
+                self.load_from_parents(parent);
             }
         }
         let key = file_path.to_string_lossy().to_string();
