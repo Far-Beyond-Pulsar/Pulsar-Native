@@ -2,8 +2,6 @@ use gpui::prelude::*;
 use gpui::*;
 use std::path::PathBuf;
 
-pub(crate) mod context_menus;
-
 use crate::components::FileManagerDrawer;
 use crate::utils::{actions::*, tree::FolderNode, types::*};
 

@@ -1,7 +1,7 @@
 //! User presence tracking functionality
 
-use super::state::MultiplayerWindow;
-use super::types::*;
+use crate::screen::MultiplayerWindow;
+use crate::utils::types::*;
 use engine_backend::subsystems::networking::multiuser::ClientMessage;
 use gpui::*;
 

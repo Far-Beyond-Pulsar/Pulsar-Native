@@ -14,7 +14,9 @@ runtime is the editor. For the full context, see `.agents/`.
 | `.agents/FILESYSTEM.md` | `engine_fs::virtual_fs` — local, remote, P2P providers |
 | `.agents/REFLECTION.md` | Type system — `Reflectable`, `RuntimeTypeInfo`, `EngineClass` |
 | `.agents/ECS.md` | Archetype ECS — `World`, `Query`, `Schedule` |
+| `.agents/FILE_MANAGER.md` | `ui_file_manager` — flat crate layout, modules, conventions |
 | `.agents/THEMING.md` | Theme JSON schema, syntax highlighting, window backgrounds |
+| `.agents/UI_CRATES.md` | UI crate conventions — flat layout, `components/`/`handlers`/`utils` pattern |
 
 ## Workspace
 

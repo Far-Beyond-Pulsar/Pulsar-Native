@@ -1,7 +1,5 @@
-//! Plugin Manager UI
-//!
-//! A popup window for viewing and managing loaded plugins
+mod components;
+mod handlers;
+mod screen;
 
-mod window;
-
-pub use window::PluginManagerWindow;
+pub use screen::PluginManagerWindow;

@@ -4,8 +4,8 @@
 
 use gpui::*;
 
-use super::state::MultiplayerWindow;
-use super::types::*;
+use crate::screen::MultiplayerWindow;
+use crate::utils::types::*;
 
 impl MultiplayerWindow {
     pub(super) fn disconnect(&mut self, _window: &mut Window, cx: &mut Context<Self>) {

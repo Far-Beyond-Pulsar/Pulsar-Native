@@ -2,7 +2,7 @@
 
 use gpui::*;
 
-use super::state::MultiplayerWindow;
+use crate::screen::MultiplayerWindow;
 use engine_backend::subsystems::networking::multiuser::ClientMessage;
 
 impl MultiplayerWindow {

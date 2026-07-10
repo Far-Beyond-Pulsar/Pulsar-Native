@@ -1,4 +1,4 @@
-use crate::settings_modern::ModernSettingsScreen;
+use crate::screen::ModernSettingsScreen;
 use gpui::{prelude::FluentBuilder as _, *};
 use ui::{v_flex, ActiveTheme, TitleBar};
 

@@ -1,7 +1,8 @@
-pub mod friends_screen;
-pub mod invite_popover;
-pub mod types;
+pub mod components;
+pub mod utils;
+mod handlers;
+mod screen;
 
-pub use friends_screen::FriendsScreen;
-pub use invite_popover::FriendsPopover;
-pub use types::*;
+pub use components::popover::FriendsPopover;
+pub use screen::FriendsScreen;
+pub use utils::*;

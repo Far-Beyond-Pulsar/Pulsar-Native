@@ -1,12 +1,8 @@
-//! Settings UI
-//!
-//! Application and project settings
-
-pub mod settings;
-pub mod settings_modern;
+mod handlers;
+mod screen;
+pub mod components;
+pub mod utils;
 pub mod window;
 
-// Re-export main types
-pub use settings::{SettingsScreen, SettingsScreenProps};
-pub use settings_modern::ModernSettingsScreen;
+pub use screen::ModernSettingsScreen;
 pub use window::SettingsWindow;

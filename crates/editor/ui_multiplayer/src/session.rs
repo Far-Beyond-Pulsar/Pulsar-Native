@@ -1,6 +1,6 @@
 //! Session management functionality
 
-use super::state::MultiplayerWindow;
+use crate::screen::MultiplayerWindow;
 
 impl MultiplayerWindow {
     /// Format participant IDs for display with nice labels
