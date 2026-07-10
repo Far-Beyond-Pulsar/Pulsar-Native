@@ -12660,7 +12660,6 @@ dependencies = [
 [[package]]
 name = "tool_registry"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=116b9028bad6b9467073de2534be60ef4df9b279#116b9028bad6b9467073de2534be60ef4df9b279"
 dependencies = [
  "anyhow",
  "inventory",
@@ -12686,7 +12685,6 @@ dependencies = [
 [[package]]
 name = "tool_registry_macros"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/ToolbeltRS?rev=116b9028bad6b9467073de2534be60ef4df9b279#116b9028bad6b9467073de2534be60ef4df9b279"
 dependencies = [
  "proc-macro2",
  "quote",

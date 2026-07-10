@@ -292,6 +292,10 @@ pulsar-config = { path = "crates/third-party/pulsar-config" }
 ui = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
+[patch."https://github.com/Far-Beyond-Pulsar/ToolbeltRS"]
+tool_registry = { path = "crates/third-party/toolbelt/crates/tool_registry" }
+tool_registry_macros = { path = "crates/third-party/toolbelt/crates/tool_registry_macros" }
+
 [patch."https://github.com/Far-Beyond-Pulsar/PSGC"]
 psgc = { path = "crates/third-party/psgc/crates/psgc" }
 wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
