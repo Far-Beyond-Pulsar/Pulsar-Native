@@ -28,6 +28,7 @@ pub(crate) type TaskFn = fn(&Path) -> TaskResult;
 /// Sequential loading tasks.  Each entry is `(display_label, task_fn)`.
 /// The background thread executes them in order and reports real elapsed times.
 pub(crate) const TASKS: &[(&str, TaskFn)] = &[
+    ("Pre-warming compiler cache", task_cargo_check),
     ("Verifying project structure", task_verify_project),
     ("Reading project configuration", task_read_config),
     ("Scanning workspace packages", task_scan_packages),
@@ -61,6 +62,28 @@ pub(crate) enum LoadingEvent {
 }
 
 // ── Task implementations ───────────────────────────────────────────────────
+
+fn task_cargo_check(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let output = std::process::Command::new("cargo")
+        .args(["check", "--quiet"])
+        .current_dir(project)
+        .output();
+    match output {
+        Ok(out) => {
+            let status = if out.status.success() { "ok" } else { "errors" };
+            let detail = format!(
+                "{status} ({} stderr)",
+                String::from_utf8_lossy(&out.stderr)
+                    .lines()
+                    .count()
+                    .saturating_sub(1)
+            );
+            TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+        }
+        Err(e) => TaskResult { elapsed: t.elapsed(), detail: Some(format!("cargo not found: {e}")) },
+    }
+}
 
 fn task_verify_project(project: &Path) -> TaskResult {
     let t = Instant::now();
