@@ -52,13 +52,10 @@ impl LoadingScreen {
         std::thread::spawn(move || {
             let project = project_path_for_thread.as_path();
             for (idx, (label, task_fn)) in TASKS.iter().enumerate() {
-                let iter_start = Instant::now();
                 let result = task_fn(project);
-                std::thread::sleep(Duration::from_millis(800));
-                let total_elapsed = iter_start.elapsed();
                 tracing::info!(
                     "[Loading] {:>3}ms  {}{}",
-                    total_elapsed.as_millis(),
+                    result.elapsed.as_millis(),
                     label,
                     result
                         .detail
@@ -69,7 +66,7 @@ impl LoadingScreen {
                 if tx
                     .send(LoadingEvent::TaskDone {
                         idx,
-                        elapsed: total_elapsed,
+                        elapsed: result.elapsed,
                         detail: result.detail,
                     })
                     .is_err()
