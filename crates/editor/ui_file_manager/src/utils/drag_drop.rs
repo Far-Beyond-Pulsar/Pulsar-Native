@@ -105,7 +105,7 @@ impl FileManagerDrawer {
         self.breadcrumb_hover_path = Some(p.clone());
         self.breadcrumb_hover_timer = Some(cx.spawn(async move |d, cx| {
             cx.background_executor()
-                .timer(std::time::Duration::from_secs(1))
+                .timer(std::time::Duration::from_millis(500))
                 .await;
             let _ = cx.update(|cx| {
                 d.update(cx, |d, cx| {
@@ -119,4 +119,9 @@ impl FileManagerDrawer {
     }
 }
 
-pub fn cancel_drag(_d: &mut FileManagerDrawer, _cx: &mut gpui::Context<FileManagerDrawer>) {}
+pub fn cancel_drag(d: &mut FileManagerDrawer, cx: &mut gpui::Context<FileManagerDrawer>) {
+    if d.asset_drag_emitted {
+        d.asset_drag_emitted = false;
+        cx.emit(ui_types_common::DragEvent::AssetDragCancelled);
+    }
+}

@@ -36,6 +36,7 @@ pub struct FileManagerDrawer {
     pub(crate) show_drop_hint: bool,
     pub(crate) breadcrumb_hover_timer: Option<gpui::Task<()>>,
     pub(crate) breadcrumb_hover_path: Option<PathBuf>,
+    pub(crate) asset_drag_emitted: bool,
     pub(crate) resizable_state: Entity<ResizableState>,
     pub(crate) view_mode: ViewMode,
     pub(crate) sort_by: SortBy,
@@ -116,6 +117,7 @@ impl FileManagerDrawer {
             show_drop_hint: false,
             breadcrumb_hover_timer: None,
             breadcrumb_hover_path: None,
+            asset_drag_emitted: false,
             resizable_state,
             renaming_item: None,
             rename_input_state,
@@ -328,7 +330,19 @@ pub fn render_file_content(
                     } else {
                         m
                     }
-                });
+                })
+                .on_drag_move::<plugin_editor_api::AssetPayload>(cx.listener(
+                    move |d, event: &DragMoveEvent<plugin_editor_api::AssetPayload>, _w, cx| {
+                        if !event.bounds.contains(&event.event.position) && !d.asset_drag_emitted {
+                            d.asset_drag_emitted = true;
+                            let payload: ui_types_common::AssetPayload =
+                                event.drag(cx).clone().into();
+                            cx.emit(ui_types_common::DragEvent::AssetDragStarted(
+                                payload,
+                            ));
+                        }
+                    },
+                ));
             if d.selected_folder.is_some() {
                 cd = cd
                     .on_drag_move(cx.listener(
@@ -500,7 +514,6 @@ pub fn render_grid_item(
     let irc = item.clone();
     let ip = item.path.clone();
     let ihp = item.path.clone();
-    let ent = cx.entity().clone();
     let hc = d.clipboard.is_some();
     let cls = item.is_class();
     let fld = item.is_folder;
@@ -545,14 +558,7 @@ pub fn render_grid_item(
         } else {
             plugin_editor_api::AssetPayload::from_path(&icl.path)
         };
-        let ep = ap.clone();
-        let e2 = ent.clone();
         inner = inner.on_drag(ap, move |d, _, _, cx| {
-            e2.update(cx, |_, cx| {
-                cx.emit(ui_types_common::DragEvent::AssetDragStarted(
-                    ep.clone().into(),
-                ))
-            });
             cx.stop_propagation();
             cx.new(|_| d.clone())
         });
@@ -768,7 +774,6 @@ pub fn render_list_item(
     let irc = item.clone();
     let ip = item.path.clone();
     let ihp = item.path.clone();
-    let ent = cx.entity().clone();
     let hc = d.clipboard.is_some();
     let cls = item.is_class();
     let fld = item.is_folder;
@@ -822,14 +827,7 @@ pub fn render_list_item(
         } else {
             plugin_editor_api::AssetPayload::from_path(&icl.path)
         };
-        let ep = ap.clone();
-        let e2 = ent.clone();
         row = row.on_drag(ap, move |d, _, _, cx| {
-            e2.update(cx, |_, cx| {
-                cx.emit(ui_types_common::DragEvent::AssetDragStarted(
-                    ep.clone().into(),
-                ))
-            });
             cx.stop_propagation();
             cx.new(|_| d.clone())
         });
@@ -1196,9 +1194,16 @@ pub fn render_clickable_breadcrumb(
                             .border_color(cx.theme().accent)
                     })
                     .on_drop(cx.listener(move |_d, _: &DraggedFile, _w, _cx| {}))
-                    .on_mouse_move(cx.listener(move |d, _: &MouseMoveEvent, _w, cx| {
-                        d.start_breadcrumb_hover_timer(&hp, cx)
-                    }))
+                    .on_drag_hover::<DraggedFile>(cx.listener(
+                        move |d, is_hovered: &bool, _w, cx| {
+                            if *is_hovered {
+                                d.start_breadcrumb_hover_timer(&hp, cx);
+                            } else {
+                                d.breadcrumb_hover_timer = None;
+                                d.breadcrumb_hover_path = None;
+                            }
+                        },
+                    ))
                     .into_any_element(),
             );
             els
