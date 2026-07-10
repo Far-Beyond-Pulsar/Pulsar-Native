@@ -203,6 +203,11 @@ impl EventEmitter<ui_types_common::DragEvent> for FileManagerDrawer {}
 
 impl Render for FileManagerDrawer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.asset_drag_emitted && !cx.has_active_drag() {
+            self.asset_drag_emitted = false;
+            cx.emit(ui_types_common::DragEvent::AssetDragCancelled);
+        }
+
         div()
             .size_full()
             .key_context("FileManagerDrawer")
@@ -1194,16 +1199,11 @@ pub fn render_clickable_breadcrumb(
                             .border_color(cx.theme().accent)
                     })
                     .on_drop(cx.listener(move |_d, _: &DraggedFile, _w, _cx| {}))
-                    .on_drag_hover::<DraggedFile>(cx.listener(
-                        move |d, is_hovered: &bool, _w, cx| {
-                            if *is_hovered {
-                                d.start_breadcrumb_hover_timer(&hp, cx);
-                            } else {
-                                d.breadcrumb_hover_timer = None;
-                                d.breadcrumb_hover_path = None;
-                            }
-                        },
-                    ))
+                    .on_mouse_move(cx.listener(move |d, _: &MouseMoveEvent, _w, cx| {
+                        if cx.has_active_drag() {
+                            d.start_breadcrumb_hover_timer(&hp, cx);
+                        }
+                    }))
                     .into_any_element(),
             );
             els

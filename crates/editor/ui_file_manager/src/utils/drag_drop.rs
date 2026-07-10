@@ -109,6 +109,9 @@ impl FileManagerDrawer {
                 .await;
             let _ = cx.update(|cx| {
                 d.update(cx, |d, cx| {
+                    if !cx.has_active_drag() {
+                        return;
+                    }
                     d.selected_folder = Some(p);
                     d.breadcrumb_hover_timer = None;
                     d.breadcrumb_hover_path = None;
