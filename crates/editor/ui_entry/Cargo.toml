@@ -37,3 +37,6 @@ which = "7.0"
 
 [target.'cfg(windows)'.dependencies]
 runas = "1.2"
+
+[lints]
+workspace = true

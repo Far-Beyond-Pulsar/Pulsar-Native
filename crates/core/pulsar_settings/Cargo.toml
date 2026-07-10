@@ -7,3 +7,6 @@ description = "All engine and project settings registrations for Pulsar Engine"
 
 [dependencies]
 pulsar-config.workspace = true
+
+[lints]
+workspace = true

@@ -8,3 +8,6 @@ description = "Central script-event registry for Pulsar Engine blueprint dispatc
 engine_state = { workspace = true }
 serde        = { workspace = true, features = ["derive"] }
 tracing      = { workspace = true }
+
+[lints]
+workspace = true

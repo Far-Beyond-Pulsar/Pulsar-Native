@@ -49,3 +49,6 @@ notify = { version = "8.0", default-features = false, features = ["macos_kqueue"
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Performance", "Win32_System_ProcessStatus"] }
 winreg = "0.56"
+
+[lints]
+workspace = true

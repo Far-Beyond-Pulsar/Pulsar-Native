@@ -83,3 +83,6 @@ agent_provider_vertex_ai.workspace = true
 agent_provider_cohere.workspace = true
 dirs = { workspace = true }
 rfd = { workspace = true }
+
+[lints]
+workspace = true

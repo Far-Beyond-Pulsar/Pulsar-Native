@@ -26,3 +26,6 @@ tracing.workspace = true
 
 # Serialization (for window state)
 serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

@@ -15,9 +15,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/anomalyco/Pulsar-Native"
 rust-version = "1.81"
-authors = ["Pulsar Team"]
-homepage = "https://pulsar.engine"
-keywords = ["game-engine"]
+authors = ["Tristan J. Poland"]
+homepage = "https://github.com/anomalyco/Pulsar-Native"
+keywords = ["game-engine", "editor"]
 
 ###################################
 # Profiles

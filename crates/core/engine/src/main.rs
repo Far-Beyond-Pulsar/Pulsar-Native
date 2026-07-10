@@ -177,19 +177,7 @@ fn main() {
         steps::backend::run
     );
 
-    // Task 6: Channels (no dependencies)
-    // (disabled – window management will be done directly via GPUI)
-    /*graph.add_task(InitTask::new(
-        CHANNELS,
-        "Window Channels",
-        vec![],
-        Box::new(|ctx| {
-            let (window_tx, window_rx) = channel::<WindowRequest>();
-            ctx.window_tx = Some(window_tx);
-            ctx.window_rx = Some(window_rx);
-            Ok(())
-        })
-    )).unwrap();*/
+    // Task 6: Channels (deprecated — windows opened directly via GPUI)
 
     // Task 7: Engine Context (depends on channels)
     init_task!(
@@ -237,13 +225,7 @@ fn main() {
     );
 
     // Task 11: Project file association prompt (depends on global context)
-    // init_task!(
-    //     graph,
-    //     FILE_ASSOCIATION,
-    //     "Project File Association",
-    //     [SET_GLOBAL],
-    //     steps::file_association::run
-    // );
+    // (disabled — handled by the OS on first launch)
 
     // Execute the initialization graph
     if let Err(e) = graph.execute(&mut init_ctx) {

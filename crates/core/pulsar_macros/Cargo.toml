@@ -11,3 +11,6 @@ quote = { workspace = true }
 linkme = { workspace = true }
 proc-macro2 = { workspace = true }
 syn = { workspace = true, features = ["full", "parsing", "extra-traits"] }
+
+[lints]
+workspace = true

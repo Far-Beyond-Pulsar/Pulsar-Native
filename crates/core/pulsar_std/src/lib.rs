@@ -1,5 +1,3 @@
-#![allow(warnings)]
-
 //! # Pulsar Standard Library
 //!
 //! Built-in blueprint nodes for the Pulsar visual programming system.

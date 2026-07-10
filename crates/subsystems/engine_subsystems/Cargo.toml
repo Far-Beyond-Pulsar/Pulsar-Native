@@ -7,3 +7,6 @@ description = "Type-erased subsystem trait and registry for the Pulsar engine. S
 [dependencies]
 thiserror = { workspace = true }
 tracing = { workspace = true }
+
+[lints]
+workspace = true

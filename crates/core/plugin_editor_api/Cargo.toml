@@ -27,3 +27,6 @@ tracing = { workspace = true }
 tracing = { workspace = true }
 [lib]
 crate-type = ["lib", "cdylib"]
+
+[lints]
+workspace = true

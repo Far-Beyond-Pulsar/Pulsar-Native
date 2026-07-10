@@ -13,3 +13,6 @@ sha2 = { workspace = true }
 graphy           = { workspace = true }
 pulsar_std_bundle = { workspace = true }
 serde_json       = { workspace = true }
+
+[lints]
+workspace = true

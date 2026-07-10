@@ -13,9 +13,7 @@ path = "src/main.rs"
 anyhow.workspace = true
 gpui-ce.workspace = true
 ui = { workspace = true, features = ["tree-sitter-languages", "inspector"] }
-winit.workspace = true
 thiserror = { workspace = true }
-image = { workspace = true }
 wgpu.workspace = true
 rfd = { workspace = true }
 file-association-manager = { git = "https://github.com/Far-Beyond-Pulsar/file-association-manager", rev = "6ca80ae7ab73e050bdb40f7f08d538bb8330c2d3" }
@@ -45,8 +43,7 @@ futures = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 directories = { workspace = true }
 toml = { workspace = true }
-parking_lot = { workspace = true }
-once_cell = { workspace = true }
+
 sysuri.workspace = true
 urlencoding.workspace = true
 dotenv = "0.15"

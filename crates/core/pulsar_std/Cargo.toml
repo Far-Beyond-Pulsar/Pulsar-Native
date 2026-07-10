@@ -29,3 +29,6 @@ rlua = { version = "0.20", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 pulsar_reflection_derive = { workspace = true }
+
+[lints]
+workspace = true

@@ -39,3 +39,6 @@ pulsar_auth.workspace = true
 pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
 engine_fs = { workspace = true }
 futures = { workspace = true }
+
+[lints]
+workspace = true

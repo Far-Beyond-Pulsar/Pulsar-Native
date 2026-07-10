@@ -42,7 +42,6 @@ schemars = { workspace = true }
 device_query = "4.0.1"
 raw-window-handle = "0.6"
 rust-i18n.workspace = true
-wgpu.workspace = true
 smol = { workspace = true }
 image.workspace = true
 
@@ -55,3 +54,6 @@ objc2-foundation = "0.3"  # separate crate for Foundation types
 
 [target.'cfg(windows)'.dependencies]
 winapi = { workspace = true, features = ["winuser", "shellapi"] }
+
+[lints]
+workspace = true

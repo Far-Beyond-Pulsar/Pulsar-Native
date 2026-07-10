@@ -14,3 +14,6 @@ tracing.workspace = true
 tool_registry = { workspace = true }
 tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
 tool_registry_macros = { workspace = true }
+
+[lints]
+workspace = true

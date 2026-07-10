@@ -7,3 +7,6 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 agent_chat_core.workspace = true
+
+[lints]
+workspace = true

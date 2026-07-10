@@ -15,3 +15,6 @@ chrono = { workspace = true }
 [lib]
 name = "profiling"
 path = "src/lib.rs"
+
+[lints]
+workspace = true
