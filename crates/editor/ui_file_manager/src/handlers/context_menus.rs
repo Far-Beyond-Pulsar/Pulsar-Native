@@ -1,10 +1,12 @@
 use gpui::{Context, Styled, Window};
 use rust_i18n::t;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use ui::Icon;
 
 use crate::utils::actions::*;
 
+/// Build a context menu for folders
 pub fn folder_context_menu(
     path: PathBuf,
     has_clipboard: bool,
@@ -16,61 +18,228 @@ pub fn folder_context_menu(
 ) -> ui::popup_menu::PopupMenu
        + 'static {
     move |menu, window, cx| {
+        let file_types_clone = file_types.clone();
         let path_str = path.to_string_lossy().to_string();
-        let ft_clone = file_types.clone();
-        let ps_sub = path_str.clone();
-        let mut menu = menu.submenu_with_icon(
-            Some(ui::Icon::new(ui::IconName::Plus)),
-            t!("FileManager.New").to_string(),
-            window,
-            cx,
-            move |submenu, _, _| {
-                let mut sub = submenu;
-                for ft in ft_clone.iter() {
-                    let id = ft.id.clone();
-                    let name = ft.display_name.clone();
-                    let ext = ft.extension.clone();
-                    sub = sub.menu(
-                        t!("FileManager.NewAsset", name => name).to_string(),
-                        Box::new(CreateAsset {
-                            file_type_id: id.to_string(),
-                            display_name: name,
-                            extension: ext,
-                            default_content: serde_json::Value::Null,
-                        }),
-                    );
-                }
-                sub.separator().menu(
-                    t!("FileManager.NewFolder").to_string(),
-                    Box::new(NewFolder {
-                        folder_path: ps_sub.clone(),
-                    }),
-                )
-            },
-        );
+
+        let mut menu = menu
+            .submenu_with_icon(
+                Some(ui::Icon::new(ui::IconName::Plus)),
+                t!("FileManager.NewFolder").to_string(),
+                window,
+                cx,
+                move |submenu, window, cx| {
+                    let mut submenu = submenu
+                        .menu_with_icon(
+                            t!("FileManager.NewFolder").to_string(),
+                            ui::Icon::new(ui::IconName::FolderPlus),
+                            Box::new(NewFolder {
+                                folder_path: path_str.clone(),
+                            }),
+                        )
+                        .separator();
+
+                    let mut category_tree: HashMap<String, CategoryNode> = HashMap::new();
+                    let mut top_level_items: Vec<plugin_editor_api::FileTypeDefinition> =
+                        Vec::new();
+
+                    for file_type in file_types_clone.iter() {
+                        if file_type.categories.is_empty() {
+                            top_level_items.push(file_type.clone());
+                        } else if file_type.categories.len() == 1 {
+                            category_tree
+                                .entry(file_type.categories[0].clone())
+                                .or_insert_with(|| {
+                                    CategoryNode::new(file_type.categories[0].clone())
+                                })
+                                .items
+                                .push(file_type.clone());
+                        } else if file_type.categories.len() == 2 {
+                            let root_cat = file_type.categories[0].clone();
+                            let sub_cat = file_type.categories[1].clone();
+
+                            category_tree
+                                .entry(root_cat.clone())
+                                .or_insert_with(|| CategoryNode::new(root_cat.clone()))
+                                .subcategories
+                                .entry(sub_cat.clone())
+                                .or_insert_with(|| CategoryNode::new(sub_cat))
+                                .items
+                                .push(file_type.clone());
+                        }
+                    }
+
+                    top_level_items.sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
+                    for file_type in top_level_items {
+                        let icon = Icon::new(file_type.icon.clone()).text_color(file_type.color);
+                        submenu = submenu.menu_with_icon(
+                            file_type.display_name.clone(),
+                            icon,
+                            Box::new(CreateAsset {
+                                file_type_id: file_type.id.as_str().to_string(),
+                                display_name: file_type.display_name.clone(),
+                                extension: file_type.extension.clone(),
+                                default_content: file_type.default_content.clone(),
+                            }),
+                        );
+                    }
+
+                    let mut sorted_categories: Vec<_> = category_tree.into_iter().collect();
+                    sorted_categories.sort_by(|a, b| a.0.cmp(&b.0));
+
+                    for (cat_name, mut cat_node) in sorted_categories {
+                        cat_node
+                            .items
+                            .sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
+                        let subcategories = cat_node.subcategories.clone();
+
+                        submenu = submenu.submenu(
+                            &cat_name,
+                            window,
+                            cx,
+                            move |mut cat_submenu, window, cx| {
+                                for file_type in &cat_node.items {
+                                    let icon = Icon::new(file_type.icon.clone())
+                                        .text_color(file_type.color);
+                                    cat_submenu = cat_submenu.menu_with_icon(
+                                        file_type.display_name.clone(),
+                                        icon,
+                                        Box::new(CreateAsset {
+                                            file_type_id: file_type.id.as_str().to_string(),
+                                            display_name: file_type.display_name.clone(),
+                                            extension: file_type.extension.clone(),
+                                            default_content: file_type.default_content.clone(),
+                                        }),
+                                    );
+                                }
+
+                                let mut sorted_subcats: Vec<_> =
+                                    subcategories.clone().into_iter().collect();
+                                sorted_subcats.sort_by(|a, b| a.0.cmp(&b.0));
+
+                                for (subcat_name, mut subcat_node) in sorted_subcats {
+                                    subcat_node
+                                        .items
+                                        .sort_by(|a, b| a.display_name.cmp(&b.display_name));
+
+                                    cat_submenu = cat_submenu.submenu(
+                                        &subcat_name,
+                                        window,
+                                        cx,
+                                        move |mut sub_submenu, _window, _cx| {
+                                            for file_type in &subcat_node.items {
+                                                let icon = Icon::new(file_type.icon.clone())
+                                                    .text_color(file_type.color);
+                                                sub_submenu = sub_submenu.menu_with_icon(
+                                                    file_type.display_name.clone(),
+                                                    icon,
+                                                    Box::new(CreateAsset {
+                                                        file_type_id: file_type
+                                                            .id
+                                                            .as_str()
+                                                            .to_string(),
+                                                        display_name: file_type
+                                                            .display_name
+                                                            .clone(),
+                                                        extension: file_type.extension.clone(),
+                                                        default_content: file_type
+                                                            .default_content
+                                                            .clone(),
+                                                    }),
+                                                );
+                                            }
+                                            sub_submenu
+                                        },
+                                    );
+                                }
+
+                                cat_submenu
+                            },
+                        );
+                    }
+
+                    submenu
+                },
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.Cut").to_string(),
+                ui::Icon::new(ui::IconName::Scissor),
+                Box::new(Cut),
+            )
+            .menu_with_icon(
+                t!("FileManager.Copy").to_string(),
+                ui::Icon::new(ui::IconName::Copy),
+                Box::new(Copy),
+            );
+
+        if has_clipboard {
+            menu = menu.menu_with_icon(
+                t!("FileManager.Paste").to_string(),
+                ui::Icon::new(ui::IconName::PasteClipboard),
+                Box::new(Paste),
+            );
+        }
+
         menu = menu
             .separator()
-            .menu(
-                t!("FileManager.OpenInFileManager").to_string(),
-                Box::new(OpenInFileManager {
-                    item_path: path_str.clone(),
-                }),
+            .menu_with_icon(
+                t!("FileManager.Rename").to_string(),
+                ui::Icon::new(ui::IconName::EditPencil),
+                Box::new(RenameItem::default()),
             )
-            .menu(
+            .menu_with_icon(
+                t!("FileManager.Delete").to_string(),
+                ui::Icon::new(ui::IconName::Trash),
+                Box::new(DeleteItem::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.Duplicate").to_string(),
+                ui::Icon::new(ui::IconName::Copy),
+                Box::new(DuplicateItem::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.OpenInFileManager").to_string(),
+                ui::Icon::new(ui::IconName::ExternalLink),
+                Box::new(OpenInFileManager::default()),
+            )
+            .menu_with_icon(
                 t!("FileManager.OpenTerminalHere").to_string(),
-                Box::new(OpenTerminalHere {
-                    folder_path: path_str.clone(),
-                }),
+                ui::Icon::new(ui::IconName::Terminal),
+                Box::new(OpenTerminalHere::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.Refresh").to_string(),
+                ui::Icon::new(ui::IconName::Refresh),
+                Box::new(RefreshFileManager),
             );
-        if has_clipboard {
-            menu = menu
-                .separator()
-                .menu(t!("FileManager.Paste").to_string(), Box::new(Paste));
-        }
+
         menu
     }
 }
 
+#[derive(Clone)]
+struct CategoryNode {
+    name: String,
+    items: Vec<plugin_editor_api::FileTypeDefinition>,
+    subcategories: HashMap<String, CategoryNode>,
+}
+
+impl CategoryNode {
+    fn new(name: String) -> Self {
+        Self {
+            name,
+            items: Vec::new(),
+            subcategories: HashMap::new(),
+        }
+    }
+}
+
+/// Build a context menu for files and other items
 pub fn item_context_menu(
     path: PathBuf,
     has_clipboard: bool,
@@ -81,71 +250,163 @@ pub fn item_context_menu(
     &mut Context<ui::popup_menu::PopupMenu>,
 ) -> ui::popup_menu::PopupMenu
        + 'static {
-    move |menu, _window, _cx| {
-        let path_str = path.to_string_lossy().to_string();
+    let path_for_submenu = path.clone();
+
+    move |menu, window, cx| {
         let mut menu = menu;
+
         if is_class {
-            menu = menu.menu(
-                t!("FileManager.OpenClass").to_string(),
-                Box::new(OpenInFileManager {
-                    item_path: path_str.clone(),
-                }),
-            );
+            menu = menu
+                .menu_with_icon(
+                    t!("FileManager.Open").to_string(),
+                    ui::Icon::new(ui::IconName::BookOpen),
+                    Box::new(NewClass::default()),
+                )
+                .separator();
         }
+
         menu = menu
-            .menu(
-                t!("FileManager.Rename").to_string(),
-                Box::new(RenameItem {
-                    item_path: path_str.clone(),
-                }),
+            .menu_with_icon(
+                t!("FileManager.Cut").to_string(),
+                ui::Icon::new(ui::IconName::Scissor),
+                Box::new(Cut),
             )
-            .menu(
-                t!("FileManager.Duplicate").to_string(),
-                Box::new(DuplicateItem {
-                    item_path: path_str.clone(),
-                }),
-            )
-            .menu(
-                t!("FileManager.Delete").to_string(),
-                Box::new(DeleteItem {
-                    item_path: path_str.clone(),
-                }),
-            )
-            .separator()
-            .menu(t!("FileManager.Copy").to_string(), Box::new(Copy))
-            .menu(t!("FileManager.Cut").to_string(), Box::new(Cut));
+            .menu_with_icon(
+                t!("FileManager.Copy").to_string(),
+                ui::Icon::new(ui::IconName::Copy),
+                Box::new(Copy),
+            );
+
         if has_clipboard {
-            menu = menu.menu(t!("FileManager.Paste").to_string(), Box::new(Paste));
+            menu = menu.menu_with_icon(
+                t!("FileManager.Paste").to_string(),
+                ui::Icon::new(ui::IconName::PasteClipboard),
+                Box::new(Paste),
+            );
         }
+
         menu = menu
             .separator()
-            .menu(
-                t!("FileManager.OpenInFileManager").to_string(),
-                Box::new(OpenInFileManager {
-                    item_path: path_str.clone(),
-                }),
+            .menu_with_icon(
+                t!("FileManager.Rename").to_string(),
+                ui::Icon::new(ui::IconName::EditPencil),
+                Box::new(RenameItem::default()),
             )
-            .menu(
-                t!("FileManager.OpenTerminalHere").to_string(),
-                Box::new(OpenTerminalHere {
-                    folder_path: path_str.clone(),
-                }),
-            );
-        if is_class {
-            menu = menu.separator().submenu(
-                t!("FileManager.Class").to_string(),
-                _window,
-                _cx,
-                move |sub, _, _| {
-                    sub.menu(
-                        t!("FileManager.SetAsBlueprint").to_string(),
-                        Box::new(ValidateAsset {
-                            item_path: path_str.clone(),
+            .menu_with_icon(
+                t!("FileManager.Delete").to_string(),
+                ui::Icon::new(ui::IconName::Trash),
+                Box::new(DeleteItem::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.Duplicate").to_string(),
+                ui::Icon::new(ui::IconName::Copy),
+                Box::new(DuplicateItem::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.ValidateAsset").to_string(),
+                ui::Icon::new(ui::IconName::CircleCheck),
+                Box::new(ValidateAsset::default()),
+            )
+            .menu_with_icon(
+                t!("FileManager.ToggleFavorite").to_string(),
+                ui::Icon::new(ui::IconName::Star),
+                Box::new(ToggleFavorite::default()),
+            )
+            .separator();
+
+        let submenu_path = path_for_submenu.clone();
+        menu = menu.submenu_with_icon(
+            Some(ui::Icon::new(ui::IconName::Palette)),
+            t!("FileManager.SetColor").to_string(),
+            window,
+            cx,
+            move |submenu, _window, _cx| {
+                submenu
+                    .menu(
+                        t!("FileManager.ClearColor").to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: None,
                         }),
                     )
-                },
+                    .separator()
+                    .menu(
+                        "🔴 Red".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 255, g: 80, b: 80 }),
+                        }),
+                    )
+                    .menu(
+                        "🟠 Orange".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 255, g: 160, b: 80 }),
+                        }),
+                    )
+                    .menu(
+                        "🟡 Yellow".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 255, g: 220, b: 80 }),
+                        }),
+                    )
+                    .menu(
+                        "🟢 Green".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 80, g: 200, b: 120 }),
+                        }),
+                    )
+                    .menu(
+                        "🔵 Blue".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 80, g: 160, b: 255 }),
+                        }),
+                    )
+                    .menu(
+                        "🟣 Purple".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 180, g: 100, b: 255 }),
+                        }),
+                    )
+                    .menu(
+                        "🟤 Pink".to_string(),
+                        Box::new(SetColorOverride {
+                            item_path: submenu_path.to_string_lossy().to_string(),
+                            color: Some(ColorData { r: 255, g: 120, b: 180 }),
+                        }),
+                    )
+            },
+        );
+
+        menu = menu
+            .menu_with_icon(
+                t!("FileManager.ToggleGitignore").to_string(),
+                ui::Icon::new(ui::IconName::Gitignore),
+                Box::new(ToggleGitignore::default()),
+            )
+            .menu_with_icon(
+                t!("FileManager.ToggleHidden").to_string(),
+                ui::Icon::new(ui::IconName::EyeOff),
+                Box::new(ToggleHidden::default()),
+            )
+            .separator()
+            .menu_with_icon(
+                t!("FileManager.CheckMultiuserSync").to_string(),
+                ui::Icon::new(ui::IconName::Globe),
+                Box::new(CheckMultiuserSync::default()),
+            )
+            .menu_with_icon(
+                t!("FileManager.ShowHistory").to_string(),
+                ui::Icon::new(ui::IconName::Calendar),
+                Box::new(ShowHistory::default()),
             );
-        }
+
         menu
     }
 }
