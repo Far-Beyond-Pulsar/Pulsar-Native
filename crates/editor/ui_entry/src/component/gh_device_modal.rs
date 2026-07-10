@@ -65,12 +65,7 @@ pub fn render_gh_device_modal(
                         .child(code.clone()),
                 )
                 .when_some(copy_notice, |this, notice| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .text_color(theme.success)
-                            .child(notice),
-                    )
+                    this.child(div().text_xs().text_color(theme.success).child(notice))
                 })
                 .child(
                     h_flex()

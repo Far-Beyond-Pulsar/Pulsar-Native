@@ -27,7 +27,9 @@ pub struct FriendsList {
 
 impl FriendsList {
     pub fn empty() -> Self {
-        Self { friends: Vec::new() }
+        Self {
+            friends: Vec::new(),
+        }
     }
 }
 
@@ -54,15 +56,24 @@ where
 {
     use serde::de::Error;
     let val = serde_json::Value::deserialize(deserializer)?;
-    let arr = val.as_array().ok_or_else(|| D::Error::custom("expected array"))?;
+    let arr = val
+        .as_array()
+        .ok_or_else(|| D::Error::custom("expected array"))?;
     let entries: Vec<GistFriendEntry> = arr
         .iter()
         .filter_map(|v| {
             if let Some(obj) = v.as_object() {
                 let username = obj.get("username")?.as_str()?.to_string();
                 let mutual = obj.get("mutual").and_then(|m| m.as_bool()).unwrap_or(false);
-                let home_server = obj.get("home_server").and_then(|h| h.as_str()).map(String::from);
-                Some(GistFriendEntry { username, mutual, home_server })
+                let home_server = obj
+                    .get("home_server")
+                    .and_then(|h| h.as_str())
+                    .map(String::from);
+                Some(GistFriendEntry {
+                    username,
+                    mutual,
+                    home_server,
+                })
             } else {
                 let s = v.as_str()?;
                 Some(GistFriendEntry {

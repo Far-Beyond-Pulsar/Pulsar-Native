@@ -1,7 +1,5 @@
 use engine_class_derive::register_runtime_behavior;
-use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
-};
+use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use serde_json::Value;
 
 use super::RigidbodyComponent;

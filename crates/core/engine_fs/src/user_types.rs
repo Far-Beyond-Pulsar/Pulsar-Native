@@ -223,9 +223,7 @@ impl UserTypeRegistry {
                 .get_by_name(alias)
                 .and_then(|info| DYNAMIC_TYPE_REGISTRY.get(&info.uuid))
                 .and_then(|dynamic_type| {
-                    dynamic_type
-                        .get_field("value")
-                        .map(|field| field.base_type)
+                    dynamic_type.get_field("value").map(|field| field.base_type)
                 })
                 .unwrap_or_else(RuntimeTypeInfo::wildcard),
             TypeAstNode::None
@@ -236,7 +234,12 @@ impl UserTypeRegistry {
     }
 
     /// Creates a new type alias file under `<project_root>/types/aliases/`.
-    pub fn create_type_alias(&self, project_root: &Path, name: &str, content: &str) -> Result<PathBuf> {
+    pub fn create_type_alias(
+        &self,
+        project_root: &Path,
+        name: &str,
+        content: &str,
+    ) -> Result<PathBuf> {
         if self.get_by_name(name).is_some() {
             anyhow::bail!("Type alias name '{}' is already in use", name);
         }

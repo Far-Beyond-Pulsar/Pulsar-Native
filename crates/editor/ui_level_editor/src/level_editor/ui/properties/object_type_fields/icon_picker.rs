@@ -75,11 +75,14 @@ impl ObjectTypeFieldsSection {
             )
         });
 
-        cx.subscribe(&picker, move |this, picker, _event: &AssetPickedEvent, cx| {
-            let selected = picker.read(cx).selected_path().to_string();
-            this.write_object_icon_path(selected);
-            cx.notify();
-        })
+        cx.subscribe(
+            &picker,
+            move |this, picker, _event: &AssetPickedEvent, cx| {
+                let selected = picker.read(cx).selected_path().to_string();
+                this.write_object_icon_path(selected);
+                cx.notify();
+            },
+        )
         .detach();
 
         self.icon_asset_picker = Some(picker);

@@ -15,13 +15,30 @@ use tracing::{debug, error, info, warn};
 pub(crate) enum StudioWsMessage {
     Ping,
     Pong,
-    UserJoined { user: String },
-    UserLeft { user: String },
-    UserList { users: Vec<String> },
-    StatePatch { #[serde(flatten)] patch: serde_json::Value },
-    Chat { user: String, text: String },
-    Error { message: String },
-    FileChanged { path: String, kind: String },
+    UserJoined {
+        user: String,
+    },
+    UserLeft {
+        user: String,
+    },
+    UserList {
+        users: Vec<String>,
+    },
+    StatePatch {
+        #[serde(flatten)]
+        patch: serde_json::Value,
+    },
+    Chat {
+        user: String,
+        text: String,
+    },
+    Error {
+        message: String,
+    },
+    FileChanged {
+        path: String,
+        kind: String,
+    },
 }
 
 // Global Tokio runtime for WebSocket operations
@@ -925,7 +942,12 @@ impl MultiuserClient {
         username: String,
         environment_id: Option<String>,
     ) -> Result<mpsc::UnboundedReceiver<ServerMessage>> {
-        tokio_runtime().block_on(self.connect_to_workspace(workspace_id, auth_token, username, environment_id))
+        tokio_runtime().block_on(self.connect_to_workspace(
+            workspace_id,
+            auth_token,
+            username,
+            environment_id,
+        ))
     }
 
     /// Send a message to the server

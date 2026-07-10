@@ -49,14 +49,21 @@ impl VelocityRigidbodyProps {
                 arr[2].as_f64().unwrap_or(0.0) as f32,
             ];
         }
-        if let Some(v) = obj.get("auto_compute_linear_velocity").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("auto_compute_linear_velocity")
+            .and_then(|v| v.as_bool())
+        {
             self.auto_compute_linear_velocity = v;
         }
-        if let Some(v) = obj.get("auto_compute_angular_velocity").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("auto_compute_angular_velocity")
+            .and_then(|v| v.as_bool())
+        {
             self.auto_compute_angular_velocity = v;
         }
-        if let Some(v) =
-            obj.get("compute_velocity_from_displacement").and_then(|v| v.as_bool())
+        if let Some(v) = obj
+            .get("compute_velocity_from_displacement")
+            .and_then(|v| v.as_bool())
         {
             self.compute_velocity_from_displacement = v;
         }

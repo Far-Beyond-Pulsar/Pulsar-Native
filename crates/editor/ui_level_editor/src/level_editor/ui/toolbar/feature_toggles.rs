@@ -75,15 +75,19 @@ impl FeatureToggles {
                 let mut state = state_arc.write();
                 match feature_name {
                     "basic_materials" => {
-                        state.editor.feature_materials_enabled = !state.editor.feature_materials_enabled
+                        state.editor.feature_materials_enabled =
+                            !state.editor.feature_materials_enabled
                     }
                     "basic_lighting" => {
-                        state.editor.feature_lighting_enabled = !state.editor.feature_lighting_enabled
+                        state.editor.feature_lighting_enabled =
+                            !state.editor.feature_lighting_enabled
                     }
                     "procedural_shadows" => {
                         state.editor.feature_shadows_enabled = !state.editor.feature_shadows_enabled
                     }
-                    "bloom" => state.editor.feature_bloom_enabled = !state.editor.feature_bloom_enabled,
+                    "bloom" => {
+                        state.editor.feature_bloom_enabled = !state.editor.feature_bloom_enabled
+                    }
                     _ => {}
                 }
                 drop(state);

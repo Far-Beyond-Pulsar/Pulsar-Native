@@ -64,7 +64,10 @@ impl ProjectSettings {
             ProjectSettingsTab::GitInfo => self.load_git_info_sync(),
             ProjectSettingsTab::GitCI => self.load_git_ci_sync(),
             ProjectSettingsTab::DiskInfo => self.load_disk_info_sync(),
-            ProjectSettingsTab::Performance => { self.load_disk_info_sync(); self.load_git_info_sync(); }
+            ProjectSettingsTab::Performance => {
+                self.load_disk_info_sync();
+                self.load_git_info_sync();
+            }
             ProjectSettingsTab::Integrations => self.load_integrations_sync(),
             _ => {}
         }
@@ -82,20 +85,38 @@ impl ProjectSettings {
     fn load_git_info_sync(&mut self) {
         let path = &self.project_path;
         if let Ok(mut repo) = git2::Repository::open(path) {
-            self.current_branch = repo.head().ok().and_then(|h| h.shorthand().ok().map(|s| s.to_string()));
+            self.current_branch = repo
+                .head()
+                .ok()
+                .and_then(|h| h.shorthand().ok().map(|s| s.to_string()));
             if let Ok(remote) = repo.find_remote("origin") {
                 self.remote_url = remote.url().ok().map(|s| s.to_string());
             }
-            self.commit_count = repo.revwalk().ok().map(|mut w| { w.push_head().ok(); w.count() });
+            self.commit_count = repo.revwalk().ok().map(|mut w| {
+                w.push_head().ok();
+                w.count()
+            });
             self.branch_count = Some(repo.branches(None).ok().map(|b| b.count()).unwrap_or(0));
-            self.stash_count = repo.stash_foreach(|_, _, _| false).ok().map(|_| 0).or(Some(0));
+            self.stash_count = repo
+                .stash_foreach(|_, _, _| false)
+                .ok()
+                .map(|_| 0)
+                .or(Some(0));
             if let Ok(head) = repo.head() {
                 if let Some(oid) = head.target() {
                     if let Ok(commit) = repo.find_commit(oid) {
-                        self.last_commit_date = Some(chrono::TimeZone::from_utc_datetime(
-                            &chrono::Utc,
-                            &chrono::NaiveDateTime::from_timestamp_opt(commit.time().seconds(), 0).unwrap_or_default(),
-                        ).format("%Y-%m-%d %H:%M").to_string());
+                        self.last_commit_date = Some(
+                            chrono::TimeZone::from_utc_datetime(
+                                &chrono::Utc,
+                                &chrono::NaiveDateTime::from_timestamp_opt(
+                                    commit.time().seconds(),
+                                    0,
+                                )
+                                .unwrap_or_default(),
+                            )
+                            .format("%Y-%m-%d %H:%M")
+                            .to_string(),
+                        );
                         self.last_commit_message = Some(commit.message().unwrap_or("").to_string());
                     }
                 }
@@ -122,7 +143,10 @@ impl ProjectSettings {
             if let Ok(entries) = std::fs::read_dir(&workflows_dir) {
                 self.workflow_files = entries
                     .filter_map(|e| e.ok())
-                    .filter(|e| e.path().extension().and_then(|ext| ext.to_str()) == Some("yml") || e.path().extension().and_then(|ext| ext.to_str()) == Some("yaml"))
+                    .filter(|e| {
+                        e.path().extension().and_then(|ext| ext.to_str()) == Some("yml")
+                            || e.path().extension().and_then(|ext| ext.to_str()) == Some("yaml")
+                    })
                     .map(|e| e.file_name().to_string_lossy().to_string())
                     .collect();
             }
@@ -133,7 +157,9 @@ impl ProjectSettings {
         if let Ok(entries) = std::fs::read_dir(&self.project_path) {
             let mut total = 0u64;
             for entry in entries.flatten() {
-                if entry.path() == self.project_path.join(".git") { continue; }
+                if entry.path() == self.project_path.join(".git") {
+                    continue;
+                }
                 total += Self::dir_size(&entry.path());
             }
             self.disk_size = Some(total);
@@ -200,7 +226,9 @@ impl AvailableTools {
             if which::which(cmd).is_ok() {
                 editors.push(ToolInfo {
                     name: name.to_string(),
-                    path: which::which(cmd).map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                    path: which::which(cmd)
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default(),
                     is_default: false,
                 });
             }
@@ -221,7 +249,9 @@ impl AvailableTools {
             if which::which(cmd).is_ok() {
                 tools.push(ToolInfo {
                     name: name.to_string(),
-                    path: which::which(cmd).map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                    path: which::which(cmd)
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default(),
                     is_default: false,
                 });
             }
@@ -233,24 +263,66 @@ impl AvailableTools {
         let mut terminals = Vec::new();
         #[cfg(target_os = "windows")]
         {
-            terminals.push(ToolInfo { name: "PowerShell".to_string(), path: "powershell.exe".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "Command Prompt".to_string(), path: "cmd.exe".to_string(), is_default: false });
+            terminals.push(ToolInfo {
+                name: "PowerShell".to_string(),
+                path: "powershell.exe".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "Command Prompt".to_string(),
+                path: "cmd.exe".to_string(),
+                is_default: false,
+            });
             if which::which("wt").is_ok() {
-                terminals.push(ToolInfo { name: "Windows Terminal".to_string(), path: which::which("wt").map(|p| p.to_string_lossy().to_string()).unwrap_or_default(), is_default: false });
+                terminals.push(ToolInfo {
+                    name: "Windows Terminal".to_string(),
+                    path: which::which("wt")
+                        .map(|p| p.to_string_lossy().to_string())
+                        .unwrap_or_default(),
+                    is_default: false,
+                });
             }
         }
         #[cfg(target_os = "linux")]
         {
-            terminals.push(ToolInfo { name: "GNOME Terminal".to_string(), path: "gnome-terminal".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "Konsole".to_string(), path: "konsole".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "xterm".to_string(), path: "xterm".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "Alacritty".to_string(), path: "alacritty".to_string(), is_default: false });
+            terminals.push(ToolInfo {
+                name: "GNOME Terminal".to_string(),
+                path: "gnome-terminal".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "Konsole".to_string(),
+                path: "konsole".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "xterm".to_string(),
+                path: "xterm".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "Alacritty".to_string(),
+                path: "alacritty".to_string(),
+                is_default: false,
+            });
         }
         #[cfg(target_os = "macos")]
         {
-            terminals.push(ToolInfo { name: "Terminal".to_string(), path: "Terminal".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "iTerm2".to_string(), path: "iTerm2".to_string(), is_default: false });
-            terminals.push(ToolInfo { name: "Alacritty".to_string(), path: "alacritty".to_string(), is_default: false });
+            terminals.push(ToolInfo {
+                name: "Terminal".to_string(),
+                path: "Terminal".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "iTerm2".to_string(),
+                path: "iTerm2".to_string(),
+                is_default: false,
+            });
+            terminals.push(ToolInfo {
+                name: "Alacritty".to_string(),
+                path: "alacritty".to_string(),
+                is_default: false,
+            });
         }
         terminals
     }

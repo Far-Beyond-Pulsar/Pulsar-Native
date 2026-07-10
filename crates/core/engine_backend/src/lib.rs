@@ -120,7 +120,10 @@ impl EngineBackend {
     ///
     /// Called once by `ui_core` after `PluginManager` has loaded all DLLs.
     /// Each entry is `(class_name, factory)`.
-    pub fn inject_plugin_components(&mut self, registrations: Vec<(String, component_registry::ComponentFactory)>) {
+    pub fn inject_plugin_components(
+        &mut self,
+        registrations: Vec<(String, component_registry::ComponentFactory)>,
+    ) {
         if registrations.is_empty() {
             return;
         }
@@ -146,14 +149,12 @@ impl EngineBackend {
 
         const PHYSICS: SubsystemId = SubsystemId::new("physics");
 
-        self.subsystems
-            .get(PHYSICS)
-            .and_then(|subsystem| {
-                // Downcast to PhysicsEngine
-                (subsystem as &dyn std::any::Any)
-                    .downcast_ref::<PhysicsEngine>()
-                    .map(|physics| physics.query_service())
-            })
+        self.subsystems.get(PHYSICS).and_then(|subsystem| {
+            // Downcast to PhysicsEngine
+            (subsystem as &dyn std::any::Any)
+                .downcast_ref::<PhysicsEngine>()
+                .map(|physics| physics.query_service())
+        })
     }
 
     /// Get a reference to the subsystem registry

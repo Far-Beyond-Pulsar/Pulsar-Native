@@ -57,7 +57,8 @@ impl StateStore {
     /// should observe the change.
     pub fn insert<T: Resource>(&self, value: T) -> ResourceHandle<T> {
         let handle = ResourceHandle::new(value);
-        self.slots.insert(TypeId::of::<T>(), Box::new(handle.clone()));
+        self.slots
+            .insert(TypeId::of::<T>(), Box::new(handle.clone()));
         handle
     }
 

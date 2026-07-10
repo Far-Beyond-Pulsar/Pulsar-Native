@@ -2,14 +2,11 @@ use std::sync::Arc;
 
 use gpui::{
     anchored, deferred, div, img, point, prelude::FluentBuilder as _, px, AnyElement, App,
-    ClickEvent, Context, Corner, EventEmitter, ImageSource, InteractiveElement as _,
-    IntoElement, ObjectFit, ParentElement as _, Render, RenderImage, StatefulInteractiveElement as _,
+    ClickEvent, Context, Corner, EventEmitter, ImageSource, InteractiveElement as _, IntoElement,
+    ObjectFit, ParentElement as _, Render, RenderImage, StatefulInteractiveElement as _,
     Styled as _, StyledImage as _, Window,
 };
-use ui::{
-    button::Button,
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName,
-};
+use ui::{button::Button, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
@@ -54,8 +51,7 @@ impl ProfileDropdown {
     /// Check if the profile's avatar URL has changed and start an async load
     /// if needed.  Call this every render frame (it no-ops when nothing changed).
     pub fn ensure_avatar_loaded(&mut self, cx: &mut Context<Self>) {
-        let profile =
-            engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
 
         let url = match profile.and_then(|p| p.avatar_url) {
             Some(u) => u,
@@ -95,8 +91,7 @@ impl ProfileDropdown {
     // ── Private render helpers ─────────────────────────────────────────────
 
     fn render_trigger(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let profile =
-            engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
         let login = profile.as_ref().map(|p| p.login.as_str()).unwrap_or("?");
         let initial = login
             .chars()
@@ -152,8 +147,7 @@ impl ProfileDropdown {
     }
 
     fn render_menu_panel(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let profile =
-            engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
+        let profile = engine_state::EngineContext::global().and_then(|ec| ec.auth_profile());
         let theme = cx.theme();
 
         v_flex()
@@ -264,12 +258,7 @@ impl ProfileDropdown {
                             .text_color(fg)
                             .child(display),
                     )
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(format!("@{login}")),
-                    ),
+                    .child(div().text_xs().text_color(muted).child(format!("@{login}"))),
             )
             .child(div().w_full().h(px(1.)).bg(border))
             // ── GitHub section ────────────────────────────────────
@@ -305,9 +294,9 @@ impl ProfileDropdown {
                         "Copy Username",
                         false,
                         cx.listener(move |this, _: &ClickEvent, _, cx| {
-                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(
-                                format!("@{login_copy}"),
-                            ));
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(format!(
+                                "@{login_copy}"
+                            )));
                             this.is_open = false;
                             cx.notify();
                         }),
@@ -351,24 +340,22 @@ impl ProfileDropdown {
             )
             .child(div().w_full().h(px(1.)).bg(border))
             // ── Sign Out ──────────────────────────────────────────
-            .child(
-                v_flex().p_2().child(menu_row(
-                    IconName::LogOut,
-                    "Sign Out",
-                    true,
-                    cx.listener(|this, _: &ClickEvent, _, cx| {
-                        let _ = pulsar_auth::sign_out();
-                        if let Some(ec) = engine_state::EngineContext::global() {
-                            ec.clear_auth_profile();
-                        }
-                        this.avatar_image = None;
-                        this.avatar_url_loaded = None;
-                        this.is_open = false;
-                        cx.emit(ProfileDropdownEvent::SignedOut);
-                        cx.notify();
-                    }),
-                )),
-            )
+            .child(v_flex().p_2().child(menu_row(
+                IconName::LogOut,
+                "Sign Out",
+                true,
+                cx.listener(|this, _: &ClickEvent, _, cx| {
+                    let _ = pulsar_auth::sign_out();
+                    if let Some(ec) = engine_state::EngineContext::global() {
+                        ec.clear_auth_profile();
+                    }
+                    this.avatar_image = None;
+                    this.avatar_url_loaded = None;
+                    this.is_open = false;
+                    cx.emit(ProfileDropdownEvent::SignedOut);
+                    cx.notify();
+                }),
+            )))
     }
 
     fn render_signed_out(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -402,11 +389,7 @@ impl ProfileDropdown {
                     )
                     .child(
                         v_flex()
-                            .child(
-                                div()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child("Guest"),
-                            )
+                            .child(div().font_weight(gpui::FontWeight::SEMIBOLD).child("Guest"))
                             .child(div().text_xs().text_color(muted).child("Not signed in")),
                     ),
             )
@@ -449,31 +432,29 @@ impl Render for ProfileDropdown {
         let vp = window.viewport_size();
         let is_open = self.is_open;
 
-        div()
-            .child(self.render_trigger(cx))
-            .when(is_open, |this| {
-                // Render the dropdown panel in a deferred z-layer so it floats
-                // above all other content, positioned relative to the window.
-                this.child(
-                    deferred(
-                        anchored()
-                            .anchor(Corner::TopRight)
-                            .position(point(vp.width - px(8.), px(34.)))
-                            .child(
-                                div()
-                                    .occlude()
-                                    .on_mouse_down_out(cx.listener(
-                                        |this, _: &gpui::MouseDownEvent, _, cx| {
-                                            this.is_open = false;
-                                            cx.notify();
-                                        },
-                                    ))
-                                    .child(self.render_menu_panel(cx)),
-                            ),
-                    )
-                    .with_priority(1),
+        div().child(self.render_trigger(cx)).when(is_open, |this| {
+            // Render the dropdown panel in a deferred z-layer so it floats
+            // above all other content, positioned relative to the window.
+            this.child(
+                deferred(
+                    anchored()
+                        .anchor(Corner::TopRight)
+                        .position(point(vp.width - px(8.), px(34.)))
+                        .child(
+                            div()
+                                .occlude()
+                                .on_mouse_down_out(cx.listener(
+                                    |this, _: &gpui::MouseDownEvent, _, cx| {
+                                        this.is_open = false;
+                                        cx.notify();
+                                    },
+                                ))
+                                .child(self.render_menu_panel(cx)),
+                        ),
                 )
-            })
+                .with_priority(1),
+            )
+        })
     }
 }
 
@@ -507,19 +488,23 @@ fn menu_row(
         .cursor_pointer()
         .hover(|s| s.bg(gpui::Hsla::default().opacity(0.06)))
         .on_click(handler)
-        .child(
-            Icon::new(icon).size(px(14.)).map(|i| {
-                if destructive {
-                    i.text_color(gpui::red())
-                } else {
-                    i
-                }
-            }),
-        )
+        .child(Icon::new(icon).size(px(14.)).map(|i| {
+            if destructive {
+                i.text_color(gpui::red())
+            } else {
+                i
+            }
+        }))
         .child(
             div()
                 .text_sm()
-                .map(|d| if destructive { d.text_color(gpui::red()) } else { d })
+                .map(|d| {
+                    if destructive {
+                        d.text_color(gpui::red())
+                    } else {
+                        d
+                    }
+                })
                 .child(label),
         )
 }

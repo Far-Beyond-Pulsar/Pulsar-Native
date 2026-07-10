@@ -5,8 +5,8 @@
 //!
 //! Run: cargo test -p plugin_manager --test plugin_loading -- --nocapture
 
-use plugin_manager::PermanentLibrary;
 use plugin_editor_api::VersionInfo;
+use plugin_manager::PermanentLibrary;
 
 const PLUGIN_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -15,12 +15,10 @@ const PLUGIN_PATH: &str = concat!(
 
 #[test]
 fn loads_version_matches_engine() {
-    let lib =
-        PermanentLibrary::new(PLUGIN_PATH).expect("failed to load plugin dylib");
+    let lib = PermanentLibrary::new(PLUGIN_PATH).expect("failed to load plugin dylib");
 
-    let version_fn: libloading::Symbol<
-        unsafe extern "C" fn() -> VersionInfo,
-    > = unsafe { lib.get(b"_plugin_version") }.expect("_plugin_version symbol");
+    let version_fn: libloading::Symbol<unsafe extern "C" fn() -> VersionInfo> =
+        unsafe { lib.get(b"_plugin_version") }.expect("_plugin_version symbol");
 
     let plugin_version = unsafe { version_fn() };
     let engine_version = VersionInfo::current();
@@ -40,27 +38,22 @@ fn loads_version_matches_engine() {
 
 #[test]
 fn exports_required_symbols() {
-    let lib =
-        PermanentLibrary::new(PLUGIN_PATH).expect("failed to load plugin dylib");
+    let lib = PermanentLibrary::new(PLUGIN_PATH).expect("failed to load plugin dylib");
 
     // _plugin_version
     let _: libloading::Symbol<unsafe extern "C" fn() -> VersionInfo> =
-        unsafe { lib.get(b"_plugin_version") }
-            .expect("_plugin_version symbol");
+        unsafe { lib.get(b"_plugin_version") }.expect("_plugin_version symbol");
 
     // _plugin_create
     let _: libloading::Symbol<
         unsafe extern "C" fn(
             *const std::ffi::c_void,
         ) -> &'static mut dyn plugin_editor_api::EditorPluginFull,
-    > = unsafe { lib.get(b"_plugin_create") }
-        .expect("_plugin_create symbol");
+    > = unsafe { lib.get(b"_plugin_create") }.expect("_plugin_create symbol");
 
     // _plugin_init_globals
-    let _: libloading::Symbol<
-        unsafe extern "C" fn(*const std::ffi::c_void),
-    > = unsafe { lib.get(b"_plugin_init_globals") }
-        .expect("_plugin_init_globals symbol");
+    let _: libloading::Symbol<unsafe extern "C" fn(*const std::ffi::c_void)> =
+        unsafe { lib.get(b"_plugin_init_globals") }.expect("_plugin_init_globals symbol");
 
     eprintln!("✅ All 3 required FFI symbols found");
 }

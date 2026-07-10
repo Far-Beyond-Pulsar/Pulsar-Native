@@ -65,7 +65,12 @@ fn section_header(label: &str, fg: Hsla, border: Hsla) -> impl IntoElement {
 }
 
 /// Compact key → value row.
-fn kv_row(label: &str, value: impl Into<SharedString>, label_c: Hsla, value_c: Hsla) -> impl IntoElement {
+fn kv_row(
+    label: &str,
+    value: impl Into<SharedString>,
+    label_c: Hsla,
+    value_c: Hsla,
+) -> impl IntoElement {
     let value: SharedString = value.into();
     h_flex()
         .w_full()
@@ -100,18 +105,35 @@ fn status_row(
     on_c: Hsla,
     off_c: Hsla,
 ) -> impl IntoElement {
-    let (dot_c, text) = if active { (on_c, on_label) } else { (off_c, off_label) };
+    let (dot_c, text) = if active {
+        (on_c, on_label)
+    } else {
+        (off_c, off_label)
+    };
     h_flex()
         .w_full()
         .justify_between()
         .items_center()
         .py(px(2.))
-        .child(div().text_xs().text_color(label_c).w(px(110.)).child(label.to_string()))
+        .child(
+            div()
+                .text_xs()
+                .text_color(label_c)
+                .w(px(110.))
+                .child(label.to_string()),
+        )
         .child(
             h_flex()
                 .gap_1()
                 .items_center()
-                .child(div().w(px(5.)).h(px(5.)).rounded_full().bg(dot_c).flex_shrink_0())
+                .child(
+                    div()
+                        .w(px(5.))
+                        .h(px(5.))
+                        .rounded_full()
+                        .bg(dot_c)
+                        .flex_shrink_0(),
+                )
                 .child(div().text_xs().text_color(dot_c).child(text.to_string())),
         )
 }
@@ -133,15 +155,15 @@ fn pill(label: impl Into<String>, text_c: Hsla, bg_c: Hsla) -> impl IntoElement 
 impl Render for DevPopover {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let bg     = theme.background;
+        let bg = theme.background;
         let border = theme.border;
-        let fg     = theme.foreground;
-        let muted  = theme.muted_foreground;
+        let fg = theme.foreground;
+        let muted = theme.muted_foreground;
         let accent = theme.accent;
         let success = theme.success;
         let warning = theme.warning;
-        let danger  = theme.danger;
-        let info    = theme.info;
+        let danger = theme.danger;
+        let info = theme.info;
         drop(theme);
 
         // ── Snapshot engine state into plain owned values ─────────────────────
@@ -183,18 +205,28 @@ impl Render for DevPopover {
             {
                 let dev = ctx.store.get_or_init::<engine_state::DevContext>().get();
                 is_source_build = dev.is_source_build;
-                source_path = dev.source_path
-                    .as_ref().map(|p| p.display().to_string())
+                source_path = dev
+                    .source_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "—".into());
             }
 
             {
-                let ph = ctx.store.get_or_init::<Option<engine_state::ProjectContext>>();
-                let (pp, pw) = ph.read().as_ref()
-                    .map(|p| (
-                        p.path.display().to_string(),
-                        p.window_id.map(|id| id.to_string()).unwrap_or_else(|| "—".into()),
-                    ))
+                let ph = ctx
+                    .store
+                    .get_or_init::<Option<engine_state::ProjectContext>>();
+                let (pp, pw) = ph
+                    .read()
+                    .as_ref()
+                    .map(|p| {
+                        (
+                            p.path.display().to_string(),
+                            p.window_id
+                                .map(|id| id.to_string())
+                                .unwrap_or_else(|| "—".into()),
+                        )
+                    })
                     .unwrap_or_else(|| ("—".into(), "—".into()));
                 project_path = pp;
                 project_window_id = pw;
@@ -202,25 +234,46 @@ impl Render for DevPopover {
 
             {
                 let lc = ctx.store.get_or_init::<engine_state::LaunchContext>().get();
-                uri_project_path = lc.uri_project_path
-                    .as_ref().map(|p| p.display().to_string())
+                uri_project_path = lc
+                    .uri_project_path
+                    .as_ref()
+                    .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "—".into());
                 verbose_launch = lc.verbose;
             }
 
-            default_level_size = ctx.store.get_or_init::<Option<Vec<u8>>>()
-                .read().as_ref()
+            default_level_size = ctx
+                .store
+                .get_or_init::<Option<Vec<u8>>>()
+                .read()
+                .as_ref()
                 .map(|b| {
                     let n = b.len();
-                    if n >= 1_048_576 { format!("{:.1} MB", n as f64 / 1_048_576.0) }
-                    else if n >= 1_024 { format!("{:.1} KB", n as f64 / 1_024.0) }
-                    else { format!("{} B", n) }
+                    if n >= 1_048_576 {
+                        format!("{:.1} MB", n as f64 / 1_048_576.0)
+                    } else if n >= 1_024 {
+                        format!("{:.1} KB", n as f64 / 1_024.0)
+                    } else {
+                        format!("{} B", n)
+                    }
                 })
                 .unwrap_or_else(|| "—".into());
 
-            has_discord = ctx.store.get_or_init::<Option<engine_state::DiscordPresence>>().read().is_some();
-            has_window_manager = ctx.store.get_or_init::<Option<window_manager::WindowManager>>().read().is_some();
-            has_user_types = ctx.store.get_or_init::<Option<Arc<engine_fs::UserTypeRegistry>>>().read().is_some();
+            has_discord = ctx
+                .store
+                .get_or_init::<Option<engine_state::DiscordPresence>>()
+                .read()
+                .is_some();
+            has_window_manager = ctx
+                .store
+                .get_or_init::<Option<window_manager::WindowManager>>()
+                .read()
+                .is_some();
+            has_user_types = ctx
+                .store
+                .get_or_init::<Option<Arc<engine_fs::UserTypeRegistry>>>()
+                .read()
+                .is_some();
 
             {
                 let mu = ctx.multiuser.read();
@@ -234,23 +287,33 @@ impl Render for DevPopover {
                     mu_join_token = mu.join_token.clone().unwrap_or_else(|| "—".into());
                     mu_participants_count = mu.participants.len();
                     mu_status = match &mu.status {
-                        engine_state::MultiuserStatus::Connected { relay_mode } => {
-                            relay_mode.as_ref().map(|m| match m {
+                        engine_state::MultiuserStatus::Connected { relay_mode } => relay_mode
+                            .as_ref()
+                            .map(|m| match m {
                                 engine_state::RelayConnectionMode::DirectP2P => "Connected · P2P",
-                                engine_state::RelayConnectionMode::BinaryProxy => "Connected · Proxy",
-                                engine_state::RelayConnectionMode::JsonFallback => "Connected · JSON",
-                            }).unwrap_or("Connected").to_string()
-                        }
+                                engine_state::RelayConnectionMode::BinaryProxy => {
+                                    "Connected · Proxy"
+                                }
+                                engine_state::RelayConnectionMode::JsonFallback => {
+                                    "Connected · JSON"
+                                }
+                            })
+                            .unwrap_or("Connected")
+                            .to_string(),
                         engine_state::MultiuserStatus::DegradedMode { .. } => "Degraded".into(),
                         engine_state::MultiuserStatus::Connecting => "Connecting…".into(),
                         engine_state::MultiuserStatus::Disconnected => "Disconnected".into(),
                         engine_state::MultiuserStatus::Error(e) => format!("Error: {}", e),
                     };
                 } else {
-                    mu_active = false; mu_is_connected = false; mu_is_host = false;
+                    mu_active = false;
+                    mu_is_connected = false;
+                    mu_is_host = false;
                     mu_status = "Not enabled".into();
-                    mu_server_url = "—".into(); mu_session_id = "—".into();
-                    mu_peer_id = "—".into(); mu_join_token = "—".into();
+                    mu_server_url = "—".into();
+                    mu_session_id = "—".into();
+                    mu_peer_id = "—".into();
+                    mu_join_token = "—".into();
                     mu_participants_count = 0;
                 }
             }
@@ -258,37 +321,61 @@ impl Render for DevPopover {
             window_count = ctx.windows.len();
             renderer_count = ctx.renderers.window_ids().len();
 
-            let mut wr: Vec<String> = ctx.windows.iter()
+            let mut wr: Vec<String> = ctx
+                .windows
+                .iter()
                 .map(|e| format!("Win #{} · {:?}", e.key(), e.value().window_type))
                 .collect();
             wr.sort();
             window_rows = wr;
 
-            let mut rr: Vec<String> = ctx.renderers.window_ids().into_iter()
-                .map(|id| format!("Renderer #{}", id)).collect();
+            let mut rr: Vec<String> = ctx
+                .renderers
+                .window_ids()
+                .into_iter()
+                .map(|id| format!("Renderer #{}", id))
+                .collect();
             rr.sort();
             renderer_rows = rr;
         } else {
-            engine_version = "?".into(); build_info = "?".into();
-            is_source_build = false; source_path = "—".into();
-            project_path = "—".into(); project_window_id = "—".into();
-            uri_project_path = "—".into(); verbose_launch = false;
+            engine_version = "?".into();
+            build_info = "?".into();
+            is_source_build = false;
+            source_path = "—".into();
+            project_path = "—".into();
+            project_window_id = "—".into();
+            uri_project_path = "—".into();
+            verbose_launch = false;
             default_level_size = "—".into();
-            has_discord = false; has_window_manager = false; has_user_types = false;
-            window_count = 0; renderer_count = 0;
-            mu_active = false; mu_is_connected = false; mu_is_host = false;
+            has_discord = false;
+            has_window_manager = false;
+            has_user_types = false;
+            window_count = 0;
+            renderer_count = 0;
+            mu_active = false;
+            mu_is_connected = false;
+            mu_is_host = false;
             mu_status = "No engine context".into();
-            mu_server_url = "—".into(); mu_session_id = "—".into();
-            mu_peer_id = "—".into(); mu_join_token = "—".into();
+            mu_server_url = "—".into();
+            mu_session_id = "—".into();
+            mu_peer_id = "—".into();
+            mu_join_token = "—".into();
             mu_participants_count = 0;
-            window_rows = Vec::new(); renderer_rows = Vec::new();
+            window_rows = Vec::new();
+            renderer_rows = Vec::new();
         }
 
-        let mu_dot = if !mu_active { muted }
-            else if mu_is_connected { success }
-            else if mu_status.starts_with("Error") { danger }
-            else if mu_status.starts_with("Connecting") { warning }
-            else { muted };
+        let mu_dot = if !mu_active {
+            muted
+        } else if mu_is_connected {
+            success
+        } else if mu_status.starts_with("Error") {
+            danger
+        } else if mu_status.starts_with("Connecting") {
+            warning
+        } else {
+            muted
+        };
 
         // ── Build UI ──────────────────────────────────────────────────────────
         v_flex()
@@ -303,7 +390,6 @@ impl Render for DevPopover {
             .border_color(border)
             .overflow_hidden()
             .track_focus(&self.focus_handle)
-
             // ── Header ───────────────────────────────────────────────────────
             .child(
                 h_flex()
@@ -330,9 +416,17 @@ impl Render for DevPopover {
                         h_flex()
                             .gap_2()
                             .items_center()
-                            .child(pill(format!("v{}", engine_version), muted, border.opacity(0.5)))
                             .child(pill(
-                                if is_source_build { "source" } else { &build_info },
+                                format!("v{}", engine_version),
+                                muted,
+                                border.opacity(0.5),
+                            ))
+                            .child(pill(
+                                if is_source_build {
+                                    "source"
+                                } else {
+                                    &build_info
+                                },
                                 if is_source_build { success } else { muted },
                                 border.opacity(0.5),
                             ))
@@ -346,7 +440,6 @@ impl Render for DevPopover {
                             ),
                     ),
             )
-
             // ── Quick actions ─────────────────────────────────────────────────
             .child(
                 v_flex()
@@ -399,7 +492,9 @@ impl Render for DevPopover {
                                     .icon(IconName::Code)
                                     .small()
                                     .ghost()
-                                    .on_click(|_, _, cx| cx.dispatch_action(&DevInspectEngineState)),
+                                    .on_click(|_, _, cx| {
+                                        cx.dispatch_action(&DevInspectEngineState)
+                                    }),
                             )
                             .child(
                                 Button::new("save-level")
@@ -407,11 +502,12 @@ impl Render for DevPopover {
                                     .icon(IconName::Database)
                                     .small()
                                     .ghost()
-                                    .on_click(|_, _, cx| cx.dispatch_action(&DevSaveAsDefaultLevel)),
+                                    .on_click(|_, _, cx| {
+                                        cx.dispatch_action(&DevSaveAsDefaultLevel)
+                                    }),
                             ),
                     ),
             )
-
             // ── Status ────────────────────────────────────────────────────────
             .child(
                 v_flex()
@@ -427,10 +523,22 @@ impl Render for DevPopover {
                             .gap_1()
                             .pt_1()
                             .flex_wrap()
-                            .child(pill(format!("{} windows", window_count), fg, border.opacity(0.4)))
-                            .child(pill(format!("{} renderers", renderer_count), fg, border.opacity(0.4)))
                             .child(pill(
-                                if has_user_types { "Types ✓" } else { "Types ✗" },
+                                format!("{} windows", window_count),
+                                fg,
+                                border.opacity(0.4),
+                            ))
+                            .child(pill(
+                                format!("{} renderers", renderer_count),
+                                fg,
+                                border.opacity(0.4),
+                            ))
+                            .child(pill(
+                                if has_user_types {
+                                    "Types ✓"
+                                } else {
+                                    "Types ✗"
+                                },
                                 if has_user_types { success } else { warning },
                                 border.opacity(0.4),
                             ))
@@ -440,7 +548,11 @@ impl Render for DevPopover {
                                 border.opacity(0.4),
                             ))
                             .child(pill(
-                                if has_window_manager { "WinMgr" } else { "No WinMgr" },
+                                if has_window_manager {
+                                    "WinMgr"
+                                } else {
+                                    "No WinMgr"
+                                },
                                 if has_window_manager { info } else { muted },
                                 border.opacity(0.4),
                             ))
@@ -452,7 +564,6 @@ impl Render for DevPopover {
                     )
                     .child(kv_row("Default level", default_level_size, muted, fg)),
             )
-
             // ── Engine + Project ──────────────────────────────────────────────
             .child(
                 h_flex()
@@ -471,8 +582,12 @@ impl Render for DevPopover {
                             .child(section_header("Engine", fg, border))
                             .child(status_row(
                                 "Source build",
-                                is_source_build, "Yes", "No",
-                                muted, success, muted,
+                                is_source_build,
+                                "Yes",
+                                "No",
+                                muted,
+                                success,
+                                muted,
                             ))
                             .child(kv_row("Source root", source_path, muted, fg))
                             .child(kv_row("Executable", exe_path, muted, fg)),
@@ -488,7 +603,6 @@ impl Render for DevPopover {
                             .child(kv_row("URI path", uri_project_path, muted, fg)),
                     ),
             )
-
             // ── Multiuser ─────────────────────────────────────────────────────
             .child(
                 v_flex()
@@ -505,29 +619,69 @@ impl Render for DevPopover {
                             .justify_between()
                             .items_center()
                             .py(px(2.))
-                            .child(div().text_xs().text_color(muted).w(px(110.)).child("Status"))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .w(px(110.))
+                                    .child("Status"),
+                            )
                             .child(
                                 h_flex()
                                     .gap_1()
                                     .items_center()
                                     .child(div().w(px(5.)).h(px(5.)).rounded_full().bg(mu_dot))
-                                    .child(div().text_xs().text_color(mu_dot).child(mu_status.clone())),
+                                    .child(
+                                        div().text_xs().text_color(mu_dot).child(mu_status.clone()),
+                                    ),
                             ),
                     )
-                    .child(status_row("Role", mu_is_host, "Host", "Participant", muted, accent, fg))
-                    .child(kv_row("Server URL", mu_server_url.clone(), muted, if mu_active { fg } else { muted }))
-                    .child(kv_row("Session ID", mu_session_id.clone(), muted, if mu_active { fg } else { muted }))
-                    .child(kv_row("Peer ID", mu_peer_id.clone(), muted, if mu_active { fg } else { muted }))
-                    .child(kv_row("Join token", mu_join_token.clone(), muted, if !mu_join_token.is_empty() && mu_join_token != "—" { fg } else { muted }))
+                    .child(status_row(
+                        "Role",
+                        mu_is_host,
+                        "Host",
+                        "Participant",
+                        muted,
+                        accent,
+                        fg,
+                    ))
+                    .child(kv_row(
+                        "Server URL",
+                        mu_server_url.clone(),
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv_row(
+                        "Session ID",
+                        mu_session_id.clone(),
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv_row(
+                        "Peer ID",
+                        mu_peer_id.clone(),
+                        muted,
+                        if mu_active { fg } else { muted },
+                    ))
+                    .child(kv_row(
+                        "Join token",
+                        mu_join_token.clone(),
+                        muted,
+                        if !mu_join_token.is_empty() && mu_join_token != "—" {
+                            fg
+                        } else {
+                            muted
+                        },
+                    ))
                     .when(mu_active, |el| {
                         el.child(kv_row(
                             "Participants",
                             mu_participants_count.to_string(),
-                            muted, fg,
+                            muted,
+                            fg,
                         ))
                     }),
             )
-
             // ── Windows & Renderers ───────────────────────────────────────────
             .child(
                 h_flex()
@@ -543,14 +697,18 @@ impl Render for DevPopover {
                             .gap_1()
                             .child(section_header(
                                 &format!("Windows ({})", window_count),
-                                fg, border,
+                                fg,
+                                border,
                             ))
                             .when(window_rows.is_empty(), |el| {
                                 el.child(div().text_xs().text_color(muted).py(px(2.)).child("None"))
                             })
-                            .children(window_rows.into_iter().take(6).map(|r| {
-                                div().text_xs().text_color(fg).py(px(1.)).child(r)
-                            })),
+                            .children(
+                                window_rows
+                                    .into_iter()
+                                    .take(6)
+                                    .map(|r| div().text_xs().text_color(fg).py(px(1.)).child(r)),
+                            ),
                     )
                     // Renderers column
                     .child(
@@ -559,14 +717,18 @@ impl Render for DevPopover {
                             .gap_1()
                             .child(section_header(
                                 &format!("Renderers ({})", renderer_count),
-                                fg, border,
+                                fg,
+                                border,
                             ))
                             .when(renderer_rows.is_empty(), |el| {
                                 el.child(div().text_xs().text_color(muted).py(px(2.)).child("None"))
                             })
-                            .children(renderer_rows.into_iter().take(6).map(|r| {
-                                div().text_xs().text_color(fg).py(px(1.)).child(r)
-                            })),
+                            .children(
+                                renderer_rows
+                                    .into_iter()
+                                    .take(6)
+                                    .map(|r| div().text_xs().text_color(fg).py(px(1.)).child(r)),
+                            ),
                     ),
             )
     }

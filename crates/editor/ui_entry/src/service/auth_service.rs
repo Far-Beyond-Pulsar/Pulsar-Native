@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use gpui::RenderImage;
+use std::sync::Arc;
 
 pub struct AuthService;
 
@@ -20,29 +20,25 @@ impl AuthService {
 
         on_message("Starting GitHub sign-in\u{2026}".to_string());
 
-        std::thread::spawn(move || {
-            match pulsar_auth::start_device_flow(&client_id) {
-                Ok(flow) => {
-                    on_code(flow.user_code.clone(), flow.verification_uri.clone());
-                    match pulsar_auth::wait_for_device_flow_token(&client_id, &flow) {
-                        Ok(token) => {
-                            match pulsar_auth::fetch_profile(&token) {
-                                Ok(profile) => {
-                                    let _ = pulsar_auth::store_access_token(&token);
-                                    let _ = pulsar_auth::save_cached_profile(&profile);
-                                    if let Some(ec) = engine_state::EngineContext::global() {
-                                        ec.set_auth_profile(profile.clone());
-                                    }
-                                    on_complete(Some(profile));
-                                }
-                                Err(e) => on_complete(None),
+        std::thread::spawn(move || match pulsar_auth::start_device_flow(&client_id) {
+            Ok(flow) => {
+                on_code(flow.user_code.clone(), flow.verification_uri.clone());
+                match pulsar_auth::wait_for_device_flow_token(&client_id, &flow) {
+                    Ok(token) => match pulsar_auth::fetch_profile(&token) {
+                        Ok(profile) => {
+                            let _ = pulsar_auth::store_access_token(&token);
+                            let _ = pulsar_auth::save_cached_profile(&profile);
+                            if let Some(ec) = engine_state::EngineContext::global() {
+                                ec.set_auth_profile(profile.clone());
                             }
+                            on_complete(Some(profile));
                         }
-                        Err(_) => on_complete(None),
-                    }
+                        Err(e) => on_complete(None),
+                    },
+                    Err(_) => on_complete(None),
                 }
-                Err(_) => on_complete(None),
             }
+            Err(_) => on_complete(None),
         });
     }
 
@@ -50,7 +46,8 @@ impl AuthService {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .user_agent("Pulsar-Native/1.0")
-            .build().ok()?;
+            .build()
+            .ok()?;
         let response = client.get(url).send().ok()?;
         let bytes = response.bytes().ok()?;
         let rgba = image::load_from_memory(&bytes).ok()?.into_rgba8();

@@ -1,10 +1,12 @@
 use gpui::prelude::*;
 use gpui::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
-use crate::screen::EntryScreen;
-use crate::core::types::EntryScreenView;
 use crate::core::events::{FabSearchRequested, SettingsRequested};
+use crate::core::types::EntryScreenView;
+use crate::screen::EntryScreen;
 
 pub fn render_sidebar(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
@@ -101,10 +103,66 @@ pub fn render_sidebar(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -
                         .pb_1p5()
                         .child("PROJECTS"),
                 )
-                .child(nav_item("nav-recent", IconName::Clock, "Recent Projects", is_recent, accent, foreground, muted_fg, accent_bg, hover_bg, cx.listener(|this, _, _, cx| { this.state.ui.view = EntryScreenView::Recent; cx.notify(); })))
-                .child(nav_item("nav-templates", IconName::List, "Templates", is_templates, accent, foreground, muted_fg, accent_bg, hover_bg, cx.listener(|this, _, _, cx| { this.state.ui.view = EntryScreenView::Templates; cx.notify(); })))
-                .child(nav_item("nav-new", IconName::Plus, "New Project", is_new, accent, foreground, muted_fg, accent_bg, hover_bg, cx.listener(|this, _, _, cx| { this.state.ui.view = EntryScreenView::NewProject; cx.notify(); })))
-                .child(nav_item("nav-clone", IconName::Github, "Clone from Git", is_clone, accent, foreground, muted_fg, accent_bg, hover_bg, cx.listener(|this, _, _, cx| { this.state.ui.view = EntryScreenView::CloneGit; cx.notify(); }))),
+                .child(nav_item(
+                    "nav-recent",
+                    IconName::Clock,
+                    "Recent Projects",
+                    is_recent,
+                    accent,
+                    foreground,
+                    muted_fg,
+                    accent_bg,
+                    hover_bg,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.ui.view = EntryScreenView::Recent;
+                        cx.notify();
+                    }),
+                ))
+                .child(nav_item(
+                    "nav-templates",
+                    IconName::List,
+                    "Templates",
+                    is_templates,
+                    accent,
+                    foreground,
+                    muted_fg,
+                    accent_bg,
+                    hover_bg,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.ui.view = EntryScreenView::Templates;
+                        cx.notify();
+                    }),
+                ))
+                .child(nav_item(
+                    "nav-new",
+                    IconName::Plus,
+                    "New Project",
+                    is_new,
+                    accent,
+                    foreground,
+                    muted_fg,
+                    accent_bg,
+                    hover_bg,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.ui.view = EntryScreenView::NewProject;
+                        cx.notify();
+                    }),
+                ))
+                .child(nav_item(
+                    "nav-clone",
+                    IconName::Github,
+                    "Clone from Git",
+                    is_clone,
+                    accent,
+                    foreground,
+                    muted_fg,
+                    accent_bg,
+                    hover_bg,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.ui.view = EntryScreenView::CloneGit;
+                        cx.notify();
+                    }),
+                )),
         )
         .child(
             v_flex()
@@ -123,7 +181,21 @@ pub fn render_sidebar(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -
                         .pb_1p5()
                         .child("CLOUD"),
                 )
-                .child(nav_item("nav-cloud", IconName::Cloud, "Cloud Projects", is_cloud, accent, foreground, muted_fg, accent_bg, hover_bg, cx.listener(|this, _, _, cx| { this.state.ui.view = EntryScreenView::CloudProjects; cx.notify(); }))),
+                .child(nav_item(
+                    "nav-cloud",
+                    IconName::Cloud,
+                    "Cloud Projects",
+                    is_cloud,
+                    accent,
+                    foreground,
+                    muted_fg,
+                    accent_bg,
+                    hover_bg,
+                    cx.listener(|this, _, _, cx| {
+                        this.state.ui.view = EntryScreenView::CloudProjects;
+                        cx.notify();
+                    }),
+                )),
         )
         .child(
             v_flex()
@@ -162,7 +234,11 @@ pub fn render_sidebar(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_friends { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                                .font_weight(if is_friends {
+                                    gpui::FontWeight::SEMIBOLD
+                                } else {
+                                    gpui::FontWeight::NORMAL
+                                })
                                 .text_color(if is_friends { foreground } else { muted_fg })
                                 .child("Friends"),
                         )
@@ -333,15 +409,19 @@ fn nav_item(
         .cursor_pointer()
         .when(is_active, |this| this.bg(accent_bg))
         .hover(|this| this.bg(hover_bg))
-        .child(
-            Icon::new(icon)
-                .size(px(15.))
-                .text_color(if is_active { foreground } else { muted_fg }),
-        )
+        .child(Icon::new(icon).size(px(15.)).text_color(if is_active {
+            foreground
+        } else {
+            muted_fg
+        }))
         .child(
             div()
                 .text_sm()
-                .font_weight(if is_active { gpui::FontWeight::SEMIBOLD } else { gpui::FontWeight::NORMAL })
+                .font_weight(if is_active {
+                    gpui::FontWeight::SEMIBOLD
+                } else {
+                    gpui::FontWeight::NORMAL
+                })
                 .text_color(if is_active { foreground } else { muted_fg })
                 .child(label),
         )

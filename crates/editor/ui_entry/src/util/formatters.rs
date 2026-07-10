@@ -50,5 +50,9 @@ pub fn sanitize_repo_name(repo_url: &str) -> String {
     let trimmed = repo_url.trim_end_matches(".git").trim_end_matches('/');
     let parts: Vec<&str> = trimmed.rsplit('/').take(2).collect();
     let joined: String = parts.into_iter().rev().collect::<Vec<_>>().join("_");
-    if joined.is_empty() { "template".to_string() } else { joined }
+    if joined.is_empty() {
+        "template".to_string()
+    } else {
+        joined
+    }
 }

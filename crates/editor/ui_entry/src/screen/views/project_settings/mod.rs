@@ -10,13 +10,20 @@ pub mod types;
 
 pub use types::*;
 
-use gpui::*;
 use gpui::prelude::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName, StyledExt as _};
+use gpui::*;
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    StyledExt as _,
+};
 
 use crate::screen::EntryScreen;
 
-pub fn render_project_settings(screen: &mut EntryScreen, _window: &mut Window, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_project_settings(
+    screen: &mut EntryScreen,
+    _window: &mut Window,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let Some(ref settings) = screen.state.ui.project_settings else {
         return div().into_any_element();
@@ -64,12 +71,13 @@ pub fn render_project_settings(screen: &mut EntryScreen, _window: &mut Window, c
                                         .text_color(theme.foreground)
                                         .child("Project Settings"),
                                 )
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(theme.muted_foreground)
-                                        .child(format!("{} \u{2014} {}", project_name, project_path.to_string_lossy())),
-                                ),
+                                .child(div().text_sm().text_color(theme.muted_foreground).child(
+                                    format!(
+                                        "{} \u{2014} {}",
+                                        project_name,
+                                        project_path.to_string_lossy()
+                                    ),
+                                )),
                         )
                         .child(
                             Button::new("close-project-settings")
@@ -95,29 +103,85 @@ pub fn render_project_settings(screen: &mut EntryScreen, _window: &mut Window, c
                                 .border_color(theme.border)
                                 .p_2()
                                 .gap_1()
-                                .child(tab_button("ps-general", "General", active_tab == ProjectSettingsTab::General, ProjectSettingsTab::General, cx))
-                                .child(tab_button("ps-git-info", "Git Info", active_tab == ProjectSettingsTab::GitInfo, ProjectSettingsTab::GitInfo, cx))
-                                .child(tab_button("ps-git-ci", "Git CI/CD", active_tab == ProjectSettingsTab::GitCI, ProjectSettingsTab::GitCI, cx))
-                                .child(tab_button("ps-metadata", "Metadata", active_tab == ProjectSettingsTab::Metadata, ProjectSettingsTab::Metadata, cx))
-                                .child(tab_button("ps-disk", "Disk Info", active_tab == ProjectSettingsTab::DiskInfo, ProjectSettingsTab::DiskInfo, cx))
-                                .child(tab_button("ps-perf", "Performance", active_tab == ProjectSettingsTab::Performance, ProjectSettingsTab::Performance, cx))
-                                .child(tab_button("ps-integrations", "Integrations", active_tab == ProjectSettingsTab::Integrations, ProjectSettingsTab::Integrations, cx)),
+                                .child(tab_button(
+                                    "ps-general",
+                                    "General",
+                                    active_tab == ProjectSettingsTab::General,
+                                    ProjectSettingsTab::General,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-git-info",
+                                    "Git Info",
+                                    active_tab == ProjectSettingsTab::GitInfo,
+                                    ProjectSettingsTab::GitInfo,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-git-ci",
+                                    "Git CI/CD",
+                                    active_tab == ProjectSettingsTab::GitCI,
+                                    ProjectSettingsTab::GitCI,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-metadata",
+                                    "Metadata",
+                                    active_tab == ProjectSettingsTab::Metadata,
+                                    ProjectSettingsTab::Metadata,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-disk",
+                                    "Disk Info",
+                                    active_tab == ProjectSettingsTab::DiskInfo,
+                                    ProjectSettingsTab::DiskInfo,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-perf",
+                                    "Performance",
+                                    active_tab == ProjectSettingsTab::Performance,
+                                    ProjectSettingsTab::Performance,
+                                    cx,
+                                ))
+                                .child(tab_button(
+                                    "ps-integrations",
+                                    "Integrations",
+                                    active_tab == ProjectSettingsTab::Integrations,
+                                    ProjectSettingsTab::Integrations,
+                                    cx,
+                                )),
                         )
                         .child(
-                            v_flex()
-                                .flex_1()
-                                .h_full()
-                                .overflow_hidden()
-                                .p_6()
-                                .child(match active_tab {
-                                    ProjectSettingsTab::General => general::render_general_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::GitInfo => git_info::render_git_info_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::GitCI => git_ci::render_git_ci_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::Metadata => metadata::render_metadata_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::DiskInfo => disk_info::render_disk_info_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::Performance => performance::render_performance_tab(screen, cx).into_any_element(),
-                                    ProjectSettingsTab::Integrations => integrations::render_integrations_tab(screen, cx).into_any_element(),
-                                }),
+                            v_flex().flex_1().h_full().overflow_hidden().p_6().child(
+                                match active_tab {
+                                    ProjectSettingsTab::General => {
+                                        general::render_general_tab(screen, cx).into_any_element()
+                                    }
+                                    ProjectSettingsTab::GitInfo => {
+                                        git_info::render_git_info_tab(screen, cx).into_any_element()
+                                    }
+                                    ProjectSettingsTab::GitCI => {
+                                        git_ci::render_git_ci_tab(screen, cx).into_any_element()
+                                    }
+                                    ProjectSettingsTab::Metadata => {
+                                        metadata::render_metadata_tab(screen, cx).into_any_element()
+                                    }
+                                    ProjectSettingsTab::DiskInfo => {
+                                        disk_info::render_disk_info_tab(screen, cx)
+                                            .into_any_element()
+                                    }
+                                    ProjectSettingsTab::Performance => {
+                                        performance::render_performance_tab(screen, cx)
+                                            .into_any_element()
+                                    }
+                                    ProjectSettingsTab::Integrations => {
+                                        integrations::render_integrations_tab(screen, cx)
+                                            .into_any_element()
+                                    }
+                                },
+                            ),
                         ),
                 ),
         )
@@ -144,8 +208,16 @@ fn tab_button(
         .child(
             div()
                 .text_sm()
-                .font_weight(if is_active { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
-                .text_color(if is_active { theme.accent } else { theme.muted_foreground })
+                .font_weight(if is_active {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .text_color(if is_active {
+                    theme.accent
+                } else {
+                    theme.muted_foreground
+                })
                 .child(label),
         )
         .on_click(cx.listener(move |this, _, _, cx| {

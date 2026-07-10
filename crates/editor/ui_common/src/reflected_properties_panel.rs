@@ -120,7 +120,10 @@ pub fn json_to_rgba_fallback(json: &Value) -> [f32; 4] {
 /// this struct knowing about it.
 pub struct PropertyStateManager {
     /// Type-erased widget state: (class, prop) → TypeId → Arc<dyn Any>
-    states: HashMap<(String, String), HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>>,
+    states: HashMap<
+        (String, String),
+        HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    >,
     /// ColorPickerState per (class_name, prop_name) for Color-typed properties
     pub color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
     /// Number input state per (class_name, prop_name) for numeric properties
@@ -405,7 +408,10 @@ pub fn render_property_row_runtime<V: 'static>(
     prop_name: &str,
     type_info: &'static RuntimeTypeInfo,
     current_json: &Value,
-    widgets: std::collections::HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>,
+    widgets: std::collections::HashMap<
+        std::any::TypeId,
+        std::sync::Arc<dyn std::any::Any + Send + Sync>,
+    >,
     on_bool_toggle: Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync>,
     on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync>,
     cx: &Context<V>,

@@ -102,11 +102,18 @@ impl BlueprintDispatcher {
             return;
         }
         let pending = std::mem::take(&mut self.pending_begin_play);
-        tracing::info!("Dispatching begin_play to {} VM blueprint instance(s)", pending.len());
+        tracing::info!(
+            "Dispatching begin_play to {} VM blueprint instance(s)",
+            pending.len()
+        );
         for object_id in pending {
             match self.execute_event(&object_id, "begin_play") {
-                Ok(()) => tracing::info!("begin_play executed for VM blueprint instance '{object_id}'"),
-                Err(e) => tracing::warn!("begin_play failed for VM blueprint instance '{object_id}': {e}"),
+                Ok(()) => {
+                    tracing::info!("begin_play executed for VM blueprint instance '{object_id}'")
+                }
+                Err(e) => {
+                    tracing::warn!("begin_play failed for VM blueprint instance '{object_id}': {e}")
+                }
             }
         }
     }

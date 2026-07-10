@@ -80,7 +80,9 @@ impl FlamegraphRenderer {
         spans: &[GpuSpan],
         text: &[RectInstance],
     ) {
-        let pipe = self.pipe.get_or_insert_with(|| Self::create_pipe(device, fmt));
+        let pipe = self
+            .pipe
+            .get_or_insert_with(|| Self::create_pipe(device, fmt));
 
         // One-shot palette upload
         if !pipe.pal_written {
@@ -129,9 +131,7 @@ impl FlamegraphRenderer {
         }
 
         // Bind group — rebuilt each frame (cheap) in case buffers were resized
-        let pal_size = wgpu::BufferSize::new(
-            (std::mem::size_of::<[f32; 4]>() * 16) as u64,
-        );
+        let pal_size = wgpu::BufferSize::new((std::mem::size_of::<[f32; 4]>() * 16) as u64);
         let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("flamegraph_bg"),
             layout: &pipe.bgl,
@@ -171,7 +171,10 @@ impl FlamegraphRenderer {
                 depth_slice: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.0, g: 0.0, b: 0.0, a: 0.0,
+                        r: 0.0,
+                        g: 0.0,
+                        b: 0.0,
+                        a: 0.0,
                     }),
                     store: wgpu::StoreOp::Store,
                 },
@@ -223,15 +226,11 @@ impl FlamegraphRenderer {
     fn create_pipe(device: &wgpu::Device, fmt: wgpu::TextureFormat) -> Pipe {
         let span_mod = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("flamegraph_span"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/flamegraph.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/flamegraph.wgsl").into()),
         });
         let text_mod = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("flamegraph_text"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("shaders/flamegraph_text.wgsl").into(),
-            ),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/flamegraph_text.wgsl").into()),
         });
 
         let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {

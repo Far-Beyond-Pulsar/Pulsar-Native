@@ -133,5 +133,11 @@ fn archetype_migration(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, spawn_n, query_single, query_tuple_8, archetype_migration);
+criterion_group!(
+    benches,
+    spawn_n,
+    query_single,
+    query_tuple_8,
+    archetype_migration
+);
 criterion_main!(benches);

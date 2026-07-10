@@ -1,10 +1,15 @@
-use gpui::*;
 use gpui::prelude::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
+use gpui::*;
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 use crate::screen::EntryScreen;
 
-pub fn render_metadata_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_metadata_tab(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let Some(ref settings) = screen.state.ui.project_settings else {
         return div().into_any_element();
@@ -12,7 +17,8 @@ pub fn render_metadata_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScree
     let project_path = settings.project_path.clone();
     let project_name = settings.project_name.clone();
     let toml_path = project_path.join("Pulsar.toml");
-    let toml_content = std::fs::read_to_string(&toml_path).unwrap_or_else(|_| "Pulsar.toml not found".to_string());
+    let toml_content =
+        std::fs::read_to_string(&toml_path).unwrap_or_else(|_| "Pulsar.toml not found".to_string());
 
     v_flex()
         .gap_6()
@@ -45,14 +51,11 @@ pub fn render_metadata_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScree
                         .child(
                             h_flex()
                                 .gap_2()
-                                .child(
-                                    Button::new("edit-toml")
-                                        .compact()
-                                        .ghost()
-                                        .on_click(cx.listener(move |_, _, _, _cx| {
-                                            let _ = open::that(&toml_path);
-                                        })),
-                                )
+                                .child(Button::new("edit-toml").compact().ghost().on_click(
+                                    cx.listener(move |_, _, _, _cx| {
+                                        let _ = open::that(&toml_path);
+                                    }),
+                                ))
                                 .child(
                                     Button::new("validate-project")
                                         .compact()
@@ -91,16 +94,14 @@ pub fn render_metadata_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScree
                                 .ghost()
                                 .on_click(cx.listener(|_, _, _, _cx| {})),
                         )
-                        .child(
-                            Button::new("create-missing-folders")
-                                .ghost()
-                                .on_click(cx.listener(move |_, _, _, cx| {
-                                    for dir in &["assets", "scenes", "scripts", "prefabs"] {
-                                        let _ = std::fs::create_dir_all(project_path.join(dir));
-                                    }
-                                    cx.notify();
-                                })),
-                        ),
+                        .child(Button::new("create-missing-folders").ghost().on_click(
+                            cx.listener(move |_, _, _, cx| {
+                                for dir in &["assets", "scenes", "scripts", "prefabs"] {
+                                    let _ = std::fs::create_dir_all(project_path.join(dir));
+                                }
+                                cx.notify();
+                            }),
+                        )),
                 ),
         )
         .into_any_element()

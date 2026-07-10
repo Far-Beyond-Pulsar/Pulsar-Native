@@ -14,12 +14,12 @@
 //! }
 //! ```
 
+pub mod database;
 pub mod events;
 pub mod macros;
 pub mod profiler;
 pub mod scope;
 pub mod utilities;
-pub mod database;
 
 pub use events::ProfileEvent;
 pub use macros::*;

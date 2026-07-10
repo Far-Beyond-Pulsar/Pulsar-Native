@@ -1,11 +1,6 @@
-use engine_fs::virtual_fs;
 use gpui::*;
 use std::path::{Path, PathBuf};
 use ui::ActiveTheme;
-
-// ============================================================================
-// ENUMS - View modes, sort options, drag state
-// ============================================================================
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ViewMode {
@@ -37,7 +32,6 @@ pub enum DragState {
     },
 }
 
-// Drag data for file items
 #[derive(Clone, Debug)]
 pub struct DraggedFile {
     pub paths: Vec<PathBuf>,
@@ -48,11 +42,9 @@ pub struct DraggedFile {
 impl gpui::Render for DraggedFile {
     fn render(
         &mut self,
-        _window: &mut gpui::Window,
+        _w: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
-        use gpui::prelude::*;
-
         let count = self.paths.len();
         let label = if count == 1 {
             self.paths[0]
@@ -63,7 +55,6 @@ impl gpui::Render for DraggedFile {
         } else {
             format!("{} items", count)
         };
-
         gpui::div()
             .px_3()
             .py_1p5()
@@ -75,10 +66,6 @@ impl gpui::Render for DraggedFile {
             .child(label)
     }
 }
-
-// ============================================================================
-// FILE ITEM - Represents a file or folder in the file system
-// ============================================================================
 
 #[derive(Clone, Debug)]
 pub struct FileItem {
@@ -96,18 +83,12 @@ impl FileItem {
         file_types: &[plugin_editor_api::FileTypeDefinition],
     ) -> Option<Self> {
         let name = path.file_name()?.to_str()?.to_string();
-
+        use plugin_editor_api::FileStructure;
         let file_type_def = if path.is_dir() {
-            // Check registry for folder-based file types.
-            // Prefer marker-file detection, but also allow extension matching so
-            // typed bundles (e.g. `*.pif`) still get their file-type icon if
-            // the marker is missing or not yet written.
             file_types
                 .iter()
                 .find(|def| {
-                    if let plugin_editor_api::FileStructure::FolderBased { marker_file, .. } =
-                        &def.structure
-                    {
+                    if let FileStructure::FolderBased { marker_file, .. } = &def.structure {
                         path.join(marker_file).exists()
                             || name.ends_with(&format!(".{}", def.extension))
                             || path.extension().and_then(|x| x.to_str())
@@ -118,43 +99,30 @@ impl FileItem {
                 })
                 .cloned()
         } else {
-            // Check registry for standalone file types
-            let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-
-            // Try full file name first (for compound extensions like .level.json)
-            let mut found = file_types.iter().find(|def| {
-                if matches!(def.structure, plugin_editor_api::FileStructure::Standalone) {
-                    file_name.ends_with(&format!(".{}", def.extension))
-                } else {
-                    false
-                }
+            let found = file_types.iter().find(|def| {
+                matches!(def.structure, FileStructure::Standalone)
+                    && name.ends_with(&format!(".{}", def.extension))
             });
-
-            // If not found, try simple extension match
-            if found.is_none() {
-                if let Some(ext) = path.extension().and_then(|s| s.to_str()) {
-                    found = file_types.iter().find(|def| {
-                        matches!(def.structure, plugin_editor_api::FileStructure::Standalone)
-                            && def.extension == ext
-                    });
-                }
-            }
-
+            let found = found.or_else(|| {
+                path.extension().and_then(|e| e.to_str()).and_then(|ext| {
+                    file_types.iter().find(|def| {
+                        matches!(def.structure, FileStructure::Standalone) && def.extension == ext
+                    })
+                })
+            });
             found.cloned()
         };
 
-        // Fetch metadata — prefer the remote provider when in remote mode so we
-        // don't try to stat a `cloud+pulsar://` path with local `std::fs`.
         let (size, modified, is_folder) =
             if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
-                let (s, unix_secs, d) = engine_fs::virtual_fs::metadata(path)
-                    .map(|meta| (meta.size, meta.modified, meta.is_dir))
+                let (s, u, d) = engine_fs::virtual_fs::metadata(path)
+                    .map(|m| (m.size, m.modified, m.is_dir && file_type_def.is_none()))
                     .unwrap_or((0, None, false));
-                // Convert Option<u64> Unix seconds to Option<SystemTime>.
-                let m = unix_secs
-                    .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs));
-                let is_folder_remote = d && file_type_def.is_none();
-                (s, m, is_folder_remote)
+                (
+                    s,
+                    u.map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+                    d,
+                )
             } else {
                 let meta = engine_fs::virtual_fs::metadata(path).ok();
                 let s = meta.as_ref().map(|m| m.size).unwrap_or(0);
@@ -162,8 +130,7 @@ impl FileItem {
                     m.modified
                         .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
                 });
-                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false)
-                    && file_type_def.is_none();
+                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false) && file_type_def.is_none();
                 (s, m, d)
             };
 
@@ -180,21 +147,17 @@ impl FileItem {
     pub fn display_name(&self) -> &str {
         self.file_type_def
             .as_ref()
-            .map(|def| def.display_name.as_str())
+            .map(|d| d.display_name.as_str())
             .unwrap_or(if self.is_folder { "Folder" } else { "File" })
     }
 
     pub fn is_class(&self) -> bool {
         self.file_type_def
             .as_ref()
-            .map(|def| def.id.as_str() == "class")
+            .map(|d| d.id.as_str() == "class")
             .unwrap_or(false)
     }
 }
-
-// ============================================================================
-// EVENTS - File manager events
-// ============================================================================
 
 #[derive(Clone, Debug)]
 pub struct FileSelected {

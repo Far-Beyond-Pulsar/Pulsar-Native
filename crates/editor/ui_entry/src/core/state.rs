@@ -5,15 +5,14 @@ use std::sync::Arc;
 use gpui::*;
 use parking_lot::Mutex;
 
-
 use crate::core::events::*;
 use crate::core::types::*;
-use crate::service::project_service::ProjectService;
-use crate::service::git_service::GitService;
-use crate::service::cloud_service::CloudService;
-use crate::service::plugin_service::PluginService;
 use crate::service::auth_service::AuthService;
+use crate::service::cloud_service::CloudService;
 use crate::service::dependency_service::DependencyService;
+use crate::service::git_service::GitService;
+use crate::service::plugin_service::PluginService;
+use crate::service::project_service::ProjectService;
 use crate::service::thumbnail_service::ThumbnailService;
 
 /// Focused sub-state: navigation & UI flags
@@ -66,16 +65,33 @@ pub struct InputEntities {
 impl InputEntities {
     pub fn new(window: &mut Window, cx: &mut App) -> Self {
         Self {
-            git_repo_url: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("https://github.com/user/repo.git")),
-            git_upstream_url: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("https://github.com/your-username/your-repo.git")),
-            new_project_name: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("my_awesome_game")),
-            add_server_alias: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("My Studio Server")),
-            add_server_url: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("https://studio.example.com")),
-            add_server_email: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("email@example.com")),
-            add_server_password: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("password")),
-            create_project_name: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("My Awesome Game")),
-            create_project_description: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("Optional project description")),
-            plugin_search: cx.new(|cx| ui::input::InputState::new(window, cx).placeholder("Search plugins\u{2026}")),
+            git_repo_url: cx.new(|cx| {
+                ui::input::InputState::new(window, cx)
+                    .placeholder("https://github.com/user/repo.git")
+            }),
+            git_upstream_url: cx.new(|cx| {
+                ui::input::InputState::new(window, cx)
+                    .placeholder("https://github.com/your-username/your-repo.git")
+            }),
+            new_project_name: cx
+                .new(|cx| ui::input::InputState::new(window, cx).placeholder("my_awesome_game")),
+            add_server_alias: cx
+                .new(|cx| ui::input::InputState::new(window, cx).placeholder("My Studio Server")),
+            add_server_url: cx.new(|cx| {
+                ui::input::InputState::new(window, cx).placeholder("https://studio.example.com")
+            }),
+            add_server_email: cx
+                .new(|cx| ui::input::InputState::new(window, cx).placeholder("email@example.com")),
+            add_server_password: cx
+                .new(|cx| ui::input::InputState::new(window, cx).placeholder("password")),
+            create_project_name: cx
+                .new(|cx| ui::input::InputState::new(window, cx).placeholder("My Awesome Game")),
+            create_project_description: cx.new(|cx| {
+                ui::input::InputState::new(window, cx).placeholder("Optional project description")
+            }),
+            plugin_search: cx.new(|cx| {
+                ui::input::InputState::new(window, cx).placeholder("Search plugins\u{2026}")
+            }),
         }
     }
 
@@ -83,20 +99,27 @@ impl InputEntities {
         use ui::input::InputEvent;
         let s = screen.clone();
         let s1 = screen.clone();
-        cx.subscribe(&self.git_repo_url, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s1.update(cx, |this, cx| {
-                    this.state.input.git_repo_url_text = this.inputs().git_repo_url.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.git_repo_url,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s1.update(cx, |this, cx| {
+                        this.state.input.git_repo_url_text =
+                            this.inputs().git_repo_url.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s2 = screen.clone();
-        cx.subscribe(&self.git_upstream_url, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            match ev {
+        cx.subscribe(
+            &self.git_upstream_url,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| match ev {
                 InputEvent::Change => {
                     s2.update(cx, |this, cx| {
-                        this.state.input.git_upstream_url_text = this.inputs().git_upstream_url.read(cx).text().to_string();
+                        this.state.input.git_upstream_url_text =
+                            this.inputs().git_upstream_url.read(cx).text().to_string();
                         cx.notify();
                     });
                 }
@@ -107,80 +130,133 @@ impl InputEntities {
                     });
                 }
                 _ => {}
-            }
-        }).detach();
+            },
+        )
+        .detach();
         let s3 = screen.clone();
-        cx.subscribe(&self.new_project_name, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s3.update(cx, |this, cx| {
-                    this.state.input.new_project_name_text = this.inputs().new_project_name.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.new_project_name,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s3.update(cx, |this, cx| {
+                        this.state.input.new_project_name_text =
+                            this.inputs().new_project_name.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s4 = screen.clone();
-        cx.subscribe(&self.add_server_alias, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s4.update(cx, |this, cx| {
-                    this.state.input.add_server_alias_text = this.inputs().add_server_alias.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.add_server_alias,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s4.update(cx, |this, cx| {
+                        this.state.input.add_server_alias_text =
+                            this.inputs().add_server_alias.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s5 = screen.clone();
-        cx.subscribe(&self.add_server_url, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s5.update(cx, |this, cx| {
-                    this.state.input.add_server_url_text = this.inputs().add_server_url.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.add_server_url,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s5.update(cx, |this, cx| {
+                        this.state.input.add_server_url_text =
+                            this.inputs().add_server_url.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s6 = screen.clone();
-        cx.subscribe(&self.add_server_email, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s6.update(cx, |this, cx| {
-                    this.state.input.add_server_email_text = this.inputs().add_server_email.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.add_server_email,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s6.update(cx, |this, cx| {
+                        this.state.input.add_server_email_text =
+                            this.inputs().add_server_email.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s7 = screen.clone();
-        cx.subscribe(&self.add_server_password, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s7.update(cx, |this, cx| {
-                    this.state.input.add_server_password_text = this.inputs().add_server_password.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.add_server_password,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s7.update(cx, |this, cx| {
+                        this.state.input.add_server_password_text = this
+                            .inputs()
+                            .add_server_password
+                            .read(cx)
+                            .text()
+                            .to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s8 = screen.clone();
-        cx.subscribe(&self.create_project_name, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s8.update(cx, |this, cx| {
-                    this.state.input.create_project_name_text = this.inputs().create_project_name.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.create_project_name,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s8.update(cx, |this, cx| {
+                        this.state.input.create_project_name_text = this
+                            .inputs()
+                            .create_project_name
+                            .read(cx)
+                            .text()
+                            .to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s9 = screen.clone();
-        cx.subscribe(&self.create_project_description, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s9.update(cx, |this, cx| {
-                    this.state.input.create_project_description_text = this.inputs().create_project_description.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.create_project_description,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s9.update(cx, |this, cx| {
+                        this.state.input.create_project_description_text = this
+                            .inputs()
+                            .create_project_description
+                            .read(cx)
+                            .text()
+                            .to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
         let s10 = screen.clone();
-        cx.subscribe(&self.plugin_search, move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
-            if let InputEvent::Change = ev {
-                s10.update(cx, |this, cx| {
-                    this.state.input.plugin_search_query = this.inputs().plugin_search.read(cx).text().to_string();
-                    cx.notify();
-                });
-            }
-        }).detach();
+        cx.subscribe(
+            &self.plugin_search,
+            move |_: Entity<ui::input::InputState>, ev: &InputEvent, cx: &mut App| {
+                if let InputEvent::Change = ev {
+                    s10.update(cx, |this, cx| {
+                        this.state.input.plugin_search_query =
+                            this.inputs().plugin_search.read(cx).text().to_string();
+                        cx.notify();
+                    });
+                }
+            },
+        )
+        .detach();
     }
 }
 
@@ -284,8 +360,6 @@ pub struct AppState {
     pub template_thumbnails: HashMap<String, Option<Arc<RenderImage>>>,
     pub template_thumbnail_inflight: usize,
     pub template_thumbnail_queue: VecDeque<Template>,
-
-
 }
 
 impl AppState {
@@ -293,24 +367,38 @@ impl AppState {
         let recent_projects_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|d| d.data_dir().join("recent_projects.json"))
             .unwrap_or_else(|| PathBuf::from("recent_projects.json"));
-        let recent_projects = crate::service::project_service::RecentProjectsList::load(&recent_projects_path);
+        let recent_projects =
+            crate::service::project_service::RecentProjectsList::load(&recent_projects_path);
         let templates = get_default_templates();
 
         let cloud_servers_path = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
             .map(|d| d.data_dir().join("cloud_servers.json"))
             .unwrap_or_else(|| PathBuf::from("cloud_servers.json"));
         let cloud_servers: Vec<CloudServer> = std::fs::read_to_string(&cloud_servers_path)
-            .ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+            .ok()
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
 
         let appdata = directories::ProjectDirs::from("com", "Pulsar", "Pulsar_Engine")
-            .map(|d| d.data_dir().to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+            .map(|d| d.data_dir().to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."));
         let plugins_path = appdata.join("plugins");
         let registries_path = appdata.join("registries");
-        let installed_plugins: Vec<InstalledPlugin> = std::fs::read_to_string(plugins_path.join("plugins.json"))
-            .ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
-        let plugin_registries: Vec<PluginRegistry> = std::fs::read_to_string(appdata.join("plugin_registries.json"))
-            .ok().and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_else(|| vec![PluginRegistry { name: "Official Pulsar Plugins".to_string(), url: "https://github.com/Far-Beyond-Pulsar/Plugins".to_string() }]);
+        let installed_plugins: Vec<InstalledPlugin> =
+            std::fs::read_to_string(plugins_path.join("plugins.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+        let plugin_registries: Vec<PluginRegistry> =
+            std::fs::read_to_string(appdata.join("plugin_registries.json"))
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_else(|| {
+                    vec![PluginRegistry {
+                        name: "Official Pulsar Plugins".to_string(),
+                        url: "https://github.com/Far-Beyond-Pulsar/Plugins".to_string(),
+                    }]
+                });
 
         let logo = {
             let bytes: &[u8] = include_bytes!("../../../../../assets/images/logo_sqrkl.png");
@@ -355,7 +443,6 @@ impl AppState {
             template_thumbnails: HashMap::new(),
             template_thumbnail_inflight: 0,
             template_thumbnail_queue: VecDeque::new(),
-
         }
     }
 }

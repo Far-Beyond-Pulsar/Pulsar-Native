@@ -44,18 +44,90 @@ impl Template {
 //       the application.
 pub fn get_default_templates() -> Vec<Template> {
     vec![
-        Template::new("Blank Project", "Empty project with minimal structure", IconName::Folder, "https://github.com/Far-Beyond-Pulsar/Template-Blank", "Basic"),
-        Template::new("Core", "Core engine features and systems", IconName::Settings, "https://github.com/pulsar-templates/core.git", "Basic"),
-        Template::new("2D Platformer", "Classic side-scrolling platformer", IconName::Gamepad, "https://github.com/pulsar-templates/2d-platformer.git", "2D"),
-        Template::new("2D Top-Down", "Top-down 2D game with camera", IconName::Map, "https://github.com/pulsar-templates/2d-topdown.git", "2D"),
-        Template::new("3D First Person", "FPS with movement and camera", IconName::Eye, "https://github.com/pulsar-templates/3d-fps.git", "3D"),
-        Template::new("3D Platformer", "3D platformer with physics", IconName::Cube, "https://github.com/pulsar-templates/3d-platformer.git", "3D"),
-        Template::new("Tower Defense", "Wave-based tower defense", IconName::Shield, "https://github.com/pulsar-templates/tower-defense.git", "Strategy"),
-        Template::new("Action RPG", "Action-oriented RPG systems", IconName::Star, "https://github.com/pulsar-templates/action-rpg.git", "RPG"),
-        Template::new("Visual Novel", "Narrative-driven visual novel", IconName::BookOpen, "https://github.com/pulsar-templates/visual-novel.git", "Narrative"),
-        Template::new("Puzzle", "Puzzle game mechanics", IconName::Box, "https://github.com/pulsar-templates/puzzle.git", "Puzzle"),
-        Template::new("Card Game", "Card-based game system", IconName::CreditCard, "https://github.com/pulsar-templates/card-game.git", "Card"),
-        Template::new("Racing", "Racing game with physics", IconName::Rocket, "https://github.com/pulsar-templates/racing.git", "Racing"),
+        Template::new(
+            "Blank Project",
+            "Empty project with minimal structure",
+            IconName::Folder,
+            "https://github.com/Far-Beyond-Pulsar/Template-Blank",
+            "Basic",
+        ),
+        Template::new(
+            "Core",
+            "Core engine features and systems",
+            IconName::Settings,
+            "https://github.com/pulsar-templates/core.git",
+            "Basic",
+        ),
+        Template::new(
+            "2D Platformer",
+            "Classic side-scrolling platformer",
+            IconName::Gamepad,
+            "https://github.com/pulsar-templates/2d-platformer.git",
+            "2D",
+        ),
+        Template::new(
+            "2D Top-Down",
+            "Top-down 2D game with camera",
+            IconName::Map,
+            "https://github.com/pulsar-templates/2d-topdown.git",
+            "2D",
+        ),
+        Template::new(
+            "3D First Person",
+            "FPS with movement and camera",
+            IconName::Eye,
+            "https://github.com/pulsar-templates/3d-fps.git",
+            "3D",
+        ),
+        Template::new(
+            "3D Platformer",
+            "3D platformer with physics",
+            IconName::Cube,
+            "https://github.com/pulsar-templates/3d-platformer.git",
+            "3D",
+        ),
+        Template::new(
+            "Tower Defense",
+            "Wave-based tower defense",
+            IconName::Shield,
+            "https://github.com/pulsar-templates/tower-defense.git",
+            "Strategy",
+        ),
+        Template::new(
+            "Action RPG",
+            "Action-oriented RPG systems",
+            IconName::Star,
+            "https://github.com/pulsar-templates/action-rpg.git",
+            "RPG",
+        ),
+        Template::new(
+            "Visual Novel",
+            "Narrative-driven visual novel",
+            IconName::BookOpen,
+            "https://github.com/pulsar-templates/visual-novel.git",
+            "Narrative",
+        ),
+        Template::new(
+            "Puzzle",
+            "Puzzle game mechanics",
+            IconName::Box,
+            "https://github.com/pulsar-templates/puzzle.git",
+            "Puzzle",
+        ),
+        Template::new(
+            "Card Game",
+            "Card-based game system",
+            IconName::CreditCard,
+            "https://github.com/pulsar-templates/card-game.git",
+            "Card",
+        ),
+        Template::new(
+            "Racing",
+            "Racing game with physics",
+            IconName::Rocket,
+            "https://github.com/pulsar-templates/racing.git",
+            "Racing",
+        ),
     ]
 }
 
@@ -90,7 +162,12 @@ pub enum CloudServerStatus {
     #[default]
     Unknown,
     Connecting,
-    Online { latency_ms: u32, version: String, active_users: u32, active_projects: u32 },
+    Online {
+        latency_ms: u32,
+        version: String,
+        active_users: u32,
+        active_projects: u32,
+    },
     Offline,
     Unauthorized,
 }
@@ -132,7 +209,15 @@ pub struct CloudServer {
 
 impl Default for CloudServer {
     fn default() -> Self {
-        Self { id: String::new(), alias: String::new(), url: String::new(), auth_token: String::new(), username: String::new(), status: CloudServerStatus::Unknown, projects: Vec::new() }
+        Self {
+            id: String::new(),
+            alias: String::new(),
+            url: String::new(),
+            auth_token: String::new(),
+            username: String::new(),
+            status: CloudServerStatus::Unknown,
+            projects: Vec::new(),
+        }
     }
 }
 
@@ -154,7 +239,11 @@ pub struct InstallProgress {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum InstallStatus {
-    Idle, Downloading, Installing, Complete, Error(String),
+    Idle,
+    Downloading,
+    Installing,
+    Complete,
+    Error(String),
 }
 
 // ── Plugin System ─────────────────────────────────────────────────────────
@@ -179,7 +268,10 @@ pub struct RegistryPlugin {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum PluginInstallMethod { BinaryDownload, BuiltFromSource }
+pub enum PluginInstallMethod {
+    BinaryDownload,
+    BuiltFromSource,
+}
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct InstalledPlugin {
@@ -203,7 +295,11 @@ pub enum PluginInstallPhase {
 // ── Onboarding ────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub enum OnboardingTab { #[default] Theme, Plugins }
+pub enum OnboardingTab {
+    #[default]
+    Theme,
+    Plugins,
+}
 
 // ── Pending Invite ────────────────────────────────────────────────────────
 

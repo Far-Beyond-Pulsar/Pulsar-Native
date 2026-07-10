@@ -2,8 +2,8 @@
 
 use crate::level_editor::state::LevelEditorState;
 use crate::level_editor::ui::{
-    HierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel, TransformSection,
-    ViewportPanel, WorldSettingsReplicated,
+    HierarchyPanel, ObjectHeaderSection, ObjectTypeFieldsSection, PropertiesPanel,
+    TransformSection, ViewportPanel, WorldSettingsReplicated,
 };
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::{Corner, *};

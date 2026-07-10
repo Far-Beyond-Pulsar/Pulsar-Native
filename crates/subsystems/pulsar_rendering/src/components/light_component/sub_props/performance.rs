@@ -45,7 +45,10 @@ impl PerformanceLightProps {
         if let Some(v) = obj.get("ray_tracing_inclusion").and_then(|v| v.as_bool()) {
             self.ray_tracing_inclusion = v;
         }
-        if let Some(v) = obj.get("virtual_shadow_map_enabled").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("virtual_shadow_map_enabled")
+            .and_then(|v| v.as_bool())
+        {
             self.virtual_shadow_map_enabled = v;
         }
         if let Some(ix) = obj.get("shadow_cache_mode").and_then(|v| v.as_u64()) {

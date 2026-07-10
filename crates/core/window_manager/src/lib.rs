@@ -24,8 +24,8 @@ pub use telemetry::TelemetrySender;
 pub use ui_types_common::window_types::WindowRequest;
 pub use validation::{ValidationRule, WindowError, WindowResult, WindowValidator};
 
-pub use manager::WindowManager;
 pub use inventory;
+pub use manager::WindowManager;
 pub use registry::{WindowRegistrant, WindowRegistry};
 pub use ui_gen_macros::register_window;
 pub use wrappers::{apply_window_wrapper, register_window_wrapper, WindowContentWrapper};
@@ -35,7 +35,10 @@ pub use wrappers::{apply_window_wrapper, register_window_wrapper, WindowContentW
 /// `#[window_manager::register_window]` — no per-crate `init()` calls needed.
 pub fn register_all_windows(cx: &mut gpui::App) {
     let registrants: Vec<_> = inventory::iter::<registry::WindowRegistrant>().collect();
-    tracing::info!("[WindowManager] register_all_windows: {} registrants", registrants.len());
+    tracing::info!(
+        "[WindowManager] register_all_windows: {} registrants",
+        registrants.len()
+    );
     for registrant in &registrants {
         (registrant.register)(cx);
     }

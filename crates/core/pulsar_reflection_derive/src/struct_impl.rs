@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{Fields, Ident, TypeGenerics, WhereClause, ImplGenerics, DataStruct, parse_quote};
+use syn::{DataStruct, Fields, Ident, ImplGenerics, TypeGenerics, WhereClause, parse_quote};
 
 use crate::field_info;
 
@@ -12,13 +12,22 @@ pub fn generate_struct_impl(
     color_expr: &proc_macro2::TokenStream,
 ) -> proc_macro2::TokenStream {
     match &data_struct.fields {
-        Fields::Named(fields) => generate_named_fields_impl(name, impl_generics, ty_generics, where_clause, &fields, color_expr),
+        Fields::Named(fields) => generate_named_fields_impl(
+            name,
+            impl_generics,
+            ty_generics,
+            where_clause,
+            &fields,
+            color_expr,
+        ),
         Fields::Unnamed(_) => syn::Error::new_spanned(
             name,
             "Reflectable only supports structs with named fields (tuple structs not supported yet)",
         )
         .to_compile_error(),
-        Fields::Unit => generate_unit_struct_impl(name, impl_generics, ty_generics, where_clause, color_expr),
+        Fields::Unit => {
+            generate_unit_struct_impl(name, impl_generics, ty_generics, where_clause, color_expr)
+        }
     }
 }
 

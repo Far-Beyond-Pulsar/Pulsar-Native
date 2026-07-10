@@ -98,8 +98,8 @@ pub use multiuser::{
 
 // Re-export typed systems as primary API
 pub use context::{DevContext, EngineContext, LaunchContext, ProjectContext, WindowContext};
-pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 pub use keyed_store::KeyedStore;
+pub use renderers_typed::{RendererType, TypedRendererHandle, TypedRendererRegistry};
 pub use resource::{Resource, ResourceHandle, WriteGuard};
 pub use store::StateStore;
 

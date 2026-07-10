@@ -56,7 +56,9 @@ pub fn build_ruler_instances(
 
     let min_px = tick_min_px(zoom);
     let target_step_ns = (min_px / zoom.max(1e-10)) as u64;
-    let candidates: [u64; 16] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000];
+    let candidates: [u64; 16] = [
+        1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000,
+    ];
     let mut step_ms = 1u64;
     for &c in &candidates {
         if c * 1_000_000 >= target_step_ns {
@@ -283,7 +285,9 @@ pub fn build_overlay_instances(
     // Vertical grid lines — density decreases as zoom decreases
     let min_px = tick_min_px(zoom);
     let target_step_ns = (min_px / zoom.max(1e-10)) as u64;
-    let candidates: [u64; 16] = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000];
+    let candidates: [u64; 16] = [
+        1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 30000, 60000, 300000,
+    ];
     let mut step_ms = 1u64;
     for &c in &candidates {
         if c * 1_000_000 >= target_step_ns {

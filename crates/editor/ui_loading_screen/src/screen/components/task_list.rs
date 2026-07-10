@@ -21,8 +21,12 @@ pub(crate) fn task_list_widget(
     let window_end = (window_start + VISIBLE).min(statuses.len());
     let window_start = window_end.saturating_sub(VISIBLE);
 
-    div().flex().flex_col().items_end().gap(px(6.0)).children(
-        (window_start..window_end).map(|i| {
+    div()
+        .flex()
+        .flex_col()
+        .items_end()
+        .gap(px(6.0))
+        .children((window_start..window_end).map(|i| {
             let status = statuses[i];
             let label = TASKS[i].0;
             let dist_above = running.saturating_sub(i);
@@ -101,6 +105,5 @@ pub(crate) fn task_list_widget(
                         .text_center()
                         .child(icon),
                 )
-        }),
-    )
+        }))
 }

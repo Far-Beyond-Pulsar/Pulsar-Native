@@ -49,13 +49,13 @@ pub use shared_state::SharedState;
 // Re-export commonly used types
 pub use file_utils::{find_openable_files, FileInfo, FileType};
 pub use menu::{AppTitleBar, AppTitleBarEvent};
-pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
-pub use theme_dropdown::ThemePicker;
 pub use panel::{PanelBase, PanelEvent};
+pub use profile_dropdown::{ProfileDropdown, ProfileDropdownEvent};
 pub use reflected_properties_panel::{
     render_property_row_runtime, PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
+pub use theme_dropdown::ThemePicker;
 
 // Re-export diagnostics from ui crate
 pub use ui::diagnostics::{CodeAction, Diagnostic, DiagnosticSeverity, TextEdit};

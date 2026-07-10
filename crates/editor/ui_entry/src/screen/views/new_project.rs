@@ -1,10 +1,16 @@
 use gpui::prelude::*;
 use gpui::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
 use crate::screen::EntryScreen;
 
-pub fn render_new_project(screen: &mut EntryScreen, window: &mut Window, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_new_project(
+    screen: &mut EntryScreen,
+    window: &mut Window,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let project_name_input = screen.inputs().new_project_name.clone();
     let selected_path = screen.state.input.new_project_path.clone();

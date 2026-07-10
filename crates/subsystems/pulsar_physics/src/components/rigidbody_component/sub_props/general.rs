@@ -66,7 +66,10 @@ impl GeneralRigidbodyProps {
         out.insert("mass".to_string(), Value::from(self.mass));
         out.insert("mass_scale".to_string(), Value::from(self.mass_scale));
         out.insert("density".to_string(), Value::from(self.density));
-        out.insert("motion_type".to_string(), Value::from(self.motion_type as u64));
+        out.insert(
+            "motion_type".to_string(),
+            Value::from(self.motion_type as u64),
+        );
         out.insert("override_mass".to_string(), Value::from(self.override_mass));
     }
 }

@@ -43,15 +43,12 @@ pub fn render_modal(
                                 .child(title),
                         )
                         .when_some(on_close, |this, close| {
-                            this.child(
-                                Button::new("modal-close")
-                                    .ghost()
-                                    .label("X")
-                                    .on_click(cx.listener(move |this, _, window, cx| {
-                                        close(window, cx);
-                                        cx.notify();
-                                    })),
-                            )
+                            this.child(Button::new("modal-close").ghost().label("X").on_click(
+                                cx.listener(move |this, _, window, cx| {
+                                    close(window, cx);
+                                    cx.notify();
+                                }),
+                            ))
                         }),
                 )
                 .child(content),

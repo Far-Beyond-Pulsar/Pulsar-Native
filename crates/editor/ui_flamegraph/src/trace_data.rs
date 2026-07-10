@@ -886,9 +886,8 @@ impl TraceData {
 
         for _ in 0..num_frames {
             let frame_start = current_time;
-            let frame_dur = (base_frame_time as i64
-                + rng.random_range(-3_000_000i64..5_000_000i64))
-            .max(8_000_000) as u64;
+            let frame_dur = (base_frame_time as i64 + rng.random_range(-3_000_000i64..5_000_000i64))
+                .max(8_000_000) as u64;
 
             frame_times.push(frame_dur as f32 / 1_000_000.0);
 
@@ -903,12 +902,10 @@ impl TraceData {
                     // Build a nesting tree: each span is at a random depth up to `depth`
                     let span_depth = (s as u32) % (depth + 1);
                     let span_frac = s as f64 / spans_per_thread as f64;
-                    let span_start = thread_start
-                        + (span_frac * thread_dur as f64) as u64;
+                    let span_start = thread_start + (span_frac * thread_dur as f64) as u64;
                     let span_end = if s + 1 < spans_per_thread {
                         thread_start
-                            + (((s + 1) as f64 / spans_per_thread as f64)
-                                * thread_dur as f64)
+                            + (((s + 1) as f64 / spans_per_thread as f64) * thread_dur as f64)
                                 as u64
                     } else {
                         thread_start + thread_dur
@@ -919,13 +916,7 @@ impl TraceData {
                     let name = if span_depth == 0 {
                         format!("{}::Frame", thread_names[tid as usize])
                     } else {
-                        let ops = [
-                            "Process",
-                            "Update",
-                            "Prepare",
-                            "Execute",
-                            "Finalize",
-                        ];
+                        let ops = ["Process", "Update", "Prepare", "Execute", "Finalize"];
                         let op = ops[(span_depth as usize - 1) % ops.len()];
                         format!("{}::{}_{}", thread_names[tid as usize], op, s)
                     };

@@ -144,7 +144,12 @@ fn parse_hex_color(hex: &str) -> Option<[f32; 4]> {
     let channel = |s: &str| u8::from_str_radix(s, 16).ok().map(|v| v as f32 / 255.0);
 
     match hex.len() {
-        6 => Some([channel(&hex[0..2])?, channel(&hex[2..4])?, channel(&hex[4..6])?, 1.0]),
+        6 => Some([
+            channel(&hex[0..2])?,
+            channel(&hex[2..4])?,
+            channel(&hex[4..6])?,
+            1.0,
+        ]),
         8 => Some([
             channel(&hex[0..2])?,
             channel(&hex[2..4])?,

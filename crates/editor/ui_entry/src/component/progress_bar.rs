@@ -4,10 +4,7 @@ use ui::ActiveTheme as _;
 
 use crate::screen::EntryScreen;
 
-pub fn render_progress_bar(
-    progress: f32,
-    cx: &mut Context<EntryScreen>,
-) -> impl IntoElement {
+pub fn render_progress_bar(progress: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
     let theme = cx.theme();
     let clamped = progress.clamp(0.0, 1.0);
 

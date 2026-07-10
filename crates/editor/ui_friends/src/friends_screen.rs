@@ -65,11 +65,18 @@ impl FriendsScreen {
                     &input,
                     |this: &mut Self, _input, event: &InputEvent, cx| match event {
                         InputEvent::Change => {
-                            this.add_friend_username =
-                                this.add_friend_input.as_ref().unwrap().read(cx).text().to_string();
+                            this.add_friend_username = this
+                                .add_friend_input
+                                .as_ref()
+                                .unwrap()
+                                .read(cx)
+                                .text()
+                                .to_string();
                             if matches!(
                                 this.add_friend_state,
-                                AddFriendState::Success | AddFriendState::GistNotFound | AddFriendState::Error(_)
+                                AddFriendState::Success
+                                    | AddFriendState::GistNotFound
+                                    | AddFriendState::Error(_)
                             ) {
                                 this.add_friend_state = AddFriendState::Idle;
                             }
@@ -121,19 +128,28 @@ impl FriendsScreen {
         });
 
         cx.spawn(async move |this, cx| {
-            let result = rx.recv().await.unwrap_or(Err(
-                friends_engine::FriendsError::Network("Channel closed".to_string()),
-            ));
+            let result = rx
+                .recv()
+                .await
+                .unwrap_or(Err(friends_engine::FriendsError::Network(
+                    "Channel closed".to_string(),
+                )));
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.fetching_homes = false;
                     match result {
                         Ok(count) => {
-                            tracing::info!("[FriendsScreen] Fetched home servers for {} friends", count);
+                            tracing::info!(
+                                "[FriendsScreen] Fetched home servers for {} friends",
+                                count
+                            );
                             screen.refresh_friends(cx);
                         }
                         Err(e) => {
-                            tracing::error!("[FriendsScreen] Failed to fetch friend homes: {:?}", e);
+                            tracing::error!(
+                                "[FriendsScreen] Failed to fetch friend homes: {:?}",
+                                e
+                            );
                         }
                     }
                     cx.notify();
@@ -150,7 +166,8 @@ impl FriendsScreen {
         if !friends_engine::is_authenticated() {
             self.loading = false;
             self.friends.clear();
-            self.friends_list.update(cx, |list, cx| list.set_items(Vec::new(), cx));
+            self.friends_list
+                .update(cx, |list, cx| list.set_items(Vec::new(), cx));
             cx.notify();
             return;
         }
@@ -163,9 +180,10 @@ impl FriendsScreen {
         });
 
         cx.spawn(async move |this, cx| {
-            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
-                "Channel closed".to_string(),
-            )));
+            let result = rx
+                .recv()
+                .await
+                .unwrap_or(Err(FriendsError::Network("Channel closed".to_string())));
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.loading = false;
@@ -182,16 +200,16 @@ impl FriendsScreen {
                                 .filter(|f| f.relation_status == RelationStatus::Mutual)
                                 .map(|f| f.username.clone())
                                 .collect();
-                            screen.friends_list.update(cx, |list, cx| {
-                                list.set_items(friends_usernames, cx)
-                            });
+                            screen
+                                .friends_list
+                                .update(cx, |list, cx| list.set_items(friends_usernames, cx));
                         }
                         Err(e) => {
                             tracing::error!("[FriendsScreen] Failed to load friends: {:?}", e);
                             screen.friends = Vec::new();
-                            screen.friends_list.update(cx, |list, cx| {
-                                list.set_items(Vec::new(), cx)
-                            });
+                            screen
+                                .friends_list
+                                .update(cx, |list, cx| list.set_items(Vec::new(), cx));
                         }
                     }
                     let urls: Vec<String> =
@@ -274,26 +292,24 @@ impl FriendsScreen {
 
         let target_for_complete = username.clone();
         cx.spawn(async move |this, cx| {
-            let has_gist = rx.recv().await.unwrap_or(Err(FriendsError::Network(
-                "Channel closed".to_string(),
-            )));
+            let has_gist = rx
+                .recv()
+                .await
+                .unwrap_or(Err(FriendsError::Network("Channel closed".to_string())));
             cx.update(|cx| {
-                let _ = this.update(cx, |screen, cx| {
-                    match has_gist {
-                        Ok(true) => {
-                            screen.add_friend_state = AddFriendState::Sending;
-                            cx.notify();
-                            screen.do_complete_invite(&target_for_complete, cx);
-                        }
-                        Ok(false) => {
-                            screen.add_friend_state = AddFriendState::GistNotFound;
-                            cx.notify();
-                        }
-                        Err(e) => {
-                            screen.add_friend_state =
-                                AddFriendState::Error(format!("{:?}", e));
-                            cx.notify();
-                        }
+                let _ = this.update(cx, |screen, cx| match has_gist {
+                    Ok(true) => {
+                        screen.add_friend_state = AddFriendState::Sending;
+                        cx.notify();
+                        screen.do_complete_invite(&target_for_complete, cx);
+                    }
+                    Ok(false) => {
+                        screen.add_friend_state = AddFriendState::GistNotFound;
+                        cx.notify();
+                    }
+                    Err(e) => {
+                        screen.add_friend_state = AddFriendState::Error(format!("{:?}", e));
+                        cx.notify();
                     }
                 });
             });
@@ -314,9 +330,10 @@ impl FriendsScreen {
 
         let target_for_self = target.clone();
         cx.spawn(async move |this, cx| {
-            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
-                "Channel closed".to_string(),
-            )));
+            let result = rx
+                .recv()
+                .await
+                .unwrap_or(Err(FriendsError::Network("Channel closed".to_string())));
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     match result {
@@ -496,7 +513,9 @@ impl Render for FriendsScreen {
                     .pb_6()
                     .gap_6()
                     .child(self.render_header(total, online_count, pending_count, cx))
-                    .when(self.show_invite, |this| this.child(self.render_add_friend_bar(cx)))
+                    .when(self.show_invite, |this| {
+                        this.child(self.render_add_friend_bar(cx))
+                    })
                     .child(self.render_tabs(pending_count, cx)),
             )
             .child(div().w_full().h(px(1.)).bg(border))
@@ -600,7 +619,11 @@ impl FriendsScreen {
                         Button::new("fetch-friend-homes")
                             .ghost()
                             .icon(Icon::new(IconName::Globe).size(px(13.)))
-                            .label(if self.fetching_homes { "Fetching..." } else { "Fetch homes" })
+                            .label(if self.fetching_homes {
+                                "Fetching..."
+                            } else {
+                                "Fetch homes"
+                            })
                             .disabled(self.fetching_homes)
                             .tooltip("Fetch home server URLs for non-mutual friends")
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -660,21 +683,23 @@ impl FriendsScreen {
                                             .size(px(15.))
                                             .text_color(theme.muted_foreground),
                                     )
-                                    .child(
-                                        div().flex_1().h_full().child(ui::input::TextInput::new(
+                                    .child(div().flex_1().h_full().child(
+                                        ui::input::TextInput::new(
                                             self.add_friend_input.as_ref().unwrap(),
-                                        )),
-                                    ),
+                                        ),
+                                    )),
                             ),
                     )
                     .child(
                         Button::new("send-friend-request")
                             .primary()
-                            .label(if matches!(self.add_friend_state, AddFriendState::CheckingGist) {
-                                "Checking"
-                            } else {
-                                "Add Friend"
-                            })
+                            .label(
+                                if matches!(self.add_friend_state, AddFriendState::CheckingGist) {
+                                    "Checking"
+                                } else {
+                                    "Add Friend"
+                                },
+                            )
                             .disabled(is_busy || self.add_friend_username.trim().is_empty())
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.do_send_friend_request(cx);
@@ -685,15 +710,12 @@ impl FriendsScreen {
                 matches!(self.add_friend_state, AddFriendState::CheckingGist),
                 |this| {
                     this.child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.muted_foreground)
-                                    .child("Checking if user has Pulsar Engine set up..."),
-                            ),
+                        h_flex().gap_2().items_center().child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.muted_foreground)
+                                .child("Checking if user has Pulsar Engine set up..."),
+                        ),
                     )
                 },
             )
@@ -743,15 +765,12 @@ impl FriendsScreen {
                 matches!(self.add_friend_state, AddFriendState::SelfFriended),
                 |this| {
                     this.child(
-                        h_flex()
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(theme.warning)
-                                    .child("You can't be friends with yourself... or can you? 🌟"),
-                            ),
+                        h_flex().gap_2().items_center().child(
+                            div()
+                                .text_sm()
+                                .text_color(theme.warning)
+                                .child("You can't be friends with yourself... or can you? 🌟"),
+                        ),
                     )
                 },
             )
@@ -865,9 +884,8 @@ impl FriendsScreen {
         let theme = cx.theme();
 
         let self_entry = self.friends.iter().find(|f| f.is_self);
-        let avatar = self_entry.and_then(|f| {
-            self.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone())
-        });
+        let avatar =
+            self_entry.and_then(|f| self.avatar_cache.get(&f.pfp_url).and_then(|o| o.clone()));
 
         h_flex()
             .w_full()
@@ -1118,40 +1136,27 @@ impl FriendsScreen {
         let theme = cx.theme();
         let border_col = theme.border;
 
-        v_flex()
-            .w_full()
-            .gap_3()
-            .children((0..5).map(|i| {
-                h_flex()
-                    .id(SharedString::from(format!("friend-skel-{}", i)))
-                    .w_full()
-                    .gap_3()
-                    .items_center()
-                    .px_4()
-                    .py_3()
-                    .rounded_xl()
-                    .border_1()
-                    .border_color(border_col)
-                    .child(
-                        Skeleton::new()
-                            .w(px(40.))
-                            .h(px(40.))
-                            .rounded(px(40.)),
-                    )
-                    .child(
-                        v_flex()
-                            .flex_1()
-                            .gap_2()
-                            .child(Skeleton::new().w(px(140.)).h_4())
-                            .child(Skeleton::new().secondary(true).w(px(90.)).h_3()),
-                    )
-                    .child(
-                        Skeleton::new()
-                            .w(px(70.))
-                            .h(px(28.))
-                            .rounded(px(6.)),
-                    )
-            }))
+        v_flex().w_full().gap_3().children((0..5).map(|i| {
+            h_flex()
+                .id(SharedString::from(format!("friend-skel-{}", i)))
+                .w_full()
+                .gap_3()
+                .items_center()
+                .px_4()
+                .py_3()
+                .rounded_xl()
+                .border_1()
+                .border_color(border_col)
+                .child(Skeleton::new().w(px(40.)).h(px(40.)).rounded(px(40.)))
+                .child(
+                    v_flex()
+                        .flex_1()
+                        .gap_2()
+                        .child(Skeleton::new().w(px(140.)).h_4())
+                        .child(Skeleton::new().secondary(true).w(px(90.)).h_3()),
+                )
+                .child(Skeleton::new().w(px(70.)).h(px(28.)).rounded(px(6.)))
+        }))
     }
 
     fn render_not_authenticated(&self, cx: &mut Context<Self>) -> impl IntoElement {

@@ -1,5 +1,5 @@
-use crate::component::{component_id, ComponentId};
 use crate::archetype::Archetype;
+use crate::component::{component_id, ComponentId};
 use crate::component::{Column, Component};
 use crate::entity::Entity;
 use crate::world::World;
@@ -49,7 +49,9 @@ impl<'w, T: Component> WorldQuery<'w> for &'w T {
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w T {
         let cid = component_id::<T>();
         // SAFETY: caller guarantees the column exists and row is in bounds.
-        let col = arch.columns.get_unchecked(cid.0 as usize)
+        let col = arch
+            .columns
+            .get_unchecked(cid.0 as usize)
             .as_ref()
             .unwrap_unchecked()
             .as_any()
@@ -73,7 +75,9 @@ impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w mut T {
         let cid = component_id::<T>();
         // SAFETY: caller guarantees the column exists and row is in bounds.
-        let col: &Column<T> = arch.columns.get_unchecked(cid.0 as usize)
+        let col: &Column<T> = arch
+            .columns
+            .get_unchecked(cid.0 as usize)
             .as_ref()
             .unwrap_unchecked()
             .as_any()

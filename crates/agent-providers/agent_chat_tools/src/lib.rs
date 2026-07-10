@@ -504,8 +504,7 @@ fn set_runtime_state(
 }
 
 fn runtime_state() -> anyhow::Result<RuntimeState> {
-    let ctx = EngineContext::global()
-        .ok_or_else(|| anyhow!("Engine not initialized"))?;
+    let ctx = EngineContext::global().ok_or_else(|| anyhow!("Engine not initialized"))?;
     let handle = ctx
         .store
         .get::<RuntimeState>()

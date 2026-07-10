@@ -13,8 +13,8 @@
 /// - Scene Database: Unified write path — updates both SceneDb and Helio
 pub mod core;
 pub mod state;
-pub mod workspace;
 mod ui;
+pub mod workspace;
 
 // Module aliases so existing `crate::level_editor::X::Y` paths still compile
 pub use core::commands;
@@ -25,11 +25,11 @@ pub use workspace::panels as workspace_panels;
 // Public API
 pub use core::commands::{execute_command, CommandResult, SceneCommand};
 pub use core::scene_database::{SceneDatabase, SceneObjectData};
-pub use state::LevelEditorState;
+pub use core::world_settings_data::*;
 pub use state::request_thumbnail_capture;
+pub use state::LevelEditorState;
 pub use state::{CameraMode, EditorMode, TransformTool};
 pub use workspace::panels::*;
-pub use core::world_settings_data::*;
 
 // Re-export LevelEditorPanel from ui
 pub use ui::LevelEditorPanel;

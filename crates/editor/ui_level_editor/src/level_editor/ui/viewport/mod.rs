@@ -149,13 +149,7 @@ impl ViewportPanel {
         self.send_input_to_gpu(gpu_engine, state);
 
         // Build the viewport UI
-        self.build_viewport_ui(
-            state,
-            state_arc,
-            fps_graph_state,
-            gpu_engine,
-            cx,
-        )
+        self.build_viewport_ui(state, state_arc, fps_graph_state, gpu_engine, cx)
     }
 
     /// Spawn the input processing thread (only once).
@@ -588,7 +582,8 @@ impl ViewportPanel {
                     // Handle overlay dragging
                     let mut state = state_arc_move.write();
                     if state.overlays.positions.is_dragging_camera {
-                        if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start {
+                        if let Some((start_x, start_y)) = state.overlays.positions.camera_drag_start
+                        {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
@@ -600,13 +595,16 @@ impl ViewportPanel {
                                 (state.overlays.positions.camera.0 - delta_x).max(0.0);
                             state.overlays.positions.camera.1 =
                                 (state.overlays.positions.camera.1 + delta_y).max(0.0);
-                            state.overlays.positions.camera_drag_start = Some((current_x, current_y));
+                            state.overlays.positions.camera_drag_start =
+                                Some((current_x, current_y));
                         }
                         return;
                     }
 
                     if state.overlays.positions.is_dragging_viewport {
-                        if let Some((start_x, start_y)) = state.overlays.positions.viewport_drag_start {
+                        if let Some((start_x, start_y)) =
+                            state.overlays.positions.viewport_drag_start
+                        {
                             let current_x: f32 = event.position.x.into();
                             let current_y: f32 = event.position.y.into();
                             let delta_x = current_x - start_x;
@@ -617,7 +615,8 @@ impl ViewportPanel {
                                 (state.overlays.positions.viewport.0 + delta_x).max(0.0);
                             state.overlays.positions.viewport.1 =
                                 (state.overlays.positions.viewport.1 + delta_y).max(0.0);
-                            state.overlays.positions.viewport_drag_start = Some((current_x, current_y));
+                            state.overlays.positions.viewport_drag_start =
+                                Some((current_x, current_y));
                         }
                         return;
                     }

@@ -48,12 +48,10 @@ impl EditorWindowShell {
 
         let subscriptions = vec![cx.subscribe(
             &title_bar,
-            |this, _, event: &AppTitleBarEvent, cx| {
-                match event {
-                    AppTitleBarEvent::MultiplayerSessionsRequested => {
-                        this.show_multiplayer = !this.show_multiplayer;
-                        cx.notify();
-                    }
+            |this, _, event: &AppTitleBarEvent, cx| match event {
+                AppTitleBarEvent::MultiplayerSessionsRequested => {
+                    this.show_multiplayer = !this.show_multiplayer;
+                    cx.notify();
                 }
             },
         )];
@@ -122,9 +120,13 @@ impl Render for PulsarRoot {
             ))
             .on_action(
                 cx.listener(|_: &mut PulsarRoot, _: &DevOpenWorkspaceRoot, window, cx| {
-                    if let Some(path) = engine_state::EngineContext::global()
-                        .and_then(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().source_path.clone())
-                    {
+                    if let Some(path) = engine_state::EngineContext::global().and_then(|ctx| {
+                        ctx.store
+                            .get_or_init::<engine_state::DevContext>()
+                            .read()
+                            .source_path
+                            .clone()
+                    }) {
                         #[cfg(target_os = "macos")]
                         let _ = std::process::Command::new("open").arg(&path).spawn();
                         #[cfg(target_os = "windows")]
@@ -241,7 +243,7 @@ impl Render for EditorWindowShell {
                 v_flex()
                     .size_full()
                     .child(self.title_bar.clone())
-                    .child(div().flex_1().overflow_hidden().child(self.content.clone()))
+                    .child(div().flex_1().overflow_hidden().child(self.content.clone())),
             )
             .when(self.show_multiplayer, |this| {
                 this.child(

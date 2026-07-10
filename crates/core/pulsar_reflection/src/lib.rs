@@ -335,7 +335,11 @@ macro_rules! get_subsystem {
     ($ctx:expr, $ty:ty) => {
         $crate::ComponentRuntimeContext::subsystems_mut(&mut *$ctx)
             .get_mut::<$ty>()
-            .expect(concat!("Subsystem `", stringify!($ty), "` is not registered"))
+            .expect(concat!(
+                "Subsystem `",
+                stringify!($ty),
+                "` is not registered"
+            ))
     };
 }
 
@@ -498,7 +502,10 @@ impl fmt::Debug for PropertyMetadata {
             .field("display_name", &self.display_name)
             .field("category", &self.category)
             .field("category_color", &self.category_color)
-            .field("category_default_collapsed", &self.category_default_collapsed)
+            .field(
+                "category_default_collapsed",
+                &self.category_default_collapsed,
+            )
             .field("category_order", &self.category_order)
             .field("type_info", &self.type_info)
             .finish()

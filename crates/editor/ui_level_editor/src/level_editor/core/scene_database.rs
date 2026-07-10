@@ -6,11 +6,11 @@
 
 use engine_backend::scene::SceneObjectSnapshot;
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
+use engine_fs::virtual_fs;
 use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use engine_fs::virtual_fs;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -169,7 +169,10 @@ impl SceneDatabase {
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
         let blueprint_script_path = if obj.object_type == ObjectType::Blueprint {
-            Some(find_script_path(&obj.props, obj.component_instances.as_ref()))
+            Some(find_script_path(
+                &obj.props,
+                obj.component_instances.as_ref(),
+            ))
         } else {
             None
         };
@@ -648,8 +651,7 @@ impl SceneDatabase {
     ) -> Result<Option<LevelEditorCameraState>, String> {
         let bytes = virtual_fs::read_file(path.as_ref())
             .map_err(|e| format!("Failed to read file: {e}"))?;
-        let json = String::from_utf8(bytes)
-            .map_err(|e| format!("File is not valid UTF-8: {e}"))?;
+        let json = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {e}"))?;
         let level_file: LevelFile =
             serde_json::from_str(&json).map_err(|e| format!("Failed to parse JSON: {e}"))?;
         if !level_file.version.starts_with("2.") && !level_file.version.starts_with("1.") {
@@ -796,16 +798,11 @@ pub struct LevelEditorCameraState {
 /// (modern path), falls back to the legacy `props["__component_instances"]`
 /// array, and finally the flat `props["script_asset"]`.  Returns an empty
 /// string if none are present (the user will fill it in via the properties panel).
-fn find_script_path(
-    props: &HashMap<String, Value>,
-    component_instances: Option<&Value>,
-) -> String {
+fn find_script_path(props: &HashMap<String, Value>, component_instances: Option<&Value>) -> String {
     // Helper: find ScriptComponent data in a component-instances array.
     fn find_in(arr: &[Value]) -> Option<&str> {
         arr.iter()
-            .find(|inst| {
-                inst.get("class_name").and_then(|v| v.as_str()) == Some("ScriptComponent")
-            })
+            .find(|inst| inst.get("class_name").and_then(|v| v.as_str()) == Some("ScriptComponent"))
             .and_then(|inst| inst.get("data"))
             .and_then(|data| data.get("script_asset"))
             .and_then(|v| v.as_str())

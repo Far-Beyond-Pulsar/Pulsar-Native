@@ -1,12 +1,17 @@
-use gpui::*;
 use gpui::prelude::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
+use gpui::*;
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
-use crate::screen::EntryScreen;
 use super::helpers::render_size_bar;
+use crate::screen::EntryScreen;
 use crate::util::formatters::format_size;
 
-pub fn render_performance_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_performance_tab(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let Some(ref settings) = screen.state.ui.project_settings else {
         return div().into_any_element();
@@ -16,7 +21,11 @@ pub fn render_performance_tab(screen: &mut EntryScreen, cx: &mut Context<EntrySc
     let git_size = settings.git_repo_size.unwrap_or(0);
     let total_size = disk_size + git_size;
     let commit_count = settings.commit_count.unwrap_or(0) as f64;
-    let git_ratio = if total_size > 0 { git_size as f64 / total_size as f64 } else { 0.0 };
+    let git_ratio = if total_size > 0 {
+        git_size as f64 / total_size as f64
+    } else {
+        0.0
+    };
 
     let health_score = if git_ratio > 0.5 {
         60
@@ -28,9 +37,13 @@ pub fn render_performance_tab(screen: &mut EntryScreen, cx: &mut Context<EntrySc
         95
     };
 
-    let health_color = if health_score >= 80 { theme.success_foreground }
-    else if health_score >= 60 { theme.warning }
-    else { gpui::red() };
+    let health_color = if health_score >= 80 {
+        theme.success_foreground
+    } else if health_score >= 60 {
+        theme.warning
+    } else {
+        gpui::red()
+    };
 
     v_flex()
         .gap_6()
@@ -178,5 +191,9 @@ pub fn render_performance_tab(screen: &mut EntryScreen, cx: &mut Context<EntrySc
 }
 
 fn when(cond: bool, f: impl FnOnce() -> gpui::Div) -> impl IntoElement {
-    if cond { f().into_any_element() } else { div().into_any_element() }
+    if cond {
+        f().into_any_element()
+    } else {
+        div().into_any_element()
+    }
 }

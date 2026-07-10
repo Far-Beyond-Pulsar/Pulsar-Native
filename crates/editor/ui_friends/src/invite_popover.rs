@@ -35,11 +35,22 @@ impl FriendsPopover {
                     std::thread::spawn(move || {
                         tracing::info!("[FriendsPopover] checking online status for {}", clicked);
                         let online = friends_engine::relay_integration::is_user_online(&clicked);
-                        tracing::info!("[FriendsPopover] {} is {}", clicked, if online { "ONLINE" } else { "OFFLINE" });
+                        tracing::info!(
+                            "[FriendsPopover] {} is {}",
+                            clicked,
+                            if online { "ONLINE" } else { "OFFLINE" }
+                        );
                         // Always send the invite notification regardless of online status
                         match friends_engine::friends_service::send_session_invite(&clicked) {
-                            Ok(()) => tracing::info!("[FriendsPopover] session invite sent to {}", clicked),
-                            Err(e) => tracing::error!("[FriendsPopover] failed to send invite to {}: {:?}", clicked, e),
+                            Ok(()) => tracing::info!(
+                                "[FriendsPopover] session invite sent to {}",
+                                clicked
+                            ),
+                            Err(e) => tracing::error!(
+                                "[FriendsPopover] failed to send invite to {}: {:?}",
+                                clicked,
+                                e
+                            ),
                         }
                     });
                     cx.emit(DismissEvent);
@@ -67,7 +78,8 @@ impl FriendsPopover {
 
         if !friends_engine::is_authenticated() {
             self.loading = false;
-            self.friends_list.update(cx, |list, cx| list.set_items(Vec::new(), cx));
+            self.friends_list
+                .update(cx, |list, cx| list.set_items(Vec::new(), cx));
             cx.notify();
             return;
         }
@@ -80,9 +92,10 @@ impl FriendsPopover {
         });
 
         cx.spawn(async move |this, cx| {
-            let result = rx.recv().await.unwrap_or(Err(FriendsError::Network(
-                "Channel closed".to_string(),
-            )));
+            let result = rx
+                .recv()
+                .await
+                .unwrap_or(Err(FriendsError::Network("Channel closed".to_string())));
             cx.update(|cx| {
                 let _ = this.update(cx, |screen, cx| {
                     screen.loading = false;
@@ -93,15 +106,15 @@ impl FriendsPopover {
                                 .filter(|f| f.relation_status == RelationStatus::Mutual)
                                 .map(|f| f.username)
                                 .collect();
-                            screen.friends_list.update(cx, |list, cx| {
-                                list.set_items(friends_usernames, cx)
-                            });
+                            screen
+                                .friends_list
+                                .update(cx, |list, cx| list.set_items(friends_usernames, cx));
                         }
                         Err(e) => {
                             tracing::error!("[FriendsPopover] Failed to load friends: {:?}", e);
-                            screen.friends_list.update(cx, |list, cx| {
-                                list.set_items(Vec::new(), cx)
-                            });
+                            screen
+                                .friends_list
+                                .update(cx, |list, cx| list.set_items(Vec::new(), cx));
                         }
                     }
                     cx.notify();
@@ -153,12 +166,7 @@ impl Render for FriendsPopover {
                             .w_full()
                             .gap_2()
                             .items_center()
-                            .child(
-                                Skeleton::new()
-                                    .w(px(32.))
-                                    .h(px(32.))
-                                    .rounded(px(32.)),
-                            )
+                            .child(Skeleton::new().w(px(32.)).h(px(32.)).rounded(px(32.)))
                             .child(Skeleton::new().flex_1().h_4())
                     }))
                     .into_any_element()

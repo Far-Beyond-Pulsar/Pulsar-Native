@@ -91,7 +91,10 @@ where
             .ghost()
             .tooltip("Show Performance Stats")
             .on_click(move |_, _, _| {
-                state_arc.write().overlays.set_performance_overlay_collapsed(false);
+                state_arc
+                    .write()
+                    .overlays
+                    .set_performance_overlay_collapsed(false);
             })
             .into_any_element();
     }
@@ -197,7 +200,10 @@ where
                         .ghost()
                         .tooltip("Close")
                         .on_click(move |_, _, _| {
-                            state_clone.write().overlays.set_performance_overlay_collapsed(true);
+                            state_clone
+                                .write()
+                                .overlays
+                                .set_performance_overlay_collapsed(true);
                         })
                 }),
         )

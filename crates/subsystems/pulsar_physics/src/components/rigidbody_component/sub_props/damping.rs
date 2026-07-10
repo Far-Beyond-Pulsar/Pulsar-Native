@@ -46,17 +46,29 @@ impl DampingRigidbodyProps {
         if let Some(v) = obj.get("default_angular_damping").and_then(|v| v.as_f64()) {
             self.default_angular_damping = v as f32;
         }
-        if let Some(v) = obj.get("disable_animation_damping").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("disable_animation_damping")
+            .and_then(|v| v.as_bool())
+        {
             self.disable_animation_damping = v;
         }
-        if let Some(v) = obj.get("disable_pose_animation_damping").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("disable_pose_animation_damping")
+            .and_then(|v| v.as_bool())
+        {
             self.disable_pose_animation_damping = v;
         }
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("linear_damping".to_string(), Value::from(self.linear_damping));
-        out.insert("angular_damping".to_string(), Value::from(self.angular_damping));
+        out.insert(
+            "linear_damping".to_string(),
+            Value::from(self.linear_damping),
+        );
+        out.insert(
+            "angular_damping".to_string(),
+            Value::from(self.angular_damping),
+        );
         out.insert(
             "default_linear_damping".to_string(),
             Value::from(self.default_linear_damping),

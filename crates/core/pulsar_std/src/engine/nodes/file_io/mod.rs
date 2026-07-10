@@ -136,7 +136,9 @@ fn resolve_write_path(user_path: &str) -> Result<PathBuf, String> {
 pub fn file_read(path: String) -> Result<String, String> {
     let path = resolve_read_path(&path)?;
     match virtual_fs::read_file(&path) {
-        Ok(bytes) => String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e)),
+        Ok(bytes) => {
+            String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e))
+        }
         Err(e) => Err(format!("Failed to read file: {}", e)),
     }
 }
@@ -263,7 +265,8 @@ pub fn file_copy(source: String, destination: String) -> Result<(), String> {
     let source = resolve_read_path(&source)?;
     let destination = resolve_write_path(&destination)?;
     match virtual_fs::read_file(&source) {
-        Ok(data) => virtual_fs::write_file(&destination, &data).map_err(|e| format!("Failed to copy file: {}", e)),
+        Ok(data) => virtual_fs::write_file(&destination, &data)
+            .map_err(|e| format!("Failed to copy file: {}", e)),
         Err(e) => Err(format!("Failed to copy file: {}", e)),
     }
 }
@@ -424,7 +427,8 @@ pub fn file_read_lines(path: String) -> Result<Vec<String>, String> {
     let path = resolve_read_path(&path)?;
     match virtual_fs::read_file(&path) {
         Ok(bytes) => {
-            let content = String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e))?;
+            let content =
+                String::from_utf8(bytes).map_err(|e| format!("File is not valid UTF-8: {}", e))?;
             Ok(content.lines().map(|s| s.to_string()).collect())
         }
         Err(e) => Err(format!("Failed to read file: {}", e)),
@@ -572,8 +576,8 @@ pub fn dir_walk(path: String) -> Result<Vec<String>, String> {
     let path = resolve_read_path(&path)?;
 
     fn walk_dir(dir: &Path, files: &mut Vec<String>) -> Result<(), String> {
-        let entries = virtual_fs::list_dir(dir)
-            .map_err(|e| format!("Failed to walk directory: {}", e))?;
+        let entries =
+            virtual_fs::list_dir(dir).map_err(|e| format!("Failed to walk directory: {}", e))?;
         for entry in entries {
             let child = dir.join(&entry.name);
             let child_str = child.to_string_lossy().to_string();

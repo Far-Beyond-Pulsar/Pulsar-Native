@@ -1,11 +1,17 @@
-use gpui::*;
 use gpui::prelude::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName};
+use gpui::*;
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Disableable,
+    Icon, IconName,
+};
 
-use crate::screen::EntryScreen;
 use super::types::{AvailableTools, ToolInfo};
+use crate::screen::EntryScreen;
 
-pub fn render_integrations_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_integrations_tab(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let Some(ref settings) = screen.state.ui.project_settings else {
         return div().into_any_element();
@@ -30,36 +36,30 @@ pub fn render_integrations_tab(screen: &mut EntryScreen, cx: &mut Context<EntryS
                 .text_color(theme.muted_foreground)
                 .child("Configure preferred tools for this project"),
         )
-        .child(
-            render_tool_category(
-                "Editors",
-                IconName::Code,
-                tools.editors,
-                preferred_editor,
-                project_path.clone(),
-                cx,
-            ),
-        )
-        .child(
-            render_tool_category(
-                "Git Tools",
-                IconName::Github,
-                tools.git_tools,
-                preferred_git_tool,
-                project_path.clone(),
-                cx,
-            ),
-        )
-        .child(
-            render_tool_category(
-                "Terminals",
-                IconName::Terminal,
-                tools.terminals,
-                None,
-                project_path,
-                cx,
-            ),
-        )
+        .child(render_tool_category(
+            "Editors",
+            IconName::Code,
+            tools.editors,
+            preferred_editor,
+            project_path.clone(),
+            cx,
+        ))
+        .child(render_tool_category(
+            "Git Tools",
+            IconName::Github,
+            tools.git_tools,
+            preferred_git_tool,
+            project_path.clone(),
+            cx,
+        ))
+        .child(render_tool_category(
+            "Terminals",
+            IconName::Terminal,
+            tools.terminals,
+            None,
+            project_path,
+            cx,
+        ))
         .into_any_element()
 }
 
@@ -102,7 +102,10 @@ fn render_tool_category(
                     .py_2()
                     .text_sm()
                     .text_color(theme.muted_foreground)
-                    .child(format!("No {} detected on your system", title.to_lowercase())),
+                    .child(format!(
+                        "No {} detected on your system",
+                        title.to_lowercase()
+                    )),
             )
         })
         .children(tools.into_iter().map(|tool| {
@@ -122,7 +125,11 @@ fn render_tool_category(
                 .child(
                     Icon::new(IconName::Check)
                         .size(px(14.))
-                        .text_color(if is_default { theme.success_foreground } else { gpui::transparent_white() }),
+                        .text_color(if is_default {
+                            theme.success_foreground
+                        } else {
+                            gpui::transparent_white()
+                        }),
                 )
                 .child(
                     v_flex()
@@ -130,7 +137,11 @@ fn render_tool_category(
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(if is_default { FontWeight::SEMIBOLD } else { FontWeight::NORMAL })
+                                .font_weight(if is_default {
+                                    FontWeight::SEMIBOLD
+                                } else {
+                                    FontWeight::NORMAL
+                                })
                                 .text_color(theme.foreground)
                                 .child(name),
                         )

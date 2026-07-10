@@ -8,6 +8,7 @@ mod toolbar;
 mod viewport;
 mod world_settings;
 
+pub use dialogs::*;
 pub use hierarchy::HierarchyPanel;
 pub use panel::LevelEditorPanel;
 pub use properties::{
@@ -17,4 +18,3 @@ pub use properties::{
 pub use toolbar::ToolbarPanel;
 pub use viewport::ViewportPanel;
 pub use world_settings::{WorldSettings, WorldSettingsReplicated};
-pub use dialogs::*;

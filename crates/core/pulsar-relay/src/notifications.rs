@@ -136,23 +136,34 @@ impl NotificationStore {
 
     /// Check if a user has an active WebSocket connection.
     pub fn is_user_online(&self, username: &str) -> bool {
-        let online = self.connected_users.get(username)
+        let online = self
+            .connected_users
+            .get(username)
             .map(|s| !s.is_empty())
             .unwrap_or(false);
-        tracing::info!("[NotificationStore] is_user_online: {} -> {}", username, online);
+        tracing::info!(
+            "[NotificationStore] is_user_online: {} -> {}",
+            username,
+            online
+        );
         online
     }
 
     /// Register a WebSocket connection for a user.
     pub fn register_connection(&self, username: &str, tx: mpsc::UnboundedSender<Notification>) {
         let count = {
-            let mut entries = self.connected_users
+            let mut entries = self
+                .connected_users
                 .entry(username.to_string())
                 .or_insert_with(Vec::new);
             entries.push(tx);
             entries.len()
         };
-        tracing::info!("[NotificationStore] register_connection: {} ({} active sockets)", username, count);
+        tracing::info!(
+            "[NotificationStore] register_connection: {} ({} active sockets)",
+            username,
+            count
+        );
     }
 
     /// Unregister a WebSocket connection for a user.
@@ -170,36 +181,57 @@ impl NotificationStore {
         if remaining == 0 {
             self.connected_users.remove(username);
         }
-        tracing::info!("[NotificationStore] unregister_connection: {} (removed {} socket, {} remaining)", username, removed, remaining);
+        tracing::info!(
+            "[NotificationStore] unregister_connection: {} (removed {} socket, {} remaining)",
+            username,
+            removed,
+            remaining
+        );
     }
 
     /// Store a notification and push to any open WebSocket for the recipient.
     pub fn push_notification(&self, notification: Notification) {
         tracing::info!(
             "[NotificationStore] push_notification: id={} type={:?} from={} to={} msg={}",
-            notification.id, notification.notification_type,
-            notification.from_username, notification.to_username,
+            notification.id,
+            notification.notification_type,
+            notification.from_username,
+            notification.to_username,
             notification.message
         );
 
         // Store in-memory for HTTP poll fallback
         let queue_len = {
-            let mut entries = self.notifications
+            let mut entries = self
+                .notifications
                 .entry(notification.to_username.clone())
                 .or_insert_with(Vec::new);
             entries.push(notification.clone());
             entries.len()
         };
-        tracing::info!("[NotificationStore] push_notification: stored for {} ({} pending)", notification.to_username, queue_len);
+        tracing::info!(
+            "[NotificationStore] push_notification: stored for {} ({} pending)",
+            notification.to_username,
+            queue_len
+        );
 
         // Push to open WebSocket connections for recipient
-        let ws_count = self.connected_users.get(&notification.to_username)
+        let ws_count = self
+            .connected_users
+            .get(&notification.to_username)
             .map(|entries| {
                 let count = entries.value().len();
                 for tx in entries.value().iter() {
                     match tx.send(notification.clone()) {
-                        Ok(()) => tracing::info!("[NotificationStore] push_notification: sent to WS for {}", notification.to_username),
-                        Err(e) => tracing::warn!("[NotificationStore] push_notification: WS send failed for {}: {}", notification.to_username, e),
+                        Ok(()) => tracing::info!(
+                            "[NotificationStore] push_notification: sent to WS for {}",
+                            notification.to_username
+                        ),
+                        Err(e) => tracing::warn!(
+                            "[NotificationStore] push_notification: WS send failed for {}: {}",
+                            notification.to_username,
+                            e
+                        ),
                     }
                 }
                 count
@@ -212,11 +244,16 @@ impl NotificationStore {
     }
 
     pub fn take_notifications(&self, username: &str) -> Vec<Notification> {
-        let notes = self.notifications
+        let notes = self
+            .notifications
             .remove(username)
             .map(|(_, v)| v)
             .unwrap_or_default();
-        tracing::info!("[NotificationStore] take_notifications: {} -> {} notifications", username, notes.len());
+        tracing::info!(
+            "[NotificationStore] take_notifications: {} -> {} notifications",
+            username,
+            notes.len()
+        );
         notes
     }
 
@@ -227,7 +264,10 @@ impl NotificationStore {
             .build()
             .context("Failed to build HTTP client")?;
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let body = serde_json::json!({
             "id": format!("relay-{}-{}-{}", req.from_username, req.target_username, now),
             "notification_type": req.notification_type,
@@ -243,11 +283,7 @@ impl NotificationStore {
             req.target_home_server.trim_end_matches('/')
         );
 
-        let resp = client
-            .post(&target_url)
-            .json(&body)
-            .send()
-            .await;
+        let resp = client.post(&target_url).json(&body).send().await;
 
         match resp {
             Ok(r) if r.status().is_success() => Ok(()),
@@ -286,9 +322,13 @@ impl NotificationStore {
             }
             Err(e) => {
                 tracing::warn!("[NotificationWS] auth failed: {}", e);
-                let _ = ws.send(Message::Text(
-                    serde_json::json!({"error": "auth_failed"}).to_string().into(),
-                )).await;
+                let _ = ws
+                    .send(Message::Text(
+                        serde_json::json!({"error": "auth_failed"})
+                            .to_string()
+                            .into(),
+                    ))
+                    .await;
                 return;
             }
         };
@@ -298,12 +338,24 @@ impl NotificationStore {
 
         // Send any pending in-memory notifications immediately
         let pending = self.take_notifications(&username);
-        tracing::info!("[NotificationWS] {}: {} pending notifications to replay", username, pending.len());
+        tracing::info!(
+            "[NotificationWS] {}: {} pending notifications to replay",
+            username,
+            pending.len()
+        );
         for note in &pending {
-            tracing::info!("[NotificationWS] {}: replaying notification id={}", username, note.id);
+            tracing::info!(
+                "[NotificationWS] {}: replaying notification id={}",
+                username,
+                note.id
+            );
             if let Ok(json) = serde_json::to_string(note) {
                 if let Err(e) = ws.send(Message::Text(json.into())).await {
-                    tracing::warn!("[NotificationWS] {}: failed to replay notification: {}", username, e);
+                    tracing::warn!(
+                        "[NotificationWS] {}: failed to replay notification: {}",
+                        username,
+                        e
+                    );
                     return;
                 }
             }
@@ -317,20 +369,36 @@ impl NotificationStore {
         let forward_task = tokio::spawn(async move {
             tracing::info!("[NotificationWS] {}: forward task started", fwd_username);
             while let Some(note) = rx.recv().await {
-                tracing::info!("[NotificationWS] {}: forwarding notification id={} type={:?}", fwd_username, note.id, note.notification_type);
+                tracing::info!(
+                    "[NotificationWS] {}: forwarding notification id={} type={:?}",
+                    fwd_username,
+                    note.id,
+                    note.notification_type
+                );
                 if let Ok(json) = serde_json::to_string(&note) {
                     if let Err(e) = ws_sender.send(Message::Text(json.into())).await {
-                        tracing::warn!("[NotificationWS] {}: forward task send error: {}", fwd_username, e);
+                        tracing::warn!(
+                            "[NotificationWS] {}: forward task send error: {}",
+                            fwd_username,
+                            e
+                        );
                         break;
                     }
-                    tracing::info!("[NotificationWS] {}: forwarded notification id={}", fwd_username, note.id);
+                    tracing::info!(
+                        "[NotificationWS] {}: forwarded notification id={}",
+                        fwd_username,
+                        note.id
+                    );
                 }
             }
             tracing::info!("[NotificationWS] {}: forward task ended", fwd_username);
         });
 
         // Drain any inbound messages until connection closes
-        tracing::info!("[NotificationWS] {}: listening for inbound messages", username);
+        tracing::info!(
+            "[NotificationWS] {}: listening for inbound messages",
+            username
+        );
         while let Some(msg) = ws_receiver.next().await {
             match msg {
                 Ok(Message::Close(_)) => {
@@ -348,10 +416,18 @@ impl NotificationStore {
                     tracing::info!("[NotificationWS] {}: received pong", username);
                 }
                 Ok(Message::Text(t)) => {
-                    tracing::info!("[NotificationWS] {}: received unexpected text: {}", username, t);
+                    tracing::info!(
+                        "[NotificationWS] {}: received unexpected text: {}",
+                        username,
+                        t
+                    );
                 }
                 Ok(Message::Binary(d)) => {
-                    tracing::info!("[NotificationWS] {}: received unexpected binary ({} bytes)", username, d.len());
+                    tracing::info!(
+                        "[NotificationWS] {}: received unexpected binary ({} bytes)",
+                        username,
+                        d.len()
+                    );
                 }
             }
         }

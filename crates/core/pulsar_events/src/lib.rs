@@ -47,7 +47,6 @@ impl Default for ScriptRegistry {
 }
 
 impl ScriptRegistry {
-
     /// Insert or replace the registration for `reg.actor_key`.
     pub fn register(&mut self, reg: ScriptRegistration) {
         self.entries.insert(reg.actor_key.clone(), reg);

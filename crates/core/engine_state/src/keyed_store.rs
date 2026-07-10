@@ -130,8 +130,12 @@ mod tests {
     fn per_key_isolation() {
         let store: KeyedStore<WindowId> = KeyedStore::new();
 
-        store.get_or_init::<Layout>(&1).update(|l| l.sidebar_width = 100.0);
-        store.get_or_init::<Layout>(&2).update(|l| l.sidebar_width = 200.0);
+        store
+            .get_or_init::<Layout>(&1)
+            .update(|l| l.sidebar_width = 100.0);
+        store
+            .get_or_init::<Layout>(&2)
+            .update(|l| l.sidebar_width = 200.0);
 
         assert_eq!(store.get::<Layout>(&1).unwrap().read().sidebar_width, 100.0);
         assert_eq!(store.get::<Layout>(&2).unwrap().read().sidebar_width, 200.0);
@@ -141,7 +145,12 @@ mod tests {
     fn distinct_types_per_key() {
         let store: KeyedStore<WindowId> = KeyedStore::new();
 
-        store.insert(1, Layout { sidebar_width: 50.0 });
+        store.insert(
+            1,
+            Layout {
+                sidebar_width: 50.0,
+            },
+        );
         store.insert(1, Title("hello".into()));
 
         assert_eq!(store.get::<Layout>(&1).unwrap().read().sidebar_width, 50.0);

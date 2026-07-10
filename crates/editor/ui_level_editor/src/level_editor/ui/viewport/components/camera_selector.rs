@@ -161,7 +161,10 @@ where
             .icon(IconName::Cube)
             .tooltip(t!("LevelEditor.Camera.CameraMode"))
             .on_click(move |_, _, _| {
-                state_arc.write().overlays.set_camera_mode_selector_collapsed(false);
+                state_arc
+                    .write()
+                    .overlays
+                    .set_camera_mode_selector_collapsed(false);
             })
             .into_any_element();
     }
@@ -184,7 +187,10 @@ where
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc.write().overlays.set_camera_mode_selector_collapsed(true);
+                    state_arc
+                        .write()
+                        .overlays
+                        .set_camera_mode_selector_collapsed(true);
                 }),
         );
 

@@ -5,17 +5,22 @@ use ui::{
     h_flex, v_flex, ActiveTheme as _, Icon, IconName, TitleBar,
 };
 
-use crate::screen::EntryScreen;
 use crate::core::types::EntryScreenView;
 use crate::screen::views::project_settings::ProjectSettingsTab;
+use crate::screen::EntryScreen;
 
-pub fn render_layout(screen: &mut EntryScreen, window: &mut Window, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_layout(
+    screen: &mut EntryScreen,
+    window: &mut Window,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     if screen.state.ui.show_onboarding {
         return crate::screen::views::render_onboarding(screen, window, cx).into_any_element();
     }
 
     if screen.state.ui.show_dependency_setup {
-        return crate::screen::views::render_dependency_setup(screen, window, cx).into_any_element();
+        return crate::screen::views::render_dependency_setup(screen, window, cx)
+            .into_any_element();
     }
 
     if screen.state.ui.show_git_upstream_prompt.is_some() {
@@ -23,7 +28,8 @@ pub fn render_layout(screen: &mut EntryScreen, window: &mut Window, cx: &mut Con
     }
 
     if let Some(ref _settings) = screen.state.ui.project_settings {
-        return crate::screen::views::render_project_settings(screen, window, cx).into_any_element();
+        return crate::screen::views::render_project_settings(screen, window, cx)
+            .into_any_element();
     }
 
     let view = screen.state.ui.view;
@@ -47,38 +53,40 @@ pub fn render_layout(screen: &mut EntryScreen, window: &mut Window, cx: &mut Con
                         .h_full()
                         .overflow_hidden()
                         .bg(cx.theme().background)
-                        .child(
-                            TitleBar::new()
-                                .child(div().flex_1())
-                                .child({
-                                    let theme_picker = screen.state.theme_picker.clone();
-                                    h_flex()
-                                        .flex()
-                                        .items_center()
-                                        .px_2()
-                                        .gap_2()
-                                        .child(screen.state.auth.profile_dropdown.clone())
-                                        .child(
-                                            ui::popover::Popover::<ui_common::ThemePicker>::new("titlebar-theme-popover")
-                                                .anchor(Corner::TopRight)
-                                                .trigger(
-                                                    Button::new("titlebar-theme-toggle")
-                                                        .icon(IconName::Palette)
-                                                        .compact()
-                                                        .ghost()
-                                                        .tooltip("Switch theme"),
-                                                )
-                                                .content(move |_, _| theme_picker.clone()),
-                                        )
-                                }),
-                        )
+                        .child(TitleBar::new().child(div().flex_1()).child({
+                            let theme_picker = screen.state.theme_picker.clone();
+                            h_flex()
+                                .flex()
+                                .items_center()
+                                .px_2()
+                                .gap_2()
+                                .child(screen.state.auth.profile_dropdown.clone())
+                                .child(
+                                    ui::popover::Popover::<ui_common::ThemePicker>::new(
+                                        "titlebar-theme-popover",
+                                    )
+                                    .anchor(Corner::TopRight)
+                                    .trigger(
+                                        Button::new("titlebar-theme-toggle")
+                                            .icon(IconName::Palette)
+                                            .compact()
+                                            .ghost()
+                                            .tooltip("Switch theme"),
+                                    )
+                                    .content(move |_, _| theme_picker.clone()),
+                                )
+                        }))
                         .child(match view {
                             EntryScreenView::Recent => {
                                 let bounds = window.viewport_size();
                                 let width: f32 = f32::from(bounds.width);
                                 let available_width: f32 = (width - 220.0 - 64.0).max(0.0);
-                                crate::screen::views::render_recent_projects(screen, available_width, cx)
-                                    .into_any_element()
+                                crate::screen::views::render_recent_projects(
+                                    screen,
+                                    available_width,
+                                    cx,
+                                )
+                                .into_any_element()
                             }
                             EntryScreenView::Templates => {
                                 let bounds = window.viewport_size();
@@ -118,5 +126,3 @@ fn view_title(view: EntryScreenView) -> &'static str {
         EntryScreenView::Friends => "Friends",
     }
 }
-
-

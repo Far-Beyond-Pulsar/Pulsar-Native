@@ -58,7 +58,8 @@ impl GeneralOperations {
                 .context("Failed to create SQLite database")?;
         } else {
             // Write template content
-            crate::virtual_fs::write_file(&file_path, content.as_bytes()).context("Failed to write asset file")?;
+            crate::virtual_fs::write_file(&file_path, content.as_bytes())
+                .context("Failed to write asset file")?;
         }
 
         // Register in appropriate index

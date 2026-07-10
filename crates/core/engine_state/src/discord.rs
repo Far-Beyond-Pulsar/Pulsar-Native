@@ -211,7 +211,6 @@ impl DiscordPresence {
             }
         }
     }
-
 }
 
 impl Clone for DiscordPresence {

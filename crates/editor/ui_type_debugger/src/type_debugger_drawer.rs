@@ -1,12 +1,12 @@
 //! Type Debugger Drawer - Studio-quality type database inspection panel
 //! Displays all registered types with professional UI and search capabilities
 
+use engine_fs::UserTypeInfo as TypeInfo;
 use gpui::{prelude::*, *};
 use plugin_editor_api::FileTypeId;
 use rust_i18n::t;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use engine_fs::UserTypeInfo as TypeInfo;
 use ui::StyledExt;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -568,37 +568,40 @@ impl TypeDebuggerDrawer {
                             )
                         })
                         // File path
-                        .when_some(Some(type_info.file_path.as_path()), |container, file_path| {
-                            let display_path = self.get_display_path(file_path);
-                            container.child(
-                                div()
-                                    .w_full()
-                                    .px_2()
-                                    .py_1()
-                                    .mt_1()
-                                    .rounded_md()
-                                    .bg(cx.theme().background.opacity(0.5))
-                                    .border_1()
-                                    .border_color(cx.theme().border.opacity(0.3))
-                                    .child(
-                                        h_flex()
-                                            .gap_2()
-                                            .items_center()
-                                            .child(
-                                                ui::Icon::new(IconName::Folder)
-                                                    .size_3()
-                                                    .text_color(cx.theme().muted_foreground),
-                                            )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .font_family("monospace")
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child(display_path),
-                                            ),
-                                    ),
-                            )
-                        }),
+                        .when_some(
+                            Some(type_info.file_path.as_path()),
+                            |container, file_path| {
+                                let display_path = self.get_display_path(file_path);
+                                container.child(
+                                    div()
+                                        .w_full()
+                                        .px_2()
+                                        .py_1()
+                                        .mt_1()
+                                        .rounded_md()
+                                        .bg(cx.theme().background.opacity(0.5))
+                                        .border_1()
+                                        .border_color(cx.theme().border.opacity(0.3))
+                                        .child(
+                                            h_flex()
+                                                .gap_2()
+                                                .items_center()
+                                                .child(
+                                                    ui::Icon::new(IconName::Folder)
+                                                        .size_3()
+                                                        .text_color(cx.theme().muted_foreground),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_xs()
+                                                        .font_family("monospace")
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child(display_path),
+                                                ),
+                                        ),
+                                )
+                            },
+                        ),
                 ),
         )
     }

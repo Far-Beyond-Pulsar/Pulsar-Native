@@ -64,7 +64,10 @@ impl AdvancedLightProps {
             "affects_global_illumination".to_string(),
             Value::from(self.affects_global_illumination),
         );
-        out.insert("specular_scale".to_string(), Value::from(self.specular_scale));
+        out.insert(
+            "specular_scale".to_string(),
+            Value::from(self.specular_scale),
+        );
         out.insert("diffuse_scale".to_string(), Value::from(self.diffuse_scale));
     }
 }

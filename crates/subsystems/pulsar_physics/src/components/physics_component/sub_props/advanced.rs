@@ -39,7 +39,10 @@ impl Default for AdvancedPhysicsProps {
 
 impl AdvancedPhysicsProps {
     pub(crate) fn apply_from_component_data(&mut self, obj: &serde_json::Map<String, Value>) {
-        if let Some(v) = obj.get("enable_transform_interpolation").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("enable_transform_interpolation")
+            .and_then(|v| v.as_bool())
+        {
             self.enable_transform_interpolation = v;
         }
         if let Some(v) = obj.get("sync_to_physics").and_then(|v| v.as_bool()) {
@@ -53,16 +56,28 @@ impl AdvancedPhysicsProps {
                 _ => self.interpolation_method,
             };
         }
-        if let Some(v) = obj.get("min_translation_for_interpolation").and_then(|v| v.as_f64()) {
+        if let Some(v) = obj
+            .get("min_translation_for_interpolation")
+            .and_then(|v| v.as_f64())
+        {
             self.min_translation_for_interpolation = v as f32;
         }
-        if let Some(v) = obj.get("min_rotation_for_interpolation").and_then(|v| v.as_f64()) {
+        if let Some(v) = obj
+            .get("min_rotation_for_interpolation")
+            .and_then(|v| v.as_f64())
+        {
             self.min_rotation_for_interpolation = v as f32;
         }
-        if let Some(v) = obj.get("override_linear_velocity").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("override_linear_velocity")
+            .and_then(|v| v.as_bool())
+        {
             self.override_linear_velocity = v;
         }
-        if let Some(v) = obj.get("override_angular_velocity").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("override_angular_velocity")
+            .and_then(|v| v.as_bool())
+        {
             self.override_angular_velocity = v;
         }
     }
@@ -72,7 +87,10 @@ impl AdvancedPhysicsProps {
             "enable_transform_interpolation".to_string(),
             Value::from(self.enable_transform_interpolation),
         );
-        out.insert("sync_to_physics".to_string(), Value::from(self.sync_to_physics));
+        out.insert(
+            "sync_to_physics".to_string(),
+            Value::from(self.sync_to_physics),
+        );
         out.insert(
             "interpolation_method".to_string(),
             Value::from(self.interpolation_method as u64),

@@ -49,7 +49,11 @@ pub fn component_id<T: 'static>() -> ComponentId {
     let tid = TypeId::of::<T>();
     // Fast path — thread-local, no synchronization.
     if let Some(cid) = CID_CACHE.with(|cache| {
-        cache.borrow().iter().find(|&&(t, _)| t == tid).map(|&(_, c)| c)
+        cache
+            .borrow()
+            .iter()
+            .find(|&&(t, _)| t == tid)
+            .map(|&(_, c)| c)
     }) {
         return cid;
     }

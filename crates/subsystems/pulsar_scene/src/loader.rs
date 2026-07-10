@@ -100,7 +100,8 @@ impl SceneLoader {
                 props: &obj.props,
             };
 
-            let instances = component_instances_from_props(&obj.props, obj.component_instances.as_ref());
+            let instances =
+                component_instances_from_props(&obj.props, obj.component_instances.as_ref());
             {
                 let mut subsystems = Subsystems::new();
                 subsystems.register_ref::<Renderer>(renderer);
@@ -165,9 +166,11 @@ pub fn component_instances_from_props(
     props: &HashMap<String, Value>,
     component_instances: Option<&Value>,
 ) -> Vec<(usize, String, Value)> {
-    let arr = component_instances
-        .and_then(|v| v.as_array())
-        .or_else(|| props.get("__component_instances").and_then(|v| v.as_array()));
+    let arr = component_instances.and_then(|v| v.as_array()).or_else(|| {
+        props
+            .get("__component_instances")
+            .and_then(|v| v.as_array())
+    });
     let Some(arr) = arr else {
         return Vec::new();
     };
@@ -201,5 +204,3 @@ pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32
     );
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
 }
-
-

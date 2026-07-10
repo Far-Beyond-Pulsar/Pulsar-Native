@@ -4,14 +4,14 @@
 //! Each context represents a specific domain (windows, projects, etc.) with
 //! proper types instead of string key-value pairs.
 
+use crate::DiscordPresence;
 use dashmap::DashMap;
+use engine_fs::UserTypeRegistry;
 use pulsar_auth::AuthProfile;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use engine_fs::UserTypeRegistry;
 use ui_types_common::window_types::{WindowId, WindowRequest};
-use crate::DiscordPresence;
 
 use window_manager::WindowManager;
 
@@ -281,9 +281,7 @@ impl EngineContext {
 
     /// Clear authenticated user profile.
     pub fn clear_auth_profile(&self) {
-        self.store
-            .get_or_init::<Option<AuthProfile>>()
-            .set(None);
+        self.store.get_or_init::<Option<AuthProfile>>().set(None);
     }
 
     /// Get authenticated user profile.
@@ -368,7 +366,6 @@ impl EngineContext {
             .unwrap_or(false)
     }
 
-    
     pub fn set_multiuser_participant_profiles(
         &self,
         participants: Vec<crate::multiuser::MultiuserParticipant>,

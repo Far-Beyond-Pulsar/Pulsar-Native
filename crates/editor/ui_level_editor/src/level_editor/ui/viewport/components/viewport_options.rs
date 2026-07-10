@@ -104,7 +104,10 @@ where
                     Switch::new("toggle_perf")
                         .checked(state.overlays.state.show_performance_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().overlays.set_show_performance_overlay(*checked);
+                            state_clone
+                                .write()
+                                .overlays
+                                .set_show_performance_overlay(*checked);
                         })
                 }),
         )
@@ -123,7 +126,10 @@ where
                     Switch::new("toggle_gpu")
                         .checked(state.overlays.state.show_gpu_pipeline_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().overlays.set_show_gpu_pipeline_overlay(*checked);
+                            state_clone
+                                .write()
+                                .overlays
+                                .set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -149,7 +155,10 @@ where
                     Switch::new("toggle_gpu")
                         .checked(state.overlays.state.show_gpu_pipeline_overlay)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().overlays.set_show_gpu_pipeline_overlay(*checked);
+                            state_clone
+                                .write()
+                                .overlays
+                                .set_show_gpu_pipeline_overlay(*checked);
                         })
                 }),
         )
@@ -168,7 +177,10 @@ where
                     Switch::new("toggle_cam")
                         .checked(state.overlays.state.show_camera_mode_selector)
                         .on_click(move |checked, _, _| {
-                            state_clone.write().overlays.set_show_camera_mode_selector(*checked);
+                            state_clone
+                                .write()
+                                .overlays
+                                .set_show_camera_mode_selector(*checked);
                         })
                 }),
         )
@@ -242,7 +254,10 @@ where
             .icon(IconName::LayoutDashboard)
             .tooltip(t!("LevelEditor.Viewport.ViewportOptions"))
             .on_click(move |_, _, _| {
-                state_arc.write().overlays.set_viewport_options_collapsed(false);
+                state_arc
+                    .write()
+                    .overlays
+                    .set_viewport_options_collapsed(false);
             })
             .into_any_element();
     }
@@ -267,7 +282,10 @@ where
                 .icon(IconName::Close)
                 .ghost()
                 .on_click(move |_, _, _| {
-                    state_arc.write().overlays.set_viewport_options_collapsed(true);
+                    state_arc
+                        .write()
+                        .overlays
+                        .set_viewport_options_collapsed(true);
                 }),
         );
 

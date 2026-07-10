@@ -95,7 +95,9 @@ impl AgentChatPanel {
                         .collect::<Vec<_>>();
                     panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
                     if panel.active_provider_ix == provider_ix {
-                        panel.model_list.update(cx, |list, cx| list.set_items(defs, cx));
+                        panel
+                            .model_list
+                            .update(cx, |list, cx| list.set_items(defs, cx));
                         cx.notify();
                     }
                 });

@@ -2,19 +2,17 @@
 
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
 use glam::{EulerRot, Mat4, Quat, Vec3};
-use helio::{
-    GroupMask, GpuMaterial, Movability, ObjectDescriptor, Renderer, SceneActor,
-};
+use helio::{GpuMaterial, GroupMask, Movability, ObjectDescriptor, Renderer, SceneActor};
 use pulsar_reflection::{
-    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
-    RuntimeComponentOwner, ScenePropsProjector, scene_id_to_tag,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
+    RuntimeComponentOwner, ScenePropsProjector, get_subsystem, scene_id_to_tag,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::subsystems::{load_mesh_upload, resolve_asset_path, MeshCache, SceneObjectCache};
+use crate::subsystems::{MeshCache, SceneObjectCache, load_mesh_upload, resolve_asset_path};
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────
@@ -175,7 +173,9 @@ static MESH_ERROR_LOG: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
 
 /// Returns `true` if an error was ALREADY logged for this exact (scene_id, mesh_asset) pair.
 fn already_reported(scene_id: &str, mesh_asset: &str) -> bool {
-    let Ok(mut map) = MESH_ERROR_LOG.lock() else { return false };
+    let Ok(mut map) = MESH_ERROR_LOG.lock() else {
+        return false;
+    };
     match map.get(scene_id) {
         Some(prev) if prev == mesh_asset => true,
         _ => {
@@ -280,10 +280,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 Some(u) => u,
                 None => {
                     if !already_reported(owner.scene_object_id, &abs_path) {
-                        tracing::warn!(
-                            "[SMC] load_mesh_upload FAILED for {}",
-                            abs_path
-                        );
+                        tracing::warn!("[SMC] load_mesh_upload FAILED for {}", abs_path);
                         context.report_error(format!(
                             "StaticMeshComponent on '{}': failed to load '{}'",
                             owner.scene_object_id, abs_path
@@ -337,7 +334,9 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
         // separate cache lookups from scene operations into distinct scopes.
         // Three outcomes when consulting the object-instance cache.
         enum SceneCacheAction {
-            UpdateTransform { obj_id: helio::ObjectId },
+            UpdateTransform {
+                obj_id: helio::ObjectId,
+            },
             Replace {
                 old_id: helio::ObjectId,
                 mesh_id: helio::MeshId,
@@ -351,22 +350,21 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
 
         let mut action: Option<SceneCacheAction> = {
             let oc = get_subsystem!(context, SceneObjectCache);
-            oc.get(scene_id)
-                .map(|(obj_id, cached_asset)| {
-                    if cached_asset == abs_path {
-                        SceneCacheAction::UpdateTransform { obj_id }
-                    } else {
-                        SceneCacheAction::Replace {
-                            old_id: obj_id,
-                            mesh_id,
-                            mat_id,
-                            transform,
-                            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                            tag,
-                            abs_path: abs_path.clone(),
-                        }
+            oc.get(scene_id).map(|(obj_id, cached_asset)| {
+                if cached_asset == abs_path {
+                    SceneCacheAction::UpdateTransform { obj_id }
+                } else {
+                    SceneCacheAction::Replace {
+                        old_id: obj_id,
+                        mesh_id,
+                        mat_id,
+                        transform,
+                        bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+                        tag,
+                        abs_path: abs_path.clone(),
                     }
-                })
+                }
+            })
         };
         if action.is_none() {
             // New object — we need mesh_id/mat_id from Phase 1, which doesn't

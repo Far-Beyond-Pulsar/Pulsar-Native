@@ -21,15 +21,22 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct,
-    Lit, Meta, MetaNameValue, Pat, PatType, ReturnType, Type, parse_macro_input,
+    Attribute, Data, DeriveInput, Expr, Field, Fields, FnArg, ImplItem, ItemImpl, ItemStruct, Lit,
+    Meta, MetaNameValue, Pat, PatType, ReturnType, Type,
     parse::{Parse, ParseStream},
+    parse_macro_input,
     punctuated::Punctuated,
 };
 
 #[proc_macro_derive(
     EngineClass,
-    attributes(property, category, engine_class_category, sub_props, engine_class_no_register)
+    attributes(
+        property,
+        category,
+        engine_class_category,
+        sub_props,
+        engine_class_no_register
+    )
 )]
 pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -52,8 +59,9 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
     };
 
     // Extract direct #[property] fields and optional #[sub_props] flattening fields.
-    let (property_impls, property_fields, sub_props_fields): (Vec<_>, Vec<_>, Vec<_>) =
-        match &input.data {
+    let (property_impls, property_fields, sub_props_fields): (Vec<_>, Vec<_>, Vec<_>) = match &input
+        .data
+    {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields) => {
                 let mut props = Vec::new();
@@ -112,15 +120,12 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                 .into();
             }
         },
-            _ => {
-                return syn::Error::new_spanned(
-                    &input,
-                    "EngineClass can only be derived for structs",
-                )
+        _ => {
+            return syn::Error::new_spanned(&input, "EngineClass can only be derived for structs")
                 .to_compile_error()
                 .into();
-            }
-        };
+        }
+    };
 
     // Generate auto-property methods (getters and setters)
     let property_method_items = generate_property_method_items(&property_fields, name);
@@ -305,9 +310,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("debug") => add_debug = true,
             Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
             Meta::Path(path) if path.is_ident("no_register") => no_register = true,
-            Meta::Path(path) if path.is_ident("scene_props_applier") => {
-                register_scene_props = true
-            }
+            Meta::Path(path) if path.is_ident("scene_props_applier") => register_scene_props = true,
             Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
                 if let Expr::Lit(expr_lit) = &name_value.value {
                     if let Lit::Str(lit_str) = &expr_lit.lit {
@@ -323,12 +326,9 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
                 .into();
             }
             other => {
-                return syn::Error::new_spanned(
-                    other,
-                    "unsupported #[engine_class(...)] argument",
-                )
-                .to_compile_error()
-                .into();
+                return syn::Error::new_spanned(other, "unsupported #[engine_class(...)] argument")
+                    .to_compile_error()
+                    .into();
             }
         }
     }
@@ -583,9 +583,12 @@ fn has_derive(attrs: &[Attribute], trait_ident: &str) -> bool {
 
         attr.parse_args_with(Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
             .map(|paths| {
-                paths
-                    .iter()
-                    .any(|p| p.segments.last().map(|s| s.ident == trait_ident).unwrap_or(false))
+                paths.iter().any(|p| {
+                    p.segments
+                        .last()
+                        .map(|s| s.ident == trait_ident)
+                        .unwrap_or(false)
+                })
             })
             .unwrap_or(false)
     })
@@ -650,8 +653,7 @@ fn parse_property_attr(field: &Field) -> PropertyAttrOptions {
         }
         out.is_property = true;
 
-        let Ok(args) =
-            attr.parse_args_with(Punctuated::<Meta, syn::Token![,]>::parse_terminated)
+        let Ok(args) = attr.parse_args_with(Punctuated::<Meta, syn::Token![,]>::parse_terminated)
         else {
             continue;
         };
@@ -700,7 +702,9 @@ fn extract_class_category(attrs: &[Attribute]) -> Option<String> {
 }
 
 /// Extract `#[category("Name", ...)]` declarations used by property grouping.
-fn extract_property_categories(attrs: &[Attribute]) -> syn::Result<Vec<PropertyCategoryDefinition>> {
+fn extract_property_categories(
+    attrs: &[Attribute],
+) -> syn::Result<Vec<PropertyCategoryDefinition>> {
     let mut out = Vec::new();
 
     for attr in attrs {
@@ -743,12 +747,16 @@ fn extract_property_categories(attrs: &[Attribute]) -> syn::Result<Vec<PropertyC
             ));
         }
 
-        if out.iter().any(|existing: &PropertyCategoryDefinition| {
-            existing.name == parsed.name.value()
-        }) {
+        if out
+            .iter()
+            .any(|existing: &PropertyCategoryDefinition| existing.name == parsed.name.value())
+        {
             return Err(syn::Error::new_spanned(
                 attr,
-                format!("duplicate #[category(\"{}\")] declaration", parsed.name.value()),
+                format!(
+                    "duplicate #[category(\"{}\")] declaration",
+                    parsed.name.value()
+                ),
             ));
         }
 
@@ -793,12 +801,14 @@ fn generate_property_metadata(
     } else {
         quote! { None }
     };
-    let category_default_collapsed_expr =
-        if category_decl.map(|decl| decl.default_collapsed).unwrap_or(false) {
-            quote! { true }
-        } else {
-            quote! { false }
-        };
+    let category_default_collapsed_expr = if category_decl
+        .map(|decl| decl.default_collapsed)
+        .unwrap_or(false)
+    {
+        quote! { true }
+    } else {
+        quote! { false }
+    };
     let category_order_expr = if let Some(order) = category_decl.map(|decl| decl.order) {
         quote! { Some(#order) }
     } else {

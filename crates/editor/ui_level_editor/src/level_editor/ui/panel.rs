@@ -9,8 +9,8 @@ use ui::{
 // HelioViewport — GPUI-native Helio 3D viewport
 use super::viewport::helio_viewport::HelioViewport;
 
-use engine_fs::virtual_fs;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
+use engine_fs::virtual_fs;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -19,11 +19,11 @@ use ui_common::StatusBar;
 
 use super::actions::*;
 use super::{toolbar, ToolbarPanel, ViewportPanel};
-use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
     LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
+use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
 use engine_backend::scene::SceneDb;
 use engine_backend::subsystems::render::EditorCameraState;
 use plugin_manager;
@@ -468,7 +468,8 @@ impl LevelEditorPanel {
         let state = self.shared_state.read();
         let objects_count = state.scene.scene_objects().len();
         let selected_name = state
-            .scene.selected_object()
+            .scene
+            .selected_object()
             .and_then(|id| state.scene.database.get_object(&id))
             .map(|obj| obj.name.clone())
             .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
@@ -561,25 +562,37 @@ impl LevelEditorPanel {
 
     // Action handlers
     fn on_select_tool(&mut self, _: &SelectTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_tool(TransformTool::Select);
+        self.shared_state
+            .write()
+            .editor
+            .set_tool(TransformTool::Select);
         self.queue_gizmo_mode_for_tool(TransformTool::Select);
         cx.notify();
     }
 
     fn on_move_tool(&mut self, _: &MoveTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_tool(TransformTool::Move);
+        self.shared_state
+            .write()
+            .editor
+            .set_tool(TransformTool::Move);
         self.queue_gizmo_mode_for_tool(TransformTool::Move);
         cx.notify();
     }
 
     fn on_rotate_tool(&mut self, _: &RotateTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_tool(TransformTool::Rotate);
+        self.shared_state
+            .write()
+            .editor
+            .set_tool(TransformTool::Rotate);
         self.queue_gizmo_mode_for_tool(TransformTool::Rotate);
         cx.notify();
     }
 
     fn on_scale_tool(&mut self, _: &ScaleTool, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_tool(TransformTool::Scale);
+        self.shared_state
+            .write()
+            .editor
+            .set_tool(TransformTool::Scale);
         self.queue_gizmo_mode_for_tool(TransformTool::Scale);
         cx.notify();
     }
@@ -728,7 +741,8 @@ impl LevelEditorPanel {
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state
             .write()
-            .scene.select_object(Some(action.object_id.clone()));
+            .scene
+            .select_object(Some(action.object_id.clone()));
         self.sync_gizmo_to_helio(); // Sync gizmo to follow selected object
         self.notify_sub_panels(cx);
         cx.notify();
@@ -742,7 +756,8 @@ impl LevelEditorPanel {
     ) {
         self.shared_state
             .write()
-            .hierarchy.toggle_object_expanded(&action.object_id);
+            .hierarchy
+            .toggle_object_expanded(&action.object_id);
         cx.notify();
     }
 
@@ -767,7 +782,10 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().overlays.toggle_performance_overlay();
+        self.shared_state
+            .write()
+            .overlays
+            .toggle_performance_overlay();
         cx.notify();
     }
 
@@ -777,7 +795,10 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().overlays.toggle_camera_mode_selector();
+        self.shared_state
+            .write()
+            .overlays
+            .toggle_camera_mode_selector();
         cx.notify();
     }
 
@@ -858,7 +879,10 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().overlays.toggle_input_latency_graph();
+        self.shared_state
+            .write()
+            .overlays
+            .toggle_input_latency_graph();
         cx.notify();
     }
 
@@ -868,7 +892,10 @@ impl LevelEditorPanel {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.shared_state.write().overlays.toggle_ui_consistency_graph();
+        self.shared_state
+            .write()
+            .overlays
+            .toggle_ui_consistency_graph();
         cx.notify();
     }
 
@@ -895,7 +922,8 @@ impl LevelEditorPanel {
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state
             .write()
-            .editor.set_camera_mode(CameraMode::Perspective);
+            .editor
+            .set_camera_mode(CameraMode::Perspective);
         cx.notify();
     }
 
@@ -907,22 +935,32 @@ impl LevelEditorPanel {
     ) {
         self.shared_state
             .write()
-            .editor.set_camera_mode(CameraMode::Orthographic);
+            .editor
+            .set_camera_mode(CameraMode::Orthographic);
         cx.notify();
     }
 
     fn on_top_view(&mut self, _: &TopView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_camera_mode(CameraMode::Top);
+        self.shared_state
+            .write()
+            .editor
+            .set_camera_mode(CameraMode::Top);
         cx.notify();
     }
 
     fn on_front_view(&mut self, _: &FrontView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_camera_mode(CameraMode::Front);
+        self.shared_state
+            .write()
+            .editor
+            .set_camera_mode(CameraMode::Front);
         cx.notify();
     }
 
     fn on_side_view(&mut self, _: &SideView, _: &mut Window, cx: &mut Context<Self>) {
-        self.shared_state.write().editor.set_camera_mode(CameraMode::Side);
+        self.shared_state
+            .write()
+            .editor
+            .set_camera_mode(CameraMode::Side);
         cx.notify();
     }
 
@@ -935,7 +973,10 @@ impl LevelEditorPanel {
 
         let (scene_db, path_opt) = {
             let state = self.shared_state.read();
-            (state.scene.database.clone(), state.scene.current_scene.clone())
+            (
+                state.scene.database.clone(),
+                state.scene.current_scene.clone(),
+            )
         };
 
         if let Some(path) = path_opt {
@@ -975,7 +1016,9 @@ impl LevelEditorPanel {
                                 state_arc.write().scene.current_scene = Some(path);
                                 state_arc.write().scene.has_unsaved_changes = false;
                                 request_thumbnail_capture(&state_arc);
-                                if let Some(open_path) = state_arc.read().scene.current_scene.clone() {
+                                if let Some(open_path) =
+                                    state_arc.read().scene.current_scene.clone()
+                                {
                                     ai_sessions::register_open_scene(&open_path, &state_arc);
                                 }
                             }
@@ -994,7 +1037,8 @@ impl LevelEditorPanel {
         let scene_db = { state_arc.read().scene.database.clone() };
         let default_dir = state_arc
             .read()
-            .scene.current_scene
+            .scene
+            .current_scene
             .as_ref()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
@@ -1108,7 +1152,11 @@ impl Panel for LevelEditorPanel {
                         .file_stem()
                         .and_then(|s| s.to_str())
                         .unwrap_or("Untitled"),
-                    if state.scene.has_unsaved_changes { " *" } else { "" }
+                    if state.scene.has_unsaved_changes {
+                        " *"
+                    } else {
+                        ""
+                    }
                 )
             } else {
                 "Level Editor".to_string()
@@ -1285,7 +1333,8 @@ impl Render for LevelEditorPanel {
                         if let Some(id) = this.shared_state.read().scene.selected_object() {
                             this.shared_state
                                 .read()
-                                .scene.database
+                                .scene
+                                .database
                                 .move_object_down(&id);
                             cx.notify();
                         }

@@ -121,7 +121,10 @@ impl ForcesRigidbodyProps {
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("gravity_enabled".to_string(), Value::from(self.gravity_enabled));
+        out.insert(
+            "gravity_enabled".to_string(),
+            Value::from(self.gravity_enabled),
+        );
         out.insert("gravity_scale".to_string(), Value::from(self.gravity_scale));
         out.insert(
             "custom_gravity".to_string(),

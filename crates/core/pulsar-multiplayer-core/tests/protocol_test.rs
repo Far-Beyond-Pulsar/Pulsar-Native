@@ -548,11 +548,7 @@ async fn test_replicator_sync_state() {
     replicator.sync_state().await.unwrap();
 
     // Verify state was sent via channel — read from the sender's buffer
-    let received = tokio::time::timeout(
-        std::time::Duration::from_millis(100),
-        tx.closed(),
-    )
-    .await;
+    let received = tokio::time::timeout(std::time::Duration::from_millis(100), tx.closed()).await;
 
     // The state_update was sent via channel.send, which goes through
     // the internal tx/rx pair. We can't easily get it from here since
@@ -619,12 +615,7 @@ impl SessionAuth for MockAuth {
         role: Role,
         ttl: std::time::Duration,
     ) -> Result<String, AuthError> {
-        Ok(format!(
-            "{}|{:?}|{}s",
-            session_id,
-            role,
-            ttl.as_secs()
-        ))
+        Ok(format!("{}|{:?}|{}s", session_id, role, ttl.as_secs()))
     }
 
     async fn verify_join_token(&self, token: &str) -> Result<(String, Role), AuthError> {
@@ -647,7 +638,11 @@ impl SessionAuth for MockAuth {
 async fn test_auth_create_and_verify() {
     let auth = MockAuth;
     let token = auth
-        .create_join_token("sess-001", Role::Editor, std::time::Duration::from_secs(300))
+        .create_join_token(
+            "sess-001",
+            Role::Editor,
+            std::time::Duration::from_secs(300),
+        )
         .await
         .unwrap();
     let (sid, role) = auth.verify_join_token(&token).await.unwrap();

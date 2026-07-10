@@ -33,9 +33,7 @@
 //   cargo bench --bench ecs_detailed_bench --output-format json
 // Then parse the JSON files in target/criterion/<bench-name>/
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use pulsar_ecs::*;
 use std::time::Duration;
 
@@ -80,8 +78,7 @@ fn spawn_n(c: &mut Criterion) {
     let mut group = c.benchmark_group("spawn_n");
 
     // Configure criterion for statistical rigor.
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[100, 1_000, 10_000, 50_000, 100_000] {
         group.throughput(Throughput::Elements(n as u64));
@@ -172,8 +169,7 @@ fn spawn_n(c: &mut Criterion) {
 fn query_single(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_single");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[100, 1_000, 10_000, 50_000, 100_000] {
         let mut world = World::new();
@@ -213,8 +209,7 @@ fn query_tuple_size(c: &mut Criterion) {
     let n = 10_000;
     let mut group = c.benchmark_group("query_tuple_size");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     // Build world with all 8 component types.
     let mut world = World::new();
@@ -260,9 +255,7 @@ fn query_tuple_size(c: &mut Criterion) {
     group.bench_function("tuple_4", |b| {
         b.iter(|| {
             let mut count = 0u64;
-            for (_e, (pos, vel, health, tag)) in
-                world.query::<(&Pos, &Vel, &Health, &Tag)>()
-            {
+            for (_e, (pos, vel, health, tag)) in world.query::<(&Pos, &Vel, &Health, &Tag)>() {
                 black_box((pos, vel, health, tag));
                 count += 1;
             }
@@ -301,8 +294,7 @@ fn query_tuple_size(c: &mut Criterion) {
 fn query_selectivity(c: &mut Criterion) {
     let mut group = c.benchmark_group("query_selectivity");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[10_000, 50_000] {
         let mut world = World::new();
@@ -393,8 +385,7 @@ fn query_selectivity(c: &mut Criterion) {
 fn archetype_migration(c: &mut Criterion) {
     let mut group = c.benchmark_group("archetype_migration");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     let n = 10_000;
 
@@ -524,8 +515,7 @@ fn archetype_migration(c: &mut Criterion) {
 fn despawn(c: &mut Criterion) {
     let mut group = c.benchmark_group("despawn");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[1_000, 10_000, 50_000] {
         let mut world = World::new();
@@ -623,34 +613,37 @@ fn despawn(c: &mut Criterion) {
 fn churn(c: &mut Criterion) {
     let mut group = c.benchmark_group("churn");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[100, 1_000, 10_000] {
-        group.bench_with_input(BenchmarkId::new("spawn_insert_query_despawn", n), &n, |b, &n| {
-            b.iter(|| {
-                let mut world = World::new();
-                let mut entities = Vec::with_capacity(n);
-                for _ in 0..n {
-                    let e = world.spawn();
-                    world.insert(e, Pos(1.0, 2.0, 3.0));
-                    world.insert(e, Health(100));
-                    entities.push(e);
-                }
-                // Query.
-                let mut count = 0u64;
-                for (_e, (pos, health)) in world.query::<(&Pos, &Health)>() {
-                    black_box((pos, health));
-                    count += 1;
-                }
-                black_box(count);
-                // Despawn all.
-                for &e in &entities {
-                    world.despawn(e);
-                }
-                black_box(world);
-            });
-        });
+        group.bench_with_input(
+            BenchmarkId::new("spawn_insert_query_despawn", n),
+            &n,
+            |b, &n| {
+                b.iter(|| {
+                    let mut world = World::new();
+                    let mut entities = Vec::with_capacity(n);
+                    for _ in 0..n {
+                        let e = world.spawn();
+                        world.insert(e, Pos(1.0, 2.0, 3.0));
+                        world.insert(e, Health(100));
+                        entities.push(e);
+                    }
+                    // Query.
+                    let mut count = 0u64;
+                    for (_e, (pos, health)) in world.query::<(&Pos, &Health)>() {
+                        black_box((pos, health));
+                        count += 1;
+                    }
+                    black_box(count);
+                    // Despawn all.
+                    for &e in &entities {
+                        world.despawn(e);
+                    }
+                    black_box(world);
+                });
+            },
+        );
     }
 
     // High-frequency churn: many small waves.
@@ -712,8 +705,7 @@ fn churn(c: &mut Criterion) {
 fn archetype_pressure(c: &mut Criterion) {
     let mut group = c.benchmark_group("archetype_pressure");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[1_000, 5_000, 10_000, 50_000] {
         let mut world = World::new();
@@ -789,8 +781,7 @@ fn archetype_pressure(c: &mut Criterion) {
 fn component_access(c: &mut Criterion) {
     let mut group = c.benchmark_group("component_access");
 
-    group
-        .measurement_time(Duration::from_secs(10));
+    group.measurement_time(Duration::from_secs(10));
 
     for &n in &[1_000, 10_000, 50_000] {
         let mut world = World::new();
@@ -876,8 +867,7 @@ fn component_access(c: &mut Criterion) {
 fn large_scale(c: &mut Criterion) {
     let mut group = c.benchmark_group("large_scale");
 
-    group
-        .measurement_time(Duration::from_secs(60));
+    group.measurement_time(Duration::from_secs(60));
 
     for &n in &[100_000, 500_000, 1_000_000] {
         let mut world = World::new();

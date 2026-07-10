@@ -1,8 +1,8 @@
 use engine_class_derive::engine_class;
 
 use super::sub_props::{
-    AdvancedRigidbodyProps, ConstraintsRigidbodyProps, DampingRigidbodyProps,
-    ForcesRigidbodyProps, GeneralRigidbodyProps, VelocityRigidbodyProps,
+    AdvancedRigidbodyProps, ConstraintsRigidbodyProps, DampingRigidbodyProps, ForcesRigidbodyProps,
+    GeneralRigidbodyProps, VelocityRigidbodyProps,
 };
 
 #[engine_class(category = "Physics", default, clone, debug, serialize, deserialize)]

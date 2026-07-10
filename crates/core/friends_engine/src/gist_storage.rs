@@ -120,7 +120,13 @@ fn blocking_client() -> Result<reqwest::blocking::Client, FriendsError> {
 
 fn cached_own_gist_id(username: &str) -> Option<String> {
     let lock = CACHED_OWN_GIST.read().ok()?;
-    lock.as_ref().and_then(|(u, id)| if u == username { Some(id.clone()) } else { None })
+    lock.as_ref().and_then(|(u, id)| {
+        if u == username {
+            Some(id.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn set_cached_own_gist_id(username: &str, id: &str) {
@@ -150,7 +156,8 @@ fn find_pulsar_gist(token: &str, username: &str) -> Result<Option<String>, Frien
         return Err(FriendsError::Api(format!("HTTP {}", resp.status())));
     }
 
-    let gists: Vec<serde_json::Value> = resp.json().map_err(|e| FriendsError::Api(e.to_string()))?;
+    let gists: Vec<serde_json::Value> =
+        resp.json().map_err(|e| FriendsError::Api(e.to_string()))?;
 
     for gist in &gists {
         if let Some(files) = gist.get("files").and_then(|f| f.as_object()) {
@@ -187,7 +194,8 @@ fn fetch_gist_content(token: &str, gist_id: &str) -> Result<GistContent, Friends
 
     let gist: GistResponse = resp.json().map_err(|e| FriendsError::Api(e.to_string()))?;
 
-    let content = gist.files
+    let content = gist
+        .files
         .and_then(|mut f| f.remove(GIST_FILENAME))
         .and_then(|f| f.content)
         .unwrap_or_default();
@@ -254,7 +262,9 @@ fn write_gist_content(
 /// Returns None if the URL should not be stored in the gist.
 pub fn normalize_relay_url(raw: &str) -> Option<String> {
     let s = raw.trim().trim_end_matches('/');
-    if s.is_empty() { return None; }
+    if s.is_empty() {
+        return None;
+    }
     if s.starts_with("localhost") || s.starts_with("127.0.0.1") || s.starts_with("0.0.0.0") {
         return None;
     }
@@ -283,30 +293,52 @@ pub fn read_engine_friends(username: &str) -> Result<Vec<String>, FriendsError> 
     Ok(entries.into_iter().map(|e| e.username).collect())
 }
 
-pub fn read_engine_friend_entries(username: &str) -> Result<Vec<crate::types::GistFriendEntry>, FriendsError> {
-    tracing::info!("[gist_storage] read_engine_friend_entries: reading for {}", username);
+pub fn read_engine_friend_entries(
+    username: &str,
+) -> Result<Vec<crate::types::GistFriendEntry>, FriendsError> {
+    tracing::info!(
+        "[gist_storage] read_engine_friend_entries: reading for {}",
+        username
+    );
     let token = github_token()?;
     let gist_id = match find_pulsar_gist(&token, username)? {
         Some(id) => id,
         None => return Ok(Vec::new()),
     };
     let content = fetch_gist_content(&token, &gist_id)?;
-    let entries: Vec<crate::types::GistFriendEntry> = content.friends
+    let entries: Vec<crate::types::GistFriendEntry> = content
+        .friends
         .iter()
         .filter_map(|v| {
-            let username = v.get("username").and_then(|u| u.as_str()).map(String::from)?;
+            let username = v
+                .get("username")
+                .and_then(|u| u.as_str())
+                .map(String::from)?;
             let mutual = v.get("mutual").and_then(|m| m.as_bool()).unwrap_or(false);
-            let home_server = v.get("home_server").and_then(|h| h.as_str()).map(String::from);
-            Some(crate::types::GistFriendEntry { username, mutual, home_server })
+            let home_server = v
+                .get("home_server")
+                .and_then(|h| h.as_str())
+                .map(String::from);
+            Some(crate::types::GistFriendEntry {
+                username,
+                mutual,
+                home_server,
+            })
         })
         .collect();
-    tracing::info!("[gist_storage] read_engine_friend_entries: found {} entries", entries.len());
+    tracing::info!(
+        "[gist_storage] read_engine_friend_entries: found {} entries",
+        entries.len()
+    );
     Ok(entries)
 }
 
 /// Write friends list, preserving home_servers already in the gist.
 pub fn write_engine_friends(friends: &[crate::types::GistFriendEntry]) -> Result<(), FriendsError> {
-    tracing::info!("[gist_storage] write_engine_friends: writing {} entries", friends.len());
+    tracing::info!(
+        "[gist_storage] write_engine_friends: writing {} entries",
+        friends.len()
+    );
     let token = github_token()?;
     let username = github_username()?;
     let gist_id = find_pulsar_gist(&token, &username)?;
@@ -317,11 +349,16 @@ pub fn write_engine_friends(friends: &[crate::types::GistFriendEntry]) -> Result
         None => GistContent::default(),
     };
 
-    content.friends = friends.iter().map(|e| serde_json::json!({
-        "username": e.username,
-        "mutual": e.mutual,
-        "home_server": e.home_server
-    })).collect();
+    content.friends = friends
+        .iter()
+        .map(|e| {
+            serde_json::json!({
+                "username": e.username,
+                "mutual": e.mutual,
+                "home_server": e.home_server
+            })
+        })
+        .collect();
 
     write_gist_content(&token, &username, gist_id, &content)?;
     tracing::info!("[gist_storage] write_engine_friends: done");
@@ -396,15 +433,23 @@ pub fn search_inbound_requests(username: &str) -> Vec<String> {
 
     let mut result = Vec::new();
     for gist in gists.iter().filter(|g| {
-        g.files.as_ref().map(|f| f.contains_key(GIST_FILENAME)).unwrap_or(false)
+        g.files
+            .as_ref()
+            .map(|f| f.contains_key(GIST_FILENAME))
+            .unwrap_or(false)
     }) {
         let owner_login = match gist.owner.as_ref().map(|o| o.login.as_str()) {
             Some(l) => l.to_string(),
             None => continue,
         };
-        if owner_login.eq_ignore_ascii_case(username) { continue; }
+        if owner_login.eq_ignore_ascii_case(username) {
+            continue;
+        }
         if let Ok(their_friends) = read_engine_friends(&owner_login) {
-            if their_friends.iter().any(|f| f.eq_ignore_ascii_case(username)) {
+            if their_friends
+                .iter()
+                .any(|f| f.eq_ignore_ascii_case(username))
+            {
                 result.push(owner_login);
             }
         }

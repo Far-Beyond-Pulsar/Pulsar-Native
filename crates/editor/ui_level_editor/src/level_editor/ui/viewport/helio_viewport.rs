@@ -311,7 +311,11 @@ fn capture_viewport_thumbnail(
     }
 
     let Some(rgba) = image::RgbaImage::from_raw(width, height, pixels) else {
-        tracing::warn!("[THUMBNAIL] Pixel buffer size mismatch for {}x{}", width, height);
+        tracing::warn!(
+            "[THUMBNAIL] Pixel buffer size mismatch for {}x{}",
+            width,
+            height
+        );
         return;
     };
 
@@ -319,7 +323,10 @@ fn capture_viewport_thumbnail(
         let _ = std::fs::create_dir_all(parent);
     }
     match rgba.save(out_path) {
-        Ok(()) => tracing::info!("[THUMBNAIL] Saved viewport thumbnail to {}", out_path.display()),
+        Ok(()) => tracing::info!(
+            "[THUMBNAIL] Saved viewport thumbnail to {}",
+            out_path.display()
+        ),
         Err(e) => tracing::warn!("[THUMBNAIL] Failed to save {}: {}", out_path.display(), e),
     }
 }
@@ -416,7 +423,12 @@ impl Render for HelioViewport {
                     surface.swap_buffers();
 
                     // Capture a project thumbnail if a save just requested one.
-                    let capture_path = self.shared_state.write().build.pending_thumbnail_capture.take();
+                    let capture_path = self
+                        .shared_state
+                        .write()
+                        .build
+                        .pending_thumbnail_capture
+                        .take();
                     if let Some(path) = capture_path {
                         if let Ok(mut engine) = self.gpu_engine.try_lock() {
                             capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);

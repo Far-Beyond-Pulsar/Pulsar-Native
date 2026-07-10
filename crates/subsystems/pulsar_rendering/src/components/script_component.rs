@@ -1,10 +1,10 @@
 //! Script component — attaches a blueprint actor script to a scene object.
 
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
-use pulsar_events::{script_registry, ScriptRegistration};
+use pulsar_events::{ScriptRegistration, script_registry};
 use pulsar_reflection::{
-    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
-    RuntimeComponentOwner, ScenePropsProjector,
+    ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,
+    RuntimeComponentOwner, ScenePropsProjector, get_subsystem,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

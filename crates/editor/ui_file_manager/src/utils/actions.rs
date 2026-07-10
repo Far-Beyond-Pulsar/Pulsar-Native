@@ -2,10 +2,6 @@ use gpui::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-// ============================================================================
-// ACTIONS - All keyboard shortcuts and file manager operations
-// ============================================================================
-
 #[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager)]
 pub struct NewFolder {
@@ -109,7 +105,6 @@ pub struct SelectAll;
 #[action(namespace = file_manager, no_json)]
 pub struct Delete;
 
-// New context menu actions
 #[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
 #[action(namespace = file_manager)]
 pub struct OpenInFileManager {

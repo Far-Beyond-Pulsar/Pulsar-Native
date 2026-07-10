@@ -3,11 +3,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
-#[category(
-    "Light Function",
-    category_color = "#22D3EE",
-    default_collapsed = true
-)]
+#[category("Light Function", category_color = "#22D3EE", default_collapsed = true)]
 pub struct LightFunctionProps {
     #[property(category = "Light Function")]
     pub light_function_material: String,

@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use pulsar_multiplayer_core::protocol::{
-    FileChunk, FileChanged, FileManifest, RequestFile, SessionMessage,
+    FileChanged, FileChunk, FileManifest, RequestFile, SessionMessage,
 };
 use pulsar_multiplayer_core::session::FileChangeKind;
 use pulsar_multiplayer_core::transport::SessionChannel;
@@ -20,7 +20,10 @@ pub struct P2pFsProvider {
 
 impl P2pFsProvider {
     pub fn new(channel: Arc<dyn SessionChannel>, project_id: String) -> Self {
-        Self { channel, project_id }
+        Self {
+            channel,
+            project_id,
+        }
     }
 
     fn to_rel(&self, path: &Path) -> String {
@@ -52,13 +55,10 @@ impl P2pFsProvider {
 impl FsProvider for P2pFsProvider {
     fn read_file(&self, path: &Path) -> Result<Vec<u8>> {
         let rel = self.to_rel(path);
-        self.block_on(
-            self.channel
-                .send(SessionMessage::RequestFile(RequestFile {
-                    path: rel.clone(),
-                    offset: None,
-                })),
-        )
+        self.block_on(self.channel.send(SessionMessage::RequestFile(RequestFile {
+            path: rel.clone(),
+            offset: None,
+        })))
         .context("Failed to send RequestFile")?;
 
         let mut buf = Vec::new();
@@ -105,13 +105,10 @@ impl FsProvider for P2pFsProvider {
 
     fn delete_path(&self, path: &Path) -> Result<()> {
         let rel = self.to_rel(path);
-        self.block_on(
-            self.channel
-                .send(SessionMessage::FileChanged(FileChanged {
-                    path: rel,
-                    kind: FileChangeKind::Deleted,
-                })),
-        )
+        self.block_on(self.channel.send(SessionMessage::FileChanged(FileChanged {
+            path: rel,
+            kind: FileChangeKind::Deleted,
+        })))
         .context("Failed to send delete notification")?;
         events::emit(path.to_path_buf(), events::FsChangeKind::Deleted);
         Ok(())
@@ -169,13 +166,10 @@ impl FsProvider for P2pFsProvider {
 
     fn create_dir_all(&self, path: &Path) -> Result<()> {
         let rel = self.to_rel(path);
-        self.block_on(
-            self.channel
-                .send(SessionMessage::FileChanged(FileChanged {
-                    path: rel,
-                    kind: FileChangeKind::Created,
-                })),
-        )
+        self.block_on(self.channel.send(SessionMessage::FileChanged(FileChanged {
+            path: rel,
+            kind: FileChangeKind::Created,
+        })))
         .context("Failed to send directory creation notification")?;
         events::emit(path.to_path_buf(), events::FsChangeKind::Created);
         Ok(())

@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
@@ -52,8 +52,13 @@ impl Role {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SessionMode {
-    Hosted { server_url: String, project_id: String },
-    P2P { relay_url: Option<String> },
+    Hosted {
+        server_url: String,
+        project_id: String,
+    },
+    P2P {
+        relay_url: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

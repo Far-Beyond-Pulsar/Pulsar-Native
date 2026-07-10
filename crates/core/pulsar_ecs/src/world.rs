@@ -144,8 +144,13 @@ impl World {
 
     /// Get a mutable reference to the `ErasedColumn` at `cid` in `arch`.
     #[inline]
-    fn get_erased_mut(arch: &mut Archetype, cid: ComponentId) -> Option<&mut Box<dyn ErasedColumn>> {
-        arch.columns.get_mut(cid.0 as usize).and_then(|c| c.as_mut())
+    fn get_erased_mut(
+        arch: &mut Archetype,
+        cid: ComponentId,
+    ) -> Option<&mut Box<dyn ErasedColumn>> {
+        arch.columns
+            .get_mut(cid.0 as usize)
+            .and_then(|c| c.as_mut())
     }
 
     /// Get a shared reference to the `ErasedColumn` at `cid` in `arch`.
@@ -276,9 +281,7 @@ impl World {
         let removed_val = unsafe { *Box::from_raw(removed_ptr as *mut T) };
 
         // Build the destination key WITHOUT this component.
-        let new_key = self.archetypes[old_arch_id.0 as usize]
-            .key
-            .without::<T>();
+        let new_key = self.archetypes[old_arch_id.0 as usize].key.without::<T>();
         let new_arch_id = self.get_or_create_archetype(new_key);
 
         // Migrate everything except the removed component.
@@ -359,9 +362,7 @@ impl World {
         new_arch_id: ArchetypeId,
     ) {
         // Phase 1: push entity to destination first.
-        let new_row = self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .len() as u32;
+        let new_row = self.archetypes[new_arch_id.0 as usize].entities.len() as u32;
         self.archetypes[new_arch_id.0 as usize]
             .entities
             .push(entity);
@@ -427,9 +428,7 @@ impl World {
         skip_cid: ComponentId,
     ) {
         // Phase 1: push entity to destination first.
-        let new_row = self.archetypes[new_arch_id.0 as usize]
-            .entities
-            .len() as u32;
+        let new_row = self.archetypes[new_arch_id.0 as usize].entities.len() as u32;
         self.archetypes[new_arch_id.0 as usize]
             .entities
             .push(entity);

@@ -46,7 +46,10 @@ impl VolumetricLightProps {
         {
             self.volumetric_shadow_intensity = v as f32;
         }
-        if let Some(v) = obj.get("fog_inscattering_intensity").and_then(|v| v.as_f64()) {
+        if let Some(v) = obj
+            .get("fog_inscattering_intensity")
+            .and_then(|v| v.as_f64())
+        {
             self.fog_inscattering_intensity = v as f32;
         }
         if let Some(v) = obj.get("contact_shadow_length").and_then(|v| v.as_f64()) {

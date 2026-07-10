@@ -6,8 +6,8 @@ use ui::{
     IconName, Sizable,
 };
 
-use crate::level_editor::state::{LevelEditorState, MultiplayerMode};
 use super::actions::SetMultiplayerMode;
+use crate::level_editor::state::{LevelEditorState, MultiplayerMode};
 
 /// Multiplayer mode dropdown - Styled appropriately for mode selection
 pub struct MultiplayerDropdown;

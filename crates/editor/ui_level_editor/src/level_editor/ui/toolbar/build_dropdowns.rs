@@ -6,8 +6,8 @@ use ui::{
     IconName, Sizable,
 };
 
-use crate::level_editor::state::{BuildConfig, LevelEditorState, TargetPlatform};
 use super::actions::{SetBuildConfig, SetTargetPlatform};
+use crate::level_editor::state::{BuildConfig, LevelEditorState, TargetPlatform};
 
 /// Build configuration and platform dropdowns - Comprehensive build settings for all 290+ Rust targets
 pub struct BuildDropdowns;

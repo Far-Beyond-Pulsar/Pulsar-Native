@@ -206,16 +206,12 @@ async fn test_multiple_participants() {
     bob.send(SessionMessage::Pong).await.unwrap();
 
     assert_eq!(participants.len(), 2);
-    assert!(
-        participants
-            .iter()
-            .any(|p| p.peer_id == "alice" && p.role.can_write())
-    );
-    assert!(
-        participants
-            .iter()
-            .any(|p| p.peer_id == "bob" && !p.role.can_write())
-    );
+    assert!(participants
+        .iter()
+        .any(|p| p.peer_id == "alice" && p.role.can_write()));
+    assert!(participants
+        .iter()
+        .any(|p| p.peer_id == "bob" && !p.role.can_write()));
 
     let chat = SessionMessage::Chat(ChatMessage {
         sender_id: "bob".into(),

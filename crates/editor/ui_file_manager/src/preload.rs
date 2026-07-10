@@ -10,7 +10,7 @@
 
 use std::sync::Mutex;
 
-use crate::drawer::FolderNode;
+use crate::utils::FolderNode;
 
 static PRELOADED_TREE: Mutex<Option<FolderNode>> = Mutex::new(None);
 

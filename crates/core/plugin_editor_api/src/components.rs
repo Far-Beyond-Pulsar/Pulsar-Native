@@ -18,8 +18,7 @@ use crate::plugin::EditorPlugin;
 ///
 /// This closure lives in the plugin DLL. Because plugins are never unloaded,
 /// the function pointer remains valid for the process lifetime.
-pub type ComponentFactory =
-    Box<dyn Fn() -> Box<dyn EngineClass> + Send + Sync>;
+pub type ComponentFactory = Box<dyn Fn() -> Box<dyn EngineClass> + Send + Sync>;
 
 /// Definition of a custom engine component that a plugin provides.
 ///

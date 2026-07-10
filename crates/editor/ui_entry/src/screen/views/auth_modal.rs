@@ -9,7 +9,10 @@ use crate::screen::EntryScreen;
 
 /// Render the GitHub device-code modal as a full-screen overlay.
 /// Shows the 8-digit code with buttons to open the browser, copy the code, or close.
-pub fn render_auth_modal(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_auth_modal(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let Some(code) = screen.state.auth.device_code.clone() else {
         return div().into_any_element();
     };
@@ -67,9 +70,12 @@ pub fn render_auth_modal(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>
                         .text_color(cx.theme().foreground)
                         .child(code.clone()),
                 )
-                .when_some(screen.state.ui.auth_device_copy_notice.clone(), |this, notice| {
-                    this.child(div().text_xs().text_color(cx.theme().success).child(notice))
-                })
+                .when_some(
+                    screen.state.ui.auth_device_copy_notice.clone(),
+                    |this, notice| {
+                        this.child(div().text_xs().text_color(cx.theme().success).child(notice))
+                    },
+                )
                 .child(
                     h_flex()
                         .w_full()

@@ -1,7 +1,5 @@
 use crate::screen::EntryScreen;
-use crate::{
-    FabSearchRequested, GitManagerRequested, ProjectSelected, SettingsRequested,
-};
+use crate::{FabSearchRequested, GitManagerRequested, ProjectSelected, SettingsRequested};
 use gpui::*;
 
 pub struct EntryWindow {
@@ -44,7 +42,9 @@ impl EntryWindow {
             },
         )
         .detach();
-        Self { screen: entry_screen }
+        Self {
+            screen: entry_screen,
+        }
     }
 
     pub fn entry_screen(&self) -> &Entity<EntryScreen> {

@@ -1,16 +1,12 @@
-use super::fs_metadata::FsMetadataManager;
-use super::types::FileItem;
+use crate::utils::fs_metadata::FsMetadataManager;
+use crate::utils::types::FileItem;
+use std::path::{Path, PathBuf};
 use ui::IconName;
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
 
 pub fn format_file_size(size: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
-
     if size >= GB {
         format!("{:.2} GB", size as f64 / GB as f64)
     } else if size >= MB {
@@ -25,8 +21,9 @@ pub fn format_file_size(size: u64) -> String {
 pub fn format_modified_time(time: Option<std::time::SystemTime>) -> String {
     time.and_then(|t| {
         t.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
-            let datetime = chrono::DateTime::<chrono::Local>::from(std::time::UNIX_EPOCH + d);
-            datetime.format("%b %d, %Y %H:%M").to_string()
+            chrono::DateTime::<chrono::Local>::from(std::time::UNIX_EPOCH + d)
+                .format("%b %d, %Y %H:%M")
+                .to_string()
         })
     })
     .unwrap_or_else(|| "Unknown".to_string())
@@ -35,24 +32,21 @@ pub fn format_modified_time(time: Option<std::time::SystemTime>) -> String {
 pub fn get_icon_color_for_file_type(
     item: &FileItem,
     theme: &ui::Theme,
-    fs_metadata: &mut FsMetadataManager,
+    meta: &mut FsMetadataManager,
 ) -> gpui::Hsla {
-    // Check for color override first
-    if let Some(override_color) = fs_metadata.get_color_override(&item.path) {
-        return override_color;
+    if let Some(c) = meta.get_color_override(&item.path) {
+        return c;
     }
-
-    // Fall back to file type color or theme default
     item.file_type_def
         .as_ref()
-        .map(|def| def.color)
+        .map(|d| d.color)
         .unwrap_or(theme.muted_foreground)
 }
 
 pub fn get_icon_for_file_type(item: &FileItem) -> IconName {
     item.file_type_def
         .as_ref()
-        .map(|def| def.icon.clone())
+        .map(|d| d.icon.clone())
         .unwrap_or(if item.is_folder {
             IconName::Folder
         } else {
@@ -60,16 +54,25 @@ pub fn get_icon_for_file_type(item: &FileItem) -> IconName {
         })
 }
 
-pub fn copy_dir_all(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+pub fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dst)?;
     for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
+        let e = entry?;
+        let ty = e.file_type()?;
         if ty.is_dir() {
-            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+            copy_dir_all(&e.path(), &dst.join(e.file_name()))?;
         } else {
-            std::fs::copy(entry.path(), dst.join(entry.file_name()))?;
+            std::fs::copy(e.path(), dst.join(e.file_name()))?;
         }
     }
     Ok(())
+}
+
+pub fn cloud_join(base: &Path, component: &str) -> PathBuf {
+    if engine_fs::is_cloud_path(base) {
+        let s = base.to_string_lossy().replace('\\', "/");
+        PathBuf::from(format!("{}/{}", s.trim_end_matches('/'), component))
+    } else {
+        base.join(component)
+    }
 }

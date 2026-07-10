@@ -37,15 +37,25 @@ pub struct EditorFactory {
     /// The editor type this factory creates.
     pub editor_id: EditorId,
     /// The creation function.
-    pub create: Box<dyn Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError> + Send + Sync>,
+    pub create: Box<
+        dyn Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
+            + Send
+            + Sync,
+    >,
 }
 
 impl EditorFactory {
     pub fn new(
         editor_id: EditorId,
-        create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError> + 'static + Send + Sync,
+        create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) -> Self {
-        Self { editor_id, create: Box::new(create) }
+        Self {
+            editor_id,
+            create: Box::new(create),
+        }
     }
 }
 
@@ -58,7 +68,11 @@ pub struct EditorFactoryRegistry {
 }
 
 impl EditorFactoryRegistry {
-    pub fn new() -> Self { Self { factories: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            factories: Vec::new(),
+        }
+    }
 
     /// Register a single editor factory.
     pub fn register(&mut self, factory: EditorFactory) {
@@ -69,7 +83,10 @@ impl EditorFactoryRegistry {
     pub fn register_fn(
         &mut self,
         editor_id: EditorId,
-        create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError> + 'static + Send + Sync,
+        create: impl Fn(PathBuf, &mut Window, &mut App) -> Result<Arc<dyn PanelView>, PluginError>
+            + 'static
+            + Send
+            + Sync,
     ) {
         self.factories.push(EditorFactory::new(editor_id, create));
     }
@@ -80,7 +97,9 @@ impl EditorFactoryRegistry {
     }
 
     /// Iterate all registered factories.
-    pub fn factories(&self) -> &[EditorFactory] { &self.factories }
+    pub fn factories(&self) -> &[EditorFactory] {
+        &self.factories
+    }
 }
 
 // ============================================================================

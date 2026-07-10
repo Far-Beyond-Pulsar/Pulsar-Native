@@ -129,7 +129,10 @@ impl PulsarApp {
         } else {
             DockItem::tabs(vec![], None, &weak_dock, window, cx)
         };
-        tracing::info!("[PulsarApp] level editor panel: {}ms", t.elapsed().as_millis());
+        tracing::info!(
+            "[PulsarApp] level editor panel: {}ms",
+            t.elapsed().as_millis()
+        );
 
         let center_tabs = match &center_dock_item {
             DockItem::Tabs { view, .. } => view.clone(),
@@ -160,7 +163,10 @@ impl PulsarApp {
             dock.set_center(center_dock_item, window, cx);
             dock.set_left_dock(left_dock, Some(gpui::px(420.0)), false, window, cx);
         });
-        tracing::info!("[PulsarApp] left dock + layout: {}ms", t.elapsed().as_millis());
+        tracing::info!(
+            "[PulsarApp] left dock + layout: {}ms",
+            t.elapsed().as_millis()
+        );
 
         // Create entry screen only if no project path is provided
         let entry_screen = if project_path.is_none() {
@@ -279,9 +285,7 @@ impl PulsarApp {
         );
 
         // Register built-in physics subsystem
-        plugin_manager.register_builtin_subsystem(Box::new(
-            engine_backend::PhysicsEngine::new(),
-        ));
+        plugin_manager.register_builtin_subsystem(Box::new(engine_backend::PhysicsEngine::new()));
 
         // Register physics component definitions (for the component picker)
         plugin_manager.register_builtin_component_definitions(vec![
@@ -644,7 +648,10 @@ impl PulsarApp {
             }
         }
 
-        tracing::info!("[PulsarApp] new_internal total: {}ms", t_total.elapsed().as_millis());
+        tracing::info!(
+            "[PulsarApp] new_internal total: {}ms",
+            t_total.elapsed().as_millis()
+        );
 
         // Focus this app's handle so menus built before any editor interaction have
         // a valid action_context that routes back to PulsarApp's .on_action() handlers.

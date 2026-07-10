@@ -1,11 +1,17 @@
 use gpui::prelude::*;
 use gpui::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
-use crate::screen::EntryScreen;
 use crate::core::types::Template;
+use crate::screen::EntryScreen;
 
-pub fn render_templates(screen: &mut EntryScreen, available_width: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_templates(
+    screen: &mut EntryScreen,
+    available_width: f32,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let columns = screen.calculate_columns(px(available_width + 220.0 + 64.0));
 
@@ -75,14 +81,14 @@ pub fn render_templates(screen: &mut EntryScreen, available_width: f32, cx: &mut
                 .px_8()
                 .pb_6()
                 .child(
-                    h_flex()
-                        .flex_wrap()
-                        .gap_6()
-                        .children(
-                            screen.state.templates.clone().iter().map(|template| {
-                                render_template_card(screen, template, columns, cx)
-                            }),
-                        ),
+                    h_flex().flex_wrap().gap_6().children(
+                        screen
+                            .state
+                            .templates
+                            .clone()
+                            .iter()
+                            .map(|template| render_template_card(screen, template, columns, cx)),
+                    ),
                 ),
         )
 }
@@ -105,7 +111,11 @@ fn render_template_card(
     let repo_url_button = repo_url.clone();
     let template_icon = template.icon.clone();
     let template_icon_listener = template_icon.clone();
-    let thumbnail = screen.state.template_thumbnails.get(&name).and_then(|t| t.clone());
+    let thumbnail = screen
+        .state
+        .template_thumbnails
+        .get(&name)
+        .and_then(|t| t.clone());
 
     v_flex()
         .id(SharedString::from(format!("template-card-{}", name)))
@@ -122,7 +132,13 @@ fn render_template_card(
         })
         .on_click(cx.listener(move |this, _, window, cx| {
             if !window.default_prevented() {
-                let t = Template::new(&name, &description, template_icon_listener.clone(), &repo_url, &category);
+                let t = Template::new(
+                    &name,
+                    &description,
+                    template_icon_listener.clone(),
+                    &repo_url,
+                    &category,
+                );
                 this.clone_template(t, cx);
             }
         }))
@@ -170,14 +186,19 @@ fn render_template_card(
                             window.prevent_default();
                         })
                         .child(
-                            Button::new(SharedString::from(format!("view-on-github-{}", name_button)))
-                                .icon(IconName::Eye)
-                                .compact()
-                                .ghost()
-                                .tooltip("View on GitHub")
-                                .on_click(cx.listener(move |_, _, _, cx| {
+                            Button::new(SharedString::from(format!(
+                                "view-on-github-{}",
+                                name_button
+                            )))
+                            .icon(IconName::Eye)
+                            .compact()
+                            .ghost()
+                            .tooltip("View on GitHub")
+                            .on_click(cx.listener(
+                                move |_, _, _, cx| {
                                     cx.open_url(&repo_url_button);
-                                })),
+                                },
+                            )),
                         ),
                 ),
         )
@@ -200,19 +221,16 @@ fn render_template_card(
                         .child(desc_label),
                 )
                 .child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .px_2()
-                                .py(px(2.))
-                                .rounded_full()
-                                .bg(theme.accent.opacity(0.15))
-                                .text_xs()
-                                .text_color(theme.accent)
-                                .child(category_label),
-                        ),
+                    h_flex().gap_2().items_center().child(
+                        div()
+                            .px_2()
+                            .py(px(2.))
+                            .rounded_full()
+                            .bg(theme.accent.opacity(0.15))
+                            .text_xs()
+                            .text_color(theme.accent)
+                            .child(category_label),
+                    ),
                 ),
         )
 }

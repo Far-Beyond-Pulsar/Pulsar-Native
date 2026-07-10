@@ -125,7 +125,12 @@ impl LoadingScreen {
 
 impl Render for LoadingScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        while let Ok(LoadingEvent::TaskDone { idx, elapsed, detail }) = self.rx.try_recv() {
+        while let Ok(LoadingEvent::TaskDone {
+            idx,
+            elapsed,
+            detail,
+        }) = self.rx.try_recv()
+        {
             self.advance(idx, elapsed, detail);
             cx.notify();
         }
@@ -207,7 +212,11 @@ impl Render for LoadingScreen {
                                                     .child(self.project_name.clone()),
                                             ),
                                     )
-                                    .child(task_list_widget(self.anim_tick, &self.statuses, running_elapsed)),
+                                    .child(task_list_widget(
+                                        self.anim_tick,
+                                        &self.statuses,
+                                        running_elapsed,
+                                    )),
                             )
                             .child(
                                 div()

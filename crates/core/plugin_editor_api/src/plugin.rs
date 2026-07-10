@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
+use crate::file_types::FileTypeDefinition;
 use crate::identifiers::{EditorId, FileTypeId};
 use crate::metadata::{EditorMetadata, PluginMetadata};
-use crate::file_types::FileTypeDefinition;
 use crate::version::VersionInfo;
 
 // ============================================================================
@@ -138,7 +138,10 @@ macro_rules! export_plugin {
         }
 
         impl $crate::editor_element::EditorPluginEditor for __PluginExport {
-            fn register_editors(&'static self, registry: &mut $crate::editor_element::EditorFactoryRegistry) {
+            fn register_editors(
+                &'static self,
+                registry: &mut $crate::editor_element::EditorFactoryRegistry,
+            ) {
                 $crate::editor_element::EditorPluginEditor::register_editors(&self.0, registry)
             }
         }
@@ -172,12 +175,11 @@ macro_rules! export_plugin {
                 tool_name: &str,
                 tool_args: $crate::JsonValue,
             ) -> std::result::Result<$crate::JsonValue, $crate::error::PluginError> {
-                $crate::ai::EditorPluginAi::execute_ai_tool(&self.0, file_path, tool_name, tool_args)
+                $crate::ai::EditorPluginAi::execute_ai_tool(
+                    &self.0, file_path, tool_name, tool_args,
+                )
             }
-            fn capabilities_for_file(
-                &self,
-                file_path: &std::path::Path,
-            ) -> Vec<String> {
+            fn capabilities_for_file(&self, file_path: &std::path::Path) -> Vec<String> {
                 $crate::ai::EditorPluginAi::capabilities_for_file(&self.0, file_path)
             }
         }
@@ -186,9 +188,7 @@ macro_rules! export_plugin {
             fn component_definitions(&self) -> Vec<$crate::components::ComponentDefinition> {
                 $crate::components::EditorPluginComponents::component_definitions(&self.0)
             }
-            fn component_factories(
-                &self,
-            ) -> Vec<(String, $crate::components::ComponentFactory)> {
+            fn component_factories(&self) -> Vec<(String, $crate::components::ComponentFactory)> {
                 $crate::components::EditorPluginComponents::component_factories(&self.0)
             }
         }

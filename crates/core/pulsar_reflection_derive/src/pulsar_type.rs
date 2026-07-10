@@ -54,12 +54,16 @@ pub fn expand_primitive_alias(
                 has_deprecated_structure = Some(name_value.path.get_ident().unwrap().span());
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("serialize_json_with") => {
-                override_serialize_json_with =
-                    Some(util::parse_path_expr(&name_value.value, "serialize_json_with")?);
+                override_serialize_json_with = Some(util::parse_path_expr(
+                    &name_value.value,
+                    "serialize_json_with",
+                )?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("deserialize_json_with") => {
-                override_deserialize_json_with =
-                    Some(util::parse_path_expr(&name_value.value, "deserialize_json_with")?);
+                override_deserialize_json_with = Some(util::parse_path_expr(
+                    &name_value.value,
+                    "deserialize_json_with",
+                )?);
             }
             Meta::NameValue(name_value) if name_value.path.is_ident("editor") => {
                 override_editor = Some(util::parse_path_expr(&name_value.value, "editor")?);
@@ -77,7 +81,10 @@ pub fn expand_primitive_alias(
     }
 
     if has_deprecated_primitive.is_some() || has_deprecated_structure.is_some() {
-        crate::deprecation::emit_deprecation_warning(has_deprecated_primitive, has_deprecated_structure);
+        crate::deprecation::emit_deprecation_warning(
+            has_deprecated_primitive,
+            has_deprecated_structure,
+        );
     }
 
     let color_expr = match &color {
@@ -87,7 +94,8 @@ pub fn expand_primitive_alias(
 
     let alias_ident = &item_type.ident;
     let target_ty = &item_type.ty;
-    let type_info_name = quote::format_ident!("{}_TYPE_INFO", alias_ident.to_string().to_uppercase());
+    let type_info_name =
+        quote::format_ident!("{}_TYPE_INFO", alias_ident.to_string().to_uppercase());
 
     if override_serialize_json_with.is_none() || override_deserialize_json_with.is_none() {
         return Err(syn::Error::new_spanned(

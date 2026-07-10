@@ -7,9 +7,7 @@
 //!
 //! See `crates/engine_subsystems/src/lib.rs` for full documentation.
 
+pub use engine_subsystems::SubsystemRegistry as Registry;
 pub use engine_subsystems::{
     Subsystem, SubsystemContext, SubsystemError, SubsystemId, SubsystemRegistry,
 };
-pub use engine_subsystems::SubsystemRegistry as Registry;
-
-

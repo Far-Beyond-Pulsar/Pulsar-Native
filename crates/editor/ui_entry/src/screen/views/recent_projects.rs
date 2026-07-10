@@ -1,14 +1,20 @@
 use gpui::prelude::*;
 use gpui::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName};
 use std::path::PathBuf;
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+};
 
-use crate::screen::EntryScreen;
 use crate::core::types::{EntryScreenView, GitFetchStatus};
+use crate::screen::EntryScreen;
 use crate::util::formatters::format_timestamp;
 use crate::util::path_helpers::normalize_project_path;
 
-pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_recent_projects(
+    screen: &mut EntryScreen,
+    available_width: f32,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let columns = screen.calculate_columns(px(available_width + 220.0 + 64.0));
 
@@ -39,7 +45,11 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                     div()
                         .text_sm()
                         .text_color(theme.muted_foreground)
-                        .child(format!("{} project{}", project_count, if project_count == 1 { "" } else { "s" })),
+                        .child(format!(
+                            "{} project{}",
+                            project_count,
+                            if project_count == 1 { "" } else { "s" }
+                        )),
                 )
                 .child(
                     Button::new("refresh-projects")
@@ -101,16 +111,11 @@ pub fn render_recent_projects(screen: &mut EntryScreen, available_width: f32, cx
                             .overflow_y_scroll()
                             .px_8()
                             .pb_6()
-                            .child(
-                                h_flex()
-                                    .flex_wrap()
-                                    .gap_6()
-                                    .children(
-                                        screen.state.recent_projects.projects.clone().iter().map(|project| {
-                                            render_project_card(screen, project, columns, cx)
-                                        }),
-                                    ),
-                            ),
+                            .child(h_flex().flex_wrap().gap_6().children(
+                                screen.state.recent_projects.projects.clone().iter().map(
+                                    |project| render_project_card(screen, project, columns, cx),
+                                ),
+                            )),
                     )
                 }),
         )
@@ -136,10 +141,17 @@ fn render_project_card(
 
     let fetch_status = {
         let statuses = screen.state.git_fetch_statuses.lock();
-        statuses.get(&path).cloned().unwrap_or(GitFetchStatus::NotStarted)
+        statuses
+            .get(&path)
+            .cloned()
+            .unwrap_or(GitFetchStatus::NotStarted)
     };
 
-    let thumbnail = screen.state.project_thumbnails.get(&path).and_then(|t| t.clone());
+    let thumbnail = screen
+        .state
+        .project_thumbnails
+        .get(&path)
+        .and_then(|t| t.clone());
 
     v_flex()
         .id(SharedString::from(format!("project-card-{}", path)))
@@ -219,7 +231,10 @@ fn render_project_card(
                                 .ghost()
                                 .tooltip("Project Settings")
                                 .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.open_project_settings(std::path::PathBuf::from(&path_settings), cx);
+                                    this.open_project_settings(
+                                        std::path::PathBuf::from(&path_settings),
+                                        cx,
+                                    );
                                 })),
                         )
                         .child(
@@ -270,7 +285,12 @@ fn render_project_card(
                                     .justify_end()
                                     .gap_1()
                                     .items_center()
-                                    .child(render_git_status(fetch_status, path.clone(), screen, cx)),
+                                    .child(render_git_status(
+                                        fetch_status,
+                                        path.clone(),
+                                        screen,
+                                        cx,
+                                    )),
                             )
                         }),
                 ),
@@ -299,12 +319,10 @@ fn render_git_status(
             ]
         }
         GitFetchStatus::UpToDate => {
-            vec![
-                Icon::new(IconName::Check)
-                    .size(px(12.))
-                    .text_color(theme.success_foreground)
-                    .into_any_element(),
-            ]
+            vec![Icon::new(IconName::Check)
+                .size(px(12.))
+                .text_color(theme.success_foreground)
+                .into_any_element()]
         }
         GitFetchStatus::UpdatesAvailable(count) => {
             vec![
@@ -315,7 +333,11 @@ fn render_git_status(
                 div()
                     .text_xs()
                     .text_color(theme.warning)
-                    .child(format!("{} update{}", count, if count == 1 { "" } else { "s" }))
+                    .child(format!(
+                        "{} update{}",
+                        count,
+                        if count == 1 { "" } else { "s" }
+                    ))
                     .into_any_element(),
                 Button::new(SharedString::from(format!("pull-{}", path)))
                     .compact()

@@ -62,7 +62,10 @@ impl ColorLightProps {
         if let Some(v) = obj.get("color_contrast").and_then(|v| v.as_f64()) {
             self.color_contrast = v as f32;
         }
-        if let Some(v) = obj.get("use_physical_light_color").and_then(|v| v.as_bool()) {
+        if let Some(v) = obj
+            .get("use_physical_light_color")
+            .and_then(|v| v.as_bool())
+        {
             self.use_physical_light_color = v;
         }
     }

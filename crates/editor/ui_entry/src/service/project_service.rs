@@ -30,7 +30,9 @@ impl RecentProjectsList {
         } else {
             self.projects.insert(0, project);
         }
-        if self.projects.len() > 20 { self.projects.truncate(20); }
+        if self.projects.len() > 20 {
+            self.projects.truncate(20);
+        }
     }
 
     pub fn remove(&mut self, path: &str) {
@@ -65,7 +67,8 @@ engine_version = "0.1.23"
 
 [settings]
 default_scene = "scenes/main.scene"
-"#, name
+"#,
+            name
         );
         std::fs::write(path.join("Pulsar.toml"), content)
     }
@@ -94,13 +97,21 @@ default_scene = "scenes/main.scene"
     /// Read tool preferences from Pulsar.toml
     pub fn load_tool_preferences(project_path: &PathBuf) -> (Option<String>, Option<String>) {
         let config_path = project_path.join("Pulsar.toml");
-        if !config_path.exists() { return (None, None); }
+        if !config_path.exists() {
+            return (None, None);
+        }
         if let Ok(content) = std::fs::read_to_string(&config_path) {
             if let Ok(parsed) = toml::from_str::<toml::Value>(&content) {
                 if let Some(tools) = parsed.get("tools").and_then(|v| v.as_table()) {
                     return (
-                        tools.get("editor").and_then(|v| v.as_str()).map(String::from),
-                        tools.get("git_tool").and_then(|v| v.as_str()).map(String::from),
+                        tools
+                            .get("editor")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
+                        tools
+                            .get("git_tool")
+                            .and_then(|v| v.as_str())
+                            .map(String::from),
                     );
                 }
             }

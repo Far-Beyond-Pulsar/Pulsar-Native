@@ -3,8 +3,8 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use engine_state::{EngineContext, ResourceHandle};
 use crate::parser::{SketchfabDownloadInfo, SketchfabMe, SketchfabModel, SketchfabModelDetail};
+use engine_state::{EngineContext, ResourceHandle};
 
 // ── Cache ────────────────────────────────────────────────────────────────────
 

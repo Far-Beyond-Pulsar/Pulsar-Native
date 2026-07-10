@@ -6,8 +6,8 @@ use ui::{
     ActiveTheme, IconName, Sizable,
 };
 
-use crate::level_editor::state::LevelEditorState;
 use super::actions::SetTimeScale;
+use crate::level_editor::state::LevelEditorState;
 
 /// Time scale dropdown - Polished, professional simulation speed control
 pub struct TimeScaleDropdown;

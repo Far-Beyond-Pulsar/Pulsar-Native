@@ -25,8 +25,8 @@ use ui_common::properties_inspector;
 
 use crate::level_editor::scene_database::{ObjectType, Transform};
 use crate::level_editor::state::LevelEditorState;
-use crate::level_editor::SceneObjectData;
 use crate::level_editor::workspace::panels::PropertiesPanelWrapper;
+use crate::level_editor::SceneObjectData;
 
 /// Properties Panel - Inspector showing properties of the selected object
 pub struct PropertiesPanel;

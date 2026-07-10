@@ -51,9 +51,7 @@ fn serialize_collision_channel_json(value: &CollisionChannel) -> ReflectResult<s
         .map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }
 
-fn deserialize_collision_channel_json(
-    value: serde_json::Value,
-) -> ReflectResult<CollisionChannel> {
+fn deserialize_collision_channel_json(value: serde_json::Value) -> ReflectResult<CollisionChannel> {
     let ix = value.as_u64().ok_or_else(|| ReflectError::TypeMismatch {
         expected: "u64",
         found: format!("{:?}", value),
@@ -97,7 +95,9 @@ impl Default for CollisionResponse {
     }
 }
 
-fn serialize_collision_response_json(value: &CollisionResponse) -> ReflectResult<serde_json::Value> {
+fn serialize_collision_response_json(
+    value: &CollisionResponse,
+) -> ReflectResult<serde_json::Value> {
     serde_json::to_value(&(*value as u64))
         .map_err(|e| ReflectError::SerializationFailed(e.to_string()))
 }

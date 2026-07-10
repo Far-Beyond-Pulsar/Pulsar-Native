@@ -10,7 +10,9 @@ pub struct ThumbnailService;
 
 impl ThumbnailService {
     pub fn project_thumbnail_path(project_path: &str) -> PathBuf {
-        Path::new(project_path).join(".pulsar").join("thumbnail.png")
+        Path::new(project_path)
+            .join(".pulsar")
+            .join("thumbnail.png")
     }
 
     pub fn template_cache_dir() -> PathBuf {
@@ -20,18 +22,28 @@ impl ThumbnailService {
     }
 
     pub fn template_cache_path(template: &Template) -> PathBuf {
-        Self::template_cache_dir().join(format!("{}.png", Self::sanitize_repo_name(&template.repo_url)))
+        Self::template_cache_dir().join(format!(
+            "{}.png",
+            Self::sanitize_repo_name(&template.repo_url)
+        ))
     }
 
     fn sanitize_repo_name(repo_url: &str) -> String {
         let trimmed = repo_url.trim_end_matches(".git").trim_end_matches('/');
         let parts: Vec<&str> = trimmed.rsplit('/').take(2).collect();
         let joined: String = parts.into_iter().rev().collect::<Vec<_>>().join("_");
-        if joined.is_empty() { "template".to_string() } else { joined }
+        if joined.is_empty() {
+            "template".to_string()
+        } else {
+            joined
+        }
     }
 
     fn template_thumbnail_urls(template: &Template) -> Vec<String> {
-        let trimmed = template.repo_url.trim_end_matches(".git").trim_end_matches('/');
+        let trimmed = template
+            .repo_url
+            .trim_end_matches(".git")
+            .trim_end_matches('/');
         if let Some(rest) = trimmed.strip_prefix("https://github.com/") {
             let mut parts = rest.split('/');
             if let (Some(owner), Some(repo)) = (parts.next(), parts.next()) {
@@ -59,18 +71,26 @@ impl ThumbnailService {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
             .user_agent("Pulsar-Native/1.0")
-            .build().ok()?;
+            .build()
+            .ok()?;
         let response = client.get(url).send().ok()?;
-        if !response.status().is_success() { return None; }
+        if !response.status().is_success() {
+            return None;
+        }
         response.bytes().ok().map(|b| b.to_vec())
     }
 
-    fn fetch_and_cache_template_thumbnail(template: &Template, cache_path: &Path) -> Option<Arc<RenderImage>> {
+    fn fetch_and_cache_template_thumbnail(
+        template: &Template,
+        cache_path: &Path,
+    ) -> Option<Arc<RenderImage>> {
         for url in Self::template_thumbnail_urls(template) {
             if let Some(bytes) = Self::download_bytes(&url) {
                 if let Ok(decoded) = image::load_from_memory(&bytes) {
                     let rgba = decoded.into_rgba8();
-                    if let Some(parent) = cache_path.parent() { let _ = std::fs::create_dir_all(parent); }
+                    if let Some(parent) = cache_path.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
                     let _ = rgba.save(cache_path);
                     let frame = image::Frame::new(rgba);
                     return Some(Arc::new(RenderImage::new(smallvec::smallvec![frame])));
@@ -82,13 +102,18 @@ impl ThumbnailService {
 
     pub fn load_project_thumbnail(project_path: &str) -> Option<Arc<RenderImage>> {
         let thumb_path = Self::project_thumbnail_path(project_path);
-        if thumb_path.exists() { Self::decode_png_file(&thumb_path) } else { None }
+        if thumb_path.exists() {
+            Self::decode_png_file(&thumb_path)
+        } else {
+            None
+        }
     }
 
     pub fn load_template_thumbnail(template: &Template) -> Option<Arc<RenderImage>> {
         let cache_path = Self::template_cache_path(template);
         if cache_path.exists() {
-            Self::decode_png_file(&cache_path).or_else(|| Self::fetch_and_cache_template_thumbnail(template, &cache_path))
+            Self::decode_png_file(&cache_path)
+                .or_else(|| Self::fetch_and_cache_template_thumbnail(template, &cache_path))
         } else {
             Self::fetch_and_cache_template_thumbnail(template, &cache_path)
         }

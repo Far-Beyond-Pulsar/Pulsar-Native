@@ -781,7 +781,8 @@ fn execute_ai_tool_impl(
 
             let mut state = state_arc.write();
             let scene_path = state
-                .scene.current_scene
+                .scene
+                .current_scene
                 .as_ref()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
@@ -896,7 +897,8 @@ fn execute_ai_tool_impl(
                     children: vec![],
                     props: Default::default(),
                     scene_path: state
-                        .scene.current_scene
+                        .scene
+                        .current_scene
                         .as_ref()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default(),

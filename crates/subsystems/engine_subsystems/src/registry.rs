@@ -81,10 +81,7 @@ impl SubsystemRegistry {
     ///
     /// Returns `Err(AlreadyRegistered)` if a subsystem with the same ID
     /// already exists. Used by `EngineBackend::inject_plugin_subsystems`.
-    pub fn register_boxed(
-        &mut self,
-        subsystem: Box<dyn Subsystem>,
-    ) -> Result<(), SubsystemError> {
+    pub fn register_boxed(&mut self, subsystem: Box<dyn Subsystem>) -> Result<(), SubsystemError> {
         let id = subsystem.id();
         if self.subsystems.contains_key(&id) {
             return Err(SubsystemError::AlreadyRegistered(id.as_str()));
@@ -220,9 +217,9 @@ impl SubsystemRegistry {
         for id in self.init_order.iter().rev() {
             if let Some(subsystem) = self.subsystems.get_mut(id) {
                 tracing::debug!("Shutting down subsystem: {}", id.as_str());
-                subsystem
-                    .shutdown()
-                    .map_err(|e| SubsystemError::ShutdownFailed(format!("{}: {}", id.as_str(), e)))?;
+                subsystem.shutdown().map_err(|e| {
+                    SubsystemError::ShutdownFailed(format!("{}: {}", id.as_str(), e))
+                })?;
             }
         }
 
@@ -256,7 +253,9 @@ impl SubsystemRegistry {
 
     /// Get a mutable reference to a registered subsystem by ID.
     pub fn get_mut(&mut self, id: SubsystemId) -> Option<&mut dyn Subsystem> {
-        self.subsystems.get_mut(&id).map(|b| &mut **b as &mut dyn Subsystem)
+        self.subsystems
+            .get_mut(&id)
+            .map(|b| &mut **b as &mut dyn Subsystem)
     }
 
     /// Check if a subsystem is registered.

@@ -71,8 +71,14 @@ impl GeneralLightProps {
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
         out.insert("enabled".to_string(), Value::from(self.enabled));
         out.insert("affects_world".to_string(), Value::from(self.affects_world));
-        out.insert("light_type".to_string(), Value::from(self.light_type as u64));
-        out.insert("light_channels".to_string(), Value::from(self.light_channels));
+        out.insert(
+            "light_type".to_string(),
+            Value::from(self.light_type as u64),
+        );
+        out.insert(
+            "light_channels".to_string(),
+            Value::from(self.light_channels),
+        );
         out.insert(
             "lighting_channel_0".to_string(),
             Value::from(self.lighting_channel_0),

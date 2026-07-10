@@ -59,8 +59,14 @@ pub fn start() {
         })
         .expect("failed to spawn notification listener thread");
 
-    *guard = Some(ListenerHandle { shutdown: shutdown_tx, thread });
-    tracing::info!("[NotificationListener] started, connecting to {}", home_server);
+    *guard = Some(ListenerHandle {
+        shutdown: shutdown_tx,
+        thread,
+    });
+    tracing::info!(
+        "[NotificationListener] started, connecting to {}",
+        home_server
+    );
 }
 
 /// Stop the notification WebSocket listener.
@@ -92,10 +98,7 @@ async fn run_loop(
     shutdown_rx: tokio::sync::oneshot::Receiver<()>,
 ) {
     let hs = home_server.to_string();
-    let ws_url = format!(
-        "{}/api/v1/notifications/ws",
-        hs.trim_end_matches('/')
-    );
+    let ws_url = format!("{}/api/v1/notifications/ws", hs.trim_end_matches('/'));
     // Convert to ws:// if http://, wss:// if https://
     let ws_url = ws_url
         .replace("http://", "ws://")
@@ -128,22 +131,23 @@ async fn run_loop(
     }
 }
 
-async fn connect_and_listen(
-    ws_url: &str,
-    token: &str,
-    username: &str,
-) -> Result<(), String> {
+async fn connect_and_listen(ws_url: &str, token: &str, username: &str) -> Result<(), String> {
     use async_tungstenite::tokio::connect_async;
     use async_tungstenite::tungstenite::Message;
     use futures::StreamExt;
 
     tracing::info!("[NotificationListener] connecting to {}", ws_url);
 
-    let (ws_stream, _) = connect_async(ws_url).await.map_err(|e| format!("connect: {}", e))?;
+    let (ws_stream, _) = connect_async(ws_url)
+        .await
+        .map_err(|e| format!("connect: {}", e))?;
     let (mut write, mut read) = ws_stream.split();
 
     // Send GitHub token as first message for authentication
-    write.send(Message::Text(token.to_string().into())).await.map_err(|e| format!("send: {}", e))?;
+    write
+        .send(Message::Text(token.to_string().into()))
+        .await
+        .map_err(|e| format!("send: {}", e))?;
     tracing::info!("[NotificationListener] authenticated as {}", username);
 
     // Listen for notifications

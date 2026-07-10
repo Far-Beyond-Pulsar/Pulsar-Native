@@ -97,7 +97,8 @@ impl AddObjectDialog {
         };
         self.state_arc
             .read()
-            .scene.database
+            .scene
+            .database
             .add_object(new_object, None);
         cx.emit(ObjectSpawnedEvent);
         cx.emit(DismissEvent);

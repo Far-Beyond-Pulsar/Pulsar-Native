@@ -26,8 +26,8 @@ use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
 use ui::{h_flex, ContextModal as _, Disableable as _, IconName, Sizable as _};
 
-use crate::level_editor::state::{BuildMode, EditorMode, LevelEditorState};
 use super::actions::SetBuildMode;
+use crate::level_editor::state::{BuildMode, EditorMode, LevelEditorState};
 
 struct BuildCoreNotification;
 

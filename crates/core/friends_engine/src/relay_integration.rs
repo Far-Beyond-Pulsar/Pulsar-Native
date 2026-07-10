@@ -18,7 +18,8 @@ pub fn is_user_online(username: &str) -> bool {
     let home_server = crate::gist_storage::get_own_friend_entries()
         .ok()
         .and_then(|entries| {
-            entries.iter()
+            entries
+                .iter()
                 .find(|e| e.username == username)
                 .and_then(|e| e.home_server.clone())
         })
@@ -31,7 +32,10 @@ pub fn is_user_online(username: &str) -> bool {
         });
 
     let Some(hs) = home_server else {
-        tracing::info!("[relay_integration] is_user_online({}): no home server known", username);
+        tracing::info!(
+            "[relay_integration] is_user_online({}): no home server known",
+            username
+        );
         return false;
     };
 
@@ -41,24 +45,46 @@ pub fn is_user_online(username: &str) -> bool {
         username
     );
 
-    tracing::info!("[relay_integration] is_user_online({}): checking {}", username, url);
+    tracing::info!(
+        "[relay_integration] is_user_online({}): checking {}",
+        username,
+        url
+    );
 
     match reqwest::blocking::get(&url) {
         Ok(resp) if resp.status().is_success() => {
             if let Ok(body) = resp.json::<serde_json::Value>() {
-                let online = body.get("online").and_then(|v| v.as_bool()).unwrap_or(false);
-                tracing::info!("[relay_integration] is_user_online({}): {}", username, online);
+                let online = body
+                    .get("online")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                tracing::info!(
+                    "[relay_integration] is_user_online({}): {}",
+                    username,
+                    online
+                );
                 return online;
             }
-            tracing::warn!("[relay_integration] is_user_online({}): failed to parse response", username);
+            tracing::warn!(
+                "[relay_integration] is_user_online({}): failed to parse response",
+                username
+            );
             false
         }
         Ok(resp) => {
-            tracing::warn!("[relay_integration] is_user_online({}): HTTP {}", username, resp.status());
+            tracing::warn!(
+                "[relay_integration] is_user_online({}): HTTP {}",
+                username,
+                resp.status()
+            );
             false
         }
         Err(e) => {
-            tracing::warn!("[relay_integration] is_user_online({}): network error: {}", username, e);
+            tracing::warn!(
+                "[relay_integration] is_user_online({}): network error: {}",
+                username,
+                e
+            );
             false
         }
     }

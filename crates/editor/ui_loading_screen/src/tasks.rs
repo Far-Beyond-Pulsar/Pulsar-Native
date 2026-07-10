@@ -79,9 +79,15 @@ fn task_cargo_check(project: &Path) -> TaskResult {
                     .count()
                     .saturating_sub(1)
             );
-            TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+            TaskResult {
+                elapsed: t.elapsed(),
+                detail: Some(detail),
+            }
         }
-        Err(e) => TaskResult { elapsed: t.elapsed(), detail: Some(format!("cargo not found: {e}")) },
+        Err(e) => TaskResult {
+            elapsed: t.elapsed(),
+            detail: Some(format!("cargo not found: {e}")),
+        },
     }
 }
 
@@ -93,10 +99,17 @@ fn task_verify_project(project: &Path) -> TaskResult {
     let detail = format!(
         "{}{}{}",
         if exists { "found" } else { "missing" },
-        if has_cargo { " • Cargo.toml ✓" } else { " • Cargo.toml missing" },
+        if has_cargo {
+            " • Cargo.toml ✓"
+        } else {
+            " • Cargo.toml missing"
+        },
         if has_src { " • src/ ✓" } else { "" },
     );
-    TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
 }
 
 fn task_read_config(project: &Path) -> TaskResult {
@@ -105,13 +118,15 @@ fn task_read_config(project: &Path) -> TaskResult {
     let detail = std::fs::read_to_string(&path)
         .map(|s| format!("{} bytes", s.len()))
         .unwrap_or_else(|_| "not found".to_string());
-    TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
 }
 
 fn task_scan_packages(project: &Path) -> TaskResult {
     let t = Instant::now();
-    let content = std::fs::read_to_string(project.join("Cargo.toml"))
-        .unwrap_or_default();
+    let content = std::fs::read_to_string(project.join("Cargo.toml")).unwrap_or_default();
     // Count quoted workspace member entries inside the [workspace] section.
     let mut in_workspace = false;
     let mut count = 0usize;
@@ -144,7 +159,10 @@ fn task_index_files(project: &Path) -> TaskResult {
     store_preloaded_files(
         files
             .into_iter()
-            .map(|fi| PreloadedFileEntry { path: fi.path, name: fi.name })
+            .map(|fi| PreloadedFileEntry {
+                path: fi.path,
+                name: fi.name,
+            })
             .collect(),
     );
     TaskResult {
@@ -162,7 +180,10 @@ fn task_scan_assets(project: &Path) -> TaskResult {
     } else {
         "no assets/ dir".to_string()
     };
-    TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
 }
 
 fn task_warm_scene(project: &Path) -> TaskResult {
@@ -179,7 +200,10 @@ fn task_warm_scene(project: &Path) -> TaskResult {
     } else {
         "scene dir ready".to_string()
     };
-    TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
 }
 
 fn task_load_settings(_project: &Path) -> TaskResult {
@@ -187,21 +211,35 @@ fn task_load_settings(_project: &Path) -> TaskResult {
     // Best-effort: check whether a settings file exists at the standard path.
     let detail = directories::ProjectDirs::from("dev", "Pulsar", "Pulsar Engine")
         .map(|dirs| dirs.config_dir().join("settings.json"))
-        .and_then(|p| std::fs::metadata(&p).ok().map(|m| format!("{} bytes", m.len())))
+        .and_then(|p| {
+            std::fs::metadata(&p)
+                .ok()
+                .map(|m| format!("{} bytes", m.len()))
+        })
         .unwrap_or_else(|| "using defaults".to_string());
-    TaskResult { elapsed: t.elapsed(), detail: Some(detail) }
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
+    }
 }
 
 fn task_check_lsp(_project: &Path) -> TaskResult {
     let t = Instant::now();
     let sep = if cfg!(windows) { ';' } else { ':' };
-    let found = std::env::var("PATH").unwrap_or_default().split(sep).any(|dir| {
-        let base = Path::new(dir);
-        base.join("rust-analyzer").exists() || base.join("rust-analyzer.exe").exists()
-    });
+    let found = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(sep)
+        .any(|dir| {
+            let base = Path::new(dir);
+            base.join("rust-analyzer").exists() || base.join("rust-analyzer.exe").exists()
+        });
     TaskResult {
         elapsed: t.elapsed(),
-        detail: Some(if found { "found".to_string() } else { "not in PATH".to_string() }),
+        detail: Some(if found {
+            "found".to_string()
+        } else {
+            "not in PATH".to_string()
+        }),
     }
 }
 
@@ -219,7 +257,10 @@ fn task_scan_folder_tree(project: &Path) -> TaskResult {
 
 fn task_finalize(_project: &Path) -> TaskResult {
     // Logical fence: all earlier tasks have completed, pre-loaded data is ready.
-    TaskResult { elapsed: Duration::ZERO, detail: Some("ready".to_string()) }
+    TaskResult {
+        elapsed: Duration::ZERO,
+        detail: Some("ready".to_string()),
+    }
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────

@@ -4,7 +4,9 @@ mod avatar_cache;
 
 pub use avatar_cache::{AvatarCache, fetch_avatar_image};
 
-use engine_state::{EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode, ResourceHandle};
+use engine_state::{
+    EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode, ResourceHandle,
+};
 use gpui::{
     AnyElement, App, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Styled, StyledImage,
     div, img, prelude::FluentBuilder, px,

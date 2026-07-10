@@ -4,8 +4,8 @@
 //! archetype explosion, entity lifecycle, and raw throughput.
 //! Run with: `cargo test -p pulsar_ecs` or `cargo bench -p pulsar_ecs`.
 
-use std::time::{Duration, Instant};
 use pulsar_ecs::*;
+use std::time::{Duration, Instant};
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Component types
@@ -67,11 +67,7 @@ fn correctness_spawn_after_despawn_reuses_slot() {
     world.despawn(e1);
 
     let e2 = world.spawn();
-    assert_eq!(
-        e2.index(),
-        idx1,
-        "slot should be reused"
-    );
+    assert_eq!(e2.index(), idx1, "slot should be reused");
     // Generations differ — entities are distinct despite same index.
     assert_ne!(e1.generation(), e2.generation());
     assert!(world.is_alive(e2));
@@ -257,10 +253,7 @@ fn correctness_query_entity_order_preserved_after_despawn() {
 
     world.despawn(e2); // swap-remove should move e3 into e2's row
 
-    let results: Vec<f32> = world
-        .query::<(&Pos,)>()
-        .map(|(_, (p,))| p.0)
-        .collect();
+    let results: Vec<f32> = world.query::<(&Pos,)>().map(|(_, (p,))| p.0).collect();
     // Either order is valid after swap-remove, but both entities must be present
     assert_eq!(results.len(), 2);
     assert!(results.contains(&1.0));
@@ -281,10 +274,18 @@ fn adversarial_archetype_explosion_sparse() {
         let e = world.spawn();
         world.insert(e, Pos(i as f32, 0.0, 0.0));
         world.insert(e, Health(i as u32));
-        if i % 2 == 0 { world.insert(e, Vel(0.0, 0.0, 0.0)); }
-        if i % 3 == 0 { world.insert(e, Tag); }
-        if i % 5 == 0 { world.insert(e, Name(format!("n{}", i))); }
-        if i % 7 == 0 { world.insert(e, Weight(i as f64)); }
+        if i % 2 == 0 {
+            world.insert(e, Vel(0.0, 0.0, 0.0));
+        }
+        if i % 3 == 0 {
+            world.insert(e, Tag);
+        }
+        if i % 5 == 0 {
+            world.insert(e, Name(format!("n{}", i)));
+        }
+        if i % 7 == 0 {
+            world.insert(e, Weight(i as f64));
+        }
     }
 
     // Query should still be fast and correct
@@ -299,13 +300,27 @@ fn adversarial_many_archetypes_query_all() {
     for i in 0..128 {
         let e = world.spawn();
         world.insert(e, Pos(i as f32, 0.0, 0.0));
-        if i & 1 != 0 { world.insert(e, A); }
-        if i & 2 != 0 { world.insert(e, B); }
-        if i & 4 != 0 { world.insert(e, C); }
-        if i & 8 != 0 { world.insert(e, D); }
-        if i & 16 != 0 { world.insert(e, E); }
-        if i & 32 != 0 { world.insert(e, F); }
-        if i & 64 != 0 { world.insert(e, G); }
+        if i & 1 != 0 {
+            world.insert(e, A);
+        }
+        if i & 2 != 0 {
+            world.insert(e, B);
+        }
+        if i & 4 != 0 {
+            world.insert(e, C);
+        }
+        if i & 8 != 0 {
+            world.insert(e, D);
+        }
+        if i & 16 != 0 {
+            world.insert(e, E);
+        }
+        if i & 32 != 0 {
+            world.insert(e, F);
+        }
+        if i & 64 != 0 {
+            world.insert(e, G);
+        }
     }
     // Every entity has Pos, so query should return all 128
     let count = world.query::<(&Pos,)>().count();
@@ -313,7 +328,9 @@ fn adversarial_many_archetypes_query_all() {
 
     // Query for a rare combo
     let rare = world.query::<(&Pos, &A, &C, &E)>().count();
-    let expected = (0..128).filter(|i| i & 1 != 0 && i & 4 != 0 && i & 16 != 0).count();
+    let expected = (0..128)
+        .filter(|i| i & 1 != 0 && i & 4 != 0 && i & 16 != 0)
+        .count();
     assert_eq!(rare, expected);
 }
 
@@ -589,7 +606,11 @@ fn correctness_actor_slot_reuse() {
     let mut registry = ActorRegistry::new();
 
     let e1 = registry.register(
-        TestActor { began: false, ended: false, ticked: 0 },
+        TestActor {
+            began: false,
+            ended: false,
+            ticked: 0,
+        },
         &mut world,
     );
     let idx1 = e1.index();
@@ -597,7 +618,11 @@ fn correctness_actor_slot_reuse() {
 
     // New actor should reuse the entity slot
     let e2 = registry.register(
-        TestActor { began: false, ended: false, ticked: 0 },
+        TestActor {
+            began: false,
+            ended: false,
+            ticked: 0,
+        },
         &mut world,
     );
     assert_eq!(e2.index(), idx1, "entity slot should be reused");
@@ -697,7 +722,9 @@ fn perf_spawn_throughput() {
     let rate = total as f64 / elapsed.as_secs_f64();
     eprintln!(
         "perf_spawn_throughput: {} entities in {:.2}s → {:.0} entities/sec",
-        total, elapsed.as_secs_f64(), rate
+        total,
+        elapsed.as_secs_f64(),
+        rate
     );
     // Baseline: ~250K-500K entities/sec on modern hardware
     assert!(rate > 100_000.0, "spawn rate too low: {:.0}", rate);
@@ -725,7 +752,9 @@ fn perf_query_traversal() {
     let rate = count as f64 / elapsed.as_secs_f64();
     eprintln!(
         "perf_query_traversal: {} iterations in {:.2}s → {:.0} items/sec",
-        count, elapsed.as_secs_f64(), rate
+        count,
+        elapsed.as_secs_f64(),
+        rate
     );
     // Baseline: current implementation manages ~1.5M items/sec
     // on HashMap-based archetype lookup. Threshold set for CI.
@@ -746,10 +775,7 @@ fn perf_archetype_migration() {
     }
     let elapsed = start.elapsed();
     let rate = 4000.0 / elapsed.as_secs_f64(); // 4 migrations per loop
-    eprintln!(
-        "perf_archetype_migration: {:.0} migrations/sec",
-        rate
-    );
+    eprintln!("perf_archetype_migration: {:.0} migrations/sec", rate);
     assert!(rate > 50_000.0, "migration rate too low: {:.0}", rate);
 }
 
@@ -777,9 +803,7 @@ fn perf_query_on_sparse_archetypes() {
     }
     let elapsed = start.elapsed();
     let rate = count as f64 / elapsed.as_secs_f64();
-    eprintln!(
-        "perf_query_on_sparse_archetypes: {:.0} items/sec", rate
-    );
+    eprintln!("perf_query_on_sparse_archetypes: {:.0} items/sec", rate);
     assert!(rate > 1_000_000.0, "sparse query too slow: {:.0}", rate);
 }
 
@@ -900,12 +924,17 @@ fn correctness_query_tuples_compile() {
     // 5-tuple
     let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name)>().count();
     // 6-tuple
-    let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight)>().count();
+    let _ = world
+        .query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight)>()
+        .count();
     // 7-tuple
-    let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color)>().count();
-// 8-tuple
-let _ = world.query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color, &Lifetime)>()
-    .count();
+    let _ = world
+        .query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color)>()
+        .count();
+    // 8-tuple
+    let _ = world
+        .query::<(&Pos, &Vel, &Health, &Tag, &Name, &Weight, &Color, &Lifetime)>()
+        .count();
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1312,10 +1341,7 @@ fn stress_swap_remove_correctness() {
         // The entity that was last should now be at index 0.
         let still_alive = world.is_alive(living[0]);
         assert!(still_alive, "swap-moved entity should be alive");
-        assert!(
-            !world.is_alive(front),
-            "despawned entity should be dead"
-        );
+        assert!(!world.is_alive(front), "despawned entity should be dead");
     }
 
     // One entity remains.
@@ -1420,25 +1446,63 @@ fn stress_many_component_types() {
             let ii = i as u32;
             // Each entity gets C1, plus a subset of C2..C20 based on bit pattern.
             world.insert(e, C1(ii));
-            if i & 1 != 0 { world.insert(e, C2(ii)); }
-            if i & 2 != 0 { world.insert(e, C3(ii)); }
-            if i & 4 != 0 { world.insert(e, C4(ii)); }
-            if i & 8 != 0 { world.insert(e, C5(ii)); }
-            if i & 16 != 0 { world.insert(e, C6(ii)); }
-            if i & 32 != 0 { world.insert(e, C7(ii)); }
-            if i & 64 != 0 { world.insert(e, C8(ii)); }
-            if i & 128 != 0 { world.insert(e, C9(ii)); }
-            if i % 3 == 0 { world.insert(e, C10(ii)); }
-            if i % 5 == 0 { world.insert(e, C11(ii)); }
-            if i % 7 == 0 { world.insert(e, C12(ii)); }
-            if i % 11 == 0 { world.insert(e, C13(ii)); }
-            if i % 13 == 0 { world.insert(e, C14(ii)); }
-            if i % 17 == 0 { world.insert(e, C15(ii)); }
-            if i % 19 == 0 { world.insert(e, C16(ii)); }
-            if i % 23 == 0 { world.insert(e, C17(ii)); }
-            if i % 29 == 0 { world.insert(e, C18(ii)); }
-            if i % 31 == 0 { world.insert(e, C19(ii)); }
-            if i % 37 == 0 { world.insert(e, C20(ii)); }
+            if i & 1 != 0 {
+                world.insert(e, C2(ii));
+            }
+            if i & 2 != 0 {
+                world.insert(e, C3(ii));
+            }
+            if i & 4 != 0 {
+                world.insert(e, C4(ii));
+            }
+            if i & 8 != 0 {
+                world.insert(e, C5(ii));
+            }
+            if i & 16 != 0 {
+                world.insert(e, C6(ii));
+            }
+            if i & 32 != 0 {
+                world.insert(e, C7(ii));
+            }
+            if i & 64 != 0 {
+                world.insert(e, C8(ii));
+            }
+            if i & 128 != 0 {
+                world.insert(e, C9(ii));
+            }
+            if i % 3 == 0 {
+                world.insert(e, C10(ii));
+            }
+            if i % 5 == 0 {
+                world.insert(e, C11(ii));
+            }
+            if i % 7 == 0 {
+                world.insert(e, C12(ii));
+            }
+            if i % 11 == 0 {
+                world.insert(e, C13(ii));
+            }
+            if i % 13 == 0 {
+                world.insert(e, C14(ii));
+            }
+            if i % 17 == 0 {
+                world.insert(e, C15(ii));
+            }
+            if i % 19 == 0 {
+                world.insert(e, C16(ii));
+            }
+            if i % 23 == 0 {
+                world.insert(e, C17(ii));
+            }
+            if i % 29 == 0 {
+                world.insert(e, C18(ii));
+            }
+            if i % 31 == 0 {
+                world.insert(e, C19(ii));
+            }
+            if i % 37 == 0 {
+                world.insert(e, C20(ii));
+            }
             e
         })
         .collect();
@@ -1561,58 +1625,138 @@ fn stress_migration_column_reorder() {
 /// occupy every bit position (1..=64) and verify queries filter correctly.
 #[test]
 fn stress_bitmask_64_component_types() {
-    struct BitTy1;  struct BitTy2;  struct BitTy3;  struct BitTy4;
-    struct BitTy5;  struct BitTy6;  struct BitTy7;  struct BitTy8;
-    struct BitTy9;  struct BitTy10; struct BitTy11; struct BitTy12;
-    struct BitTy13; struct BitTy14; struct BitTy15; struct BitTy16;
-    struct BitTy17; struct BitTy18; struct BitTy19; struct BitTy20;
-    struct BitTy21; struct BitTy22; struct BitTy23; struct BitTy24;
-    struct BitTy25; struct BitTy26; struct BitTy27; struct BitTy28;
-    struct BitTy29; struct BitTy30; struct BitTy31; struct BitTy32;
-    struct BitTy33; struct BitTy34; struct BitTy35; struct BitTy36;
-    struct BitTy37; struct BitTy38; struct BitTy39; struct BitTy40;
-    struct BitTy41; struct BitTy42; struct BitTy43; struct BitTy44;
-    struct BitTy45; struct BitTy46; struct BitTy47; struct BitTy48;
-    struct BitTy49; struct BitTy50; struct BitTy51; struct BitTy52;
-    struct BitTy53; struct BitTy54; struct BitTy55; struct BitTy56;
-    struct BitTy57; struct BitTy58; struct BitTy59; struct BitTy60;
-    struct BitTy61; struct BitTy62; struct BitTy63; struct BitTy64;
+    struct BitTy1;
+    struct BitTy2;
+    struct BitTy3;
+    struct BitTy4;
+    struct BitTy5;
+    struct BitTy6;
+    struct BitTy7;
+    struct BitTy8;
+    struct BitTy9;
+    struct BitTy10;
+    struct BitTy11;
+    struct BitTy12;
+    struct BitTy13;
+    struct BitTy14;
+    struct BitTy15;
+    struct BitTy16;
+    struct BitTy17;
+    struct BitTy18;
+    struct BitTy19;
+    struct BitTy20;
+    struct BitTy21;
+    struct BitTy22;
+    struct BitTy23;
+    struct BitTy24;
+    struct BitTy25;
+    struct BitTy26;
+    struct BitTy27;
+    struct BitTy28;
+    struct BitTy29;
+    struct BitTy30;
+    struct BitTy31;
+    struct BitTy32;
+    struct BitTy33;
+    struct BitTy34;
+    struct BitTy35;
+    struct BitTy36;
+    struct BitTy37;
+    struct BitTy38;
+    struct BitTy39;
+    struct BitTy40;
+    struct BitTy41;
+    struct BitTy42;
+    struct BitTy43;
+    struct BitTy44;
+    struct BitTy45;
+    struct BitTy46;
+    struct BitTy47;
+    struct BitTy48;
+    struct BitTy49;
+    struct BitTy50;
+    struct BitTy51;
+    struct BitTy52;
+    struct BitTy53;
+    struct BitTy54;
+    struct BitTy55;
+    struct BitTy56;
+    struct BitTy57;
+    struct BitTy58;
+    struct BitTy59;
+    struct BitTy60;
+    struct BitTy61;
+    struct BitTy62;
+    struct BitTy63;
+    struct BitTy64;
 
     let mut world = World::new();
     let e_all = world.spawn();
 
-    world.insert(e_all, BitTy1);  world.insert(e_all, BitTy2);
-    world.insert(e_all, BitTy3);  world.insert(e_all, BitTy4);
-    world.insert(e_all, BitTy5);  world.insert(e_all, BitTy6);
-    world.insert(e_all, BitTy7);  world.insert(e_all, BitTy8);
-    world.insert(e_all, BitTy9);  world.insert(e_all, BitTy10);
-    world.insert(e_all, BitTy11); world.insert(e_all, BitTy12);
-    world.insert(e_all, BitTy13); world.insert(e_all, BitTy14);
-    world.insert(e_all, BitTy15); world.insert(e_all, BitTy16);
-    world.insert(e_all, BitTy17); world.insert(e_all, BitTy18);
-    world.insert(e_all, BitTy19); world.insert(e_all, BitTy20);
-    world.insert(e_all, BitTy21); world.insert(e_all, BitTy22);
-    world.insert(e_all, BitTy23); world.insert(e_all, BitTy24);
-    world.insert(e_all, BitTy25); world.insert(e_all, BitTy26);
-    world.insert(e_all, BitTy27); world.insert(e_all, BitTy28);
-    world.insert(e_all, BitTy29); world.insert(e_all, BitTy30);
-    world.insert(e_all, BitTy31); world.insert(e_all, BitTy32);
-    world.insert(e_all, BitTy33); world.insert(e_all, BitTy34);
-    world.insert(e_all, BitTy35); world.insert(e_all, BitTy36);
-    world.insert(e_all, BitTy37); world.insert(e_all, BitTy38);
-    world.insert(e_all, BitTy39); world.insert(e_all, BitTy40);
-    world.insert(e_all, BitTy41); world.insert(e_all, BitTy42);
-    world.insert(e_all, BitTy43); world.insert(e_all, BitTy44);
-    world.insert(e_all, BitTy45); world.insert(e_all, BitTy46);
-    world.insert(e_all, BitTy47); world.insert(e_all, BitTy48);
-    world.insert(e_all, BitTy49); world.insert(e_all, BitTy50);
-    world.insert(e_all, BitTy51); world.insert(e_all, BitTy52);
-    world.insert(e_all, BitTy53); world.insert(e_all, BitTy54);
-    world.insert(e_all, BitTy55); world.insert(e_all, BitTy56);
-    world.insert(e_all, BitTy57); world.insert(e_all, BitTy58);
-    world.insert(e_all, BitTy59); world.insert(e_all, BitTy60);
-    world.insert(e_all, BitTy61); world.insert(e_all, BitTy62);
-    world.insert(e_all, BitTy63); world.insert(e_all, BitTy64);
+    world.insert(e_all, BitTy1);
+    world.insert(e_all, BitTy2);
+    world.insert(e_all, BitTy3);
+    world.insert(e_all, BitTy4);
+    world.insert(e_all, BitTy5);
+    world.insert(e_all, BitTy6);
+    world.insert(e_all, BitTy7);
+    world.insert(e_all, BitTy8);
+    world.insert(e_all, BitTy9);
+    world.insert(e_all, BitTy10);
+    world.insert(e_all, BitTy11);
+    world.insert(e_all, BitTy12);
+    world.insert(e_all, BitTy13);
+    world.insert(e_all, BitTy14);
+    world.insert(e_all, BitTy15);
+    world.insert(e_all, BitTy16);
+    world.insert(e_all, BitTy17);
+    world.insert(e_all, BitTy18);
+    world.insert(e_all, BitTy19);
+    world.insert(e_all, BitTy20);
+    world.insert(e_all, BitTy21);
+    world.insert(e_all, BitTy22);
+    world.insert(e_all, BitTy23);
+    world.insert(e_all, BitTy24);
+    world.insert(e_all, BitTy25);
+    world.insert(e_all, BitTy26);
+    world.insert(e_all, BitTy27);
+    world.insert(e_all, BitTy28);
+    world.insert(e_all, BitTy29);
+    world.insert(e_all, BitTy30);
+    world.insert(e_all, BitTy31);
+    world.insert(e_all, BitTy32);
+    world.insert(e_all, BitTy33);
+    world.insert(e_all, BitTy34);
+    world.insert(e_all, BitTy35);
+    world.insert(e_all, BitTy36);
+    world.insert(e_all, BitTy37);
+    world.insert(e_all, BitTy38);
+    world.insert(e_all, BitTy39);
+    world.insert(e_all, BitTy40);
+    world.insert(e_all, BitTy41);
+    world.insert(e_all, BitTy42);
+    world.insert(e_all, BitTy43);
+    world.insert(e_all, BitTy44);
+    world.insert(e_all, BitTy45);
+    world.insert(e_all, BitTy46);
+    world.insert(e_all, BitTy47);
+    world.insert(e_all, BitTy48);
+    world.insert(e_all, BitTy49);
+    world.insert(e_all, BitTy50);
+    world.insert(e_all, BitTy51);
+    world.insert(e_all, BitTy52);
+    world.insert(e_all, BitTy53);
+    world.insert(e_all, BitTy54);
+    world.insert(e_all, BitTy55);
+    world.insert(e_all, BitTy56);
+    world.insert(e_all, BitTy57);
+    world.insert(e_all, BitTy58);
+    world.insert(e_all, BitTy59);
+    world.insert(e_all, BitTy60);
+    world.insert(e_all, BitTy61);
+    world.insert(e_all, BitTy62);
+    world.insert(e_all, BitTy63);
+    world.insert(e_all, BitTy64);
 
     // Query for a subset from the low, mid, and high bits.
     let low_count = world.query::<(&BitTy1, &BitTy2, &BitTy3)>().count();
@@ -1760,9 +1904,7 @@ fn stress_schedule_mutate_components() {
         }
     });
     schedule.add_system("remove_value", move |world, _time| {
-        let should_remove = world
-            .query::<(&Toggle,)>()
-            .any(|(_, (toggle,))| !toggle.0);
+        let should_remove = world.query::<(&Toggle,)>().any(|(_, (toggle,))| !toggle.0);
         if should_remove {
             let _ = world.remove::<Value>(e);
         }
@@ -1866,10 +2008,18 @@ fn stress_chained_remove_all_components() {
         .map(|i| {
             let e = world.spawn();
             world.insert(e, A(i));
-            if i % 2 == 0 { world.insert(e, B(i * 2)); }
-            if i % 3 == 0 { world.insert(e, C(i * 3)); }
-            if i % 5 == 0 { world.insert(e, D(i * 5)); }
-            if i % 7 == 0 { world.insert(e, E(i * 7)); }
+            if i % 2 == 0 {
+                world.insert(e, B(i * 2));
+            }
+            if i % 3 == 0 {
+                world.insert(e, C(i * 3));
+            }
+            if i % 5 == 0 {
+                world.insert(e, D(i * 5));
+            }
+            if i % 7 == 0 {
+                world.insert(e, E(i * 7));
+            }
             e
         })
         .collect();
@@ -1942,10 +2092,7 @@ fn stress_despawn_collected_entities() {
     }
 
     assert_entity_count!(&world, n);
-    let health_sum: u32 = world
-        .query::<(&Health,)>()
-        .map(|(_, (h,))| h.0)
-        .sum();
+    let health_sum: u32 = world.query::<(&Health,)>().map(|(_, (h,))| h.0).sum();
     // 0 + 1 + ... + (n-1) = n*(n-1)/2
     assert_eq!(health_sum, n as u32 * (n as u32 - 1) / 2);
 }

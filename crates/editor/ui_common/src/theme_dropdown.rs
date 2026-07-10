@@ -2,13 +2,14 @@ use std::rc::Rc;
 
 use gpui::{
     div, prelude::FluentBuilder as _, px, App, AppContext as _, Context, DismissEvent, Entity,
-    Focusable, FocusHandle, Hsla, InteractiveElement as _, IntoElement, MouseButton,
+    FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, MouseButton,
     ParentElement as _, Render, SharedString, StatefulInteractiveElement, Styled as _, Window,
 };
 use ui::{
-    h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, Theme,
-    ThemeConfig, ThemeRegistry,
+    h_flex,
     input::{InputState, TextInput},
+    v_flex, ActiveTheme as _, Icon, IconName, Sizable as _, StyledExt as _, Theme, ThemeConfig,
+    ThemeRegistry,
 };
 
 // ── ThemePicker ───────────────────────────────────────────────────────────────
@@ -20,10 +21,7 @@ pub struct ThemePicker {
 
 impl ThemePicker {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search themes…")
-        });
+        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search themes…"));
         Self {
             focus_handle: cx.focus_handle(),
             search_input,
@@ -88,8 +86,20 @@ fn render_swatch(config: &Rc<ThemeConfig>) -> impl IntoElement {
         .px(px(4.))
         .flex_shrink_0()
         .child(div().h(px(2.)).rounded_full().bg(fg).w(px(22.)))
-        .child(div().h(px(2.)).rounded_full().bg(fg.opacity(0.55)).w(px(16.)))
-        .child(div().h(px(2.)).rounded_full().bg(fg.opacity(0.3)).w(px(10.)))
+        .child(
+            div()
+                .h(px(2.))
+                .rounded_full()
+                .bg(fg.opacity(0.55))
+                .w(px(16.)),
+        )
+        .child(
+            div()
+                .h(px(2.))
+                .rounded_full()
+                .bg(fg.opacity(0.3))
+                .w(px(10.)),
+        )
 }
 
 // ── Render ────────────────────────────────────────────────────────────────────
@@ -106,10 +116,7 @@ impl Render for ThemePicker {
         let themes: Vec<Rc<ThemeConfig>> = ThemeRegistry::global(cx)
             .sorted_themes()
             .into_iter()
-            .filter(|t| {
-                query_lower.is_empty()
-                    || t.name.to_lowercase().contains(&query_lower)
-            })
+            .filter(|t| query_lower.is_empty() || t.name.to_lowercase().contains(&query_lower))
             .cloned()
             .collect();
 
@@ -141,11 +148,7 @@ impl Render for ThemePicker {
                     .items_center()
                     .border_b_1()
                     .border_color(border)
-                    .child(
-                        Icon::new(IconName::Search)
-                            .size(px(14.))
-                            .text_color(muted),
-                    )
+                    .child(Icon::new(IconName::Search).size(px(14.)).text_color(muted))
                     .child(
                         div()
                             .flex_1()
@@ -235,11 +238,7 @@ impl Render for ThemePicker {
                             )
                             // Active indicator
                             .when(is_active, |el| {
-                                el.child(
-                                    Icon::new(IconName::Check)
-                                        .size(px(14.))
-                                        .text_color(fg),
-                                )
+                                el.child(Icon::new(IconName::Check).size(px(14.)).text_color(fg))
                             })
                     })),
             )

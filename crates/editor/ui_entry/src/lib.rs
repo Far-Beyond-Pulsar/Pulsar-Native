@@ -1,5 +1,5 @@
-mod core;
 mod component;
+mod core;
 mod screen;
 mod service;
 mod util;

@@ -44,12 +44,15 @@ impl SessionChannel for MockChannel {
 async fn test_read_file_sends_request() {
     let sent = Arc::new(Mutex::new(Vec::new()));
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileChunk(FileChunk {
-        path: "hello.txt".into(),
-        offset: 0,
-        data: b"hello".to_vec(),
-        is_last: true,
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileChunk(FileChunk {
+            path: "hello.txt".into(),
+            offset: 0,
+            data: b"hello".to_vec(),
+            is_last: true,
+        }));
 
     let channel = MockChannel {
         sent: sent.clone(),
@@ -63,24 +66,32 @@ async fn test_read_file_sends_request() {
 
     let sent_msgs = sent.lock().unwrap();
     assert_eq!(sent_msgs.len(), 1);
-    assert!(matches!(&sent_msgs[0], SessionMessage::RequestFile(RequestFile { path, .. }) if path == "hello.txt"));
+    assert!(
+        matches!(&sent_msgs[0], SessionMessage::RequestFile(RequestFile { path, .. }) if path == "hello.txt")
+    );
 }
 
 #[tokio::test]
 async fn test_read_file_assembles_chunks() {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileChunk(FileChunk {
-        path: "chunked.txt".into(),
-        offset: 0,
-        data: b"hello ".to_vec(),
-        is_last: false,
-    }));
-    responses.lock().unwrap().push_back(SessionMessage::FileChunk(FileChunk {
-        path: "chunked.txt".into(),
-        offset: 6,
-        data: b"world".to_vec(),
-        is_last: true,
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileChunk(FileChunk {
+            path: "chunked.txt".into(),
+            offset: 0,
+            data: b"hello ".to_vec(),
+            is_last: false,
+        }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileChunk(FileChunk {
+            path: "chunked.txt".into(),
+            offset: 6,
+            data: b"world".to_vec(),
+            is_last: true,
+        }));
 
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),
@@ -96,34 +107,37 @@ async fn test_read_file_assembles_chunks() {
 #[tokio::test]
 async fn test_list_dir_filters_manifest() {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileManifest(FileManifest {
-        entries: vec![
-            ManifestEntry {
-                path: "src/main.rs".into(),
-                is_dir: false,
-                size: 100,
-                modified: Some(1000),
-            },
-            ManifestEntry {
-                path: "src/lib.rs".into(),
-                is_dir: false,
-                size: 200,
-                modified: Some(1001),
-            },
-            ManifestEntry {
-                path: "src/sub/mod.rs".into(),
-                is_dir: false,
-                size: 50,
-                modified: Some(1002),
-            },
-            ManifestEntry {
-                path: "README.md".into(),
-                is_dir: false,
-                size: 30,
-                modified: Some(999),
-            },
-        ],
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileManifest(FileManifest {
+            entries: vec![
+                ManifestEntry {
+                    path: "src/main.rs".into(),
+                    is_dir: false,
+                    size: 100,
+                    modified: Some(1000),
+                },
+                ManifestEntry {
+                    path: "src/lib.rs".into(),
+                    is_dir: false,
+                    size: 200,
+                    modified: Some(1001),
+                },
+                ManifestEntry {
+                    path: "src/sub/mod.rs".into(),
+                    is_dir: false,
+                    size: 50,
+                    modified: Some(1002),
+                },
+                ManifestEntry {
+                    path: "README.md".into(),
+                    is_dir: false,
+                    size: 30,
+                    modified: Some(999),
+                },
+            ],
+        }));
 
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),
@@ -134,7 +148,12 @@ async fn test_list_dir_filters_manifest() {
     let result = provider.list_dir(Path::new("src"));
     assert!(result.is_ok());
     let entries = result.unwrap();
-    assert_eq!(entries.len(), 3, "expected main.rs, lib.rs, sub; got {:?}", entries.iter().map(|e| &e.name).collect::<Vec<_>>());
+    assert_eq!(
+        entries.len(),
+        3,
+        "expected main.rs, lib.rs, sub; got {:?}",
+        entries.iter().map(|e| &e.name).collect::<Vec<_>>()
+    );
     assert!(entries.iter().any(|e| e.name == "main.rs"));
     assert!(entries.iter().any(|e| e.name == "lib.rs"));
     assert!(entries.iter().any(|e| e.name == "sub" && e.is_dir));
@@ -143,22 +162,25 @@ async fn test_list_dir_filters_manifest() {
 #[tokio::test]
 async fn test_list_dir_root() {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileManifest(FileManifest {
-        entries: vec![
-            ManifestEntry {
-                path: "src/main.rs".into(),
-                is_dir: false,
-                size: 100,
-                modified: None,
-            },
-            ManifestEntry {
-                path: "README.md".into(),
-                is_dir: false,
-                size: 30,
-                modified: None,
-            },
-        ],
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileManifest(FileManifest {
+            entries: vec![
+                ManifestEntry {
+                    path: "src/main.rs".into(),
+                    is_dir: false,
+                    size: 100,
+                    modified: None,
+                },
+                ManifestEntry {
+                    path: "README.md".into(),
+                    is_dir: false,
+                    size: 30,
+                    modified: None,
+                },
+            ],
+        }));
 
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),
@@ -174,13 +196,12 @@ async fn test_list_dir_root() {
     assert!(entries.iter().any(|e| e.name.starts_with("src")));
 }
 
-fn make_exist_provider(
-    entries: Vec<ManifestEntry>,
-) -> P2pFsProvider {
+fn make_exist_provider(entries: Vec<ManifestEntry>) -> P2pFsProvider {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileManifest(FileManifest {
-        entries,
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileManifest(FileManifest { entries }));
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),
         responses,
@@ -238,22 +259,25 @@ async fn test_write_file_sends_chunk() {
 #[tokio::test]
 async fn test_manifest_returns_all_entries() {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileManifest(FileManifest {
-        entries: vec![
-            ManifestEntry {
-                path: "a.rs".into(),
-                is_dir: false,
-                size: 10,
-                modified: None,
-            },
-            ManifestEntry {
-                path: "b.rs".into(),
-                is_dir: false,
-                size: 20,
-                modified: None,
-            },
-        ],
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileManifest(FileManifest {
+            entries: vec![
+                ManifestEntry {
+                    path: "a.rs".into(),
+                    is_dir: false,
+                    size: 10,
+                    modified: None,
+                },
+                ManifestEntry {
+                    path: "b.rs".into(),
+                    is_dir: false,
+                    size: 20,
+                    modified: None,
+                },
+            ],
+        }));
 
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),
@@ -268,14 +292,17 @@ async fn test_manifest_returns_all_entries() {
 #[tokio::test]
 async fn test_metadata_returns_entry_info() {
     let responses = Arc::new(Mutex::new(VecDeque::new()));
-    responses.lock().unwrap().push_back(SessionMessage::FileManifest(FileManifest {
-        entries: vec![ManifestEntry {
-            path: "data.bin".into(),
-            is_dir: false,
-            size: 512,
-            modified: Some(42),
-        }],
-    }));
+    responses
+        .lock()
+        .unwrap()
+        .push_back(SessionMessage::FileManifest(FileManifest {
+            entries: vec![ManifestEntry {
+                path: "data.bin".into(),
+                is_dir: false,
+                size: 512,
+                modified: Some(42),
+            }],
+        }));
 
     let channel = MockChannel {
         sent: Arc::new(Mutex::new(Vec::new())),

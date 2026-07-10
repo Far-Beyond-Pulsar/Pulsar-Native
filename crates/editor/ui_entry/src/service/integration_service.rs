@@ -2,13 +2,31 @@ use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntegrationType { Editor, GitTool, Terminal, FileManager }
+pub enum IntegrationType {
+    Editor,
+    GitTool,
+    Terminal,
+    FileManager,
+}
 
-pub struct LaunchResult { pub success: bool, pub error: Option<String> }
+pub struct LaunchResult {
+    pub success: bool,
+    pub error: Option<String>,
+}
 
 impl LaunchResult {
-    pub fn success() -> Self { Self { success: true, error: None } }
-    pub fn error(message: String) -> Self { Self { success: false, error: Some(message) } }
+    pub fn success() -> Self {
+        Self {
+            success: true,
+            error: None,
+        }
+    }
+    pub fn error(message: String) -> Self {
+        Self {
+            success: false,
+            error: Some(message),
+        }
+    }
 }
 
 pub struct IntegrationService;
@@ -38,21 +56,48 @@ impl IntegrationService {
     }
 
     pub fn launch_file_manager(path: impl AsRef<Path>) -> LaunchResult {
-        #[cfg(windows)] { Self::launch_gui("explorer", path.as_ref()) }
-        #[cfg(target_os = "macos")] { Self::launch_gui("open", path.as_ref()) }
-        #[cfg(target_os = "linux")] { Self::launch_gui("nautilus", path.as_ref()) }
+        #[cfg(windows)]
+        {
+            Self::launch_gui("explorer", path.as_ref())
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Self::launch_gui("open", path.as_ref())
+        }
+        #[cfg(target_os = "linux")]
+        {
+            Self::launch_gui("nautilus", path.as_ref())
+        }
     }
 
     #[cfg(windows)]
     fn launch_gui(command: &str, path: &Path) -> LaunchResult {
         use std::os::windows::process::CommandExt;
         const FLAGS: u32 = 0x08000000 | 0x00000008 | 0x00000200;
-        match Command::new(command).arg(path).creation_flags(FLAGS).spawn() {
+        match Command::new(command)
+            .arg(path)
+            .creation_flags(FLAGS)
+            .spawn()
+        {
             Ok(_) => LaunchResult::success(),
             Err(_) => {
-                let ps = format!("Start-Process -FilePath '{}' -ArgumentList '{}' -WindowStyle Hidden", command, path.to_string_lossy().replace("'", "''"));
-                match Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", &ps])
-                    .creation_flags(0x08000000 | 0x00000008).spawn() {
+                let ps = format!(
+                    "Start-Process -FilePath '{}' -ArgumentList '{}' -WindowStyle Hidden",
+                    command,
+                    path.to_string_lossy().replace("'", "''")
+                );
+                match Command::new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-WindowStyle",
+                        "Hidden",
+                        "-Command",
+                        &ps,
+                    ])
+                    .creation_flags(0x08000000 | 0x00000008)
+                    .spawn()
+                {
                     Ok(_) => LaunchResult::success(),
                     Err(e) => LaunchResult::error(format!("Failed to launch {}: {}", command, e)),
                 }
@@ -69,20 +114,30 @@ impl IntegrationService {
     }
 
     fn launch_visual_studio(path: &Path) -> LaunchResult {
-        let sln = std::fs::read_dir(path).ok().and_then(|e| e.filter_map(|e| e.ok())
-            .find(|e| e.path().extension().and_then(|e| e.to_str()) == Some("sln")).map(|e| e.path()));
+        let sln = std::fs::read_dir(path).ok().and_then(|e| {
+            e.filter_map(|e| e.ok())
+                .find(|e| e.path().extension().and_then(|e| e.to_str()) == Some("sln"))
+                .map(|e| e.path())
+        });
         Self::launch_gui("devenv", sln.as_deref().unwrap_or(path))
     }
 
     fn launch_terminal_editor(command: &str, path: &Path) -> LaunchResult {
-        #[cfg(windows)] {
+        #[cfg(windows)]
+        {
             use std::os::windows::process::CommandExt;
-            match Command::new("cmd").args(["/K", "cd", "/D", &path.to_string_lossy(), "&&", command])
-                .creation_flags(0x00000010).spawn() {
+            match Command::new("cmd")
+                .args(["/K", "cd", "/D", &path.to_string_lossy(), "&&", command])
+                .creation_flags(0x00000010)
+                .spawn()
+            {
                 Ok(_) => LaunchResult::success(),
                 Err(e) => LaunchResult::error(format!("Failed to launch {}: {}", command, e)),
             }
         }
-        #[cfg(not(windows))] { Self::launch_gui(command, path) }
+        #[cfg(not(windows))]
+        {
+            Self::launch_gui(command, path)
+        }
     }
 }

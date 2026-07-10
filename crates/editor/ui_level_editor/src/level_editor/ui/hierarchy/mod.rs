@@ -1,8 +1,8 @@
 pub mod tree_item_renderer;
 
-use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use crate::level_editor::scene_database::SceneObjectData;
 use crate::level_editor::scene_database::{ObjectType, SceneDatabase};
+use crate::level_editor::state::{HierarchyDragPayload, LevelEditorState};
 use gpui::{prelude::*, *};
 use rust_i18n::t;
 use std::sync::Arc;
@@ -276,11 +276,16 @@ impl HierarchyPanel {
         V: 'static + EventEmitter<PanelEvent> + Render,
     {
         let all_objects = state.scene.database.get_all_objects();
-        let items = Self::build_items(&all_objects, state.scene.selected_object().as_ref(), &state_arc);
+        let items = Self::build_items(
+            &all_objects,
+            state.scene.selected_object().as_ref(),
+            &state_arc,
+        );
 
         // Root-level objects (those without parents)
         let root_ids: Vec<String> = state
-            .scene.scene_objects()
+            .scene
+            .scene_objects()
             .iter()
             .map(|obj| obj.id.clone())
             .collect();
@@ -450,7 +455,8 @@ impl HierarchyPanel {
                             // Reorder doesn't fit a SceneCommand variant yet — call directly and
                             // bump revision so the polling task propagates the change.
                             state
-                                .scene.database
+                                .scene
+                                .database
                                 .reorder_object_siblings(&object_id, &target_id);
                             state.scene.revision = state.scene.revision.saturating_add(1);
                         } else {

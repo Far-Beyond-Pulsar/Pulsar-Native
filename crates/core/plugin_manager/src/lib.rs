@@ -294,10 +294,7 @@ pub struct PluginManager {
 
     /// Component factories from plugins, collected at load time.
     /// Each entry is (class_name, factory).
-    plugin_component_registrations: Vec<(
-        String,
-        plugin_editor_api::ComponentFactory,
-    )>,
+    plugin_component_registrations: Vec<(String, plugin_editor_api::ComponentFactory)>,
 
     /// Component definitions registered directly as built-ins (not from DLL plugins).
     /// These supplement definitions from `BuiltinEditorRegistry` and DLL plugins.
@@ -1093,12 +1090,11 @@ impl PluginManager {
         // 1. The vtable lives in the plugin's .rodata section (never unmapped)
         // 2. The drop glue lives in the plugin's .text section (never unmapped)
         // 3. We can safely share the Arc across the boundary
-        let factory = plugin
-            .editor_factories
-            .get(editor_id)
-            .ok_or_else(|| PluginManagerError::EditorNotFound {
+        let factory = plugin.editor_factories.get(editor_id).ok_or_else(|| {
+            PluginManagerError::EditorNotFound {
                 editor_id: editor_id.clone(),
-            })?;
+            }
+        })?;
 
         (factory.create)(file_path, window, cx)
             .map(|panel| self.decorate_editor_panel_for_path(panel, &file_path_for_decoration))

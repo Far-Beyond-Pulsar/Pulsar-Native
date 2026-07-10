@@ -1,7 +1,7 @@
+use engine_fs::virtual_fs;
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use rust_i18n::t;
-use engine_fs::virtual_fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::{
@@ -129,7 +129,8 @@ impl ToolbarPanel {
                 let target_path = {
                     let state = state_clone.read();
                     state
-                        .scene.current_scene
+                        .scene
+                        .current_scene
                         .clone()
                         .or_else(Self::default_level_path)
                 };
@@ -160,7 +161,8 @@ impl ToolbarPanel {
                             }
                         });
                     state
-                        .scene.database
+                        .scene
+                        .database
                         .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
@@ -182,7 +184,12 @@ impl ToolbarPanel {
 
     fn is_source_build() -> bool {
         engine_state::EngineContext::global()
-            .map(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().is_source_build)
+            .map(|ctx| {
+                ctx.store
+                    .get_or_init::<engine_state::DevContext>()
+                    .read()
+                    .is_source_build
+            })
             .unwrap_or(false)
     }
 
@@ -199,7 +206,13 @@ impl ToolbarPanel {
             .on_click(move |_, window, cx| {
                 // Resolve the target path: <workspace_root>/assets/default.level
                 let target_path = engine_state::EngineContext::global()
-                    .and_then(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().source_path.clone())
+                    .and_then(|ctx| {
+                        ctx.store
+                            .get_or_init::<engine_state::DevContext>()
+                            .read()
+                            .source_path
+                            .clone()
+                    })
                     .map(|root| root.join("assets").join("default.level"));
 
                 let Some(path) = target_path else {
@@ -236,7 +249,8 @@ impl ToolbarPanel {
                             }
                         });
                     state
-                        .scene.database
+                        .scene
+                        .database
                         .save_to_file_with_editor_camera(&path, editor_camera)
                 };
 
@@ -280,7 +294,8 @@ impl ToolbarPanel {
             .tooltip(t!("LevelEditor.Toolbar.TogglePerformance"))
             .on_click(move |_, _, _| {
                 let mut s = state_clone.write();
-                s.overlays.state.show_performance_overlay = !s.overlays.state.show_performance_overlay;
+                s.overlays.state.show_performance_overlay =
+                    !s.overlays.state.show_performance_overlay;
             });
         if is_profiling {
             btn.primary()

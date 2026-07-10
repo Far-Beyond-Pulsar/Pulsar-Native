@@ -6,9 +6,7 @@
 //! the DLL loading path directly and verifying the trait vtable layout matches
 //! between the engine's plugin_editor_api and the compiled plugin.
 
-use plugin_editor_api::editor_element::{
-    EditorFactoryRegistry, EditorPluginEditor,
-};
+use plugin_editor_api::editor_element::{EditorFactoryRegistry, EditorPluginEditor};
 use plugin_editor_api::identifiers::EditorId;
 use plugin_editor_api::plugin::EditorPlugin;
 use plugin_editor_api::version::VersionInfo;
@@ -44,19 +42,13 @@ impl EditorPlugin for TestPlugin {
 }
 
 impl EditorPluginEditor for TestPlugin {
-    fn register_editors(
-        &'static self,
-        registry: &mut EditorFactoryRegistry,
-    ) {
+    fn register_editors(&'static self, registry: &mut EditorFactoryRegistry) {
         // Basic registration — just tests the factory closure is stored
-        registry.register_fn(
-            EditorId::new("test-editor"),
-            |_file_path, _window, _cx| {
-                Err(plugin_editor_api::error::PluginError::Other {
-                    message: "No GPUI app in test — creation expected to fail".into(),
-                })
-            },
-        );
+        registry.register_fn(EditorId::new("test-editor"), |_file_path, _window, _cx| {
+            Err(plugin_editor_api::error::PluginError::Other {
+                message: "No GPUI app in test — creation expected to fail".into(),
+            })
+        });
     }
 }
 
@@ -86,25 +78,25 @@ fn trait_vtable_dispatch() {
 
         impl EditorPluginEditor for FullTestPlugin {
             fn register_editors(&'static self, registry: &mut EditorFactoryRegistry) {
-                registry.register_fn(
-                    EditorId::new("test-editor"),
-                    |_p, _w, _c| Err(plugin_editor_api::error::PluginError::Other {
+                registry.register_fn(EditorId::new("test-editor"), |_p, _w, _c| {
+                    Err(plugin_editor_api::error::PluginError::Other {
                         message: "no app".into(),
-                    }),
-                );
-                registry.register_fn(
-                    EditorId::new(SECOND_EDITOR),
-                    |_p, _w, _c| Err(plugin_editor_api::error::PluginError::Other {
+                    })
+                });
+                registry.register_fn(EditorId::new(SECOND_EDITOR), |_p, _w, _c| {
+                    Err(plugin_editor_api::error::PluginError::Other {
                         message: "no app".into(),
-                    }),
-                );
+                    })
+                });
             }
         }
 
         impl plugin_editor_api::statusbar::EditorPluginStatusbar for FullTestPlugin {}
         impl plugin_editor_api::ai::EditorPluginAi for FullTestPlugin {}
         impl plugin_editor_api::components::EditorPluginComponents for FullTestPlugin {
-            fn component_definitions(&self) -> Vec<plugin_editor_api::components::ComponentDefinition> {
+            fn component_definitions(
+                &self,
+            ) -> Vec<plugin_editor_api::components::ComponentDefinition> {
                 Vec::new()
             }
         }
@@ -172,12 +164,12 @@ fn version_info_abi() {
     let v = VersionInfo::current();
     assert_eq!(v.engine_version.0, 0);
     // rustc_version_hash should be non-zero
-    assert!(v.rustc_version_hash != 0, "rustc_version_hash should not be zero");
+    assert!(
+        v.rustc_version_hash != 0,
+        "rustc_version_hash should not be zero"
+    );
     eprintln!(
         "✅ VersionInfo ABI: engine ({}.{}.{}), rustc_hash 0x{:016x}",
-        v.engine_version.0,
-        v.engine_version.1,
-        v.engine_version.2,
-        v.rustc_version_hash
+        v.engine_version.0, v.engine_version.1, v.engine_version.2, v.rustc_version_hash
     );
 }

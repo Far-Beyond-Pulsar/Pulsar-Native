@@ -11,9 +11,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tracing::{info, warn};
 use uuid::Uuid;
 
-use pulsar_multiplayer_core::session::Role;
 use crate::config::Config;
 use crate::metrics::METRICS;
+use pulsar_multiplayer_core::session::Role;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {

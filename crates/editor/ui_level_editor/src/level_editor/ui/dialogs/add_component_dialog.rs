@@ -96,12 +96,10 @@ impl AddComponentDialog {
         // Try built-in reflection registry first, then plugin component registry.
         if REGISTRY.has_class(class_name) {
             self.add_from_registry(class_name, cx);
-        } else if let Some(instance) = engine_backend::EngineBackend::global()
-            .and_then(|b| {
-                let guard = b.read();
-                guard.plugin_components().create_instance(class_name)
-            })
-        {
+        } else if let Some(instance) = engine_backend::EngineBackend::global().and_then(|b| {
+            let guard = b.read();
+            guard.plugin_components().create_instance(class_name)
+        }) {
             self.add_from_engine_class(class_name, instance, cx);
         }
 
@@ -128,11 +126,8 @@ impl AddComponentDialog {
                 .unwrap_or(serde_json::json!(null));
             map.insert(prop.name.to_string(), json_value);
         }
-        self.scene_db.add_component(
-            &self.object_id,
-            class_name.to_string(),
-            Value::Object(map),
-        );
+        self.scene_db
+            .add_component(&self.object_id, class_name.to_string(), Value::Object(map));
     }
 
     fn add_from_registry(&self, class_name: &str, _cx: &mut Context<Self>) {

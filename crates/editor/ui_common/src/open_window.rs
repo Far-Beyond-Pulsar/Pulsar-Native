@@ -3,9 +3,7 @@
 //! Import the trait and call `TypeName::open(params, cx)`. All routing goes
 //! through the WindowManager so hooks, telemetry, and tracking apply uniformly.
 
-use gpui::{
-    App, AppContext as _, Bounds, UpdateGlobal as _, WindowBounds, WindowOptions,
-};
+use gpui::{App, AppContext as _, Bounds, UpdateGlobal as _, WindowBounds, WindowOptions};
 use ui::Root;
 use window_manager::{apply_window_wrapper, PulsarWindow, WindowManager, WindowRegistry};
 

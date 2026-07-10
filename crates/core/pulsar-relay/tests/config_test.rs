@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use pulsar_relay::config::{Config, Cli};
+    use pulsar_relay::config::{Cli, Config};
 
     #[test]
     fn test_default_config() {
@@ -44,8 +44,10 @@ mod tests {
     fn test_cli_parsing() {
         let args = vec![
             "pulsar-relay",
-            "--http-bind", "127.0.0.1:9090",
-            "--log-level", "debug",
+            "--http-bind",
+            "127.0.0.1:9090",
+            "--log-level",
+            "debug",
         ];
         let cli = Cli::try_parse_from(args).unwrap();
         assert_eq!(cli.http_bind.unwrap().to_string(), "127.0.0.1:9090");

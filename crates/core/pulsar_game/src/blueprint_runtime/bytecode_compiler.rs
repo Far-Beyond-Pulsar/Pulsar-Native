@@ -4,9 +4,7 @@
 //! executable bytecode using PBGC (Pulsar Blueprint Graph Compiler).
 
 use super::compiled_bytecode::{CompiledBytecode, VariableDescriptor};
-use pbgc::{
-    compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription,
-};
+use pbgc::{compile_graph_to_bytecode, BpProgram, GraphDescription as PbgcGraphDescription};
 use pulsar_graph::{BlueprintAsset, ClassVariable, GraphDescription};
 use std::collections::HashMap;
 use std::path::Path;

@@ -4,10 +4,17 @@ use std::collections::HashSet;
 
 pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
     let username = gist_storage::get_own_username()?;
-    tracing::info!("[mutual_detection] compute_friends_list: own username = {}", username);
+    tracing::info!(
+        "[mutual_detection] compute_friends_list: own username = {}",
+        username
+    );
 
     let own_entries = gist_storage::get_own_friend_entries()?;
-    tracing::info!("[mutual_detection] compute_friends_list: own entries ({} items): {:?}", own_entries.len(), own_entries);
+    tracing::info!(
+        "[mutual_detection] compute_friends_list: own entries ({} items): {:?}",
+        own_entries.len(),
+        own_entries
+    );
     let own_set: HashSet<&str> = own_entries.iter().map(|e| e.username.as_str()).collect();
 
     let mut result = Vec::new();
@@ -54,7 +61,10 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
             continue;
         }
 
-        tracing::info!("[mutual_detection] compute_friends_list: reading {}'s friends list", entry.username);
+        tracing::info!(
+            "[mutual_detection] compute_friends_list: reading {}'s friends list",
+            entry.username
+        );
         // Read the friend's home server from their gist's top-level home_servers array
         let friend_home_server = gist_storage::read_engine_friends_file_meta(&entry.username)
             .ok()
@@ -62,7 +72,8 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
 
         match gist_storage::read_engine_friend_entries(&entry.username) {
             Ok(their_entries) => {
-                let their_usernames: Vec<String> = their_entries.iter().map(|e| e.username.clone()).collect();
+                let their_usernames: Vec<String> =
+                    their_entries.iter().map(|e| e.username.clone()).collect();
                 let their_set: HashSet<&str> = their_usernames.iter().map(|s| s.as_str()).collect();
                 let is_mutual = their_set.contains(username.as_str());
                 let home_server = friend_home_server.clone();
@@ -125,12 +136,18 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
 
     // Write back updated mutual/home_server cache
     if updated_entries != own_entries {
-        tracing::info!("[mutual_detection] compute_friends_list: writing updated mutual cache to gist");
+        tracing::info!(
+            "[mutual_detection] compute_friends_list: writing updated mutual cache to gist"
+        );
         let _ = gist_storage::write_engine_friends(&updated_entries);
     }
 
     let inbound = gist_storage::search_inbound_requests(&username);
-    tracing::info!("[mutual_detection] compute_friends_list: {} inbound requests found: {:?}", inbound.len(), inbound);
+    tracing::info!(
+        "[mutual_detection] compute_friends_list: {} inbound requests found: {:?}",
+        inbound.len(),
+        inbound
+    );
     for inbound_username in &inbound {
         if own_set.contains(inbound_username.as_str()) || inbound_username == &username {
             tracing::info!("[mutual_detection] compute_friends_list: skipping inbound {} (already in own list or self)", inbound_username);
@@ -146,7 +163,10 @@ pub fn compute_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
         });
     }
 
-    tracing::info!("[mutual_detection] compute_friends_list: returning {} entries", result.len());
+    tracing::info!(
+        "[mutual_detection] compute_friends_list: returning {} entries",
+        result.len()
+    );
     Ok(result)
 }
 
@@ -172,7 +192,11 @@ pub fn fetch_friend_homes() -> Result<usize, FriendsError> {
         }
         if let Ok(hs) = gist_storage::read_engine_friends_file_meta(&entry.username) {
             if let Some(server) = hs.into_iter().next() {
-                tracing::info!("[mutual_detection] fetch_friend_homes: {} home_server = {}", entry.username, server);
+                tracing::info!(
+                    "[mutual_detection] fetch_friend_homes: {} home_server = {}",
+                    entry.username,
+                    server
+                );
                 entry.home_server = Some(server);
                 updated += 1;
             }

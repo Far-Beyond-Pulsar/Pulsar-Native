@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use gpui::{
     actions, div, prelude::FluentBuilder as _, px, AnyElement, App, AppContext, ClickEvent,
-    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu,
-    MenuItem, MouseButton, ParentElement as _, Render, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window,
+    Context, Corner, Entity, FocusHandle, InteractiveElement as _, IntoElement, Menu, MenuItem,
+    MouseButton, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _,
+    Styled as _, Subscription, Window,
 };
 use ui::{
     badge::Badge,
@@ -20,9 +20,9 @@ use ui::{
 };
 
 mod dev_popover;
+use crate::profile_dropdown::ProfileDropdownEvent;
 use dev_popover::DevPopover;
 use ui::themes::ThemeSwitcher;
-use crate::profile_dropdown::ProfileDropdownEvent;
 
 // Define UI preference actions
 #[derive(gpui::Action, Clone, PartialEq, Eq, serde::Deserialize)]
@@ -1287,8 +1287,7 @@ impl AppTitleBar {
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
         let theme_picker = cx.new(|cx| crate::theme_dropdown::ThemePicker::new(window, cx));
-        let profile_dropdown =
-            cx.new(crate::profile_dropdown::ProfileDropdown::new);
+        let profile_dropdown = cx.new(crate::profile_dropdown::ProfileDropdown::new);
 
         // Subscribe to locale changes
         let subscriptions = vec![
@@ -1386,7 +1385,12 @@ impl Render for AppTitleBar {
                     .child(self.child.clone()(window, cx))
                     .when(
                         engine_state::EngineContext::global()
-                            .map(|ctx| ctx.store.get_or_init::<engine_state::DevContext>().read().is_source_build)
+                            .map(|ctx| {
+                                ctx.store
+                                    .get_or_init::<engine_state::DevContext>()
+                                    .read()
+                                    .is_source_build
+                            })
                             .unwrap_or(false),
                         |el| {
                             el.child(

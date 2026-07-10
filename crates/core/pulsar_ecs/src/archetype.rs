@@ -196,9 +196,7 @@ impl Archetype {
     /// Get an erased column by ComponentId.
     #[inline]
     pub(crate) fn get_erased(&self, cid: ComponentId) -> Option<&dyn ErasedColumn> {
-        self.columns
-            .get(cid.0 as usize)
-            .and_then(|c| c.as_deref())
+        self.columns.get(cid.0 as usize).and_then(|c| c.as_deref())
     }
 
     /// Get a mutable erased column by ComponentId.

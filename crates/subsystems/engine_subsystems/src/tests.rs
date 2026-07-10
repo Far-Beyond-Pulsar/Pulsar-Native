@@ -8,13 +8,21 @@ struct MockSubsystem {
 
 impl MockSubsystem {
     fn new(id: SubsystemId, deps: Vec<SubsystemId>) -> Self {
-        Self { id, deps, init_called: false }
+        Self {
+            id,
+            deps,
+            init_called: false,
+        }
     }
 }
 
 impl Subsystem for MockSubsystem {
-    fn id(&self) -> SubsystemId { self.id }
-    fn dependencies(&self) -> Vec<SubsystemId> { self.deps.clone() }
+    fn id(&self) -> SubsystemId {
+        self.id
+    }
+    fn dependencies(&self) -> Vec<SubsystemId> {
+        self.deps.clone()
+    }
 
     fn init(&mut self, _context: &SubsystemContext) -> Result<(), SubsystemError> {
         self.init_called = true;
@@ -59,7 +67,10 @@ fn test_cycle_detection() {
     registry.register(MockSubsystem::new(b, vec![a])).unwrap();
 
     let result = registry.resolve_dependencies();
-    assert!(matches!(result, Err(SubsystemError::DependencyCycle { .. })));
+    assert!(matches!(
+        result,
+        Err(SubsystemError::DependencyCycle { .. })
+    ));
 }
 
 #[test]
@@ -72,7 +83,10 @@ fn test_missing_dependency() {
     registry.register(MockSubsystem::new(b, vec![a])).unwrap();
 
     let result = registry.resolve_dependencies();
-    assert!(matches!(result, Err(SubsystemError::MissingDependency { .. })));
+    assert!(matches!(
+        result,
+        Err(SubsystemError::MissingDependency { .. })
+    ));
 }
 
 #[test]

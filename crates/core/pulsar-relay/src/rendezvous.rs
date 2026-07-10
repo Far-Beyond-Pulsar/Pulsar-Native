@@ -6,8 +6,8 @@ mod peer_discovery;
 mod session_manager;
 mod sync_protocol;
 
-pub use session_manager::RendezvousCoordinator;
 pub use pulsar_multiplayer_core::session::PeerProfile;
+pub use session_manager::RendezvousCoordinator;
 pub use sync_protocol::{CandidateDto, ClientMessage, ServerMessage};
 
 use anyhow::{Context, Result};

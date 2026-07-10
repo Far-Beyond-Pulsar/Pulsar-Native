@@ -10,12 +10,22 @@ pub fn get_friends_list() -> Result<Vec<FriendInfo>, FriendsError> {
 
 pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
     let username = gist_storage::get_own_username()?;
-    tracing::info!("[FriendsService] send_friend_request: {} -> {}", username, target_username);
+    tracing::info!(
+        "[FriendsService] send_friend_request: {} -> {}",
+        username,
+        target_username
+    );
     let mut entries = gist_storage::get_own_friend_entries()?;
-    tracing::info!("[FriendsService] send_friend_request: current entries: {:?}", entries);
+    tracing::info!(
+        "[FriendsService] send_friend_request: current entries: {:?}",
+        entries
+    );
 
     if entries.iter().any(|e| e.username == target_username) {
-        tracing::info!("[FriendsService] send_friend_request: {} already in list, no-op", target_username);
+        tracing::info!(
+            "[FriendsService] send_friend_request: {} already in list, no-op",
+            target_username
+        );
         return Ok(());
     }
 
@@ -26,7 +36,11 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
     });
     tracing::info!("[FriendsService] send_friend_request: writing updated list");
     gist_storage::write_engine_friends(&entries)?;
-    tracing::info!("[FriendsService] send_friend_request: write succeeded, {} -> {}", username, target_username);
+    tracing::info!(
+        "[FriendsService] send_friend_request: write succeeded, {} -> {}",
+        username,
+        target_username
+    );
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -61,10 +75,18 @@ pub fn send_friend_request(target_username: &str) -> Result<(), FriendsError> {
                     tracing::info!("[FriendsService] notification pushed to {}", home_server);
                 }
                 Ok(r) => {
-                    tracing::warn!("[FriendsService] notification push to {} returned HTTP {}", home_server, r.status());
+                    tracing::warn!(
+                        "[FriendsService] notification push to {} returned HTTP {}",
+                        home_server,
+                        r.status()
+                    );
                 }
                 Err(e) => {
-                    tracing::warn!("[FriendsService] failed to push notification to {}: {}", home_server, e);
+                    tracing::warn!(
+                        "[FriendsService] failed to push notification to {}: {}",
+                        home_server,
+                        e
+                    );
                 }
             }
         }
@@ -155,7 +177,10 @@ pub fn send_session_invite(target_username: &str) -> Result<(), FriendsError> {
 
     let friend = entries.iter().find(|e| e.username == target_username);
     let Some(friend) = friend else {
-        tracing::warn!("[FriendsService] send_session_invite: {} not in friends list", target_username);
+        tracing::warn!(
+            "[FriendsService] send_session_invite: {} not in friends list",
+            target_username
+        );
         return Err(FriendsError::NotFriends(target_username.to_string()));
     };
 
@@ -170,7 +195,11 @@ pub fn send_session_invite(target_username: &str) -> Result<(), FriendsError> {
 
     // Determine which relay to send to: friend's home_server, or our own as fallback
     let target_servers: Vec<String> = if let Some(hs) = &friend.home_server {
-        tracing::info!("[FriendsService] send_session_invite to {} using friend's home_server: {}", target_username, hs);
+        tracing::info!(
+            "[FriendsService] send_session_invite to {} using friend's home_server: {}",
+            target_username,
+            hs
+        );
         vec![hs.clone()]
     } else {
         // Fall back to our own home server (they might be on the same relay)
@@ -178,8 +207,13 @@ pub fn send_session_invite(target_username: &str) -> Result<(), FriendsError> {
             .ok()
             .unwrap_or_default();
         if own.is_empty() {
-            tracing::warn!("[FriendsService] send_session_invite: no home server known for {} or self", target_username);
-            return Err(FriendsError::Network("no home server configured".to_string()));
+            tracing::warn!(
+                "[FriendsService] send_session_invite: no home server known for {} or self",
+                target_username
+            );
+            return Err(FriendsError::Network(
+                "no home server configured".to_string(),
+            ));
         }
         own
     };
@@ -203,13 +237,25 @@ pub fn send_session_invite(target_username: &str) -> Result<(), FriendsError> {
             .map_err(|e| FriendsError::Network(e.to_string()))?;
         match client.post(&url).json(&body).send() {
             Ok(r) if r.status().is_success() => {
-                tracing::info!("[FriendsService] session invite pushed to {} via {}", target_username, home_server);
+                tracing::info!(
+                    "[FriendsService] session invite pushed to {} via {}",
+                    target_username,
+                    home_server
+                );
             }
             Ok(r) => {
-                tracing::warn!("[FriendsService] session invite push to {} returned HTTP {}", home_server, r.status());
+                tracing::warn!(
+                    "[FriendsService] session invite push to {} returned HTTP {}",
+                    home_server,
+                    r.status()
+                );
             }
             Err(e) => {
-                tracing::warn!("[FriendsService] failed to push session invite to {}: {}", home_server, e);
+                tracing::warn!(
+                    "[FriendsService] failed to push session invite to {}: {}",
+                    home_server,
+                    e
+                );
             }
         }
     }

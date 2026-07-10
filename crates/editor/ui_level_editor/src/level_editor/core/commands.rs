@@ -221,5 +221,3 @@ pub fn execute_command(state: &mut LevelEditorState, cmd: SceneCommand) -> Comma
         }
     }
 }
-
-

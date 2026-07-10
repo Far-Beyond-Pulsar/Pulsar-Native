@@ -7,11 +7,11 @@
 //! 4. Host sends file contents
 //! 5. Joiner writes files to disk
 
+use engine_fs::virtual_fs;
 use engine_fs::{events, FsChangeKind};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
-use engine_fs::virtual_fs;
 use std::path::Path;
 use walkdir::WalkDir;
 
@@ -102,7 +102,8 @@ fn should_ignore(path: &Path) -> bool {
 
 /// Calculate SHA256 hash of file contents
 fn hash_file(path: &Path) -> Result<String, std::io::Error> {
-    let data = virtual_fs::read_file(path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+    let data = virtual_fs::read_file(path)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
     let mut hasher = Sha256::new();
     hasher.update(&data);
     let digest = hasher.finalize();
@@ -136,7 +137,8 @@ pub fn create_manifest(project_root: &Path) -> Result<FileManifest, std::io::Err
 
         match hash_file(path) {
             Ok(hash) => {
-                let metadata = virtual_fs::metadata(path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+                let metadata = virtual_fs::metadata(path)
+                    .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
                 // Normalize path separators to forward slashes for cross-platform compatibility
                 let normalized_path = relative_path.to_string_lossy().replace('\\', "/");
 
@@ -273,11 +275,13 @@ pub fn apply_files(
 
         // Create parent directories
         if let Some(parent) = full_path.parent() {
-            virtual_fs::create_dir_all(parent).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            virtual_fs::create_dir_all(parent)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         }
 
         // Write file
-        virtual_fs::write_file(&full_path, &data).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        virtual_fs::write_file(&full_path, &data)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         events::emit_remote(full_path.clone(), FsChangeKind::Modified);
         tracing::debug!("SIMPLE_SYNC: Wrote {:?} ({} bytes)", full_path, data.len());
         written_count += 1;
@@ -300,7 +304,8 @@ pub fn delete_files(project_root: &Path, file_paths: Vec<String>) -> Result<usiz
         let full_path = project_root.join(&relative_path);
 
         if full_path.exists() {
-            virtual_fs::delete_path(&full_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            virtual_fs::delete_path(&full_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
             events::emit_remote(full_path.clone(), FsChangeKind::Deleted);
             tracing::debug!("SIMPLE_SYNC: Deleted {:?}", full_path);
             deleted_count += 1;
@@ -325,7 +330,8 @@ pub fn read_files(
 
     for relative_path in file_paths {
         let full_path = project_root.join(&relative_path);
-        let data = virtual_fs::read_file(&full_path).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        let data = virtual_fs::read_file(&full_path)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         let data_len = data.len();
         files.push((relative_path, data));
         tracing::debug!("SIMPLE_SYNC: Read {:?} ({} bytes)", full_path, data_len);

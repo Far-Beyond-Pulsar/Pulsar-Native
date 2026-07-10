@@ -20,13 +20,15 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 
 use crate::auth::AuthService;
-use pulsar_multiplayer_core::session::Role;
 use crate::config::Config;
 use crate::health::HealthChecker;
 use crate::metrics::METRICS;
-use crate::notifications::{GitHubAuthRequest, GitHubAuthResponse, Notification, NotificationStore, PushNotificationRequest};
+use crate::notifications::{
+    GitHubAuthRequest, GitHubAuthResponse, Notification, NotificationStore, PushNotificationRequest,
+};
 use crate::rendezvous::RendezvousCoordinator;
 use crate::session::SessionStore;
+use pulsar_multiplayer_core::session::Role;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -133,9 +135,18 @@ fn create_router(state: AppState) -> Router {
         .route("/ws", get(websocket_handler))
         // GitHub auth & notifications
         .route("/api/v1/auth/github", post(github_auth_handler))
-        .route("/api/v1/notifications", get(get_notifications).post(push_notification_handler))
-        .route("/api/v1/notifications/relay", post(relay_notification_handler))
-        .route("/api/v1/notifications/ws", get(notifications_websocket_handler))
+        .route(
+            "/api/v1/notifications",
+            get(get_notifications).post(push_notification_handler),
+        )
+        .route(
+            "/api/v1/notifications/relay",
+            post(relay_notification_handler),
+        )
+        .route(
+            "/api/v1/notifications/ws",
+            get(notifications_websocket_handler),
+        )
         .route("/api/v1/users/{username}/online", get(user_online_handler))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
@@ -395,7 +406,11 @@ async fn get_notifications(
     }
 
     let notes = state.notifications.take_notifications(username);
-    info!("📬 Returning {} notifications for {}", notes.len(), username);
+    info!(
+        "📬 Returning {} notifications for {}",
+        notes.len(),
+        username
+    );
     Ok(Json(notes))
 }
 
@@ -405,8 +420,10 @@ async fn push_notification_handler(
 ) -> Result<impl IntoResponse, ErrorResponse> {
     info!(
         "📨 push_notification_handler: id={} type={:?} from={} to={} msg={}",
-        notification.id, notification.notification_type,
-        notification.from_username, notification.to_username,
+        notification.id,
+        notification.notification_type,
+        notification.from_username,
+        notification.to_username,
         notification.message
     );
     state.notifications.push_notification(notification);
@@ -440,9 +457,7 @@ async fn notifications_websocket_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| {
-        state.notifications.clone().handle_websocket(socket)
-    })
+    ws.on_upgrade(move |socket| state.notifications.clone().handle_websocket(socket))
 }
 
 async fn user_online_handler(

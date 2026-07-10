@@ -187,10 +187,11 @@ impl ObjectTypeFieldsSection {
                     }
 
                     // Colour picker (`[f32; 4]` primitive or colour-named field)
-                    let is_color = matches!(
-                        &prop.type_info.structure,
-                        TypeStructure::Primitive if prop.type_info.base_name() == "[f32; 4]"
-                    ) || ui_common::reflected_properties_panel::is_color_field_name(prop.name);
+                    let is_color =
+                        matches!(
+                            &prop.type_info.structure,
+                            TypeStructure::Primitive if prop.type_info.base_name() == "[f32; 4]"
+                        ) || ui_common::reflected_properties_panel::is_color_field_name(prop.name);
 
                     if is_color {
                         let rgba = current_json
@@ -232,18 +233,16 @@ impl ObjectTypeFieldsSection {
 
                     let prop_bool = prop.name.to_string();
                     let on_bool = on_bool_toggle.clone();
-                    let bool_cb = Arc::new(
-                        move |checked: bool, window: &mut Window, cx: &mut App| {
+                    let bool_cb =
+                        Arc::new(move |checked: bool, window: &mut Window, cx: &mut App| {
                             (on_bool)(&prop_bool, checked, window, cx);
-                        },
-                    );
+                        });
 
                     let prop_enum = prop.name.to_string();
                     let on_enum = on_enum_select.clone();
-                    let enum_cb =
-                        Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
-                            (on_enum)(&prop_enum, ix, window, cx);
-                        });
+                    let enum_cb = Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
+                        (on_enum)(&prop_enum, ix, window, cx);
+                    });
 
                     let row = ui_common::render_property_row_runtime(
                         "level",
@@ -271,8 +270,7 @@ impl ObjectTypeFieldsSection {
 
                 let (mut uncategorized, categorized) = group_rows_by_category(row_data);
 
-                let category_elements =
-                    self.render_categorized_rows(class_name, categorized, cx);
+                let category_elements = self.render_categorized_rows(class_name, categorized, cx);
 
                 uncategorized.extend(category_elements);
 

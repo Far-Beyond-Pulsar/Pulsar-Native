@@ -17,8 +17,12 @@ impl GitService {
             let mut p = progress_inner.lock();
             p.current = stats.received_objects();
             p.total = stats.total_objects();
-            p.message = format!("Receiving objects: {}/{} ({:.1}%)", stats.received_objects(), stats.total_objects(),
-                (stats.received_objects() as f32 / stats.total_objects().max(1) as f32) * 100.0);
+            p.message = format!(
+                "Receiving objects: {}/{} ({:.1}%)",
+                stats.received_objects(),
+                stats.total_objects(),
+                (stats.received_objects() as f32 / stats.total_objects().max(1) as f32) * 100.0
+            );
             true
         });
         let mut fetch_opts = git2::FetchOptions::new();
@@ -28,7 +32,10 @@ impl GitService {
         builder.clone(&repo_url, &target_path)
     }
 
-    pub fn setup_template_remotes(repo_path: &Path, _template_url: &str) -> Result<(), git2::Error> {
+    pub fn setup_template_remotes(
+        repo_path: &Path,
+        _template_url: &str,
+    ) -> Result<(), git2::Error> {
         let repo = git2::Repository::open(repo_path)?;
         repo.remote_rename("origin", "template")?;
         let mut config = repo.config()?;
@@ -58,10 +65,14 @@ impl GitService {
         remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)?;
         let head = repo.head()?;
         let branch = head.shorthand().unwrap_or("main");
-        let local_oid = head.target().ok_or_else(|| git2::Error::from_str("No commit on HEAD"))?;
+        let local_oid = head
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No commit on HEAD"))?;
         let remote_branch = format!("refs/remotes/origin/{}", branch);
         let remote_ref = repo.find_reference(&remote_branch)?;
-        let remote_oid = remote_ref.target().ok_or_else(|| git2::Error::from_str("No remote commit"))?;
+        let remote_oid = remote_ref
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
         let (_ahead, behind) = repo.graph_ahead_behind(local_oid, remote_oid)?;
         Ok(behind)
     }
@@ -74,7 +85,9 @@ impl GitService {
         let branch = head.shorthand().unwrap_or("main");
         let remote_branch = format!("refs/remotes/origin/{}", branch);
         let remote_ref = repo.find_reference(&remote_branch)?;
-        let remote_oid = remote_ref.target().ok_or_else(|| git2::Error::from_str("No remote commit"))?;
+        let remote_oid = remote_ref
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
         let remote_commit = repo.find_commit(remote_oid)?;
         repo.checkout_tree(remote_commit.as_object(), None)?;
         repo.head()?.set_target(remote_oid, "Fast-forward merge")?;

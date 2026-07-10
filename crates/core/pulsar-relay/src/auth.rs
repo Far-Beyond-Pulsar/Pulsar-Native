@@ -248,10 +248,7 @@ impl SessionAuth for AuthService {
             .map_err(|e| AuthError::Internal(e.to_string()))
     }
 
-    async fn verify_join_token(
-        &self,
-        token: &str,
-    ) -> Result<(String, Role), AuthError> {
+    async fn verify_join_token(&self, token: &str) -> Result<(String, Role), AuthError> {
         self.verify_join_token(token)
             .map_err(|e| AuthError::Invalid(e.to_string()))
     }

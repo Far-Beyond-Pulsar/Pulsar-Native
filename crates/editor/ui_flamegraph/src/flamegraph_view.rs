@@ -1,8 +1,8 @@
 use crate::components::*;
 use crate::constants::*;
 use crate::coordinates::time_to_x;
-use crate::rendering::renderer::FlamegraphRenderer;
 use crate::lod_tree::LODTree;
+use crate::rendering::renderer::FlamegraphRenderer;
 use crate::rendering::types::{FlamegraphUniforms, GpuSpan};
 use crate::state::{SpanCache, ViewState};
 use crate::trace_data::{TraceData, TraceFrame};
@@ -31,7 +31,6 @@ pub struct FlamegraphView {
     lod_level: Option<usize>,
     /// Cached GpuSpans for the current LOD level — rebuilt only when LOD changes.
     lod_spans: Option<Arc<Vec<GpuSpan>>>,
-
 }
 
 impl FlamegraphView {
@@ -47,9 +46,17 @@ impl FlamegraphView {
         // Target: bucket >= 4.0 / pixels_per_ns
         let min_bucket = (4.0 / pixels_per_ns) as u64;
         let sizes: &[u64] = &[
-            50_000, 100_000, 500_000, 1_000_000, 5_000_000,
-            10_000_000, 50_000_000, 100_000_000, 200_000_000,
-            500_000_000, 1_000_000_000,
+            50_000,
+            100_000,
+            500_000,
+            1_000_000,
+            5_000_000,
+            10_000_000,
+            50_000_000,
+            100_000_000,
+            200_000_000,
+            500_000_000,
+            1_000_000_000,
         ];
         if min_bucket >= sizes[sizes.len() - 1] {
             return sizes.len() - 1;
@@ -235,8 +242,10 @@ impl Render for FlamegraphView {
                         }
 
                         // GPU spans — cached per-LOD, zero per-frame work
-                        let span_slice: &[GpuSpan] = view.lod_spans.as_ref().map_or(&[], |a| a.as_slice());
-                        let spans = crate::components::flamegraph_canvas::build_instances(span_slice);
+                        let span_slice: &[GpuSpan] =
+                            view.lod_spans.as_ref().map_or(&[], |a| a.as_slice());
+                        let spans =
+                            crate::components::flamegraph_canvas::build_instances(span_slice);
 
                         // Use LATEST view state (not the captured stale copy)
                         let vs = &view.view_state;
@@ -252,20 +261,20 @@ impl Render for FlamegraphView {
                         );
 
                         // Overlay rects (grid lines + thread separators)
-                        let overlay_rects = crate::components::flamegraph_canvas::build_overlay_instances(
-                            &frame,
-                            &cache.thread_offsets,
-                            vs,
-                            w as f32,
-                            h as f32,
-                        );
+                        let overlay_rects =
+                            crate::components::flamegraph_canvas::build_overlay_instances(
+                                &frame,
+                                &cache.thread_offsets,
+                                vs,
+                                w as f32,
+                                h as f32,
+                            );
 
                         // Ruler instances
-                        let ruler_rects = crate::components::flamegraph_canvas::build_ruler_instances(
-                            &frame,
-                            vs,
-                            w as f32,
-                        );
+                        let ruler_rects =
+                            crate::components::flamegraph_canvas::build_ruler_instances(
+                                &frame, vs, w as f32,
+                            );
 
                         // Debug overlay (stats)
                         let debug_rects = crate::components::flamegraph_canvas::build_debug_overlay(
@@ -393,12 +402,10 @@ impl Render for FlamegraphView {
                                 MouseButton::Left,
                                 cx.listener(|view, event: &MouseDownEvent, _window, cx| {
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x =
-                                        window_x - *view.graph_origin_x.read().unwrap();
+                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
                                     let frame = view.trace_data.get_frame();
 
-                                    if let Some(time_ns) =
-                                        view.graph_x_to_time_ns(&frame, local_x)
+                                    if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x)
                                     {
                                         view.view_state.graph_dragging = true;
                                         view.view_state.graph_drag_start_x = local_x;
@@ -416,12 +423,10 @@ impl Render for FlamegraphView {
                                     }
 
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x =
-                                        window_x - *view.graph_origin_x.read().unwrap();
+                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
                                     let frame = view.trace_data.get_frame();
 
-                                    if let Some(time_ns) =
-                                        view.graph_x_to_time_ns(&frame, local_x)
+                                    if let Some(time_ns) = view.graph_x_to_time_ns(&frame, local_x)
                                     {
                                         view.view_state.crop_end_time_ns = Some(time_ns);
                                         cx.notify();
@@ -436,11 +441,9 @@ impl Render for FlamegraphView {
                                     }
 
                                     let window_x: f32 = event.position.x.into();
-                                    let local_x =
-                                        window_x - *view.graph_origin_x.read().unwrap();
-                                    let drag_distance = (local_x
-                                        - view.view_state.graph_drag_start_x)
-                                        .abs();
+                                    let local_x = window_x - *view.graph_origin_x.read().unwrap();
+                                    let drag_distance =
+                                        (local_x - view.view_state.graph_drag_start_x).abs();
                                     let frame = view.trace_data.get_frame();
 
                                     if drag_distance < 4.0 {
@@ -478,14 +481,15 @@ impl Render for FlamegraphView {
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::MEDIUM)
                                     .cursor_pointer()
-                                    .hover(|style| style.bg(gpui::hsla(
-                                        205.0 / 360.0, 0.7, 0.55, 1.0,
-                                    )))
+                                    .hover(|style| {
+                                        style.bg(gpui::hsla(205.0 / 360.0, 0.7, 0.55, 1.0))
+                                    })
                                     .child("Generate 64-Thread Trace")
                                     .on_mouse_down(
                                         MouseButton::Left,
                                         cx.listener(|view, _event, _window, cx| {
-                                            view.trace_data.generate_massive_trace(64, 5, 500, 8000);
+                                            view.trace_data
+                                                .generate_massive_trace(64, 5, 500, 8000);
                                             cx.notify();
                                         }),
                                     ),
@@ -506,14 +510,11 @@ impl Render for FlamegraphView {
                         let viewport_origin_y = self.viewport_origin_y.clone();
                         move |bounds: Vec<Bounds<Pixels>>, _window: &mut Window, _cx: &mut App| {
                             if let Some(canvas_bounds) = bounds.first() {
-                                *viewport_width.write().unwrap() =
-                                    canvas_bounds.size.width.into();
+                                *viewport_width.write().unwrap() = canvas_bounds.size.width.into();
                                 *viewport_height.write().unwrap() =
                                     canvas_bounds.size.height.into();
-                                *viewport_origin_x.write().unwrap() =
-                                    canvas_bounds.origin.x.into();
-                                *viewport_origin_y.write().unwrap() =
-                                    canvas_bounds.origin.y.into();
+                                *viewport_origin_x.write().unwrap() = canvas_bounds.origin.x.into();
+                                *viewport_origin_y.write().unwrap() = canvas_bounds.origin.y.into();
                             }
                         }
                     })
@@ -538,113 +539,102 @@ impl Render for FlamegraphView {
                             cx.notify();
                         }),
                     )
-                    .on_mouse_move(
-                        cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
-                            let pos: Point<Pixels> = event.position;
-                            let window_x: f32 = pos.x.into();
-                            let window_y: f32 = pos.y.into();
-                            let local_x = window_x - *view.viewport_origin_x.read().unwrap();
-                            let local_y = window_y - *view.viewport_origin_y.read().unwrap();
+                    .on_mouse_move(cx.listener(|view, event: &MouseMoveEvent, _window, cx| {
+                        let pos: Point<Pixels> = event.position;
+                        let window_x: f32 = pos.x.into();
+                        let window_y: f32 = pos.y.into();
+                        let local_x = window_x - *view.viewport_origin_x.read().unwrap();
+                        let local_y = window_y - *view.viewport_origin_y.read().unwrap();
 
-                            view.view_state.mouse_x = local_x;
-                            view.view_state.mouse_y = local_y;
+                        view.view_state.mouse_x = local_x;
+                        view.view_state.mouse_y = local_y;
 
-                            if view.view_state.dragging {
-                                let delta_x = window_x - view.view_state.drag_start_x;
-                                let delta_y = window_y - view.view_state.drag_start_y;
+                        if view.view_state.dragging {
+                            let delta_x = window_x - view.view_state.drag_start_x;
+                            let delta_y = window_y - view.view_state.drag_start_y;
 
-                                view.view_state.pan_x =
-                                    view.view_state.drag_pan_start_x + delta_x;
-                                view.view_state.pan_y =
-                                    view.view_state.drag_pan_start_y + delta_y;
-                            } else {
-                                let view_state_copy = view.view_state.clone();
-                                let viewport_width = *view.viewport_width.read().unwrap();
-                                let viewport_height = *view.viewport_height.read().unwrap();
-                                let (frame, cache) = view.get_or_build_cache();
+                            view.view_state.pan_x = view.view_state.drag_pan_start_x + delta_x;
+                            view.view_state.pan_y = view.view_state.drag_pan_start_y + delta_y;
+                        } else {
+                            let view_state_copy = view.view_state.clone();
+                            let viewport_width = *view.viewport_width.read().unwrap();
+                            let viewport_height = *view.viewport_height.read().unwrap();
+                            let (frame, cache) = view.get_or_build_cache();
 
-                                let mut new_hovered_span = None;
+                            let mut new_hovered_span = None;
 
-                                if local_x >= THREAD_LABEL_WIDTH
-                                    && local_x <= viewport_width
-                                    && local_y >= 0.0
-                                    && local_y <= viewport_height
-                                {
-                                    for (idx, span) in frame.spans.iter().enumerate() {
-                                        let thread_y_offset = cache
-                                            .thread_offsets
-                                            .get(&span.thread_id)
-                                            .copied()
-                                            .unwrap_or(0.0);
-                                        let y = thread_y_offset
-                                            - GRAPH_HEIGHT
-                                            + (span.depth as f32 * ROW_HEIGHT)
-                                            + view_state_copy.pan_y;
+                            if local_x >= THREAD_LABEL_WIDTH
+                                && local_x <= viewport_width
+                                && local_y >= 0.0
+                                && local_y <= viewport_height
+                            {
+                                for (idx, span) in frame.spans.iter().enumerate() {
+                                    let thread_y_offset = cache
+                                        .thread_offsets
+                                        .get(&span.thread_id)
+                                        .copied()
+                                        .unwrap_or(0.0);
+                                    let y = thread_y_offset - GRAPH_HEIGHT
+                                        + (span.depth as f32 * ROW_HEIGHT)
+                                        + view_state_copy.pan_y;
 
-                                        if local_y >= y
-                                            && local_y
-                                                <= y + ((ROW_HEIGHT - PADDING)
-                                                    * SPAN_HOVER_HEIGHT_SCALE)
-                                        {
-                                            let x1 = time_to_x(
-                                                span.start_ns,
-                                                &frame,
-                                                viewport_width,
-                                                &view_state_copy,
-                                            );
-                                            let x2 = time_to_x(
-                                                span.end_ns(),
-                                                &frame,
-                                                viewport_width,
-                                                &view_state_copy,
-                                            );
+                                    if local_y >= y
+                                        && local_y
+                                            <= y + ((ROW_HEIGHT - PADDING)
+                                                * SPAN_HOVER_HEIGHT_SCALE)
+                                    {
+                                        let x1 = time_to_x(
+                                            span.start_ns,
+                                            &frame,
+                                            viewport_width,
+                                            &view_state_copy,
+                                        );
+                                        let x2 = time_to_x(
+                                            span.end_ns(),
+                                            &frame,
+                                            viewport_width,
+                                            &view_state_copy,
+                                        );
 
-                                            if local_x >= x1 && local_x <= x2 {
-                                                new_hovered_span = Some(idx);
-                                                break;
-                                            }
+                                        if local_x >= x1 && local_x <= x2 {
+                                            new_hovered_span = Some(idx);
+                                            break;
                                         }
                                     }
                                 }
-
-                                view.view_state.hovered_span = new_hovered_span;
                             }
 
-                            cx.notify();
-                        }),
-                    )
-                    .on_scroll_wheel(
-                        cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
-                            let delta = event.delta.pixel_delta(px(1.0));
-                            let delta_y: f32 = delta.y.into();
+                            view.view_state.hovered_span = new_hovered_span;
+                        }
 
-                            if event.modifiers.control || event.modifiers.platform {
-                                let cursor_pos: Point<Pixels> = event.position;
-                                let cursor_x: f32 = cursor_pos.x.into();
-                                let local_cursor_x =
-                                    cursor_x - *view.viewport_origin_x.read().unwrap();
+                        cx.notify();
+                    }))
+                    .on_scroll_wheel(cx.listener(|view, event: &ScrollWheelEvent, _window, cx| {
+                        let delta = event.delta.pixel_delta(px(1.0));
+                        let delta_y: f32 = delta.y.into();
 
-                                let old_zoom = view.view_state.zoom;
-                                let zoom_factor = 1.0 - (delta_y * 0.01);
-                                let new_zoom = old_zoom * zoom_factor;
+                        if event.modifiers.control || event.modifiers.platform {
+                            let cursor_pos: Point<Pixels> = event.position;
+                            let cursor_x: f32 = cursor_pos.x.into();
+                            let local_cursor_x = cursor_x - *view.viewport_origin_x.read().unwrap();
 
-                                let world_x =
-                                    (local_cursor_x - view.view_state.pan_x) / old_zoom;
+                            let old_zoom = view.view_state.zoom;
+                            let zoom_factor = 1.0 - (delta_y * 0.01);
+                            let new_zoom = old_zoom * zoom_factor;
 
-                                view.view_state.zoom = new_zoom;
-                                view.view_state.pan_x = local_cursor_x - (world_x * new_zoom);
-                            } else if event.modifiers.shift {
-                                view.view_state.pan_y -= delta_y * 10.0;
-                            } else {
-                                view.view_state.pan_x -= delta_y * 10.0;
-                            }
+                            let world_x = (local_cursor_x - view.view_state.pan_x) / old_zoom;
 
-                            cx.notify();
-                        }),
-                    )
-                    .child({
-                        render_thread_labels(&frame, &thread_offsets, &view_state, cx)
-                    })
+                            view.view_state.zoom = new_zoom;
+                            view.view_state.pan_x = local_cursor_x - (world_x * new_zoom);
+                        } else if event.modifiers.shift {
+                            view.view_state.pan_y -= delta_y * 10.0;
+                        } else {
+                            view.view_state.pan_x -= delta_y * 10.0;
+                        }
+
+                        cx.notify();
+                    }))
+                    .child({ render_thread_labels(&frame, &thread_offsets, &view_state, cx) })
                     .children({
                         let popup = render_hover_popup(
                             &frame,

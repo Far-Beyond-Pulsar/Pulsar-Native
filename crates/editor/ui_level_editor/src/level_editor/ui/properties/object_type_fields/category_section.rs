@@ -16,10 +16,7 @@ pub(super) fn parse_hex_category_color(hex: &str) -> Option<Hsla> {
     let raw = hex.trim().strip_prefix('#').unwrap_or(hex.trim());
     match raw.len() {
         6 => u32::from_str_radix(raw, 16).ok().map(rgb).map(Into::into),
-        8 => u32::from_str_radix(raw, 16)
-            .ok()
-            .map(rgba)
-            .map(Into::into),
+        8 => u32::from_str_radix(raw, 16).ok().map(rgba).map(Into::into),
         _ => None,
     }
 }
@@ -40,11 +37,12 @@ impl ObjectTypeFieldsSection {
 
         categorized_rows
             .into_iter()
-            .map(|(category_name, category_rows, category_color_hex, default_collapsed, _)| {
-                let category_key = (class_name.to_string(), category_name.clone());
+            .map(
+                |(category_name, category_rows, category_color_hex, default_collapsed, _)| {
+                    let category_key = (class_name.to_string(), category_name.clone());
 
-                let is_collapsed =
-                    if self.collapsed_property_categories.contains(&category_key) {
+                    let is_collapsed = if self.collapsed_property_categories.contains(&category_key)
+                    {
                         true
                     } else if self.expanded_property_categories.contains(&category_key) {
                         false
@@ -52,89 +50,87 @@ impl ObjectTypeFieldsSection {
                         default_collapsed
                     };
 
-                let toggle_key = category_key.clone();
-                let was_collapsed = is_collapsed;
-                let accent = category_color_hex
-                    .as_deref()
-                    .and_then(parse_hex_category_color);
+                    let toggle_key = category_key.clone();
+                    let was_collapsed = is_collapsed;
+                    let accent = category_color_hex
+                        .as_deref()
+                        .and_then(parse_hex_category_color);
 
-                let muted = cx.theme().muted_foreground;
+                    let muted = cx.theme().muted_foreground;
 
-                // Header row — shared between collapsed and expanded states.
-                let header = h_flex()
-                    .w_full()
-                    .items_center()
-                    .justify_between()
-                    .py(px(2.))
-                    .cursor_pointer()
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(move |this, _event, _window, cx| {
-                            if was_collapsed {
-                                this.collapsed_property_categories.remove(&toggle_key);
-                                this.expanded_property_categories.insert(toggle_key.clone());
-                            } else {
-                                this.expanded_property_categories.remove(&toggle_key);
-                                this.collapsed_property_categories.insert(toggle_key.clone());
-                            }
-                            cx.notify();
-                        }),
-                    )
-                    .child(
-                        div()
-                            .text_sm()
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .when_some(accent, |el, color| el.text_color(color))
-                            .when(accent.is_none(), |el| el.text_color(muted))
-                            .child(category_name),
-                    )
-                    .child(
-                        Icon::new(if is_collapsed {
-                            IconName::ChevronRight
-                        } else {
-                            IconName::ChevronDown
-                        })
-                        .xsmall()
-                        .when_some(accent, |el, color| el.text_color(color))
-                        .when(accent.is_none(), |el| el.text_color(muted)),
-                    );
-
-                if is_collapsed {
-                    // Collapsed: plain header row, no bar, no container.
-                    div()
+                    // Header row — shared between collapsed and expanded states.
+                    let header = h_flex()
                         .w_full()
-                        .pb(px(6.))
-                        .child(header)
-                        .into_any_element()
-                } else {
-                    // Expanded: left accent bar + content column.
-                    div()
-                        .w_full()
-                        .pb(px(10.))
-                        .child(
-                            h_flex()
-                                .w_full()
-                                .items_stretch()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .w(px(3.))
-                                        .rounded_full()
-                                        .flex_shrink_0()
-                                        .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
-                                        .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
-                                )
-                                .child(
-                                    v_flex()
-                                        .flex_1()
-                                        .gap_0()
-                                        .child(header)
-                                        .children(category_rows),
-                                ),
+                        .items_center()
+                        .justify_between()
+                        .py(px(2.))
+                        .cursor_pointer()
+                        .on_mouse_down(
+                            MouseButton::Left,
+                            cx.listener(move |this, _event, _window, cx| {
+                                if was_collapsed {
+                                    this.collapsed_property_categories.remove(&toggle_key);
+                                    this.expanded_property_categories.insert(toggle_key.clone());
+                                } else {
+                                    this.expanded_property_categories.remove(&toggle_key);
+                                    this.collapsed_property_categories
+                                        .insert(toggle_key.clone());
+                                }
+                                cx.notify();
+                            }),
                         )
-                        .into_any_element()
-                }
-            })
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .when_some(accent, |el, color| el.text_color(color))
+                                .when(accent.is_none(), |el| el.text_color(muted))
+                                .child(category_name),
+                        )
+                        .child(
+                            Icon::new(if is_collapsed {
+                                IconName::ChevronRight
+                            } else {
+                                IconName::ChevronDown
+                            })
+                            .xsmall()
+                            .when_some(accent, |el, color| el.text_color(color))
+                            .when(accent.is_none(), |el| el.text_color(muted)),
+                        );
+
+                    if is_collapsed {
+                        // Collapsed: plain header row, no bar, no container.
+                        div().w_full().pb(px(6.)).child(header).into_any_element()
+                    } else {
+                        // Expanded: left accent bar + content column.
+                        div()
+                            .w_full()
+                            .pb(px(10.))
+                            .child(
+                                h_flex()
+                                    .w_full()
+                                    .items_stretch()
+                                    .gap_1()
+                                    .child(
+                                        div()
+                                            .w(px(3.))
+                                            .rounded_full()
+                                            .flex_shrink_0()
+                                            .when_some(accent, |e, color| e.bg(color.opacity(0.85)))
+                                            .when(accent.is_none(), |e| e.bg(muted.opacity(0.35))),
+                                    )
+                                    .child(
+                                        v_flex()
+                                            .flex_1()
+                                            .gap_0()
+                                            .child(header)
+                                            .children(category_rows),
+                                    ),
+                            )
+                            .into_any_element()
+                    }
+                },
+            )
             .collect()
     }
 }

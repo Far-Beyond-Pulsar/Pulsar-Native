@@ -2,6 +2,7 @@ use gpui::{
     div, prelude::*, px, Axis, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     KeyDownEvent, MouseButton, Render, SharedString, StyledText, Window,
 };
+use ui::scroll::Scrollable;
 use ui::{
     h_flex,
     input::{Escape, InputEvent, InputState, TextInput},
@@ -9,7 +10,6 @@ use ui::{
     text::TextView,
     v_flex, ActiveTheme as _, Icon, IconName, StyledExt, VirtualListScrollHandle,
 };
-use ui::scroll::Scrollable;
 
 use super::palette_trait::{PaletteDelegate, PaletteItem};
 
@@ -320,7 +320,12 @@ impl<D: PaletteDelegate> Render for GenericPalette<D> {
                     cx.stop_propagation();
                 }
             }))
-            .child(self.render_palette_container(selected_index, selected_item.as_ref(), window, cx))
+            .child(self.render_palette_container(
+                selected_index,
+                selected_item.as_ref(),
+                window,
+                cx,
+            ))
             .when(show_docs, |this| {
                 this.child(self.render_docs_panel(selected_item, window, cx))
             })
@@ -395,12 +400,23 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     }
 
     /// Renders the scrollable item list, or a "no items found" message.
-    fn render_item_list(&mut self, selected_index: usize, cx: &mut Context<Self>) -> gpui::AnyElement {
-        if self.filtered_categories.iter().all(|(_, items)| items.is_empty()) {
+    fn render_item_list(
+        &mut self,
+        selected_index: usize,
+        cx: &mut Context<Self>,
+    ) -> gpui::AnyElement {
+        if self
+            .filtered_categories
+            .iter()
+            .all(|(_, items)| items.is_empty())
+        {
             return self.render_no_results(cx);
         }
 
-        let has_categories = self.filtered_categories.iter().any(|(name, _)| !name.is_empty());
+        let has_categories = self
+            .filtered_categories
+            .iter()
+            .any(|(name, _)| !name.is_empty());
 
         div()
             .relative()
@@ -415,15 +431,17 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                         v_flex()
                             .gap_0p5()
                             .p_2()
-                            .children(self.render_category_items(selected_index, has_categories, cx)),
+                            .children(self.render_category_items(
+                                selected_index,
+                                has_categories,
+                                cx,
+                            )),
                     ),
             )
-            .child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .child(Scrollbar::vertical(&self.scrollbar_state, &self.scroll_handle)),
-            )
+            .child(div().absolute().inset_0().child(Scrollbar::vertical(
+                &self.scrollbar_state,
+                &self.scroll_handle,
+            )))
             .into_any_element()
     }
 
@@ -472,7 +490,13 @@ impl<D: PaletteDelegate> GenericPalette<D> {
                     .map(|s| s.expanded)
                     .unwrap_or(true);
 
-                elements.push(self.render_category_header(cat_idx, cat_name, items.len(), expanded, cx));
+                elements.push(self.render_category_header(
+                    cat_idx,
+                    cat_name,
+                    items.len(),
+                    expanded,
+                    cx,
+                ));
 
                 if expanded {
                     for item in items {
@@ -552,91 +576,87 @@ impl<D: PaletteDelegate> GenericPalette<D> {
     }
 
     /// Renders the documentation panel shown on the right when space is pressed.
-    fn render_docs_panel(&mut self, selected_item: Option<D::Item>, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_docs_panel(
+        &mut self,
+        selected_item: Option<D::Item>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let doc_content = selected_item.as_ref().and_then(|item| item.documentation());
         let scroll_handle = self.docs_scroll_handle.clone();
         let scrollbar_state = self.docs_scrollbar_state.clone();
 
-        div()
-            .relative()
-            .w(px(360.))
-            .h(px(480.))
-            .child(
-                v_flex()
-                    .h_full()
-                    .bg(cx.theme().background)
-                    .border_1()
-                    .border_color(cx.theme().border)
-                    .rounded(px(12.))
-                    .shadow_lg()
-                    .overflow_hidden()
-                    .child(
-                        h_flex()
-                            .px_4()
-                            .py_3()
-                            .border_b_1()
-                            .border_color(cx.theme().border)
-                            .gap_2()
-                            .items_center()
-                            .child(
-                                Icon::new(IconName::SubmitDocument)
-                                    .size(px(16.0))
-                                    .text_color(cx.theme().muted_foreground),
-                            )
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_semibold()
-                                    .text_color(cx.theme().foreground)
-                                    .child("Documentation"),
-                            ),
-                    )
-                    .child({
-                        div()
-                            .relative()
-                            .h_full()
-                            .child(
-                                v_flex()
-                                    .h_full()
-                                    .scrollable(Axis::Vertical)
-                                    .id("palette-docs")
-                                    .track_scroll(&scroll_handle)
-                                    .child(
-                                        v_flex()
-                                            .p_4()
-                                            .gap_3()
-                                            .map(|el| {
-                                                if let Some(doc_text) = doc_content {
-                                                    el.child(
-                                                        TextView::markdown("node-docs", doc_text, window, cx)
-                                                            .selectable(),
-                                                    )
-                                                } else {
-                                                    el.child(
-                                                        div()
-                                                            .h(px(300.))
-                                                            .flex()
-                                                            .items_center()
-                                                            .justify_center()
-                                                            .child(
-                                                                div()
-                                                                    .text_sm()
-                                                                    .text_color(cx.theme().muted_foreground)
-                                                                    .child("No documentation available"),
-                                                            ),
-                                                    )
-                                                }
-                                            }),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
-                            )
-                    }),
-            )
+        div().relative().w(px(360.)).h(px(480.)).child(
+            v_flex()
+                .h_full()
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .rounded(px(12.))
+                .shadow_lg()
+                .overflow_hidden()
+                .child(
+                    h_flex()
+                        .px_4()
+                        .py_3()
+                        .border_b_1()
+                        .border_color(cx.theme().border)
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            Icon::new(IconName::SubmitDocument)
+                                .size(px(16.0))
+                                .text_color(cx.theme().muted_foreground),
+                        )
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_semibold()
+                                .text_color(cx.theme().foreground)
+                                .child("Documentation"),
+                        ),
+                )
+                .child({
+                    div()
+                        .relative()
+                        .h_full()
+                        .child(
+                            v_flex()
+                                .h_full()
+                                .scrollable(Axis::Vertical)
+                                .id("palette-docs")
+                                .track_scroll(&scroll_handle)
+                                .child(v_flex().p_4().gap_3().map(|el| {
+                                    if let Some(doc_text) = doc_content {
+                                        el.child(
+                                            TextView::markdown("node-docs", doc_text, window, cx)
+                                                .selectable(),
+                                        )
+                                    } else {
+                                        el.child(
+                                            div()
+                                                .h(px(300.))
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .child(
+                                                    div()
+                                                        .text_sm()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("No documentation available"),
+                                                ),
+                                        )
+                                    }
+                                })),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .child(Scrollbar::vertical(&scrollbar_state, &scroll_handle)),
+                        )
+                }),
+        )
     }
 }
 

@@ -1,10 +1,17 @@
 use gpui::prelude::*;
 use gpui::*;
-use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName};
+use ui::{
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Disableable,
+    Icon, IconName,
+};
 
 use crate::screen::EntryScreen;
 
-pub fn render_clone_git(screen: &mut EntryScreen, _window: &mut Window, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_clone_git(
+    screen: &mut EntryScreen,
+    _window: &mut Window,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let repo_url_input = screen.inputs().git_repo_url.clone();
     let is_cloning = screen.state.clone_progress.is_some();

@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{Ident, TypeGenerics, WhereClause, ImplGenerics, DataEnum, Fields};
+use syn::{DataEnum, Fields, Ident, ImplGenerics, TypeGenerics, WhereClause};
 
 pub fn generate_enum_impl(
     name: &Ident,

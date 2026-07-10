@@ -4,9 +4,17 @@ use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveThem
 
 use crate::screen::EntryScreen;
 
-pub fn render_upstream_prompt(screen: &mut EntryScreen, _window: &mut Window, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_upstream_prompt(
+    screen: &mut EntryScreen,
+    _window: &mut Window,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
-    let template_url = screen.state.ui.show_git_upstream_prompt.as_ref()
+    let template_url = screen
+        .state
+        .ui
+        .show_git_upstream_prompt
+        .as_ref()
         .map(|(_, url)| url.clone())
         .unwrap_or_default();
     let upstream_url_input = screen.inputs().git_upstream_url.clone();

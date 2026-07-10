@@ -1,11 +1,14 @@
-use gpui::*;
 use gpui::prelude::*;
+use gpui::*;
 use ui::{button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _};
 
-use crate::screen::EntryScreen;
 use super::helpers::render_info_section;
+use crate::screen::EntryScreen;
 
-pub fn render_general_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen>) -> impl IntoElement {
+pub fn render_general_tab(
+    screen: &mut EntryScreen,
+    cx: &mut Context<EntryScreen>,
+) -> impl IntoElement {
     let theme = cx.theme();
     let Some(ref settings) = screen.state.ui.project_settings else {
         return div().into_any_element();
@@ -23,16 +26,14 @@ pub fn render_general_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen
                 .text_color(theme.foreground)
                 .child("General"),
         )
-        .child(
-            render_info_section(
-                vec![
-                    ("Name".to_string(), project_name),
-                    ("Path".to_string(), path_str.clone()),
-                    ("Type".to_string(), "Pulsar Engine Project".to_string()),
-                ],
-                cx,
-            ),
-        )
+        .child(render_info_section(
+            vec![
+                ("Name".to_string(), project_name),
+                ("Path".to_string(), path_str.clone()),
+                ("Type".to_string(), "Pulsar Engine Project".to_string()),
+            ],
+            cx,
+        ))
         .child(
             h_flex()
                 .gap_2()
@@ -59,7 +60,9 @@ pub fn render_general_tab(screen: &mut EntryScreen, cx: &mut Context<EntryScreen
                         .label("Copy Path")
                         .ghost()
                         .on_click(cx.listener(move |_, _, _, cx| {
-                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(path_str.clone()));
+                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(
+                                path_str.clone(),
+                            ));
                         })),
                 ),
         )

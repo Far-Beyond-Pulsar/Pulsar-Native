@@ -63,12 +63,12 @@ pub mod transport;
 
 // Re-export commonly used types
 pub use auth::AuthService;
-pub use pulsar_multiplayer_core::session::Role;
 pub use config::Config;
 pub use crdt::{ORSet, RGASeq};
 pub use health::HealthChecker;
 pub use metrics::METRICS;
 pub use persistence::PersistenceLayer;
+pub use pulsar_multiplayer_core::session::Role;
 pub use session::SessionStore;
 pub use transport::{QuicServer, TcpSimultaneousOpen, UdpHolePuncher};
 

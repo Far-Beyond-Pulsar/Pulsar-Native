@@ -43,7 +43,11 @@ pub fn render_size_bar(
     color: gpui::Hsla,
     theme: &ui::Theme,
 ) -> impl IntoElement {
-    let fraction = if total_bytes > 0 { (size_bytes as f32 / total_bytes as f32).min(1.0) } else { 0.0 };
+    let fraction = if total_bytes > 0 {
+        (size_bytes as f32 / total_bytes as f32).min(1.0)
+    } else {
+        0.0
+    };
     let formatted = crate::util::formatters::format_size(size_bytes);
 
     v_flex()
@@ -51,8 +55,18 @@ pub fn render_size_bar(
         .child(
             h_flex()
                 .justify_between()
-                .child(div().text_xs().text_color(theme.muted_foreground).child(label.to_string()))
-                .child(div().text_xs().text_color(theme.muted_foreground).child(formatted)),
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(label.to_string()),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(theme.muted_foreground)
+                        .child(formatted),
+                ),
         )
         .child(
             div()
