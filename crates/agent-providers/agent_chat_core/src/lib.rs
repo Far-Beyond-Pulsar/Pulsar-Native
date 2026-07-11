@@ -115,6 +115,16 @@ pub trait ChatProvider: Send + Sync {
     fn id(&self) -> &str;
     fn display_name(&self) -> &str;
     fn config_fields(&self) -> &[ConfigField] { &[] }
+
+    /// Validate the provider's configuration (e.g. check API key is valid).
+    /// Return `Ok(())` on success, or an error with a human-readable message.
+    /// The provider decides how to test — lightweight API call, key format check, etc.
+    /// Default impl calls `models()`. Override for custom validation.
+    fn validate_config(&self) -> anyhow::Result<()> {
+        self.models()?;
+        Ok(())
+    }
+
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>>;
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse>;
 

@@ -17,6 +17,30 @@ impl AgentChatPanel {
 
             let provider_id = self.provider_catalog[index].id;
 
+            // Cancel any stale config flow when switching providers
+            self.configuring_provider = None;
+            self.config_error = None;
+
+            // If provider is marked Ready, re-validate to catch expired tokens
+            if self.provider_states.get(provider_id) == Some(&ProviderState::Ready) {
+                if let Some(provider_impl) = self.provider_registry.get(provider_id) {
+                    if let Err(e) = provider_impl.validate_config() {
+                        self.provider_states.insert(provider_id.to_string(), ProviderState::Unconfigured);
+                        self.provider_states_shared.borrow_mut().insert(provider_id.to_string(), ProviderState::Unconfigured);
+                        if let Some(entry) = self.provider_entries.get(provider_id) {
+                            if !entry.config_fields.is_empty() {
+                                self.configuring_provider = Some(provider_id.to_string());
+                                self.configuring_field_index = 0;
+                                self.config_values.clear();
+                                self.config_error = Some(format!("Token expired or invalid: {e}"));
+                                cx.notify();
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+
             // If unconfigured, start config flow
             if self.provider_states.get(provider_id) == Some(&ProviderState::Unconfigured) {
                 if let Some(entry) = self.provider_entries.get(provider_id) {
@@ -43,6 +67,17 @@ impl AgentChatPanel {
             }
 
             cx.notify();
+        }
+    }
+
+    /// Refresh just the model list for the current provider without changing
+    /// the active provider index.  Safe to call from config form error paths.
+    pub(super) fn catalog_for_current_provider(&mut self, cx: &mut Context<Self>) {
+        if let Some(provider) = self.active_provider() {
+            let models = provider.models.as_ref().clone();
+            self.model_list.update(cx, |list, cx| {
+                list.set_items(models, cx);
+            });
         }
     }
 

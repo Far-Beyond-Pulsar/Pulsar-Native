@@ -88,7 +88,9 @@ impl AgentChatPanel {
     }
 
     pub(super) fn refresh_provider_catalog(&mut self, cx: &mut Context<Self>) {
-        let old_selection = self.active_provider_ix;
+        let current_id = self
+            .active_provider()
+            .map(|p| p.id.to_string());
         let mut catalog: Vec<ProviderDefinition> = Vec::new();
 
         for (id, provider) in self.provider_registry.all() {
@@ -122,8 +124,29 @@ impl AgentChatPanel {
             });
         }
 
+        // Sort: Ready first (alpha), then Unconfigured (alpha), then Disabled (alpha)
+        let state_order = |id: &str| -> u8 {
+            match self.provider_states.get(id) {
+                Some(ProviderState::Ready) => 0,
+                Some(ProviderState::Unconfigured) => 1,
+                Some(ProviderState::Disabled) | None => 2,
+            }
+        };
+        catalog.sort_by(|a, b| {
+            let ta = state_order(a.id);
+            let tb = state_order(b.id);
+            ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
+        });
+
         self.provider_catalog = catalog;
-        self.active_provider_ix = old_selection.min(self.provider_catalog.len().saturating_sub(1));
+        // Push the re-sorted catalog into the list entity so the UI reflects it
+        self.provider_list.update(cx, |list, cx| {
+            list.set_items(self.provider_catalog.clone(), cx);
+        });
+        // Restore selection by provider ID — never change provider automatically
+        self.active_provider_ix = current_id
+            .and_then(|id| self.provider_catalog.iter().position(|p| p.id == id))
+            .unwrap_or(0);
         cx.notify();
     }
 

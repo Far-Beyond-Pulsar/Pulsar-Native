@@ -521,8 +521,58 @@ impl ChatProvider for AnthropicProvider {
         "Anthropic"
     }
 
+    fn validate_config(&self) -> anyhow::Result<()> {
+        if self.api_key.is_empty() {
+            return Err(anyhow::anyhow!("Anthropic API key is required"));
+        }
+        if !self.api_key.starts_with("sk-ant-") {
+            return Err(anyhow::anyhow!("Anthropic API key should start with sk-ant-"));
+        }
+        let response = self
+            .client
+            .get("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Anthropic: {e}"))?;
+        if response.status().as_u16() == 200 || response.status().as_u16() == 400 {
+            // 400 means the request body was empty/malformed but the key is valid
+            Ok(())
+        } else if response.status().as_u16() == 401 {
+            Err(anyhow::anyhow!("Anthropic API key is invalid or expired"))
+        } else {
+            Err(anyhow::anyhow!("Anthropic API returned {}: {}", response.status(), response.text().unwrap_or_default()))
+        }
+    }
+
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(self.models.clone())
+        let response = self
+            .client
+            .get("https://api.anthropic.com/v1/models")
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to fetch Anthropic models: {e}"))?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Anthropic models API {}: {}", response.status(), response.text().unwrap_or_default()));
+        }
+        let body: serde_json::Value = response.json()?;
+        let models = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let label = m.get("display_name").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(models)
     }
 
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
@@ -634,7 +684,7 @@ impl ProviderCrate for AnthropicProviderCrate {
 
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "anthropic", "unknown provider: {id}");
-        let api_key = config.require("api_key")?.to_string();
+        let api_key = config.get("api_key").unwrap_or_default().to_string();
         Ok(Box::new(AnthropicProvider::new(api_key)))
     }
 }

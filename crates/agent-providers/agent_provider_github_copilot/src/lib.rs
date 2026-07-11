@@ -517,8 +517,60 @@ impl ChatProvider for GithubCopilotProvider {
         "GitHub Models"
     }
 
+    fn validate_config(&self) -> anyhow::Result<()> {
+        if self.api_key.is_empty() {
+            return Err(anyhow::anyhow!("GitHub token is required"));
+        }
+        // Make a lightweight API call to validate the token
+        let response = self
+            .client
+            .get("https://api.github.com/user")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Accept", "application/vnd.github+json")
+            .header("User-Agent", "Pulsar")
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to connect: {e}"))?;
+
+        if response.status().as_u16() == 200 || response.status().as_u16() == 201 {
+            Ok(())
+        } else if response.status().as_u16() == 401 {
+            Err(anyhow::anyhow!("GitHub token is invalid or expired"))
+        } else if response.status().as_u16() == 403 {
+            Err(anyhow::anyhow!("GitHub token lacks permission or is rate-limited"))
+        } else {
+            let status = response.status();
+            let body = response.text().unwrap_or_default();
+            Err(anyhow::anyhow!("GitHub API returned {status}: {body}"))
+        }
+    }
+
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(self.models.clone())
+        let url = "https://models.github.ai/inference/models";
+        let response = self
+            .client
+            .get(url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Accept", "application/json")
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to fetch GitHub Models: {e}"))?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("GitHub Models API {}: {}", response.status(), response.text().unwrap_or_default()));
+        }
+        let body: serde_json::Value = response.json()?;
+        let models = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let label = m.get("display_name").or_else(|| m.get("name")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(models)
     }
 
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
@@ -636,7 +688,7 @@ impl ProviderCrate for GithubCopilotProviderCrate {
 
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "github_copilot", "unknown provider: {id}");
-        let token = config.require("token")?.to_string();
+        let token = config.get("token").unwrap_or_default().to_string();
         Ok(Box::new(GithubCopilotProvider::new(token)))
     }
 }

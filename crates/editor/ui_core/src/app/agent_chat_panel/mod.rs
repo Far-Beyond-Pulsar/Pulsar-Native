@@ -22,8 +22,10 @@ use agent_provider_openai::OpenAiProviderCrate;
 use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
+    cell::RefCell,
     collections::{HashMap, VecDeque},
     path::PathBuf,
+    rc::Rc,
     sync::{Arc, RwLock},
 };
 use ui::{
@@ -68,11 +70,13 @@ pub struct AgentChatPanel {
     pub(crate) pending_custom_provider_step: Option<AddProviderPromptStep>,
     pub(crate) provider_registry: ProviderRegistry,
     pub(crate) provider_states: HashMap<String, ProviderState>,
+    pub(crate) provider_states_shared: Rc<RefCell<HashMap<String, ProviderState>>>,
     pub(crate) provider_entries: HashMap<String, ProviderEntry>,
     pub(crate) crate_instances: Vec<Box<dyn ProviderCrate>>,
     pub(crate) configuring_provider: Option<String>,
     pub(crate) configuring_field_index: usize,
     pub(crate) config_values: HashMap<String, String>,
+    pub(crate) config_error: Option<String>,
     pub(crate) tool_registry: ToolRegistry,
     pub(crate) plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
     pub(crate) provider_tokens: HashMap<&'static str, String>,
@@ -135,6 +139,7 @@ impl AgentChatPanel {
         ];
 
         let mut provider_states: HashMap<String, ProviderState> = HashMap::new();
+        let provider_states_shared: Rc<RefCell<HashMap<String, ProviderState>>> = Rc::new(RefCell::new(HashMap::new()));
         let mut provider_entries: HashMap<String, ProviderEntry> = HashMap::new();
         let disabled_providers = ["aws_bedrock", "vertex_ai"];
 
@@ -155,7 +160,8 @@ impl AgentChatPanel {
                     };
                     let id = entry.id.to_string();
                     provider_entries.insert(id.clone(), entry);
-                    provider_states.insert(id.clone(), state);
+                    provider_states.insert(id.clone(), state.clone());
+                    provider_states_shared.borrow_mut().insert(id.clone(), state);
                     provider_registry.register(Arc::from(provider));
                 }
             }
@@ -218,7 +224,7 @@ impl AgentChatPanel {
         });
 
 
-        let states_for_list = provider_states.clone();
+        let states_shared = provider_states_shared.clone();
         let provider_list = cx.new(|cx| {
             SearchableList::new(
                 window,
@@ -234,7 +240,8 @@ impl AgentChatPanel {
                 ProviderKind::Local => IconName::Server,
             })
             .with_item_state(move |p: &ProviderDefinition| {
-                match states_for_list.get(p.id) {
+                let map = states_shared.borrow();
+                match map.get(p.id) {
                     Some(ProviderState::Ready) => SearchableListItemState::Enabled,
                     Some(ProviderState::Unconfigured) => SearchableListItemState::Locked,
                     Some(ProviderState::Disabled) | None => SearchableListItemState::Disabled,
@@ -321,11 +328,13 @@ impl AgentChatPanel {
             pending_custom_provider_step: None,
             provider_registry,
             provider_states,
+            provider_states_shared,
             provider_entries,
             crate_instances,
             configuring_provider: None,
             configuring_field_index: 0,
             config_values: HashMap::new(),
+            config_error: None,
             tool_registry: agent_chat_tools::build_default_registry(),
             plugin_bridge,
             provider_tokens: HashMap::new(),
@@ -799,34 +808,69 @@ impl Render for AgentChatPanel {
                         let fields = entry.map(|e| &e.config_fields[..]).unwrap_or(&[]);
                         let field_ix = self.configuring_field_index;
                         let field = fields.get(field_ix);
+                        let has_error = self.config_error.is_some();
+                        let err_text = self.config_error.clone().unwrap_or_default();
 
                         el.child(
                             v_flex()
                                 .w_full()
-                                .gap_1()
-                                .p_2()
-                                .rounded(px(6.0))
-                                .bg(cx.theme().primary.opacity(0.08))
+                                .gap_2()
+                                .p_3()
+                                .rounded(px(8.0))
+                                .bg(if has_error {
+                                    cx.theme().colors.danger.opacity(0.08)
+                                } else {
+                                    cx.theme().colors.background.opacity(0.5)
+                                })
                                 .border_1()
-                                .border_color(cx.theme().primary.opacity(0.25))
+                                .border_color(if has_error {
+                                    cx.theme().colors.danger.opacity(0.35)
+                                } else {
+                                    cx.theme().colors.border.opacity(0.5)
+                                })
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().primary)
-                                        .child(match field {
-                                            Some(f) => f.description,
-                                            None => "Provider is configured",
-                                        }),
+                                    v_flex()
+                                        .w_full()
+                                        .gap_1()
+                                        .child(
+                                            div()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .child(match (entry, field) {
+                                                    (Some(e), Some(f)) => format!("{} — {}", e.display_name, f.label),
+                                                    (Some(e), None) => e.display_name.to_string(),
+                                                    (None, _) => provider_id.clone(),
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().colors.muted_foreground)
+                                                .child(match field {
+                                                    Some(f) => f.description,
+                                                    None => "",
+                                                }),
+                                        ),
                                 )
                                 .child(
                                     TextInput::new(&self.custom_provider_input)
                                         .w_full()
                                         .xsmall(),
                                 )
+                                .when(has_error, |el| {
+                                    el.child(
+                                        div()
+                                            .w_full()
+                                            .text_xs()
+                                            .text_color(cx.theme().danger)
+                                            .child(err_text),
+                                    )
+                                })
                                 .child(
                                     h_flex()
                                         .w_full()
-                                        .gap_1()
+                                        .gap_2()
+                                        .justify_end()
                                         .child(
                                             Button::new("provider-config-cancel")
                                                 .xsmall()
@@ -834,6 +878,7 @@ impl Render for AgentChatPanel {
                                                 .label("Cancel")
                                                 .on_click(cx.listener(|this, _, _, cx| {
                                                     this.configuring_provider = None;
+                                                    this.config_error = None;
                                                     cx.notify();
                                                 })),
                                         )
@@ -841,15 +886,16 @@ impl Render for AgentChatPanel {
                                             Button::new("provider-config-submit")
                                                 .xsmall()
                                                 .primary()
-                                                .label("Save")
+                                                .label(if has_error { "Retry" } else { "Save" })
                                                 .disabled(
-                                                    self.custom_provider_input
+                                                    (self.custom_provider_input
                                                         .read(cx)
                                                         .text()
                                                         .to_string()
                                                         .trim()
                                                         .is_empty()
-                                                        && field.map(|f| f.required).unwrap_or(false),
+                                                        && field.map(|f| f.required).unwrap_or(false))
+                                                        || field.is_none(),
                                                 )
                                                 .on_click(cx.listener(|this, _, window, cx| {
                                                     let value = this.custom_provider_input.read(cx).text().to_string();
@@ -858,32 +904,56 @@ impl Render for AgentChatPanel {
                                                         let entry = this.provider_entries.get(id);
                                                         let fields = entry.map(|e| e.config_fields.clone()).unwrap_or_default();
 
-                                                        this.config_values.insert(
-                                                            fields.get(this.configuring_field_index).map(|f| f.key).unwrap_or("value").to_string(),
-                                                            value,
-                                                        );
+                                                        let field_key = fields.get(this.configuring_field_index).map(|f| f.key).unwrap_or("value").to_string();
+                                                        let is_sensitive = fields.get(this.configuring_field_index).map(|f| f.sensitive).unwrap_or(false);
+                                                        this.config_values.insert(field_key, value);
 
                                                         this.configuring_field_index += 1;
                                                         if this.configuring_field_index >= fields.len() {
                                                             let config = agent_chat_core::ProviderConfig {
                                                                 values: this.config_values.drain().collect(),
                                                             };
+                                                            let mut validated = false;
                                                             for c in &this.crate_instances {
                                                                 if let Ok(p) = c.create(id, config.clone()) {
-                                                                    this.provider_registry.register(Arc::from(p));
-                                                                    this.provider_states.insert(id.clone(), ProviderState::Ready);
-                                                                    this.provider_entries.remove(id);
+                                                                    match p.validate_config() {
+                                                                        Ok(()) => {
+                                                                            this.provider_registry.register(Arc::from(p));
+                                                                            this.provider_states.insert(id.clone(), ProviderState::Ready);
+                                                                            this.provider_states_shared.borrow_mut().insert(id.clone(), ProviderState::Ready);
+                                                                            this.provider_entries.remove(id);
+                                                                            this.configuring_provider = None;
+                                                                            this.config_error = None;
+                                                                            this.refresh_provider_catalog(cx);
+                                                                            validated = true;
+                                                                        }
+                                                                        Err(e) => {
+                                                                            this.config_error = Some(e.to_string());
+                                                                            // Clear sensitive fields on error
+                                                                            for (k, v) in &mut this.config_values.iter_mut() {
+                                                                                if fields.iter().any(|f| f.key == k.as_str() && f.sensitive) {
+                                                                                    v.clear();
+                                                                                }
+                                                                            }
+                                                                            this.configuring_field_index = 0;
+                                                                            this.custom_provider_input.update(cx, |input, cx| {
+                                                                                input.set_value("", window, cx);
+                                                                            });
+                                                                        }
+                                                                    }
                                                                     break;
                                                                 }
                                                             }
-                                                            this.configuring_provider = None;
-                                                            this.refresh_provider_catalog(cx);
+                                                            if !validated {
+                                                                this.catalog_for_current_provider(cx);
+                                                            }
+                                                        } else {
+                                                            this.custom_provider_input.update(cx, |input, cx| {
+                                                                input.set_value("", window, cx);
+                                                            });
                                                         }
-                                                        this.custom_provider_input.update(cx, |input, cx| {
-                                                            input.set_value("", window, cx);
-                                                        });
+                                                        cx.notify();
                                                     }
-                                                    cx.notify();
                                                 })),
                                         ),
                                 ),

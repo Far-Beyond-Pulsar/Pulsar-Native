@@ -92,8 +92,52 @@ impl ChatProvider for GeminiProvider {
         "Google Gemini"
     }
 
+    fn validate_config(&self) -> anyhow::Result<()> {
+        if self.api_key.is_empty() {
+            return Err(anyhow::anyhow!("Gemini API key is required"));
+        }
+        let url = format!("{}models", GEMINI_CHAT_URL);
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to Gemini: {e}"))?;
+        if response.status().is_success() {
+            Ok(())
+        } else if response.status().as_u16() == 401 || response.status().as_u16() == 403 {
+            Err(anyhow::anyhow!("Gemini API key is invalid or expired"))
+        } else {
+            Err(anyhow::anyhow!("Gemini API returned {}: {}", response.status(), response.text().unwrap_or_default()))
+        }
+    }
+
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(self.models.clone())
+        let url = format!("{}models", GEMINI_CHAT_URL);
+        let response = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .map_err(|e| anyhow::anyhow!("Failed to fetch Gemini models: {e}"))?;
+        if !response.status().is_success() {
+            return Err(anyhow::anyhow!("Gemini models API {}: {}", response.status(), response.text().unwrap_or_default()));
+        }
+        let body: serde_json::Value = response.json()?;
+        let models = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let label = m.get("display_name").or_else(|| m.get("name")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        Ok(models)
     }
 
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
@@ -311,7 +355,7 @@ impl ProviderCrate for GeminiProviderCrate {
 
     fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
         anyhow::ensure!(id == "gemini", "unknown provider: {id}");
-        let api_key = config.require("api_key")?.to_string();
+        let api_key = config.get("api_key").unwrap_or_default().to_string();
         Ok(Box::new(GeminiProvider::new(api_key)))
     }
 }
