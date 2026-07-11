@@ -299,7 +299,6 @@ fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<V
     } else { vec![] };
 
     let mut payload = json!({ "model": request.model, "messages": messages, "stream": stream });
-    if let Some(p) = request.top_p { payload["top_p"] = json!(p); }
     if let Some(m) = request.max_tokens { payload["max_tokens"] = json!(m); }
     if !tools.is_empty() { payload["tools"] = Value::Array(tools); }
     Ok(payload)
