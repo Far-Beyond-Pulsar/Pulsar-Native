@@ -161,7 +161,7 @@ tracing = "0.1.44"
 notify = "8.2.0"
 lsp-types = "0.97.0"
 directories = "6.0.0"
-itertools = "0.14.0"
+itertools = "0.15.0"
 rapier3d = { version = "0.34.0", features = ["simd-stable"] }
 sysuri = "0.4.0"
 urlencoding = "2.1.3"
