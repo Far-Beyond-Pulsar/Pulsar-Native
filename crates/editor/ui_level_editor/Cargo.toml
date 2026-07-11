@@ -47,7 +47,7 @@ smol = { workspace = true }
 image.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
-core-graphics2 = "0.5"
+core-graphics2 = "0.6"
 core-foundation-sys = { workspace = true }
 objc2 = "0.6"
 objc2-app-kit = "0.3"
