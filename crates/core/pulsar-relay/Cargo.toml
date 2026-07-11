@@ -30,7 +30,7 @@ webpki-roots = "0.26"
 socket2 = "0.6"
 
 
-ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+ed25519-dalek = { version = "3.0", features = ["rand_core"] }
 rand = { workspace = true }
 
 # JWT
