@@ -75,8 +75,6 @@ fn compute_aligned_diff(diff: &DiffResult) -> (Vec<AlignedLine>, Vec<AlignedLine
     (left, right)
 }
 
-/// Compute an aligned diff but with collapsed regions compacted into a single spacer.
-
 /// Render a side-by-side diff panel using resizable panels.
 /// `is_commit = false` → uses `file_diff`, `is_commit = true` → uses `commit_file_diff`.
 pub fn render_side_by_side_diff(
