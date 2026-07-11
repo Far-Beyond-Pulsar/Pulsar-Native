@@ -206,7 +206,7 @@ ui_gen_macros = { path = "crates/core/ui_gen_macros" }
 pulsar_macros = { path = "crates/core/pulsar_macros" }
 pulsar-multiplayer-core = { path = "crates/core/pulsar-multiplayer-core" }
 once_cell = "1.20"
-tower-http = { version = "0.6", features = ["cors", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 lazy_static = "1.4"
 toml = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
