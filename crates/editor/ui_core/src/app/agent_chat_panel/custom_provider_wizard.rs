@@ -93,13 +93,21 @@ impl AgentChatPanel {
             .map(|p| p.id.to_string());
         let mut catalog: Vec<ProviderDefinition> = Vec::new();
 
+        // Preserve models that were already fetched across catalog refreshes
+        let old_models: HashMap<&str, Arc<Vec<ModelDefinition>>> = self
+            .provider_catalog
+            .iter()
+            .map(|p| (p.id, p.models.clone()))
+            .collect();
+
         for (id, provider) in self.provider_registry.all() {
+            let cached = old_models.get(id.as_str()).cloned();
             catalog.push(ProviderDefinition {
                 id: Box::leak(id.clone().into_boxed_str()),
                 label: Box::leak(provider.display_name().to_string().into_boxed_str()),
                 kind: ProviderKind::Cloud,
                 endpoint: Box::leak(String::new().into_boxed_str()),
-                models: Arc::new(vec![]),
+                models: cached.unwrap_or_else(|| Arc::new(vec![])),
             });
         }
 

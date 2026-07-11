@@ -918,56 +918,17 @@ impl Render for AgentChatPanel {
                                                                 if let Ok(p) = c.create(id, config.clone()) {
                                                                     match p.validate_config() {
                                                                      Ok(()) => {
-                                                                             let provider_arc: Arc<dyn ChatProvider> = Arc::from(p);
-                                                                             this.provider_registry.register(provider_arc.clone());
+                                                                             this.provider_registry.register(Arc::from(p));
                                                                              this.provider_states.insert(id.clone(), ProviderState::Ready);
                                                                              this.provider_states_shared.borrow_mut().insert(id.clone(), ProviderState::Ready);
                                                                              this.provider_entries.remove(id);
                                                                              this.configuring_provider = None;
                                                                              this.config_error = None;
                                                                              this.refresh_provider_catalog(cx);
-                                                                             // Fetch models directly from the authed provider
-                                                                             let fetch_provider = provider_arc.clone();
-                                                                             let fetch_id = id.clone();
-                                                                             cx.spawn(async move |this, cx| {
-                                                                                 let result = cx.background_executor()
-                                                                                     .spawn(async move { fetch_provider.models() })
-                                                                                     .await;
-                                                                                 cx.update(|cx| {
-                                                                                     this.update(cx, |panel, cx| {
-                                                                                         match result {
-                                                                                             Ok(models) => {
-                                                                                                 let defs: Vec<ModelDefinition> = models.iter().map(|m| ModelDefinition {
-                                                                                                     id: Box::leak(m.id.clone().into_boxed_str()),
-                                                                                                     label: Box::leak(m.label.clone().into_boxed_str()),
-                                                                                                     supports_tools: m.supports_tools,
-                                                                                                     context_tokens: m.context_tokens,
-                                                                                                     compact_model: None,
-                                                                                                 }).collect();
-                                                                                                 // Update both the catalog and the model list
-                                                                                                 for p in &mut panel.provider_catalog {
-                                                                                                     if p.id == fetch_id {
-                                                                                                         p.models = Arc::new(defs.clone());
-                                                                                                         break;
-                                                                                                     }
-                                                                                                 }
-                                                                                                 panel.model_list.update(cx, |list, cx| list.set_items(defs, cx));
-                                                                                                 cx.notify();
-                                                                                             }
-                                                                                             Err(e) => {
-                                                                                                 panel.messages.push(ChatMessage {
-                                                                                                     role: ChatRole::System,
-                                                                                                     content: format!("Failed to fetch models: {e}"),
-                                                                                                     tool_call_id: None,
-                                                                                                     tool_calls: vec![],
-                                                                                                 });
-                                                                                                 panel.scroll_messages_to_bottom();
-                                                                                                 cx.notify();
-                                                                                             }
-                                                                                         }
-                                                                                     });
-                                                                                 });
-                                                                             }).detach();
+                                                                             // Fetch models from the freshly-configured provider
+                                                                             if this.active_provider_ix < this.provider_catalog.len() {
+                                                                                 this.fetch_models_in_background(this.active_provider_ix, cx);
+                                                                             }
                                                                              validated = true;
                                                                         }
                                                                         Err(e) => {
