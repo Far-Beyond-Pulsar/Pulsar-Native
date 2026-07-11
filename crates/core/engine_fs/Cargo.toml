@@ -1,0 +1,38 @@
+[package]
+name = "engine_fs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ui_types_common = { workspace = true }
+pulsar_reflection = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+plugin_manager = { workspace = true }
+plugin_editor_api = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+notify = { workspace = true }
+walkdir = { workspace = true }
+profiling = { workspace = true }
+image = { workspace = true }
+helio-snapshot = { workspace = true }
+parking_lot = { workspace = true }
+urlencoding = { workspace = true }
+ureq = { version = "3.0", features = ["json"] }
+base64 = { workspace = true }
+tool_registry = { workspace = true }
+tool_registry_macros = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+futures = { workspace = true }
+pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+async-trait = "0.1"
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[lints]
+workspace = true

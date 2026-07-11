@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# sync-revs — Update git `rev` pins in Cargo.toml to match submodule HEADs.
+#
+# Scans root Cargo.toml for `git = "..."` deps, resolves the URL to a submodule
+# path, and updates the `rev` field to the submodule's current HEAD.
+#
+# Usage:
+#   ./script/sync-revs              # update all git deps
+#   ./script/sync-revs WGPUI        # update only deps matching a pattern
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CARGO_TOML="$ROOT/Cargo.toml"
+DRY_RUN=false
+
+# Parse flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -n|--dry-run) DRY_RUN=true; shift ;;
+        *) FILTER="$1"; shift ;;
+    esac
+done
+
+if [ ! -f "$CARGO_TOML" ]; then
+    echo "❌ No Cargo.toml found at $CARGO_TOML"
+    exit 1
+fi
+
+# Map git remote → submodule path
+# Extracted from .gitmodules
+declare -A REMOTE_TO_PATH
+while IFS= read -r line; do
+    if [[ $line =~ path\ *=\ *(.+) ]]; then
+        SUB_PATH="${BASH_REMATCH[1]}"
+    elif [[ $line =~ url\ *=\ *(.+) ]]; then
+        URL="${BASH_REMATCH[1]}"
+        REMOTE_TO_PATH["$URL"]="$SUB_PATH"
+    fi
+done < "$ROOT/.gitmodules"
+
+# Also add the plugins/vendor entries (from Pulsar-Native's own .gitmodules)
+while IFS= read -r line; do
+    if [[ $line =~ path\ *=\ *(.+) ]]; then
+        SUB_PATH="${BASH_REMATCH[1]}"
+    elif [[ $line =~ url\ *=\ *(.+) ]]; then
+        URL="${BASH_REMATCH[1]}"
+        REMOTE_TO_PATH["$URL"]="$ROOT/$SUB_PATH"
+    fi
+done < "$ROOT/.gitmodules" 2>/dev/null || true
+
+# For submodules inside Pulsar-Native, resolve the path directly
+while IFS= read -r sub_path; do
+    url=$(git -C "$ROOT" config --file "$ROOT/.gitmodules" "submodule.$sub_path.url" 2>/dev/null || true)
+    [ -n "$url" ] && REMOTE_TO_PATH["$url"]="$ROOT/$sub_path"
+done < <(git -C "$ROOT" config --file "$ROOT/.gitmodules" --name-only --get-regexp 'submodule\..*\.path' 2>/dev/null | sed 's/^submodule\.//;s/\.path$//' || true)
+
+UPDATED=0
+SKIPPED=0
+
+while IFS= read -r line; do
+    DEP_FILE="$line"
+    CONTENT=$(cat "$DEP_FILE")
+
+    # Find all git deps with rev
+    while IFS=: read -r dep_name git_url rev_value; do
+        # Check filter
+        if [ -n "${FILTER:-}" ] && ! echo "$dep_name $git_url" | grep -qi "$FILTER"; then
+            continue
+        fi
+
+        # Find matching submodule path
+        SUB_PATH=""
+        for url in "${!REMOTE_TO_PATH[@]}"; do
+            if [[ "$git_url" == *"$url"* ]] || [[ "$url" == *"$git_url"* ]]; then
+                SUB_PATH="${REMOTE_TO_PATH[$url]}"
+                break
+            fi
+        done
+
+        if [ -z "$SUB_PATH" ]; then
+            ((SKIPPED++)) || true
+            continue
+        fi
+
+        # Get the actual HEAD of the submodule
+        if [ -d "$SUB_PATH/.git" ] || [ -f "$SUB_PATH/HEAD" ]; then
+            HEAD_REV=$(git -C "$SUB_PATH" rev-parse HEAD 2>/dev/null || echo "")
+        elif [ -d "$ROOT/$SUB_PATH/.git" ] || [ -f "$ROOT/$SUB_PATH/HEAD" ]; then
+            HEAD_REV=$(git -C "$ROOT/$SUB_PATH" rev-parse HEAD 2>/dev/null || echo "")
+        else
+            ((SKIPPED++)) || true
+            continue
+        fi
+
+        if [ -z "$HEAD_REV" ]; then
+            ((SKIPPED++)) || true
+            continue
+        fi
+
+        # Check if rev already matches
+        if [ "$rev_value" = "$HEAD_REV" ]; then
+            continue
+        fi
+
+        if [ "$DRY_RUN" = true ]; then
+            echo "  ↻ $dep_name: $rev_value → $HEAD_REV ($(basename $SUB_PATH))"
+        else
+            # Update the rev in-place
+            sed -i '' "s/$dep_name = { git = \"$git_url\", rev = \"$rev_value\"/$dep_name = { git = \"$git_url\", rev = \"$HEAD_REV\"/" "$DEP_FILE"
+            echo "  ✓ $dep_name: $rev_value → $HEAD_REV ($(basename $SUB_PATH))"
+        fi
+        ((UPDATED++)) || true
+    done < <(grep -nE '^\w+.*=.*\{.*git = "[^"]+".*rev = "[^"]+"' "$DEP_FILE" | while IFS= read -r match_line; do
+        # Parse: line:dep_name = { git = "url", rev = "hash" }
+        DEP=$(echo "$match_line" | sed -E "s/^[0-9]+://")
+        DEP_NAME=$(echo "$DEP" | sed -E 's/^([a-zA-Z_-]\+).*/\1/' | xargs)
+        GIT_URL=$(echo "$DEP" | sed -E "s/.*git = \"([^\"]+)\".*/\1/")
+        REV=$(echo "$DEP" | sed -E "s/.*rev = \"([^\"]+)\".*/\1/")
+        echo "$DEP_NAME:$GIT_URL:$REV"
+    done)
+done < <(find "$ROOT" -name "Cargo.toml" -not -path "*/target/*" -not -path "*/.git/*")
+
+echo ""
+echo "Done: $UPDATED updated, $SKIPPED skipped"

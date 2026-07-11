@@ -1,0 +1,104 @@
+use gpui::*;
+use std::sync::Arc;
+use ui::{button::Button, h_flex, Selectable};
+
+use crate::level_editor::state::LevelEditorState;
+use engine_backend::subsystems::render::helio_renderer::RendererCommand;
+
+pub struct FeatureToggles;
+
+impl FeatureToggles {
+    pub fn render<V>(
+        state: &LevelEditorState,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        _cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
+    {
+        h_flex()
+            .gap_1()
+            .child(Self::render_toggle_button(
+                "toggle_materials",
+                "Materials",
+                state.editor.feature_materials_enabled,
+                ui::IconName::Palette,
+                state_arc.clone(),
+                gpu_engine.clone(),
+                "basic_materials",
+            ))
+            .child(Self::render_toggle_button(
+                "toggle_lighting",
+                "Lighting",
+                state.editor.feature_lighting_enabled,
+                ui::IconName::Sun,
+                state_arc.clone(),
+                gpu_engine.clone(),
+                "basic_lighting",
+            ))
+            .child(Self::render_toggle_button(
+                "toggle_shadows",
+                "Shadows",
+                state.editor.feature_shadows_enabled,
+                ui::IconName::Circle,
+                state_arc.clone(),
+                gpu_engine.clone(),
+                "procedural_shadows",
+            ))
+            .child(Self::render_toggle_button(
+                "toggle_bloom",
+                "Bloom",
+                state.editor.feature_bloom_enabled,
+                ui::IconName::Star,
+                state_arc.clone(),
+                gpu_engine.clone(),
+                "bloom",
+            ))
+    }
+
+    fn render_toggle_button(
+        id: &'static str,
+        label: &'static str,
+        enabled: bool,
+        icon: ui::IconName,
+        state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+        gpu_engine: Arc<std::sync::Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
+        feature_name: &'static str,
+    ) -> impl IntoElement {
+        Button::new(id)
+            .icon(icon)
+            .tooltip(format!("Toggle {}", label))
+            .selected(enabled)
+            .on_click(move |_, _, _| {
+                // Toggle state in UI
+                let mut state = state_arc.write();
+                match feature_name {
+                    "basic_materials" => {
+                        state.editor.feature_materials_enabled =
+                            !state.editor.feature_materials_enabled
+                    }
+                    "basic_lighting" => {
+                        state.editor.feature_lighting_enabled =
+                            !state.editor.feature_lighting_enabled
+                    }
+                    "procedural_shadows" => {
+                        state.editor.feature_shadows_enabled = !state.editor.feature_shadows_enabled
+                    }
+                    "bloom" => {
+                        state.editor.feature_bloom_enabled = !state.editor.feature_bloom_enabled
+                    }
+                    _ => {}
+                }
+                drop(state);
+
+                // Send command to renderer thread
+                if let Ok(engine) = gpu_engine.try_lock() {
+                    engine.send_renderer_command(RendererCommand::ToggleFeature(
+                        feature_name.to_string(),
+                    ));
+                    tracing::info!("[UI] Sent toggle command for feature: {}", feature_name);
+                }
+            })
+    }
+}

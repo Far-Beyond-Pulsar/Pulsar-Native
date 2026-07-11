@@ -8,8 +8,8 @@ env:
   # Examples: "crates/engine", "crates/plugin_manager", etc.
   # First crate is used for version checking
   CRATES_TO_BUILD: |
-    crates/engine
-    crates/pulsar-relay
+    crates/core/engine
+    crates/core/pulsar-relay
 
   # Crates to build examples for (newline-separated list)
   CRATES_WITH_EXAMPLES: |

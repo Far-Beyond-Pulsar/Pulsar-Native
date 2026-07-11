@@ -1,0 +1,19 @@
+[package]
+name = "agent_chat_tools"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+anyhow = { workspace = true }
+engine_state = { workspace = true }
+serde_json = { workspace = true }
+engine_fs = { workspace = true }
+plugin_manager = { workspace = true }
+tracing.workspace = true
+tool_registry = { workspace = true }
+tool_registry_builtin = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS", rev = "116b9028bad6b9467073de2534be60ef4df9b279" }
+tool_registry_macros = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "pulsar_physics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+engine_class_derive = { workspace = true }
+pulsar_reflection = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+[lints]
+workspace = true

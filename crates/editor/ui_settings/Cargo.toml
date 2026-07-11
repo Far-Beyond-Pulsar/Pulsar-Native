@@ -1,0 +1,20 @@
+[package]
+name = "ui_settings"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui-ce.workspace = true
+ui.workspace = true
+ui_common.workspace = true
+window_manager.workspace = true
+# Engine
+engine_state.workspace = true
+pulsar_std.workspace = true
+# Logging
+tracing.workspace = true
+
+[lints]
+workspace = true

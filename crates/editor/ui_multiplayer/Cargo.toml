@@ -1,0 +1,23 @@
+[package]
+name = "ui_multiplayer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui-ce.workspace = true
+ui.workspace = true
+ui_common.workspace = true
+window_manager.workspace = true
+engine_backend.workspace = true
+engine_state.workspace = true
+engine_fs.workspace = true
+serde_json = { workspace = true }
+futures = { workspace = true }
+tracing.workspace = true
+tokio = { workspace = true, features = ["full"] }
+similar = { workspace = true }
+
+[lints]
+workspace = true

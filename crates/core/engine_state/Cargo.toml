@@ -1,0 +1,44 @@
+[package]
+name = "engine_state"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+gpui-ce.workspace = true
+window_manager.workspace = true
+
+# Thread-safe data structures
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+smol = { workspace = true }
+event-listener = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# Logging
+tracing.workspace = true
+
+# Discord Rich Presence
+# Use the local cross-platform version until it's pushed to the repo
+rust-discord-activity = { git = "https://github.com/Far-Beyond-Pulsar/Discord-RPC-RS", rev = "2f07922277bc3632fd124e46d28008fc542367fc"}
+
+# Settings system (PulsarConfig)
+pulsar-config.workspace = true
+pulsar_settings.workspace = true
+serde = { workspace = true, features = ["derive"] }
+toml = { workspace = true }
+directories = { workspace = true }
+
+# Shared window types
+ui_types_common = { workspace = true }
+pulsar_auth.workspace = true
+
+# Multiplayer session bridge
+pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
+engine_fs = { workspace = true }
+futures = { workspace = true }
+
+[lints]
+workspace = true

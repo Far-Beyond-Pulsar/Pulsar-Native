@@ -1,0 +1,30 @@
+[package]
+name = "plugin_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+plugin_editor_api = { workspace = true }
+engine_subsystems = { workspace = true }
+parking_lot = { workspace = true }
+
+# Dynamic library loading
+libloading = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+once_cell = { workspace = true }
+
+# UI dependencies
+gpui-ce.workspace = true
+ui.workspace = true
+# File system operations
+walkdir = { workspace = true }
+
+# Cryptographic hash verification
+sha2 = { workspace = true }
+
+[dev-dependencies]
+env_logger = "=0.11.10"
+
+[lints]
+workspace = true

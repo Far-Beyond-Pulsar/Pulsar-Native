@@ -1,0 +1,41 @@
+[package]
+name = "pulsar_game"
+version = "0.1.0"
+edition = "2021"
+description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, and actor lifecycle"
+
+[dependencies]
+# Core primitives (extracted)
+pulsar_core  = { workspace = true }
+pulsar_ecs   = { workspace = true }
+
+# Profiling + logging
+profiling   = { workspace = true }
+tracing     = { workspace = true }
+
+# Blueprint runtime dependencies
+ui = { workspace = true }
+pbgc = { workspace = true }
+pulsar_bp_executor = { workspace = true }
+pulsar_std_bundle = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { workspace = true, features = ["v4", "serde"] }
+
+# Reflection — for ComponentStore property access
+pulsar_reflection = { workspace = true }
+
+# Windowed rendering (Helio + winit + wgpu)
+helio   = { workspace = true }
+winit   = { workspace = true }
+wgpu    = { workspace = true }
+glam    = { workspace = true }
+pollster = "0.4"
+
+# Scene loading + settings
+pulsar_scene    = { workspace = true }
+engine_state    = { workspace = true }
+pulsar_settings = { workspace = true }
+
+[lints]
+workspace = true

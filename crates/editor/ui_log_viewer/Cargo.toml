@@ -1,0 +1,54 @@
+[package]
+name = "ui_log_viewer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui-ce.workspace = true
+ui.workspace = true
+
+# UI crates
+ui_common.workspace = true
+
+# Engine
+engine_backend.workspace = true
+engine_state.workspace = true
+
+# Logging
+tracing.workspace = true
+
+window_manager.workspace = true
+inventory.workspace = true
+# Utilities
+anyhow = { workspace = true }
+chrono = { workspace = true }
+directories = { workspace = true }
+rust-i18n.workspace = true
+sysinfo = "0.39"
+parking_lot = { workspace = true }
+rand = { workspace = true }
+dashmap = { workspace = true }
+once_cell = { workspace = true }
+rusqlite = { workspace = true, features = ["bundled"] }
+crossbeam-channel = { workspace = true }
+backtrace = "0.3"
+
+# Async
+futures = { workspace = true }
+smol = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros"] }
+
+# GPU detection
+wgpu.workspace = true
+
+# File watching
+notify = { version = "8.0", default-features = false, features = ["macos_kqueue"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = ["Win32_System_Performance", "Win32_System_ProcessStatus"] }
+winreg = "0.56"
+
+[lints]
+workspace = true

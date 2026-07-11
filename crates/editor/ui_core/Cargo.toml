@@ -1,0 +1,75 @@
+[package]
+name = "ui_core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui-ce.workspace = true
+ui.workspace = true
+
+# UI crates (all of them!)
+ui_common.workspace = true
+ui_types_common.workspace = true
+ui_level_editor.workspace = true
+ui_entry.workspace = true
+ui_multiplayer.workspace = true
+ui_problems.workspace = true
+ui_flamegraph.workspace = true
+ui_type_debugger.workspace = true
+ui_file_manager.workspace = true
+ui_plugin_manager.workspace = true
+ui_log_viewer.workspace = true
+ui_settings.workspace = true
+ui_git_manager = { workspace = true }
+ui_about.workspace = true
+ui_documentation.workspace = true
+ui_fab_search.workspace = true
+ui_multiuser_status.workspace = true
+ui_friends.workspace = true
+
+
+# Engine
+engine_state.workspace = true
+engine_backend.workspace = true
+pulsar_physics.workspace = true
+pulsar_reflection.workspace = true
+window_manager.workspace = true
+
+# Plugin system
+plugin_manager = { workspace = true }
+plugin_editor_api = { workspace = true }
+
+# Built-in plugins (local vendor clones)
+blueprint_editor_plugin = { path = "../../../plugins/vendor/blueprint_editor" }
+script_editor_plugin = { path = "../../../plugins/vendor/code_editor" }
+plugin_matter = { path = "../../../plugins/vendor/matter_editor" }
+shader_editor_plugin = { path = "../../../plugins/vendor/shader_editor" }
+editor_table_plugin = { path = "../../../plugins/vendor/table_editor" }
+serde = { workspace = true, features = ["derive"] }
+schemars = { workspace = true }
+tracing.workspace = true
+smol = { workspace = true }
+futures = { workspace = true }
+rust-i18n.workspace = true
+serde_json = { workspace = true }
+anyhow.workspace = true
+agent_chat_core.workspace = true
+directories.workspace = true
+ui_loading_screen.workspace = true
+agent_chat_tools.workspace = true
+agent_provider_demo_random.workspace = true
+agent_provider_github_copilot.workspace = true
+agent_provider_openai.workspace = true
+agent_provider_opencode.workspace = true
+agent_provider_anthropic.workspace = true
+agent_provider_gemini.workspace = true
+agent_provider_docker_model_runner.workspace = true
+agent_provider_aws_bedrock.workspace = true
+agent_provider_vertex_ai.workspace = true
+dirs = { workspace = true }
+rfd = { workspace = true }
+
+[lints]
+workspace = true

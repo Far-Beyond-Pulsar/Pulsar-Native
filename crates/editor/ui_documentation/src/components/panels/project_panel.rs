@@ -1,0 +1,223 @@
+use crate::utils::{ProjectDocsState, ProjectTreeNode};
+use gpui::{prelude::*, *};
+use ui::{
+    ActiveTheme, Icon, IconName, StyledExt, h_flex,
+    hierarchical_tree::{render_tree_folder, render_tree_item, tree_colors},
+    input::TextInput,
+    resizable::{ResizableState, h_resizable, resizable_panel},
+    scroll::ScrollbarAxis,
+    text::TextView,
+    v_flex,
+};
+
+pub struct ProjectDocsPanel;
+
+impl ProjectDocsPanel {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn render<V>(
+        &self,
+        state: &ProjectDocsState,
+        sidebar_resizable: Entity<ResizableState>,
+        on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        window: &mut Window,
+        cx: &mut Context<V>,
+    ) -> impl IntoElement
+    where
+        V: 'static + Render,
+    {
+        let markdown = state.markdown_content.clone();
+
+        let theme = cx.theme().clone();
+
+        let visible_items: Vec<_> = state
+            .flat_visible_items
+            .iter()
+            .map(|&idx| state.tree_items[idx].clone())
+            .collect();
+
+        let tree_nodes: Vec<AnyElement> = visible_items
+            .iter()
+            .map(|node| {
+                Self::render_tree_node(
+                    node,
+                    state,
+                    on_toggle_expansion.clone(),
+                    on_load_content.clone(),
+                    cx,
+                )
+            })
+            .collect();
+
+        h_resizable("docs-horizontal")
+            .state(sidebar_resizable)
+            .child(
+                resizable_panel()
+                    .size(px(280.0))
+                    .child(Self::render_sidebar(state, tree_nodes, &theme)),
+            )
+            .child(resizable_panel().child(Self::render_content(markdown, window, cx, &theme)))
+    }
+
+    fn render_sidebar(
+        state: &ProjectDocsState,
+        tree_nodes: Vec<AnyElement>,
+        theme: &ui::ThemeColor,
+    ) -> impl IntoElement {
+        v_flex()
+            .size_full()
+            .bg(theme.sidebar.opacity(0.95))
+            .border_r_1()
+            .border_color(theme.border)
+            .child(
+                h_flex()
+                    .w_full()
+                    .h(px(48.0))
+                    .px_4()
+                    .items_center()
+                    .justify_between()
+                    .bg(theme.sidebar)
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(
+                                Icon::new(IconName::Folder)
+                                    .size_4()
+                                    .text_color(tree_colors::CODE_PURPLE),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(theme.foreground)
+                                    .child("Project API"),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .px_2()
+                            .py(px(3.0))
+                            .rounded(px(6.0))
+                            .bg(theme.accent.opacity(0.12))
+                            .text_xs()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .text_color(theme.accent)
+                            .child(format!("{}", tree_nodes.len())),
+                    ),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .px_3()
+                    .py_3()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        TextInput::new(&state.search_input_state)
+                            .w_full()
+                            .prefix(
+                                Icon::new(IconName::Search)
+                                    .size_4()
+                                    .text_color(theme.secondary_foreground),
+                            )
+                            .appearance(true)
+                            .bordered(true),
+                    ),
+            )
+            .child(
+                div().flex_1().overflow_hidden().child(
+                    v_flex()
+                        .size_full()
+                        .p_2()
+                        .gap_px()
+                        .font_family("monospace")
+                        .scrollable(ScrollbarAxis::Vertical)
+                        .children(tree_nodes),
+                ),
+            )
+    }
+
+    fn render_content(
+        markdown: String,
+        window: &mut Window,
+        cx: &mut App,
+        theme: &ui::ThemeColor,
+    ) -> impl IntoElement {
+        div().size_full().bg(theme.background).child(
+            div().size_full().scrollable(ScrollbarAxis::Vertical).child(
+                div()
+                    .w_full()
+                    .max_w(px(1200.0))
+                    .mx_auto()
+                    .px_8()
+                    .py_8()
+                    .child(
+                        TextView::markdown("project-docs-markdown", markdown, window, cx)
+                            .selectable(),
+                    ),
+            ),
+        )
+    }
+
+    fn render_tree_node<V>(
+        node: &ProjectTreeNode,
+        state: &ProjectDocsState,
+        on_toggle_expansion: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        on_load_content: impl Fn(&mut V, String, &mut Window, &mut Context<V>) + 'static + Clone,
+        cx: &mut Context<V>,
+    ) -> AnyElement
+    where
+        V: 'static + Render,
+    {
+        match node {
+            ProjectTreeNode::Category { name, depth, .. } => {
+                let is_expanded = state.expanded_paths.contains(name);
+                let category_name = name.clone();
+
+                render_tree_folder(
+                    &format!("category-{}", name),
+                    name,
+                    if is_expanded {
+                        IconName::FolderOpen
+                    } else {
+                        IconName::Folder
+                    },
+                    tree_colors::CODE_PURPLE,
+                    *depth,
+                    is_expanded,
+                    move |view, _event, window, cx| {
+                        on_toggle_expansion(view, category_name.clone(), window, cx);
+                    },
+                    cx,
+                )
+            }
+            ProjectTreeNode::Item {
+                item_name,
+                path,
+                depth,
+                ..
+            } => {
+                let is_selected = state.current_path.as_ref() == Some(&path.to_string());
+                let path_for_click = path.to_string();
+
+                render_tree_item(
+                    &format!("project-item-{}", path.replace("::", "-")),
+                    item_name,
+                    tree_colors::CODE_PURPLE,
+                    *depth,
+                    is_selected,
+                    move |view, _event, window, cx| {
+                        on_load_content(view, path_for_click.clone(), window, cx);
+                    },
+                    cx,
+                )
+            }
+        }
+    }
+}

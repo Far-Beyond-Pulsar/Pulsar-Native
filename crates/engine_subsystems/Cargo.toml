@@ -1,9 +1,0 @@
-[package]
-name = "engine_subsystems"
-version = "0.1.0"
-edition = "2021"
-description = "Type-erased subsystem trait and registry for the Pulsar engine. Shared by engine_backend, plugin_manager, and plugin DLLs."
-
-[dependencies]
-thiserror = { workspace = true }
-tracing = { workspace = true }

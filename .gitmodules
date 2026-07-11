@@ -1,0 +1,39 @@
+[submodule "plugins/vendor/blueprint_editor"]
+	path = plugins/vendor/blueprint_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Blueprints
+[submodule "plugins/vendor/code_editor"]
+	path = plugins/vendor/code_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_CodeEditor
+[submodule "plugins/vendor/shader_editor"]
+	path = plugins/vendor/shader_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Shaders
+[submodule "plugins/vendor/table_editor"]
+	path = plugins/vendor/table_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_DBTable
+[submodule "plugins/vendor/matter_editor"]
+	path = plugins/vendor/matter_editor
+	url = https://github.com/Far-Beyond-Pulsar/Plugin_Matter
+[submodule "crates/ui/wgpui"]
+	path = crates/ui/wgpui
+	url = https://github.com/Far-Beyond-Pulsar/WGPUI.git
+[submodule "crates/ui/wgpui-component"]
+	path = crates/ui/wgpui-component
+	url = https://github.com/Far-Beyond-Pulsar/WGPUI-Component.git
+[submodule "crates/third-party/pbgc"]
+	path = crates/third-party/pbgc
+	url = https://github.com/Far-Beyond-Pulsar/PBGC.git
+[submodule "crates/third-party/graphy"]
+	path = crates/third-party/graphy
+	url = https://github.com/Far-Beyond-Pulsar/Graphy.git
+[submodule "crates/third-party/toolbelt"]
+	path = crates/third-party/toolbelt
+	url = https://github.com/Far-Beyond-Pulsar/ToolbeltRS.git
+[submodule "crates/third-party/psgc"]
+	path = crates/third-party/psgc
+	url = https://github.com/Far-Beyond-Pulsar/PSGC.git
+[submodule "crates/third-party/pulsar-config"]
+	path = crates/third-party/pulsar-config
+	url = https://github.com/Far-Beyond-Pulsar/PulsarConfig.git
+[submodule "crates/graphics/wgpu"]
+	path = crates/graphics/wgpu
+	url = https://github.com/Far-Beyond-Pulsar/wgpu.git

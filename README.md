@@ -50,6 +50,50 @@ Development happens in the open. Whether you're a systems engineer or a technica
 
 ---
 
+## Instalaltion
+
+Download the appropriate binary for your machine from the `Releases` page
+
+## Source Build
+
+The Pulsar-Native repo consists of many crates and git sub modules leading to a multi-step setup to build from source.
+
+### Clone the repo
+
+Cloning out repo gives you a full copy of the entire project hsitory locally right on your machine
+
+```bash
+git clone https://github.com/Far-Beyond-Pulsar/Pulsar-Native
+```
+
+### Pull the Submodules
+
+Sub modules allow us to store code in other GitHub repos and reference them in the main repo helping to reduce repo bloat and enforce separation
+
+```bash
+git submodule update --init
+```
+
+### Install Deps (Linux)
+
+On linux you may need to install some packages to allow the build to complete properly; here are the ones we needed on Ubuntu Desktop:
+
+```bash
+sudo apt update
+
+sudo apt install -y \
+  gcc g++ clang libfontconfig-dev libwayland-dev \
+  libwebkit2gtk-4.1-dev libxkbcommon-x11-dev libx11-xcb-dev \
+  libssl-dev libzstd-dev \
+  vulkan-validationlayers libvulkan1
+```
+
+### Build via Cargo
+
+```bash
+cargo build --release
+```
+
 ## 🛰️ Related Ecosystems
 
 ### **Horizon Game Server**

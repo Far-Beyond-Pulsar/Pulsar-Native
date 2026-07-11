@@ -1,0 +1,98 @@
+use std::path::Path;
+
+use crate::core::types::SharedCloneProgress;
+
+/// All git-related operations extracted from git_operations.rs
+pub struct GitService;
+
+impl GitService {
+    pub fn clone_repository(
+        repo_url: String,
+        target_path: PathBuf,
+        progress: SharedCloneProgress,
+    ) -> Result<git2::Repository, git2::Error> {
+        let mut callbacks = git2::RemoteCallbacks::new();
+        let progress_inner = progress.clone();
+        callbacks.transfer_progress(move |stats| {
+            let mut p = progress_inner.lock();
+            p.current = stats.received_objects();
+            p.total = stats.total_objects();
+            p.message = format!(
+                "Receiving objects: {}/{} ({:.1}%)",
+                stats.received_objects(),
+                stats.total_objects(),
+                (stats.received_objects() as f32 / stats.total_objects().max(1) as f32) * 100.0
+            );
+            true
+        });
+        let mut fetch_opts = git2::FetchOptions::new();
+        fetch_opts.remote_callbacks(callbacks);
+        let mut builder = git2::build::RepoBuilder::new();
+        builder.fetch_options(fetch_opts);
+        builder.clone(&repo_url, &target_path)
+    }
+
+    pub fn setup_template_remotes(
+        repo_path: &Path,
+        _template_url: &str,
+    ) -> Result<(), git2::Error> {
+        let repo = git2::Repository::open(repo_path)?;
+        repo.remote_rename("origin", "template")?;
+        let mut config = repo.config()?;
+        config.set_str("remote.template.pushDefault", "false")?;
+        Ok(())
+    }
+
+    pub fn add_user_upstream(repo_path: &Path, user_url: &str) -> Result<(), git2::Error> {
+        let repo = git2::Repository::open(repo_path)?;
+        repo.remote("origin", user_url)?;
+        let mut config = repo.config()?;
+        config.set_str("remote.pushDefault", "origin")?;
+        Ok(())
+    }
+
+    pub fn has_origin_remote(path: &Path) -> bool {
+        if let Ok(repo) = git2::Repository::open(path) {
+            repo.find_remote("origin").is_ok()
+        } else {
+            false
+        }
+    }
+
+    pub fn check_for_updates(path: &Path) -> Result<usize, git2::Error> {
+        let repo = git2::Repository::open(path)?;
+        let mut remote = repo.find_remote("origin")?;
+        remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)?;
+        let head = repo.head()?;
+        let branch = head.shorthand().unwrap_or("main");
+        let local_oid = head
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No commit on HEAD"))?;
+        let remote_branch = format!("refs/remotes/origin/{}", branch);
+        let remote_ref = repo.find_reference(&remote_branch)?;
+        let remote_oid = remote_ref
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
+        let (_ahead, behind) = repo.graph_ahead_behind(local_oid, remote_oid)?;
+        Ok(behind)
+    }
+
+    pub fn pull_updates(path: &Path) -> Result<(), git2::Error> {
+        let repo = git2::Repository::open(path)?;
+        let mut remote = repo.find_remote("origin")?;
+        remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)?;
+        let head = repo.head()?;
+        let branch = head.shorthand().unwrap_or("main");
+        let remote_branch = format!("refs/remotes/origin/{}", branch);
+        let remote_ref = repo.find_reference(&remote_branch)?;
+        let remote_oid = remote_ref
+            .target()
+            .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
+        let remote_commit = repo.find_commit(remote_oid)?;
+        repo.checkout_tree(remote_commit.as_object(), None)?;
+        repo.head()?.set_target(remote_oid, "Fast-forward merge")?;
+        Ok(())
+    }
+}
+
+use std::path::PathBuf;

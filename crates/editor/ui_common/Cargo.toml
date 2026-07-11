@@ -1,0 +1,29 @@
+[package]
+name = "ui_common"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# UI framework
+gpui-ce.workspace = true
+ui.workspace = true
+window_manager.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+anyhow.workspace = true
+rust-i18n.workspace = true
+tracing.workspace = true
+parking_lot = { workspace = true }
+image.workspace = true
+smallvec.workspace = true
+smol = { workspace = true }
+engine_state.workspace = true
+pulsar_auth.workspace = true
+engine_fs.workspace = true
+plugin_editor_api.workspace = true
+pulsar_reflection.workspace = true
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
+
+[lints]
+workspace = true

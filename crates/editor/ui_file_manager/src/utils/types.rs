@@ -1,0 +1,171 @@
+use gpui::*;
+use std::path::{Path, PathBuf};
+use ui::ActiveTheme;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ViewMode {
+    Grid,
+    List,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SortBy {
+    Name,
+    Modified,
+    Size,
+    Type,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SortOrder {
+    Ascending,
+    Descending,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DragState {
+    None,
+    Dragging {
+        source_paths: Vec<PathBuf>,
+        is_folder: bool,
+        drag_offset: Point<Pixels>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct DraggedFile {
+    pub paths: Vec<PathBuf>,
+    pub is_folder: bool,
+    pub drag_start_position: Option<Point<Pixels>>,
+}
+
+impl gpui::Render for DraggedFile {
+    fn render(
+        &mut self,
+        _w: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        let count = self.paths.len();
+        let label = if count == 1 {
+            self.paths[0]
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("file")
+                .to_string()
+        } else {
+            format!("{} items", count)
+        };
+        gpui::div()
+            .px_3()
+            .py_1p5()
+            .rounded(px(6.0))
+            .bg(cx.theme().primary)
+            .text_color(cx.theme().primary_foreground)
+            .text_sm()
+            .shadow_lg()
+            .child(label)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileItem {
+    pub path: PathBuf,
+    pub name: String,
+    pub file_type_def: Option<plugin_editor_api::FileTypeDefinition>,
+    pub is_folder: bool,
+    pub size: u64,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+impl FileItem {
+    pub fn from_path(
+        path: &Path,
+        file_types: &[plugin_editor_api::FileTypeDefinition],
+    ) -> Option<Self> {
+        let name = path.file_name()?.to_str()?.to_string();
+        use plugin_editor_api::FileStructure;
+        let file_type_def = if path.is_dir() {
+            file_types
+                .iter()
+                .find(|def| {
+                    if let FileStructure::FolderBased { marker_file, .. } = &def.structure {
+                        path.join(marker_file).exists()
+                            || name.ends_with(&format!(".{}", def.extension))
+                            || path.extension().and_then(|x| x.to_str())
+                                == Some(def.extension.as_str())
+                    } else {
+                        false
+                    }
+                })
+                .cloned()
+        } else {
+            let found = file_types.iter().find(|def| {
+                matches!(def.structure, FileStructure::Standalone)
+                    && name.ends_with(&format!(".{}", def.extension))
+            });
+            let found = found.or_else(|| {
+                path.extension().and_then(|e| e.to_str()).and_then(|ext| {
+                    file_types.iter().find(|def| {
+                        matches!(def.structure, FileStructure::Standalone) && def.extension == ext
+                    })
+                })
+            });
+            found.cloned()
+        };
+
+        let (size, modified, is_folder) =
+            if engine_fs::virtual_fs::is_remote() || engine_fs::is_cloud_path(path) {
+                let (s, u, d) = engine_fs::virtual_fs::metadata(path)
+                    .map(|m| (m.size, m.modified, m.is_dir && file_type_def.is_none()))
+                    .unwrap_or((0, None, false));
+                (
+                    s,
+                    u.map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+                    d,
+                )
+            } else {
+                let meta = engine_fs::virtual_fs::metadata(path).ok();
+                let s = meta.as_ref().map(|m| m.size).unwrap_or(0);
+                let m = meta.as_ref().and_then(|m| {
+                    m.modified
+                        .map(|secs| std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs))
+                });
+                let d = meta.as_ref().map(|m| m.is_dir).unwrap_or(false) && file_type_def.is_none();
+                (s, m, d)
+            };
+
+        Some(FileItem {
+            path: path.to_path_buf(),
+            name,
+            file_type_def,
+            is_folder,
+            size,
+            modified,
+        })
+    }
+
+    pub fn display_name(&self) -> &str {
+        self.file_type_def
+            .as_ref()
+            .map(|d| d.display_name.as_str())
+            .unwrap_or(if self.is_folder { "Folder" } else { "File" })
+    }
+
+    pub fn is_class(&self) -> bool {
+        self.file_type_def
+            .as_ref()
+            .map(|d| d.id.as_str() == "class")
+            .unwrap_or(false)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct FileSelected {
+    pub path: PathBuf,
+    pub file_type_def: Option<plugin_editor_api::FileTypeDefinition>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PopoutFileManagerEvent {
+    pub position: Point<Pixels>,
+}
