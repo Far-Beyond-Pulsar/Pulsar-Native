@@ -33,7 +33,7 @@ tracing.workspace = true
 image.workspace = true
 smallvec.workspace = true
 uuid = { workspace = true }
-which = "7.0"
+which = "8.0"
 
 [target.'cfg(windows)'.dependencies]
 runas = "1.2"
