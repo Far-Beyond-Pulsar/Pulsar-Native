@@ -29,6 +29,7 @@ impl AgentChatPanel {
                         self.provider_states_shared.borrow_mut().insert(provider_id.to_string(), ProviderState::Unconfigured);
                         if let Some(entry) = self.provider_entries.get(provider_id) {
                             if !entry.config_fields.is_empty() {
+                                self.model_list.update(cx, |list, cx| list.set_items(vec![], cx));
                                 self.configuring_provider = Some(provider_id.to_string());
                                 self.configuring_field_index = 0;
                                 self.config_values.clear();
@@ -45,6 +46,7 @@ impl AgentChatPanel {
             if self.provider_states.get(provider_id) == Some(&ProviderState::Unconfigured) {
                 if let Some(entry) = self.provider_entries.get(provider_id) {
                     if !entry.config_fields.is_empty() {
+                        self.model_list.update(cx, |list, cx| list.set_items(vec![], cx));
                         self.configuring_provider = Some(provider_id.to_string());
                         self.configuring_field_index = 0;
                         self.config_values.clear();
