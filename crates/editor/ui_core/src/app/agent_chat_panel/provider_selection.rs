@@ -114,26 +114,42 @@ impl AgentChatPanel {
 
             cx.update(|cx| {
                 this.update(cx, |panel, cx| {
-                    let Ok(models) = result else { return };
-                    if models.is_empty() {
-                        return;
-                    }
-                    let defs = models
-                        .iter()
-                        .map(|m| ModelDefinition {
-                            id: Self::static_str(m.id.to_string()),
-                            label: Self::static_str(m.label.to_string()),
-                            supports_tools: m.supports_tools,
-                            context_tokens: m.context_tokens,
-                            compact_model: None,
-                        })
-                        .collect::<Vec<_>>();
-                    panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
-                    if panel.active_provider_ix == provider_ix {
-                        panel
-                            .model_list
-                            .update(cx, |list, cx| list.set_items(defs, cx));
-                        cx.notify();
+                    match result {
+                        Ok(models) => {
+                            if models.is_empty() {
+                                return;
+                            }
+                            let defs = models
+                                .iter()
+                                .map(|m| ModelDefinition {
+                                    id: Self::static_str(m.id.to_string()),
+                                    label: Self::static_str(m.label.to_string()),
+                                    supports_tools: m.supports_tools,
+                                    context_tokens: m.context_tokens,
+                                    compact_model: None,
+                                })
+                                .collect::<Vec<_>>();
+                            if provider_ix < panel.provider_catalog.len() {
+                                panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
+                            }
+                            if panel.active_provider_ix == provider_ix {
+                                panel
+                                    .model_list
+                                    .update(cx, |list, cx| list.set_items(defs, cx));
+                                cx.notify();
+                            }
+                        }
+                        Err(e) => {
+                            let label = panel.provider_catalog.get(provider_ix).map(|p| p.label).unwrap_or(provider_id);
+                            panel.messages.push(ChatMessage {
+                                role: ChatRole::System,
+                                content: format!("Failed to fetch models for {label}: {e}"),
+                                tool_call_id: None,
+                                tool_calls: vec![],
+                            });
+                            panel.scroll_messages_to_bottom();
+                            cx.notify();
+                        }
                     }
                 });
             });
@@ -170,66 +186,66 @@ impl AgentChatPanel {
             return;
         };
 
-        match provider_impl.models() {
-            Ok(models) => {
-                if models.is_empty() {
-                    self.messages.push(ChatMessage {
-                        role: ChatRole::System,
-                        content: format!("{} returned no models.", provider_label),
-                        tool_call_id: None,
-                        tool_calls: vec![],
-                    });
-                    self.scroll_messages_to_bottom();
-                    self.save_current_chat();
-                    self.refresh_chat_history_list(cx);
+        cx.spawn(async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { provider_impl.models() })
+                .await;
+
+            cx.update(|cx| {
+                this.update(cx, |panel, cx| {
+                    match result {
+                        Ok(models) => {
+                            if models.is_empty() {
+                                panel.messages.push(ChatMessage {
+                                    role: ChatRole::System,
+                                    content: format!("{provider_label} returned no models."),
+                                    tool_call_id: None,
+                                    tool_calls: vec![],
+                                });
+                            } else {
+                                let refreshed_models = models
+                                    .iter()
+                                    .map(|model| ModelDefinition {
+                                        id: Self::static_str(model.id.to_string()),
+                                        label: Self::static_str(model.label.to_string()),
+                                        supports_tools: model.supports_tools,
+                                        context_tokens: model.context_tokens,
+                                        compact_model: model.compact_model.as_ref().map(|s| Self::static_str(s.clone())),
+                                    })
+                                    .collect::<Vec<_>>();
+
+                                if provider_ix < panel.provider_catalog.len() {
+                                    panel.provider_catalog[provider_ix].models = Arc::new(refreshed_models.clone());
+                                }
+                                panel.active_model_ix = 0;
+                                panel.model_list.update(cx, |list, cx| {
+                                    list.set_items(refreshed_models, cx);
+                                });
+
+                                panel.messages.push(ChatMessage {
+                                    role: ChatRole::System,
+                                    content: format!("Refreshed models for {provider_label} ({} total).", models.len()),
+                                    tool_call_id: None,
+                                    tool_calls: vec![],
+                                });
+                            }
+                        }
+                        Err(err) => {
+                            panel.messages.push(ChatMessage {
+                                role: ChatRole::System,
+                                content: format!("Failed to refresh models for {provider_label}: {err}"),
+                                tool_call_id: None,
+                                tool_calls: vec![],
+                            });
+                        }
+                    }
+                    panel.scroll_messages_to_bottom();
+                    panel.save_current_chat();
+                    panel.refresh_chat_history_list(cx);
                     cx.notify();
-                    return;
-                }
-
-                let refreshed_models = models
-                    .iter()
-                    .map(|model| ModelDefinition {
-                        id: Self::static_str(model.id.to_string()),
-                        label: Self::static_str(model.label.to_string()),
-                        supports_tools: model.supports_tools,
-                        context_tokens: model.context_tokens,
-                        compact_model: model.compact_model.as_ref().map(|s| Self::static_str(s.clone())),
-                    })
-                    .collect::<Vec<_>>();
-
-                self.provider_catalog[provider_ix].models = Arc::new(refreshed_models.clone());
-                self.active_model_ix = 0;
-                self.model_list.update(cx, |list, cx| {
-                    list.set_items(refreshed_models, cx);
                 });
-
-                self.messages.push(ChatMessage {
-                    role: ChatRole::System,
-                    content: format!(
-                        "Refreshed models for {} ({} total).",
-                        provider_label,
-                        models.len()
-                    ),
-                    tool_call_id: None,
-                    tool_calls: vec![],
-                });
-                self.scroll_messages_to_bottom();
-                self.save_current_chat();
-                self.refresh_chat_history_list(cx);
-                cx.notify();
-            }
-            Err(err) => {
-                self.messages.push(ChatMessage {
-                    role: ChatRole::System,
-                    content: format!("Failed to refresh models for {}: {err}", provider_label),
-                    tool_call_id: None,
-                    tool_calls: vec![],
-                });
-                self.scroll_messages_to_bottom();
-                self.save_current_chat();
-                self.refresh_chat_history_list(cx);
-                cx.notify();
-            }
-        }
+            });
+        }).detach();
     }
 }

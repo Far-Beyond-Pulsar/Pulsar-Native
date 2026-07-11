@@ -924,8 +924,9 @@ impl Render for AgentChatPanel {
                                                                             this.provider_entries.remove(id);
                                                                             this.configuring_provider = None;
                                                                             this.config_error = None;
-                                                                            this.refresh_provider_catalog(cx);
-                                                                            validated = true;
+                                                                             this.refresh_provider_catalog(cx);
+                                                                             this.fetch_models_in_background(this.active_provider_ix, cx);
+                                                                             validated = true;
                                                                         }
                                                                         Err(e) => {
                                                                             this.config_error = Some(e.to_string());
