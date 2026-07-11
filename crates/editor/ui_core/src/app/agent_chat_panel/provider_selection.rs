@@ -12,19 +12,23 @@ impl AgentChatPanel {
 
     pub(super) fn set_provider(&mut self, index: usize, cx: &mut Context<Self>) {
         if index < self.provider_catalog.len() {
-            // Block Wip providers entirely — they're not implemented.
-            // Locked (RequiresAuth) providers ARE selectable: clicking through
-            // will trigger the auth prompt so the user can add their API key.
-            if self
-                .provider_catalog
-                .get(index)
-                .is_some_and(|provider| self.wip_providers.contains_key(provider.id))
-            {
-                return;
-            }
-
             self.active_provider_ix = index;
             self.active_model_ix = 0;
+
+            let provider_id = self.provider_catalog[index].id;
+
+            // If unconfigured, start config flow
+            if self.provider_states.get(provider_id) == Some(&ProviderState::Unconfigured) {
+                if let Some(entry) = self.provider_entries.get(provider_id) {
+                    if !entry.config_fields.is_empty() {
+                        self.configuring_provider = Some(provider_id.to_string());
+                        self.configuring_field_index = 0;
+                        self.config_values.clear();
+                        cx.notify();
+                        return;
+                    }
+                }
+            }
 
             let models = self
                 .active_provider()
@@ -37,8 +41,6 @@ impl AgentChatPanel {
             if models.is_empty() {
                 self.fetch_models_in_background(index, cx);
             }
-
-            self.maybe_require_auth_for_active_provider(cx);
 
             cx.notify();
         }
@@ -67,14 +69,10 @@ impl AgentChatPanel {
         let Some(provider_impl) = self.provider_registry.get(provider_id).cloned() else {
             return;
         };
-        let token = self
-            .auth_token_for_provider(provider_id)
-            .unwrap_or_default();
-
         cx.spawn(async move |this, cx| {
             let result = cx
                 .background_executor()
-                .spawn(async move { provider_impl.list_models_api(&token) })
+                .spawn(async move { provider_impl.models() })
                 .await;
 
             cx.update(|cx| {
@@ -90,7 +88,7 @@ impl AgentChatPanel {
                             label: Self::static_str(m.label.to_string()),
                             supports_tools: m.supports_tools,
                             context_tokens: m.context_tokens,
-                            compact_model: m.compact_model,
+                            compact_model: None,
                         })
                         .collect::<Vec<_>>();
                     panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
@@ -135,10 +133,7 @@ impl AgentChatPanel {
             return;
         };
 
-        let token = self
-            .auth_token_for_provider(provider_id)
-            .unwrap_or_default();
-        match provider_impl.list_models_api(&token) {
+        match provider_impl.models() {
             Ok(models) => {
                 if models.is_empty() {
                     self.messages.push(ChatMessage {
@@ -161,7 +156,7 @@ impl AgentChatPanel {
                         label: Self::static_str(model.label.to_string()),
                         supports_tools: model.supports_tools,
                         context_tokens: model.context_tokens,
-                        compact_model: model.compact_model,
+                        compact_model: model.compact_model.as_ref().map(|s| Self::static_str(s.clone())),
                     })
                     .collect::<Vec<_>>();
 

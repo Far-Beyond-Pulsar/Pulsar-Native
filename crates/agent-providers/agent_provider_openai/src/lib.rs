@@ -1,980 +1,463 @@
 use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, PromptTokenRequest, ProviderAvailability, ProviderEnvironment,
-    ProviderKind, ProviderMetadata, ToolCall,
+    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ConfigField, ModelDescriptor,
+    ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 
-const OPENAI_CHAT_URL: &str = "https://api.openai.com/v1/chat/completions";
+// ── Provider entries ────────────────────────────────────────────────────────
 
-pub struct OpenAiProvider {
-    client: Client,
+struct Entry {
+    id: &'static str,
+    display_name: &'static str,
+    kind: ProviderKind,
+    endpoint: Option<&'static str>,
+    use_ollama_protocol: bool,
 }
 
-pub struct OpenAiCompatibleProvider {
-    client: Client,
-    metadata: ProviderMetadata,
-    models: Vec<ModelDescriptor>,
-    protocol: CompatibleProtocol,
+const ENTRIES: &[Entry] = &[
+    Entry { id: "openai", display_name: "OpenAI", kind: ProviderKind::Cloud, endpoint: Some("https://api.openai.com/v1"), use_ollama_protocol: false },
+    Entry { id: "groq", display_name: "Groq", kind: ProviderKind::Cloud, endpoint: Some("https://api.groq.com/openai/v1"), use_ollama_protocol: false },
+    Entry { id: "together", display_name: "Together AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.together.xyz/v1"), use_ollama_protocol: false },
+    Entry { id: "mistral", display_name: "Mistral AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.mistral.ai/v1"), use_ollama_protocol: false },
+    Entry { id: "deepseek", display_name: "DeepSeek", kind: ProviderKind::Cloud, endpoint: Some("https://api.deepseek.com/v1"), use_ollama_protocol: false },
+    Entry { id: "fireworks", display_name: "Fireworks AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.fireworks.ai/inference/v1"), use_ollama_protocol: false },
+    Entry { id: "perplexity", display_name: "Perplexity", kind: ProviderKind::Cloud, endpoint: Some("https://api.perplexity.ai"), use_ollama_protocol: false },
+    Entry { id: "xai", display_name: "xAI Grok", kind: ProviderKind::Cloud, endpoint: Some("https://api.x.ai/v1"), use_ollama_protocol: false },
+    Entry { id: "openrouter", display_name: "OpenRouter", kind: ProviderKind::Cloud, endpoint: Some("https://openrouter.ai/api/v1"), use_ollama_protocol: false },
+    Entry { id: "cohere", display_name: "Cohere", kind: ProviderKind::Cloud, endpoint: Some("https://api.cohere.com/v2"), use_ollama_protocol: false },
+    Entry { id: "azure_openai", display_name: "Azure OpenAI", kind: ProviderKind::Cloud, endpoint: None, use_ollama_protocol: false },
+    Entry { id: "ollama", display_name: "Ollama", kind: ProviderKind::Local, endpoint: Some("http://localhost:11434"), use_ollama_protocol: true },
+    Entry { id: "lm_studio", display_name: "LM Studio", kind: ProviderKind::Local, endpoint: Some("http://localhost:1234/v1"), use_ollama_protocol: false },
+    Entry { id: "llama_cpp", display_name: "llama.cpp", kind: ProviderKind::Local, endpoint: Some("http://localhost:8080/v1"), use_ollama_protocol: false },
+    Entry { id: "vllm", display_name: "vLLM", kind: ProviderKind::Local, endpoint: Some("http://localhost:8000/v1"), use_ollama_protocol: false },
+    Entry { id: "custom_openai", display_name: "Custom OpenAI Compatible", kind: ProviderKind::Local, endpoint: None, use_ollama_protocol: false },
+];
+
+fn entry_config_fields(entry: &Entry, is_ollama: bool) -> Vec<ConfigField> {
+    let mut fields = Vec::new();
+    if entry.endpoint.is_none() {
+        fields.push(ConfigField {
+            key: "endpoint_url",
+            label: "Endpoint URL",
+            description: if is_ollama { "Ollama server URL" } else { "API base URL" },
+            sensitive: false,
+            required: true,
+            placeholder: if is_ollama { Some("http://localhost:11434") } else { Some("https://api.example.com/v1") },
+        });
+    }
+    if entry.kind == ProviderKind::Cloud {
+        fields.push(ConfigField {
+            key: "api_key",
+            label: "API Key",
+            description: format!("{} API key", entry.display_name).leak(),
+            sensitive: true,
+            required: true,
+            placeholder: None,
+        });
+    }
+    fields
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum CompatibleProtocol {
-    OpenAiCompatible,
-    Ollama,
-}
+// ── ProviderCrate ──────────────────────────────────────────────────────────
 
-impl OpenAiProvider {
-    pub fn new() -> Self {
-        Self {
+pub struct OpenAiProviderCrate;
+
+impl ProviderCrate for OpenAiProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        ENTRIES
+            .iter()
+            .map(|e| {
+                let is_ollama = e.id == "ollama" || e.id == "custom_openai";
+                ProviderEntry {
+                    id: e.id,
+                    display_name: e.display_name,
+                    kind: e.kind,
+                    default_endpoint: e.endpoint,
+                    config_fields: entry_config_fields(e, is_ollama),
+                }
+            })
+            .collect()
+    }
+
+    fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        let entry = ENTRIES
+            .iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| anyhow!("unknown provider id: {id}"))?;
+
+        let endpoint = match entry.endpoint {
+            Some(ep) => ep.to_string(),
+            None => config.require("endpoint_url")?.to_string(),
+        };
+
+        let api_key = config.get("api_key").unwrap_or_default().to_string();
+        let models_url = build_models_url(&endpoint, entry.use_ollama_protocol);
+        let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol);
+
+        let config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
+
+        Ok(Box::new(OpenAiChatProvider {
             client: Client::new(),
+            id: id.to_string(),
+            display_name: entry.display_name.to_string(),
+            chat_url,
+            models_url,
+            api_key,
+            is_ollama: entry.use_ollama_protocol,
+        }))
+    }
+}
+
+// ── URL helpers ─────────────────────────────────────────────────────────────
+
+fn build_chat_url(endpoint: &str, ollama: bool) -> String {
+    let t = endpoint.trim_end_matches('/');
+    if ollama {
+        if t.ends_with("/api/chat") {
+            t.to_string()
+        } else {
+            format!("{t}/api/chat")
         }
+    } else if t.ends_with("/chat/completions") {
+        t.to_string()
+    } else {
+        format!("{t}/chat/completions")
+    }
+}
+
+fn build_models_url(endpoint: &str, _ollama: bool) -> String {
+    let t = endpoint.trim_end_matches('/');
+    if t.ends_with("/chat/completions") {
+        t.trim_end_matches("/chat/completions").to_string() + "/models"
+    } else if t.ends_with("/api/chat") {
+        t.trim_end_matches("/api/chat").to_string() + "/api/tags"
+    } else {
+        format!("{t}/models")
+    }
+}
+
+// ── ChatProvider ────────────────────────────────────────────────────────────
+
+struct OpenAiChatProvider {
+    client: Client,
+    id: String,
+    display_name: String,
+    chat_url: String,
+    models_url: String,
+    api_key: String,
+    is_ollama: bool,
+}
+
+impl ChatProvider for OpenAiChatProvider {
+    fn id(&self) -> &str {
+        &self.id
     }
 
-    fn static_models() -> Vec<ModelDescriptor> {
-        vec![
-            ModelDescriptor {
-                id: "gpt-4.1",
-                label: "GPT-4.1",
-                supports_tools: true,
-                context_tokens: 1_047_576,
-                compact_model: Some("gpt-4.1-mini"),
-            },
-            ModelDescriptor {
-                id: "gpt-4.1-mini",
-                label: "GPT-4.1 Mini",
-                supports_tools: true,
-                context_tokens: 1_047_576,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "gpt-4o",
-                label: "GPT-4o",
-                supports_tools: true,
-                context_tokens: 128_000,
-                compact_model: Some("gpt-4.1-mini"),
-            },
-            ModelDescriptor {
-                id: "o4-mini",
-                label: "o4 Mini",
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: None,
-            },
-            ModelDescriptor {
-                id: "o3",
-                label: "o3",
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: Some("gpt-4.1-mini"),
-            },
-        ]
+    fn display_name(&self) -> &str {
+        &self.display_name
     }
 
-    fn auth_token_from_env(env: &dyn ProviderEnvironment) -> Option<String> {
-        env.get_env("OPENAI_API_KEY")
-    }
-
-    fn map_role(role: ChatRole) -> &'static str {
-        match role {
-            ChatRole::System => "system",
-            ChatRole::User => "user",
-            ChatRole::Assistant => "assistant",
-            ChatRole::Tool => "tool",
-            ChatRole::AgentEvent => "system",
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        if self.is_ollama {
+            return self.ollama_models();
         }
-    }
 
-    fn parse_assistant_message(raw: &Value) -> Option<String> {
-        raw.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|choices| choices.first())
-            .and_then(|choice| choice.get("message"))
-            .and_then(|message| message.get("content"))
-            .and_then(|content| content.as_str())
-            .map(|s| s.to_string())
-    }
-
-    fn parse_tool_arguments_value(value: Option<&Value>) -> Value {
-        match value {
-            Some(Value::String(raw)) => {
-                serde_json::from_str::<Value>(raw).unwrap_or_else(|_| Value::String(raw.clone()))
-            }
-            Some(value) => value.clone(),
-            None => json!({}),
+        let mut req = self.client.get(&self.models_url).header("Content-Type", "application/json");
+        if !self.api_key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
-    }
-
-    fn parse_tool_calls(raw: &Value) -> Vec<ToolCall> {
-        raw.get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|choices| choices.first())
-            .and_then(|choice| choice.get("message"))
-            .and_then(|message| message.get("tool_calls"))
-            .and_then(|tool_calls| tool_calls.as_array())
-            .map(|calls| {
-                calls
-                    .iter()
-                    .filter_map(|call| {
-                        let id = call.get("id")?.as_str()?.to_string();
-                        let function = call.get("function")?;
-                        let name = function.get("name")?.as_str()?.to_string();
-                        let arguments_json =
-                            Self::parse_tool_arguments_value(function.get("arguments"));
-
-                        Some(ToolCall {
-                            id,
-                            name,
-                            arguments_json,
-                        })
+        let resp = req.send().with_context(|| format!("fetch models from {}", self.models_url))?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("models API {}: {}", resp.status(), resp.text().unwrap_or_default()));
+        }
+        let body: Value = resp.json()?;
+        let models = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let label = m.get("display_name").or_else(|| m.get("name")).or_else(|| m.get("id")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
                     })
                     .collect()
             })
-            .unwrap_or_default()
+            .unwrap_or_default();
+        Ok(models)
     }
 
-    fn parse_stream_tool_calls(raw_events: &[Value]) -> Vec<ToolCall> {
-        #[derive(Default)]
-        struct PartialToolCall {
-            id: Option<String>,
-            name: Option<String>,
-            arguments: String,
-        }
-
-        let mut partials: Vec<PartialToolCall> = Vec::new();
-
-        for event in raw_events {
-            if let Some(choice) = event
-                .get("choices")
-                .and_then(|choices| choices.as_array())
-                .and_then(|choices| choices.first())
-            {
-                if let Some(delta) = choice.get("delta") {
-                    if let Some(tool_calls_array) =
-                        delta.get("tool_calls").and_then(|value| value.as_array())
-                    {
-                        for tool_call in tool_calls_array {
-                            let index = tool_call
-                                .get("index")
-                                .and_then(|value| value.as_u64())
-                                .unwrap_or(partials.len() as u64)
-                                as usize;
-
-                            while partials.len() <= index {
-                                partials.push(PartialToolCall::default());
-                            }
-
-                            let partial = &mut partials[index];
-
-                            if let Some(id) = tool_call.get("id").and_then(|value| value.as_str()) {
-                                partial.id = Some(id.to_string());
-                            }
-
-                            if let Some(function) = tool_call.get("function") {
-                                if let Some(name) =
-                                    function.get("name").and_then(|value| value.as_str())
-                                {
-                                    partial.name = Some(name.to_string());
-                                }
-
-                                if let Some(arguments_fragment) =
-                                    function.get("arguments").and_then(|value| value.as_str())
-                                {
-                                    partial.arguments.push_str(arguments_fragment);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        partials
-            .into_iter()
-            .filter_map(|partial| {
-                let id = partial.id?;
-                let name = partial.name?;
-                let arguments_json = if partial.arguments.trim().is_empty() {
-                    json!({})
-                } else {
-                    serde_json::from_str::<Value>(&partial.arguments)
-                        .unwrap_or_else(|_| Value::String(partial.arguments.clone()))
-                };
-
-                Some(ToolCall {
-                    id,
-                    name,
-                    arguments_json,
-                })
-            })
-            .collect()
-    }
-
-    fn build_chat_url(endpoint: &str) -> String {
-        let trimmed = endpoint.trim_end_matches('/');
-        if trimmed.ends_with("/chat/completions") {
-            trimmed.to_string()
+    fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
+        let payload = if self.is_ollama {
+            build_ollama_payload(&request, false)
         } else {
-            format!("{trimmed}/chat/completions")
-        }
-    }
-
-    fn build_ollama_chat_url(endpoint: &str) -> String {
-        let trimmed = endpoint.trim_end_matches('/');
-        if trimmed.ends_with("/api/chat") {
-            trimmed.to_string()
-        } else {
-            format!("{trimmed}/api/chat")
-        }
-    }
-
-    fn build_request_payload(request: &ChatRequest) -> Value {
-        let messages: Vec<Value> = request
-            .messages
-            .iter()
-            .map(|message: &ChatMessage| {
-                let mut msg = json!({
-                    "role": Self::map_role(message.role),
-                    "content": message.content,
-                });
-                if let Some(tool_call_id) = &message.tool_call_id {
-                    msg["tool_call_id"] = json!(tool_call_id);
-                }
-                if !message.tool_calls.is_empty() {
-                    msg["tool_calls"] = json!(message
-                        .tool_calls
-                        .iter()
-                        .map(|call| {
-                            json!({
-                                "id": call.id,
-                                "type": "function",
-                                "function": {
-                                    "name": call.name,
-                                    "arguments": call.arguments_json.to_string(),
-                                }
-                            })
-                        })
-                        .collect::<Vec<_>>());
-                }
-                msg
-            })
-            .collect();
-
-        let tools = if request.enable_tool_calls {
-            request
-                .tools
-                .iter()
-                .map(|tool| {
-                    json!({
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "parameters": tool.parameters_json_schema,
-                        }
-                    })
-                })
-                .collect::<Vec<_>>()
-        } else {
-            Vec::new()
+            build_openai_payload(&request, false)?
         };
 
-        let mut payload = json!({
-            "model": request.model,
-            "messages": messages,
-        });
-
-        if let Some(temperature) = request.temperature {
-            payload["temperature"] = json!(temperature);
+        let body = self.send(&payload)?;
+        if self.is_ollama {
+            parse_ollama_response(body)
+        } else {
+            parse_non_stream_response(body)
         }
-        if let Some(top_p) = request.top_p {
-            payload["top_p"] = json!(top_p);
-        }
-        if let Some(max_tokens) = request.max_tokens {
-            payload["max_tokens"] = json!(max_tokens);
-        }
-        if request.enable_tool_calls && !tools.is_empty() {
-            payload["tools"] = Value::Array(tools);
-        }
-
-        payload
     }
 
-    fn parse_non_stream_response(raw_response: Value) -> ChatResponse {
-        let assistant_message = Self::parse_assistant_message(&raw_response);
-        let tool_calls = Self::parse_tool_calls(&raw_response);
-        let streamed_text_chunks = assistant_message
-            .as_ref()
-            .map(|text| {
-                text.chars()
-                    .collect::<Vec<_>>()
-                    .chunks(20)
-                    .map(|chunk| chunk.iter().collect::<String>())
-                    .collect::<Vec<_>>()
+    fn chat_streaming(&self, request: ChatRequest, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
+        let payload = if self.is_ollama {
+            build_ollama_payload(&request, true)
+        } else {
+            build_openai_payload(&request, true)?
+        };
+
+        let mut req = self.client.post(&self.chat_url).header("Content-Type", "application/json").json(&payload);
+        if !self.api_key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+        if self.is_ollama {
+            req = req.header("Accept", "application/x-ndjson");
+        } else {
+            req = req.header("Accept", "text/event-stream");
+        }
+
+        let response = req.send().with_context(|| format!("chat {}", self.chat_url))?;
+        if !response.status().is_success() {
+            return Err(anyhow!("chat API {}: {}", response.status(), response.text().unwrap_or_default()));
+        }
+
+        if self.is_ollama {
+            read_ollama_stream(response, on_chunk)
+        } else {
+            read_stream_response(response, on_chunk)
+        }
+    }
+}
+
+impl OpenAiChatProvider {
+    fn send(&self, payload: &Value) -> anyhow::Result<Value> {
+        let mut req = self.client.post(&self.chat_url).header("Content-Type", "application/json").json(payload);
+        if !self.api_key.is_empty() {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+        let resp = req.send().with_context(|| format!("chat {}", self.chat_url))?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("chat API {}: {}", resp.status(), resp.text().unwrap_or_default()));
+        }
+        Ok(resp.json()?)
+    }
+
+    fn ollama_models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        let resp = self.client.get(&self.models_url).send().with_context(|| format!("ollama tags from {}", self.models_url))?;
+        if !resp.status().is_success() {
+            return Err(anyhow!("ollama tags API {}: {}", resp.status(), resp.text().unwrap_or_default()));
+        }
+        let body: Value = resp.json()?;
+        let models = body
+            .get("models")
+            .and_then(|d| d.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|m| {
+                        let name = m.get("name").and_then(|v| v.as_str())?.to_string();
+                        Some(ModelDescriptor { id: name.clone(), label: name, supports_tools: true, context_tokens: 0, compact_model: None })
+                    })
+                    .collect()
             })
             .unwrap_or_default();
-        let finish_reason = raw_response
-            .get("choices")
-            .and_then(|choices| choices.as_array())
-            .and_then(|choices| choices.first())
-            .and_then(|choice| choice.get("finish_reason"))
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string());
-
-        ChatResponse {
-            assistant_message,
-            streamed_text_chunks,
-            tool_calls,
-            finish_reason,
-            raw_response,
-        }
+        Ok(models)
     }
+}
 
-    fn read_stream_response(
-        response: reqwest::blocking::Response,
-        on_chunk: &mut dyn FnMut(String),
-    ) -> anyhow::Result<ChatResponse> {
-        let mut raw_events = Vec::new();
-        let mut streamed_text_chunks = Vec::new();
-        let mut assistant_message = String::new();
-        let mut finish_reason = None;
+// ── OpenAI request/response ─────────────────────────────────────────────────
 
-        let reader = BufReader::new(response);
-        for line in reader.lines() {
-            let line = line.context("failed reading OpenAI-compatible streaming response line")?;
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
+fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<Value> {
+    let messages: Vec<Value> = request.messages.iter().map(|msg| {
+        let mut m = json!({ "role": map_role(msg.role), "content": msg.content });
+        if let Some(tid) = &msg.tool_call_id { m["tool_call_id"] = json!(tid); }
+        if !msg.tool_calls.is_empty() {
+            m["tool_calls"] = json!(msg.tool_calls.iter().map(|c| json!({
+                "id": c.id, "type": "function",
+                "function": { "name": c.name, "arguments": c.arguments_json.to_string() }
+            })).collect::<Vec<_>>());
+        }
+        m
+    }).collect();
 
-            let Some(data) = line.strip_prefix("data:") else {
-                continue;
+    let tools: Vec<Value> = if request.enable_tool_calls {
+        request.tools.iter().map(|t| json!({
+            "type": "function",
+            "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema }
+        })).collect()
+    } else { vec![] };
+
+    let mut payload = json!({ "model": request.model, "messages": messages, "stream": stream });
+    if let Some(t) = request.temperature { payload["temperature"] = json!(t); }
+    if let Some(p) = request.top_p { payload["top_p"] = json!(p); }
+    if let Some(m) = request.max_tokens { payload["max_tokens"] = json!(m); }
+    if !tools.is_empty() { payload["tools"] = Value::Array(tools); }
+    Ok(payload)
+}
+
+fn parse_assistant_message(raw: &Value) -> Option<String> {
+    raw.get("choices")?.as_array()?.first()?.get("message")?.get("content")?.as_str().map(|s| s.to_string())
+}
+
+fn parse_tool_calls(raw: &Value) -> Vec<ToolCall> {
+    raw.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first())
+        .and_then(|c| c.get("message")).and_then(|m| m.get("tool_calls")).and_then(|t| t.as_array())
+        .map(|calls| calls.iter().filter_map(|call| {
+            let id = call.get("id")?.as_str()?.to_string();
+            let func = call.get("function")?;
+            let name = func.get("name")?.as_str()?.to_string();
+            let args = match func.get("arguments") {
+                Some(Value::String(s)) => serde_json::from_str(s).unwrap_or_else(|_| Value::String(s.clone())),
+                Some(v) => v.clone(), None => json!({}),
             };
-            let data = data.trim();
-            if data == "[DONE]" {
-                break;
-            }
+            Some(ToolCall { id, name, arguments_json: args })
+        }).collect()).unwrap_or_default()
+}
 
-            let event: Value = serde_json::from_str(data)
-                .context("invalid JSON event in OpenAI-compatible stream")?;
+fn parse_non_stream_response(raw: Value) -> anyhow::Result<ChatResponse> {
+    let msg = parse_assistant_message(&raw);
+    let tcs = parse_tool_calls(&raw);
+    let chunks = msg.as_ref().map(|t| t.chars().collect::<Vec<_>>().chunks(20).map(|c| c.iter().collect()).collect()).unwrap_or_default();
+    let fr = raw.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()).and_then(|c| c.get("finish_reason")).and_then(|v| v.as_str()).map(|s| s.to_string());
+    Ok(ChatResponse { assistant_message: msg, streamed_text_chunks: chunks, tool_calls: tcs, finish_reason: fr, raw_response: raw })
+}
 
-            if let Some(choice) = event
-                .get("choices")
-                .and_then(|choices| choices.as_array())
-                .and_then(|choices| choices.first())
-            {
-                if finish_reason.is_none() {
-                    finish_reason = choice
-                        .get("finish_reason")
-                        .and_then(|value| value.as_str())
-                        .map(|value| value.to_string());
-                }
-
-                if let Some(delta) = choice.get("delta") {
-                    if let Some(content) = delta.get("content").and_then(|value| value.as_str()) {
-                        if !content.is_empty() {
-                            let chunk = content.to_string();
-                            assistant_message.push_str(&chunk);
-                            streamed_text_chunks.push(chunk.clone());
-                            on_chunk(chunk);
-                        }
-                    } else if let Some(parts) =
-                        delta.get("content").and_then(|value| value.as_array())
-                    {
-                        for part in parts {
-                            if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
-                                if !text.is_empty() {
-                                    let chunk = text.to_string();
-                                    assistant_message.push_str(&chunk);
-                                    streamed_text_chunks.push(chunk.clone());
-                                    on_chunk(chunk);
-                                }
-                            }
+fn parse_stream_tool_calls(events: &[Value]) -> Vec<ToolCall> {
+    #[derive(Default)] struct P { id: Option<String>, name: Option<String>, args: String }
+    let mut ps: Vec<P> = Vec::new();
+    for event in events {
+        if let Some(choice) = event.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()) {
+            if let Some(delta) = choice.get("delta") {
+                if let Some(tc_arr) = delta.get("tool_calls").and_then(|v| v.as_array()) {
+                    for tc in tc_arr {
+                        let idx = tc.get("index").and_then(|v| v.as_u64()).unwrap_or(ps.len() as u64) as usize;
+                        while ps.len() <= idx { ps.push(P::default()); }
+                        if let Some(id) = tc.get("id").and_then(|v| v.as_str()) { ps[idx].id = Some(id.to_string()); }
+                        if let Some(func) = tc.get("function") {
+                            if let Some(n) = func.get("name").and_then(|v| v.as_str()) { ps[idx].name = Some(n.to_string()); }
+                            if let Some(a) = func.get("arguments").and_then(|v| v.as_str()) { ps[idx].args.push_str(a); }
                         }
                     }
                 }
             }
-
-            raw_events.push(event);
-            if finish_reason.is_some() {
-                break;
-            }
         }
-
-        let tool_calls = Self::parse_stream_tool_calls(&raw_events);
-
-        Ok(ChatResponse {
-            assistant_message: if assistant_message.is_empty() {
-                None
-            } else {
-                Some(assistant_message)
-            },
-            streamed_text_chunks,
-            tool_calls,
-            finish_reason,
-            raw_response: Value::Array(raw_events),
-        })
     }
+    ps.into_iter().filter_map(|p| {
+        let id = p.id?; let name = p.name?;
+        let args = if p.args.trim().is_empty() { json!({}) } else { serde_json::from_str(&p.args).unwrap_or_else(|_| Value::String(p.args)) };
+        Some(ToolCall { id, name, arguments_json: args })
+    }).collect()
+}
 
-    fn build_ollama_request_payload(request: &ChatRequest, stream: bool) -> Value {
-        let messages = request
-            .messages
-            .iter()
-            .map(|message| {
-                let mut msg = serde_json::Map::new();
-                msg.insert("role".to_string(), json!(Self::map_role(message.role)));
-                msg.insert("content".to_string(), json!(message.content));
-
-                if !message.tool_calls.is_empty() {
-                    let ollama_calls = message
-                        .tool_calls
-                        .iter()
-                        .map(|call| {
-                            json!({
-                                "function": {
-                                    "name": call.name,
-                                    "arguments": call.arguments_json,
-                                }
-                            })
-                        })
-                        .collect::<Vec<_>>();
-                    msg.insert("tool_calls".to_string(), Value::Array(ollama_calls));
+fn read_stream_response(response: reqwest::blocking::Response, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
+    let mut events = Vec::new();
+    let mut chunks = Vec::new();
+    let mut full = String::new();
+    let mut fr = None;
+    for line in BufReader::new(response).lines() {
+        let line = line?; let line = line.trim();
+        if line.is_empty() { continue; }
+        let Some(data) = line.strip_prefix("data:") else { continue; };
+        let data = data.trim();
+        if data == "[DONE]" { break; }
+        let ev: Value = serde_json::from_str(data)?;
+        if let Some(choice) = ev.get("choices").and_then(|c| c.as_array()).and_then(|c| c.first()) {
+            if fr.is_none() { fr = choice.get("finish_reason").and_then(|v| v.as_str()).map(|s| s.to_string()); }
+            if let Some(delta) = choice.get("delta") {
+                if let Some(c) = delta.get("content").and_then(|v| v.as_str()) {
+                    if !c.is_empty() { let ch = c.to_string(); full.push_str(&ch); chunks.push(ch.clone()); on_chunk(ch); }
+                } else if let Some(parts) = delta.get("content").and_then(|v| v.as_array()) {
+                    for part in parts { if let Some(t) = part.get("text").and_then(|v| v.as_str()) { if !t.is_empty() { let ch = t.to_string(); full.push_str(&ch); chunks.push(ch.clone()); on_chunk(ch); } } }
                 }
-
-                Value::Object(msg)
-            })
-            .collect::<Vec<_>>();
-
-        let mut payload = json!({
-            "model": request.model,
-            "messages": messages,
-            "stream": stream,
-        });
-
-        let mut options = serde_json::Map::new();
-        if let Some(temperature) = request.temperature {
-            options.insert("temperature".to_string(), json!(temperature));
+            }
         }
-        if let Some(top_p) = request.top_p {
-            options.insert("top_p".to_string(), json!(top_p));
-        }
-        if let Some(max_tokens) = request.max_tokens {
-            options.insert("num_predict".to_string(), json!(max_tokens));
-        }
-        if !options.is_empty() {
-            payload["options"] = Value::Object(options);
-        }
-
-        if request.enable_tool_calls && !request.tools.is_empty() {
-            let tools = request
-                .tools
-                .iter()
-                .map(|tool| {
-                    json!({
-                        "type": "function",
-                        "function": {
-                            "name": tool.name,
-                            "description": tool.description,
-                            "parameters": tool.parameters_json_schema,
-                        }
-                    })
-                })
-                .collect::<Vec<_>>();
-            payload["tools"] = Value::Array(tools);
-        }
-
-        payload
+        events.push(ev);
+        if fr.is_some() { break; }
     }
-
-    fn parse_ollama_tool_calls(
-        message: Option<&Value>,
-        next_call_index: &mut usize,
-    ) -> Vec<ToolCall> {
-        let Some(message) = message else {
-            return Vec::new();
-        };
-        let Some(calls) = message.get("tool_calls").and_then(|value| value.as_array()) else {
-            return Vec::new();
-        };
-
-        calls
-            .iter()
-            .filter_map(|call| {
-                let function = call.get("function")?;
-                let name = function.get("name")?.as_str()?.to_string();
-
-                let arguments_json = match function.get("arguments") {
-                    Some(Value::String(raw)) => {
-                        serde_json::from_str::<Value>(raw).unwrap_or_else(|_| json!({}))
-                    }
-                    Some(value) => value.clone(),
-                    None => json!({}),
-                };
-
-                let id = call
-                    .get("id")
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| {
-                        let generated = format!("ollama_call_{}", *next_call_index);
-                        *next_call_index += 1;
-                        generated
-                    });
-
-                Some(ToolCall {
-                    id,
-                    name,
-                    arguments_json,
-                })
-            })
-            .collect()
-    }
-
-    fn parse_ollama_response(raw_response: Value) -> ChatResponse {
-        let assistant_message = raw_response
-            .get("message")
-            .and_then(|message| message.get("content"))
-            .and_then(|content| content.as_str())
-            .map(|content| content.to_string())
-            .filter(|content| !content.is_empty());
-
-        let mut next_call_index = 1usize;
-        let tool_calls =
-            Self::parse_ollama_tool_calls(raw_response.get("message"), &mut next_call_index);
-
-        let streamed_text_chunks = assistant_message
-            .as_ref()
-            .map(|text| {
-                text.chars()
-                    .collect::<Vec<_>>()
-                    .chunks(20)
-                    .map(|chunk| chunk.iter().collect::<String>())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        let finish_reason = raw_response
-            .get("done_reason")
-            .and_then(|value| value.as_str())
-            .map(|value| value.to_string())
-            .or_else(|| {
-                raw_response
-                    .get("done")
-                    .and_then(|value| value.as_bool())
-                    .and_then(|done| if done { Some("stop".to_string()) } else { None })
-            });
-
-        ChatResponse {
-            assistant_message,
-            streamed_text_chunks,
-            tool_calls,
-            finish_reason,
-            raw_response,
-        }
-    }
-
-    fn read_ollama_stream_response(
-        response: reqwest::blocking::Response,
-        on_chunk: &mut dyn FnMut(String),
-    ) -> anyhow::Result<ChatResponse> {
-        let mut raw_events = Vec::new();
-        let mut streamed_text_chunks = Vec::new();
-        let mut assistant_message = String::new();
-        let mut finish_reason = None;
-        let mut tool_calls = Vec::new();
-        let mut next_call_index = 1usize;
-
-        let reader = BufReader::new(response);
-        for line in reader.lines() {
-            let line = line.context("failed reading Ollama streaming response line")?;
-            let line = line.trim();
-            if line.is_empty() {
-                continue;
-            }
-
-            let event: Value =
-                serde_json::from_str(line).context("invalid JSON event in Ollama stream")?;
-
-            if let Some(err) = event.get("error").and_then(|value| value.as_str()) {
-                return Err(anyhow!("Ollama streaming API returned error: {}", err));
-            }
-
-            if let Some(message) = event.get("message") {
-                if let Some(content) = message.get("content").and_then(|value| value.as_str()) {
-                    if !content.is_empty() {
-                        let chunk = content.to_string();
-                        assistant_message.push_str(&chunk);
-                        streamed_text_chunks.push(chunk.clone());
-                        on_chunk(chunk);
-                    }
-                }
-
-                let mut calls = Self::parse_ollama_tool_calls(Some(message), &mut next_call_index);
-                tool_calls.append(&mut calls);
-            }
-
-            if finish_reason.is_none() {
-                finish_reason = event
-                    .get("done_reason")
-                    .and_then(|value| value.as_str())
-                    .map(|value| value.to_string());
-            }
-            if finish_reason.is_none()
-                && event
-                    .get("done")
-                    .and_then(|value| value.as_bool())
-                    .unwrap_or(false)
-            {
-                finish_reason = Some("stop".to_string());
-            }
-
-            let done = event
-                .get("done")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            raw_events.push(event);
-            if done {
-                break;
-            }
-        }
-
-        Ok(ChatResponse {
-            assistant_message: if assistant_message.is_empty() {
-                None
-            } else {
-                Some(assistant_message)
-            },
-            streamed_text_chunks,
-            tool_calls,
-            finish_reason,
-            raw_response: Value::Array(raw_events),
-        })
-    }
+    let tcs = parse_stream_tool_calls(&events);
+    Ok(ChatResponse { assistant_message: if full.is_empty() { None } else { Some(full) }, streamed_text_chunks: chunks, tool_calls: tcs, finish_reason: fr, raw_response: Value::Array(events) })
 }
 
-impl OpenAiCompatibleProvider {
-    fn static_str(value: String) -> &'static str {
-        Box::leak(value.into_boxed_str())
-    }
+// ── Ollama request/response ─────────────────────────────────────────────────
 
-    pub fn from_dynamic(
-        id: String,
-        display_name: String,
-        endpoint: String,
-        kind: ProviderKind,
-        models: Vec<(String, String, bool)>,
-    ) -> Self {
-        let model_descriptors = models
-            .into_iter()
-            .map(|(model_id, label, supports_tools)| ModelDescriptor {
-                id: Self::static_str(model_id),
-                label: Self::static_str(label),
-                supports_tools,
-                context_tokens: 0,
-                compact_model: None,
-            })
-            .collect::<Vec<_>>();
-
-        Self {
-            client: Client::new(),
-            metadata: ProviderMetadata {
-                id: Self::static_str(id),
-                display_name: Self::static_str(display_name),
-                endpoint: Self::static_str(OpenAiProvider::build_chat_url(&endpoint)),
-                kind,
-            },
-            models: model_descriptors,
-            protocol: CompatibleProtocol::OpenAiCompatible,
+fn build_ollama_payload(request: &ChatRequest, stream: bool) -> Value {
+    let messages: Vec<Value> = request.messages.iter().map(|msg| {
+        let mut m = serde_json::Map::new();
+        m.insert("role".into(), json!(map_role(msg.role)));
+        m.insert("content".into(), json!(msg.content));
+        if !msg.tool_calls.is_empty() {
+            m.insert("tool_calls".into(), json!(msg.tool_calls.iter().map(|c| json!({ "function": { "name": c.name, "arguments": c.arguments_json } })).collect::<Vec<_>>()));
         }
-    }
+        Value::Object(m)
+    }).collect();
 
-    pub fn from_dynamic_ollama(
-        id: String,
-        display_name: String,
-        endpoint: String,
-        kind: ProviderKind,
-        models: Vec<(String, String, bool)>,
-    ) -> Self {
-        let model_descriptors = models
-            .into_iter()
-            .map(|(model_id, label, supports_tools)| ModelDescriptor {
-                id: Self::static_str(model_id),
-                label: Self::static_str(label),
-                supports_tools,
-                context_tokens: 0,
-                compact_model: None,
-            })
-            .collect::<Vec<_>>();
-
-        Self {
-            client: Client::new(),
-            metadata: ProviderMetadata {
-                id: Self::static_str(id),
-                display_name: Self::static_str(display_name),
-                endpoint: Self::static_str(OpenAiProvider::build_ollama_chat_url(&endpoint)),
-                kind,
-            },
-            models: model_descriptors,
-            protocol: CompatibleProtocol::Ollama,
-        }
+    let mut payload = json!({ "model": request.model, "messages": messages, "stream": stream });
+    let mut opts = serde_json::Map::new();
+    if let Some(t) = request.temperature { opts.insert("temperature".into(), json!(t)); }
+    if let Some(p) = request.top_p { opts.insert("top_p".into(), json!(p)); }
+    if let Some(m) = request.max_tokens { opts.insert("num_predict".into(), json!(m)); }
+    if !opts.is_empty() { payload["options"] = Value::Object(opts); }
+    if request.enable_tool_calls && !request.tools.is_empty() {
+        payload["tools"] = json!(request.tools.iter().map(|t| json!({ "type": "function", "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema } })).collect::<Vec<_>>());
     }
+    payload
 }
 
-impl Default for OpenAiProvider {
-    fn default() -> Self {
-        Self::new()
-    }
+fn parse_ollama_tc(message: Option<&Value>, next: &mut usize) -> Vec<ToolCall> {
+    let Some(calls) = message.and_then(|m| m.get("tool_calls")).and_then(|v| v.as_array()) else { return vec![] };
+    calls.iter().filter_map(|call| {
+        let func = call.get("function")?;
+        let name = func.get("name")?.as_str()?.to_string();
+        let args = match func.get("arguments") { Some(Value::String(s)) => serde_json::from_str(s).unwrap_or_else(|_| json!({})), Some(v) => v.clone(), None => json!({}) };
+        let id = call.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()).unwrap_or_else(|| { let i = *next; *next += 1; format!("ollama_{i}") });
+        Some(ToolCall { id, name, arguments_json: args })
+    }).collect()
 }
 
-impl ChatProvider for OpenAiProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "openai",
-            display_name: "OpenAI",
-            endpoint: OPENAI_CHAT_URL,
-            kind: ProviderKind::Cloud,
-        }
-    }
-
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::static_models()
-    }
-
-    fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        if Self::auth_token_from_env(env).is_some() {
-            ProviderAvailability::ready()
-        } else {
-            ProviderAvailability::requires_auth(
-                "Authentication required. Set OPENAI_API_KEY or paste a token.",
-            )
-        }
-    }
-
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![AuthMethod::PromptToken]
-    }
-
-    fn authenticate(
-        &self,
-        method: AuthMethod,
-        host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        match method {
-            AuthMethod::PromptToken => {
-                let token = host.prompt_for_token(PromptTokenRequest {
-                    title: "OpenAI Authentication".to_string(),
-                    prompt: "Paste your OpenAI API key.".to_string(),
-                    placeholder: Some("sk-...".to_string()),
-                    env_var_hint: Some("OPENAI_API_KEY".to_string()),
-                })?;
-
-                Ok(match token {
-                    Some(token) => AuthResult::Authenticated { token },
-                    None => AuthResult::Cancelled,
-                })
-            }
-            AuthMethod::BrowserDeviceCode => Ok(AuthResult::Cancelled),
-        }
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(Self::static_models())
-    }
-
-    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        let payload = Self::build_request_payload(request);
-
-        let response = self
-            .client
-            .post(OPENAI_CHAT_URL)
-            .header("Authorization", format!("Bearer {token}"))
-            .header("Content-Type", "application/json")
-            .json(&payload)
-            .send()
-            .context("failed to call OpenAI chat API")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(anyhow!("OpenAI API returned {}: {}", status, body));
-        }
-
-        let raw_response: Value = response.json().context("invalid JSON from OpenAI API")?;
-        Ok(Self::parse_non_stream_response(raw_response))
-    }
-
-    fn chat_completion_streaming(
-        &self,
-        token: &str,
-        request: &ChatRequest,
-        on_chunk: &mut dyn FnMut(String),
-    ) -> anyhow::Result<ChatResponse> {
-        let mut payload = Self::build_request_payload(request);
-        payload["stream"] = json!(true);
-
-        let response = self
-            .client
-            .post(OPENAI_CHAT_URL)
-            .header("Authorization", format!("Bearer {token}"))
-            .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
-            .json(&payload)
-            .send()
-            .context("failed to call OpenAI streaming chat API")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "OpenAI streaming API returned {}: {}",
-                status,
-                body
-            ));
-        }
-
-        Self::read_stream_response(response, on_chunk)
-    }
+fn parse_ollama_response(raw: Value) -> anyhow::Result<ChatResponse> {
+    let msg = raw.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_str()).map(|s| s.to_string()).filter(|s| !s.is_empty());
+    let mut n = 1;
+    let tcs = parse_ollama_tc(raw.get("message"), &mut n);
+    let chunks = msg.as_ref().map(|t| t.chars().collect::<Vec<_>>().chunks(20).map(|c| c.iter().collect()).collect()).unwrap_or_default();
+    let fr = raw.get("done_reason").and_then(|v| v.as_str()).map(|s| s.to_string())
+        .or_else(|| raw.get("done").and_then(|v| v.as_bool()).and_then(|d| if d { Some("stop".into()) } else { None }));
+    Ok(ChatResponse { assistant_message: msg, streamed_text_chunks: chunks, tool_calls: tcs, finish_reason: fr, raw_response: raw })
 }
 
-impl ChatProvider for OpenAiCompatibleProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        self.metadata.clone()
-    }
-
-    fn models(&self) -> Vec<ModelDescriptor> {
-        self.models.clone()
-    }
-
-    fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::ready()
-    }
-
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![]
-    }
-
-    fn authenticate(
-        &self,
-        _method: AuthMethod,
-        _host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        Ok(AuthResult::Cancelled)
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(self.models.clone())
-    }
-
-    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        let payload = match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => OpenAiProvider::build_request_payload(request),
-            CompatibleProtocol::Ollama => {
-                OpenAiProvider::build_ollama_request_payload(request, false)
+fn read_ollama_stream(response: reqwest::blocking::Response, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
+    let mut events = Vec::new();
+    let mut chunks = Vec::new();
+    let mut full = String::new();
+    let mut fr = None;
+    let mut tcs = Vec::new();
+    let mut n = 1;
+    for line in BufReader::new(response).lines() {
+        let line = line?; let line = line.trim();
+        if line.is_empty() { continue; }
+        let ev: Value = serde_json::from_str(line)?;
+        if let Some(e) = ev.get("error").and_then(|v| v.as_str()) { return Err(anyhow!("ollama error: {e}")); }
+        if let Some(msg) = ev.get("message") {
+            if let Some(c) = msg.get("content").and_then(|v| v.as_str()) {
+                if !c.is_empty() { let ch = c.to_string(); full.push_str(&ch); chunks.push(ch.clone()); on_chunk(ch); }
             }
-        };
-
-        let mut req = self
-            .client
-            .post(self.metadata.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&payload);
-        if !token.trim().is_empty() {
-            req = req.header("Authorization", format!("Bearer {token}"));
+            tcs.append(&mut parse_ollama_tc(Some(msg), &mut n));
         }
-
-        let response = req.send().with_context(|| match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                "failed to call OpenAI-compatible chat API".to_string()
-            }
-            CompatibleProtocol::Ollama => "failed to call Ollama chat API".to_string(),
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            let label = match self.protocol {
-                CompatibleProtocol::OpenAiCompatible => "OpenAI-compatible API",
-                CompatibleProtocol::Ollama => "Ollama API",
-            };
-            return Err(anyhow!("{} returned {}: {}", label, status, body));
-        }
-
-        let raw_response: Value = response.json().with_context(|| match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                "invalid JSON from OpenAI-compatible API".to_string()
-            }
-            CompatibleProtocol::Ollama => "invalid JSON from Ollama API".to_string(),
-        })?;
-
-        Ok(match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                OpenAiProvider::parse_non_stream_response(raw_response)
-            }
-            CompatibleProtocol::Ollama => OpenAiProvider::parse_ollama_response(raw_response),
-        })
+        if fr.is_none() { fr = ev.get("done_reason").and_then(|v| v.as_str()).map(|s| s.to_string()); }
+        if fr.is_none() && ev.get("done").and_then(|v| v.as_bool()).unwrap_or(false) { fr = Some("stop".into()); }
+        let done = ev.get("done").and_then(|v| v.as_bool()).unwrap_or(false);
+        events.push(ev);
+        if done { break; }
     }
+    Ok(ChatResponse { assistant_message: if full.is_empty() { None } else { Some(full) }, streamed_text_chunks: chunks, tool_calls: tcs, finish_reason: fr, raw_response: Value::Array(events) })
+}
 
-    fn chat_completion_streaming(
-        &self,
-        token: &str,
-        request: &ChatRequest,
-        on_chunk: &mut dyn FnMut(String),
-    ) -> anyhow::Result<ChatResponse> {
-        let payload = match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                let mut payload = OpenAiProvider::build_request_payload(request);
-                payload["stream"] = json!(true);
-                payload
-            }
-            CompatibleProtocol::Ollama => {
-                OpenAiProvider::build_ollama_request_payload(request, true)
-            }
-        };
+// ── Shared ──────────────────────────────────────────────────────────────────
 
-        let mut req = self
-            .client
-            .post(self.metadata.endpoint)
-            .header("Content-Type", "application/json")
-            .json(&payload);
-        match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                req = req.header("Accept", "text/event-stream");
-            }
-            CompatibleProtocol::Ollama => {
-                req = req.header("Accept", "application/x-ndjson");
-            }
-        }
-        if !token.trim().is_empty() {
-            req = req.header("Authorization", format!("Bearer {token}"));
-        }
-
-        let response = req.send().with_context(|| match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                "failed to call OpenAI-compatible streaming chat API".to_string()
-            }
-            CompatibleProtocol::Ollama => "failed to call Ollama streaming chat API".to_string(),
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            let label = match self.protocol {
-                CompatibleProtocol::OpenAiCompatible => "OpenAI-compatible streaming API",
-                CompatibleProtocol::Ollama => "Ollama streaming API",
-            };
-            return Err(anyhow!("{} returned {}: {}", label, status, body));
-        }
-
-        match self.protocol {
-            CompatibleProtocol::OpenAiCompatible => {
-                OpenAiProvider::read_stream_response(response, on_chunk)
-            }
-            CompatibleProtocol::Ollama => {
-                OpenAiProvider::read_ollama_stream_response(response, on_chunk)
-            }
-        }
-    }
+fn map_role(role: ChatRole) -> &'static str {
+    match role { ChatRole::System => "system", ChatRole::User => "user", ChatRole::Assistant => "assistant", ChatRole::Tool => "tool", ChatRole::AgentEvent => "system" }
 }

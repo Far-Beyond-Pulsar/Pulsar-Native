@@ -1,4 +1,3 @@
-mod auth;
 mod chat_history;
 mod chat_storage;
 mod custom_provider_wizard;
@@ -11,36 +10,20 @@ pub mod types;
 pub use types::*;
 
 use crate::custom_providers::{self, CustomProvider};
-use agent_chat_core::{ChatMessage, ChatRole, ProviderRegistry};
+use agent_chat_core::{ChatMessage, ChatRole, ProviderCrate, ProviderEntry, ProviderRegistry};
 use agent_chat_tools::ToolRegistry;
-use agent_provider_anthropic::AnthropicProvider;
-use agent_provider_aws_bedrock::AwsBedrockProvider;
-use agent_provider_azure_openai::AzureOpenAIProvider;
-use agent_provider_cohere::CohereProvider;
-use agent_provider_deepseek::DeepSeekProvider;
-use agent_provider_demo_random::DemoRandomProvider;
-use agent_provider_docker_model_runner::DockerModelRunnerProvider;
-use agent_provider_fireworks::FireworksProvider;
-use agent_provider_gemini::GeminiProvider;
-use agent_provider_github_copilot::GithubCopilotProvider;
-use agent_provider_groq::GroqProvider;
-use agent_provider_llama_cpp::LlamaCppProvider;
-use agent_provider_lmstudio::LmStudioProvider;
-use agent_provider_mistral::MistralProvider;
-use agent_provider_ollama::OllamaProvider;
-use agent_provider_openai::{OpenAiCompatibleProvider, OpenAiProvider};
-use agent_provider_openrouter::OpenRouterProvider;
-use agent_provider_perplexity::PerplexityProvider;
-use agent_provider_together::TogetherProvider;
-use agent_provider_vertex_ai::VertexAiProvider;
-use agent_provider_vllm::VllmProvider;
-use agent_provider_xai::XaiProvider;
+use agent_provider_anthropic::AnthropicProviderCrate;
+use agent_provider_aws_bedrock::AwsBedrockProviderCrate;
+use agent_provider_demo_random::DemoRandomProviderCrate;
+use agent_provider_docker_model_runner::DockerModelRunnerProviderCrate;
+use agent_provider_gemini::GeminiProviderCrate;
+use agent_provider_github_copilot::GithubCopilotProviderCrate;
+use agent_provider_openai::OpenAiProviderCrate;
+use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::{prelude::FluentBuilder as _, *};
 use std::{
-    cell::RefCell,
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, VecDeque},
     path::PathBuf,
-    rc::Rc,
     sync::{Arc, RwLock},
 };
 use ui::{
@@ -81,15 +64,15 @@ pub struct AgentChatPanel {
     pub(crate) model_list: Entity<SearchableList<ModelDefinition>>,
     pub(crate) provider_catalog: Vec<ProviderDefinition>,
     pub(crate) custom_providers_list: Vec<CustomProvider>,
-    pub(crate) custom_provider_ids: Rc<RefCell<HashSet<String>>>,
     pub(crate) pending_custom_provider: Option<PendingCustomProvider>,
     pub(crate) pending_custom_provider_step: Option<AddProviderPromptStep>,
-    /// Providers with `AvailabilityState::Wip` — shown crossed-out, not selectable.
-    pub(crate) wip_providers: HashMap<&'static str, String>,
-    /// Providers with `AvailabilityState::RequiresAuth` — shown with a lock icon,
-    /// still selectable so the user can click through to authenticate.
-    pub(crate) locked_providers: HashMap<&'static str, String>,
     pub(crate) provider_registry: ProviderRegistry,
+    pub(crate) provider_states: HashMap<String, ProviderState>,
+    pub(crate) provider_entries: HashMap<String, ProviderEntry>,
+    pub(crate) crate_instances: Vec<Box<dyn ProviderCrate>>,
+    pub(crate) configuring_provider: Option<String>,
+    pub(crate) configuring_field_index: usize,
+    pub(crate) config_values: HashMap<String, String>,
     pub(crate) tool_registry: ToolRegistry,
     pub(crate) plugin_bridge: Option<Arc<RwLock<plugin_manager::PluginToolBridge>>>,
     pub(crate) provider_tokens: HashMap<&'static str, String>,
@@ -137,91 +120,76 @@ impl AgentChatPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        // --- Provider registry: single source of truth, no separate catalog ---
+        // --- Provider registry: all providers registered via ProviderCrate ---
         let mut provider_registry = ProviderRegistry::new();
 
-        // Implemented cloud providers
-        provider_registry.register(Arc::new(GithubCopilotProvider::new()));
-        provider_registry.register(Arc::new(DemoRandomProvider::new()));
-        provider_registry.register(Arc::new(OpenAiProvider::new()));
-        provider_registry.register(Arc::new(AnthropicProvider::new()));
-        provider_registry.register(Arc::new(OpenRouterProvider::new()));
-        provider_registry.register(Arc::new(GroqProvider::new()));
-        provider_registry.register(Arc::new(TogetherProvider::new()));
-        provider_registry.register(Arc::new(MistralProvider::new()));
-        provider_registry.register(Arc::new(GeminiProvider::new()));
-        provider_registry.register(Arc::new(XaiProvider::new()));
-        provider_registry.register(Arc::new(DeepSeekProvider::new()));
-        provider_registry.register(Arc::new(FireworksProvider::new()));
-        provider_registry.register(Arc::new(PerplexityProvider::new()));
-        // Hollow cloud providers (real structure, not yet fully implemented)
-        provider_registry.register(Arc::new(AzureOpenAIProvider::new()));
-        provider_registry.register(Arc::new(AwsBedrockProvider::new()));
-        provider_registry.register(Arc::new(VertexAiProvider::new()));
-        provider_registry.register(Arc::new(CohereProvider::new()));
-        // Local providers
-        provider_registry.register(Arc::new(DockerModelRunnerProvider::new()));
-        provider_registry.register(Arc::new(OllamaProvider::new()));
-        provider_registry.register(Arc::new(LmStudioProvider::new()));
-        provider_registry.register(Arc::new(VllmProvider::new()));
-        provider_registry.register(Arc::new(LlamaCppProvider::new()));
+        let crate_instances: Vec<Box<dyn ProviderCrate>> = vec![
+            Box::new(OpenAiProviderCrate),
+            Box::new(AnthropicProviderCrate),
+            Box::new(GeminiProviderCrate),
+            Box::new(GithubCopilotProviderCrate),
+            Box::new(AwsBedrockProviderCrate),
+            Box::new(VertexAiProviderCrate),
+            Box::new(DemoRandomProviderCrate),
+            Box::new(DockerModelRunnerProviderCrate),
+        ];
+
+        let mut provider_states: HashMap<String, ProviderState> = HashMap::new();
+        let mut provider_entries: HashMap<String, ProviderEntry> = HashMap::new();
+        let disabled_providers = ["aws_bedrock", "vertex_ai"];
+
+        for crate_impl in &crate_instances {
+            let entries = crate_impl.entries();
+            for entry in entries {
+                let needs_config = entry.config_fields.iter().any(|f| f.required);
+                let config = agent_chat_core::ProviderConfig {
+                    values: std::collections::HashMap::new(),
+                };
+                if let Ok(provider) = crate_impl.create(entry.id, config) {
+                    let state = if disabled_providers.contains(&entry.id) {
+                        ProviderState::Disabled
+                    } else if needs_config {
+                        ProviderState::Unconfigured
+                    } else {
+                        ProviderState::Ready
+                    };
+                    let id = entry.id.to_string();
+                    provider_entries.insert(id.clone(), entry);
+                    provider_states.insert(id.clone(), state);
+                    provider_registry.register(Arc::from(provider));
+                }
+            }
+        }
 
         // --- Custom providers added by the user ---
         let custom_providers_list =
             custom_providers::load_custom_providers(&Self::custom_provider_config_dir());
-        let custom_provider_ids = Rc::new(RefCell::new(
-            custom_providers_list
-                .iter()
-                .map(|provider| provider.id.clone())
-                .collect::<HashSet<_>>(),
-        ));
-        for provider in &custom_providers_list {
-            let models = provider
-                .models
-                .iter()
-                .map(|model| (model.id.clone(), model.label.clone(), model.supports_tools))
-                .collect::<Vec<_>>();
-            let use_ollama = custom_provider_ids.borrow().contains(provider.id.as_str());
-            let runtime_provider = if use_ollama {
-                OpenAiCompatibleProvider::from_dynamic_ollama(
-                    provider.id.clone(),
-                    provider.label.clone(),
-                    provider.endpoint.clone(),
-                    agent_chat_core::ProviderKind::Local,
-                    models,
-                )
-            } else {
-                OpenAiCompatibleProvider::from_dynamic(
-                    provider.id.clone(),
-                    provider.label.clone(),
-                    provider.endpoint.clone(),
-                    agent_chat_core::ProviderKind::Local,
-                    models,
-                )
-            };
-            provider_registry.register(Arc::new(runtime_provider));
+
+        // --- Build provider catalog from registry, sorted by state ---
+        let mut provider_catalog: Vec<ProviderDefinition> = Vec::new();
+        for (id, provider) in provider_registry.all() {
+            provider_catalog.push(ProviderDefinition {
+                id: Box::leak(id.clone().into_boxed_str()),
+                label: Box::leak(provider.display_name().to_string().into_boxed_str()),
+                kind: ProviderKind::Cloud,
+                endpoint: Box::leak(String::new().into_boxed_str()),
+                models: Arc::new(vec![]),
+            });
         }
 
-        // --- Build provider catalog from registry (providers own their metadata) ---
-        // catalog_no_models() skips the models() call so providers that discover
-        // their model list via a network round-trip (Ollama, LM Studio, GitHub
-        // Models…) do not block the main thread at startup. Models are fetched
-        // lazily in the background the first time a provider is selected.
-        let env = agent_chat_core::ProcessEnvironment;
-        let catalog_entries = provider_registry.catalog_no_models(&env);
-        let mut provider_catalog: Vec<ProviderDefinition> = catalog_entries
-            .iter()
-            .map(|entry| ProviderDefinition {
-                id: entry.metadata.id,
-                label: entry.metadata.display_name,
-                kind: match entry.metadata.kind {
-                    agent_chat_core::ProviderKind::Cloud => ProviderKind::Cloud,
-                    agent_chat_core::ProviderKind::Local => ProviderKind::Local,
-                },
-                endpoint: entry.metadata.endpoint,
-                models: Arc::new(vec![]),
-            })
-            .collect();
+        // Sort: Ready first (alpha), then Unconfigured (alpha), then Disabled (alpha)
+        let state_order = |id: &str| -> u8 {
+            match provider_states.get(id) {
+                Some(ProviderState::Ready) => 0,
+                Some(ProviderState::Unconfigured) => 1,
+                Some(ProviderState::Disabled) | None => 2,
+            }
+        };
+        provider_catalog.sort_by(|a, b| {
+            let ta = state_order(a.id);
+            let tb = state_order(b.id);
+            ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
+        });
 
         // Append custom provider definitions for display
         provider_catalog.extend(
@@ -230,44 +198,6 @@ impl AgentChatPanel {
                 .map(Self::custom_provider_to_definition),
         );
 
-        // Wip: not yet implemented — crossed out, not selectable.
-        // Locked: implemented but no API key — lock icon, still selectable for auth.
-        let mut wip_providers: HashMap<&'static str, String> = HashMap::new();
-        let mut locked_providers: HashMap<&'static str, String> = HashMap::new();
-        for e in &catalog_entries {
-            match e.availability.state {
-                agent_chat_core::AvailabilityState::Wip => {
-                    wip_providers.insert(e.metadata.id, "Not yet implemented".to_string());
-                }
-                agent_chat_core::AvailabilityState::RequiresAuth => {
-                    locked_providers.insert(
-                        e.metadata.id,
-                        e.availability
-                            .reason
-                            .clone()
-                            .unwrap_or_else(|| "API key not configured".to_string()),
-                    );
-                }
-                agent_chat_core::AvailabilityState::Ready => {}
-            }
-        }
-
-        // Sort order: Ready → Locked (auth needed) → Wip (not implemented).
-        // Within each tier, alphabetical by label.
-        provider_catalog.sort_by(|a, b| {
-            let tier = |id: &str| {
-                if wip_providers.contains_key(id) {
-                    2u8
-                } else if locked_providers.contains_key(id) {
-                    1u8
-                } else {
-                    0u8
-                }
-            };
-            let ta = tier(a.id);
-            let tb = tier(b.id);
-            ta.cmp(&tb).then_with(|| a.label.cmp(b.label))
-        });
         let plugin_bridge = plugin_manager::global()
             .map(|manager_lock| Arc::new(RwLock::new(manager_lock.read().build_tool_bridge())));
 
@@ -287,9 +217,8 @@ impl AgentChatPanel {
             .with_max_height(px(200.0))
         });
 
-        let wip_for_list = wip_providers.clone();
-        let locked_for_list = locked_providers.clone();
-        let custom_ids_for_list = custom_provider_ids.clone();
+
+        let states_for_list = provider_states.clone();
         let provider_list = cx.new(|cx| {
             SearchableList::new(
                 window,
@@ -304,27 +233,11 @@ impl AgentChatPanel {
                 ProviderKind::Cloud => IconName::Cloud,
                 ProviderKind::Local => IconName::Server,
             })
-            .with_item_actions(move |provider| {
-                if custom_ids_for_list.borrow().contains(provider.id) {
-                    vec![SearchableListItemAction {
-                        id: "delete".into(),
-                        icon: Some(IconName::Trash),
-                        label: None,
-                        destructive: true,
-                    }]
-                } else {
-                    Vec::new()
-                }
-            })
-            .with_item_state(move |provider| {
-                if wip_for_list.contains_key(provider.id) {
-                    // Not yet implemented — crossed out, not clickable.
-                    SearchableListItemState::Disabled
-                } else if locked_for_list.contains_key(provider.id) {
-                    // Implemented but needs an API key — lock icon, still clickable.
-                    SearchableListItemState::Locked
-                } else {
-                    SearchableListItemState::Enabled
+            .with_item_state(move |p: &ProviderDefinition| {
+                match states_for_list.get(p.id) {
+                    Some(ProviderState::Ready) => SearchableListItemState::Enabled,
+                    Some(ProviderState::Unconfigured) => SearchableListItemState::Locked,
+                    Some(ProviderState::Disabled) | None => SearchableListItemState::Disabled,
                 }
             })
         });
@@ -404,12 +317,15 @@ impl AgentChatPanel {
             model_list,
             provider_catalog,
             custom_providers_list,
-            custom_provider_ids,
             pending_custom_provider: None,
             pending_custom_provider_step: None,
-            wip_providers,
-            locked_providers,
             provider_registry,
+            provider_states,
+            provider_entries,
+            crate_instances,
+            configuring_provider: None,
+            configuring_field_index: 0,
+            config_values: HashMap::new(),
             tool_registry: agent_chat_tools::build_default_registry(),
             plugin_bridge,
             provider_tokens: HashMap::new(),
@@ -597,6 +513,12 @@ impl AgentChatPanel {
             )),
         }
     }
+
+    /// Get stored auth token for a provider (from the old token-based auth system).
+    /// In the new config-based system, tokens are handled via provider config.
+    pub(super) fn auth_token_for_provider(&self, provider_id: &str) -> Option<String> {
+        self.provider_tokens.get(provider_id).cloned()
+    }
 }
 
 impl EventEmitter<PanelEvent> for AgentChatPanel {}
@@ -645,10 +567,10 @@ impl Render for AgentChatPanel {
 
         let provider = self.active_provider();
         let model = self.active_model();
-        let auth_provider = self.pending_auth_provider;
+        let configuring = self.configuring_provider.clone();
         let add_provider_prompt = self
             .pending_custom_provider_step
-            .map(Self::add_provider_prompt_title);
+            .map(|s| Self::add_provider_prompt_title(s).to_string());
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
         let chat_history_list = self.chat_history_list.clone();
@@ -872,53 +794,96 @@ impl Render for AgentChatPanel {
                                     .child(format!("{}% · {}", (fill_pct * 100.0) as u32, ctx_label)),
                             )
                     })
-                    .when(auth_provider.is_some(), |el| {
+                    .when_some(configuring.clone(), |el, provider_id| {
+                        let entry = self.provider_entries.get(&provider_id);
+                        let fields = entry.map(|e| &e.config_fields[..]).unwrap_or(&[]);
+                        let field_ix = self.configuring_field_index;
+                        let field = fields.get(field_ix);
+
                         el.child(
                             v_flex()
                                 .w_full()
                                 .gap_1()
                                 .p_2()
                                 .rounded(px(6.0))
-                                .bg(cx.theme().danger.opacity(0.08))
+                                .bg(cx.theme().primary.opacity(0.08))
                                 .border_1()
-                                .border_color(cx.theme().danger.opacity(0.25))
+                                .border_color(cx.theme().primary.opacity(0.25))
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(cx.theme().danger)
-                                        .child("Authentication required for selected provider"),
+                                        .text_color(cx.theme().primary)
+                                        .child(match field {
+                                            Some(f) => f.description,
+                                            None => "Provider is configured",
+                                        }),
                                 )
-                                .child(TextInput::new(&self.auth_token_input).w_full().xsmall())
+                                .child(
+                                    TextInput::new(&self.custom_provider_input)
+                                        .w_full()
+                                        .xsmall(),
+                                )
                                 .child(
                                     h_flex()
                                         .w_full()
                                         .gap_1()
                                         .child(
-                                            Button::new("agent-chat-auth-browser")
+                                            Button::new("provider-config-cancel")
                                                 .xsmall()
                                                 .ghost()
-                                                .label("Open Browser")
-                                                .tooltip("Authenticate with browser")
+                                                .label("Cancel")
                                                 .on_click(cx.listener(|this, _, _, cx| {
-                                                    this.begin_browser_auth(cx);
+                                                    this.configuring_provider = None;
+                                                    cx.notify();
                                                 })),
                                         )
                                         .child(
-                                            Button::new("agent-chat-auth-token")
+                                            Button::new("provider-config-submit")
                                                 .xsmall()
                                                 .primary()
-                                                .label("Use Token")
-                                                .tooltip("Confirm authentication token")
+                                                .label("Save")
                                                 .disabled(
-                                                    self.auth_token_input
+                                                    self.custom_provider_input
                                                         .read(cx)
                                                         .text()
                                                         .to_string()
                                                         .trim()
-                                                        .is_empty(),
+                                                        .is_empty()
+                                                        && field.map(|f| f.required).unwrap_or(false),
                                                 )
                                                 .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.complete_prompt_auth(window, cx);
+                                                    let value = this.custom_provider_input.read(cx).text().to_string();
+                                                    let pid = this.configuring_provider.clone();
+                                                    if let Some(ref id) = pid {
+                                                        let entry = this.provider_entries.get(id);
+                                                        let fields = entry.map(|e| e.config_fields.clone()).unwrap_or_default();
+
+                                                        this.config_values.insert(
+                                                            fields.get(this.configuring_field_index).map(|f| f.key).unwrap_or("value").to_string(),
+                                                            value,
+                                                        );
+
+                                                        this.configuring_field_index += 1;
+                                                        if this.configuring_field_index >= fields.len() {
+                                                            let config = agent_chat_core::ProviderConfig {
+                                                                values: this.config_values.drain().collect(),
+                                                            };
+                                                            for c in &this.crate_instances {
+                                                                if let Ok(p) = c.create(id, config.clone()) {
+                                                                    this.provider_registry.register(Arc::from(p));
+                                                                    this.provider_states.insert(id.clone(), ProviderState::Ready);
+                                                                    this.provider_entries.remove(id);
+                                                                    break;
+                                                                }
+                                                            }
+                                                            this.configuring_provider = None;
+                                                            this.refresh_provider_catalog(cx);
+                                                        }
+                                                        this.custom_provider_input.update(cx, |input, cx| {
+                                                            input.set_value("", window, cx);
+                                                        });
+                                                    }
+                                                    cx.notify();
                                                 })),
                                         ),
                                 ),
@@ -938,7 +903,7 @@ impl Render for AgentChatPanel {
                                     div()
                                         .text_xs()
                                         .text_color(cx.theme().primary)
-                                        .child(add_provider_prompt.unwrap_or("")),
+                                        .child(add_provider_prompt.unwrap_or_default()),
                                 )
                                 .child(
                                     TextInput::new(&self.custom_provider_input)
@@ -955,16 +920,16 @@ impl Render for AgentChatPanel {
                                                 .ghost()
                                                 .label("Cancel")
                                                 .tooltip("Cancel adding provider")
-                                                .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.cancel_add_provider_prompt(window, cx);
+                                                .on_click(cx.listener(|this, _, _window, cx| {
+                                                    this.cancel_add_provider_prompt(cx);
                                                 })),
                                         )
                                         .child(
                                             Button::new("agent-chat-add-provider-next")
                                                 .xsmall()
                                                 .primary()
-                                                .label("Next")
-                                                .tooltip("Continue to next step")
+                                                .label("Save Provider")
+                                                .tooltip("Save this custom provider")
                                                 .disabled(
                                                     self.custom_provider_input
                                                         .read(cx)
@@ -974,7 +939,29 @@ impl Render for AgentChatPanel {
                                                         .is_empty(),
                                                 )
                                                 .on_click(cx.listener(|this, _, window, cx| {
-                                                    this.submit_add_provider_prompt(window, cx);
+                                                    let step = this.pending_custom_provider_step;
+                                                    if let Some(s) = step {
+                                                        let value = this.custom_provider_input.read(cx).text().to_string();
+                                                        match s {
+                                                            AddProviderPromptStep::ProviderLabel => {
+                                                                if let Some(ref mut p) = this.pending_custom_provider {
+                                                                    p.label = value;
+                                                                }
+                                                                this.pending_custom_provider_step = Some(AddProviderPromptStep::Endpoint);
+                                                                this.custom_provider_input.update(cx, |input, cx| {
+                                                                    input.set_value("", window, cx);
+                                                                });
+                                                            }
+                                                            AddProviderPromptStep::Endpoint => {
+                                                                if let Some(ref mut p) = this.pending_custom_provider {
+                                                                    p.endpoint = value;
+                                                                }
+                                                                this.submit_custom_provider(window, cx);
+                                                            }
+                                                            _ => {}
+                                                        }
+                                                    }
+                                                    cx.notify();
                                                 })),
                                         ),
                                 ),
@@ -2475,4 +2462,5 @@ impl Render for AgentChatPanel {
                     ),
             )
     }
+
 }

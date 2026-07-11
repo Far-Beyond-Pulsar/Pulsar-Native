@@ -63,24 +63,10 @@ agent_provider_demo_random.workspace = true
 agent_provider_github_copilot.workspace = true
 agent_provider_openai.workspace = true
 agent_provider_anthropic.workspace = true
-agent_provider_openrouter.workspace = true
-agent_provider_groq.workspace = true
-agent_provider_together.workspace = true
-agent_provider_mistral.workspace = true
 agent_provider_gemini.workspace = true
 agent_provider_docker_model_runner.workspace = true
-agent_provider_ollama.workspace = true
-agent_provider_xai.workspace = true
-agent_provider_deepseek.workspace = true
-agent_provider_fireworks.workspace = true
-agent_provider_perplexity.workspace = true
-agent_provider_lmstudio.workspace = true
-agent_provider_vllm.workspace = true
-agent_provider_llama_cpp.workspace = true
-agent_provider_azure_openai.workspace = true
 agent_provider_aws_bedrock.workspace = true
 agent_provider_vertex_ai.workspace = true
-agent_provider_cohere.workspace = true
 dirs = { workspace = true }
 rfd = { workspace = true }
 

@@ -102,33 +102,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent_provider_azure_openai"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_cohere"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
-]
-
-[[package]]
-name = "agent_provider_deepseek"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
 name = "agent_provider_demo_random"
 version = "0.1.0"
 dependencies = [
@@ -147,16 +120,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "agent_provider_fireworks"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
 ]
 
 [[package]]
@@ -182,89 +145,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "agent_provider_groq"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_llama_cpp"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_lmstudio"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_mistral"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_ollama"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "tracing",
-]
-
-[[package]]
 name = "agent_provider_openai"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_openrouter"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_perplexity"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_together"
 version = "0.1.0"
 dependencies = [
  "agent_chat_core",
@@ -279,26 +160,6 @@ version = "0.1.0"
 dependencies = [
  "agent_chat_core",
  "anyhow",
-]
-
-[[package]]
-name = "agent_provider_vllm"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
-]
-
-[[package]]
-name = "agent_provider_xai"
-version = "0.1.0"
-dependencies = [
- "agent_chat_core",
- "anyhow",
- "reqwest 0.13.4",
- "serde_json",
 ]
 
 [[package]]
@@ -13357,26 +13218,12 @@ dependencies = [
  "agent_chat_tools",
  "agent_provider_anthropic",
  "agent_provider_aws_bedrock",
- "agent_provider_azure_openai",
- "agent_provider_cohere",
- "agent_provider_deepseek",
  "agent_provider_demo_random",
  "agent_provider_docker_model_runner",
- "agent_provider_fireworks",
  "agent_provider_gemini",
  "agent_provider_github_copilot",
- "agent_provider_groq",
- "agent_provider_llama_cpp",
- "agent_provider_lmstudio",
- "agent_provider_mistral",
- "agent_provider_ollama",
  "agent_provider_openai",
- "agent_provider_openrouter",
- "agent_provider_perplexity",
- "agent_provider_together",
  "agent_provider_vertex_ai",
- "agent_provider_vllm",
- "agent_provider_xai",
  "anyhow",
  "blueprint_editor_plugin",
  "directories 6.0.0",
@@ -13629,6 +13476,7 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_types_common 0.1.0",
+ "wgpu",
  "winapi",
  "window_manager",
 ]

@@ -1,6 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ProviderState {
+    Ready,
+    Unconfigured,
+    Disabled,
+}
+
 /// A single tool call within a `DisplayItem::ToolCallGroup`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ToolCallDisplay {

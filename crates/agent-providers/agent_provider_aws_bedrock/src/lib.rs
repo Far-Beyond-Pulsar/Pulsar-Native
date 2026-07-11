@@ -1,50 +1,49 @@
-use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatProvider, ChatRequest, ChatResponse, ModelDescriptor,
-    ProviderAvailability, ProviderEnvironment, ProviderKind, ProviderMetadata,
-};
+use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
 
-const ENDPOINT: &str = "https://bedrock-runtime.us-east-1.amazonaws.com";
-
-pub struct AwsBedrockProvider;
+pub struct AwsBedrockProvider {
+    models: Vec<ModelDescriptor>,
+}
 
 impl AwsBedrockProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            models: Self::static_models(),
+        }
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
             ModelDescriptor {
-                id: "anthropic.claude-opus-4-1",
-                label: "Claude Opus 4.1",
+                id: "anthropic.claude-opus-4-1".to_string(),
+                label: "Claude Opus 4.1".to_string(),
                 supports_tools: true,
                 context_tokens: 200000,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "anthropic.claude-3-7-sonnet",
-                label: "Claude 3.7 Sonnet",
+                id: "anthropic.claude-3-7-sonnet".to_string(),
+                label: "Claude 3.7 Sonnet".to_string(),
                 supports_tools: true,
                 context_tokens: 200000,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "anthropic.claude-3-5-sonnet-v2",
-                label: "Claude 3.5 Sonnet v2",
+                id: "anthropic.claude-3-5-sonnet-v2".to_string(),
+                label: "Claude 3.5 Sonnet v2".to_string(),
                 supports_tools: true,
                 context_tokens: 200000,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "amazon.nova-pro-v1",
-                label: "Amazon Nova Pro",
+                id: "amazon.nova-pro-v1".to_string(),
+                label: "Amazon Nova Pro".to_string(),
                 supports_tools: true,
                 context_tokens: 300000,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "meta.llama3-1-70b-instruct-v1",
-                label: "Llama 3.1 70B Instruct",
+                id: "meta.llama3-1-70b-instruct-v1".to_string(),
+                label: "Llama 3.1 70B Instruct".to_string(),
                 supports_tools: false,
                 context_tokens: 131072,
                 compact_model: None,
@@ -60,57 +59,59 @@ impl Default for AwsBedrockProvider {
 }
 
 impl ChatProvider for AwsBedrockProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "aws_bedrock",
-            display_name: "AWS Bedrock",
-            endpoint: ENDPOINT,
-            kind: ProviderKind::Cloud,
-        }
+    fn id(&self) -> &str {
+        "aws_bedrock"
     }
 
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::static_models()
+    fn display_name(&self) -> &str {
+        "AWS Bedrock"
     }
 
-    fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::wip("Not yet implemented — contribution welcome")
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        Ok(self.models.clone())
     }
 
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![]
-    }
-
-    fn authenticate(
-        &self,
-        _method: AuthMethod,
-        _host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        Ok(AuthResult::Cancelled)
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(Self::static_models())
-    }
-
-    fn chat_completion(
-        &self,
-        _token: &str,
-        _request: &ChatRequest,
-    ) -> anyhow::Result<ChatResponse> {
+    fn chat(&self, _request: ChatRequest) -> anyhow::Result<ChatResponse> {
         anyhow::bail!(
             "AWS Bedrock not yet implemented — requires AWS SigV4 auth. Contribution welcome!"
         )
     }
 
-    fn chat_completion_streaming(
+    fn chat_streaming(
         &self,
-        _token: &str,
-        _request: &ChatRequest,
+        _request: ChatRequest,
         _on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
         anyhow::bail!(
             "AWS Bedrock not yet implemented — requires AWS SigV4 auth. Contribution welcome!"
         )
+    }
+}
+
+use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+
+pub struct AwsBedrockProviderCrate;
+
+impl ProviderCrate for AwsBedrockProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        vec![ProviderEntry {
+            id: "aws_bedrock",
+            display_name: "AWS Bedrock",
+            kind: ProviderKind::Cloud,
+            default_endpoint: None,
+            config_fields: vec![ConfigField {
+                key: "info",
+                label: "AWS Configuration",
+                description: "AWS Bedrock uses standard AWS credential chain (env vars, ~/.aws, IAM roles)",
+                sensitive: false,
+                required: false,
+                placeholder: None,
+            }],
+        }]
+    }
+
+    fn create(&self, id: &str, _config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        anyhow::ensure!(id == "aws_bedrock", "unknown provider: {id}");
+        Ok(Box::new(AwsBedrockProvider::new()))
     }
 }

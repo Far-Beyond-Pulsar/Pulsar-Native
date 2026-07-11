@@ -1,7 +1,5 @@
 use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, PromptTokenRequest, ProviderAvailability, ProviderEnvironment,
-    ProviderKind, ProviderMetadata, ToolCall,
+    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ModelDescriptor, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -9,61 +7,58 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 
 const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
-const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_API_VERSION: &str = "2023-06-01";
 
-/// Override the model used for all Anthropic requests regardless of what the
-/// UI selects. Useful for CI / scripted environments.
 const ANTHROPIC_MODEL_ENV: &str = "PULSAR_ANTHROPIC_MODEL";
 
 pub struct AnthropicProvider {
     client: Client,
+    api_key: String,
+    models: Vec<ModelDescriptor>,
 }
 
 impl AnthropicProvider {
-    pub fn new() -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
             client: Client::new(),
+            api_key,
+            models: Self::static_models(),
         }
     }
-
-    // ─── Static fallback model list ───────────────────────────────────────────
-    // Used before auth is available (models() is called without a token).
-    // list_models_api() fetches the live list once a key is known.
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
             ModelDescriptor {
-                id: "claude-opus-4-5",
-                label: "Claude Opus 4.5",
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: Some("claude-haiku-4-5"),
-            },
-            ModelDescriptor {
-                id: "claude-sonnet-4-5",
-                label: "Claude Sonnet 4.5",
-                supports_tools: true,
-                context_tokens: 200_000,
-                compact_model: Some("claude-haiku-4-5"),
-            },
-            ModelDescriptor {
-                id: "claude-haiku-4-5",
-                label: "Claude Haiku 4.5",
+                id: "claude-opus-4-5".to_string(),
+                label: "Claude Opus 4.5".to_string(),
                 supports_tools: true,
                 context_tokens: 200_000,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "claude-3-7-sonnet-latest",
-                label: "Claude 3.7 Sonnet",
+                id: "claude-sonnet-4-5".to_string(),
+                label: "Claude Sonnet 4.5".to_string(),
                 supports_tools: true,
                 context_tokens: 200_000,
-                compact_model: Some("claude-3-5-haiku-latest"),
+                compact_model: None,
             },
             ModelDescriptor {
-                id: "claude-3-5-haiku-latest",
-                label: "Claude 3.5 Haiku",
+                id: "claude-haiku-4-5".to_string(),
+                label: "Claude Haiku 4.5".to_string(),
+                supports_tools: true,
+                context_tokens: 200_000,
+                compact_model: None,
+            },
+            ModelDescriptor {
+                id: "claude-3-7-sonnet-latest".to_string(),
+                label: "Claude 3.7 Sonnet".to_string(),
+                supports_tools: true,
+                context_tokens: 200_000,
+                compact_model: None,
+            },
+            ModelDescriptor {
+                id: "claude-3-5-haiku-latest".to_string(),
+                label: "Claude 3.5 Haiku".to_string(),
                 supports_tools: true,
                 context_tokens: 200_000,
                 compact_model: None,
@@ -71,15 +66,8 @@ impl AnthropicProvider {
         ]
     }
 
-    // ─── Helpers ──────────────────────────────────────────────────────────────
-
-    fn auth_token_from_env(env: &dyn ProviderEnvironment) -> Option<String> {
-        env.get_env("ANTHROPIC_API_KEY")
-    }
-
-    /// Apply `PULSAR_ANTHROPIC_MODEL` env-var override when present and non-empty.
-    fn resolve_model(request_model: &str, env: &dyn ProviderEnvironment) -> String {
-        if let Some(env_model) = env.get_env(ANTHROPIC_MODEL_ENV) {
+    fn resolve_model(request_model: &str) -> String {
+        if let Ok(env_model) = std::env::var(ANTHROPIC_MODEL_ENV) {
             let trimmed = env_model.trim().to_string();
             if !trimmed.is_empty() {
                 return trimmed;
@@ -88,15 +76,6 @@ impl AnthropicProvider {
         request_model.to_string()
     }
 
-    /// Partition messages into the Anthropic `messages` array and a combined
-    /// `system` string.
-    ///
-    /// Anthropic-specific quirks handled here:
-    /// - `System` messages are collected into the top-level `system` field.
-    /// - `Tool` (tool-result) messages become `{"role":"user","content":[{"type":"tool_result",...}]}`.
-    /// - `Assistant` messages that carry tool calls are sent as a content
-    ///   array with `tool_use` blocks, matching what Anthropic returned and
-    ///   expects back during multi-turn tool use.
     fn build_messages_and_system(messages: &[ChatMessage]) -> (Vec<Value>, Option<String>) {
         let mut out_messages: Vec<Value> = Vec::new();
         let mut system_parts: Vec<String> = Vec::new();
@@ -107,10 +86,6 @@ impl AnthropicProvider {
                     system_parts.push(message.content.clone());
                 }
 
-                // Engine events have no wire representation in Anthropic's messages
-                // array. Fold them into the top-level system block so the model
-                // receives them as authoritative context without confusing them with
-                // human speech.
                 ChatRole::AgentEvent => {
                     system_parts.push(format!("[Engine event]\n{}", message.content));
                 }
@@ -129,8 +104,6 @@ impl AnthropicProvider {
                             "content": message.content,
                         }));
                     } else {
-                        // Build a content-array message: optional text block +
-                        // one tool_use block per call.
                         let mut content: Vec<Value> = Vec::new();
                         if !message.content.trim().is_empty() {
                             content.push(json!({"type": "text", "text": message.content}));
@@ -151,8 +124,6 @@ impl AnthropicProvider {
                 }
 
                 ChatRole::Tool => {
-                    // Anthropic expects tool results as a user message containing
-                    // a tool_result content block, not a plain string.
                     out_messages.push(json!({
                         "role": "user",
                         "content": [{
@@ -174,18 +145,12 @@ impl AnthropicProvider {
         (out_messages, system)
     }
 
-    /// Build the full JSON request payload.  `stream: true` enables SSE.
-    fn build_request_payload(
-        model: &str,
-        request: &ChatRequest,
-        stream: bool,
-    ) -> (Vec<Value>, Option<String>, Value) {
+    fn build_request_payload(model: &str, request: &ChatRequest, stream: bool) -> Value {
         let (messages, system) = Self::build_messages_and_system(&request.messages);
 
         let mut payload = json!({
             "model": model,
             "messages": messages,
-            // max_tokens is required by the Anthropic API.
             "max_tokens": request.max_tokens.unwrap_or(8096),
         });
 
@@ -195,8 +160,6 @@ impl AnthropicProvider {
         if let Some(sys) = &system {
             payload["system"] = json!(sys);
         }
-        // Anthropic rejects requests that specify both temperature and top_p.
-        // Prefer temperature; fall back to top_p only when temperature is absent.
         if let Some(temperature) = request.temperature {
             payload["temperature"] = json!(temperature);
         } else if let Some(top_p) = request.top_p {
@@ -212,7 +175,6 @@ impl AnthropicProvider {
                         json!({
                             "name": tool.name,
                             "description": tool.description,
-                            // Anthropic calls this `input_schema`, not `parameters`.
                             "input_schema": tool.parameters_json_schema,
                         })
                     })
@@ -220,16 +182,9 @@ impl AnthropicProvider {
             );
         }
 
-        (messages, system, payload)
+        payload
     }
 
-    // ─── Response parsing (non-streaming) ─────────────────────────────────────
-
-    /// Extract text + thinking from a non-streaming response content array.
-    ///
-    /// Thinking blocks (`{"type":"thinking","thinking":"..."}`) are wrapped in
-    /// `<think>…</think>` so the UI renders them as collapsible reasoning —
-    /// identical to how Ollama and GitHub Models surface thinking tokens.
     fn parse_assistant_text(raw: &Value) -> Option<String> {
         let content = raw.get("content").and_then(|v| v.as_array())?;
 
@@ -271,7 +226,6 @@ impl AnthropicProvider {
         }
     }
 
-    /// Extract tool calls from a non-streaming response content array.
     fn parse_tool_calls(raw: &Value) -> Vec<ToolCall> {
         raw.get("content")
             .and_then(|v| v.as_array())
@@ -296,8 +250,6 @@ impl AnthropicProvider {
             })
             .unwrap_or_default()
     }
-
-    // ─── Error helpers ────────────────────────────────────────────────────────
 
     fn extract_error_message(body: &str) -> Option<String> {
         let parsed: Value = serde_json::from_str(body).ok()?;
@@ -338,109 +290,10 @@ impl AnthropicProvider {
         anyhow!("Anthropic {api_name} returned {status}: {body_display}")
     }
 
-    // ─── Dynamic model discovery ──────────────────────────────────────────────
-
-    /// Fetch the live model list from `GET /v1/models`.
-    ///
-    /// The Anthropic models endpoint requires a valid API key — the result is
-    /// only used by `list_models_api()` (post-auth).  `models()` returns the
-    /// static fallback instead.
-    fn fetch_models_from_api(&self, token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        let response = self
-            .client
-            .get(ANTHROPIC_MODELS_URL)
-            .header("x-api-key", token)
-            .header("anthropic-version", ANTHROPIC_API_VERSION)
-            .send()
-            .context("failed to call Anthropic models API")?;
-
-        if !response.status().is_success() {
-            return Err(Self::format_http_error(response, "models API"));
-        }
-
-        let raw: Value = response
-            .json()
-            .context("invalid JSON from Anthropic models API")?;
-
-        // Response shape: {"data": [{"id": "claude-...", "display_name": "..."}], ...}
-        let items = raw
-            .get("data")
-            .and_then(|v| v.as_array())
-            .ok_or_else(|| anyhow!("Anthropic models API returned unexpected shape: {raw}"))?;
-
-        if items.is_empty() {
-            return Err(anyhow!("Anthropic models API returned empty model list"));
-        }
-
-        // Collect IDs first so compact_model pairing can reference the full set.
-        let mut descriptors: Vec<ModelDescriptor> = items
-            .iter()
-            .filter_map(|item| {
-                let raw_id = item.get("id")?.as_str()?.to_string();
-                let display_name = item
-                    .get("display_name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or(&raw_id)
-                    .to_string();
-
-                // Anthropic's models API does not return context window sizes;
-                // all current Claude models are 200 k.
-                let id: &'static str = Box::leak(raw_id.into_boxed_str());
-                let label: &'static str = Box::leak(display_name.into_boxed_str());
-
-                Some(ModelDescriptor {
-                    id,
-                    label,
-                    supports_tools: true, // all current Claude models support tools
-                    context_tokens: 200_000,
-                    compact_model: None,
-                })
-            })
-            .collect();
-
-        // Best-effort compact model pairing by name heuristics.
-        let ids: Vec<&str> = descriptors.iter().map(|d| d.id).collect();
-        let pick_compact = |preferred: &[&'static str]| -> Option<&'static str> {
-            preferred.iter().copied().find(|&id| ids.contains(&id))
-        };
-
-        for desc in &mut descriptors {
-            if desc.compact_model.is_some() {
-                continue;
-            }
-            desc.compact_model = if desc.id.contains("opus") {
-                pick_compact(&["claude-haiku-4-5", "claude-3-5-haiku-latest"])
-            } else if desc.id.contains("sonnet") {
-                pick_compact(&["claude-haiku-4-5", "claude-3-5-haiku-latest"])
-            } else {
-                None
-            };
-        }
-
-        Ok(descriptors)
-    }
-
-    // ─── Streaming response reader ────────────────────────────────────────────
-
-    /// Read an Anthropic SSE stream, forwarding content via `on_chunk`.
-    ///
-    /// Anthropic's streaming format uses typed events:
-    /// - `content_block_start` — signals the start of a new content block
-    ///   (type `text`, `thinking`, or `tool_use`)
-    /// - `content_block_delta` — incremental content (`text_delta`,
-    ///   `thinking_delta`, or `input_json_delta`)
-    /// - `content_block_stop` — end of a block (finalises tool-call JSON)
-    /// - `message_delta` — carries `stop_reason`
-    /// - `message_stop` — stream complete
-    ///
-    /// Thinking blocks are emitted as `<think>…</think>` so the UI renders
-    /// them identically to Ollama's `message.thinking` and GitHub Models'
-    /// `reasoning_content`.
     fn read_stream_response(
         response: reqwest::blocking::Response,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
-        // Per-block accumulator for reconstructing streaming tool calls.
         #[derive(Default)]
         struct ToolBlock {
             id: String,
@@ -452,7 +305,7 @@ impl AnthropicProvider {
         let mut streamed_text_chunks: Vec<String> = Vec::new();
         let mut assistant_message = String::new();
         let mut finish_reason: Option<String> = None;
-        let mut tool_blocks: Vec<Option<ToolBlock>> = Vec::new(); // indexed by block index
+        let mut tool_blocks: Vec<Option<ToolBlock>> = Vec::new();
         let mut thinking_open = false;
 
         let reader = BufReader::new(response);
@@ -463,8 +316,6 @@ impl AnthropicProvider {
                 continue;
             }
 
-            // Anthropic SSE: `event:` lines carry the event name (redundant —
-            // the type is also in `data`).  We only need the `data:` lines.
             let Some(data) = line.strip_prefix("data:") else {
                 continue;
             };
@@ -474,7 +325,6 @@ impl AnthropicProvider {
                 serde_json::from_str(data).context("invalid JSON event in Anthropic stream")?;
 
             match event.get("type").and_then(|v| v.as_str()) {
-                // ── New content block ────────────────────────────────────────
                 Some("content_block_start") => {
                     let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                     let block_type = event
@@ -485,24 +335,20 @@ impl AnthropicProvider {
 
                     match block_type {
                         "text" => {
-                            // If we were in a thinking block, close it now.
                             if thinking_open {
                                 on_chunk("</think>".to_string());
                                 thinking_open = false;
                             }
-                            // Ensure index slot exists (non-tool, use None).
                             while tool_blocks.len() <= index {
                                 tool_blocks.push(None);
                             }
                         }
                         "thinking" => {
-                            // Don't open the tag yet — wait for the first token.
                             while tool_blocks.len() <= index {
                                 tool_blocks.push(None);
                             }
                         }
                         "tool_use" => {
-                            // Close any open thinking block.
                             if thinking_open {
                                 on_chunk("</think>".to_string());
                                 thinking_open = false;
@@ -532,13 +378,11 @@ impl AnthropicProvider {
                     }
                 }
 
-                // ── Incremental content ──────────────────────────────────────
                 Some("content_block_delta") => {
                     let index = event.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
 
                     if let Some(delta) = event.get("delta") {
                         match delta.get("type").and_then(|v| v.as_str()) {
-                            // ── Thinking token ───────────────────────────────
                             Some("thinking_delta") => {
                                 if let Some(thinking) =
                                     delta.get("thinking").and_then(|v| v.as_str())
@@ -554,11 +398,9 @@ impl AnthropicProvider {
                                 }
                             }
 
-                            // ── Text token ───────────────────────────────────
                             Some("text_delta") => {
                                 if let Some(text) = delta.get("text").and_then(|v| v.as_str()) {
                                     if !text.is_empty() {
-                                        // Close thinking block before first prose.
                                         if thinking_open {
                                             on_chunk("</think>".to_string());
                                             thinking_open = false;
@@ -571,7 +413,6 @@ impl AnthropicProvider {
                                 }
                             }
 
-                            // ── Tool call JSON fragment ───────────────────────
                             Some("input_json_delta") => {
                                 if let Some(partial) =
                                     delta.get("partial_json").and_then(|v| v.as_str())
@@ -587,13 +428,8 @@ impl AnthropicProvider {
                     }
                 }
 
-                // ── Block finished — finalise tool calls ─────────────────────
-                Some("content_block_stop") => {
-                    // Nothing to do for text/thinking; tool_use is finalised
-                    // when we assemble the response at the end.
-                }
+                Some("content_block_stop") => {}
 
-                // ── Stop reason ──────────────────────────────────────────────
                 Some("message_delta") => {
                     if finish_reason.is_none() {
                         finish_reason = event
@@ -625,7 +461,6 @@ impl AnthropicProvider {
             raw_events.push(event);
         }
 
-        // Ensure any open thinking block is closed.
         if thinking_open {
             on_chunk("</think>".to_string());
         }
@@ -638,7 +473,6 @@ impl AnthropicProvider {
             finish_reason.as_deref().unwrap_or("none"),
         );
 
-        // Finalise tool calls from accumulated blocks.
         let tool_calls: Vec<ToolCall> = tool_blocks
             .into_iter()
             .flatten()
@@ -672,81 +506,33 @@ impl AnthropicProvider {
     }
 }
 
-// ─── Trait impl ───────────────────────────────────────────────────────────────
-
 impl Default for AnthropicProvider {
     fn default() -> Self {
-        Self::new()
+        Self::new(String::new())
     }
 }
 
 impl ChatProvider for AnthropicProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "anthropic",
-            display_name: "Anthropic",
-            endpoint: ANTHROPIC_MESSAGES_URL,
-            kind: ProviderKind::Cloud,
-        }
+    fn id(&self) -> &str {
+        "anthropic"
     }
 
-    /// Return static model list — Anthropic's `/v1/models` requires auth so
-    /// we can't call it here.  `list_models_api()` fetches the live list once
-    /// the user has provided a key.
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::static_models()
+    fn display_name(&self) -> &str {
+        "Anthropic"
     }
 
-    fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        if Self::auth_token_from_env(env).is_some() {
-            ProviderAvailability::ready()
-        } else {
-            ProviderAvailability::requires_auth(
-                "Authentication required. Set ANTHROPIC_API_KEY or paste a token.",
-            )
-        }
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        Ok(self.models.clone())
     }
 
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![AuthMethod::PromptToken]
-    }
-
-    fn authenticate(
-        &self,
-        method: AuthMethod,
-        host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        match method {
-            AuthMethod::PromptToken => {
-                let token = host.prompt_for_token(PromptTokenRequest {
-                    title: "Anthropic Authentication".to_string(),
-                    prompt: "Paste your Anthropic API key.".to_string(),
-                    placeholder: Some("sk-ant-...".to_string()),
-                    env_var_hint: Some("ANTHROPIC_API_KEY".to_string()),
-                })?;
-                Ok(match token {
-                    Some(token) => AuthResult::Authenticated { token },
-                    None => AuthResult::Cancelled,
-                })
-            }
-            AuthMethod::BrowserDeviceCode => Ok(AuthResult::Cancelled),
-        }
-    }
-
-    /// Fetch the live model list from `GET /v1/models` using the stored token.
-    fn list_models_api(&self, token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        self.fetch_models_from_api(token)
-    }
-
-    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        let env = agent_chat_core::ProcessEnvironment;
-        let model = Self::resolve_model(&request.model, &env);
-        let (_, _, payload) = Self::build_request_payload(&model, request, false);
+    fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
+        let model = Self::resolve_model(&request.model);
+        let payload = Self::build_request_payload(&model, &request, false);
 
         let response = self
             .client
             .post(ANTHROPIC_MESSAGES_URL)
-            .header("x-api-key", token)
+            .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_API_VERSION)
             .header("content-type", "application/json")
             .json(&payload)
@@ -787,26 +573,24 @@ impl ChatProvider for AnthropicProvider {
         })
     }
 
-    fn chat_completion_streaming(
+    fn chat_streaming(
         &self,
-        token: &str,
-        request: &ChatRequest,
+        request: ChatRequest,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
-        let env = agent_chat_core::ProcessEnvironment;
-        let model = Self::resolve_model(&request.model, &env);
+        let model = Self::resolve_model(&request.model);
 
         tracing::debug!(
             "[agent_provider_anthropic] starting streaming request model={}",
             model
         );
 
-        let (_, _, payload) = Self::build_request_payload(&model, request, true);
+        let payload = Self::build_request_payload(&model, &request, true);
 
         let response = self
             .client
             .post(ANTHROPIC_MESSAGES_URL)
-            .header("x-api-key", token)
+            .header("x-api-key", &self.api_key)
             .header("anthropic-version", ANTHROPIC_API_VERSION)
             .header("content-type", "application/json")
             .header("accept", "text/event-stream")
@@ -823,5 +607,34 @@ impl ChatProvider for AnthropicProvider {
         }
 
         Self::read_stream_response(response, on_chunk)
+    }
+}
+
+use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+
+pub struct AnthropicProviderCrate;
+
+impl ProviderCrate for AnthropicProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        vec![ProviderEntry {
+            id: "anthropic",
+            display_name: "Anthropic",
+            kind: ProviderKind::Cloud,
+            default_endpoint: Some("https://api.anthropic.com/v1/messages"),
+            config_fields: vec![ConfigField {
+                key: "api_key",
+                label: "API Key",
+                description: "Your Anthropic API key (sk-ant-...)",
+                sensitive: true,
+                required: true,
+                placeholder: Some("sk-ant-..."),
+            }],
+        }]
+    }
+
+    fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        anyhow::ensure!(id == "anthropic", "unknown provider: {id}");
+        let api_key = config.require("api_key")?.to_string();
+        Ok(Box::new(AnthropicProvider::new(api_key)))
     }
 }

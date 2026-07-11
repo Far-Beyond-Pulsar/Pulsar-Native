@@ -1,7 +1,5 @@
 use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, PromptTokenRequest, ProviderAvailability, ProviderEnvironment,
-    ProviderKind, ProviderMetadata,
+    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ModelDescriptor,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -12,51 +10,50 @@ const GEMINI_CHAT_URL: &str = "https://generativelanguage.googleapis.com/v1beta/
 
 pub struct GeminiProvider {
     client: Client,
+    api_key: String,
+    models: Vec<ModelDescriptor>,
 }
 
 impl GeminiProvider {
-    pub fn new() -> Self {
+    pub fn new(api_key: String) -> Self {
         Self {
             client: Client::new(),
+            api_key,
+            models: Self::static_models(),
         }
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
             ModelDescriptor {
-                id: "gemini-2.5-pro",
-                label: "Gemini 2.5 Pro",
+                id: "gemini-2.5-pro".to_string(),
+                label: "Gemini 2.5 Pro".to_string(),
                 supports_tools: true,
                 context_tokens: 0,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "gemini-2.5-flash",
-                label: "Gemini 2.5 Flash",
+                id: "gemini-2.5-flash".to_string(),
+                label: "Gemini 2.5 Flash".to_string(),
                 supports_tools: true,
                 context_tokens: 0,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "gemini-2.0-flash",
-                label: "Gemini 2.0 Flash",
+                id: "gemini-2.0-flash".to_string(),
+                label: "Gemini 2.0 Flash".to_string(),
                 supports_tools: true,
                 context_tokens: 0,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "gemini-2.0-flash-lite",
-                label: "Gemini 2.0 Flash Lite",
+                id: "gemini-2.0-flash-lite".to_string(),
+                label: "Gemini 2.0 Flash Lite".to_string(),
                 supports_tools: false,
                 context_tokens: 0,
                 compact_model: None,
             },
         ]
-    }
-
-    fn auth_token_from_env(env: &dyn ProviderEnvironment) -> Option<String> {
-        env.get_env("GOOGLE_API_KEY")
-            .or_else(|| env.get_env("GEMINI_API_KEY"))
     }
 
     fn map_role(role: ChatRole) -> &'static str {
@@ -82,66 +79,24 @@ impl GeminiProvider {
 
 impl Default for GeminiProvider {
     fn default() -> Self {
-        Self::new()
+        Self::new(String::new())
     }
 }
 
 impl ChatProvider for GeminiProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "gemini",
-            display_name: "Google Gemini",
-            endpoint: GEMINI_CHAT_URL,
-            kind: ProviderKind::Cloud,
-        }
+    fn id(&self) -> &str {
+        "gemini"
     }
 
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::static_models()
+    fn display_name(&self) -> &str {
+        "Google Gemini"
     }
 
-    fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        if Self::auth_token_from_env(env).is_some() {
-            ProviderAvailability::ready()
-        } else {
-            ProviderAvailability::requires_auth(
-                "Authentication required. Set GOOGLE_API_KEY or GEMINI_API_KEY.",
-            )
-        }
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        Ok(self.models.clone())
     }
 
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        vec![AuthMethod::PromptToken]
-    }
-
-    fn authenticate(
-        &self,
-        method: AuthMethod,
-        host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        match method {
-            AuthMethod::PromptToken => {
-                let token = host.prompt_for_token(PromptTokenRequest {
-                    title: "Google Gemini Authentication".to_string(),
-                    prompt: "Paste your Google AI Studio API key.".to_string(),
-                    placeholder: Some("AIza...".to_string()),
-                    env_var_hint: Some("GOOGLE_API_KEY".to_string()),
-                })?;
-
-                Ok(match token {
-                    Some(token) => AuthResult::Authenticated { token },
-                    None => AuthResult::Cancelled,
-                })
-            }
-            AuthMethod::BrowserDeviceCode => Ok(AuthResult::Cancelled),
-        }
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(Self::static_models())
-    }
-
-    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
+    fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
         let messages: Vec<Value> = request
             .messages
             .iter()
@@ -168,7 +123,7 @@ impl ChatProvider for GeminiProvider {
             payload["max_tokens"] = json!(max_tokens);
         }
 
-        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, token);
+        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, self.api_key);
         let response = self
             .client
             .post(&url)
@@ -212,10 +167,9 @@ impl ChatProvider for GeminiProvider {
         })
     }
 
-    fn chat_completion_streaming(
+    fn chat_streaming(
         &self,
-        token: &str,
-        request: &ChatRequest,
+        request: ChatRequest,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
         let messages: Vec<Value> = request
@@ -245,7 +199,7 @@ impl ChatProvider for GeminiProvider {
             payload["max_tokens"] = json!(max_tokens);
         }
 
-        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, token);
+        let url = format!("{}chat/completions?key={}", GEMINI_CHAT_URL, self.api_key);
         let response = self
             .client
             .post(&url)
@@ -330,5 +284,34 @@ impl ChatProvider for GeminiProvider {
             finish_reason,
             raw_response: Value::Array(raw_events),
         })
+    }
+}
+
+use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+
+pub struct GeminiProviderCrate;
+
+impl ProviderCrate for GeminiProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        vec![ProviderEntry {
+            id: "gemini",
+            display_name: "Gemini",
+            kind: ProviderKind::Cloud,
+            default_endpoint: Some("https://generativelanguage.googleapis.com/v1beta/openai/"),
+            config_fields: vec![ConfigField {
+                key: "api_key",
+                label: "API Key",
+                description: "Your Google AI Studio API key",
+                sensitive: true,
+                required: true,
+                placeholder: Some("AIza..."),
+            }],
+        }]
+    }
+
+    fn create(&self, id: &str, config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        anyhow::ensure!(id == "gemini", "unknown provider: {id}");
+        let api_key = config.require("api_key")?.to_string();
+        Ok(Box::new(GeminiProvider::new(api_key)))
     }
 }

@@ -1,7 +1,5 @@
 use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatMessage, ChatProvider, ChatRequest, ChatResponse,
-    ChatRole, ModelDescriptor, ProviderAvailability, ProviderEnvironment, ProviderKind,
-    ProviderMetadata, ToolCall,
+    ChatMessage, ChatProvider, ChatRequest, ChatResponse, ChatRole, ModelDescriptor, ToolCall,
 };
 use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
@@ -9,27 +7,28 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 
 const DMR_CHAT_URL: &str = "http://localhost:12434/engines/v1/chat/completions";
-const DMR_MODELS_URL: &str = "http://localhost:12434/engines/v1/models";
 const DMR_MODEL_ENV: &str = "PULSAR_DOCKER_MODEL";
 
 pub struct DockerModelRunnerProvider {
     client: Client,
+    models: Vec<ModelDescriptor>,
 }
 
 impl DockerModelRunnerProvider {
     pub fn new() -> Self {
         Self {
             client: Client::new(),
+            models: Self::default_models(),
         }
     }
 
     fn default_models() -> Vec<ModelDescriptor> {
         vec![ModelDescriptor {
-            id: "ai/gemma4:4B",
-            label: "Gemma 4 4B (Docker)",
+            id: "ai/gemma4:4B".to_string(),
+            label: "Gemma 4 4B (Docker)".to_string(),
             supports_tools: true,
-            context_tokens: 0,
-            compact_model: None,
+                context_tokens: 0,
+                compact_model: None,
         }]
     }
 
@@ -43,8 +42,8 @@ impl DockerModelRunnerProvider {
             && !value.contains(' ')
     }
 
-    fn resolve_model(request_model: &str, env: &dyn ProviderEnvironment) -> String {
-        if let Some(env_model) = env.get_env(DMR_MODEL_ENV) {
+    fn resolve_model(request_model: &str) -> String {
+        if let Ok(env_model) = std::env::var(DMR_MODEL_ENV) {
             let env_model = env_model.trim().to_string();
             if Self::looks_like_model_id(&env_model) {
                 return env_model;
@@ -386,92 +385,21 @@ impl Default for DockerModelRunnerProvider {
 }
 
 impl ChatProvider for DockerModelRunnerProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "docker_model_runner",
-            display_name: "Docker AI",
-            endpoint: DMR_CHAT_URL,
-            kind: ProviderKind::Local,
-        }
+    fn id(&self) -> &str {
+        "docker_model_runner"
     }
 
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::default_models()
+    fn display_name(&self) -> &str {
+        "Docker AI"
     }
 
-    fn availability(&self, env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        let _ = env;
-        ProviderAvailability::ready()
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        Ok(self.models.clone())
     }
 
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        Vec::new()
-    }
-
-    fn authenticate(
-        &self,
-        method: AuthMethod,
-        host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        let _ = method;
-        let _ = host;
-        Ok(AuthResult::Cancelled)
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        let response = self
-            .client
-            .get(DMR_MODELS_URL)
-            .header("Content-Type", "application/json")
-            .send()
-            .context("failed to call Docker Model Runner models API")?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().unwrap_or_default();
-            return Err(anyhow!(
-                "Docker Model Runner models API returned {}: {}",
-                status,
-                body
-            ));
-        }
-
-        let raw: Value = response
-            .json()
-            .context("invalid JSON from Docker Model Runner models API")?;
-
-        let models = raw
-            .get("data")
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|item| {
-                        let id = item.get("id")?.as_str()?.to_string();
-                        Some(ModelDescriptor {
-                            id: Box::leak(id.clone().into_boxed_str()),
-                            label: Box::leak(id.into_boxed_str()),
-                            supports_tools: true,
-                            context_tokens: 0,
-                            compact_model: None,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
-
-        if models.is_empty() {
-            Ok(Self::default_models())
-        } else {
-            Ok(models)
-        }
-    }
-
-    fn chat_completion(&self, token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
-        let env = agent_chat_core::ProcessEnvironment;
-        let _ = token;
-        let model = Self::resolve_model(&request.model, &env);
-        let payload = Self::build_request_payload(&model, request);
+    fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
+        let model = Self::resolve_model(&request.model);
+        let payload = Self::build_request_payload(&model, &request);
 
         let response = self
             .client
@@ -497,16 +425,13 @@ impl ChatProvider for DockerModelRunnerProvider {
         Ok(Self::parse_non_stream_response(raw_response))
     }
 
-    fn chat_completion_streaming(
+    fn chat_streaming(
         &self,
-        token: &str,
-        request: &ChatRequest,
+        request: ChatRequest,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
-        let env = agent_chat_core::ProcessEnvironment;
-        let _ = token;
-        let model = Self::resolve_model(&request.model, &env);
-        let mut payload = Self::build_request_payload(&model, request);
+        let model = Self::resolve_model(&request.model);
+        let mut payload = Self::build_request_payload(&model, &request);
         payload["stream"] = json!(true);
 
         let response = self
@@ -529,5 +454,26 @@ impl ChatProvider for DockerModelRunnerProvider {
         }
 
         Self::read_stream_response(response, on_chunk)
+    }
+}
+
+use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+
+pub struct DockerModelRunnerProviderCrate;
+
+impl ProviderCrate for DockerModelRunnerProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        vec![ProviderEntry {
+            id: "docker_model_runner",
+            display_name: "Docker Model Runner",
+            kind: ProviderKind::Local,
+            default_endpoint: Some("http://localhost:12434/engines/v1/chat/completions"),
+            config_fields: vec![],
+        }]
+    }
+
+    fn create(&self, id: &str, _config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        anyhow::ensure!(id == "docker_model_runner", "unknown provider: {id}");
+        Ok(Box::new(DockerModelRunnerProvider::new()))
     }
 }

@@ -1,7 +1,4 @@
-use agent_chat_core::{
-    AuthHost, AuthMethod, AuthResult, ChatProvider, ChatRequest, ChatResponse, ModelDescriptor,
-    ProviderAvailability, ProviderEnvironment, ProviderKind, ProviderMetadata,
-};
+use agent_chat_core::{ChatProvider, ChatRequest, ChatResponse, ModelDescriptor};
 use anyhow::anyhow;
 use serde_json::json;
 use std::{
@@ -9,32 +6,36 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-pub struct DemoRandomProvider;
+pub struct DemoRandomProvider {
+    models: Vec<ModelDescriptor>,
+}
 
 impl DemoRandomProvider {
     pub fn new() -> Self {
-        Self
+        Self {
+            models: Self::static_models(),
+        }
     }
 
     fn static_models() -> Vec<ModelDescriptor> {
         vec![
             ModelDescriptor {
-                id: "demo-breeze",
-                label: "Demo Breeze",
+                id: "demo-breeze".to_string(),
+                label: "Demo Breeze".to_string(),
                 supports_tools: false,
                 context_tokens: 0,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "demo-story",
-                label: "Demo Story",
+                id: "demo-story".to_string(),
+                label: "Demo Story".to_string(),
                 supports_tools: false,
                 context_tokens: 0,
                 compact_model: None,
             },
             ModelDescriptor {
-                id: "demo-chaos",
-                label: "Demo Chaos",
+                id: "demo-chaos".to_string(),
+                label: "Demo Chaos".to_string(),
                 supports_tools: false,
                 context_tokens: 0,
                 compact_model: None,
@@ -108,42 +109,21 @@ impl Default for DemoRandomProvider {
 }
 
 impl ChatProvider for DemoRandomProvider {
-    fn metadata(&self) -> ProviderMetadata {
-        ProviderMetadata {
-            id: "demo_random",
-            display_name: "Demo Random",
-            endpoint: "local://demo-random",
-            kind: ProviderKind::Local,
-        }
+    fn id(&self) -> &str {
+        "demo_random"
     }
 
-    fn models(&self) -> Vec<ModelDescriptor> {
-        Self::static_models()
+    fn display_name(&self) -> &str {
+        "Demo Random"
     }
 
-    fn availability(&self, _env: &dyn ProviderEnvironment) -> ProviderAvailability {
-        ProviderAvailability::ready()
+    fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
+        Ok(self.models.clone())
     }
 
-    fn auth_methods(&self) -> Vec<AuthMethod> {
-        Vec::new()
-    }
-
-    fn authenticate(
-        &self,
-        _method: AuthMethod,
-        _host: &mut dyn AuthHost,
-    ) -> anyhow::Result<AuthResult> {
-        Err(anyhow!("Demo provider does not require authentication"))
-    }
-
-    fn list_models_api(&self, _token: &str) -> anyhow::Result<Vec<ModelDescriptor>> {
-        Ok(Self::static_models())
-    }
-
-    fn chat_completion(&self, _token: &str, request: &ChatRequest) -> anyhow::Result<ChatResponse> {
+    fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
         let pool = Self::sentence_pool();
-        let mut seed = Self::pseudo_random_seed(request);
+        let mut seed = Self::pseudo_random_seed(&request);
         let mut parts = Vec::new();
         let count = Self::sentence_count_for_model(&request.model);
 
@@ -170,18 +150,17 @@ impl ChatProvider for DemoRandomProvider {
         })
     }
 
-    fn chat_completion_streaming(
+    fn chat_streaming(
         &self,
-        token: &str,
-        request: &ChatRequest,
+        request: ChatRequest,
         on_chunk: &mut dyn FnMut(String),
     ) -> anyhow::Result<ChatResponse> {
-        let response = self.chat_completion(token, request)?;
+        let response = self.chat(request)?;
 
-        let chunk_delay = match request.model.as_str() {
-            "demo-breeze" => Duration::from_millis(55),
-            "demo-story" => Duration::from_millis(70),
-            "demo-chaos" => Duration::from_millis(85),
+        let chunk_delay = match response.raw_response.get("model").and_then(|v| v.as_str()) {
+            Some("demo-breeze") => Duration::from_millis(55),
+            Some("demo-story") => Duration::from_millis(70),
+            Some("demo-chaos") => Duration::from_millis(85),
             _ => Duration::from_millis(65),
         };
 
@@ -191,5 +170,26 @@ impl ChatProvider for DemoRandomProvider {
         }
 
         Ok(response)
+    }
+}
+
+use agent_chat_core::{ConfigField, ProviderConfig, ProviderCrate, ProviderEntry, ProviderKind};
+
+pub struct DemoRandomProviderCrate;
+
+impl ProviderCrate for DemoRandomProviderCrate {
+    fn entries(&self) -> Vec<ProviderEntry> {
+        vec![ProviderEntry {
+            id: "demo_random",
+            display_name: "Demo Random",
+            kind: ProviderKind::Local,
+            default_endpoint: None,
+            config_fields: vec![],
+        }]
+    }
+
+    fn create(&self, id: &str, _config: ProviderConfig) -> anyhow::Result<Box<dyn ChatProvider>> {
+        anyhow::ensure!(id == "demo_random", "unknown provider: {id}");
+        Ok(Box::new(DemoRandomProvider::new()))
     }
 }

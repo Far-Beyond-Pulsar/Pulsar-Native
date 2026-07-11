@@ -1,6 +1,6 @@
 use super::*;
 use agent_chat_core::{
-    AvailabilityState, ChatMessage, ChatRequest, ChatRole, ProcessEnvironment, ToolCall,
+    ChatMessage, ChatRequest, ChatRole, ToolCall,
 };
 use engine_state;
 use smol::Timer;
@@ -97,7 +97,7 @@ impl AgentChatPanel {
         };
 
         provider
-            .chat_completion(token, &summary_request)
+            .chat(summary_request)
             .ok()
             .and_then(|r| r.assistant_message)
             .unwrap_or_else(|| {
@@ -543,20 +543,6 @@ impl AgentChatPanel {
             .map(|p| p.id)
             .unwrap_or("unknown_provider");
 
-        if self.wip_providers.contains_key(provider_id) {
-            self.messages.push(ChatMessage {
-                role: ChatRole::Assistant,
-                content: "Selected provider is still WIP and not yet executable.".to_string(),
-                tool_call_id: None,
-                tool_calls: vec![],
-            });
-            self.save_current_chat();
-            self.refresh_chat_history_list(cx);
-            self.scroll_messages_to_bottom();
-            cx.notify();
-            return false;
-        }
-
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
             let provider = self
                 .active_provider()
@@ -580,24 +566,8 @@ impl AgentChatPanel {
         };
 
         let token = self.auth_token_for_provider(provider_id);
-        let availability = provider.availability(&ProcessEnvironment);
 
-        if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
-            self.pending_auth_provider = Some(provider_id);
-            self.messages.push(ChatMessage {
-                role: ChatRole::Assistant,
-                content: "Authentication required. Paste token in the auth row above.".to_string(),
-                tool_call_id: None,
-                tool_calls: vec![],
-            });
-            self.save_current_chat();
-            self.refresh_chat_history_list(cx);
-            self.scroll_messages_to_bottom();
-            cx.notify();
-            return false;
-        }
-
-        self.launch_provider_request(provider, token, cx);
+        self.launch_provider_request(provider, None, cx);
         true
     }
 
@@ -804,19 +774,9 @@ impl AgentChatPanel {
             .map(|p| p.id)
             .unwrap_or("unknown_provider");
 
-        if self.wip_providers.contains_key(provider_id) {
-            return false;
-        }
-
         let Some(provider) = self.provider_registry.get(provider_id).cloned() else {
             return false;
         };
-
-        let token = self.auth_token_for_provider(provider_id);
-        let availability = provider.availability(&ProcessEnvironment);
-        if matches!(availability.state, AvailabilityState::RequiresAuth) && token.is_none() {
-            return false;
-        }
 
         self.messages.push(ChatMessage {
             role: ChatRole::AgentEvent,
@@ -825,7 +785,7 @@ impl AgentChatPanel {
             tool_calls: vec![],
         });
 
-        self.launch_provider_request(provider, token, cx);
+        self.launch_provider_request(provider, None, cx);
         true
     }
 
@@ -937,7 +897,7 @@ impl AgentChatPanel {
         self.streaming_display_item_ix = Some(streaming_dix);
         self.auto_scroll = true; // always follow the bottom for a new request
 
-        let provider_id = provider.metadata().id;
+        let provider_id = provider.id();
         let model = self
             .active_model()
             .map(|m| m.id.to_string())
@@ -1256,7 +1216,7 @@ impl AgentChatPanel {
                 };
 
                 let result = provider_for_task
-                    .chat_completion_streaming(&token, &current_request, &mut on_chunk)
+                    .chat_streaming(current_request.clone(), &mut on_chunk)
                     .map_err(|err| err.to_string());
 
                 if !pending_chunk.is_empty() {
@@ -1503,9 +1463,8 @@ impl AgentChatPanel {
 
                                                 let mut iter_chunks: Vec<String> = Vec::new();
                                                 let response = provider_for_subagent
-                                                    .chat_completion_streaming(
-                                                        &token_for_subagent,
-                                                        &sub_request,
+                                                    .chat_streaming(
+                                                        sub_request,
                                                         &mut |chunk| iter_chunks.push(chunk),
                                                     )
                                                     .map_err(|e| {
@@ -1596,8 +1555,7 @@ impl AgentChatPanel {
 
                                             Ok(agent_chat_tools::SubagentLlmResponse {
                                                 provider_id: provider_for_subagent
-                                                    .metadata()
-                                                    .id
+                                                    .id()
                                                     .to_string(),
                                                 model_used,
                                                 assistant_message,
@@ -2166,7 +2124,7 @@ impl AgentChatPanel {
             return;
         };
         let token = self.auth_token_for_provider(provider_id);
-        self.launch_provider_request(provider, token, cx);
+        self.launch_provider_request(provider, None, cx);
     }
 
     /// Replace a user message at `display_ix` in-place: rolls back to before it
