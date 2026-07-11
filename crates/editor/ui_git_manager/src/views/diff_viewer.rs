@@ -1,73 +1,134 @@
 //! Side-by-side diff viewer for the Git manager.
-//! Uses a single shared scroll container so both sides scroll together.
-//! Monaco-style: shaded spacers where lines don't align.
+//! Uses `similar::DiffOp` for proper line-number–based alignment so that
+//! deletions and insertions at the same position are paired on one row.
+//! Both sides share a single scroll container for synced scrolling.
 
-use crate::{DiffLineKind, DiffResult, DiffSegment, GitManager, DIFF_LINE_ROW_H};
+use crate::{DiffResult, GitManager, DIFF_LINE_ROW_H};
 use gpui::*;
+use similar::{DiffOp, TextDiff};
 use ui::{ActiveTheme as _, h_flex, v_flex};
 
-/// A single aligned row for side-by-side display.
-/// Left and right lists always have the same length — spacers fill gaps.
-#[derive(Clone, Debug)]
-struct AlignedRow {
-    left_num: Option<usize>,
-    left_kind: DiffLineKind,
-    left_content: String,
-    left_is_spacer: bool,
-    right_num: Option<usize>,
-    right_kind: DiffLineKind,
-    right_content: String,
-    right_is_spacer: bool,
+/// Visual style for one side of an aligned row.
+#[derive(Clone, Copy, PartialEq)]
+enum CellStyle {
+    Normal,
+    Removed,
+    Added,
+    Spacer,
 }
 
-/// Compute aligned rows from a DiffResult.
-/// Each output row represents one visual line: both sides have the same count,
-/// with spacers inserted for additions (left spacer) and deletions (right spacer).
+/// One visual row in the side-by-side view.
+struct AlignedRow {
+    left_line: String,
+    left_num: Option<usize>,
+    left_style: CellStyle,
+    right_line: String,
+    right_num: Option<usize>,
+    right_style: CellStyle,
+}
+
+/// Build aligned rows directly from the full old/new text using `similar::DiffOp`.
+/// This properly pairs Replace operations so deleted+inserted content
+/// at the same position appears on a single row.
 fn compute_aligned_rows(diff: &DiffResult) -> Vec<AlignedRow> {
-    let mut rows = Vec::new();
+    let old = diff.old_lines.as_slice();
+    let new = diff.new_lines.as_slice();
+    let old_text = old.join("\n");
+    let new_text = new.join("\n");
+    let text_diff = TextDiff::from_lines(&old_text, &new_text);
+    let mut rows: Vec<AlignedRow> = Vec::new();
 
-    for segment in &diff.segments {
-        let lines = match segment {
-            DiffSegment::Hunk(l) => l,
-            DiffSegment::Collapsed { lines: l, .. } => l,
-        };
-
-        for line in lines {
-            match line.kind {
-                DiffLineKind::Context => {
+    for op in text_diff.ops() {
+        match op {
+            DiffOp::Equal {
+                old_index,
+                new_index,
+                len,
+            } => {
+                for i in 0..*len {
                     rows.push(AlignedRow {
-                        left_num: line.old_line_num,
-                        left_kind: DiffLineKind::Context,
-                        left_content: line.content.clone(),
-                        left_is_spacer: false,
-                        right_num: line.new_line_num,
-                        right_kind: DiffLineKind::Context,
-                        right_content: line.content.clone(),
-                        right_is_spacer: false,
+                        left_line: old[old_index + i].clone(),
+                        left_num: Some(old_index + i + 1),
+                        left_style: CellStyle::Normal,
+                        right_line: new[new_index + i].clone(),
+                        right_num: Some(new_index + i + 1),
+                        right_style: CellStyle::Normal,
                     });
                 }
-                DiffLineKind::Removed => {
+            }
+            DiffOp::Delete {
+                old_index,
+                old_len,
+                ..
+            } => {
+                for i in 0..*old_len {
                     rows.push(AlignedRow {
-                        left_num: line.old_line_num,
-                        left_kind: DiffLineKind::Removed,
-                        left_content: line.content.clone(),
-                        left_is_spacer: false,
+                        left_line: old[old_index + i].clone(),
+                        left_num: Some(old_index + i + 1),
+                        left_style: CellStyle::Removed,
+                        right_line: String::new(),
                         right_num: None,
-                        right_kind: DiffLineKind::Context,
-                        right_content: String::new(),
-                        right_is_spacer: true,
+                        right_style: CellStyle::Spacer,
                     });
                 }
-                DiffLineKind::Added => {
+            }
+            DiffOp::Insert {
+                new_index,
+                new_len,
+                ..
+            } => {
+                for i in 0..*new_len {
                     rows.push(AlignedRow {
+                        left_line: String::new(),
                         left_num: None,
-                        left_kind: DiffLineKind::Context,
-                        left_content: String::new(),
-                        left_is_spacer: true,
-                        right_num: line.new_line_num,
-                        right_kind: DiffLineKind::Added,
-                        right_content: line.content.clone(),
-                        right_is_spacer: false,
+                        left_style: CellStyle::Spacer,
+                        right_line: new[new_index + i].clone(),
+                        right_num: Some(new_index + i + 1),
+                        right_style: CellStyle::Added,
+                    });
+                }
+            }
+            DiffOp::Replace {
+                old_index,
+                old_len,
+                new_index,
+                new_len,
+            } => {
+                let max = (*old_len).max(*new_len);
+                for i in 0..max {
+                    let left = if i < *old_len {
+                        old[old_index + i].clone()
+                    } else {
+                        String::new()
+                    };
+                    let right = if i < *new_len {
+                        new[new_index + i].clone()
+                    } else {
+                        String::new()
+                    };
+                    rows.push(AlignedRow {
+                        left_line: left,
+                        left_num: if i < *old_len {
+                            Some(old_index + i + 1)
+                        } else {
+                            None
+                        },
+                        left_style: if i < *old_len {
+                            CellStyle::Removed
+                        } else {
+                            CellStyle::Spacer
+                        },
+                        right_line: right,
+                        right_num: if i < *new_len {
+                            Some(new_index + i + 1)
+                        } else {
+                            None
+                        },
+                        right_style: if i < *new_len {
+                            CellStyle::Added
+                        } else {
+                            CellStyle::Spacer
+                        },
                     });
                 }
             }
@@ -78,7 +139,13 @@ fn compute_aligned_rows(diff: &DiffResult) -> Vec<AlignedRow> {
 }
 
 /// Render the two-column header (BEFORE / AFTER) — not scrollable.
-fn render_header(border: Hsla, rem_bg: Hsla, rem_fg: Hsla, add_bg: Hsla, add_fg: Hsla) -> impl IntoElement {
+fn render_header(
+    border: Hsla,
+    rem_bg: Hsla,
+    rem_fg: Hsla,
+    add_bg: Hsla,
+    add_fg: Hsla,
+) -> impl IntoElement {
     h_flex()
         .w_full()
         .flex_shrink_0()
@@ -116,7 +183,7 @@ fn render_header(border: Hsla, rem_bg: Hsla, rem_fg: Hsla, add_bg: Hsla, add_fg:
         )
 }
 
-/// Render a single aligned row as two side-by-side columns.
+/// Render a single row.
 fn render_row(
     row: &AlignedRow,
     mono_font: &Font,
@@ -129,26 +196,15 @@ fn render_row(
     foreground: Hsla,
     border: Hsla,
 ) -> impl IntoElement {
-    let (left_bg, left_text_color): (Hsla, Hsla) = match row.left_kind {
-        DiffLineKind::Removed => (rem_bg, rem_fg),
-        _ => {
-            if row.left_is_spacer {
-                (spacer_bg, line_num_color)
-            } else {
-                (gpui::transparent_black(), foreground)
-            }
-        }
+    let (left_bg, left_text) = match row.left_style {
+        CellStyle::Removed => (rem_bg, rem_fg),
+        CellStyle::Spacer => (spacer_bg, line_num_color),
+        _ => (gpui::transparent_black(), foreground),
     };
-
-    let (right_bg, right_text_color): (Hsla, Hsla) = match row.right_kind {
-        DiffLineKind::Added => (add_bg, add_fg),
-        _ => {
-            if row.right_is_spacer {
-                (spacer_bg, line_num_color)
-            } else {
-                (gpui::transparent_black(), foreground)
-            }
-        }
+    let (right_bg, right_text) = match row.right_style {
+        CellStyle::Added => (add_bg, add_fg),
+        CellStyle::Spacer => (spacer_bg, line_num_color),
+        _ => (gpui::transparent_black(), foreground),
     };
 
     h_flex()
@@ -158,7 +214,6 @@ fn render_row(
         .font(mono_font.clone())
         .text_size(px(13.))
         .child(
-            // Left column
             h_flex()
                 .flex_1()
                 .min_w_0()
@@ -174,11 +229,7 @@ fn render_row(
                         .pr_2()
                         .text_xs()
                         .text_color(line_num_color)
-                        .child(
-                            row.left_num
-                                .map(|n| n.to_string())
-                                .unwrap_or_default(),
-                        ),
+                        .child(row.left_num.map(|n| n.to_string()).unwrap_or_default()),
                 )
                 .child(
                     div()
@@ -189,14 +240,12 @@ fn render_row(
                         .pl_2()
                         .whitespace_nowrap()
                         .overflow_hidden()
-                        .text_color(left_text_color)
-                        .child(row.left_content.clone()),
+                        .text_color(left_text)
+                        .child(row.left_line.clone()),
                 ),
         )
-        // Vertical divider between columns
         .child(div().w(px(1.)).h_full().bg(border))
         .child(
-            // Right column
             h_flex()
                 .flex_1()
                 .min_w_0()
@@ -213,9 +262,7 @@ fn render_row(
                         .text_xs()
                         .text_color(line_num_color)
                         .child(
-                            row.right_num
-                                .map(|n| n.to_string())
-                                .unwrap_or_default(),
+                            row.right_num.map(|n| n.to_string()).unwrap_or_default(),
                         ),
                 )
                 .child(
@@ -227,14 +274,13 @@ fn render_row(
                         .pl_2()
                         .whitespace_nowrap()
                         .overflow_hidden()
-                        .text_color(right_text_color)
-                        .child(row.right_content.clone()),
+                        .text_color(right_text)
+                        .child(row.right_line.clone()),
                 ),
         )
 }
 
 /// Render a side-by-side diff panel.
-/// Both sides share a single scroll container so they scroll in perfect sync.
 /// `is_commit = false` → uses `file_diff`, `is_commit = true` → uses `commit_file_diff`.
 pub fn render_side_by_side_diff(
     git_manager: &mut GitManager,
@@ -276,27 +322,28 @@ pub fn render_side_by_side_diff(
 
     let header = render_header(border, rem_bg, rem_fg, add_bg, add_fg);
 
-    // Single shared scroll container — both columns scroll together
     let body = div()
         .id("side-by-side-diff-scroll")
         .flex_1()
         .overflow_y_scroll()
         .overflow_x_hidden()
         .child(
-            v_flex().children(rows.iter().map(|row| {
-                render_row(
-                    row,
-                    &mono_font,
-                    rem_bg,
-                    rem_fg,
-                    add_bg,
-                    add_fg,
-                    spacer_bg,
-                    line_num_color,
-                    foreground,
-                    border,
-                )
-            })),
+            v_flex()
+                .w_full()
+                .children(rows.iter().map(|row| {
+                    render_row(
+                        row,
+                        &mono_font,
+                        rem_bg,
+                        rem_fg,
+                        add_bg,
+                        add_fg,
+                        spacer_bg,
+                        line_num_color,
+                        foreground,
+                        border,
+                    )
+                })),
         );
 
     v_flex()

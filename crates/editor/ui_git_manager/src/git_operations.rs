@@ -691,6 +691,10 @@ pub enum DiffSegment {
 #[derive(Debug, Clone)]
 pub struct DiffResult {
     pub segments: Vec<DiffSegment>,
+    /// Full old-text lines indexed by line number (1-based: lines[0] = line 1).
+    pub old_lines: Vec<String>,
+    /// Full new-text lines indexed by line number (1-based: lines[0] = line 1).
+    pub new_lines: Vec<String>,
 }
 
 /// A single flat row used by the virtualized diff viewer.
@@ -853,6 +857,8 @@ const CONTEXT_LINES: usize = 3;
 
 /// Run a Myers line-level diff and produce collapsible segments (Monaco/GitHub style).
 fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
+    let old_lines: Vec<String> = old_text.lines().map(String::from).collect();
+    let new_lines: Vec<String> = new_text.lines().map(String::from).collect();
     use similar::{ChangeTag, TextDiff};
 
     let diff = TextDiff::from_lines(old_text, new_text);
@@ -888,6 +894,8 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
     if !has_changes || n == 0 {
         return DiffResult {
             segments: vec![DiffSegment::Hunk(all_lines)],
+            old_lines,
+            new_lines,
         };
     }
 
@@ -927,7 +935,7 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
         }
     }
 
-    DiffResult { segments }
+    DiffResult { segments, old_lines, new_lines }
 }
 
 /// Load old blob content for a file from HEAD (empty string for new files).
