@@ -6,6 +6,7 @@ use anyhow::{anyhow, Context};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
+use tracing;
 
 // ── Provider entries ────────────────────────────────────────────────────────
 
@@ -171,24 +172,33 @@ impl ChatProvider for OpenAiChatProvider {
         if !self.api_key.is_empty() {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
         }
-        let resp = req.send().with_context(|| format!("fetch models from {}", self.models_url))?;
+        let resp = match req.send() {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!(url = %self.models_url, error = %e, "models fetch failed, returning empty");
+                return Ok(vec![]);
+            }
+        };
         if !resp.status().is_success() {
-            return Err(anyhow!("models API {}: {}", resp.status(), resp.text().unwrap_or_default()));
+            tracing::warn!(url = %self.models_url, status = %resp.status(), "models API returned non-success, returning empty");
+            return Ok(vec![]);
         }
-        let body: Value = resp.json()?;
-        let models = body
-            .get("data")
-            .and_then(|d| d.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|m| {
-                        let id = m.get("id")?.as_str()?.to_string();
-                        let label = m.get("display_name").or_else(|| m.get("name")).or_else(|| m.get("id")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
-                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
+        let body: Value = match resp.json() {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(url = %self.models_url, error = %e, "models JSON parse failed, returning empty");
+                return Ok(vec![]);
+            }
+        };
+        let models = match body {
+            Value::Array(ref arr) => Self::parse_model_array(arr),
+            Value::Object(_) => body
+                .get("data")
+                .and_then(|d| d.as_array())
+                .map(|arr| Self::parse_model_array(arr))
+                .unwrap_or_default(),
+            _ => vec![],
+        };
         Ok(models)
     }
 
@@ -238,6 +248,16 @@ impl ChatProvider for OpenAiChatProvider {
 }
 
 impl OpenAiChatProvider {
+    fn parse_model_array(arr: &[Value]) -> Vec<ModelDescriptor> {
+        arr.iter()
+            .filter_map(|m| {
+                let id = m.get("id")?.as_str()?.to_string();
+                let label = m.get("display_name").or_else(|| m.get("name")).or_else(|| m.get("id")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
+                Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+            })
+            .collect()
+    }
+
     fn send(&self, payload: &Value) -> anyhow::Result<Value> {
         let mut req = self.client.post(&self.chat_url).header("Content-Type", "application/json").json(payload);
         if !self.api_key.is_empty() {
