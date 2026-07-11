@@ -79,6 +79,7 @@ impl AgentChatPanel {
     }
 
     pub(super) fn delete_custom_provider(&mut self, provider_id: &str, cx: &mut Context<Self>) {
+        tracing::debug!(provider = %provider_id, "delete_custom_provider: deleting");
         let config_dir = Self::custom_provider_config_dir();
         let _ = custom_providers::remove_custom_provider(&config_dir, provider_id);
         self.custom_providers_list
@@ -92,6 +93,7 @@ impl AgentChatPanel {
             .active_provider()
             .map(|p| p.id.to_string());
         let mut catalog: Vec<ProviderDefinition> = Vec::new();
+        tracing::debug!("refresh_provider_catalog: rebuilding, previous size={}", self.provider_catalog.len());
 
         // Preserve models that were already fetched across catalog refreshes
         let old_models: HashMap<&str, Arc<Vec<ModelDefinition>>> = self
@@ -102,6 +104,9 @@ impl AgentChatPanel {
 
         for (id, provider) in self.provider_registry.all() {
             let cached = old_models.get(id.as_str()).cloned();
+            if cached.is_some() {
+                tracing::debug!(provider = %id, "refresh_provider_catalog: using cached models");
+            }
             catalog.push(ProviderDefinition {
                 id: Box::leak(id.clone().into_boxed_str()),
                 label: Box::leak(provider.display_name().to_string().into_boxed_str()),
@@ -156,6 +161,7 @@ impl AgentChatPanel {
             .and_then(|id| self.provider_catalog.iter().position(|p| p.id == id))
             .unwrap_or(0);
         cx.notify();
+        tracing::debug!(count = self.provider_catalog.len(), "refresh_provider_catalog: built");
     }
 
     pub(super) fn add_provider_prompt_title(step: AddProviderPromptStep) -> &'static str {

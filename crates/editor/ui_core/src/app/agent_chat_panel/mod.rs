@@ -161,8 +161,9 @@ impl AgentChatPanel {
                     let id = entry.id.to_string();
                     provider_entries.insert(id.clone(), entry);
                     provider_states.insert(id.clone(), state.clone());
-                    provider_states_shared.borrow_mut().insert(id.clone(), state);
+                    provider_states_shared.borrow_mut().insert(id.clone(), state.clone());
                     provider_registry.register(Arc::from(provider));
+                    tracing::info!(provider = %id, ?state, "registered provider");
                 }
             }
         }
@@ -906,6 +907,7 @@ impl Render for AgentChatPanel {
 
                                                         let field_key = fields.get(this.configuring_field_index).map(|f| f.key).unwrap_or("value").to_string();
                                                         let is_sensitive = fields.get(this.configuring_field_index).map(|f| f.sensitive).unwrap_or(false);
+                                                        tracing::debug!(provider = %id, field_key = %field_key, "provider config: field collected");
                                                         this.config_values.insert(field_key, value);
 
                                                         this.configuring_field_index += 1;
@@ -916,6 +918,7 @@ impl Render for AgentChatPanel {
                                                             let mut validated = false;
                                                             for c in &this.crate_instances {
                                                                 if let Ok(p) = c.create(id, config.clone()) {
+                                                                    tracing::debug!(provider = %id, "provider config: calling validate_config");
                                                                     match p.validate_config() {
                                                                      Ok(()) => {
                                                                              this.provider_registry.register(Arc::from(p));
@@ -924,15 +927,18 @@ impl Render for AgentChatPanel {
                                                                              this.provider_entries.remove(id);
                                                                              this.configuring_provider = None;
                                                                              this.config_error = None;
+                                                                             tracing::info!(provider = %id, "provider config: validated successfully");
                                                                              this.refresh_provider_catalog(cx);
                                                                              // Fetch models from the freshly-configured provider
                                                                              if this.active_provider_ix < this.provider_catalog.len() {
+                                                                                 tracing::debug!(provider = %id, "provider config: fetching models after config");
                                                                                  this.fetch_models_in_background(this.active_provider_ix, cx);
                                                                              }
                                                                              validated = true;
                                                                         }
                                                                         Err(e) => {
                                                                             this.config_error = Some(e.to_string());
+                                                                            tracing::debug!(provider = %id, error = %e, "provider config: validation failed");
                                                                             // Clear sensitive fields on error
                                                                             for (k, v) in &mut this.config_values.iter_mut() {
                                                                                 if fields.iter().any(|f| f.key == k.as_str() && f.sensitive) {

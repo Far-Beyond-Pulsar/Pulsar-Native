@@ -94,8 +94,8 @@ impl ProviderCrate for OpenAiProviderCrate {
         };
 
         let api_key = config.get("api_key").unwrap_or_default().to_string();
-        let models_url = build_models_url(&endpoint, entry.use_ollama_protocol);
         let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol);
+        let models_url = build_models_url(&chat_url, entry.use_ollama_protocol);
 
         let config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
 

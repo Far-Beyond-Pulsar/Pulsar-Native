@@ -16,6 +16,7 @@ impl AgentChatPanel {
             self.active_model_ix = 0;
 
             let provider_id = self.provider_catalog[index].id;
+            tracing::debug!(provider = %provider_id, state = ?self.provider_states.get(provider_id), "set_provider: selected");
 
             // Cancel any stale config flow when switching providers
             self.configuring_provider = None;
@@ -34,6 +35,7 @@ impl AgentChatPanel {
                                 self.configuring_field_index = 0;
                                 self.config_values.clear();
                                 self.config_error = Some(format!("Token expired or invalid: {e}"));
+                                tracing::debug!(provider = %provider_id, error = %e, "set_provider: re-validation failed, starting config flow");
                                 cx.notify();
                                 return;
                             }
@@ -50,6 +52,7 @@ impl AgentChatPanel {
                         self.configuring_provider = Some(provider_id.to_string());
                         self.configuring_field_index = 0;
                         self.config_values.clear();
+                        tracing::debug!(provider = %provider_id, "set_provider: starting config flow (Unconfigured)");
                         cx.notify();
                         return;
                     }
@@ -103,6 +106,7 @@ impl AgentChatPanel {
         let Some(provider_id) = self.provider_catalog.get(provider_ix).map(|p| p.id) else {
             return;
         };
+        tracing::debug!(provider = %provider_id, "fetch_models_in_background: starting");
         let Some(provider_impl) = self.provider_registry.get(provider_id).cloned() else {
             return;
         };
@@ -117,6 +121,7 @@ impl AgentChatPanel {
                     match result {
                         Ok(models) => {
                             if models.is_empty() {
+                                tracing::debug!(provider = %provider_id, "fetch_models_in_background: models empty");
                                 return;
                             }
                             let defs = models
@@ -131,16 +136,21 @@ impl AgentChatPanel {
                                 .collect::<Vec<_>>();
                             if provider_ix < panel.provider_catalog.len() {
                                 panel.provider_catalog[provider_ix].models = Arc::new(defs.clone());
+                            } else {
+                                tracing::debug!(provider = %provider_id, catalog_len = panel.provider_catalog.len(), "fetch_models_in_background: skipping (catalog bounds)");
                             }
                             if panel.active_provider_ix == provider_ix {
                                 panel
                                     .model_list
                                     .update(cx, |list, cx| list.set_items(defs, cx));
                                 cx.notify();
+                            } else {
+                                tracing::debug!(provider = %provider_id, "fetch_models_in_background: skipping (active_provider_ix mismatch)");
                             }
                         }
                         Err(e) => {
-                            let label = panel.provider_catalog.get(provider_ix).map(|p| p.label).unwrap_or(provider_id);
+                            let label = panel.provider_catalog.get(provider_ix).map(|p| p.label).unwrap_or(&provider_id);
+                            tracing::error!(provider = %provider_id, error = %e, "fetch_models_in_background: failed");
                             panel.messages.push(ChatMessage {
                                 role: ChatRole::System,
                                 content: format!("Failed to fetch models for {label}: {e}"),
@@ -168,6 +178,7 @@ impl AgentChatPanel {
 
         let provider_id = self.provider_catalog[provider_ix].id;
         let provider_label = self.provider_catalog[provider_ix].label;
+        tracing::debug!(provider = %provider_id, "refresh_models_for_active_provider: starting");
 
         let Some(provider_impl) = self.provider_registry.get(provider_id).cloned() else {
             self.messages.push(ChatMessage {
@@ -229,6 +240,7 @@ impl AgentChatPanel {
                                     tool_call_id: None,
                                     tool_calls: vec![],
                                 });
+                                tracing::debug!(provider = %provider_id, count = models.len(), "refresh_models_for_active_provider: success");
                             }
                         }
                         Err(err) => {
@@ -238,6 +250,7 @@ impl AgentChatPanel {
                                 tool_call_id: None,
                                 tool_calls: vec![],
                             });
+                            tracing::error!(provider = %provider_id, error = %err, "refresh_models_for_active_provider: failed");
                         }
                     }
                     panel.scroll_messages_to_bottom();
