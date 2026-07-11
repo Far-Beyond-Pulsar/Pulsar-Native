@@ -337,7 +337,7 @@ fn build_anthropic_payload(request: &ChatRequest, stream: bool) -> Value {
     let messages: Vec<Value> = request.messages.iter().map(|msg| {
         json!({
             "role": anthropic_role(msg.role),
-            "content": msg.content,
+            "content": [{"type": "text", "text": msg.content}],
         })
     }).collect();
 
@@ -410,7 +410,7 @@ fn read_anthropic_stream(response: reqwest::blocking::Response, on_chunk: &mut d
 
         match ev.get("type").and_then(|v| v.as_str()) {
             Some("content_block_delta") => {
-                if let Some(text) = ev.get("delta").and_then(|d| d.get("delta")).and_then(|v| v.as_str()) {
+                if let Some(text) = ev.get("delta").and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
                     if !text.is_empty() {
                         let ch = text.to_string();
                         full_text.push_str(&ch);
