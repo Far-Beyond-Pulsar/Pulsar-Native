@@ -14,7 +14,7 @@ pulsar_auth.workspace = true
 tracing.workspace = true
 chrono = { workspace = true, features = ["serde"] }
 anyhow.workspace = true
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls-no-provider"] }
 image.workspace = true
 smallvec.workspace = true
 smol.workspace = true
