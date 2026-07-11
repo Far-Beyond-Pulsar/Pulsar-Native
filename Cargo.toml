@@ -162,7 +162,7 @@ notify = "8.2.0"
 lsp-types = "0.97.0"
 directories = "6.0.0"
 itertools = "0.14.0"
-rapier3d = { version = "0.32.0", features = ["simd-stable"] }
+rapier3d = { version = "0.34.0", features = ["simd-stable"] }
 sysuri = "0.4.0"
 urlencoding = "2.1.3"
 ropey = { version = "=2.0.0-beta.1", features = ["metric_utf16", "metric_lines_lf"] }
