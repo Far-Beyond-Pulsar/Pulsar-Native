@@ -1,16 +1,19 @@
 //! Side-by-side diff viewer for the Git manager.
 //! Uses `similar::DiffOp` for proper line-number–based alignment so that
 //! deletions and insertions at the same position are paired on one row.
-//! Both sides share a single scroll container for synced scrolling.
+//! Virtualized via `v_virtual_list` with a scrollbar overlay.
 
 use crate::{DiffResult, GitManager, DIFF_LINE_ROW_H};
 use gpui::*;
 use similar::{DiffOp, TextDiff};
-use ui::{ActiveTheme as _, h_flex, v_flex};
+use std::rc::Rc;
+use ui::{
+    ActiveTheme as _, h_flex, scroll::Scrollbar, v_flex, v_virtual_list,
+};
 
 /// Visual style for one side of an aligned row.
 #[derive(Clone, Copy, PartialEq)]
-enum CellStyle {
+pub enum CellStyle {
     Normal,
     Removed,
     Added,
@@ -18,19 +21,20 @@ enum CellStyle {
 }
 
 /// One visual row in the side-by-side view.
-struct AlignedRow {
-    left_line: String,
-    left_num: Option<usize>,
-    left_style: CellStyle,
-    right_line: String,
-    right_num: Option<usize>,
-    right_style: CellStyle,
+#[derive(Clone)]
+pub(crate) struct AlignedRow {
+    pub(crate) left_line: String,
+    pub(crate) left_num: Option<usize>,
+    pub(crate) left_style: CellStyle,
+    pub(crate) right_line: String,
+    pub(crate) right_num: Option<usize>,
+    pub(crate) right_style: CellStyle,
 }
 
 /// Build aligned rows directly from the full old/new text using `similar::DiffOp`.
 /// This properly pairs Replace operations so deleted+inserted content
 /// at the same position appears on a single row.
-fn compute_aligned_rows(diff: &DiffResult) -> Vec<AlignedRow> {
+pub(crate) fn compute_aligned_rows(diff: &DiffResult) -> Vec<AlignedRow> {
     let old = diff.old_lines.as_slice();
     let new = diff.new_lines.as_slice();
     let old_text = old.join("\n");
@@ -183,8 +187,8 @@ fn render_header(
         )
 }
 
-/// Render a single row.
-fn render_row(
+/// Render a single aligned row into an element.
+pub(crate) fn render_aligned_row(
     row: &AlignedRow,
     mono_font: &Font,
     rem_bg: Hsla,
@@ -280,24 +284,19 @@ fn render_row(
         )
 }
 
-/// Render a side-by-side diff panel.
-/// `is_commit = false` → uses `file_diff`, `is_commit = true` → uses `commit_file_diff`.
+/// Render a virtualized side-by-side diff panel with a scrollbar.
+/// `is_commit = false` → uses `file_aligned_rows`, `is_commit = true` → uses `commit_aligned_rows`.
 pub fn render_side_by_side_diff(
     git_manager: &mut GitManager,
     is_commit: bool,
     cx: &mut Context<GitManager>,
 ) -> impl IntoElement {
-    let diff = if is_commit {
-        &git_manager.commit_file_diff
+    let rows: &[AlignedRow] = if is_commit {
+        &git_manager.commit_aligned_rows
     } else {
-        &git_manager.file_diff
+        &git_manager.file_aligned_rows
     };
 
-    let Some(diff) = diff else {
-        return div().flex_1().into_any_element();
-    };
-
-    let rows = compute_aligned_rows(diff);
     if rows.is_empty() {
         return div().flex_1().into_any_element();
     }
@@ -322,17 +321,55 @@ pub fn render_side_by_side_diff(
 
     let header = render_header(border, rem_bg, rem_fg, add_bg, add_fg);
 
-    let body = div()
-        .id("side-by-side-diff-scroll")
-        .flex_1()
-        .overflow_y_scroll()
-        .overflow_x_hidden()
-        .child(
-            v_flex()
-                .w_full()
-                .children(rows.iter().map(|row| {
-                    render_row(
-                        row,
+    let item_sizes: Vec<Size<Pixels>> = rows
+        .iter()
+        .map(|_| size(px(0.0), px(DIFF_LINE_ROW_H)))
+        .collect();
+    let item_sizes = Rc::new(item_sizes);
+    let rows_len = rows.len();
+
+    let scroll_handle = if is_commit {
+        git_manager.commit_align_scroll.clone()
+    } else {
+        git_manager.file_align_scroll.clone()
+    };
+    let scrollbar_state = if is_commit {
+        git_manager.commit_align_scrollbar.clone()
+    } else {
+        git_manager.file_align_scrollbar.clone()
+    };
+
+    let list_id = if is_commit {
+        "commit-align-vlist"
+    } else {
+        "file-align-vlist"
+    };
+    let entity = cx.entity().clone();
+
+    let list = v_virtual_list(
+        entity,
+        list_id,
+        item_sizes,
+        move |gm: &mut GitManager, range, _window, cx| {
+            let add_bg: Hsla = rgba(0x00cc0033).into();
+            let rem_bg: Hsla = rgba(0xff222233).into();
+            let add_fg: Hsla = rgba(0x22dd22ff).into();
+            let rem_fg: Hsla = rgba(0xff5555ff).into();
+            let spacer_bg: Hsla = rgba(0x00000033).into();
+            let line_num_color = cx.theme().muted_foreground;
+            let foreground = cx.theme().foreground;
+            let border = cx.theme().border;
+
+            let rows = if is_commit {
+                &gm.commit_aligned_rows
+            } else {
+                &gm.file_aligned_rows
+            };
+
+            range
+                .map(|i| -> AnyElement {
+                    render_aligned_row(
+                        &rows[i],
                         &mono_font,
                         rem_bg,
                         rem_fg,
@@ -343,13 +380,33 @@ pub fn render_side_by_side_diff(
                         foreground,
                         border,
                     )
-                })),
-        );
+                    .into_any_element()
+                })
+                .collect()
+        },
+    )
+    .track_scroll(&scroll_handle);
 
     v_flex()
         .size_full()
         .overflow_hidden()
         .child(header)
-        .child(body)
+        .child(
+            div()
+                .relative()
+                .flex_1()
+                .min_h_0()
+                .overflow_hidden()
+                .child(list)
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .child(Scrollbar::vertical(
+                            &scrollbar_state,
+                            &scroll_handle,
+                        )),
+                ),
+        )
         .into_any_element()
 }

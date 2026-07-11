@@ -23,6 +23,8 @@ use ui::{
 pub use git_operations::*;
 pub use models::*;
 
+use views::AlignedRow;
+
 // ── Diff-row constants (public for file_panel / commit_detail) ───────────────
 pub const DIFF_LINE_ROW_H: f32 = 20.0;
 pub const DIFF_COLLAPSE_ROW_H: f32 = 24.0;
@@ -125,10 +127,18 @@ pub struct GitManager {
     pub(crate) file_diff_rows: Vec<DiffRow>,
     pub(crate) file_diff_scroll: VirtualListScrollHandle,
     pub(crate) file_diff_scrollbar: ScrollbarState,
+    // ── File aligned rows (side-by-side) ──────────────────────────────────
+    pub(crate) file_aligned_rows: Vec<AlignedRow>,
+    pub(crate) file_align_scroll: VirtualListScrollHandle,
+    pub(crate) file_align_scrollbar: ScrollbarState,
     // ── Commit diff virtual list ───────────────────────────────────────────
     pub(crate) commit_diff_rows: Vec<DiffRow>,
     pub(crate) commit_diff_scroll: VirtualListScrollHandle,
     pub(crate) commit_diff_scrollbar: ScrollbarState,
+    // ── Commit aligned rows (side-by-side) ────────────────────────────────
+    pub(crate) commit_aligned_rows: Vec<AlignedRow>,
+    pub(crate) commit_align_scroll: VirtualListScrollHandle,
+    pub(crate) commit_align_scrollbar: ScrollbarState,
     // History view
     selected_commit: Option<String>,
     selected_commit_files: Vec<FileChange>,
@@ -256,9 +266,15 @@ impl GitManager {
             file_diff_rows: Vec::new(),
             file_diff_scroll: VirtualListScrollHandle::new(),
             file_diff_scrollbar: ScrollbarState::default(),
+            file_aligned_rows: Vec::new(),
+            file_align_scroll: VirtualListScrollHandle::new(),
+            file_align_scrollbar: ScrollbarState::default(),
             commit_diff_rows: Vec::new(),
             commit_diff_scroll: VirtualListScrollHandle::new(),
             commit_diff_scrollbar: ScrollbarState::default(),
+            commit_aligned_rows: Vec::new(),
+            commit_align_scroll: VirtualListScrollHandle::new(),
+            commit_align_scrollbar: ScrollbarState::default(),
             selected_commit: None,
             selected_commit_files: Vec::new(),
             selected_commit_file: None,
@@ -610,6 +626,11 @@ impl GitManager {
             .as_ref()
             .map(|d| flatten_diff(d, &self.file_diff_expanded))
             .unwrap_or_default();
+        self.file_aligned_rows = self
+            .file_diff
+            .as_ref()
+            .map(|d| views::compute_aligned_rows(d))
+            .unwrap_or_default();
     }
 
     pub(crate) fn rebuild_commit_diff_rows(&mut self) {
@@ -617,6 +638,11 @@ impl GitManager {
             .commit_file_diff
             .as_ref()
             .map(|d| flatten_diff(d, &self.commit_file_expanded))
+            .unwrap_or_default();
+        self.commit_aligned_rows = self
+            .commit_file_diff
+            .as_ref()
+            .map(|d| views::diff_viewer::compute_aligned_rows(d))
             .unwrap_or_default();
     }
 
