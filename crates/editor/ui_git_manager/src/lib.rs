@@ -629,7 +629,7 @@ impl GitManager {
         self.file_aligned_rows = self
             .file_diff
             .as_ref()
-            .map(|d| views::compute_aligned_rows(d))
+            .map(|d| views::compute_aligned_rows(d, &self.file_diff_expanded))
             .unwrap_or_default();
     }
 
@@ -642,7 +642,7 @@ impl GitManager {
         self.commit_aligned_rows = self
             .commit_file_diff
             .as_ref()
-            .map(|d| views::diff_viewer::compute_aligned_rows(d))
+            .map(|d| views::compute_aligned_rows(d, &self.commit_file_expanded))
             .unwrap_or_default();
     }
 

@@ -1,17 +1,17 @@
 //! Side-by-side diff viewer for the Git manager.
-//! Uses `similar::DiffOp` for proper line-number–based alignment so that
-//! deletions and insertions at the same position are paired on one row.
+//! Collapsed unchanged regions are shown as expandable bars (same as unified view).
+//! Deletions immediately followed by insertions are paired on a single row.
 //! Virtualized via `v_virtual_list` with a scrollbar overlay.
 
-use crate::{DiffResult, GitManager, DIFF_LINE_ROW_H};
-use gpui::*;
-use similar::{DiffOp, TextDiff};
-use std::rc::Rc;
-use ui::{
-    ActiveTheme as _, h_flex, scroll::Scrollbar, v_flex, v_virtual_list,
+use crate::{
+    DiffLineKind, DiffResult, DiffSegment, GitManager, DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H,
 };
+use gpui::*;
+use std::collections::HashSet;
+use std::rc::Rc;
+use ui::{ActiveTheme as _, h_flex, scroll::Scrollbar, v_flex, v_virtual_list};
 
-/// Visual style for one side of an aligned row.
+/// Visual style for one side of an aligned line row.
 #[derive(Clone, Copy, PartialEq)]
 pub enum CellStyle {
     Normal,
@@ -20,119 +20,106 @@ pub enum CellStyle {
     Spacer,
 }
 
-/// One visual row in the side-by-side view.
+/// One visual row in the side-by-side virtual list.
 #[derive(Clone)]
-pub(crate) struct AlignedRow {
-    pub(crate) left_line: String,
-    pub(crate) left_num: Option<usize>,
-    pub(crate) left_style: CellStyle,
-    pub(crate) right_line: String,
-    pub(crate) right_num: Option<usize>,
-    pub(crate) right_style: CellStyle,
+pub enum AlignedRow {
+    /// A content row with left and right columns.
+    Line {
+        left_line: String,
+        left_num: Option<usize>,
+        left_style: CellStyle,
+        right_line: String,
+        right_num: Option<usize>,
+        right_style: CellStyle,
+    },
+    /// A collapsed-region button row.
+    Collapse { region_idx: usize, count: usize },
 }
 
-/// Build aligned rows directly from the full old/new text using `similar::DiffOp`.
-/// This properly pairs Replace operations so deleted+inserted content
-/// at the same position appears on a single row.
-pub(crate) fn compute_aligned_rows(diff: &DiffResult) -> Vec<AlignedRow> {
-    let old = diff.old_lines.as_slice();
-    let new = diff.new_lines.as_slice();
-    let old_text = old.join("\n");
-    let new_text = new.join("\n");
-    let text_diff = TextDiff::from_lines(&old_text, &new_text);
-    let mut rows: Vec<AlignedRow> = Vec::new();
+/// Build aligned rows from a `DiffResult`, mirroring the segment structure
+/// of the unified view so collapsed unchanged regions are preserved.
+///
+/// Within hunks, adjacent Removed + Added lines are paired into a single row
+/// (avoiding checkerboard gaps for simple replacements).
+pub(crate) fn compute_aligned_rows(
+    diff: &DiffResult,
+    expanded: &HashSet<usize>,
+) -> Vec<AlignedRow> {
+    let mut rows = Vec::new();
 
-    for op in text_diff.ops() {
-        match op {
-            DiffOp::Equal {
-                old_index,
-                new_index,
-                len,
-            } => {
-                for i in 0..*len {
-                    rows.push(AlignedRow {
-                        left_line: old[old_index + i].clone(),
-                        left_num: Some(old_index + i + 1),
-                        left_style: CellStyle::Normal,
-                        right_line: new[new_index + i].clone(),
-                        right_num: Some(new_index + i + 1),
-                        right_style: CellStyle::Normal,
-                    });
+    for segment in &diff.segments {
+        match segment {
+            DiffSegment::Hunk(lines) => {
+                let mut i = 0;
+                while i < lines.len() {
+                    match lines[i].kind {
+                        DiffLineKind::Context => {
+                            rows.push(AlignedRow::Line {
+                                left_line: lines[i].content.clone(),
+                                left_num: lines[i].old_line_num,
+                                left_style: CellStyle::Normal,
+                                right_line: lines[i].content.clone(),
+                                right_num: lines[i].new_line_num,
+                                right_style: CellStyle::Normal,
+                            });
+                            i += 1;
+                        }
+                        DiffLineKind::Removed => {
+                            // Pair with following Added if present → single Replace row
+                            if i + 1 < lines.len()
+                                && lines[i + 1].kind == DiffLineKind::Added
+                            {
+                                rows.push(AlignedRow::Line {
+                                    left_line: lines[i].content.clone(),
+                                    left_num: lines[i].old_line_num,
+                                    left_style: CellStyle::Removed,
+                                    right_line: lines[i + 1].content.clone(),
+                                    right_num: lines[i + 1].new_line_num,
+                                    right_style: CellStyle::Added,
+                                });
+                                i += 2;
+                            } else {
+                                rows.push(AlignedRow::Line {
+                                    left_line: lines[i].content.clone(),
+                                    left_num: lines[i].old_line_num,
+                                    left_style: CellStyle::Removed,
+                                    right_line: String::new(),
+                                    right_num: None,
+                                    right_style: CellStyle::Spacer,
+                                });
+                                i += 1;
+                            }
+                        }
+                        DiffLineKind::Added => {
+                            rows.push(AlignedRow::Line {
+                                left_line: String::new(),
+                                left_num: None,
+                                left_style: CellStyle::Spacer,
+                                right_line: lines[i].content.clone(),
+                                right_num: lines[i].new_line_num,
+                                right_style: CellStyle::Added,
+                            });
+                            i += 1;
+                        }
+                    }
                 }
             }
-            DiffOp::Delete {
-                old_index,
-                old_len,
-                ..
-            } => {
-                for i in 0..*old_len {
-                    rows.push(AlignedRow {
-                        left_line: old[old_index + i].clone(),
-                        left_num: Some(old_index + i + 1),
-                        left_style: CellStyle::Removed,
-                        right_line: String::new(),
-                        right_num: None,
-                        right_style: CellStyle::Spacer,
-                    });
-                }
-            }
-            DiffOp::Insert {
-                new_index,
-                new_len,
-                ..
-            } => {
-                for i in 0..*new_len {
-                    rows.push(AlignedRow {
-                        left_line: String::new(),
-                        left_num: None,
-                        left_style: CellStyle::Spacer,
-                        right_line: new[new_index + i].clone(),
-                        right_num: Some(new_index + i + 1),
-                        right_style: CellStyle::Added,
-                    });
-                }
-            }
-            DiffOp::Replace {
-                old_index,
-                old_len,
-                new_index,
-                new_len,
-            } => {
-                let max = (*old_len).max(*new_len);
-                for i in 0..max {
-                    let left = if i < *old_len {
-                        old[old_index + i].clone()
-                    } else {
-                        String::new()
-                    };
-                    let right = if i < *new_len {
-                        new[new_index + i].clone()
-                    } else {
-                        String::new()
-                    };
-                    rows.push(AlignedRow {
-                        left_line: left,
-                        left_num: if i < *old_len {
-                            Some(old_index + i + 1)
-                        } else {
-                            None
-                        },
-                        left_style: if i < *old_len {
-                            CellStyle::Removed
-                        } else {
-                            CellStyle::Spacer
-                        },
-                        right_line: right,
-                        right_num: if i < *new_len {
-                            Some(new_index + i + 1)
-                        } else {
-                            None
-                        },
-                        right_style: if i < *new_len {
-                            CellStyle::Added
-                        } else {
-                            CellStyle::Spacer
-                        },
+            DiffSegment::Collapsed { lines, region_idx } => {
+                if expanded.contains(region_idx) {
+                    for line in lines {
+                        rows.push(AlignedRow::Line {
+                            left_line: line.content.clone(),
+                            left_num: line.old_line_num,
+                            left_style: CellStyle::Normal,
+                            right_line: line.content.clone(),
+                            right_num: line.new_line_num,
+                            right_style: CellStyle::Normal,
+                        });
+                    }
+                } else {
+                    rows.push(AlignedRow::Collapse {
+                        region_idx: *region_idx,
+                        count: lines.len(),
                     });
                 }
             }
@@ -199,89 +186,143 @@ pub(crate) fn render_aligned_row(
     line_num_color: Hsla,
     foreground: Hsla,
     border: Hsla,
-) -> impl IntoElement {
-    let (left_bg, left_text) = match row.left_style {
-        CellStyle::Removed => (rem_bg, rem_fg),
-        CellStyle::Spacer => (spacer_bg, line_num_color),
-        _ => (gpui::transparent_black(), foreground),
-    };
-    let (right_bg, right_text) = match row.right_style {
-        CellStyle::Added => (add_bg, add_fg),
-        CellStyle::Spacer => (spacer_bg, line_num_color),
-        _ => (gpui::transparent_black(), foreground),
-    };
+    col_bg: Hsla,
+    is_commit: bool,
+    cx: &mut Context<GitManager>,
+) -> AnyElement {
+    match row {
+        AlignedRow::Line {
+            left_line,
+            left_num,
+            left_style,
+            right_line,
+            right_num,
+            right_style,
+        } => {
+            let (l_bg, l_text) = match left_style {
+                CellStyle::Removed => (rem_bg, rem_fg),
+                CellStyle::Spacer => (spacer_bg, line_num_color),
+                _ => (gpui::transparent_black(), foreground),
+            };
+            let (r_bg, r_text) = match right_style {
+                CellStyle::Added => (add_bg, add_fg),
+                CellStyle::Spacer => (spacer_bg, line_num_color),
+                _ => (gpui::transparent_black(), foreground),
+            };
 
-    h_flex()
-        .w_full()
-        .h(px(DIFF_LINE_ROW_H))
-        .flex_shrink_0()
-        .font(mono_font.clone())
-        .text_size(px(13.))
-        .child(
             h_flex()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .bg(left_bg)
+                .w_full()
+                .h(px(DIFF_LINE_ROW_H))
+                .flex_shrink_0()
+                .font(mono_font.clone())
+                .text_size(px(13.))
                 .child(
-                    div()
-                        .w(px(50.))
-                        .h_full()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .pr_2()
-                        .text_xs()
-                        .text_color(line_num_color)
-                        .child(row.left_num.map(|n| n.to_string()).unwrap_or_default()),
-                )
-                .child(
-                    div()
+                    h_flex()
                         .flex_1()
+                        .min_w_0()
                         .h_full()
-                        .flex()
-                        .items_center()
-                        .pl_2()
-                        .whitespace_nowrap()
-                        .overflow_hidden()
-                        .text_color(left_text)
-                        .child(row.left_line.clone()),
-                ),
-        )
-        .child(div().w(px(1.)).h_full().bg(border))
-        .child(
-            h_flex()
-                .flex_1()
-                .min_w_0()
-                .h_full()
-                .bg(right_bg)
-                .child(
-                    div()
-                        .w(px(50.))
-                        .h_full()
-                        .flex()
-                        .items_center()
-                        .justify_end()
-                        .pr_2()
-                        .text_xs()
-                        .text_color(line_num_color)
+                        .bg(l_bg)
                         .child(
-                            row.right_num.map(|n| n.to_string()).unwrap_or_default(),
+                            div()
+                                .w(px(50.))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_end()
+                                .pr_2()
+                                .text_xs()
+                                .text_color(line_num_color)
+                                .child(
+                                    left_num
+                                        .map(|n| n.to_string())
+                                        .unwrap_or_default(),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .pl_2()
+                                .whitespace_nowrap()
+                                .overflow_hidden()
+                                .text_color(l_text)
+                                .child(left_line.clone()),
                         ),
                 )
+                .child(div().w(px(1.)).h_full().bg(border))
                 .child(
-                    div()
+                    h_flex()
                         .flex_1()
+                        .min_w_0()
                         .h_full()
-                        .flex()
-                        .items_center()
-                        .pl_2()
-                        .whitespace_nowrap()
-                        .overflow_hidden()
-                        .text_color(right_text)
-                        .child(row.right_line.clone()),
-                ),
-        )
+                        .bg(r_bg)
+                        .child(
+                            div()
+                                .w(px(50.))
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .justify_end()
+                                .pr_2()
+                                .text_xs()
+                                .text_color(line_num_color)
+                                .child(
+                                    right_num
+                                        .map(|n| n.to_string())
+                                        .unwrap_or_default(),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .flex_1()
+                                .h_full()
+                                .flex()
+                                .items_center()
+                                .pl_2()
+                                .whitespace_nowrap()
+                                .overflow_hidden()
+                                .text_color(r_text)
+                                .child(right_line.clone()),
+                        ),
+                )
+                .into_any_element()
+        }
+        AlignedRow::Collapse { region_idx, count } => {
+            let idx = *region_idx;
+            let cnt = *count;
+            h_flex()
+                .w_full()
+                .h(px(DIFF_COLLAPSE_ROW_H))
+                .px_4()
+                .bg(col_bg)
+                .border_y_1()
+                .border_color(border)
+                .items_center()
+                .justify_center()
+                .gap_2()
+                .cursor_pointer()
+                .hover(|s| s.opacity(0.7))
+                .on_mouse_down(
+                    MouseButton::Left,
+                    cx.listener(move |this, _: &MouseDownEvent, _, cx| {
+                        if is_commit {
+                            this.expand_commit_diff_region(idx, cx);
+                        } else {
+                            this.expand_file_diff_region(idx, cx);
+                        }
+                    }),
+                )
+                .font(mono_font.clone())
+                .text_size(px(12.))
+                .text_color(line_num_color)
+                .child(div().child("↕"))
+                .child(div().child(format!("{} unchanged lines", cnt)))
+                .child(div().child("↕"))
+                .into_any_element()
+        }
+    }
 }
 
 /// Render a virtualized side-by-side diff panel with a scrollbar.
@@ -315,6 +356,7 @@ pub fn render_side_by_side_diff(
     let add_fg: Hsla = rgba(0x22dd22ff).into();
     let rem_fg: Hsla = rgba(0xff5555ff).into();
     let spacer_bg: Hsla = rgba(0x00000033).into();
+    let col_bg: Hsla = rgba(0x00000044).into();
     let line_num_color = theme.muted_foreground;
     let foreground = theme.foreground;
     let border = theme.border;
@@ -323,10 +365,12 @@ pub fn render_side_by_side_diff(
 
     let item_sizes: Vec<Size<Pixels>> = rows
         .iter()
-        .map(|_| size(px(0.0), px(DIFF_LINE_ROW_H)))
+        .map(|r| match r {
+            AlignedRow::Line { .. } => size(px(0.0), px(DIFF_LINE_ROW_H)),
+            AlignedRow::Collapse { .. } => size(px(0.0), px(DIFF_COLLAPSE_ROW_H)),
+        })
         .collect();
     let item_sizes = Rc::new(item_sizes);
-    let rows_len = rows.len();
 
     let scroll_handle = if is_commit {
         git_manager.commit_align_scroll.clone()
@@ -356,6 +400,7 @@ pub fn render_side_by_side_diff(
             let add_fg: Hsla = rgba(0x22dd22ff).into();
             let rem_fg: Hsla = rgba(0xff5555ff).into();
             let spacer_bg: Hsla = rgba(0x00000033).into();
+            let col_bg: Hsla = rgba(0x00000044).into();
             let line_num_color = cx.theme().muted_foreground;
             let foreground = cx.theme().foreground;
             let border = cx.theme().border;
@@ -379,8 +424,10 @@ pub fn render_side_by_side_diff(
                         line_num_color,
                         foreground,
                         border,
+                        col_bg,
+                        is_commit,
+                        cx,
                     )
-                    .into_any_element()
                 })
                 .collect()
         },
