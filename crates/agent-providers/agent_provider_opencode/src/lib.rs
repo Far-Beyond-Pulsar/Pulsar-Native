@@ -163,7 +163,11 @@ impl ChatProvider for OpenCodeChatProvider {
             .header("Accept", "text/event-stream")
             .json(&payload);
         if !self.api_key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            if url.contains("/messages") {
+                req = req.header("x-api-key", &self.api_key);
+            } else {
+                req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            }
         }
         let response = req.send().with_context(|| format!("chat {}", url))?;
         if !response.status().is_success() {
@@ -179,7 +183,11 @@ impl OpenCodeChatProvider {
             .header("Content-Type", "application/json")
             .json(payload);
         if !self.api_key.is_empty() {
-            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            if url.contains("/messages") {
+                req = req.header("x-api-key", &self.api_key);
+            } else {
+                req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            }
         }
         let resp = req.send().with_context(|| format!("chat {}", url))?;
         if !resp.status().is_success() {
