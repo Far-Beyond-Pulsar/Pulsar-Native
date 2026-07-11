@@ -564,14 +564,18 @@ impl ChatProvider for GithubCopilotProvider {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
-                        let name = m.get("name").and_then(|v| v.as_str()).unwrap_or(&id);
-                        let label = m.get("summary").and_then(|v| v.as_str()).unwrap_or(name).to_string();
+                        let label = m.get("name").and_then(|v| v.as_str()).unwrap_or(&id).to_string();
                         let supports_tools = m
                             .get("capabilities")
                             .and_then(|c| c.as_array())
                             .map(|caps| caps.iter().any(|c| c.as_str() == Some("function_calling")))
                             .unwrap_or(false);
-                        Some(ModelDescriptor { id, label, supports_tools, context_tokens: 0, compact_model: None })
+                        let context_tokens = m
+                            .get("limits")
+                            .and_then(|l| l.get("max_input_tokens"))
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0) as u32;
+                        Some(ModelDescriptor { id, label, supports_tools, context_tokens, compact_model: None })
                     })
                     .collect()
             })
