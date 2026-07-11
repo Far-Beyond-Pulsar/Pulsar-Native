@@ -561,8 +561,8 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install openssl@1.1 protobuf
-          echo "OPENSSL_DIR=$(brew --prefix openssl@1.1)" >> $GITHUB_ENV
+          brew install openssl@3 protobuf
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix protobuf)/bin:$PATH" >> $GITHUB_ENV
           brew link --force protobuf
           protoc --version
