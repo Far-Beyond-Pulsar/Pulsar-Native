@@ -18,6 +18,7 @@ use agent_provider_demo_random::DemoRandomProviderCrate;
 use agent_provider_docker_model_runner::DockerModelRunnerProviderCrate;
 use agent_provider_gemini::GeminiProviderCrate;
 use agent_provider_github_copilot::GithubCopilotProviderCrate;
+use agent_provider_opencode::OpenCodeProviderCrate;
 use agent_provider_openai::OpenAiProviderCrate;
 use agent_provider_vertex_ai::VertexAiProviderCrate;
 use gpui::{prelude::FluentBuilder as _, *};
@@ -129,6 +130,7 @@ impl AgentChatPanel {
 
         let crate_instances: Vec<Box<dyn ProviderCrate>> = vec![
             Box::new(OpenAiProviderCrate),
+            Box::new(OpenCodeProviderCrate),
             Box::new(AnthropicProviderCrate),
             Box::new(GeminiProviderCrate),
             Box::new(GithubCopilotProviderCrate),

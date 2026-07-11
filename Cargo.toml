@@ -83,6 +83,7 @@ agent_chat_tools                   = { path = "crates/agent-providers/agent_chat
 agent_provider_demo_random         = { path = "crates/agent-providers/agent_provider_demo_random" }
 agent_provider_github_copilot      = { path = "crates/agent-providers/agent_provider_github_copilot" }
 agent_provider_openai              = { path = "crates/agent-providers/agent_provider_openai" }
+agent_provider_opencode            = { path = "crates/agent-providers/agent_provider_opencode" }
 agent_provider_anthropic           = { path = "crates/agent-providers/agent_provider_anthropic" }
 agent_provider_gemini              = { path = "crates/agent-providers/agent_provider_gemini" }
 agent_provider_docker_model_runner = { path = "crates/agent-providers/agent_provider_docker_model_runner" }

@@ -62,6 +62,7 @@ agent_chat_tools.workspace = true
 agent_provider_demo_random.workspace = true
 agent_provider_github_copilot.workspace = true
 agent_provider_openai.workspace = true
+agent_provider_opencode.workspace = true
 agent_provider_anthropic.workspace = true
 agent_provider_gemini.workspace = true
 agent_provider_docker_model_runner.workspace = true
