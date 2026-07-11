@@ -13,10 +13,20 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     ca-certificates \
+    protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy everything — the whole workspace.
-# This is the simplest and most maintainable approach.
+# Copy manifests first for dependency caching
+COPY Cargo.toml Cargo.lock ./
+COPY crates/core/pulsar-relay/Cargo.toml crates/core/pulsar-relay/
+COPY crates/core/pulsar-multiplayer-core/Cargo.toml crates/core/pulsar-multiplayer-core/
+RUN mkdir -p crates/core/pulsar-relay/src crates/core/pulsar-multiplayer-core/src \
+    && echo "fn main() {}" > crates/core/pulsar-relay/src/main.rs \
+    && echo "" > crates/core/pulsar-multiplayer-core/src/lib.rs \
+    && cargo build --release -p pulsar-relay --bin pulsar-relay 2>/dev/null || true \
+    && rm -rf crates/core/pulsar-relay/src crates/core/pulsar-multiplayer-core/src
+
+# Copy the rest of the workspace
 COPY . .
 
 # Build only the relay binary
@@ -34,13 +44,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
-RUN useradd -r -u 1000 -g users pulsar
+RUN groupadd -g 1000 pulsar && useradd -r -u 1000 -g pulsar pulsar
 
 # Copy binary from builder
 COPY --from=builder /app/target/release/pulsar-relay /usr/local/bin/pulsar-relay
 
 # Set ownership
-RUN chown pulsar:users /usr/local/bin/pulsar-relay
+RUN chown pulsar:pulsar /usr/local/bin/pulsar-relay
 
 # Switch to non-root user
 USER pulsar
