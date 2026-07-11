@@ -9129,9 +9129,6 @@ dependencies = [
  "file-association-manager",
  "futures",
  "gpui-ce",
- "image",
- "once_cell",
- "parking_lot",
  "profiling 0.1.0",
  "pulsar_std",
  "rfd",
@@ -9157,7 +9154,6 @@ dependencies = [
  "wgpu",
  "window_manager",
  "windows 0.62.2",
- "winit",
  "winresource",
 ]
 
@@ -9238,13 +9234,10 @@ name = "pulsar_physics"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
- "gpui-ce",
  "pulsar_reflection",
  "serde",
  "serde_json",
  "tracing",
- "ui",
- "ui_common",
 ]
 
 [[package]]
@@ -13636,7 +13629,6 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_types_common 0.1.0",
- "wgpu",
  "winapi",
  "window_manager",
 ]
@@ -13756,7 +13748,6 @@ dependencies = [
 name = "ui_settings"
 version = "0.1.0"
 dependencies = [
- "directories 6.0.0",
  "engine_state",
  "gpui-ce",
  "pulsar_std",
