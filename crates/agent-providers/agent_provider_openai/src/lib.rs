@@ -16,27 +16,30 @@ struct Entry {
     kind: ProviderKind,
     endpoint: Option<&'static str>,
     use_ollama_protocol: bool,
+    /// Override the chat path appended to the endpoint, e.g. "/responses".
+    /// When set, build_chat_url appends this instead of "/chat/completions".
+    chat_path: Option<&'static str>,
 }
 
 const ENTRIES: &[Entry] = &[
-    Entry { id: "openai", display_name: "OpenAI", kind: ProviderKind::Cloud, endpoint: Some("https://api.openai.com/v1"), use_ollama_protocol: false },
-    Entry { id: "groq", display_name: "Groq", kind: ProviderKind::Cloud, endpoint: Some("https://api.groq.com/openai/v1"), use_ollama_protocol: false },
-    Entry { id: "together", display_name: "Together AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.together.xyz/v1"), use_ollama_protocol: false },
-    Entry { id: "mistral", display_name: "Mistral AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.mistral.ai/v1"), use_ollama_protocol: false },
-    Entry { id: "deepseek", display_name: "DeepSeek", kind: ProviderKind::Cloud, endpoint: Some("https://api.deepseek.com/v1"), use_ollama_protocol: false },
-    Entry { id: "fireworks", display_name: "Fireworks AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.fireworks.ai/inference/v1"), use_ollama_protocol: false },
-    Entry { id: "perplexity", display_name: "Perplexity", kind: ProviderKind::Cloud, endpoint: Some("https://api.perplexity.ai"), use_ollama_protocol: false },
-    Entry { id: "xai", display_name: "xAI Grok", kind: ProviderKind::Cloud, endpoint: Some("https://api.x.ai/v1"), use_ollama_protocol: false },
-    Entry { id: "openrouter", display_name: "OpenRouter", kind: ProviderKind::Cloud, endpoint: Some("https://openrouter.ai/api/v1"), use_ollama_protocol: false },
-    Entry { id: "cohere", display_name: "Cohere", kind: ProviderKind::Cloud, endpoint: Some("https://api.cohere.com/v2"), use_ollama_protocol: false },
-    Entry { id: "azure_openai", display_name: "Azure OpenAI", kind: ProviderKind::Cloud, endpoint: None, use_ollama_protocol: false },
-    Entry { id: "ollama", display_name: "Ollama", kind: ProviderKind::Local, endpoint: Some("http://localhost:11434"), use_ollama_protocol: true },
-    Entry { id: "lm_studio", display_name: "LM Studio", kind: ProviderKind::Local, endpoint: Some("http://localhost:1234/v1"), use_ollama_protocol: false },
-    Entry { id: "llama_cpp", display_name: "llama.cpp", kind: ProviderKind::Local, endpoint: Some("http://localhost:8080/v1"), use_ollama_protocol: false },
-    Entry { id: "vllm", display_name: "vLLM", kind: ProviderKind::Local, endpoint: Some("http://localhost:8000/v1"), use_ollama_protocol: false },
-    Entry { id: "opencode_go", display_name: "OpenCode Go", kind: ProviderKind::Cloud, endpoint: Some("https://api.opencode.ai/v1/go"), use_ollama_protocol: false },
-    Entry { id: "opencode_zen", display_name: "OpenCode Zen", kind: ProviderKind::Cloud, endpoint: Some("https://api.opencode.ai/v1/zen"), use_ollama_protocol: false },
-    Entry { id: "custom_openai", display_name: "Custom OpenAI Compatible", kind: ProviderKind::Local, endpoint: None, use_ollama_protocol: false },
+    Entry { id: "openai", display_name: "OpenAI", kind: ProviderKind::Cloud, endpoint: Some("https://api.openai.com/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "groq", display_name: "Groq", kind: ProviderKind::Cloud, endpoint: Some("https://api.groq.com/openai/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "together", display_name: "Together AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.together.xyz/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "mistral", display_name: "Mistral AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.mistral.ai/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "deepseek", display_name: "DeepSeek", kind: ProviderKind::Cloud, endpoint: Some("https://api.deepseek.com/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "fireworks", display_name: "Fireworks AI", kind: ProviderKind::Cloud, endpoint: Some("https://api.fireworks.ai/inference/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "perplexity", display_name: "Perplexity", kind: ProviderKind::Cloud, endpoint: Some("https://api.perplexity.ai"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "xai", display_name: "xAI Grok", kind: ProviderKind::Cloud, endpoint: Some("https://api.x.ai/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "openrouter", display_name: "OpenRouter", kind: ProviderKind::Cloud, endpoint: Some("https://openrouter.ai/api/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "cohere", display_name: "Cohere", kind: ProviderKind::Cloud, endpoint: Some("https://api.cohere.com/v2"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "azure_openai", display_name: "Azure OpenAI", kind: ProviderKind::Cloud, endpoint: None, use_ollama_protocol: false, chat_path: None },
+    Entry { id: "ollama", display_name: "Ollama", kind: ProviderKind::Local, endpoint: Some("http://localhost:11434"), use_ollama_protocol: true, chat_path: None },
+    Entry { id: "lm_studio", display_name: "LM Studio", kind: ProviderKind::Local, endpoint: Some("http://localhost:1234/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "llama_cpp", display_name: "llama.cpp", kind: ProviderKind::Local, endpoint: Some("http://localhost:8080/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "vllm", display_name: "vLLM", kind: ProviderKind::Local, endpoint: Some("http://localhost:8000/v1"), use_ollama_protocol: false, chat_path: None },
+    Entry { id: "opencode_go", display_name: "OpenCode Go", kind: ProviderKind::Cloud, endpoint: Some("https://opencode.ai/go/v1"), use_ollama_protocol: false, chat_path: Some("/responses") },
+    Entry { id: "opencode_zen", display_name: "OpenCode Zen", kind: ProviderKind::Cloud, endpoint: Some("https://opencode.ai/zen/v1"), use_ollama_protocol: false, chat_path: Some("/responses") },
+    Entry { id: "custom_openai", display_name: "Custom OpenAI Compatible", kind: ProviderKind::Local, endpoint: None, use_ollama_protocol: false, chat_path: None },
 ];
 
 fn entry_config_fields(entry: &Entry, is_ollama: bool) -> Vec<ConfigField> {
@@ -97,7 +100,7 @@ impl ProviderCrate for OpenAiProviderCrate {
         };
 
         let api_key = config.get("api_key").unwrap_or_default().to_string();
-        let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol);
+        let chat_url = build_chat_url(&endpoint, entry.use_ollama_protocol, entry.chat_path);
         let models_url = build_models_url(&chat_url, entry.use_ollama_protocol);
 
         let config_fields = entry_config_fields(entry, entry.use_ollama_protocol);
@@ -116,13 +119,19 @@ impl ProviderCrate for OpenAiProviderCrate {
 
 // ── URL helpers ─────────────────────────────────────────────────────────────
 
-fn build_chat_url(endpoint: &str, ollama: bool) -> String {
+fn build_chat_url(endpoint: &str, ollama: bool, chat_path: Option<&str>) -> String {
     let t = endpoint.trim_end_matches('/');
     if ollama {
         if t.ends_with("/api/chat") {
             t.to_string()
         } else {
             format!("{t}/api/chat")
+        }
+    } else if let Some(path) = chat_path {
+        if t.ends_with(path) {
+            t.to_string()
+        } else {
+            format!("{t}{path}")
         }
     } else if t.ends_with("/chat/completions") {
         t.to_string()
@@ -131,15 +140,29 @@ fn build_chat_url(endpoint: &str, ollama: bool) -> String {
     }
 }
 
-fn build_models_url(endpoint: &str, _ollama: bool) -> String {
-    let t = endpoint.trim_end_matches('/');
-    if t.ends_with("/chat/completions") {
-        t.trim_end_matches("/chat/completions").to_string() + "/models"
-    } else if t.ends_with("/api/chat") {
-        t.trim_end_matches("/api/chat").to_string() + "/api/tags"
-    } else {
-        format!("{t}/models")
+fn build_models_url(chat_url: &str, ollama: bool) -> String {
+    let t = chat_url.trim_end_matches('/');
+    if ollama {
+        // Ollama uses a separate tags endpoint
+        let base = if t.ends_with("/api/chat") {
+            t.trim_end_matches("/api/chat")
+        } else {
+            t
+        };
+        return format!("{}/api/tags", base.trim_end_matches('/'));
     }
+    // Strip the chat path to get the API base
+    let base = if t.ends_with("/chat/completions") {
+        t.trim_end_matches("/chat/completions")
+    } else if t.ends_with("/api/chat") {
+        t.trim_end_matches("/api/chat")
+    } else if t.ends_with("/responses") {
+        // OpenCode uses /responses instead of /chat/completions
+        t.trim_end_matches("/responses")
+    } else {
+        t
+    };
+    format!("{}/models", base.trim_end_matches('/'))
 }
 
 // ── ChatProvider ────────────────────────────────────────────────────────────
@@ -163,6 +186,25 @@ impl ChatProvider for OpenAiChatProvider {
         &self.display_name
     }
 
+    fn validate_config(&self) -> anyhow::Result<()> {
+        if self.api_key.is_empty() {
+            return Ok(());
+        }
+        // Try connecting to the models endpoint — 401/403 means invalid key
+        let mut req = self.client.get(&self.models_url).header("Content-Type", "application/json");
+        req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        match req.send() {
+            Ok(resp) => match resp.status().as_u16() {
+                401 | 403 => Err(anyhow::anyhow!("API key is invalid or expired")),
+                _ => Ok(()),
+            },
+            Err(e) => {
+                tracing::warn!(url = %self.models_url, error = %e, "validate_config: connection failed, assuming valid");
+                Ok(())
+            }
+        }
+    }
+
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
         if self.is_ollama {
             return self.ollama_models();
@@ -183,10 +225,11 @@ impl ChatProvider for OpenAiChatProvider {
             tracing::warn!(url = %self.models_url, status = %resp.status(), "models API returned non-success, returning empty");
             return Ok(vec![]);
         }
-        let body: Value = match resp.json() {
+        let body_text = resp.text().unwrap_or_default();
+        let body: Value = match serde_json::from_str(&body_text) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(url = %self.models_url, error = %e, "models JSON parse failed, returning empty");
+                tracing::warn!(url = %self.models_url, error = %e, response = %body_text, "models JSON parse failed, returning empty");
                 return Ok(vec![]);
             }
         };
