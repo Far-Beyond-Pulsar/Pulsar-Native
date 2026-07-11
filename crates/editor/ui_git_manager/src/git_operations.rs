@@ -761,7 +761,7 @@ pub fn get_commit_files(
     repo_path: &Path,
     commit_hash: &str,
 ) -> Result<Vec<FileChange>, git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let oid = git2::Oid::from_str(commit_hash)?;
     let commit = repo.find_commit(oid)?;
 
@@ -805,7 +805,7 @@ pub fn load_file_at_commit(
     file_path: &str,
     line_limit: usize,
 ) -> FileContentResult {
-    let repo = match Repository::open(repo_path) {
+    let repo = match open_repo(repo_path) {
         Ok(r) => r,
         Err(e) => return FileContentResult::Error(e.to_string()),
     };
@@ -957,7 +957,7 @@ fn load_blob_from_parent(repo: &Repository, commit: &git2::Commit, file_path: &s
 
 /// Compute the working-tree diff for a single file vs HEAD (blocking).
 pub fn load_file_diff_working(repo_path: &Path, file_path: &str) -> Result<DiffResult, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
+    let repo = open_repo(repo_path).map_err(|e| e.message().to_string())?;
     let new_text = std::fs::read_to_string(repo_path.join(file_path)).map_err(|e| e.to_string())?;
     if new_text.contains('\0') {
         return Err("Binary file".to_string());
@@ -972,7 +972,7 @@ pub fn load_file_diff_at_commit(
     commit_hash: &str,
     file_path: &str,
 ) -> Result<DiffResult, String> {
-    let repo = Repository::open(repo_path).map_err(|e| e.message().to_string())?;
+    let repo = open_repo(repo_path).map_err(|e| e.message().to_string())?;
     let oid = git2::Oid::from_str(commit_hash).map_err(|e| e.message().to_string())?;
     let commit = repo.find_commit(oid).map_err(|e| e.message().to_string())?;
     let normalized = file_path.replace('\\', "/");
