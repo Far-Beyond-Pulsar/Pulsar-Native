@@ -150,21 +150,37 @@ impl ChatProvider for OpenCodeChatProvider {
 
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
         let url = endpoint_for_model(&self.base_endpoint, &request.model);
-        let payload = build_openai_payload(&request, false)?;
-        let body = self.send(&url, &payload)?;
-        parse_non_stream_response(body)
+        if url.contains("/messages") {
+            let payload = build_anthropic_payload(&request, false);
+            let body = self.send(&url, &payload)?;
+            parse_anthropic_response(body)
+        } else if url.contains("/responses") {
+            let payload = build_openai_payload(&request, false)?;
+            let body = self.send(&url, &payload)?;
+            parse_non_stream_response(body)
+        } else {
+            let payload = build_openai_payload(&request, false)?;
+            let body = self.send(&url, &payload)?;
+            parse_non_stream_response(body)
+        }
     }
 
     fn chat_streaming(&self, request: ChatRequest, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
         let url = endpoint_for_model(&self.base_endpoint, &request.model);
-        let payload = build_openai_payload(&request, true)?;
+        let payload = if url.contains("/messages") {
+            build_anthropic_payload(&request, true)
+        } else {
+            build_openai_payload(&request, true)?
+        };
+        let accept = if url.contains("/messages") { "application/json" } else { "text/event-stream" };
         let mut req = self.client.post(&url)
             .header("Content-Type", "application/json")
-            .header("Accept", "text/event-stream")
+            .header("Accept", accept)
             .json(&payload);
         if !self.api_key.is_empty() {
             if url.contains("/messages") {
                 req = req.header("x-api-key", &self.api_key);
+                req = req.header("anthropic-version", "2023-06-01");
             } else {
                 req = req.header("Authorization", format!("Bearer {}", self.api_key));
             }
@@ -173,7 +189,11 @@ impl ChatProvider for OpenCodeChatProvider {
         if !response.status().is_success() {
             return Err(anyhow!("chat API {}: {}", response.status(), response.text().unwrap_or_default()));
         }
-        read_stream_response(response, on_chunk)
+        if url.contains("/messages") {
+            read_anthropic_stream(response, on_chunk)
+        } else {
+            read_stream_response(response, on_chunk)
+        }
     }
 }
 
@@ -185,6 +205,7 @@ impl OpenCodeChatProvider {
         if !self.api_key.is_empty() {
             if url.contains("/messages") {
                 req = req.header("x-api-key", &self.api_key);
+                req = req.header("anthropic-version", "2023-06-01");
             } else {
                 req = req.header("Authorization", format!("Bearer {}", self.api_key));
             }
@@ -308,6 +329,110 @@ fn read_stream_response(response: reqwest::blocking::Response, on_chunk: &mut dy
     }
     let tcs = parse_stream_tool_calls(&events);
     Ok(ChatResponse { assistant_message: if full.is_empty() { None } else { Some(full) }, streamed_text_chunks: chunks, tool_calls: tcs, finish_reason: fr, raw_response: Value::Array(events) })
+}
+
+// ── Anthropic Messages API ──────────────────────────────────────────────────
+
+fn build_anthropic_payload(request: &ChatRequest, stream: bool) -> Value {
+    let messages: Vec<Value> = request.messages.iter().map(|msg| {
+        json!({
+            "role": anthropic_role(msg.role),
+            "content": msg.content,
+        })
+    }).collect();
+
+    let mut payload = json!({
+        "model": request.model,
+        "messages": messages,
+        "max_tokens": request.max_tokens.unwrap_or(4096) as u64,
+        "stream": stream,
+    });
+
+    if request.enable_tool_calls && !request.tools.is_empty() {
+        payload["tools"] = json!(request.tools.iter().map(|t| {
+            json!({
+                "name": t.name,
+                "description": t.description,
+                "input_schema": t.parameters_json_schema,
+            })
+        }).collect::<Vec<_>>());
+    }
+
+    payload
+}
+
+fn anthropic_role(role: ChatRole) -> &'static str {
+    match role {
+        ChatRole::System => "system",
+        ChatRole::User => "user",
+        ChatRole::Assistant | ChatRole::Tool => "assistant",
+        ChatRole::AgentEvent => "system",
+    }
+}
+
+fn parse_anthropic_response(raw: Value) -> anyhow::Result<ChatResponse> {
+    let content = raw.get("content").and_then(|c| c.as_array());
+    let assistant_message = content.and_then(|arr| {
+        arr.iter()
+            .filter_map(|block| block.get("text").and_then(|v| v.as_str()))
+            .collect::<Vec<_>>()
+            .join("")
+            .into()
+    });
+
+    let finish_reason = raw.get("stop_reason").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let text_chunks = assistant_message.as_ref().map(|t| t.chars().collect::<Vec<_>>().chunks(20).map(|c| c.iter().collect()).collect()).unwrap_or_default();
+
+    Ok(ChatResponse {
+        assistant_message,
+        streamed_text_chunks: text_chunks,
+        tool_calls: vec![],
+        finish_reason,
+        raw_response: raw,
+    })
+}
+
+fn read_anthropic_stream(response: reqwest::blocking::Response, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
+    let mut full_text = String::new();
+    let mut text_chunks = Vec::new();
+    let mut finish_reason = None;
+
+    for line in BufReader::new(response).lines() {
+        let line = line?;
+        if !line.starts_with("data: ") { continue; }
+        let data = &line[6..];
+        if data == "[DONE]" { break; }
+
+        let ev: Value = match serde_json::from_str(data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        match ev.get("type").and_then(|v| v.as_str()) {
+            Some("content_block_delta") => {
+                if let Some(text) = ev.get("delta").and_then(|d| d.get("delta")).and_then(|v| v.as_str()) {
+                    if !text.is_empty() {
+                        let ch = text.to_string();
+                        full_text.push_str(&ch);
+                        text_chunks.push(ch.clone());
+                        on_chunk(ch);
+                    }
+                }
+            }
+            Some("message_stop") => {
+                finish_reason = Some("stop".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ChatResponse {
+        assistant_message: if full_text.is_empty() { None } else { Some(full_text) },
+        streamed_text_chunks: text_chunks,
+        tool_calls: vec![],
+        finish_reason,
+        raw_response: Value::Null,
+    })
 }
 
 fn map_role(role: ChatRole) -> &'static str {
