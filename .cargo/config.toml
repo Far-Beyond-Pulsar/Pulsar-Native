@@ -1,6 +1,18 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/STACK:8000000", "-C", "link-args=/FORCE:MULTIPLE"]
 
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
+
+[target.armv7-unknown-linux-gnueabihf]
+rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
+
+[target.i686-unknown-linux-gnu]
+rustflags = ["-C", "link-args=-Wl,--allow-multiple-definition"]
+
 [build]
 jobs = 4
 rustflags = ["-A", "warnings"]
