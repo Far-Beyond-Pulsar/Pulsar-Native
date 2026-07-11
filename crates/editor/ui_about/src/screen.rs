@@ -108,7 +108,7 @@ impl window_manager::PulsarWindow for AboutWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(500.0, 420.0)
+        window_manager::default_window_options(500.0, 750.0)
     }
 
     fn build(_: (), window: &mut Window, cx: &mut App) -> gpui::Entity<Self> {
