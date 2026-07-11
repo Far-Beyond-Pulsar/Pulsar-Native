@@ -23,10 +23,88 @@ const ENTRIES: &[Entry] = &[
     Entry { id: "opencode_zen", display_name: "OpenCode Zen", endpoint: "https://opencode.ai/zen/v1" },
 ];
 
-/// All models use /chat/completions — OpenCode Zen's universal endpoint
-/// handles the upstream conversion per model.
-fn endpoint_for_model(base: &str, _model: &str) -> String {
-    format!("{}/chat/completions", base.trim_end_matches('/'))
+/// GPT models need the Responses API (/responses) format.
+/// Everything else uses /chat/completions.
+fn endpoint_for_model(base: &str, model: &str) -> String {
+    let m = model.to_lowercase();
+    if m.starts_with("gpt-") || m.starts_with("o1") || m.starts_with("o3") || m.starts_with("o4") {
+        format!("{}/responses", base.trim_end_matches('/'))
+    } else {
+        format!("{}/chat/completions", base.trim_end_matches('/'))
+    }
+}
+
+fn build_responses_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<Value> {
+    let messages: Vec<Value> = request.messages.iter().map(|msg| {
+        json!({
+            "role": map_role(msg.role),
+            "content": msg.content,
+        })
+    }).collect();
+
+    let mut payload = json!({
+        "model": request.model,
+        "input": messages,
+        "stream": stream,
+    });
+    if let Some(m) = request.max_tokens { payload["max_tokens"] = json!(m); }
+    if request.enable_tool_calls && !request.tools.is_empty() {
+        payload["tools"] = json!(request.tools.iter().map(|t| {
+            json!({
+                "type": "function",
+                "function": { "name": t.name, "description": t.description, "parameters": t.parameters_json_schema }
+            })
+        }).collect::<Vec<_>>());
+    }
+    Ok(payload)
+}
+
+fn parse_responses_response(raw: Value) -> anyhow::Result<ChatResponse> {
+    let output = raw.get("output").and_then(|o| o.as_array());
+    let msg = output.and_then(|arr| {
+        arr.iter()
+            .filter_map(|item| {
+                let role = item.get("role").and_then(|v| v.as_str())?;
+                if role != "assistant" { return None; }
+                item.get("content").and_then(|c| c.as_array())
+                    .and_then(|blocks| {
+                        blocks.iter()
+                            .filter_map(|b| b.get("text").and_then(|v| v.as_str()))
+                            .collect::<Vec<_>>()
+                            .join("")
+                            .into()
+                    })
+            })
+            .next()
+    });
+    let finish_reason = raw.get("status").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let chunks = msg.as_ref().map(|t| t.chars().collect::<Vec<_>>().chunks(20).map(|c| c.iter().collect()).collect()).unwrap_or_default();
+    Ok(ChatResponse { assistant_message: msg, streamed_text_chunks: chunks, tool_calls: vec![], finish_reason, raw_response: raw })
+}
+
+fn parse_responses_stream(response: reqwest::blocking::Response, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
+    let mut events = Vec::new();
+    let mut chunks = Vec::new();
+    let mut full = String::new();
+    for line in BufReader::new(response).lines() {
+        let line = line?; let line = line.trim();
+        if line.is_empty() { continue; }
+        let Some(data) = line.strip_prefix("data:") else { continue; };
+        let data = data.trim();
+        if data == "[DONE]" { break; }
+        let ev: Value = serde_json::from_str(data)?;
+        if let Some(delta) = ev.get("delta").and_then(|d| d.get("delta")).and_then(|v| v.as_str()) {
+            if !delta.is_empty() {
+                let ch = delta.to_string();
+                full.push_str(&ch);
+                chunks.push(ch.clone());
+                on_chunk(ch);
+            }
+        }
+        events.push(ev);
+    }
+    let fr = events.iter().rev().find_map(|e| e.get("status").and_then(|v| v.as_str()).map(|s| s.to_string()));
+    Ok(ChatResponse { assistant_message: if full.is_empty() { None } else { Some(full) }, streamed_text_chunks: chunks, tool_calls: vec![], finish_reason: fr, raw_response: Value::Array(events) })
 }
 
 pub struct OpenCodeProviderCrate;
@@ -142,14 +220,27 @@ impl ChatProvider for OpenCodeChatProvider {
 
     fn chat(&self, request: ChatRequest) -> anyhow::Result<ChatResponse> {
         let url = endpoint_for_model(&self.base_endpoint, &request.model);
-        let payload = build_openai_payload(&request, false)?;
-        let body = self.send(&url, &payload)?;
-        parse_non_stream_response(body)
+        let body = if url.contains("/responses") {
+            let payload = build_responses_payload(&request, false)?;
+            self.send(&url, &payload)?
+        } else {
+            let payload = build_openai_payload(&request, false)?;
+            self.send(&url, &payload)?
+        };
+        if url.contains("/responses") {
+            parse_responses_response(body)
+        } else {
+            parse_non_stream_response(body)
+        }
     }
 
     fn chat_streaming(&self, request: ChatRequest, on_chunk: &mut dyn FnMut(String)) -> anyhow::Result<ChatResponse> {
         let url = endpoint_for_model(&self.base_endpoint, &request.model);
-        let payload = build_openai_payload(&request, true)?;
+        let (payload, is_responses) = if url.contains("/responses") {
+            (build_responses_payload(&request, true)?, true)
+        } else {
+            (build_openai_payload(&request, true)?, false)
+        };
         let mut req = self.client.post(&url)
             .header("Content-Type", "application/json")
             .header("Accept", "text/event-stream")
@@ -161,7 +252,11 @@ impl ChatProvider for OpenCodeChatProvider {
         if !response.status().is_success() {
             return Err(anyhow!("chat API {}: {}", response.status(), response.text().unwrap_or_default()));
         }
-        read_stream_response(response, on_chunk)
+        if is_responses {
+            parse_responses_stream(response, on_chunk)
+        } else {
+            read_stream_response(response, on_chunk)
+        }
     }
 }
 
@@ -204,7 +299,6 @@ fn build_openai_payload(request: &ChatRequest, stream: bool) -> anyhow::Result<V
     } else { vec![] };
 
     let mut payload = json!({ "model": request.model, "messages": messages, "stream": stream });
-    if let Some(t) = request.temperature { payload["temperature"] = json!(t); }
     if let Some(p) = request.top_p { payload["top_p"] = json!(p); }
     if let Some(m) = request.max_tokens { payload["max_tokens"] = json!(m); }
     if !tools.is_empty() { payload["tools"] = Value::Array(tools); }
