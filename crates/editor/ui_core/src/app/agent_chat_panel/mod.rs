@@ -961,6 +961,7 @@ impl Render for AgentChatPanel {
                                                                                                      tool_call_id: None,
                                                                                                      tool_calls: vec![],
                                                                                                  });
+                                                                                                 panel.scroll_messages_to_bottom();
                                                                                                  cx.notify();
                                                                                              }
                                                                                          }
