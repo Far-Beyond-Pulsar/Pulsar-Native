@@ -33,6 +33,8 @@ const ENTRIES: &[Entry] = &[
     Entry { id: "lm_studio", display_name: "LM Studio", kind: ProviderKind::Local, endpoint: Some("http://localhost:1234/v1"), use_ollama_protocol: false },
     Entry { id: "llama_cpp", display_name: "llama.cpp", kind: ProviderKind::Local, endpoint: Some("http://localhost:8080/v1"), use_ollama_protocol: false },
     Entry { id: "vllm", display_name: "vLLM", kind: ProviderKind::Local, endpoint: Some("http://localhost:8000/v1"), use_ollama_protocol: false },
+    Entry { id: "opencode_go", display_name: "OpenCode Go", kind: ProviderKind::Cloud, endpoint: Some("https://api.opencode.ai/v1/go"), use_ollama_protocol: false },
+    Entry { id: "opencode_zen", display_name: "OpenCode Zen", kind: ProviderKind::Cloud, endpoint: Some("https://api.opencode.ai/v1/zen"), use_ollama_protocol: false },
     Entry { id: "custom_openai", display_name: "Custom OpenAI Compatible", kind: ProviderKind::Local, endpoint: None, use_ollama_protocol: false },
 ];
 
