@@ -136,9 +136,10 @@ impl ChatProvider for OpenCodeChatProvider {
                 return Ok(vec![]);
             }
         };
-        let arr = match body {
+        let arr: Vec<Value> = match body {
             Value::Array(ref a) => a.clone(),
-            _ => return Ok(vec![]),
+            Value::Object(_) => body.get("data").and_then(|d| d.as_array()).cloned().unwrap_or_default(),
+            _ => vec![],
         };
         Ok(arr.iter().filter_map(|m| {
             let id = m.get("id")?.as_str()?.to_string();
