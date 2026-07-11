@@ -545,27 +545,33 @@ impl ChatProvider for GithubCopilotProvider {
     }
 
     fn models(&self) -> anyhow::Result<Vec<ModelDescriptor>> {
-        let url = "https://models.github.ai/inference/models";
+        let url = "https://models.github.ai/catalog/models";
         let response = self
             .client
             .get(url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .header("Accept", "application/json")
+            .header("X-GitHub-Api-Version", "2026-03-10")
             .send()
             .map_err(|e| anyhow::anyhow!("Failed to fetch GitHub Models: {e}"))?;
         if !response.status().is_success() {
-            return Err(anyhow::anyhow!("GitHub Models API {}: {}", response.status(), response.text().unwrap_or_default()));
+            return Err(anyhow::anyhow!("GitHub Models catalog API {}: {}", response.status(), response.text().unwrap_or_default()));
         }
         let body: serde_json::Value = response.json()?;
         let models = body
-            .get("data")
-            .and_then(|d| d.as_array())
+            .as_array()
             .map(|arr| {
                 arr.iter()
                     .filter_map(|m| {
                         let id = m.get("id")?.as_str()?.to_string();
-                        let label = m.get("display_name").or_else(|| m.get("name")).and_then(|v| v.as_str()).unwrap_or(&id).to_string();
-                        Some(ModelDescriptor { id, label, supports_tools: true, context_tokens: 0, compact_model: None })
+                        let name = m.get("name").and_then(|v| v.as_str()).unwrap_or(&id);
+                        let label = m.get("summary").and_then(|v| v.as_str()).unwrap_or(name).to_string();
+                        let supports_tools = m
+                            .get("capabilities")
+                            .and_then(|c| c.as_array())
+                            .map(|caps| caps.iter().any(|c| c.as_str() == Some("function_calling")))
+                            .unwrap_or(false);
+                        Some(ModelDescriptor { id, label, supports_tools, context_tokens: 0, compact_model: None })
                     })
                     .collect()
             })
