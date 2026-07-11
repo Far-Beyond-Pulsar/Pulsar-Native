@@ -1,10 +1,15 @@
 //! Commit detail panel: shows files changed in the selected commit (left)
 //! and diff of the selected file from that commit (right).
 
+use crate::views::diff_viewer::render_side_by_side_diff;
 use crate::views::file_panel::render_diff_virtual;
-use crate::{GitManager, models::*};
+use crate::{DiffViewMode, GitManager, models::*};
 use gpui::*;
-use ui::{ActiveTheme as _, Icon, IconName, StyledExt, h_flex, scroll::ScrollbarAxis, v_flex};
+use ui::{
+    ActiveTheme as _, Icon, IconName, StyledExt,
+    button::{Button, ButtonVariants as _},
+    h_flex, scroll::ScrollbarAxis, v_flex,
+};
 
 pub fn render_commit_detail(
     git_manager: &mut GitManager,
@@ -145,16 +150,38 @@ pub fn render_commit_detail(
         .clone()
         .unwrap_or_else(|| "File Diff".to_string());
 
-    let content_header = div()
+    let is_side_by_side = git_manager.diff_view_mode == DiffViewMode::SideBySide;
+
+    let content_header = h_flex()
         .px_3()
         .py_2()
         .border_b_1()
         .border_color(border)
-        .text_xs()
-        .font_weight(FontWeight::SEMIBOLD)
-        .text_color(muted_fg)
-        .overflow_hidden()
-        .child(content_header_label);
+        .child(
+            div()
+                .flex_1()
+                .text_xs()
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(muted_fg)
+                .overflow_hidden()
+                .child(content_header_label),
+        )
+        .child(
+            Button::new("toggle-commit-diff-mode")
+                .icon(if is_side_by_side {
+                    IconName::AlignLeft
+                } else {
+                    IconName::ViewColumns2
+                })
+                .ghost()
+                .compact()
+                .tooltip(if is_side_by_side {
+                    "Unified view"
+                } else {
+                    "Side-by-side view"
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_diff_view_mode(cx))),
+        );
 
     let content_body: AnyElement = match &git_manager.selected_commit_file {
         None => v_flex()
@@ -175,7 +202,13 @@ pub fn render_commit_detail(
             &git_manager.commit_file_diff,
             &git_manager.commit_file_diff_error,
         ) {
-            (Some(_), _) => render_diff_virtual(git_manager, true, cx).into_any_element(),
+            (Some(_), _) => {
+                if is_side_by_side {
+                    render_side_by_side_diff(git_manager, true, cx).into_any_element()
+                } else {
+                    render_diff_virtual(git_manager, true, cx).into_any_element()
+                }
+            }
             (None, Some(err)) => v_flex()
                 .flex_1()
                 .items_center()

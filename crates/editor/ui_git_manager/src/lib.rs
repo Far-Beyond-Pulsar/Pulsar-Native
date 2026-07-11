@@ -146,6 +146,7 @@ pub struct GitManager {
     /// Never written to disk by us; cleared when the window closes.
     stored_creds: Option<(String, String)>,
     current_view: GitView,
+    pub(crate) diff_view_mode: DiffViewMode,
     focus_handle: FocusHandle,
 }
 
@@ -154,6 +155,12 @@ pub enum GitView {
     Changes,
     History,
     Branches,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DiffViewMode {
+    Unified,
+    SideBySide,
 }
 
 impl GitManager {
@@ -264,6 +271,7 @@ impl GitManager {
             auth_password_input,
             stored_creds: None,
             current_view: GitView::Changes,
+            diff_view_mode: DiffViewMode::Unified,
             focus_handle: cx.focus_handle(),
         }
     }
@@ -722,6 +730,14 @@ impl GitManager {
             });
         })
         .detach();
+    }
+
+    pub(crate) fn toggle_diff_view_mode(&mut self, cx: &mut Context<Self>) {
+        self.diff_view_mode = match self.diff_view_mode {
+            DiffViewMode::Unified => DiffViewMode::SideBySide,
+            DiffViewMode::SideBySide => DiffViewMode::Unified,
+        };
+        cx.notify();
     }
 
     fn dismiss_error(&mut self, cx: &mut Context<Self>) {

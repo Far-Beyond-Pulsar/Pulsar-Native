@@ -1,10 +1,14 @@
 //! File diff preview panel (right side) — virtualized diff viewer
 
-use crate::{DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H, DiffLineKind, DiffRow, GitManager};
+use crate::{
+    views::render_side_by_side_diff, DiffLineKind, DiffRow, DiffViewMode, GitManager,
+    DIFF_COLLAPSE_ROW_H, DIFF_LINE_ROW_H,
+};
 use gpui::*;
 use std::rc::Rc;
 use ui::{
     ActiveTheme as _, Icon, IconName, h_flex,
+    button::{Button, ButtonVariants as _},
     scroll::{Scrollbar, ScrollbarAxis},
     v_flex, v_virtual_list,
 };
@@ -23,6 +27,8 @@ pub fn render_file_panel(
         .clone()
         .unwrap_or_else(|| "File Preview".to_string());
 
+    let is_side_by_side = git_manager.diff_view_mode == DiffViewMode::SideBySide;
+
     let header = h_flex()
         .px_3()
         .py_2()
@@ -36,13 +42,35 @@ pub fn render_file_panel(
                 .text_color(muted_fg)
                 .overflow_hidden()
                 .child(header_label),
+        )
+        .child(
+            Button::new("toggle-diff-mode")
+                .icon(if is_side_by_side {
+                    IconName::AlignLeft
+                } else {
+                    IconName::ViewColumns2
+                })
+                .ghost()
+                .compact()
+                .tooltip(if is_side_by_side {
+                    "Unified view"
+                } else {
+                    "Side-by-side view"
+                })
+                .on_click(cx.listener(|this, _, _, cx| this.toggle_diff_view_mode(cx))),
         );
 
     let body: AnyElement = match &git_manager.selected_file {
         None => empty_placeholder(muted_fg, "Select a file to view its diff").into_any_element(),
 
         Some(_) => match (&git_manager.file_diff, &git_manager.file_diff_error) {
-            (Some(_), _) => render_diff_virtual(git_manager, false, cx).into_any_element(),
+            (Some(_), _) => {
+                if is_side_by_side {
+                    render_side_by_side_diff(git_manager, false, cx).into_any_element()
+                } else {
+                    render_diff_virtual(git_manager, false, cx).into_any_element()
+                }
+            }
             (None, Some(err)) => v_flex()
                 .flex_1()
                 .items_center()
