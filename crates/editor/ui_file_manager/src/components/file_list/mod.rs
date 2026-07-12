@@ -10,6 +10,7 @@ use ui::{
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
     resizable::{h_resizable, resizable_panel, ResizableState},
+    scroll::{Scrollbar, ScrollbarState},
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
     VirtualListScrollHandle,
 };
@@ -55,6 +56,8 @@ pub struct FileManagerDrawer {
     pub(crate) clipboard: Option<(Vec<PathBuf>, bool)>,
     pub(crate) grid_scroll_handle: VirtualListScrollHandle,
     pub(crate) list_scroll_handle: VirtualListScrollHandle,
+    pub(crate) grid_scrollbar_state: ScrollbarState,
+    pub(crate) list_scrollbar_state: ScrollbarState,
     pub(crate) thumbnails:
         std::collections::HashMap<std::path::PathBuf, Option<std::sync::Arc<gpui::RenderImage>>>,
     pub(crate) thumbnail_cache_root: std::path::PathBuf,
@@ -136,6 +139,8 @@ impl FileManagerDrawer {
             registered_file_types: Vec::new(),
             grid_scroll_handle: VirtualListScrollHandle::new(),
             list_scroll_handle: VirtualListScrollHandle::new(),
+            grid_scrollbar_state: ScrollbarState::default(),
+            list_scrollbar_state: ScrollbarState::default(),
             thumbnails: std::collections::HashMap::new(),
             thumbnail_cache_root: project_path
                 .as_deref()
@@ -456,6 +461,7 @@ pub fn render_grid_view(
     let sizes = Rc::new(vec![size(px(0.0), px(CH + G)); rows]);
     let view = cx.entity().clone();
     let handle = d.grid_scroll_handle.clone();
+    let scrollbar_state = d.grid_scrollbar_state.clone();
     div()
         .relative()
         .flex_1()
@@ -501,6 +507,15 @@ pub fn render_grid_view(
                 },
             )
             .track_scroll(&handle),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .child(Scrollbar::vertical(&scrollbar_state, &handle)),
         )
         .into_any_element()
 }
@@ -743,6 +758,7 @@ pub fn render_list_view(
     let sizes = Rc::new(vec![size(px(0.0), px(40.0)); n]);
     let view = cx.entity().clone();
     let handle = d.list_scroll_handle.clone();
+    let scrollbar_state = d.list_scrollbar_state.clone();
     div()
         .relative()
         .flex_1()
@@ -762,6 +778,15 @@ pub fn render_list_view(
                 },
             )
             .track_scroll(&handle),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .right_0()
+                .bottom_0()
+                .child(Scrollbar::vertical(&scrollbar_state, &handle)),
         )
         .into_any_element()
 }
