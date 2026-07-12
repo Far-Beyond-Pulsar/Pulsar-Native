@@ -2,6 +2,7 @@ use gpui::prelude::*;
 use gpui::*;
 use ui::{
     button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    StyledExt,
 };
 
 use crate::core::types::Template;
@@ -77,7 +78,7 @@ pub fn render_templates(
                 .id("templates-scroll")
                 .flex_1()
                 .min_h_0()
-                .overflow_y_scroll()
+                .scrollable(gpui::Axis::Vertical)
                 .px_8()
                 .pb_6()
                 .child(

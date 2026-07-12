@@ -11,6 +11,7 @@ use ui::{
     popover::Popover,
     skeleton::Skeleton,
     v_flex, ActiveTheme as _, Disableable, Icon, IconName,
+    StyledExt,
 };
 
 use crate::components::{render_add_friend_bar, render_empty_state, render_friend_row, render_header, render_loading_state, render_not_authenticated, render_tabs, filtered_friends};
@@ -169,7 +170,7 @@ impl Render for FriendsScreen {
                     .id("friends-list")
                     .flex_1()
                     .w_full()
-                    .overflow_y_scroll()
+                    .scrollable(gpui::Axis::Vertical)
                     .child(
                         v_flex()
                             .w_full()

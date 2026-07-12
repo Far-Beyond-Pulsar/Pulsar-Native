@@ -3,6 +3,7 @@ use gpui::*;
 use std::path::PathBuf;
 use ui::{
     button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
+    StyledExt,
 };
 
 use crate::core::types::{EntryScreenView, GitFetchStatus};
@@ -104,13 +105,13 @@ pub fn render_recent_projects(
                 })
                 .when(!is_empty, |this| {
                     this.child(
-                        v_flex()
-                            .id("recent-projects-scroll")
-                            .flex_1()
-                            .min_h_0()
-                            .overflow_y_scroll()
-                            .px_8()
-                            .pb_6()
+                    v_flex()
+                        .id("recent-projects-scroll")
+                        .flex_1()
+                        .min_h_0()
+                        .scrollable(gpui::Axis::Vertical)
+                        .px_8()
+                        .pb_6()
                             .child(h_flex().flex_wrap().gap_6().children(
                                 screen.state.recent_projects.projects.clone().iter().map(
                                     |project| render_project_card(screen, project, columns, cx),
