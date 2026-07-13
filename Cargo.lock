@@ -13410,6 +13410,7 @@ dependencies = [
  "core-graphics2 0.6.1",
  "device_query 4.0.1",
  "engine_backend",
+ "engine_class_derive",
  "engine_fs",
  "engine_state",
  "glam 0.33.2",

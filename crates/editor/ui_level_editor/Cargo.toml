@@ -22,6 +22,7 @@ tool_registry = { workspace = true }
 engine_state.workspace = true
 engine_backend.workspace = true
 pulsar_reflection.workspace = true
+engine_class_derive = { workspace = true }
 pulsar_rendering.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
