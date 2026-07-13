@@ -9105,12 +9105,12 @@ dependencies = [
 name = "pulsar_scenedb"
 version = "0.1.0"
 dependencies = [
- "ahash",
- "criterion",
+ "ahash 0.8.12",
+ "criterion 0.8.2",
  "profiling 0.1.0",
  "pulsar_core",
  "pulsar_reflection",
- "rand 0.8.6",
+ "rand 0.8.7",
  "serde_json",
  "tracing",
 ]
