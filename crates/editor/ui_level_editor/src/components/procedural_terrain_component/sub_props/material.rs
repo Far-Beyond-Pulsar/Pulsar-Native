@@ -13,6 +13,10 @@ pub struct MaterialTerrainProps {
     pub metallic: f32,
     #[property(category = "Material")]
     pub material_override: String,
+    #[property(min = 1, max = 8, step = 1, category = "Material")]
+    pub layer_count: u64,
+    #[property(min = 0.0, max = 1.0, step = 0.01, category = "Material")]
+    pub blend_threshold: f32,
 }
 
 impl Default for MaterialTerrainProps {
@@ -22,6 +26,8 @@ impl Default for MaterialTerrainProps {
             roughness: 0.8,
             metallic: 0.0,
             material_override: String::new(),
+            layer_count: 3,
+            blend_threshold: 0.3,
         }
     }
 }
@@ -35,15 +41,11 @@ impl MaterialTerrainProps {
                 }
             }
         }
-        if let Some(v) = obj.get("roughness").and_then(|v| v.as_f64()).map(|v| v as f32) {
-            self.roughness = v;
-        }
-        if let Some(v) = obj.get("metallic").and_then(|v| v.as_f64()).map(|v| v as f32) {
-            self.metallic = v;
-        }
-        if let Some(v) = obj.get("material_override").and_then(|v| v.as_str()) {
-            self.material_override = v.to_string();
-        }
+        if let Some(v) = obj.get("roughness").and_then(|v| v.as_f64()).map(|v| v as f32) { self.roughness = v; }
+        if let Some(v) = obj.get("metallic").and_then(|v| v.as_f64()).map(|v| v as f32) { self.metallic = v; }
+        if let Some(v) = obj.get("material_override").and_then(|v| v.as_str()) { self.material_override = v.to_string(); }
+        if let Some(v) = obj.get("layer_count").and_then(|v| v.as_u64()) { self.layer_count = v; }
+        if let Some(v) = obj.get("blend_threshold").and_then(|v| v.as_f64()).map(|v| v as f32) { self.blend_threshold = v; }
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
@@ -51,5 +53,7 @@ impl MaterialTerrainProps {
         out.insert("roughness".to_string(), Value::from(self.roughness));
         out.insert("metallic".to_string(), Value::from(self.metallic));
         out.insert("material_override".to_string(), Value::from(self.material_override.clone()));
+        out.insert("layer_count".to_string(), Value::from(self.layer_count));
+        out.insert("blend_threshold".to_string(), Value::from(self.blend_threshold));
     }
 }

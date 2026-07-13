@@ -4,4 +4,4 @@ mod runtime;
 mod scene_props;
 mod sub_props;
 
-pub use component::TerrainComponent;
+pub use component::ProceduralTerrainComponent;

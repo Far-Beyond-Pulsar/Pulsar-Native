@@ -2,11 +2,11 @@ use engine_class_derive::register_runtime_behavior;
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 use serde_json::Value;
 
-use super::TerrainComponent;
+use super::ProceduralTerrainComponent;
 
 #[register_runtime_behavior]
-impl ComponentRuntimeBehavior for TerrainComponent {
-    const CLASS_NAME: &'static str = "TerrainComponent";
+impl ComponentRuntimeBehavior for ProceduralTerrainComponent {
+    const CLASS_NAME: &'static str = "ProceduralTerrainComponent";
 
     fn sync_component(
         _owner: &RuntimeComponentOwner,
