@@ -9,5 +9,8 @@ helio = { workspace = true }
 helio-default-graphs = { workspace = true }
 wgpu = { workspace = true }
 
+[build-dependencies]
+toml = { workspace = true }
+
 [lints]
 workspace = true

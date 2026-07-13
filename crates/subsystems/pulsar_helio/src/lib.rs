@@ -9,12 +9,15 @@ use std::sync::{Arc, Mutex};
 use helio::{DebugCameraUniform, DebugDrawState, Renderer, RendererConfig, Scene};
 use helio_default_graphs::build_default_graph_external;
 
-/// Helio revision audited against this Pulsar integration layer.
+/// Helio revision selected by the Pulsar workspace and audited against this
+/// integration layer.
 ///
 /// Generated game projects must use this exact revision as well. Otherwise
 /// Cargo can resolve two different `helio` package identities and values from
 /// a game's direct Helio dependency will not be compatible with Pulsar's API.
-pub const HELIO_GIT_REVISION: &str = "3210590541e28a3c37ec6fe5c2bc0b80214a70db";
+/// The build script reads this value from the root `[workspace.dependencies]`
+/// table and rejects mismatched Helio package revisions.
+pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
 
 /// Creates an empty Helio renderer that borrows a device managed by Pulsar.
 ///
@@ -70,30 +73,4 @@ pub fn new_external_renderer(
         debug_camera_buffer,
         cull_stats_buffer,
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::HELIO_GIT_REVISION;
-
-    #[test]
-    fn workspace_helio_dependencies_match_the_audited_revision() {
-        let workspace_manifest = include_str!("../../../../Cargo.toml");
-
-        for dependency in [
-            "helio",
-            "helio-snapshot",
-            "helio-asset-compat",
-            "helio-default-graphs",
-        ] {
-            let line = workspace_manifest
-                .lines()
-                .find(|line| line.trim_start().starts_with(dependency))
-                .unwrap_or_else(|| panic!("missing workspace dependency `{dependency}`"));
-            assert!(
-                line.contains(HELIO_GIT_REVISION),
-                "workspace dependency `{dependency}` drifted from audited Helio revision {HELIO_GIT_REVISION}: {line}"
-            );
-        }
-    }
 }

@@ -8992,6 +8992,7 @@ version = "0.1.0"
 dependencies = [
  "helio 0.18.0",
  "helio-default-graphs",
+ "toml 1.1.2+spec-1.1.0",
  "wgpu",
 ]
 
