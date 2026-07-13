@@ -50,6 +50,7 @@ flume = { workspace = true }
 # Helio rendering (wgpu-based)
 helio.workspace = true
 helio-asset-compat = { workspace = true }
+pulsar_helio.workspace = true
 glam.workspace = true
 bytemuck = "1.14"
 
