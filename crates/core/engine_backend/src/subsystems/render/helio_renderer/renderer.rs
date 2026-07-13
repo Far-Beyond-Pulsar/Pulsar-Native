@@ -13,6 +13,7 @@ use helio::{
     SceneActorId, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
+use pulsar_helio::new_external_renderer;
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
@@ -166,7 +167,7 @@ impl HelioRenderer {
             // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
-            let mut r = Renderer::new_with_external_device(
+            let mut r = new_external_renderer(
                 device_arc.clone(),
                 queue_arc.clone(),
                 RendererConfig::new(width, height, format),

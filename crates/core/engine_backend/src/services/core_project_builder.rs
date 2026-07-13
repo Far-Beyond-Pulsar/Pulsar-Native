@@ -132,14 +132,15 @@ serde = {{ version = \"1.0\", features = [\"derive\"] }}\n\
 serde_json = \"1.0\"\n\
 tracing = \"0.1\"\n\
 tracing-subscriber = {{ version = \"0.3\", features = [\"fmt\", \"env-filter\"] }}\n\
-helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\" }}\n\
+helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{helio_rev}\" }}\n\
 winit = \"0.30\"\n\n\
 [profile.dev]\n\
 opt-level = {}\n\
 debug = {}\n",
         package_lines.join("\n"),
         profile_opt,
-        profile_debug
+        profile_debug,
+        helio_rev = pulsar_helio::HELIO_GIT_REVISION,
     );
 
     virtual_fs::write_file(&cargo_toml_path, cargo_content.as_bytes())
