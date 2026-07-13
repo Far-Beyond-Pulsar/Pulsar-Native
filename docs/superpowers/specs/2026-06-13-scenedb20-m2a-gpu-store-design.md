@@ -1,6 +1,6 @@
 # SceneDB 2.0 — Milestone 2a Design: GPU-Resident Store, Delta-Sync & Retirement
 
-**Date:** 2026-06-13 (rev 2 — post adversarial review)
+**Date:** 2026-06-13 (rev 3, 2026-07-12 — single-crate GPU layer)
 **Status:** Approved (design); implementation plan to follow
 **Governs:** spec §0 / CONTRACTS.md **C0** (Ownership Law), C5 (layouts), C6 (retirement)
 **Spec of record:** `docs/superpowers/specs/SceneDB2.0.md` (Rev 2.3)
@@ -16,15 +16,29 @@
 > GPU-mirrored columns written through a GPU-layer writer so Layer 1 stays
 > graphics-free.**
 
+> **Rev 3 note (key call).** There is **no separate `pulsar_scenedb_gpu` crate**.
+> The GPU layer lands **inside `pulsar_scenedb`** as a feature-gated module
+> (`pulsar_scenedb::gpu`, `gpu` cargo feature, optional wgpu dep). C0 is an
+> *ownership* law, not a crate-shape law — and Rev 2's own findings motivated
+> this: the separate crate had no clean seam over `HandleRegistry::free`, forcing
+> the retirement primitives and the mirrored-column writer to become *public*
+> Layer-1 API whose only legitimate caller was the GPU crate. In one crate they
+> are `pub(crate)`: private machinery instead of misusable surface. The
+> graphics-free core is now enforced by feature boundary
+> (`cargo check -p pulsar_scenedb --no-default-features` in CI) rather than crate
+> boundary. Everything else in Rev 2 — index spaces, delta-sync, pin-by-serial
+> retirement, tests — is unchanged. CONTRACTS.md C0 and master design §5a
+> amended to match; spec §0 was already crate-agnostic ("SceneDB's GPU layer").
+
 ---
 
 ## 1. Goal & position in the roadmap
 
 M2a builds **only** the cross-device memory-management core that operationalizes
-the Ownership Law (C0): a new `pulsar_scenedb_gpu` crate that **owns** the
-persistent scene GPU buffers, **delta-syncs** Layer-1 (`pulsar_scenedb`) columns
-into them, and runs the **retirement engine** that safely recycles slots and rows
-against GPU completion. There is **no Helio, no rendering, no streaming grid** in
+the Ownership Law (C0): a feature-gated **`pulsar_scenedb::gpu` module** that
+**owns** the persistent scene GPU buffers, **delta-syncs** the graphics-free
+core's columns into them, and runs the **retirement engine** that safely recycles
+slots and rows against GPU completion. There is **no Helio, no rendering, no streaming grid** in
 M2a — it is verified headless on a wgpu device via buffer readback, with a
 controllable submission-completion signal standing in for the (future) GPU
 consumer.
@@ -38,30 +52,42 @@ GPU side **re-materializes from the CPU-authoritative columns** (Test 14).
 | Milestone | Scope | Status |
 |---|---|---|
 | Stage 0, M1 (Layer 1) | Spec/contracts; CPU SoA store, handles, queries, leases | **Done** |
-| **M2a (this doc)** | `pulsar_scenedb_gpu`: generic SceneBuffer machinery, instance + generation buffers, delta-sync, pin-by-serial retirement | **Designing** |
+| **M2a (this doc)** | `pulsar_scenedb::gpu` (feature-gated module): generic SceneBuffer machinery, instance + generation buffers, delta-sync, pin-by-serial retirement | **Designing** |
 | M2b | Asset integration (geometry/vertex-index + cluster/meshlet buffers, **owned by SceneDB**, load-time upload); concentric streaming grid; harvest + DEI; HLOD cross-fade; full compile-time phase machine | Planned (master design) |
 | M3 | Helio inversion: bind SceneDB buffers, **C5 shader rework**, material-buffer definition, bindless texture array, cull/indirect/VG/HLOD passes; **Test 13** | Planned |
 | M4 | Integration, feature-flag switchover, ECS replacement | Planned |
 
-## 2. Crate structure, device context & ownership (C0)
+## 2. Module structure, device context & ownership (C0)
 
-New crate `crates/pulsar_scenedb_gpu`:
+**One crate.** The GPU layer is `pulsar_scenedb::gpu` — a module of
+`crates/core/pulsar_scenedb`, gated end-to-end:
 
-- **Depends on** `wgpu` (the Far-Beyond-Pulsar fork, rev-matched to Helio's
-  `fce5b80…` so buffers are shareable) **and** `pulsar_scenedb`. **Never on
-  Helio.** CI guards the absence of any `pulsar_scenedb*` → Helio edge.
+- **Feature:** `gpu = ["dep:wgpu"]`, **off by default** (`default = []`).
+  `wgpu = { workspace = true, optional = true }` — the workspace already pins the
+  Far-Beyond-Pulsar fork at `fce5b80…`, rev-matched to Helio so buffers are
+  shareable. All GPU code lives under `src/gpu/` behind `#[cfg(feature = "gpu")]`;
+  headless-wgpu integration tests declare `required-features = ["gpu"]`.
+- **Graphics-free core, enforced:** `cargo check -p pulsar_scenedb
+  --no-default-features` must stay green in CI — the core (storage, queries,
+  SIMD, leases) compiles with zero graphics dependency. The no-`pulsar_scenedb`
+  → Helio edge guard remains. These two checks replace the old crate boundary.
+- **Privileged access is the point:** the GPU layer's retirement, pinning, and
+  mirrored-column writer reach core internals (columns, liveness words, registry
+  free list, `compact()`) as **`pub(crate)`** peers. Nothing GPU-only becomes
+  public API for the rest of the engine to misuse (§4, §5).
 - **Device context:** constructed with `Arc<wgpu::Device>` + `Arc<wgpu::Queue>`
   supplied by a concrete **engine-level owner** — an `EngineGpuContext` that holds
-  the `Arc`s and is owned by `engine_backend` *above* both `pulsar_scenedb_gpu`
+  the `Arc`s and is owned by `engine_backend` *above* both SceneDB's GPU layer
   and any renderer. (Today the device reaches Helio through
   `Renderer::new_with_external_device`; M2a/M4 formalize `EngineGpuContext` as the
   single owner so the device + scene buffers provably outlive a renderer — the
   Test 13 precondition. Building `EngineGpuContext` is an M2a task.)
-- **Exposes** read-only buffer/bind-group references for a future Helio to bind.
-  Nothing flows renderer → store.
+- **Exposes** read-only buffer/bind-group references for a future Helio to bind
+  (Helio depends on `pulsar_scenedb` with `features = ["gpu"]`). Nothing flows
+  renderer → store.
 
-Layer 1 (`pulsar_scenedb`) stays **graphics-free**; all wgpu contact and all
-dirty/GPU state live in `pulsar_scenedb_gpu`.
+The graphics-free core keeps all authority over CPU state; all wgpu contact and
+all dirty/GPU state live in the `gpu` module.
 
 ## 3. Index spaces (the corrected foundation)
 
@@ -110,14 +136,15 @@ The mechanism that ends per-frame full re-upload.
 
 - **Dirty tracking (row-indexed).** Each GPU-mirrored column has a **row dirty
   bitmask** — atomic `u64` words, 1 bit per row, the exact shape of M1's
-  row-indexed `LivenessMask`, owned by `pulsar_scenedb_gpu`.
-- **Write hook (keeps Layer 1 graphics-free).** GPU-mirrored columns are **written
-  through a `pulsar_scenedb_gpu` column-writer** (`store.write_transform(handle,
-  mat4)`), which writes the byte into the Layer-1 column **and** sets the row's
-  dirty bit in one operation. Layer 1 exposes the column for the writer to mutate
-  but holds no dirty/GPU state; raw `user_column_mut` remains for non-mirrored
-  columns. (This resolves the layering problem: there is one mutation path for
-  mirrored data and it is the only place a dirty bit is set.)
+  row-indexed `LivenessMask`, owned by the `gpu` module.
+- **Write hook (one mutation path).** GPU-mirrored columns are **written through
+  the `gpu` module's column-writer** (`store.write_transform(handle, mat4)`),
+  which writes the byte into the core column **and** sets the row's dirty bit in
+  one operation. The writer reaches the column via `pub(crate)` access — no
+  public column-exposure API is needed (the Rev 2 contortion this replaces); the
+  graphics-free core holds no dirty/GPU state (all of it is `#[cfg(feature =
+  "gpu")]`). Raw `user_column_mut` remains for non-mirrored columns. (One
+  mutation path for mirrored data; the only place a dirty bit is set.)
 - **Compaction re-sync.** `compact()` (M1) moves a live row's bytes to a new index
   and updates `slot_to_row`. The GPU layer's compaction wrapper **marks both the
   destination row dirty** (its bytes changed) so the move is re-uploaded. (Source
@@ -146,8 +173,10 @@ lifetime tool. In M2a the concrete user is retirement; the broader user (live
 rows pinned from harvest until their frame's draw completes) lands with the
 harvest in M2b/M3 — same mechanism.
 
-**New Layer-1 primitives** (added to `pulsar_scenedb`/`CellStorage`, graphics-free
-— they take a `u64` pin token, not a GPU type):
+**New core primitives** (added to `CellStorage` in the graphics-free core — they
+take a `u64` pin token, not a GPU type, and are **`pub(crate)`**: their only
+caller is the `gpu` module's retirement engine, so they never become public
+surface the rest of the engine could misuse):
 
 - `mark_pending_retire(handle) -> row`: sets the liveness bit dead (excluded from
   next harvest) and records the row as pin-pending. **Does NOT** null
@@ -181,9 +210,10 @@ frees rows the GPU is done with; compact densifies the unpinned rows (marking
 moved rows dirty); sync uploads the final row state. The next frame's harvest sees
 the post-compaction layout.
 
-This keeps the slot allocator (Layer 1) and the GPU buffer (M2a) under one owner —
-the reason C0 requires single ownership. M1's immediate-free path is retained for
-non-GPU (CPU-only/headless-logic) use; the GPU store installs the deferral.
+This keeps the slot allocator (core) and the GPU buffer (`gpu` module) under one
+owner — literally one crate, the reason C0 requires single ownership. M1's
+immediate-free path is retained for non-GPU (CPU-only/headless-logic) use; the
+GPU store installs the deferral.
 
 ## 6. Phase coordination (minimal)
 
@@ -200,8 +230,8 @@ compile-time phase-guard types are M2b/M3.
 
 ## 7. Components (units, each independently testable)
 
-- `EngineGpuContext` — owns `Arc<Device>`/`Arc<Queue>`; lives above SceneDB-GPU and
-  any renderer (in `engine_backend`).
+- `EngineGpuContext` — owns `Arc<Device>`/`Arc<Queue>`; lives above SceneDB's GPU
+  layer and any renderer (in `engine_backend`).
 - `SceneBuffer<T: Pod>` — one persistent **row-indexed** SSBO + its row dirty
   bitmask + coalesce-and-upload. Generic over the C5 element type.
 - `GenerationBuffer` — the **slot-indexed** SSBO mirroring `generations()`; written
@@ -213,8 +243,11 @@ compile-time phase-guard types are M2b/M3.
 - `SubmissionTracker` — monotonic serials + `on_submitted_work_done` → highest
   complete serial.
 
-New Layer-1 surface (graphics-free): `CellStorage::mark_pending_retire`,
+New core surface (graphics-free, **`pub(crate)`**): `CellStorage::mark_pending_retire`,
 `commit_retire`, pinned-row tracking, and `compact()`'s skip-pinned rule.
+
+All components above except `EngineGpuContext`'s owner live in
+`pulsar_scenedb::gpu` under `#[cfg(feature = "gpu")]`.
 
 ## 8. Error handling
 

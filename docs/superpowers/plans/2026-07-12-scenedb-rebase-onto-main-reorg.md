@@ -73,9 +73,10 @@ snapshots to honor §8.1 no-alloc (`query_aabb`/`query_frustum` still allocate a
 1. Commit the M2a design Rev 2 doc once its author review is finished.
 2. `git push --force-with-lease origin scenedb` (remote still holds the pre-rebase
    47-commit series; local had 1 unpushed commit before the rebase).
-3. Write the M2a implementation plan; M2a work starts `pulsar_scenedb_gpu` at
-   `crates/core/pulsar_scenedb_gpu` (wgpu dep via the `crates/graphics/wgpu`
-   submodule / `[patch]` as main does).
+3. Write the M2a implementation plan. **Key call (2026-07-12, post-rebase): no
+   separate GPU crate** — M2a lands as the feature-gated `pulsar_scenedb::gpu`
+   module (`gpu` feature, optional wgpu workspace dep, already pinned to the
+   Helio-matched fork rev). See M2a design Rev 3 + amended CONTRACTS.md C0.
 4. Delete `backup/scenedb-pre-reorg-2026-07-12` only after the pushed branch is
    verified.
 

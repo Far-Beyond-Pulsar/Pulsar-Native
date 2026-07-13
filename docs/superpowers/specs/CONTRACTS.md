@@ -18,15 +18,22 @@ everything except the scene object data. It binds SceneDB-owned buffers and
 reads them.
 
 **Dependency direction (enforced):** Helio depends on SceneDB; **SceneDB never
-depends on Helio** and stays renderer-agnostic. Crate shape: Layer 1
-`pulsar_scenedb` is graphics-free; a Layer 2 GPU crate (`pulsar_scenedb_gpu`)
-depends on wgpu + `pulsar_scenedb` and owns the device-side scene buffers; Helio
-depends on `pulsar_scenedb_gpu` for those buffers. No edge from any `pulsar_scenedb*`
-crate to Helio.
+depends on Helio** and stays renderer-agnostic. Crate shape: **one crate,
+`pulsar_scenedb`, owns both sides.** Its core (Layer 1) is graphics-free; the
+device-side store is a feature-gated GPU layer — module `pulsar_scenedb::gpu`
+behind the `gpu` cargo feature (optional wgpu dep, off by default). **There is
+no separate GPU crate.** Helio depends on `pulsar_scenedb` with
+`features = ["gpu"]` for those buffers. No edge from `pulsar_scenedb` to Helio.
+
+**Graphics-free enforcement:** the boundary is the feature, not a crate. CI must
+keep `cargo check -p pulsar_scenedb --no-default-features` green (the core
+compiles with zero graphics dependency) alongside the no-`pulsar_scenedb`→Helio
+edge guard.
 
 **Device ownership:** the wgpu `Device`/`Queue` is an engine-level context that
-outlives any renderer instance. SceneDB's GPU crate allocates scene buffers on
-it; Helio is handed the context + SceneDB's buffer/bind-group references.
+outlives any renderer instance. SceneDB's GPU layer (`pulsar_scenedb::gpu`)
+allocates scene buffers on it; Helio is handed the context + SceneDB's
+buffer/bind-group references.
 Dropping Helio must not drop the device or any scene buffer.
 
 **Acceptance criterion (C0 is unsatisfied until this passes):** Test 13 —

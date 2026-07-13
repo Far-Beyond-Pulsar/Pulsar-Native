@@ -62,7 +62,7 @@ as the engine's single authoritative cross-device memory management system.
 | Decision | Choice | Rationale |
 |---|---|---|
 | **Data ownership (LAW)** | **SceneDB owns all scene data CPU+GPU; Helio owns no scene state and depends on SceneDB** | Spec §0 / CONTRACTS.md C0; single authoritative cross-device store, enforced by dependency direction; gated by Test 13 |
-| **Crate structure** | Layer 1 `pulsar_scenedb` (graphics-free, done) + Layer 2 `pulsar_scenedb_gpu` (wgpu + `pulsar_scenedb`; owns device scene buffers) + Helio (depends on `pulsar_scenedb_gpu`) | Keeps Layer 1 graphics-free per spec; puts GPU-buffer ownership in SceneDB; forbids any `pulsar_scenedb*`→Helio edge |
+| **Crate structure** | One crate: `pulsar_scenedb` = graphics-free core (Layer 1, done) + feature-gated GPU layer (module `pulsar_scenedb::gpu` behind the `gpu` feature, optional wgpu dep; owns device scene buffers). **No separate GPU crate.** Helio depends on `pulsar_scenedb` with `features = ["gpu"]` | Single owner of both device sides of every slot (C0); retirement/pin/compaction reach column internals as `pub(crate)` peers instead of widened public API; graphics-free core enforced by `cargo check --no-default-features` in CI; forbids any `pulsar_scenedb`→Helio edge |
 | **GPU device ownership** | wgpu `Device`/`Queue` is an engine-level context shared by reference; outlives any renderer | Required so scene buffers survive a Helio teardown (Test 13) |
 | Scope | Full spec, both repos, one master plan | User decision |
 | Core home | `cp crates/pulsar_ecs → crates/pulsar_scenedb`; original kept as reference; copy evolved into Layer 1 (done) | Preserves working ECS lineage (handles, dense ids, benches) while allowing a clean break |
@@ -156,13 +156,15 @@ orchestration. Detailed design for M2a:
 
 ### 5a. Milestone 2a — GPU-resident store, delta-sync & retirement
 
-**This is where the Ownership Law (§1.0) becomes real.** M2a creates the new
-`pulsar_scenedb_gpu` crate — the SceneDB-owned device-side store — and proves it
-standalone (no Helio, no rendering, headless wgpu).
+**This is where the Ownership Law (§1.0) becomes real.** M2a builds the
+device-side store as a **feature-gated GPU layer inside `pulsar_scenedb`**
+(module `pulsar_scenedb::gpu`, `gpu` cargo feature, optional wgpu dep — no
+separate crate) and proves it standalone (no Helio, no rendering, headless wgpu).
 
-1. **2a.0 GPU-resident store + device context (`pulsar_scenedb_gpu`).** New crate
-   depending on `wgpu` (fork, rev-matched to Helio) + `pulsar_scenedb`, **never
-   Helio**. Holds the engine-supplied `Arc<Device>`/`Arc<Queue>` (outlives any
+1. **2a.0 GPU-resident store + device context (`pulsar_scenedb::gpu`).** New
+   feature-gated module pulling `wgpu` (fork, rev-matched to Helio) as an
+   optional dep, **never Helio**. Holds the engine-supplied
+   `Arc<Device>`/`Arc<Queue>` (outlives any
    renderer). Owns four persistent SSBOs in canonical compact C5 layout: instance
    64 B (mat4 only — derived normal/AABB not stored), material 32 B, mesh metadata
    72 B, generation buffer u32/slot. Allocated once. Exposes read-only buffer/bind
@@ -214,9 +216,9 @@ Test 12 (sparse-cell DEI compaction).
 
 Runs in the Helio repo against staged/mock harvest data; can overlap Milestone 2 once
 Stage 0 contracts are frozen. **Per the Ownership Law (§1.0): Helio allocates and owns
-NO scene buffers — those are created and owned by `pulsar_scenedb_gpu` (M2a.0). Helio
-depends on `pulsar_scenedb_gpu`, receives the device context + buffer/bind-group
-references, and owns only the derived per-frame data it produces.** Helio's work is
+NO scene buffers — those are created and owned by `pulsar_scenedb::gpu` (M2a.0). Helio
+depends on `pulsar_scenedb` with `features = ["gpu"]`, receives the device context +
+buffer/bind-group references, and owns only the derived per-frame data it produces.** Helio's work is
 passes, not ownership.
 
 1. **3.1 Bind SceneDB's buffers + own only derived data.** Helio takes the engine
