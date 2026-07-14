@@ -13,8 +13,8 @@ tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio = { workspace = true }
 helio-asset-compat = { workspace = true }
-helio-voxel-core = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio-voxel-core" }
-libhelio = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/libhelio" }
+helio-voxel-core = { workspace = true }
+libhelio = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = "1"
 gpui-ce.workspace = true
