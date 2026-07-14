@@ -23,6 +23,19 @@ pub struct CellStorage {
     user_column_count: usize,
     /// Token id → user-column index, populated only via `from_cell_type`.
     token_index: Vec<(crate::component::ComponentId, usize)>,
+    /// Row pin bitmask (M2a §5): a set bit means the row is in the
+    /// pin-by-serial deferred-retirement window — excluded from compaction
+    /// even though liveness already marked it dead. One bit per row, packed
+    /// 64 rows per word.
+    pins: Vec<u64>,
+}
+
+/// In-flight retirement record (M2a §5). Produced by `mark_pending_retire`,
+/// consumed by `commit_retire` once the submission serial completes.
+pub(crate) struct PendingRetire {
+    pub slot: u32,
+    pub row: u32,
+    pub next_gen: u32,
 }
 
 impl CellStorage {
@@ -37,6 +50,7 @@ impl CellStorage {
             registry: HandleRegistry::new(),
             user_column_count: user_columns.len(),
             token_index: Vec::new(),
+            pins: vec![0u64; capacity.div_ceil(64) as usize],
         })
     }
 
@@ -94,8 +108,55 @@ impl CellStorage {
         let Some(row) = self.registry.row_of(handle) else {
             return false;
         };
+        debug_assert!(
+            !self.is_row_pinned(row),
+            "free() on a pending-retire row — use the deferred path end-to-end"
+        );
         self.liveness.set_dead(row);
         self.registry.free(handle)
+    }
+
+    #[inline]
+    pub(crate) fn is_row_pinned(&self, row: u32) -> bool {
+        self.pins[(row / 64) as usize] & (1u64 << (row % 64)) != 0
+    }
+
+    fn pin_row(&mut self, row: u32) {
+        self.pins[(row / 64) as usize] |= 1u64 << (row % 64);
+    }
+
+    fn unpin_row(&mut self, row: u32) {
+        self.pins[(row / 64) as usize] &= !(1u64 << (row % 64));
+    }
+
+    /// Begin deferred retirement (M2a §5): liveness-dead (excluded from new
+    /// harvests) and pinned (excluded from compaction), but the registry is
+    /// untouched — the handle intentionally still resolves by row during the
+    /// in-flight window. None for stale handles or already-pending rows.
+    pub(crate) fn mark_pending_retire(&mut self, handle: Handle) -> Option<PendingRetire> {
+        let row = self.registry.row_of(handle)?;
+        if self.is_row_pinned(row) {
+            return None;
+        }
+        self.liveness.set_dead(row);
+        self.pin_row(row);
+        Some(PendingRetire {
+            slot: handle.index(),
+            row,
+            next_gen: handle.generation() + 1,
+        })
+    }
+
+    /// Complete deferred retirement: unpin the row (compactable) and run the
+    /// registry tail (generation bump + slot pooling). The caller must have
+    /// written `pending.next_gen` to the VRAM generation buffer FIRST (C6).
+    pub(crate) fn commit_retire(&mut self, pending: PendingRetire) {
+        self.unpin_row(pending.row);
+        let new_gen = self.registry.commit_retire(pending.slot);
+        debug_assert_eq!(
+            new_gen, pending.next_gen,
+            "generation drift between mark and commit"
+        );
     }
 
     /// Frame-boundary swap-and-pop compaction (spec §4.4). Moves the last
@@ -295,6 +356,36 @@ mod tests {
         for &h in &[hs[1], hs[3], hs[5]] {
             assert_eq!(c.row_of(h), None);
         }
+    }
+
+    #[test]
+    fn pending_retire_keeps_handle_resolvable_but_not_live() {
+        let mut c = cell();
+        let h = c.alloc().unwrap();
+        let p = c.mark_pending_retire(h).unwrap();
+        assert_eq!(p.slot, h.index());
+        assert_eq!(p.next_gen, h.generation() + 1);
+        // In-flight window: row still resolvable (GPU's last harvest is valid)…
+        assert_eq!(c.row_of(h), Some(p.row));
+        assert!(c.is_row_pinned(p.row));
+        // …but excluded from liveness (won't appear in new harvests).
+        assert_eq!(c.live_count(), 0);
+        // Double-mark is rejected.
+        assert!(c.mark_pending_retire(h).is_none());
+    }
+
+    #[test]
+    fn commit_retire_rejects_stale_handle_and_recycles_slot() {
+        let mut c = cell();
+        let h = c.alloc().unwrap();
+        let p = c.mark_pending_retire(h).unwrap();
+        let row = p.row;
+        c.commit_retire(p);
+        assert!(!c.is_row_pinned(row));
+        assert_eq!(c.row_of(h), None, "stale after commit");
+        let h2 = c.alloc().unwrap();
+        assert_eq!(h2.index(), h.index(), "slot recycled only after commit");
+        assert_eq!(h2.generation(), h.generation() + 1);
     }
 
     #[test]

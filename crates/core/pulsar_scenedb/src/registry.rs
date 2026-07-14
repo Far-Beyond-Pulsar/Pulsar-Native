@@ -67,6 +67,30 @@ impl HandleRegistry {
         true
     }
 
+    /// Deferred tail of [`free`](Self::free) for the pin-by-serial retirement
+    /// path (M2a §5): nulls the row mapping, bumps the generation (permanent
+    /// retirement at u32::MAX), pools the slot. Returns the new generation.
+    /// Caller (CellStorage) guarantees the slot is live-pending — the handle
+    /// was validated at mark time and the slot cannot be freed twice because
+    /// the row stays pinned until this call.
+    pub(crate) fn commit_retire(&mut self, slot: u32) -> u32 {
+        let s = slot as usize;
+        debug_assert!(
+            self.slot_to_row[s] != NULL_ROW,
+            "commit_retire: slot {slot} is not allocated"
+        );
+        self.slot_to_row[s] = NULL_ROW;
+        debug_assert!(self.generations[s] < u32::MAX);
+        let next = self.generations[s] + 1;
+        self.generations[s] = next;
+        if next == u32::MAX {
+            self.retired_count += 1;
+        } else {
+            self.free.push(slot);
+        }
+        next
+    }
+
     /// Current row for a handle, validating the generation. None if stale,
     /// invalid, or freed.
     #[inline]
@@ -191,5 +215,28 @@ mod tests {
         let h = reg.allocate(5);
         reg.set_row(h.index(), 2);
         assert_eq!(reg.row_of(h), Some(2));
+    }
+
+    #[test]
+    fn commit_retire_is_the_deferred_tail_of_free() {
+        let mut reg = HandleRegistry::new();
+        let h = reg.allocate(3);
+        let new_gen = reg.commit_retire(h.index());
+        assert_eq!(new_gen, h.generation() + 1);
+        assert_eq!(reg.row_of(h), None);
+        let h2 = reg.allocate(0);
+        assert_eq!(h2.index(), h.index());
+        assert_eq!(h2.generation(), new_gen);
+    }
+
+    #[test]
+    fn commit_retire_permanently_retires_at_gen_max() {
+        let mut reg = HandleRegistry::new();
+        let h = reg.allocate(0);
+        reg.force_generation(h.index(), u32::MAX - 1);
+        assert_eq!(reg.commit_retire(h.index()), u32::MAX);
+        assert_eq!(reg.retired_count(), 1);
+        let h2 = reg.allocate(0);
+        assert_ne!(h2.index(), h.index(), "retired slot never reissued");
     }
 }
