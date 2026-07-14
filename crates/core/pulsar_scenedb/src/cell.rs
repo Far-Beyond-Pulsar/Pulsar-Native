@@ -423,6 +423,10 @@ mod tests {
         let p = c.mark_pending_retire(hb).unwrap(); // dead but pinned
         c.free(ha); // dead, unpinned → compactable hole at row 0
         c.compact();
+        // Physical survival: hc (moved into row 0) + pinned hb = 2 rows. A
+        // pin-ignoring compaction would tail-pop hb's row without touching
+        // the registry mapping, so row_of alone cannot catch that.
+        assert_eq!(c.rows_in_use(), 2, "pinned row physically survives compaction");
         // Pinned row untouched at its original index; its bytes are preserved.
         assert!(c.is_row_pinned(row_b));
         assert_eq!(c.row_of(hb), Some(row_b), "pinned row not moved");

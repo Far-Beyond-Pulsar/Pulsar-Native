@@ -265,6 +265,10 @@ fn test6_retirement_invariant() {
     // Serial INCOMPLETE: boundary runs but nothing retires.
     assert_eq!(store.retire(&mut cell), 0, "incomplete serial must not retire");
     store.compact(&mut cell);
+    // Physical survival: the only occupied row is h's pinned row (h2 is not
+    // alloc'd yet). A pin-ignoring compaction would tail-pop it to 0 without
+    // touching the registry mapping, so row_of alone cannot catch that.
+    assert_eq!(cell.rows_in_use(), 1, "pinned row physically survives compaction (only h's row)");
     assert_eq!(cell.row_of(h), Some(row), "row not compacted while pinned");
     store.sync(&cell);
     let h2 = cell.alloc().unwrap();
