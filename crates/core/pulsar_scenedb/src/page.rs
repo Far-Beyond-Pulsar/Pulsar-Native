@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn mat4_array_is_a_column_type() {
-        // Compile-time: ColumnDesc::of requires T: Pod.
+        // [f32; 16] is a Pod column element (C5 instance mat4); size must be 64.
         let d = ColumnDesc::of::<[f32; 16]>();
         assert_eq!(d.size, 64);
     }

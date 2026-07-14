@@ -77,10 +77,10 @@ impl Drop for Lease<'_> {
 /// Holds reusable query buffers so the harvest path never touches the heap
 /// mid-frame after warm-up.
 ///
-/// Note: M1b provides only a `u32` buffer (`get_u32`) for query token output.
-/// The M2 harvest path also needs `u64` liveness-word scratch (to replace the
-/// per-call `Vec<u64>` snapshot in `query_aabb`/`query_frustum`); a `get_u64`
-/// companion is deferred to M2.
+/// The `u32` buffer (`get_u32`) backs query token output (M1b). The `u64`
+/// buffer (`get_u64`) backs liveness-word scratch and landed in M2a; wiring
+/// it into the harvest path (replacing the per-call `Vec<u64>` snapshot in
+/// `query_aabb`/`query_frustum`) is M2b scope.
 pub struct Scratchpad {
     u32_buf: Vec<u32>,
     u64_buf: Vec<u64>,

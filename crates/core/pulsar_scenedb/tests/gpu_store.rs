@@ -271,6 +271,10 @@ fn test6_retirement_invariant() {
     assert_eq!(cell.rows_in_use(), 1, "pinned row physically survives compaction (only h's row)");
     assert_eq!(cell.row_of(h), Some(row), "row not compacted while pinned");
     store.sync(&cell);
+    // Still the incomplete-serial window (h's slot not yet reissued): the
+    // write window is open again post-sync, but the handle is pending-retire
+    // and must be rejected.
+    assert!(!store.write_transform(&mut cell, h, &mat(0.0)), "pending-retire handle must not be writable");
     let h2 = cell.alloc().unwrap();
     assert_ne!(h2.index(), h.index(), "slot not reissued while in flight");
     assert_eq!(cell.live_count(), 1, "pending row absent from harvest (only h2 lives)");

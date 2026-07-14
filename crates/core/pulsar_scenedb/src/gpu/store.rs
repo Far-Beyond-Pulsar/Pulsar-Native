@@ -105,6 +105,9 @@ impl GpuStore {
         let Some(row) = cell.row_of(handle) else {
             return false;
         };
+        if cell.is_row_pinned(row) {
+            return false; // in-flight retirement: logically deleted (§8) — no further mutation
+        }
         let col = cell
             .column_for_mut::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
@@ -170,7 +173,17 @@ impl GpuStore {
 
     /// Test 14: build a fresh store on a fresh device purely from the
     /// CPU-authoritative columns (no GPU-only state exists to lose).
+    ///
+    /// Precondition: no rows may be pinned (all pending retires drained via
+    /// `retire()`) — recovery of in-flight retirement across a device loss is
+    /// M4 scope; rebuilding while a pin is outstanding would strand it
+    /// permanently (the pin bit lives only in `CellStorage`, and this fresh
+    /// store has no queued `PendingRetire` to eventually unpin it).
     pub fn rebuild_from(ctx: &EngineGpuContext, cfg: GpuStoreConfig, cell: &CellStorage) -> Self {
+        debug_assert!(
+            (0..cell.rows_in_use()).all(|r| !cell.is_row_pinned(r)),
+            "rebuild_from with in-flight retirement: drain retire() before device-loss rebuild — pins would be permanently stranded"
+        );
         let mut store = Self::new(ctx, cfg);
         let rows = cell.rows_in_use();
         for row in 0..rows {

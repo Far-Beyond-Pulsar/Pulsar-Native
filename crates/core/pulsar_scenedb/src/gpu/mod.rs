@@ -1,6 +1,10 @@
 //! SceneDB GPU layer (M2a, design Rev 3): persistent scene SSBOs, CPU→GPU
 //! delta-sync, and pin-by-serial retirement. Feature-gated (`gpu`); the core
 //! crate stays graphics-free (CONTRACTS C0).
+//!
+//! Mirrored columns must be written via `GpuStore::write_transform` and
+//! compacted via `GpuStore::compact`; raw column access bypasses dirty
+//! tracking — hard enforcement arrives with the M2b phase machine.
 
 mod buffer;
 mod context;
