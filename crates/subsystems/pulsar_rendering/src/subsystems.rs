@@ -320,7 +320,7 @@ impl VoxelGrid {
                         (bz * bricks_per_axis * bricks_per_axis + by * bricks_per_axis + bx)
                             as usize;
                     const WORDS_PER_BRICK: usize =
-                        (BRICK_SIZE * BRICK_SIZE * BRICK_SIZE) as usize / 4;
+                        ((BRICK_SIZE * BRICK_SIZE * BRICK_SIZE) as usize).div_ceil(4);
                     let mut brick_words = [0u32; WORDS_PER_BRICK];
 
                     let mut occupied = false;
@@ -386,7 +386,7 @@ impl VoxelGrid {
     ) -> Vec<(u32, [f32; 3])> {
         const PADDED_DIM: u32 = BRICK_SIZE + 1; // 9
         const WORDS_PER_BRICK: usize =
-            (PADDED_DIM * PADDED_DIM * PADDED_DIM) as usize / 4; // 183
+            ((PADDED_DIM * PADDED_DIM * PADDED_DIM) as usize).div_ceil(4); // 183
         let bricks_per_axis = VOXEL_TERRAIN_GRID_DIM / BRICK_SIZE;
         let half = VOXEL_TERRAIN_GRID_DIM as f32 / 2.0;
         let mut touched = Vec::new();
