@@ -213,3 +213,35 @@ fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
     let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
     assert_eq!(&gpu_gens[..regs.len()], &regs[..]);
 }
+
+#[test]
+fn generation_uploads_are_shadow_gated_to_changes_only() {
+    let ctx = test_context();
+    let (mut store, mut cell) = store_and_cell(&ctx);
+    let h = cell.alloc().unwrap();
+    // Same write window: two transform writes, one generation upload.
+    assert!(store.write_transform(&mut cell, h, &mat(1.0)));
+    assert!(store.write_transform(&mut cell, h, &mat(2.0)));
+    assert_eq!(
+        store.generation_write_count(),
+        1,
+        "repeat writes to a live handle upload its generation exactly once"
+    );
+    // Next frame: a moving object's write is still generation-silent.
+    frame_boundary(&mut store, &mut cell);
+    assert!(store.write_transform(&mut cell, h, &mat(3.0)));
+    assert_eq!(
+        store.generation_write_count(),
+        1,
+        "unchanged generation is never re-uploaded across frames"
+    );
+    // Retirement bumps the generation → exactly one more upload.
+    let serial = store.tracker().next_serial();
+    assert!(store.free_deferred(&mut cell, h, serial));
+    store.tracker().force_complete(serial);
+    store.retire(&mut cell);
+    assert_eq!(store.generation_write_count(), 2, "retirement writes the bumped generation");
+    // Close the frame boundary (phase machine: retire → compact → sync).
+    store.compact(&mut cell);
+    store.sync(&cell);
+}

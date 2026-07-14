@@ -2,6 +2,7 @@ use super::{EngineGpuContext, GenerationBuffer, SceneBuffer, SubmissionTracker, 
 use crate::cell::{CellStorage, PendingRetire};
 use crate::handle::Handle;
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Fixed store capacities (SSBOs never reallocate — exceeding them is a hard
@@ -35,6 +36,16 @@ pub struct GpuStore {
     tracker: SubmissionTracker,
     pending: VecDeque<QueuedRetire>,
     phase: Phase,
+    /// CPU-side shadow of the last generation uploaded per slot (§4
+    /// delta-minimality on the write path): `write_transform` only issues a
+    /// generation-buffer write when the handle's generation differs from the
+    /// shadow. Zero-initialized, matching VRAM's zero-init. Atomic because
+    /// `write_transform` takes `&self` (the same Relaxed dirty-word pattern
+    /// as `SceneBuffer`).
+    gen_shadow: Vec<AtomicU32>,
+    /// Instrumentation: total `generations.write(...)` calls issued, so tests
+    /// can assert generation-upload minimality.
+    gen_writes: AtomicU64,
 }
 
 impl GpuStore {
@@ -47,11 +58,31 @@ impl GpuStore {
             tracker: SubmissionTracker::new(),
             pending: VecDeque::new(),
             phase: Phase::Write,
+            gen_shadow: (0..cfg.max_slots).map(|_| AtomicU32::new(0)).collect(),
+            gen_writes: AtomicU64::new(0),
         }
     }
 
     pub fn tracker(&self) -> &SubmissionTracker {
         &self.tracker
+    }
+
+    /// Test instrument: how many generation-buffer writes this store has
+    /// issued (asserting upload minimality, §4).
+    #[doc(hidden)]
+    pub fn generation_write_count(&self) -> u64 {
+        self.gen_writes.load(Ordering::Relaxed)
+    }
+
+    /// Shadow-gated generation upload: writes VRAM (and the shadow) only when
+    /// `generation` differs from the last value uploaded for `slot`.
+    fn write_generation(&self, slot: u32, generation: u32) {
+        if self.gen_shadow[slot as usize].load(Ordering::Relaxed) == generation {
+            return;
+        }
+        self.generations.write(&self.queue, slot, generation);
+        self.gen_shadow[slot as usize].store(generation, Ordering::Relaxed);
+        self.gen_writes.fetch_add(1, Ordering::Relaxed);
     }
 
     /// The single mutation path for the GPU-mirrored transform column (§4):
@@ -63,10 +94,12 @@ impl GpuStore {
     /// trigger only ever bumps a slot's entry on retire, so a slot's *first*
     /// generation (assigned at `alloc`, which does not pass through
     /// `GpuStore` at all) would otherwise never reach VRAM until that slot
-    /// is later retired. Writing it here — the only call site that ever
-    /// observes a live handle — keeps the generation buffer a true mirror of
-    /// `HandleRegistry::generations()` for every allocated slot, not just
-    /// retired ones (C6).
+    /// is later retired. The stamp is shadow-gated (`gen_shadow`): a
+    /// generation reaches VRAM on the first write after alloc and on
+    /// retirement — NOT per `write_transform` call — so repeat writes to a
+    /// live handle (the §4 hot path) issue zero generation-buffer traffic
+    /// while the buffer still mirrors `HandleRegistry::generations()` for
+    /// every allocated slot (C6).
     pub fn write_transform(&self, cell: &mut CellStorage, handle: Handle, m: &[f32; 16]) -> bool {
         debug_assert_eq!(self.phase, Phase::Write, "mutation outside the write window");
         let Some(row) = cell.row_of(handle) else {
@@ -77,7 +110,7 @@ impl GpuStore {
             .expect("cell has no [f32; 16] transform column");
         col[row as usize] = *m;
         self.transforms.mark_row_dirty(row);
-        self.generations.write(&self.queue, handle.index(), handle.generation());
+        self.write_generation(handle.index(), handle.generation());
         true
     }
 
@@ -106,7 +139,10 @@ impl GpuStore {
                 break; // FIFO serials: everything behind is also incomplete
             }
             let QueuedRetire { pending, .. } = self.pending.pop_front().unwrap();
-            self.generations.write(&self.queue, pending.slot, pending.next_gen);
+            // Retirement always bumps the generation, so the shadow-gated
+            // write always lands in VRAM (and updates the shadow) before the
+            // registry commit can recycle the slot (C6).
+            self.write_generation(pending.slot, pending.next_gen);
             cell.commit_retire(pending);
             drained += 1;
         }
@@ -144,7 +180,13 @@ impl GpuStore {
             .column_for::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
         store.transforms.sync(&store.queue, &col[..rows as usize]);
-        store.generations.rebuild(&store.queue, cell.registry().generations());
+        let gens = cell.registry().generations();
+        store.generations.rebuild(&store.queue, gens);
+        // Seed the shadow with every uploaded generation so it never drifts
+        // from VRAM (slots beyond `gens.len()` stay 0 == VRAM's zero-init).
+        for (slot, &generation) in gens.iter().enumerate() {
+            store.gen_shadow[slot].store(generation, Ordering::Relaxed);
+        }
         store
     }
 
