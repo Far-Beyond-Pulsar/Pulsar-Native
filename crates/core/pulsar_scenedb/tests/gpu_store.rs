@@ -57,3 +57,29 @@ fn smoke_device_and_readback() {
     ctx.queue().write_buffer(&buf, 0, &[7u8; 16]);
     assert_eq!(readback(&ctx, &buf, 16), vec![7u8; 16]);
 }
+
+use pulsar_scenedb::gpu::SubmissionTracker;
+
+#[test]
+fn tracker_serials_are_monotonic_and_start_incomplete() {
+    let t = SubmissionTracker::new();
+    let s1 = t.next_serial();
+    let s2 = t.next_serial();
+    assert_eq!((s1, s2), (1, 2));
+    assert_eq!(t.completed(), 0, "nothing complete before any signal");
+    t.force_complete(s1);
+    assert_eq!(t.completed(), 1);
+    t.force_complete(0); // watermark never regresses
+    assert_eq!(t.completed(), 1);
+}
+
+#[test]
+fn tracker_real_gpu_completion_path() {
+    let ctx = test_context();
+    let t = SubmissionTracker::new();
+    let s = t.next_serial();
+    ctx.queue().submit([]); // empty submission is enough to complete
+    t.signal_submitted(ctx.queue(), s);
+    ctx.device().poll(wgpu::PollType::wait_indefinitely()).expect("poll");
+    assert!(t.completed() >= s, "on_submitted_work_done raised the watermark");
+}
