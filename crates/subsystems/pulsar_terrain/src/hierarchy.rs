@@ -38,6 +38,10 @@ impl SparseBrickTree {
         }
     }
 
+    pub fn root_lod(&self) -> u8 {
+        self.root_lod
+    }
+
     /// Exact O(1) root replacement, including whole-planet deletion.
     pub fn set_root(&mut self, state: NodeState) -> Result<(), HierarchyError> {
         if state == NodeState::Branch {
@@ -291,11 +295,8 @@ mod tests {
         for z in 0..2 {
             for y in 0..2 {
                 for x in 0..2 {
-                    tree.set(
-                        PageKey::new(0, [-2 + x, y, z]),
-                        NodeState::Solid(4),
-                    )
-                    .unwrap();
+                    tree.set(PageKey::new(0, [-2 + x, y, z]), NodeState::Solid(4))
+                        .unwrap();
                 }
             }
         }
@@ -306,7 +307,8 @@ mod tests {
     #[test]
     fn root_delete_drops_all_materialized_nodes() {
         let mut tree = SparseBrickTree::centered(24, NodeState::Air).unwrap();
-        tree.set(PageKey::new(0, [12, -9, 3]), NodeState::Solid(1)).unwrap();
+        tree.set(PageKey::new(0, [12, -9, 3]), NodeState::Solid(1))
+            .unwrap();
         assert!(tree.node_count() <= 1 + 8 * 24);
         tree.set_root(NodeState::Air).unwrap();
         assert_eq!(tree.node_count(), 1);
@@ -316,7 +318,8 @@ mod tests {
     fn canonical_hierarchy_round_trips_with_stable_hash() {
         let generator = ContentHash::of(b"generator-v1");
         let mut tree = SparseBrickTree::centered(12, NodeState::Procedural(generator)).unwrap();
-        tree.set(PageKey::new(0, [-3, 7, 2]), NodeState::Solid(6)).unwrap();
+        tree.set(PageKey::new(0, [-3, 7, 2]), NodeState::Solid(6))
+            .unwrap();
         tree.set(
             PageKey::new(2, [4, -2, 1]),
             NodeState::Page(ContentHash::of(b"page")),

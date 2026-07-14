@@ -1,4 +1,5 @@
-use crate::{CellWord, ContentHash, MaterialId};
+use crate::{CellWord, ContentHash, MaterialId, PageKey};
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 const EDIT_LOG_MAGIC: &[u8; 8] = b"PTEDIT01";
@@ -44,7 +45,10 @@ impl EditOp {
         .clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
 
         let affects_material = shape_distance <= 0
-            && matches!(self.mode, EditMode::Union | EditMode::Replace | EditMode::Paint);
+            && matches!(
+                self.mode,
+                EditMode::Union | EditMode::Replace | EditMode::Paint
+            );
         let material = if affects_material && density <= 0 {
             self.material
         } else if density > 0 {
@@ -88,6 +92,44 @@ impl EditShape {
             .fold(1_u128, u128::saturating_mul)
     }
 
+    /// Smallest canonical hierarchy region that contains the edit AABB.
+    ///
+    /// Edits that cross the centered root split (or extend beyond the root)
+    /// attach to the root. This keeps insertion bounded without enumerating
+    /// intersected pages; exact shape bounds are still checked during replay.
+    fn covering_attachment(self, root_lod: u8) -> EditAttachment {
+        let (min_cell, max_cell) = self.bounds();
+        let min_page = min_cell.map(|axis| axis.div_euclid(crate::PAGE_EDGE_CELLS));
+        let max_page =
+            max_cell.map(|axis| axis.saturating_sub(1).div_euclid(crate::PAGE_EDGE_CELLS));
+        let half = 1_i64 << (root_lod - 1);
+        let root_min = -half;
+        let root_max = half - 1;
+        if (0..3).any(|axis| min_page[axis] < root_min || max_page[axis] > root_max) {
+            return EditAttachment::Root;
+        }
+
+        let relative_min = min_page.map(|axis| (axis - root_min) as u64);
+        let relative_max = max_page.map(|axis| (axis - root_min) as u64);
+        let differing = (relative_min[0] ^ relative_max[0])
+            | (relative_min[1] ^ relative_max[1])
+            | (relative_min[2] ^ relative_max[2]);
+        if differing == 0 {
+            return EditAttachment::Region(PageKey::new(0, min_page));
+        }
+
+        let lod = (u64::BITS - differing.leading_zeros()) as u8;
+        if lod >= root_lod {
+            EditAttachment::Root
+        } else {
+            let scale = 1_i64 << lod;
+            EditAttachment::Region(PageKey::new(
+                lod,
+                min_page.map(|axis| axis.div_euclid(scale)),
+            ))
+        }
+    }
+
     fn signed_distance(self, cell_xyz: [i64; 3]) -> i32 {
         match self {
             Self::Sphere {
@@ -107,6 +149,74 @@ impl EditShape {
                 distance.saturating_sub(radius_cells.min(i32::MAX as u32) as i32)
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EditAttachment {
+    Root,
+    Region(PageKey),
+}
+
+/// Derived sparse spatial index for the canonical edit log.
+///
+/// Every edit contributes exactly one reference, either at the root or at its
+/// smallest covering hierarchy region. Page replay walks only the page's
+/// ancestor chain, so work is proportional to relevant candidates rather than
+/// the total logical volume or the total global edit count.
+#[derive(Clone, Debug)]
+pub(crate) struct EditIndex {
+    root_lod: u8,
+    root: Vec<usize>,
+    regions: BTreeMap<PageKey, Vec<usize>>,
+}
+
+impl EditIndex {
+    pub(crate) fn new(root_lod: u8) -> Self {
+        Self {
+            root_lod,
+            root: Vec::new(),
+            regions: BTreeMap::new(),
+        }
+    }
+
+    pub(crate) fn insert(&mut self, operation_index: usize, operation: EditOp) {
+        match operation.shape.covering_attachment(self.root_lod) {
+            EditAttachment::Root => self.root.push(operation_index),
+            EditAttachment::Region(key) => {
+                self.regions.entry(key).or_default().push(operation_index);
+            }
+        }
+    }
+
+    pub(crate) fn operations_for_page(
+        &self,
+        log: &EditLog,
+        key: PageKey,
+        after_sequence: u64,
+    ) -> Vec<EditOp> {
+        let mut indices = self.root.clone();
+        let mut ancestor = Some(key);
+        while let Some(key) = ancestor.filter(|key| key.lod < self.root_lod) {
+            if let Some(attached) = self.regions.get(&key) {
+                indices.extend_from_slice(attached);
+            }
+            ancestor = key.parent();
+        }
+        indices.sort_unstable();
+        indices
+            .into_iter()
+            .filter_map(|index| log.operations().get(index).copied())
+            .filter(|operation| operation.sequence > after_sequence)
+            .collect()
+    }
+
+    pub(crate) fn region_count(&self) -> usize {
+        self.regions.len() + usize::from(!self.root.is_empty())
+    }
+
+    pub(crate) fn reference_count(&self) -> usize {
+        self.root.len() + self.regions.values().map(Vec::len).sum::<usize>()
     }
 }
 
@@ -184,7 +294,9 @@ impl EditLog {
     }
 
     pub fn latest_sequence(&self) -> u64 {
-        self.operations.last().map_or(0, |operation| operation.sequence)
+        self.operations
+            .last()
+            .map_or(0, |operation| operation.sequence)
     }
 
     pub fn apply(&self, cell_xyz: [i64; 3], mut cell: CellWord) -> CellWord {
@@ -347,8 +459,15 @@ mod tests {
         assert_eq!(decoded.operations(), log.operations());
         assert_eq!(decoded.content_hash(), log.content_hash());
         assert_eq!(
-            log.push(EditOp { sequence: 2, stable_id: [2; 16], ..first }),
-            Err(EditError::OutOfOrder { latest: 9, received: 2 })
+            log.push(EditOp {
+                sequence: 2,
+                stable_id: [2; 16],
+                ..first
+            }),
+            Err(EditError::OutOfOrder {
+                latest: 9,
+                received: 2
+            })
         );
     }
 
@@ -395,5 +514,66 @@ mod tests {
             radius_cells: 1,
         };
         assert_eq!(across_negative_boundary.affected_lod0_page_count(), 8);
+    }
+
+    #[test]
+    fn edits_attach_once_and_page_queries_visit_only_ancestors() {
+        let operations = [
+            EditOp {
+                sequence: 1,
+                stable_id: [1; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [3_208, 3_208, 3_208],
+                    radius_cells: 1,
+                },
+                mode: EditMode::Subtract,
+                material: 0,
+            },
+            EditOp {
+                sequence: 2,
+                stable_id: [2; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [8, 8, 8],
+                    radius_cells: 1,
+                },
+                mode: EditMode::Paint,
+                material: 4,
+            },
+            EditOp {
+                sequence: 3,
+                stable_id: [3; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [0; 3],
+                    radius_cells: 1,
+                },
+                mode: EditMode::Union,
+                material: 7,
+            },
+        ];
+        let mut log = EditLog::default();
+        let mut index = EditIndex::new(12);
+        for operation in operations {
+            let operation_index = log.operations().len();
+            log.push(operation).unwrap();
+            index.insert(operation_index, operation);
+        }
+
+        let local = index.operations_for_page(&log, PageKey::new(0, [0; 3]), 0);
+        assert_eq!(
+            local
+                .iter()
+                .map(|operation| operation.sequence)
+                .collect::<Vec<_>>(),
+            vec![2, 3]
+        );
+        let far = index.operations_for_page(&log, PageKey::new(0, [100; 3]), 1);
+        assert_eq!(
+            far.iter()
+                .map(|operation| operation.sequence)
+                .collect::<Vec<_>>(),
+            vec![3]
+        );
+        assert_eq!(index.region_count(), 3);
+        assert_eq!(index.reference_count(), operations.len());
     }
 }

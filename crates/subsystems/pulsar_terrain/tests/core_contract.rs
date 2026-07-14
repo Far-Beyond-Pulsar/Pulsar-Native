@@ -1,6 +1,6 @@
 use pulsar_terrain::{
-    CellWord, DeterministicGenerator, EditLog, EditMode, EditOp, EditShape,
-    FixedSphereGenerator, NodeState, PageKey, SparseBrickTree, VoxelPage,
+    CellWord, DeterministicGenerator, EditLog, EditMode, EditOp, EditShape, FixedSphereGenerator,
+    NodeState, PageKey, PlanetId, SparseBrickTree, TerrainCore, VoxelPage,
 };
 
 fn sphere() -> FixedSphereGenerator {
@@ -36,6 +36,34 @@ fn edit_order_is_deterministic_and_changes_page_hash() {
 }
 
 #[test]
+fn identical_core_inputs_produce_identical_hierarchy_page_and_snapshot_hashes() {
+    let build = || {
+        let mut core = TerrainCore::new(PlanetId([7; 16]), 12, sphere()).unwrap();
+        for sequence in 1..=3_u64 {
+            core.append_edit(EditOp {
+                sequence,
+                stable_id: [sequence as u8; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [sequence as i64 * 3, 8, -4],
+                    radius_cells: sequence as u32 + 1,
+                },
+                mode: EditMode::Subtract,
+                material: 0,
+            })
+            .unwrap();
+        }
+        let page = core.compact_page(PageKey::new(0, [0, 0, -1])).unwrap();
+        (
+            page.page_id,
+            core.hierarchy().content_hash(),
+            core.snapshot().content_hash().unwrap(),
+        )
+    };
+
+    assert_eq!(build(), build());
+}
+
+#[test]
 fn billion_cell_logical_region_cost_depends_on_touched_paths() {
     let mut tree = SparseBrickTree::centered(24, NodeState::Procedural(sphere().hash())).unwrap();
     for index in 0..128 {
@@ -54,7 +82,10 @@ fn billion_cell_logical_region_cost_depends_on_touched_paths() {
 fn cell_word_layout_is_exactly_four_bytes() {
     assert_eq!(std::mem::size_of::<CellWord>(), 4);
     let word = CellWord::new(-123, 17, 9);
-    assert_eq!((word.density(), word.material(), word.flags()), (-123, 17, 9));
+    assert_eq!(
+        (word.density(), word.material(), word.flags()),
+        (-123, 17, 9)
+    );
 }
 
 fn next_random(state: &mut u64) -> u64 {
@@ -76,9 +107,7 @@ fn randomized_sparse_hierarchy_matches_a_dense_reference_fixture() {
     for operation in 0..512 {
         let lod = (next_random(&mut random) % 4) as u8;
         let half = 1_i64 << (ROOT_LOD - 1 - lod);
-        let coordinate = |random: &mut u64| {
-            (next_random(random) % (2 * half) as u64) as i64 - half
-        };
+        let coordinate = |random: &mut u64| (next_random(random) % (2 * half) as u64) as i64 - half;
         let key = PageKey::new(
             lod,
             [
@@ -127,7 +156,10 @@ fn randomized_sparse_hierarchy_matches_a_dense_reference_fixture() {
     assert_eq!(decoded, tree);
     tree.set_root(NodeState::Solid(9)).unwrap();
     assert_eq!(tree.node_count(), 1);
-    assert_eq!(tree.resolve(PageKey::new(0, [-16; 3])).unwrap(), NodeState::Solid(9));
+    assert_eq!(
+        tree.resolve(PageKey::new(0, [-16; 3])).unwrap(),
+        NodeState::Solid(9)
+    );
 }
 
 #[test]

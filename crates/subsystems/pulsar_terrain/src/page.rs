@@ -27,8 +27,7 @@ impl VoxelPage {
         }
         let brick = local_cell.map(|axis| axis / MICROBRICK_EDGE);
         let within = local_cell.map(|axis| axis % MICROBRICK_EDGE);
-        let index = brick[0]
-            + MICROBRICKS_PER_AXIS * (brick[1] + MICROBRICKS_PER_AXIS * brick[2]);
+        let index = brick[0] + MICROBRICKS_PER_AXIS * (brick[1] + MICROBRICKS_PER_AXIS * brick[2]);
         Some((index, within))
     }
 
@@ -57,6 +56,14 @@ impl VoxelPage {
         generator: &dyn DeterministicGenerator,
         edits: &EditLog,
     ) -> Result<Self, PageCodecError> {
+        Self::generate_with_operations(key, generator, edits.operations())
+    }
+
+    pub(crate) fn generate_with_operations(
+        key: PageKey,
+        generator: &dyn DeterministicGenerator,
+        operations: &[EditOp],
+    ) -> Result<Self, PageCodecError> {
         if key.lod != 0 {
             return Err(PageCodecError::UnsupportedLod(key.lod));
         }
@@ -68,7 +75,16 @@ impl VoxelPage {
             for y in 0..PAGE_EDGE as i64 {
                 for x in 0..PAGE_EDGE as i64 {
                     let coordinate = [origin[0] + x, origin[1] + y, origin[2] + z];
-                    cells.push(edits.apply(coordinate, generator.sample_cell(coordinate)));
+                    let mut cell = generator.sample_cell(coordinate);
+                    for operation in operations {
+                        let (min, max) = operation.shape.bounds();
+                        if (0..3).all(|axis| {
+                            coordinate[axis] >= min[axis] && coordinate[axis] < max[axis]
+                        }) {
+                            cell = operation.apply(coordinate, cell);
+                        }
+                    }
+                    cells.push(cell);
                 }
             }
         }
@@ -96,9 +112,9 @@ impl VoxelPage {
                     let mut cell = self.get([x as usize, y as usize, z as usize]).unwrap();
                     for operation in operations {
                         let (min, max) = operation.shape.bounds();
-                        if (0..3)
-                            .all(|axis| coordinate[axis] >= min[axis] && coordinate[axis] < max[axis])
-                        {
+                        if (0..3).all(|axis| {
+                            coordinate[axis] >= min[axis] && coordinate[axis] < max[axis]
+                        }) {
                             cell = operation.apply(coordinate, cell);
                         }
                     }
@@ -125,7 +141,8 @@ impl VoxelPage {
                                 let fine = [x * 2 + dx, y * 2 + dy, z * 2 + dz];
                                 let child_xyz = fine.map(|axis| axis / PAGE_EDGE);
                                 let local = fine.map(|axis| axis % PAGE_EDGE);
-                                let child_index = child_xyz[0] | (child_xyz[1] << 1) | (child_xyz[2] << 2);
+                                let child_index =
+                                    child_xyz[0] | (child_xyz[1] << 1) | (child_xyz[2] << 2);
                                 samples[sample_index] = children[child_index].get(local).unwrap();
                                 sample_index += 1;
                             }
@@ -138,8 +155,14 @@ impl VoxelPage {
                         .or_else(|| samples.iter().min_by_key(|sample| sample.density()))
                         .copied()
                         .unwrap();
-                    let flags = samples.iter().fold(0, |flags, sample| flags | sample.flags());
-                    cells.push(CellWord::new(selected.density(), selected.material(), flags));
+                    let flags = samples
+                        .iter()
+                        .fold(0, |flags, sample| flags | sample.flags());
+                    cells.push(CellWord::new(
+                        selected.density(),
+                        selected.material(),
+                        flags,
+                    ));
                 }
             }
         }
@@ -170,9 +193,7 @@ impl VoxelPage {
         if xyz.iter().any(|axis| *axis >= PAGE_EDGE) {
             return None;
         }
-        Some(self.cell_at_index(
-            xyz[0] + PAGE_EDGE * (xyz[1] + PAGE_EDGE * xyz[2]),
-        ))
+        Some(self.cell_at_index(xyz[0] + PAGE_EDGE * (xyz[1] + PAGE_EDGE * xyz[2])))
     }
 
     /// Stable little-endian RLE format. Halos are deliberately excluded.
@@ -293,7 +314,10 @@ mod tests {
         let page = VoxelPage::constant(CellWord::AIR);
         let mut wrong_version = page.encode();
         wrong_version[7] = b'2';
-        assert_eq!(VoxelPage::decode(&wrong_version), Err(PageCodecError::Magic));
+        assert_eq!(
+            VoxelPage::decode(&wrong_version),
+            Err(PageCodecError::Magic)
+        );
 
         let mut adjacent_runs = Vec::new();
         adjacent_runs.extend_from_slice(MAGIC);
@@ -318,9 +342,8 @@ mod tests {
         let mut cells = vec![CellWord::AIR; CELL_COUNT];
         cells[0] = CellWord::new(-1, 12, 4);
         let feature = VoxelPage::from_cells(cells).unwrap();
-        let reduced = VoxelPage::reduce_children([
-            &feature, &air, &air, &air, &air, &air, &air, &air,
-        ]);
+        let reduced =
+            VoxelPage::reduce_children([&feature, &air, &air, &air, &air, &air, &air, &air]);
         let first = reduced.get([0, 0, 0]).unwrap();
         assert!(first.is_solid());
         assert_eq!(first.material(), 12);

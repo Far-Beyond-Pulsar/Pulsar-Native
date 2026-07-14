@@ -14,7 +14,9 @@ pub struct PlanetPosition {
     pub offset_m: [f64; 3],
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct PageKey {
     pub lod: u8,
     pub page_xyz: [i64; 3],
@@ -68,7 +70,9 @@ impl PageKey {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+)]
 pub struct ContentHash(pub [u8; 32]);
 
 impl ContentHash {

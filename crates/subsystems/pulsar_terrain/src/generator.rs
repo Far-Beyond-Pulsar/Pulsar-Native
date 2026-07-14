@@ -39,7 +39,11 @@ impl DeterministicGenerator for FixedSphereGenerator {
         let distance = integer_sqrt(distance_squared);
         let signed_distance = (distance as i128 - i128::from(self.radius_cells))
             .clamp(i128::from(i16::MIN), i128::from(i16::MAX)) as i16;
-        let material = if signed_distance <= 0 { self.material } else { 0 };
+        let material = if signed_distance <= 0 {
+            self.material
+        } else {
+            0
+        };
         CellWord::new(signed_distance, material, 0)
     }
 }

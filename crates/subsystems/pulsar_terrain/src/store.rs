@@ -66,7 +66,9 @@ impl TerrainStore {
             .map_err(TerrainStoreError::Io)?
             .into_iter()
             .filter(|entry| !entry.is_dir && entry.name.ends_with(".root"))
-            .filter_map(|entry| parse_generation(&entry.name).map(|generation| (generation, entry.name)))
+            .filter_map(|entry| {
+                parse_generation(&entry.name).map(|generation| (generation, entry.name))
+            })
             .collect::<Vec<_>>();
         candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
 
@@ -105,7 +107,9 @@ impl TerrainStore {
         virtual_fs::create_dir_all(&self.objects_dir()).map_err(TerrainStoreError::Io)?;
         let object_path = self.objects_dir().join(hash.to_hex());
         if !virtual_fs::exists(&object_path).map_err(TerrainStoreError::Io)? {
-            let pending = self.objects_dir().join(format!("{}.pending", hash.to_hex()));
+            let pending = self
+                .objects_dir()
+                .join(format!("{}.pending", hash.to_hex()));
             virtual_fs::write_file(&pending, bytes).map_err(TerrainStoreError::Io)?;
             virtual_fs::rename(&pending, &object_path).map_err(TerrainStoreError::Io)?;
         }
@@ -175,9 +179,11 @@ mod tests {
         assert_eq!(recovered, first);
 
         virtual_fs::write_file(
-            &store
-                .roots_dir()
-                .join(format!("{:020}-{}.root", 2, ContentHash::default().to_hex())),
+            &store.roots_dir().join(format!(
+                "{:020}-{}.root",
+                2,
+                ContentHash::default().to_hex()
+            )),
             b"published but incomplete manifest",
         )
         .unwrap();

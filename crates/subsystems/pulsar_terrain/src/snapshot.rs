@@ -163,7 +163,8 @@ mod tests {
     #[test]
     fn snapshot_round_trip_is_canonical_across_page_insertion_order() {
         let generator_hash = ContentHash::of(b"generator");
-        let hierarchy = SparseBrickTree::centered(16, NodeState::Procedural(generator_hash)).unwrap();
+        let hierarchy =
+            SparseBrickTree::centered(16, NodeState::Procedural(generator_hash)).unwrap();
         let mut edits = EditLog::default();
         edits
             .push(EditOp {
@@ -197,7 +198,10 @@ mod tests {
             compacted_pages: pages,
         };
         let decoded = TerrainSnapshot::decode(&snapshot.encode().unwrap()).unwrap();
-        assert_eq!(decoded.content_hash().unwrap(), snapshot.content_hash().unwrap());
+        assert_eq!(
+            decoded.content_hash().unwrap(),
+            snapshot.content_hash().unwrap()
+        );
         assert_eq!(decoded.compacted_pages[0].key.page_xyz, [-2, 7, 1]);
     }
 }

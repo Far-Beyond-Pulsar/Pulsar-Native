@@ -1,3 +1,4 @@
+use crate::edit::EditIndex;
 use crate::{
     CompactedPageRecord, DeterministicGenerator, EditError, EditLog, EditOp, HierarchyError,
     NodeState, PageCodecError, PageKey, PlanetId, SparseBrickTree, TerrainSnapshot, VoxelPage,
@@ -14,6 +15,7 @@ pub struct TerrainCore<G> {
     generator: G,
     hierarchy: SparseBrickTree,
     edits: EditLog,
+    edit_index: EditIndex,
     pages: BTreeMap<PageKey, VoxelPage>,
     compacted: BTreeMap<PageKey, CompactedPageRecord>,
     work: TerrainWorkCounters,
@@ -26,6 +28,7 @@ pub struct TerrainWorkCounters {
     pub pages_compacted: u64,
     pub cells_generated: u64,
     pub cells_replayed: u64,
+    pub edit_candidates_replayed: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -33,6 +36,8 @@ pub struct TerrainMemoryCounters {
     pub hierarchy_nodes: usize,
     pub hierarchy_encoded_bytes: usize,
     pub edit_operations: usize,
+    pub edit_attachment_regions: usize,
+    pub edit_attachment_references: usize,
     pub resident_pages: usize,
     pub resident_dense_bytes: usize,
     pub compacted_page_records: usize,
@@ -47,6 +52,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             generator,
             hierarchy,
             edits: EditLog::default(),
+            edit_index: EditIndex::new(root_lod),
             pages: BTreeMap::new(),
             compacted: BTreeMap::new(),
             work: TerrainWorkCounters::default(),
@@ -65,6 +71,7 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
         let previous_len = self.edits.operations().len();
         self.edits.push(operation)?;
         if self.edits.operations().len() != previous_len {
+            self.edit_index.insert(previous_len, operation);
             self.work.edits_appended = self.work.edits_appended.saturating_add(1);
         }
         Ok(())
@@ -84,25 +91,25 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             }
         }
 
+        let relevant = self
+            .edit_index
+            .operations_for_page(&self.edits, key, previous_sequence);
+        self.work.edit_candidates_replayed = self
+            .work
+            .edit_candidates_replayed
+            .saturating_add(relevant.len() as u64);
         let page = if let Some(previous) = self.pages.get(&key) {
-            let tail = self
-                .edits
-                .operations()
-                .iter()
-                .copied()
-                .filter(|operation| operation.sequence > previous_sequence)
-                .collect::<Vec<_>>();
             self.work.cells_replayed = self
                 .work
                 .cells_replayed
                 .saturating_add(crate::CELL_COUNT as u64);
-            previous.apply_edit_tail(key, &tail)?
+            previous.apply_edit_tail(key, &relevant)?
         } else {
             self.work.cells_generated = self
                 .work
                 .cells_generated
                 .saturating_add(crate::CELL_COUNT as u64);
-            VoxelPage::generate(key, &self.generator, &self.edits)?
+            VoxelPage::generate_with_operations(key, &self.generator, &relevant)?
         };
         let page_id = page.page_id();
         let record = CompactedPageRecord {
@@ -110,13 +117,15 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             page_id,
             compacted_through_sequence: latest_sequence,
         };
-        let state = page.constant_cell().map_or(NodeState::Page(page_id), |cell| {
-            if cell.is_solid() {
-                NodeState::Solid(cell.material())
-            } else {
-                NodeState::Air
-            }
-        });
+        let state = page
+            .constant_cell()
+            .map_or(NodeState::Page(page_id), |cell| {
+                if cell.is_solid() {
+                    NodeState::Solid(cell.material())
+                } else {
+                    NodeState::Air
+                }
+            });
         self.hierarchy.set(key, state)?;
         self.pages.insert(key, page);
         self.compacted.insert(key, record);
@@ -167,6 +176,8 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             hierarchy_nodes: self.hierarchy.node_count(),
             hierarchy_encoded_bytes: self.hierarchy.encode().len(),
             edit_operations: self.edits.operations().len(),
+            edit_attachment_regions: self.edit_index.region_count(),
+            edit_attachment_references: self.edit_index.reference_count(),
             resident_pages: self.pages.len(),
             resident_dense_bytes: self
                 .pages
@@ -226,7 +237,10 @@ mod tests {
         assert_eq!(core.resident_page_count(), 1);
         assert_eq!(core.work_counters().edits_appended, 1);
         assert_eq!(core.work_counters().pages_compacted, 1);
-        assert_eq!(core.work_counters().cells_generated, crate::CELL_COUNT as u64);
+        assert_eq!(
+            core.work_counters().cells_generated,
+            crate::CELL_COUNT as u64
+        );
         assert_eq!(core.memory_counters().resident_pages, 1);
 
         core.append_edit(EditOp {
@@ -242,8 +256,14 @@ mod tests {
         .unwrap();
         let updated = core.compact_page(key).unwrap();
         assert_eq!(updated.compacted_through_sequence, 2);
-        assert_eq!(core.work_counters().cells_generated, crate::CELL_COUNT as u64);
-        assert_eq!(core.work_counters().cells_replayed, crate::CELL_COUNT as u64);
+        assert_eq!(
+            core.work_counters().cells_generated,
+            crate::CELL_COUNT as u64
+        );
+        assert_eq!(
+            core.work_counters().cells_replayed,
+            crate::CELL_COUNT as u64
+        );
         assert_eq!(core.work_counters().pages_compacted, 2);
     }
 
@@ -265,5 +285,45 @@ mod tests {
         assert_eq!(core.hierarchy().resolve(continent).unwrap(), NodeState::Air);
         assert!(core.hierarchy().node_count() <= 1 + 8 * 24 + 8 * 8);
         assert_eq!(core.work_counters().hierarchy_overrides, 1);
+    }
+
+    #[test]
+    fn page_compaction_replays_only_spatially_attached_edit_candidates() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([3; 16]), 24, generator).unwrap();
+        for sequence in 1..=64_u64 {
+            let page = 1_000 + sequence as i64;
+            core.append_edit(EditOp {
+                sequence,
+                stable_id: [sequence as u8; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [page * crate::PAGE_EDGE_CELLS + 8; 3],
+                    radius_cells: 1,
+                },
+                mode: EditMode::Subtract,
+                material: 0,
+            })
+            .unwrap();
+        }
+        core.append_edit(EditOp {
+            sequence: 65,
+            stable_id: [65; 16],
+            shape: EditShape::Sphere {
+                center_cell: [8; 3],
+                radius_cells: 2,
+            },
+            mode: EditMode::Paint,
+            material: 9,
+        })
+        .unwrap();
+
+        core.compact_page(PageKey::new(0, [0; 3])).unwrap();
+        assert_eq!(core.work_counters().edit_candidates_replayed, 1);
+        assert_eq!(core.memory_counters().edit_attachment_references, 65);
+        assert_eq!(core.memory_counters().edit_attachment_regions, 65);
     }
 }

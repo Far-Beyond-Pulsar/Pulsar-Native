@@ -1,6 +1,6 @@
 use pulsar_terrain::{
-    CellWord, ContentHash, EditMode, EditOp, EditShape, FixedSphereGenerator, NodeState,
-    PageKey, PlanetId, SparseBrickTree, TerrainCore,
+    CellWord, ContentHash, EditMode, EditOp, EditShape, FixedSphereGenerator, NodeState, PageKey,
+    PlanetId, SparseBrickTree, TerrainCore,
 };
 use std::time::Instant;
 
@@ -66,7 +66,7 @@ fn main() {
     // A billion logical cells are represented by the root without allocation.
     let logical_dense_bytes = 1_000_000_000_u64 * 4;
     println!(
-        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_us={:.3}",
+        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_us={:.3}",
         sparse.node_count(),
         sparse_time.as_secs_f64() * 1_000.0,
         dense.len(),
@@ -75,6 +75,9 @@ fn main() {
         core.page(compacted.key).unwrap().encode().len(),
         memory.resident_dense_bytes,
         work.cells_generated,
+        memory.edit_attachment_regions,
+        memory.edit_attachment_references,
+        work.edit_candidates_replayed,
         edit_time.as_secs_f64() * 1_000.0,
         delete_time.as_secs_f64() * 1_000_000.0,
     );
