@@ -13,6 +13,10 @@ fn as_f32s(bytes: &[u8]) -> Vec<f32> {
     bytes.chunks_exact(4).map(|c| f32::from_le_bytes(c.try_into().unwrap())).collect()
 }
 
+fn as_u32s(bytes: &[u8]) -> Vec<u32> {
+    bytes.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect()
+}
+
 fn test_context() -> EngineGpuContext {
     // Fork rev fce5b80 (wgpu 28 API): `Instance::new` takes an owned
     // `InstanceDescriptor`, not a reference.
@@ -129,4 +133,16 @@ fn delta_minimality_clean_frame_writes_nothing_and_scattered_rows_coalesce() {
     let stats = buf.sync(ctx.queue(), &cpu);
     assert_eq!(stats.ranges, 3, "contiguous runs coalesce; no clean-row uploads");
     assert_eq!(stats.bytes, 5 * 64);
+}
+
+use pulsar_scenedb::gpu::GenerationBuffer;
+
+#[test]
+fn generation_buffer_write_and_rebuild() {
+    let ctx = test_context();
+    let gens = GenerationBuffer::new(ctx.device(), 4);
+    gens.rebuild(ctx.queue(), &[1, 5, u32::MAX, 2]);
+    assert_eq!(as_u32s(&readback(&ctx, gens.buffer(), 16)), vec![1, 5, u32::MAX, 2]);
+    gens.write(ctx.queue(), 1, 6); // retirement bumps slot 1
+    assert_eq!(as_u32s(&readback(&ctx, gens.buffer(), 16)), vec![1, 6, u32::MAX, 2]);
 }
