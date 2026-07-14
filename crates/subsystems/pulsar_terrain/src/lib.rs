@@ -1,0 +1,32 @@
+//! Authoritative sparse planetary voxel terrain state.
+//!
+//! This crate owns canonical planet-space addressing, deterministic generation
+//! and edits, the mutable sparse hierarchy, stable page encoding, and durable
+//! snapshots. Rendering and physics consume derived data and never become the
+//! source of truth.
+
+mod core;
+mod edit;
+mod generator;
+mod hierarchy;
+mod page;
+mod snapshot;
+mod store;
+mod types;
+
+pub use core::{
+    TerrainCore, TerrainCoreError, TerrainMemoryCounters, TerrainWorkCounters,
+};
+pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
+pub use generator::{DeterministicGenerator, FixedSphereGenerator};
+pub use hierarchy::{HierarchyError, SparseBrickTree};
+pub use page::{
+    PageCodecError, VoxelPage, CELL_COUNT, MICROBRICK_COUNT, MICROBRICK_EDGE,
+    MICROBRICKS_PER_AXIS, PAGE_EDGE,
+};
+pub use snapshot::{CompactedPageRecord, SnapshotCodecError, TerrainSnapshot};
+pub use store::{SnapshotRecord, TerrainStore, TerrainStoreError};
+pub use types::{
+    CellWord, ContentHash, MaterialId, NodeState, PageId, PageKey, PlanetId,
+    PlanetPosition, LOD0_CELL_SIZE_METERS, PAGE_EDGE_CELLS,
+};
