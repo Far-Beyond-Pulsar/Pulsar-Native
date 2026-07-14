@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 engine_class_derive = { workspace = true }
-pulsar_reflection = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["ui", "prims-glam", "prims-helio"] }
 pulsar_events = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
