@@ -245,3 +245,41 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
     store.compact(&mut cell);
     store.sync(&cell);
 }
+
+/// Test 6 host-side (design §9): the retirement invariant. A slot is never
+/// reissued, and its row never reclaimed, before its serial completes and the
+/// new generation is in the VRAM buffer; the handle stays row-resolvable but
+/// harvest-dead during the window; afterwards it is rejected. No UB.
+#[test]
+fn test6_retirement_invariant() {
+    let ctx = test_context();
+    let (mut store, mut cell) = store_and_cell(&ctx);
+    let h = cell.alloc().unwrap();
+    store.write_transform(&mut cell, h, &mat(42.0));
+    frame_boundary(&mut store, &mut cell);
+
+    let row = cell.row_of(h).unwrap();
+    let serial = store.tracker().next_serial();
+    assert!(store.free_deferred(&mut cell, h, serial));
+
+    // Serial INCOMPLETE: boundary runs but nothing retires.
+    assert_eq!(store.retire(&mut cell), 0, "incomplete serial must not retire");
+    store.compact(&mut cell);
+    assert_eq!(cell.row_of(h), Some(row), "row not compacted while pinned");
+    store.sync(&cell);
+    let h2 = cell.alloc().unwrap();
+    assert_ne!(h2.index(), h.index(), "slot not reissued while in flight");
+    assert_eq!(cell.live_count(), 1, "pending row absent from harvest (only h2 lives)");
+
+    // Serial COMPLETES: the drain writes VRAM gen BEFORE pooling the slot.
+    store.tracker().force_complete(serial);
+    assert_eq!(store.retire(&mut cell), 1);
+    let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
+    assert_eq!(gpu_gens[h.index() as usize], h.generation() + 1, "VRAM generation bumped");
+    store.compact(&mut cell);
+    store.sync(&cell);
+    assert_eq!(cell.row_of(h), None, "old handle rejected after retirement");
+    let h3 = cell.alloc().unwrap();
+    assert_eq!(h3.index(), h.index(), "slot recycled only now");
+    assert_eq!(h3.generation(), h.generation() + 1);
+}
