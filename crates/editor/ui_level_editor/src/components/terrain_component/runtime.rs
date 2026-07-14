@@ -37,7 +37,7 @@ impl ComponentRuntimeBehavior for TerrainComponent {
             }
         } else {
             // No asset path — generate default procedural terrain with fixed seed.
-            entry.sync_procedural(42, 0);
+            entry.sync_procedural(42, 28.8, 14.08, 1.0 / 18.0, 6, 2.0, 0.5, 0);
         }
     }
 }

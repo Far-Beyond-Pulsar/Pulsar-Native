@@ -72,7 +72,8 @@ impl ComponentRuntimeBehavior for ProceduralTerrainComponent {
             .and_then(|v| v.as_f64())
             .unwrap_or(500.0);
 
-        // Hash all params to detect changes
+        let frequency = 1.0 / 18.0;
+
         let params_hash = u64::from(seed)
             .wrapping_mul(31)
             .wrapping_add(octaves * 7)
@@ -86,7 +87,7 @@ impl ComponentRuntimeBehavior for ProceduralTerrainComponent {
             seed, octaves, lacunarity, persistence, base_height, amplitude
         );
 
-        entry.sync_procedural(seed, params_hash);
+        entry.sync_procedural(seed, base_height as f32, amplitude as f32, frequency, octaves as u32, lacunarity as f32, persistence as f32, params_hash);
 
         tracing::info!(
             "[TERRAIN] after sync_procedural: dirty={}, params_hash={}, solid_voxels={}",

@@ -243,7 +243,7 @@ impl VoxelGrid {
         Self::lerp(Self::lerp(n00, n10, sx), Self::lerp(n01, n11, sx), sz)
     }
 
-    fn fbm2(x: f32, z: f32, seed: u32, octaves: u32) -> f32 {
+    fn fbm2(x: f32, z: f32, seed: u32, octaves: u32, lacunarity: f32, persistence: f32) -> f32 {
         let mut amp = 0.5;
         let mut freq = 1.0;
         let mut sum = 0.0;
@@ -251,23 +251,35 @@ impl VoxelGrid {
         for i in 0..octaves {
             sum += Self::value_noise2(x * freq, z * freq, seed.wrapping_add(i * 101)) * amp;
             norm += amp;
-            amp *= 0.5;
-            freq *= 2.0;
+            amp *= persistence;
+            freq *= lacunarity;
         }
         sum / norm
     }
 
-    /// Heightmap-based procedural generation (mirrors Helio's VoxelTerrain::generate).
-    pub fn generate_heightmap(&mut self, seed: u32) {
-        let base_height = VOXEL_TERRAIN_GRID_DIM as f32 * 0.45;
-        let amplitude = VOXEL_TERRAIN_GRID_DIM as f32 * 0.22;
-        let freq = 1.0 / 18.0;
-
+    /// Heightmap-based procedural generation.
+    pub fn generate_heightmap(
+        &mut self,
+        seed: u32,
+        base_height: f32,
+        amplitude: f32,
+        frequency: f32,
+        octaves: u32,
+        lacunarity: f32,
+        persistence: f32,
+    ) {
         let count_before = self.materials.iter().filter(|&&m| m != 0).count();
 
         for x in 0..VOXEL_TERRAIN_GRID_DIM {
             for z in 0..VOXEL_TERRAIN_GRID_DIM {
-                let h = Self::fbm2(x as f32 * freq, z as f32 * freq, seed, 4);
+                let h = Self::fbm2(
+                    x as f32 * frequency,
+                    z as f32 * frequency,
+                    seed,
+                    octaves,
+                    lacunarity,
+                    persistence,
+                );
                 let terrain_height = base_height + h * amplitude;
 
                 for y in 0..VOXEL_TERRAIN_GRID_DIM {
@@ -290,8 +302,8 @@ impl VoxelGrid {
         }
         let count_after = self.materials.iter().filter(|&&m| m != 0).count();
         tracing::info!(
-            "[TERRAIN] generate_heightmap(seed={}): {} air → {} solid (out of {} total)",
-            seed,
+            "[TERRAIN] generate_heightmap(seed={}, base_height={}, amplitude={}, freq={}, octaves={}, lacunarity={}, persistence={}): {} air → {} solid (out of {} total)",
+            seed, base_height, amplitude, frequency, octaves, lacunarity, persistence,
             VOXEL_GRID_VOLUME - count_after,
             count_after,
             VOXEL_GRID_VOLUME
@@ -606,11 +618,21 @@ impl VoxelTerrainCache {
 
 impl TerrainEntry {
     /// Regenerate procedural heightmap terrain if the generation key changed.
-    pub fn sync_procedural(&mut self, seed: u32, params_hash: u64) {
+    pub fn sync_procedural(
+        &mut self,
+        seed: u32,
+        base_height: f32,
+        amplitude: f32,
+        frequency: f32,
+        octaves: u32,
+        lacunarity: f32,
+        persistence: f32,
+        params_hash: u64,
+    ) {
         if self.params_hash == params_hash && !self.dirty {
             return;
         }
-        self.grid.generate_heightmap(seed);
+        self.grid.generate_heightmap(seed, base_height, amplitude, frequency, octaves, lacunarity, persistence);
         self.params_hash = params_hash;
         self.dirty = true;
     }
