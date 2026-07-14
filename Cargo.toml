@@ -127,10 +127,10 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c779383cf4f8b02261de52334209562933117624" }
-helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c779383cf4f8b02261de52334209562933117624" }
-helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c779383cf4f8b02261de52334209562933117624" }
-helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "c779383cf4f8b02261de52334209562933117624" }
+helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b83e715713cf9e784435c98c9df63ae38be9734e" }
+helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b83e715713cf9e784435c98c9df63ae38be9734e" }
+helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b83e715713cf9e784435c98c9df63ae38be9734e" }
+helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b83e715713cf9e784435c98c9df63ae38be9734e" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

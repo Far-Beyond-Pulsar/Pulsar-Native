@@ -39,11 +39,16 @@ fn main() {
 }
 
 fn dependency_revision<'a>(dependencies: &'a toml::Table, dependency: &str) -> &'a str {
-    dependencies
+    let entry = dependencies
         .get(dependency)
-        .and_then(|value| value.get("rev"))
-        .and_then(toml::Value::as_str)
-        .unwrap_or_else(|| {
-            panic!("workspace dependency `{dependency}` must pin Helio with an explicit `rev`")
-        })
+        .unwrap_or_else(|| panic!("workspace missing dependency `{dependency}`"));
+    // Git-based: extract `rev` from the git URL.
+    if let Some(rev) = entry.get("rev").and_then(toml::Value::as_str) {
+        return rev;
+    }
+    // Path-based: use a fixed revision (local checkout).
+    if entry.get("path").is_some() {
+        return "local-dev";
+    }
+    panic!("workspace dependency `{dependency}` must use `git` with `rev` or `path`")
 }

@@ -11,8 +11,12 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
-helio.workspace = true
+helio = { workspace = true }
 helio-asset-compat = { workspace = true }
+helio-voxel-core = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio-voxel-core" }
+libhelio = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/libhelio" }
+wgpu = { workspace = true }
+bytemuck = "1"
 gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true

@@ -1,5 +1,8 @@
 use engine_class_derive::register_runtime_behavior;
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
+use pulsar_reflection::{
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+};
+use pulsar_rendering::subsystems::VoxelTerrainCache;
 use serde_json::Value;
 
 use super::TerrainComponent;
@@ -9,10 +12,29 @@ impl ComponentRuntimeBehavior for TerrainComponent {
     const CLASS_NAME: &'static str = "TerrainComponent";
 
     fn sync_component(
-        _owner: &RuntimeComponentOwner,
+        owner: &RuntimeComponentOwner,
         _component_index: usize,
-        _component_data: &Value,
-        _context: &mut dyn ComponentRuntimeContext,
+        component_data: &Value,
+        context: &mut dyn ComponentRuntimeContext,
     ) {
+        let cache = get_subsystem!(context, VoxelTerrainCache);
+        let entry = cache.get_or_create(owner.scene_object_id);
+
+        let asset_path = component_data
+            .as_object()
+            .and_then(|o| o.get("voxel_asset"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+
+        if !asset_path.is_empty() {
+            // Voxel asset loading not yet implemented — use empty terrain as placeholder.
+            if !entry.dirty {
+                entry.grid = pulsar_rendering::subsystems::VoxelGrid::empty();
+                entry.dirty = true;
+            }
+        } else {
+            // No asset path — generate default procedural terrain with fixed seed.
+            entry.sync_procedural(42, 0);
+        }
     }
 }
