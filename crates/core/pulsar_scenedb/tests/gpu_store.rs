@@ -287,3 +287,45 @@ fn test6_retirement_invariant() {
     assert_eq!(h3.index(), h.index(), "slot recycled only now");
     assert_eq!(h3.generation(), h.generation() + 1);
 }
+
+/// Test 14 (C0 companion gate): drop the device + every buffer; create a
+/// fresh device; rebuild the GPU side purely from Layer-1's authoritative
+/// columns. Byte-identical recovery proves no GPU-only/derived scene state
+/// exists (design §3 "derived data is not stored").
+#[test]
+fn test14_device_loss_rematerialization() {
+    let cfg = GpuStoreConfig { max_rows: 64, max_slots: 64 };
+    let mut cell = transform_cell(64);
+
+    // Populate with churn so slot/row spaces diverge: alloc 8, retire 2.
+    let ctx1 = test_context();
+    let mut store = GpuStore::new(&ctx1, cfg);
+    let hs: Vec<_> = (0..8).map(|_| cell.alloc().unwrap()).collect();
+    for (i, &h) in hs.iter().enumerate() {
+        store.write_transform(&mut cell, h, &mat(i as f32 * 10.0));
+    }
+    frame_boundary(&mut store, &mut cell);
+    for &h in &[hs[2], hs[5]] {
+        let s = store.tracker().next_serial();
+        store.free_deferred(&mut cell, h, s);
+        store.tracker().force_complete(s);
+    }
+    frame_boundary(&mut store, &mut cell);
+    let before_rows = readback(&ctx1, store.transform_buffer(), 64 * 64);
+    let before_gens = readback(&ctx1, store.generation_buffer(), 64 * 4);
+
+    // Device loss: drop the store, then the entire device.
+    drop(store);
+    drop(ctx1);
+
+    // Fresh device; rebuild from CPU-authoritative columns only.
+    let ctx2 = test_context();
+    let rebuilt = GpuStore::rebuild_from(&ctx2, cfg, &cell);
+    let after_rows = readback(&ctx2, rebuilt.transform_buffer(), 64 * 64);
+    let after_gens = readback(&ctx2, rebuilt.generation_buffer(), 64 * 4);
+
+    let n = cell.rows_in_use() as usize * 64;
+    assert_eq!(after_rows[..n], before_rows[..n], "row data byte-identical");
+    let s = cell.registry().generations().len() * 4;
+    assert_eq!(after_gens[..s], before_gens[..s], "generations byte-identical (incl. bumps)");
+}
