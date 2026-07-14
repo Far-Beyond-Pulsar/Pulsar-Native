@@ -49,6 +49,9 @@ pub mod spatial;
 pub mod token;
 pub mod world;
 
+#[cfg(feature = "gpu")]
+pub mod gpu;
+
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use cell::CellStorage;

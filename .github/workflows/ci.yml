@@ -47,6 +47,9 @@ jobs:
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
+      - name: SceneDB graphics-free core guard (CONTRACTS C0)
+        run: cargo check -p pulsar_scenedb --no-default-features
+
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
