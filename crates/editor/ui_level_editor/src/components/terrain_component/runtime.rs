@@ -1,6 +1,7 @@
 use engine_class_derive::register_runtime_behavior;
 use pulsar_reflection::{
-    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner,
+    get_subsystem, ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet,
+    RuntimeComponentOwner,
 };
 use pulsar_rendering::subsystems::VoxelTerrainCache;
 use serde_json::Value;
@@ -17,6 +18,8 @@ impl ComponentRuntimeBehavior for TerrainComponent {
         component_data: &Value,
         context: &mut dyn ComponentRuntimeContext,
     ) {
+        get_subsystem!(context, LiveKeySet).insert(owner.scene_object_id.to_string());
+
         let cache = get_subsystem!(context, VoxelTerrainCache);
         let entry = cache.get_or_create(owner.scene_object_id);
 

@@ -784,12 +784,20 @@ impl HelioRenderer {
                 project_root,
             };
 
-            for (component_index, class_name, data) in component_instances {
+            // Log all component class names to debug terrain registration
+            for (ci, cn, _) in &component_instances {
+                tracing::info!(
+                    "[SYNC] component instance: idx={}, class='{}'",
+                    ci, cn
+                );
+            }
+
+            for (component_index, class_name, data) in &component_instances {
                 let _ = apply_runtime_behavior_for_class(
                     class_name.as_str(),
                     &owner,
-                    component_index,
-                    &data,
+                    *component_index,
+                    data,
                     &mut ctx,
                 );
             }
@@ -814,10 +822,21 @@ impl HelioRenderer {
         registry.write().retain_keys(live_keys.inner());
 
         // Flush dirty voxel terrain entries to the GPU and remove stale ones.
+        tracing::info!(
+            "[TERRAIN] sync_scene: retaining voxel cache keys ({} live objects)",
+            live_keys.inner().len()
+        );
         inner.voxel_cache.retain_keys(live_keys.inner());
+        tracing::info!("[TERRAIN] sync_scene: calling voxel_cache.flush()");
         inner
             .voxel_cache
-            .flush(inner.renderer.scene_mut(), &inner.queue);
+            .flush(&mut inner.renderer, &inner.queue);
+
+        let vc = inner.renderer.scene().gpu_scene().voxel_volume_count;
+        tracing::info!(
+            "[TERRAIN] sync_scene: after flush, voxel_volume_count={}",
+            vc
+        );
 
         // Rebuild scene picker BVH after any insertions or removals.
         let t_picker = std::time::Instant::now();

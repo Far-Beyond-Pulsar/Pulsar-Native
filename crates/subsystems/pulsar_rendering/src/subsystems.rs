@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use helio::{
-    MaterialId, MeshId, MeshUpload, Scene, VoxelMode, VoxelVolumeDescriptor, VoxelVolumeId,
-    VOXEL_TERRAIN_GRID_DIM,
+    MaterialId, MeshId, MeshUpload, Renderer, Scene, VoxelMode, VoxelVolumeDescriptor,
+    VoxelVolumeId, VOXEL_TERRAIN_GRID_DIM,
 };
+use helio_pass_voxel_mesh::VoxelMeshPass;
 use helio_voxel_core::GpuVoxelMaterial;
+use tracing;
 use helio_voxel_core::BRICK_SIZE;
 
 /// Cache of GPU-uploaded mesh geometry, keyed by the resolved asset path.
@@ -261,6 +263,8 @@ impl VoxelGrid {
         let amplitude = VOXEL_TERRAIN_GRID_DIM as f32 * 0.22;
         let freq = 1.0 / 18.0;
 
+        let count_before = self.materials.iter().filter(|&&m| m != 0).count();
+
         for x in 0..VOXEL_TERRAIN_GRID_DIM {
             for z in 0..VOXEL_TERRAIN_GRID_DIM {
                 let h = Self::fbm2(x as f32 * freq, z as f32 * freq, seed, 4);
@@ -284,6 +288,14 @@ impl VoxelGrid {
                 }
             }
         }
+        let count_after = self.materials.iter().filter(|&&m| m != 0).count();
+        tracing::info!(
+            "[TERRAIN] generate_heightmap(seed={}): {} air → {} solid (out of {} total)",
+            seed,
+            VOXEL_GRID_VOLUME - count_after,
+            count_after,
+            VOXEL_GRID_VOLUME
+        );
     }
 
     /// Fill the entire grid with a single material (for solid volumes).
@@ -299,6 +311,8 @@ impl VoxelGrid {
         data_pool: &wgpu::Buffer,
     ) {
         let bricks_per_axis = VOXEL_TERRAIN_GRID_DIM / BRICK_SIZE;
+        let total_bricks = bricks_per_axis * bricks_per_axis * bricks_per_axis;
+        let mut occupied_count = 0u32;
         for bz in 0..bricks_per_axis {
             for by in 0..bricks_per_axis {
                 for bx in 0..bricks_per_axis {
@@ -329,6 +343,10 @@ impl VoxelGrid {
                         }
                     }
 
+                    if occupied {
+                        occupied_count += 1;
+                    }
+
                     let data_offset = brick_idx * WORDS_PER_BRICK;
                     let meta_word = if occupied {
                         (1u32 << 24) | (data_offset as u32)
@@ -349,6 +367,93 @@ impl VoxelGrid {
                 }
             }
         }
+        tracing::info!(
+            "[TERRAIN] upload_raymarch: {}/{} bricks occupied, {} total voxels written to GPU",
+            occupied_count,
+            total_bricks,
+            VOXEL_GRID_VOLUME
+        );
+    }
+
+    /// Upload the full grid to VoxelMeshPass's brick/data buffers.
+    /// Returns (brick_idx, origin) pairs for each brick so the caller can mark_dirty.
+    pub fn upload_mesh(
+        &self,
+        queue: &wgpu::Queue,
+        brick_meta_buf: &wgpu::Buffer,
+        voxel_data_buf: &wgpu::Buffer,
+        voxel_size: f32,
+    ) -> Vec<(u32, [f32; 3])> {
+        const PADDED_DIM: u32 = BRICK_SIZE + 1; // 9
+        const WORDS_PER_BRICK: usize =
+            (PADDED_DIM * PADDED_DIM * PADDED_DIM) as usize / 4; // 183
+        let bricks_per_axis = VOXEL_TERRAIN_GRID_DIM / BRICK_SIZE;
+        let half = VOXEL_TERRAIN_GRID_DIM as f32 / 2.0;
+        let mut touched = Vec::new();
+
+        for bz in 0..bricks_per_axis {
+            for by in 0..bricks_per_axis {
+                for bx in 0..bricks_per_axis {
+                    let brick_idx =
+                        bz * bricks_per_axis * bricks_per_axis + by * bricks_per_axis + bx;
+                    let mut brick_words = [0u32; WORDS_PER_BRICK];
+                    let mut occupied = false;
+
+                    for lz in 0..PADDED_DIM {
+                        for ly in 0..PADDED_DIM {
+                            for lx in 0..PADDED_DIM {
+                                let gx = bx * BRICK_SIZE + lx;
+                                let gy = by * BRICK_SIZE + ly;
+                                let gz = bz * BRICK_SIZE + lz;
+                                let mat = if gx < VOXEL_TERRAIN_GRID_DIM
+                                    && gy < VOXEL_TERRAIN_GRID_DIM
+                                    && gz < VOXEL_TERRAIN_GRID_DIM
+                                {
+                                    self.get_voxel(gx, gy, gz)
+                                } else {
+                                    0
+                                };
+                                if mat != 0 {
+                                    occupied = true;
+                                }
+                                let linear =
+                                    (lz * PADDED_DIM * PADDED_DIM + ly * PADDED_DIM + lx) as usize;
+                                let word = linear / 4;
+                                let byte_in_word = linear % 4;
+                                brick_words[word] |= (mat as u32) << (byte_in_word * 8);
+                            }
+                        }
+                    }
+
+                    let data_offset = brick_idx * WORDS_PER_BRICK as u32;
+                    let meta = [data_offset, occupied as u32];
+
+                    queue.write_buffer(
+                        brick_meta_buf,
+                        (brick_idx as u64) * 8,
+                        bytemuck::cast_slice(&meta),
+                    );
+                    queue.write_buffer(
+                        voxel_data_buf,
+                        (data_offset as u64) * 4,
+                        bytemuck::cast_slice(&brick_words),
+                    );
+
+                    let origin = [
+                        (bx * BRICK_SIZE) as f32 - half,
+                        (by * BRICK_SIZE) as f32 - half,
+                        (bz * BRICK_SIZE) as f32 - half,
+                    ];
+                    touched.push((brick_idx, origin));
+                }
+            }
+        }
+        tracing::info!(
+            "[TERRAIN] upload_mesh: {} bricks uploaded, voxel_size={}",
+            touched.len(),
+            voxel_size
+        );
+        touched
     }
 }
 
@@ -424,13 +529,38 @@ impl VoxelTerrainCache {
     }
 
     /// Upload all dirty voxel entries to the GPU, lazily creating voxel volumes.
-    pub fn flush(&mut self, scene: &mut Scene, queue: &wgpu::Queue) {
-        for entry in self.entries.values_mut() {
+    pub fn flush(&mut self, renderer: &mut Renderer, queue: &wgpu::Queue) {
+        let entry_count = self.entries.len();
+        let dirty_count = self.entries.values().filter(|e| e.dirty).count();
+        tracing::info!(
+            "[TERRAIN] flush: {} entries, {} dirty",
+            entry_count,
+            dirty_count
+        );
+
+        // Snapshot pass buffer handles before the loop to avoid conflicting
+        // borrows with scene_mut() / voxel_volume() calls below.
+        let pass_bufs = renderer
+            .find_pass_mut::<VoxelMeshPass>()
+            .map(|p| (p.brick_meta_buf().clone(), p.voxel_data_buf().clone()));
+        let Some((meta_buf, data_buf)) = pass_bufs else {
+            tracing::warn!("[TERRAIN] VoxelMeshPass not found in render graph");
+            return;
+        };
+
+        for (scene_id, entry) in &mut self.entries {
             if !entry.dirty {
                 continue;
             }
 
-            let _volume_id = match entry.volume_id {
+            tracing::info!(
+                "[TERRAIN] flushing dirty entry for scene_id='{}', volume_id={:?}, solid_voxels={}",
+                scene_id,
+                entry.volume_id,
+                entry.grid.materials.iter().filter(|&&m| m != 0).count()
+            );
+
+            let volume_id = match entry.volume_id {
                 Some(id) => id,
                 None => {
                     let desc = VoxelVolumeDescriptor {
@@ -438,23 +568,37 @@ impl VoxelTerrainCache {
                         root_extent: VOXEL_TERRAIN_GRID_DIM as f32,
                         local_to_world: glam::Mat4::IDENTITY,
                         movability: Some(libhelio::Movability::Stationary),
-                        mode: Some(VoxelMode::Dynamic),
+                        mode: Some(VoxelMode::Auto),
                         material_palette: self.default_palette.clone(),
                     };
-                    match scene.insert_voxel_volume(desc) {
+                    match renderer.scene_mut().insert_voxel_volume(desc) {
                         Ok(id) => {
+                            tracing::info!("[TERRAIN] volume created: id={:?}", id);
                             entry.volume_id = Some(id);
                             id
                         }
-                        Err(_) => continue,
+                        Err(e) => {
+                            tracing::error!("[TERRAIN] insert_voxel_volume failed: {:?}", e);
+                            continue;
+                        }
                     }
                 }
             };
 
-            let gpu = scene.gpu_scene();
-            entry
-                .grid
-                .upload_raymarch(queue, &gpu.voxel_brick_pool, &gpu.voxel_data_pool);
+            let gpu_slot = renderer
+                .scene()
+                .voxel_volume(volume_id)
+                .map(|rec| rec.gpu_slot)
+                .unwrap_or(0);
+
+            let touched = entry.grid.upload_mesh(queue, &meta_buf, &data_buf, 1.0);
+
+            // Short-lived re-acquire for mark_dirty calls.
+            if let Some(pass) = renderer.find_pass_mut::<VoxelMeshPass>() {
+                for (brick_idx, origin) in &touched {
+                    pass.mark_dirty(*brick_idx, gpu_slot, *origin, 1.0);
+                }
+            }
             entry.dirty = false;
         }
     }
@@ -463,11 +607,19 @@ impl VoxelTerrainCache {
 impl TerrainEntry {
     /// Regenerate procedural heightmap terrain if the generation key changed.
     pub fn sync_procedural(&mut self, seed: u32, params_hash: u64) {
+        tracing::info!(
+            "[TERRAIN] sync_procedural: current_params_hash={}, new_params_hash={}, dirty={}",
+            self.params_hash,
+            params_hash,
+            self.dirty
+        );
         if self.params_hash == params_hash && !self.dirty {
+            tracing::info!("[TERRAIN] sync_procedural: skipping (no change)");
             return;
         }
         self.grid.generate_heightmap(seed);
         self.params_hash = params_hash;
         self.dirty = true;
+        tracing::info!("[TERRAIN] sync_procedural: generation done, dirty=true");
     }
 }

@@ -4525,7 +4525,7 @@ dependencies = [
  "helio-pass-taa",
  "helio-pass-transparent",
  "helio-pass-virtual-geometry",
- "helio-pass-voxel-raymarch",
+ "helio-pass-voxel-mesh",
  "helio-pass-water-sim",
  "image",
  "wgpu",
@@ -4768,7 +4768,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "helio-pass-voxel-raymarch"
+name = "helio-pass-voxel-mesh"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
@@ -8720,6 +8720,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-pass-voxel-mesh",
  "helio-voxel-core",
  "libhelio",
  "plugin_editor_api",

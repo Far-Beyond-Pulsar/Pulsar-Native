@@ -13,6 +13,7 @@ tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio = { workspace = true }
 helio-asset-compat = { workspace = true }
+helio-pass-voxel-mesh = { path = "/Users/tristanpoland/Documents/GitHub/Helio/crates/helio-pass-voxel-mesh" }
 helio-voxel-core = { workspace = true }
 libhelio = { workspace = true }
 wgpu = { workspace = true }
