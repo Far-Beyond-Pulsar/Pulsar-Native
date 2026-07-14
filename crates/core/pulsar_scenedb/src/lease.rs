@@ -83,7 +83,9 @@ impl Drop for Lease<'_> {
 /// companion is deferred to M2.
 pub struct Scratchpad {
     u32_buf: Vec<u32>,
+    u64_buf: Vec<u64>,
     peak_this_window: usize,
+    peak_u64_this_window: usize,
     frames_in_window: u32,
 }
 
@@ -93,7 +95,13 @@ pub const DECAY_FRAMES: u32 = 8;
 impl Scratchpad {
     #[must_use]
     pub fn new() -> Self {
-        Self { u32_buf: Vec::new(), peak_this_window: 0, frames_in_window: 0 }
+        Self {
+            u32_buf: Vec::new(),
+            u64_buf: Vec::new(),
+            peak_this_window: 0,
+            peak_u64_this_window: 0,
+            frames_in_window: 0,
+        }
     }
 
     /// Borrow a u32 buffer of at least `len`, growing if needed. The buffer is
@@ -113,6 +121,23 @@ impl Scratchpad {
         self.u32_buf.len()
     }
 
+    /// Borrow a u64 buffer of at least `len` (liveness words / dirty words;
+    /// the M1b §8.1 carry-forward). Not zeroed.
+    pub fn get_u64(&mut self, len: usize) -> &mut [u64] {
+        if self.u64_buf.len() < len {
+            self.u64_buf.resize(len, 0);
+        }
+        self.peak_u64_this_window = self.peak_u64_this_window.max(len);
+        &mut self.u64_buf[..len]
+    }
+
+    /// Logical size of the u64 scratch buffer (number of elements it currently
+    /// maintains; grows on demand, shrinks on decay).
+    #[must_use]
+    pub fn buf_len_u64(&self) -> usize {
+        self.u64_buf.len()
+    }
+
     /// Advance the decay window. After `DECAY_FRAMES` frames whose peak usage
     /// stayed below 50% of the buffer size, truncates the buffer to half and
     /// *requests* that the allocator release the surplus (via `shrink_to_fit`;
@@ -126,8 +151,15 @@ impl Scratchpad {
                 self.u32_buf.truncate(new_cap);
                 self.u32_buf.shrink_to_fit();
             }
+            let cap_u64 = self.u64_buf.len();
+            if cap_u64 > 0 && self.peak_u64_this_window * 2 < cap_u64 {
+                let new_cap = cap_u64 / 2;
+                self.u64_buf.truncate(new_cap);
+                self.u64_buf.shrink_to_fit();
+            }
             self.frames_in_window = 0;
             self.peak_this_window = 0;
+            self.peak_u64_this_window = 0;
         }
     }
 }
@@ -188,5 +220,23 @@ mod tests {
             pad.end_frame();
         }
         assert!(pad.buf_len_u32() < cap_before, "capacity decayed after a low-usage window");
+    }
+
+    #[test]
+    fn scratchpad_u64_grows_and_decays_independently() {
+        let mut pad = Scratchpad::new();
+        {
+            let b = pad.get_u64(500);
+            assert!(b.len() >= 500);
+        }
+        let cap = pad.buf_len_u64();
+        assert!(cap >= 500);
+        // u32 buffer untouched by u64 usage:
+        assert_eq!(pad.buf_len_u32(), 0);
+        for _ in 0..(2 * DECAY_FRAMES) {
+            let _ = pad.get_u64(8);
+            pad.end_frame();
+        }
+        assert!(pad.buf_len_u64() < cap, "u64 buffer decayed");
     }
 }

@@ -26,6 +26,9 @@ macro_rules! impl_pod {
     ($($t:ty),*) => { $( unsafe impl Pod for $t {} )* };
 }
 impl_pod!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
+// C5 instance element: 64-byte row-major mat4. Kept in the graphics-free core
+// so the transform column exists independent of the gpu feature.
+unsafe impl Pod for [f32; 16] {}
 
 /// Size/alignment descriptor for one column's element type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -312,5 +315,12 @@ mod tests {
     fn wrong_element_size_panics() {
         let page = Page::new(&two_column_layout());
         let _ = page.column_slice::<u32>(0); // column 0 is u64
+    }
+
+    #[test]
+    fn mat4_array_is_a_column_type() {
+        // Compile-time: ColumnDesc::of requires T: Pod.
+        let d = ColumnDesc::of::<[f32; 16]>();
+        assert_eq!(d.size, 64);
     }
 }
