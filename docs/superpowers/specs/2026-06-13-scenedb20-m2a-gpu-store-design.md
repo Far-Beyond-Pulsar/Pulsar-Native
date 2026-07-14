@@ -105,7 +105,16 @@ Therefore:
 | Buffer | Index space | Element | Bytes | Mirrors | Sync trigger |
 |---|---|---|---|---|---|
 | **Instance** | **row** | row-major `mat4` transform | 64 | transform column (dense, by row) | dirty rows (writes + compaction moves) |
-| **Generation** | **slot** | `u32` | 4 | `HandleRegistry.generations()` | retirement |
+| **Generation** | **slot** | `u32` | 4 | `HandleRegistry.generations()` | first mirrored write after alloc + retirement + bulk rebuild (Test 14) |
+
+> **Implementation finding (Task 9).** "Written by retirement" alone is a hole:
+> a slot that is allocated and never retired would keep VRAM's zero-init
+> generation forever, so the GPU (which validates handles against the VRAM
+> generation buffer *exclusively*, C6) would reject every live handle. The
+> store therefore keeps a CPU-side **uploaded-generation shadow** (`AtomicU32`
+> per slot): `write_transform` stamps a slot's generation to VRAM only when it
+> differs from the shadow — once after allocation, once per retirement — so
+> the hot loop stays delta-minimal (verified by a generation-write-count gate).
 
 **Scene buffers are row-indexed** — dense, matching the columns and the harvest,
 so a sync is a contiguous `write_buffer` memcpy with no conversion (C5). **The
