@@ -60,7 +60,7 @@ ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/core/profiling" }
-engine_fs                          = { path = "crates/core/engine_fs" }
+engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
