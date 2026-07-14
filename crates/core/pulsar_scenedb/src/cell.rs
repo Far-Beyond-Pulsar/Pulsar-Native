@@ -159,23 +159,30 @@ impl CellStorage {
         );
     }
 
-    /// Frame-boundary swap-and-pop compaction (spec §4.4). Moves the last
-    /// live row into each dead row, updates the moved element's slot→row
-    /// entry via the slot-ID column, and shrinks the row frontier.
+    /// Frame-boundary swap-and-pop compaction (spec §4.4). Public form of
+    /// [`compact_report`] without move observation.
     pub fn compact(&mut self) {
+        self.compact_report(|_, _| {});
+    }
+
+    /// Compaction that reports every `(from_row, to_row)` move so the GPU
+    /// layer can mark destination rows dirty (M2a §4). Pinned rows (in-flight
+    /// retirement, M2a §5) are neither swapped away nor filled into, and a
+    /// pinned tail stops the pop frontier: holes behind it persist until the
+    /// pin clears — `retire()` runs before `compact()` at the boundary, so
+    /// steady-state pins are already drained.
+    pub(crate) fn compact_report(&mut self, mut on_move: impl FnMut(u32, u32)) {
         let mut len = self.page.len();
         let mut row = 0u32;
         while row < len {
-            if self.liveness.is_live(row) {
+            if self.liveness.is_live(row) || self.is_row_pinned(row) {
                 row += 1;
                 continue;
             }
-            // Shrink trailing dead rows first. Each trimmed row is already
-            // dead (that's why this body runs); set_dead is a defensive no-op
-            // that makes the post-compaction invariant explicit: every
-            // liveness bit at a position >= page.len() is dead. M1b uploads
-            // the raw liveness words to the GPU, which relies on this.
-            while len > row + 1 && !self.liveness.is_live(len - 1) {
+            // Shrink trailing dead rows first (stop at pinned rows — they
+            // cannot pop). set_dead keeps the ≥len-all-dead invariant that
+            // M1b's GPU liveness upload relies on.
+            while len > row + 1 && !self.liveness.is_live(len - 1) && !self.is_row_pinned(len - 1) {
                 len -= 1;
                 self.liveness.set_dead(len);
                 self.page.pop_row();
@@ -187,14 +194,21 @@ impl CellStorage {
                 self.page.pop_row();
                 break;
             }
-            // Swap last (live) row into the hole, column by column.
             let last = len - 1;
+            if !self.liveness.is_live(last) {
+                // `last` is pinned (the shrink loop above consumed every
+                // unpinned-dead tail row). Nothing past it can move or pop
+                // this frame; the hole at `row` persists until unpin.
+                break;
+            }
+            // Swap last (live) row into the hole, column by column.
             self.swap_rows(row, last);
             // Fix the moved element's slot→row mapping.
             let moved_slot = self.page.column_slice::<u32>(0)[row as usize];
             self.registry.set_row(moved_slot, row);
             self.liveness.set_live(row);
             self.liveness.set_dead(last);
+            on_move(last, row);
             len -= 1;
             self.page.pop_row();
             row += 1;
@@ -386,6 +400,50 @@ mod tests {
         let h2 = c.alloc().unwrap();
         assert_eq!(h2.index(), h.index(), "slot recycled only after commit");
         assert_eq!(h2.generation(), h.generation() + 1);
+    }
+
+    #[test]
+    fn compact_reports_moves() {
+        let mut c = cell();
+        let hs: Vec<_> = (0..4).map(|_| c.alloc().unwrap()).collect();
+        c.free(hs[1]);
+        let mut moves = Vec::new();
+        c.compact_report(|from, to| moves.push((from, to)));
+        assert_eq!(moves, vec![(3, 1)], "last live row fills the hole");
+        assert_eq!(c.rows_in_use(), 3);
+    }
+
+    #[test]
+    fn pinned_row_survives_compaction_in_place() {
+        let mut c = cell();
+        let ha = c.alloc().unwrap();
+        let hb = c.alloc().unwrap();
+        let hc = c.alloc().unwrap();
+        let row_b = c.row_of(hb).unwrap();
+        let p = c.mark_pending_retire(hb).unwrap(); // dead but pinned
+        c.free(ha); // dead, unpinned → compactable hole at row 0
+        c.compact();
+        // Pinned row untouched at its original index; its bytes are preserved.
+        assert!(c.is_row_pinned(row_b));
+        assert_eq!(c.row_of(hb), Some(row_b), "pinned row not moved");
+        // hc filled ha's hole:
+        assert_eq!(c.row_of(hc), Some(0));
+        // After commit, a second compact reclaims the row.
+        c.commit_retire(p);
+        c.compact();
+        assert_eq!(c.rows_in_use(), 1);
+    }
+
+    #[test]
+    fn pinned_tail_blocks_pop_leaving_hole() {
+        let mut c = cell();
+        let ha = c.alloc().unwrap();
+        let hb = c.alloc().unwrap(); // tail row 1
+        let _p = c.mark_pending_retire(hb).unwrap(); // pinned tail
+        c.free(ha); // hole at row 0
+        c.compact();
+        // Neither the pinned tail nor the hole can move this frame.
+        assert_eq!(c.rows_in_use(), 2, "hole persists behind a pinned tail");
     }
 
     #[test]
