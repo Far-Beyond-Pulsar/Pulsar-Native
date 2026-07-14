@@ -2,11 +2,16 @@
 
 use crate::pulsar_type;
 
-#[pulsar_type(
+#[cfg_attr(feature = "ui", pulsar_type(
     serialize_json_with = serialize_i32_json,
     deserialize_json_with = deserialize_i32_json,
     editor = render_i32_editor
-)]
+))]
+#[cfg_attr(not(feature = "ui"), pulsar_type(
+    serialize_json_with = serialize_i32_json,
+    deserialize_json_with = deserialize_i32_json
+))]
+#[allow(dead_code)]
 type RegisteredI32 = i32;
 
 fn serialize_i32_json(value: &i32) -> crate::ReflectResult<serde_json::Value> {
@@ -23,6 +28,7 @@ fn deserialize_i32_json(value: serde_json::Value) -> crate::ReflectResult<i32> {
         })
 }
 
+#[cfg(feature = "ui")]
 fn render_i32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};

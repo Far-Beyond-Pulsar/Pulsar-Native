@@ -2,11 +2,16 @@
 
 use crate::pulsar_type;
 
-#[pulsar_type(
+#[cfg_attr(feature = "ui", pulsar_type(
     serialize_json_with = serialize_bool_json,
     deserialize_json_with = deserialize_bool_json,
     editor = render_bool_editor
-)]
+))]
+#[cfg_attr(not(feature = "ui"), pulsar_type(
+    serialize_json_with = serialize_bool_json,
+    deserialize_json_with = deserialize_bool_json
+))]
+#[allow(dead_code)]
 type RegisteredBool = bool;
 
 fn serialize_bool_json(value: &bool) -> crate::ReflectResult<serde_json::Value> {
@@ -22,6 +27,7 @@ fn deserialize_bool_json(value: serde_json::Value) -> crate::ReflectResult<bool>
         })
 }
 
+#[cfg(feature = "ui")]
 fn render_bool_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, Sizable, h_flex, switch::Switch};
