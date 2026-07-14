@@ -784,14 +784,6 @@ impl HelioRenderer {
                 project_root,
             };
 
-            // Log all component class names to debug terrain registration
-            for (ci, cn, _) in &component_instances {
-                tracing::info!(
-                    "[SYNC] component instance: idx={}, class='{}'",
-                    ci, cn
-                );
-            }
-
             for (component_index, class_name, data) in &component_instances {
                 let _ = apply_runtime_behavior_for_class(
                     class_name.as_str(),

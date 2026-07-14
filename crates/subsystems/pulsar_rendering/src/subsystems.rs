@@ -5,7 +5,6 @@ use helio::{
     MaterialId, MeshId, MeshUpload, Renderer, Scene, VoxelMode, VoxelVolumeDescriptor,
     VoxelVolumeId, VOXEL_TERRAIN_GRID_DIM,
 };
-use helio_pass_voxel_mesh::VoxelMeshPass;
 use helio_voxel_core::GpuVoxelMaterial;
 use tracing;
 use helio_voxel_core::BRICK_SIZE;
@@ -538,15 +537,18 @@ impl VoxelTerrainCache {
             dirty_count
         );
 
-        // Snapshot pass buffer handles before the loop to avoid conflicting
-        // borrows with scene_mut() / voxel_volume() calls below.
-        let pass_bufs = renderer
-            .find_pass_mut::<VoxelMeshPass>()
-            .map(|p| (p.brick_meta_buf().clone(), p.voxel_data_buf().clone()));
-        let Some((meta_buf, data_buf)) = pass_bufs else {
-            tracing::warn!("[TERRAIN] VoxelMeshPass not found in render graph");
-            return;
-        };
+        // Snapshot the shared GPU pool handles before the loop to avoid
+        // conflicting borrows with scene_mut() below.
+        let brick_pool = renderer
+            .scene()
+            .gpu_scene()
+            .voxel_brick_pool
+            .clone();
+        let data_pool = renderer
+            .scene()
+            .gpu_scene()
+            .voxel_data_pool
+            .clone();
 
         for (scene_id, entry) in &mut self.entries {
             if !entry.dirty {
@@ -560,22 +562,21 @@ impl VoxelTerrainCache {
                 entry.grid.materials.iter().filter(|&&m| m != 0).count()
             );
 
-            let volume_id = match entry.volume_id {
-                Some(id) => id,
+            match entry.volume_id {
+                Some(_) => {}
                 None => {
                     let desc = VoxelVolumeDescriptor {
                         voxel_size: 1.0,
                         root_extent: VOXEL_TERRAIN_GRID_DIM as f32,
                         local_to_world: glam::Mat4::IDENTITY,
                         movability: Some(libhelio::Movability::Stationary),
-                        mode: Some(VoxelMode::Auto),
+                        mode: Some(VoxelMode::Dynamic),
                         material_palette: self.default_palette.clone(),
                     };
                     match renderer.scene_mut().insert_voxel_volume(desc) {
                         Ok(id) => {
                             tracing::info!("[TERRAIN] volume created: id={:?}", id);
                             entry.volume_id = Some(id);
-                            id
                         }
                         Err(e) => {
                             tracing::error!("[TERRAIN] insert_voxel_volume failed: {:?}", e);
@@ -585,20 +586,7 @@ impl VoxelTerrainCache {
                 }
             };
 
-            let gpu_slot = renderer
-                .scene()
-                .voxel_volume(volume_id)
-                .map(|rec| rec.gpu_slot)
-                .unwrap_or(0);
-
-            let touched = entry.grid.upload_mesh(queue, &meta_buf, &data_buf, 1.0);
-
-            // Short-lived re-acquire for mark_dirty calls.
-            if let Some(pass) = renderer.find_pass_mut::<VoxelMeshPass>() {
-                for (brick_idx, origin) in &touched {
-                    pass.mark_dirty(*brick_idx, gpu_slot, *origin, 1.0);
-                }
-            }
+            entry.grid.upload_raymarch(queue, &brick_pool, &data_pool);
             entry.dirty = false;
         }
     }
@@ -607,19 +595,11 @@ impl VoxelTerrainCache {
 impl TerrainEntry {
     /// Regenerate procedural heightmap terrain if the generation key changed.
     pub fn sync_procedural(&mut self, seed: u32, params_hash: u64) {
-        tracing::info!(
-            "[TERRAIN] sync_procedural: current_params_hash={}, new_params_hash={}, dirty={}",
-            self.params_hash,
-            params_hash,
-            self.dirty
-        );
         if self.params_hash == params_hash && !self.dirty {
-            tracing::info!("[TERRAIN] sync_procedural: skipping (no change)");
             return;
         }
         self.grid.generate_heightmap(seed);
         self.params_hash = params_hash;
         self.dirty = true;
-        tracing::info!("[TERRAIN] sync_procedural: generation done, dirty=true");
     }
 }
