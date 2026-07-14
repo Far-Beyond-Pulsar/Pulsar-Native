@@ -3,6 +3,8 @@
 
 use pulsar_scenedb::gpu::EngineGpuContext;
 use pulsar_scenedb::gpu::SceneBuffer;
+use pulsar_scenedb::gpu::{GpuStore, GpuStoreConfig};
+use pulsar_scenedb::{CellStorage, CellType, TypeToken};
 use std::sync::Arc;
 
 fn mat(seed: f32) -> [f32; 16] {
@@ -145,4 +147,69 @@ fn generation_buffer_write_and_rebuild() {
     assert_eq!(as_u32s(&readback(&ctx, gens.buffer(), 16)), vec![1, 5, u32::MAX, 2]);
     gens.write(ctx.queue(), 1, 6); // retirement bumps slot 1
     assert_eq!(as_u32s(&readback(&ctx, gens.buffer(), 16)), vec![1, 6, u32::MAX, 2]);
+}
+
+fn transform_cell(capacity: u32) -> CellStorage {
+    let ct = CellType::new("m2a-instance")
+        .with(TypeToken::of::<[f32; 16]>())
+        .build()
+        .unwrap();
+    CellStorage::from_cell_type(&ct, capacity).unwrap()
+}
+
+fn store_and_cell(ctx: &EngineGpuContext) -> (GpuStore, CellStorage) {
+    (
+        GpuStore::new(ctx, GpuStoreConfig { max_rows: 64, max_slots: 64 }),
+        transform_cell(64),
+    )
+}
+
+/// Run one frame boundary: retire → compact → sync.
+fn frame_boundary(store: &mut GpuStore, cell: &mut CellStorage) -> pulsar_scenedb::gpu::SyncStats {
+    store.retire(cell);
+    store.compact(cell);
+    store.sync(cell)
+}
+
+#[test]
+fn write_transform_is_the_single_mutation_path() {
+    let ctx = test_context();
+    let (mut store, mut cell) = store_and_cell(&ctx);
+    let h = cell.alloc().unwrap();
+    assert!(store.write_transform(&mut cell, h, &mat(9.0)));
+    frame_boundary(&mut store, &mut cell);
+    let row = cell.row_of(h).unwrap() as usize;
+    let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), 64 * 64));
+    assert_eq!(&gpu[row * 16..row * 16 + 16], &mat(9.0));
+    // Stale handle rejected.
+    let dead = cell.alloc().unwrap();
+    cell.free(dead);
+    assert!(!store.write_transform(&mut cell, dead, &mat(0.0)));
+}
+
+#[test]
+fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
+    let ctx = test_context();
+    let (mut store, mut cell) = store_and_cell(&ctx);
+    let ha = cell.alloc().unwrap();
+    let hb = cell.alloc().unwrap();
+    let hc = cell.alloc().unwrap();
+    for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
+        store.write_transform(&mut cell, h, &mat(s));
+    }
+    frame_boundary(&mut store, &mut cell);
+    // Free hb via the deferred path; complete its serial; boundary again:
+    let serial = store.tracker().next_serial();
+    assert!(store.free_deferred(&mut cell, hb, serial));
+    store.tracker().force_complete(serial);
+    let stats = frame_boundary(&mut store, &mut cell); // retire → compact (hc moves) → sync
+    assert!(stats.ranges >= 1, "the compaction move was re-uploaded");
+    // Moved row's GPU bytes are correct at its NEW index:
+    let hc_row = cell.row_of(hc).unwrap() as usize;
+    let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), 64 * 64));
+    assert_eq!(&gpu[hc_row * 16..hc_row * 16 + 16], &mat(3.0));
+    // Generation buffer matches the registry for every allocated slot:
+    let regs = cell.registry().generations().to_vec();
+    let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
+    assert_eq!(&gpu_gens[..regs.len()], &regs[..]);
 }
