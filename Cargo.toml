@@ -127,13 +127,13 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-helio-voxel-core      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-libhelio              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
-helio-pass-voxel-mesh = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "86762dc757649459cfbe93bfe9b10cbcd7ef0421" }
+helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+helio-voxel-core      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+libhelio              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
+helio-pass-voxel-mesh = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "28fdac7f9cb21987e9cd052458297623a194fa24" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
