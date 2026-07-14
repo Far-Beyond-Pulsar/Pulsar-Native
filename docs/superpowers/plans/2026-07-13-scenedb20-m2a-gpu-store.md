@@ -70,7 +70,12 @@ gpu = ["dep:wgpu"]
 
 # (add to existing [dev-dependencies])
 # pollster = "1.0"
-# naga = { path = "../../graphics/wgpu/naga", features = ["wgsl-in"] }
+# naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8", features = ["wgsl-in"] }
+# (AMENDED during Task 1: a path dep into crates/graphics/wgpu/naga cannot
+#  build — that submodule is its own cargo workspace, so naga's
+#  `version.workspace = true` fields can't resolve against our root. The git
+#  dep is pinned to the SAME rev as the workspace wgpu dep and must be bumped
+#  in lockstep with it.)
 
 [[test]]
 name = "gpu_store"

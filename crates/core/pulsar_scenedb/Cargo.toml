@@ -24,6 +24,8 @@ workspace = true
 rand = "0.8"
 criterion = { version = "=0.8.2" }
 pollster = "1.0"
+# rev must stay in lockstep with the workspace `wgpu` git dep in the root
+# Cargo.toml (a path dep can't work: crates/graphics/wgpu is its own workspace).
 naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8", features = ["wgsl-in"] }
 
 [[bench]]
