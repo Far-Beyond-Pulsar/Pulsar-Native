@@ -255,6 +255,131 @@ impl MeshRegistry {
     }
 }
 
+/// C5 (§6.1): 48-byte cluster DAG node record for virtual-geometry meshes,
+/// mirrored 1:1 into the cluster-table SSBO. Field order/offsets are
+/// load-bearing — if the size assert ever fails, fix the field order/types,
+/// never insert manual padding fields.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClusterNode {
+    pub meshlet_offset: u32,      // 0
+    pub meshlet_count: u32,       // 4
+    pub parent_error: f32,        // 8
+    pub self_error: f32,          // 12  invariant: self_error < parent_error
+    pub group_id: u32,            // 16
+    pub child_offset: u32,        // 20
+    pub child_count: u32,         // 24
+    pub padding: u32,             // 28  must be 0
+    pub bounding_sphere: [f32; 4],// 32  xyz center, w radius
+} // = 48 bytes (C5)
+const _: () = assert!(std::mem::size_of::<ClusterNode>() == 48);
+// SAFETY: `ClusterNode` is `#[repr(C)]`, `Copy`, every field is itself POD
+// (u32/f32 and fixed-size arrays thereof), and the const assert above pins
+// the layout to exactly 48 bytes with no hidden padding — matching the
+// cluster-table SSBO stride byte-for-byte. `Pod` is a marker trait with no
+// methods, so this impl only asserts the bit-pattern/layout claim.
+unsafe impl crate::page::Pod for ClusterNode {}
+
+/// Hard cluster-buffer errors (§8): surfaced to the caller, never silently
+/// coerced or retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClusterError {
+    /// Cluster DAG invariant: self_error must be strictly less than parent_error.
+    ErrorMonotonicity,
+    /// Cluster node's padding field must be exactly 0.
+    PaddingNonZero,
+    /// Buffer capacity exhausted (no more nodes can fit).
+    BufferFull,
+}
+
+/// Flat host buffer mirrored 1:1 into the cluster-table SSBO (design Rev 2
+/// §6.1): cluster offset `i` is always uploaded at byte offset `i * 48` in
+/// `buf`. Append-only for M2b-α — no CPU free list (unregister is out of
+/// scope here).
+pub struct ClusterBuffer {
+    buf: wgpu::Buffer,
+    nodes: Vec<ClusterNode>,
+    max_nodes: u32,
+}
+
+impl ClusterBuffer {
+    pub fn new(ctx: &EngineGpuContext, max_nodes: u32) -> Self {
+        let buf = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("cluster-buffer"),
+            size: max_nodes as u64 * 48,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        Self { buf, nodes: Vec::new(), max_nodes }
+    }
+
+    /// Appends a mesh's DAG nodes; returns the starting node offset (the C5
+    /// cluster_table_offset unit). Validates self_error < parent_error and
+    /// padding == 0 for EVERY node BEFORE reserving space (a rejected batch
+    /// must not consume offsets). Checks capacity (BufferFull), then writes
+    /// the batch at `node_offset as u64 * 48` and returns the starting offset.
+    pub fn append(&mut self, queue: &wgpu::Queue, nodes: &[ClusterNode]) -> Result<u32, ClusterError> {
+        // Validate EVERY node before allocating offsets.
+        for node in nodes {
+            if node.self_error >= node.parent_error {
+                return Err(ClusterError::ErrorMonotonicity);
+            }
+            if node.padding != 0 {
+                return Err(ClusterError::PaddingNonZero);
+            }
+        }
+
+        // Check capacity BEFORE modifying state.
+        let current_len = self.nodes.len() as u32;
+        if current_len + nodes.len() as u32 > self.max_nodes {
+            return Err(ClusterError::BufferFull);
+        }
+
+        // Record the starting offset before appending.
+        let start_offset = current_len;
+
+        // Append nodes and write to GPU buffer.
+        for (i, node) in nodes.iter().enumerate() {
+            let node_offset = current_len + i as u32;
+            queue.write_buffer(&self.buf, node_offset as u64 * 48, super::as_bytes(std::slice::from_ref(node)));
+            self.nodes.push(*node);
+        }
+
+        Ok(start_offset)
+    }
+
+    pub fn len(&self) -> u32 {
+        self.nodes.len() as u32
+    }
+
+    pub fn get(&self, node_index: u32) -> &ClusterNode {
+        &self.nodes[node_index as usize]
+    }
+
+    /// Test 14 rebuild source: the CPU-authoritative copy of every node, in
+    /// cluster-offset order (matches the SSBO's byte layout 1:1).
+    pub fn nodes(&self) -> &[ClusterNode] {
+        &self.nodes
+    }
+
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.buf
+    }
+
+    /// Test 14 (C0 companion gate): bulk re-upload every node from the
+    /// CPU-authoritative `nodes` copy — device-loss re-materialization,
+    /// same shape as `SceneGpuStore::rebuild`. No-op on an empty buffer
+    /// (`write_buffer` with a zero-length slice is fine, but skip the call).
+    pub fn rebuild(&self, queue: &wgpu::Queue) {
+        if self.nodes.is_empty() {
+            return;
+        }
+        queue.write_buffer(&self.buf, 0, super::as_bytes(&self.nodes));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -316,6 +441,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(debug_assertions)]
     #[should_panic(expected = "double-free or overlapping free range")]
     fn double_free_panics_in_debug() {
         let mut r = RangeList::new(64);

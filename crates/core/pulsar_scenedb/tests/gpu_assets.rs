@@ -5,7 +5,7 @@
 //! integration test binaries cannot share modules without a common
 //! `tests/common/mod.rs`, and that refactor is deliberately out of scope here.
 
-use pulsar_scenedb::gpu::{ArenaError, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry};
+use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry};
 use std::sync::Arc;
 
 /// Byte view of `MeshMetadata` entries for readback comparison. Mirrors the
@@ -198,4 +198,145 @@ fn register_fails_hard_once_registry_is_full() {
     let err = reg.register(ctx.queue(), traditional_mesh());
     assert_eq!(err, Err(MeshError::RegistryFull));
     assert_eq!(reg.len(), 2, "full registry rejects without growing");
+}
+
+/// Byte view of `ClusterNode` entries for readback comparison. Mirrors the
+/// crate-internal `gpu::as_bytes` (pub(crate) — not visible to this
+/// integration test binary, which only sees the crate's public API).
+///
+/// SAFETY: `ClusterNode` is `#[repr(C)]`, `Copy`, and the crate's own
+/// `const _: () = assert!(size_of::<ClusterNode>() == 48)` pins its layout
+/// to exactly 48 bytes with no padding.
+fn cluster_bytes(nodes: &[ClusterNode]) -> Vec<u8> {
+    unsafe {
+        std::slice::from_raw_parts(nodes.as_ptr() as *const u8, std::mem::size_of_val(nodes))
+    }
+    .to_vec()
+}
+
+fn test_cluster_node() -> ClusterNode {
+    ClusterNode {
+        meshlet_offset: 0,
+        meshlet_count: 5,
+        parent_error: 1.0,
+        self_error: 0.5,
+        group_id: 7,
+        child_offset: 10,
+        child_count: 3,
+        padding: 0,
+        bounding_sphere: [1.0, 2.0, 3.0, 0.5],
+    }
+}
+
+#[test]
+fn append_two_valid_nodes_returns_correct_offsets() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let node1 = test_cluster_node();
+    let node2 = ClusterNode {
+        meshlet_offset: 5,
+        meshlet_count: 3,
+        parent_error: 2.0,
+        self_error: 1.0,
+        group_id: 8,
+        child_offset: 13,
+        child_count: 2,
+        padding: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+
+    let offset1 = cluster.append(ctx.queue(), &[node1]).expect("first append");
+    let offset2 = cluster.append(ctx.queue(), &[node2]).expect("second append");
+
+    assert_eq!(offset1, 0, "first append returns offset 0");
+    assert_eq!(offset2, 1, "second append returns offset 1");
+    assert_eq!(cluster.len(), 2);
+    assert_eq!(cluster.get(0), &node1);
+    assert_eq!(cluster.get(1), &node2);
+}
+
+#[test]
+fn cluster_nodes_readback_byte_exact() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let node1 = test_cluster_node();
+    let node2 = ClusterNode {
+        meshlet_offset: 5,
+        meshlet_count: 3,
+        parent_error: 2.0,
+        self_error: 1.0,
+        group_id: 8,
+        child_offset: 13,
+        child_count: 2,
+        padding: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+
+    cluster.append(ctx.queue(), &[node1]).expect("first append");
+    cluster.append(ctx.queue(), &[node2]).expect("second append");
+
+    let gpu = readback(&ctx, cluster.buffer(), 2 * 48);
+    let expected = cluster_bytes(cluster.nodes());
+    assert_eq!(expected.len(), 96, "two 48-byte records");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(nodes())");
+}
+
+#[test]
+fn append_rejects_error_monotonicity_violation() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let bad_node = ClusterNode {
+        meshlet_offset: 0,
+        meshlet_count: 1,
+        parent_error: 0.5,
+        self_error: 1.0,
+        padding: 0,
+        group_id: 0,
+        child_offset: 0,
+        child_count: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+
+    let err = cluster.append(ctx.queue(), &[bad_node]);
+    assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
+    assert_eq!(cluster.len(), 0, "rejected batch must not consume offsets");
+}
+
+#[test]
+fn append_rejects_padding_nonzero() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let bad_node = ClusterNode {
+        meshlet_offset: 0,
+        meshlet_count: 1,
+        parent_error: 1.0,
+        self_error: 0.5,
+        group_id: 0,
+        child_offset: 0,
+        child_count: 0,
+        padding: 1,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+
+    let err = cluster.append(ctx.queue(), &[bad_node]);
+    assert_eq!(err, Err(ClusterError::PaddingNonZero));
+    assert_eq!(cluster.len(), 0, "rejected batch must not consume offsets");
+}
+
+#[test]
+fn append_fails_when_buffer_full() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 2);
+
+    let node = test_cluster_node();
+
+    assert!(cluster.append(ctx.queue(), &[node]).is_ok());
+    assert!(cluster.append(ctx.queue(), &[node]).is_ok());
+    let err = cluster.append(ctx.queue(), &[node]);
+    assert_eq!(err, Err(ClusterError::BufferFull));
+    assert_eq!(cluster.len(), 2, "full buffer rejects without growing");
 }
