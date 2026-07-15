@@ -96,6 +96,13 @@ impl CellStorage {
         Some(self.user_column_mut::<T>(idx))
     }
 
+    /// Physical column 0 — the slot-ID column (one owning slot per row).
+    /// Read by the GPU layer to maintain the row-indexed global-slot mirror
+    /// (design Rev 2 §2; C6 GPU handle validation).
+    pub(crate) fn slot_column(&self) -> &[u32] {
+        self.page.column_slice::<u32>(0)
+    }
+
     /// Allocate an element: claims a row, marks it live, issues a handle.
     pub fn alloc(&mut self) -> Option<Handle> {
         let row = self.page.push_row()?;

@@ -416,3 +416,36 @@ fn registration_rebuilds_generation_region_and_shadow() {
     assert!(store.write_transform(id, &mut cell, h2, &mat(3.0)));
     assert_eq!(store.generation_write_count(), before, "shadow already knows gen 2");
 }
+
+#[test]
+fn slot_mirror_tracks_alloc_and_compaction_moves() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let ha = cell.alloc().unwrap();
+    let hb = cell.alloc().unwrap();
+    let hc = cell.alloc().unwrap();
+    for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
+        store.write_transform(id, &mut cell, h, &mat(s));
+    }
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    let base = store.row_region_base(id) as usize;
+    let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
+    // slot region base for class-0 cell 0 is 0; global_slot == local slot here.
+    assert_eq!(&mirror[base..base + 3], &[ha.index(), hb.index(), hc.index()]);
+    // Retire hb; hc swaps into its row; the mirror must follow the move.
+    let serial = store.tracker().next_serial();
+    store.free_deferred(id, &mut cell, hb, serial);
+    store.tracker().force_complete(serial);
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    let hc_row = cell.row_of(hc).unwrap() as usize;
+    let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
+    assert_eq!(mirror[base + hc_row], hc.index(), "moved row's mirror entry updated");
+}
