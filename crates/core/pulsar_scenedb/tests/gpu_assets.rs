@@ -328,6 +328,79 @@ fn append_rejects_padding_nonzero() {
 }
 
 #[test]
+fn append_rejects_nan_self_error() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let mut bad_node = test_cluster_node();
+    bad_node.self_error = f32::NAN;
+
+    // IEEE-754: `NaN >= x` is false, so a naive `self_error >= parent_error`
+    // check would silently ACCEPT this node. The `!(a < b)` form must reject.
+    let err = cluster.append(ctx.queue(), &[bad_node]);
+    assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
+    assert_eq!(cluster.len(), 0, "NaN self_error must not consume offsets");
+}
+
+#[test]
+fn append_rejects_nan_parent_error() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let mut bad_node = test_cluster_node();
+    bad_node.parent_error = f32::NAN;
+
+    // `self_error < NaN` is false, so `!(a < b)` routes NaN to rejection.
+    let err = cluster.append(ctx.queue(), &[bad_node]);
+    assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
+    assert_eq!(cluster.len(), 0, "NaN parent_error must not consume offsets");
+}
+
+#[test]
+fn batched_appends_return_offsets_0_then_2_and_read_back_byte_exact() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 4);
+
+    let node1 = test_cluster_node();
+    let node2 = ClusterNode {
+        meshlet_offset: 5,
+        meshlet_count: 3,
+        parent_error: 2.0,
+        self_error: 1.0,
+        group_id: 8,
+        child_offset: 13,
+        child_count: 2,
+        padding: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+    let node3 = ClusterNode {
+        meshlet_offset: 8,
+        meshlet_count: 1,
+        parent_error: 4.0,
+        self_error: 2.0,
+        group_id: 9,
+        child_offset: 15,
+        child_count: 0,
+        padding: 0,
+        bounding_sphere: [-1.0, -2.0, -3.0, 2.0],
+    };
+
+    // The brief's literal scenario: a 2-node batch lands at offset 0, then a
+    // 1-node batch lands at offset 2.
+    let offset_a = cluster.append(ctx.queue(), &[node1, node2]).expect("2-node batch");
+    let offset_b = cluster.append(ctx.queue(), &[node3]).expect("1-node batch");
+    assert_eq!(offset_a, 0, "first batch starts at node offset 0");
+    assert_eq!(offset_b, 2, "second batch starts at node offset 2");
+    assert_eq!(cluster.len(), 3);
+    assert_eq!(cluster.nodes(), &[node1, node2, node3]);
+
+    let gpu = readback(&ctx, cluster.buffer(), 3 * 48);
+    let expected = cluster_bytes(cluster.nodes());
+    assert_eq!(expected.len(), 144, "three 48-byte records");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(nodes())");
+}
+
+#[test]
 fn append_fails_when_buffer_full() {
     let ctx = test_context();
     let mut cluster = ClusterBuffer::new(&ctx, 2);

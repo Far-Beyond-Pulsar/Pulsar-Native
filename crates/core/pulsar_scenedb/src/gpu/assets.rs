@@ -323,7 +323,12 @@ impl ClusterBuffer {
     pub fn append(&mut self, queue: &wgpu::Queue, nodes: &[ClusterNode]) -> Result<u32, ClusterError> {
         // Validate EVERY node before allocating offsets.
         for node in nodes {
-            if node.self_error >= node.parent_error {
+            // Deliberate `!(a < b)` form (not `a >= b`): IEEE-754 makes every
+            // comparison with NaN false, so `>=` would silently ACCEPT a NaN
+            // in either field. `!(a < b)` routes NaN to the rejecting branch
+            // — matches the crate's conservative-NaN convention
+            // (spatial.rs/simd.rs).
+            if !(node.self_error < node.parent_error) {
                 return Err(ClusterError::ErrorMonotonicity);
             }
             if node.padding != 0 {
@@ -337,15 +342,12 @@ impl ClusterBuffer {
             return Err(ClusterError::BufferFull);
         }
 
-        // Record the starting offset before appending.
+        // Record the starting offset, then upload the whole contiguous batch
+        // in one write (destinations are contiguous — matches rebuild's bulk
+        // style).
         let start_offset = current_len;
-
-        // Append nodes and write to GPU buffer.
-        for (i, node) in nodes.iter().enumerate() {
-            let node_offset = current_len + i as u32;
-            queue.write_buffer(&self.buf, node_offset as u64 * 48, super::as_bytes(std::slice::from_ref(node)));
-            self.nodes.push(*node);
-        }
+        queue.write_buffer(&self.buf, start_offset as u64 * 48, super::as_bytes(nodes));
+        self.nodes.extend_from_slice(nodes);
 
         Ok(start_offset)
     }
