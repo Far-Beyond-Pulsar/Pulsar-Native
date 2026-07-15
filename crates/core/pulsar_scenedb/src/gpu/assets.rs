@@ -50,6 +50,10 @@ impl RangeList {
     }
 
     fn free(&mut self, offset: u64, len: u64) {
+        debug_assert!(
+            self.free.iter().all(|&(o, l)| offset + len <= o || o + l <= offset),
+            "double-free or overlapping free range"
+        );
         let idx = self.free.partition_point(|&(o, _)| o < offset);
         self.free.insert(idx, (offset, len));
         // Coalesce with next, then with previous.
@@ -106,6 +110,7 @@ impl GeometryArena {
     /// offset (the design §6.1 `vertex_offset` value). No CPU copy retained.
     pub fn upload_vertices(&mut self, queue: &wgpu::Queue, bytes: &[u8]) -> Result<u32, ArenaError> {
         let offset = self.vfree.alloc(bytes.len() as u64, 4).ok_or(ArenaError::Exhausted)?;
+        debug_assert!(offset <= u32::MAX as u64, "arena offset exceeds the u32 C5 contract");
         queue.write_buffer(&self.vertex, offset, bytes);
         Ok(offset as u32)
     }
@@ -114,6 +119,7 @@ impl GeometryArena {
     /// offset (the design §6.1 `index_offset` value). No CPU copy retained.
     pub fn upload_indices(&mut self, queue: &wgpu::Queue, bytes: &[u8]) -> Result<u32, ArenaError> {
         let offset = self.ifree.alloc(bytes.len() as u64, 4).ok_or(ArenaError::Exhausted)?;
+        debug_assert!(offset <= u32::MAX as u64, "arena offset exceeds the u32 C5 contract");
         queue.write_buffer(&self.index, offset, bytes);
         Ok(offset as u32)
     }
@@ -136,6 +142,116 @@ impl GeometryArena {
 
     pub fn index_buffer(&self) -> &wgpu::Buffer {
         &self.index
+    }
+}
+
+/// C5 (§6.1): 72-byte mesh metadata record, mirrored 1:1 into the
+/// mesh-configurator SSBO. Field order/offsets are load-bearing (see comment
+/// column below and the const size assert) — if the size assert ever fails,
+/// fix the field order/types, never insert manual padding fields.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshMetadata {
+    pub vertex_offset: u32,          // 0
+    pub index_offset: u32,           // 4
+    pub index_count: u32,            // 8
+    pub base_vertex: i32,            // 12
+    pub material_index: u32,         // 16
+    pub lod_count: u32,              // 20
+    pub lod_distances: [f32; 4],     // 24
+    pub local_aabb_center: [f32; 3], // 40
+    pub cluster_table_offset: u32,   // 52
+    pub local_aabb_extents: [f32; 3], // 56
+    pub meshlet_count: u32,          // 68
+} // = 72 bytes (C5/§6.1)
+const _: () = assert!(std::mem::size_of::<MeshMetadata>() == 72);
+// SAFETY: `MeshMetadata` is `#[repr(C)]`, `Copy`, every field is itself POD
+// (u32/i32/f32 and fixed-size arrays thereof), and the const assert above
+// pins the layout to exactly 72 bytes with no hidden padding — matching the
+// mesh-configurator SSBO stride byte-for-byte. `Pod` is a marker trait
+// (`unsafe trait Pod: Copy {}`) with no methods, so this impl only asserts
+// the bit-pattern/layout claim, not any behavior. This impl lives here
+// (gpu-gated `assets.rs`), NOT in the graphics-free core (`page.rs`).
+unsafe impl crate::page::Pod for MeshMetadata {}
+
+/// Hard mesh-registry errors (§8): surfaced to the caller, never silently
+/// coerced or retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeshError {
+    /// C5 XOR rule: exactly one of `{lod_count, cluster_table_offset}` must
+    /// be non-zero — a traditional mesh carries an LOD distance chain, a
+    /// virtualized-geometry (VG) mesh carries a cluster table, and a mesh
+    /// can't be both or neither.
+    XorRule,
+    RegistryFull,
+}
+
+/// Flat host registry mirrored 1:1 into the mesh-configurator SSBO (design
+/// Rev 2 §6.1): registry index `i` is always uploaded at byte offset `i *
+/// 72` in `buf`. Append-only for M2b-α — no CPU free list (unregister is out
+/// of scope here).
+pub struct MeshRegistry {
+    buf: wgpu::Buffer,
+    entries: Vec<MeshMetadata>,
+    max_meshes: u32,
+}
+
+impl MeshRegistry {
+    pub fn new(ctx: &EngineGpuContext, max_meshes: u32) -> Self {
+        let buf = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh-registry"),
+            size: max_meshes as u64 * 72,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        Self { buf, entries: Vec::new(), max_meshes }
+    }
+
+    /// C5 XOR rule: exactly one of `{lod_count, cluster_table_offset}` must
+    /// be non-zero (both zero and both non-zero are equally an error). On
+    /// success, uploads ONLY the new 72-byte entry — never a bulk re-upload.
+    pub fn register(&mut self, queue: &wgpu::Queue, m: MeshMetadata) -> Result<u32, MeshError> {
+        if (m.lod_count != 0) == (m.cluster_table_offset != 0) {
+            return Err(MeshError::XorRule);
+        }
+        if self.entries.len() as u32 >= self.max_meshes {
+            return Err(MeshError::RegistryFull);
+        }
+        let index = self.entries.len() as u32;
+        queue.write_buffer(&self.buf, index as u64 * 72, super::as_bytes(std::slice::from_ref(&m)));
+        self.entries.push(m);
+        Ok(index)
+    }
+
+    pub fn get(&self, mesh_index: u32) -> &MeshMetadata {
+        &self.entries[mesh_index as usize]
+    }
+
+    pub fn len(&self) -> u32 {
+        self.entries.len() as u32
+    }
+
+    /// Test 14 rebuild source: the CPU-authoritative copy of every entry, in
+    /// registry-index order (matches the SSBO's byte layout 1:1).
+    pub fn entries(&self) -> &[MeshMetadata] {
+        &self.entries
+    }
+
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.buf
+    }
+
+    /// Test 14 (C0 companion gate): bulk re-upload every entry from the
+    /// CPU-authoritative `entries` copy — device-loss re-materialization,
+    /// same shape as `SceneGpuStore::rebuild`. No-op on an empty registry
+    /// (`write_buffer` with a zero-length slice is fine, but skip the call).
+    pub fn rebuild(&self, queue: &wgpu::Queue) {
+        if self.entries.is_empty() {
+            return;
+        }
+        queue.write_buffer(&self.buf, 0, super::as_bytes(&self.entries));
     }
 }
 
@@ -197,5 +313,17 @@ mod tests {
         r.free(a, 32);
         let b = r.alloc(32, 1).unwrap();
         assert_eq!(a, b, "freed space reused by the next alloc of the same size");
+    }
+
+    #[test]
+    #[should_panic(expected = "double-free or overlapping free range")]
+    fn double_free_panics_in_debug() {
+        let mut r = RangeList::new(64);
+        let a = r.alloc(32, 1).unwrap();
+        r.free(a, 32);
+        // Same range freed twice: without the guard this silently corrupts
+        // the free list into two overlapping [a, a+32) spans, and a
+        // subsequent alloc would hand out overlapping (aliased) offsets.
+        r.free(a, 32);
     }
 }

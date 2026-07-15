@@ -5,8 +5,54 @@
 //! integration test binaries cannot share modules without a common
 //! `tests/common/mod.rs`, and that refactor is deliberately out of scope here.
 
-use pulsar_scenedb::gpu::{ArenaError, EngineGpuContext, GeometryArena};
+use pulsar_scenedb::gpu::{ArenaError, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry};
 use std::sync::Arc;
+
+/// Byte view of `MeshMetadata` entries for readback comparison. Mirrors the
+/// crate-internal `gpu::as_bytes` (pub(crate) — not visible to this
+/// integration test binary, which only sees the crate's public API).
+///
+/// SAFETY: `MeshMetadata` is `#[repr(C)]`, `Copy`, and the crate's own
+/// `const _: () = assert!(size_of::<MeshMetadata>() == 72)` pins its layout
+/// to exactly 72 bytes with no padding.
+fn mesh_bytes(entries: &[MeshMetadata]) -> Vec<u8> {
+    unsafe {
+        std::slice::from_raw_parts(entries.as_ptr() as *const u8, std::mem::size_of_val(entries))
+    }
+    .to_vec()
+}
+
+fn traditional_mesh() -> MeshMetadata {
+    MeshMetadata {
+        vertex_offset: 64,
+        index_offset: 128,
+        index_count: 300,
+        base_vertex: -7,
+        material_index: 3,
+        lod_count: 2,
+        lod_distances: [10.0, 20.0, 0.0, 0.0],
+        local_aabb_center: [1.0, 2.0, 3.0],
+        cluster_table_offset: 0,
+        local_aabb_extents: [0.5, 0.5, 0.5],
+        meshlet_count: 0,
+    }
+}
+
+fn vg_mesh() -> MeshMetadata {
+    MeshMetadata {
+        vertex_offset: 256,
+        index_offset: 512,
+        index_count: 900,
+        base_vertex: 0,
+        material_index: 5,
+        lod_count: 0,
+        lod_distances: [0.0, 0.0, 0.0, 0.0],
+        local_aabb_center: [-1.0, -2.0, -3.0],
+        cluster_table_offset: 100,
+        local_aabb_extents: [4.0, 4.0, 4.0],
+        meshlet_count: 42,
+    }
+}
 
 fn test_context() -> EngineGpuContext {
     // Fork rev fce5b80 (wgpu 28 API): `Instance::new` takes an owned
@@ -99,4 +145,57 @@ fn free_then_realloc_reuses_space_after_coalescing() {
 
     let gpu = readback(&ctx, arena.vertex_buffer(), 64);
     assert_eq!(gpu, vec![3u8; 64]);
+}
+
+#[test]
+fn traditional_and_vg_mesh_registered_byte_exact_in_ssbo() {
+    let ctx = test_context();
+    let mut reg = MeshRegistry::new(&ctx, 4);
+
+    let traditional = traditional_mesh();
+    let vg = vg_mesh();
+    let idx_a = reg.register(ctx.queue(), traditional).expect("traditional mesh (XOR satisfied by lod_count)");
+    let idx_b = reg.register(ctx.queue(), vg).expect("VG mesh (XOR satisfied by cluster_table_offset)");
+    assert_eq!((idx_a, idx_b), (0, 1));
+    assert_eq!(reg.len(), 2);
+    assert_eq!(reg.get(idx_a), &traditional);
+    assert_eq!(reg.get(idx_b), &vg);
+
+    let gpu = readback(&ctx, reg.buffer(), 2 * 72);
+    let expected = mesh_bytes(reg.entries());
+    assert_eq!(expected.len(), 144, "two 72-byte records");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(entries())");
+}
+
+#[test]
+fn register_rejects_both_fields_non_zero() {
+    let ctx = test_context();
+    let mut reg = MeshRegistry::new(&ctx, 4);
+    let mut m = traditional_mesh();
+    m.cluster_table_offset = 100; // now BOTH lod_count and cluster_table_offset are non-zero
+    let err = reg.register(ctx.queue(), m);
+    assert_eq!(err, Err(MeshError::XorRule));
+    assert_eq!(reg.len(), 0, "rejected registration must not partially land");
+}
+
+#[test]
+fn register_rejects_both_fields_zero() {
+    let ctx = test_context();
+    let mut reg = MeshRegistry::new(&ctx, 4);
+    let mut m = traditional_mesh();
+    m.lod_count = 0; // now BOTH lod_count and cluster_table_offset are zero
+    let err = reg.register(ctx.queue(), m);
+    assert_eq!(err, Err(MeshError::XorRule));
+    assert_eq!(reg.len(), 0);
+}
+
+#[test]
+fn register_fails_hard_once_registry_is_full() {
+    let ctx = test_context();
+    let mut reg = MeshRegistry::new(&ctx, 2);
+    assert!(reg.register(ctx.queue(), traditional_mesh()).is_ok());
+    assert!(reg.register(ctx.queue(), vg_mesh()).is_ok());
+    let err = reg.register(ctx.queue(), traditional_mesh());
+    assert_eq!(err, Err(MeshError::RegistryFull));
+    assert_eq!(reg.len(), 2, "full registry rejects without growing");
 }
