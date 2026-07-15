@@ -3,6 +3,7 @@
 
 use pulsar_scenedb::gpu::EngineGpuContext;
 use pulsar_scenedb::gpu::SceneBuffer;
+use pulsar_scenedb::gpu::DirtyMask;
 use pulsar_scenedb::gpu::{GpuStore, GpuStoreConfig};
 use pulsar_scenedb::{CellStorage, CellType, TypeToken};
 use std::sync::Arc;
@@ -103,11 +104,12 @@ fn tracker_real_gpu_completion_path() {
 fn delta_correctness_gpu_bytes_match_cpu_column() {
     let ctx = test_context();
     let buf = SceneBuffer::<[f32; 16]>::new(ctx.device(), "instances", 8);
+    let dirty = DirtyMask::new(8);
     let cpu: Vec<[f32; 16]> = (0..4).map(|i| mat(i as f32 * 100.0)).collect();
     for row in 0..4 {
-        buf.mark_row_dirty(row);
+        dirty.mark(row);
     }
-    let stats = buf.sync(ctx.queue(), &cpu);
+    let stats = buf.sync_region(ctx.queue(), &cpu, 0, &dirty);
     assert_eq!(stats.ranges, 1, "4 contiguous dirty rows coalesce into one write");
     assert_eq!(stats.bytes, 4 * 64);
     let gpu = as_f32s(&readback(&ctx, buf.buffer(), 4 * 64));
@@ -119,20 +121,21 @@ fn delta_correctness_gpu_bytes_match_cpu_column() {
 fn delta_minimality_clean_frame_writes_nothing_and_scattered_rows_coalesce() {
     let ctx = test_context();
     let buf = SceneBuffer::<[f32; 16]>::new(ctx.device(), "instances", 64);
+    let dirty = DirtyMask::new(64);
     let cpu: Vec<[f32; 16]> = (0..64).map(|i| mat(i as f32)).collect();
     // Warm upload.
     for row in 0..64 {
-        buf.mark_row_dirty(row);
+        dirty.mark(row);
     }
-    buf.sync(ctx.queue(), &cpu);
+    buf.sync_region(ctx.queue(), &cpu, 0, &dirty);
     // Zero-mutation frame writes nothing.
-    let stats = buf.sync(ctx.queue(), &cpu);
+    let stats = buf.sync_region(ctx.queue(), &cpu, 0, &dirty);
     assert_eq!((stats.ranges, stats.bytes), (0, 0), "clean frame is free");
     // Scattered dirty rows: {3}, {10,11,12}, {60} → exactly 3 ranges.
     for row in [3u32, 10, 11, 12, 60] {
-        buf.mark_row_dirty(row);
+        dirty.mark(row);
     }
-    let stats = buf.sync(ctx.queue(), &cpu);
+    let stats = buf.sync_region(ctx.queue(), &cpu, 0, &dirty);
     assert_eq!(stats.ranges, 3, "contiguous runs coalesce; no clean-row uploads");
     assert_eq!(stats.bytes, 5 * 64);
 }

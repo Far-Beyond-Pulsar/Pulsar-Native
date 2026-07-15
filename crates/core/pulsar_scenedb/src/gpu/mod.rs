@@ -8,6 +8,7 @@
 
 mod buffer;
 mod context;
+mod dirty;
 mod generation;
 mod region;
 mod store;
@@ -15,6 +16,7 @@ mod tracker;
 
 pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
+pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
 pub use region::{RegionPool, RegionError};
 pub use store::{GpuStore, GpuStoreConfig};

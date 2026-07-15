@@ -1,6 +1,5 @@
 use crate::page::Pod;
 use std::marker::PhantomData;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Delta-sync instrumentation: how many `write_buffer` ranges and bytes the
 /// last sync issued. The delta-minimality gates assert on this.
@@ -10,13 +9,13 @@ pub struct SyncStats {
     pub bytes: u64,
 }
 
-/// One persistent **row-indexed** scene SSBO plus its row dirty bitmask
-/// (M2a §3/§4). Generic over the C5 element type. Allocated once at capacity;
-/// never reallocates.
+/// One persistent **row-indexed** scene SSBO (M2a §3/§4; M2b-α §2: dirty
+/// state now lives beside the cell, in a caller-supplied `DirtyMask`).
+/// Generic over the C5 element type. Allocated once at capacity; never
+/// reallocates.
 pub struct SceneBuffer<T: Pod> {
     buf: wgpu::Buffer,
     capacity: u32,
-    dirty: Vec<AtomicU64>,
     _elem: PhantomData<T>,
 }
 
@@ -31,37 +30,26 @@ impl<T: Pod> SceneBuffer<T> {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        let words = capacity.div_ceil(64) as usize;
         Self {
             buf,
             capacity,
-            dirty: (0..words).map(|_| AtomicU64::new(0)).collect(),
             _elem: PhantomData,
         }
     }
 
-    /// Mark a row for re-upload (writes and compaction moves). Atomic — the
-    /// write window may be threaded.
-    #[inline]
-    pub fn mark_row_dirty(&self, row: u32) {
-        debug_assert!(row < self.capacity, "row {row} beyond SSBO capacity {}", self.capacity);
-        self.dirty[(row / 64) as usize].fetch_or(1u64 << (row % 64), Ordering::Relaxed);
-    }
-
-    #[inline]
-    fn is_dirty(&self, row: u32) -> bool {
-        self.dirty[(row / 64) as usize].load(Ordering::Relaxed) & (1u64 << (row % 64)) != 0
-    }
-
-    /// Coalesce contiguous dirty rows into minimal `write_buffer` ranges,
-    /// upload from the CPU column (byte-identical layout, C5 — a straight
-    /// memcpy), clear all bits. Ranges stream directly to the queue: no range
-    /// list, no mid-frame heap allocation. A zero-mutation frame writes
-    /// nothing. Rows ≥ `cpu.len()` (popped by compaction) are only cleared.
-    pub fn sync(&self, queue: &wgpu::Queue, cpu: &[T]) -> SyncStats {
+    /// Coalescing delta-upload of one CELL REGION (design Rev 2 §2): identical
+    /// to the M2a streaming coalescer but offset by `region_base` rows, with
+    /// the dirty mask supplied by the cell's `CellGpuState`. Clears the mask.
+    pub fn sync_region(
+        &self,
+        queue: &wgpu::Queue,
+        cpu: &[T],
+        region_base: u32,
+        dirty: &super::DirtyMask,
+    ) -> SyncStats {
         assert!(
-            cpu.len() as u32 <= self.capacity,
-            "CPU column ({}) exceeds SSBO capacity ({}) — scene buffers never reallocate",
+            region_base as u64 + cpu.len() as u64 <= self.capacity as u64,
+            "region [{region_base}, +{}) exceeds SSBO capacity {} — scene buffers never reallocate",
             cpu.len(),
             self.capacity
         );
@@ -70,35 +58,43 @@ impl<T: Pod> SceneBuffer<T> {
         let mut stats = SyncStats { ranges: 0, bytes: 0 };
         let mut run_start: Option<u32> = None;
         for row in 0..n {
-            match (self.is_dirty(row), run_start) {
+            match (dirty.is_marked(row), run_start) {
                 (true, None) => run_start = Some(row),
                 (false, Some(start)) => {
-                    self.flush(queue, cpu, start, row, stride, &mut stats);
+                    self.flush(queue, cpu, region_base, start, row, stride, &mut stats);
                     run_start = None;
                 }
                 _ => {}
             }
         }
         if let Some(start) = run_start {
-            self.flush(queue, cpu, start, n, stride, &mut stats);
+            self.flush(queue, cpu, region_base, start, n, stride, &mut stats);
         }
-        for word in &self.dirty {
-            word.store(0, Ordering::Relaxed);
-        }
+        dirty.clear_all();
         stats
+    }
+
+    /// Unconditional bulk write of a region prefix (registration warm-up /
+    /// device-loss rebuild). Not delta-tracked.
+    pub fn write_rows(&self, queue: &wgpu::Queue, cpu: &[T], region_base: u32) {
+        assert!(region_base as u64 + cpu.len() as u64 <= self.capacity as u64);
+        if !cpu.is_empty() {
+            queue.write_buffer(&self.buf, region_base as u64 * std::mem::size_of::<T>() as u64, super::as_bytes(cpu));
+        }
     }
 
     fn flush(
         &self,
         queue: &wgpu::Queue,
         cpu: &[T],
+        region_base: u32,
         start: u32,
         end: u32,
         stride: u64,
         stats: &mut SyncStats,
     ) {
         let bytes = super::as_bytes(&cpu[start as usize..end as usize]);
-        queue.write_buffer(&self.buf, start as u64 * stride, bytes);
+        queue.write_buffer(&self.buf, (region_base as u64 + start as u64) * stride, bytes);
         stats.ranges += 1;
         stats.bytes += bytes.len() as u64;
     }

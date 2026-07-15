@@ -1,4 +1,4 @@
-use super::{EngineGpuContext, GenerationBuffer, SceneBuffer, SubmissionTracker, SyncStats};
+use super::{DirtyMask, EngineGpuContext, GenerationBuffer, SceneBuffer, SubmissionTracker, SyncStats};
 use crate::cell::{CellStorage, PendingRetire};
 use crate::handle::Handle;
 use std::collections::VecDeque;
@@ -32,6 +32,7 @@ pub struct GpuStore {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     transforms: SceneBuffer<[f32; 16]>,
+    dirty_transforms: DirtyMask,
     generations: GenerationBuffer,
     tracker: SubmissionTracker,
     pending: VecDeque<QueuedRetire>,
@@ -54,6 +55,7 @@ impl GpuStore {
             device: Arc::clone(ctx.device()),
             queue: Arc::clone(ctx.queue()),
             transforms: SceneBuffer::new(ctx.device(), "scenedb-instances", cfg.max_rows),
+            dirty_transforms: DirtyMask::new(cfg.max_rows),
             generations: GenerationBuffer::new(ctx.device(), cfg.max_slots),
             tracker: SubmissionTracker::new(),
             pending: VecDeque::new(),
@@ -112,7 +114,7 @@ impl GpuStore {
             .column_for_mut::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
         col[row as usize] = *m;
-        self.transforms.mark_row_dirty(row);
+        self.dirty_transforms.mark(row);
         self.write_generation(handle.index(), handle.generation());
         true
     }
@@ -157,7 +159,7 @@ impl GpuStore {
     pub fn compact(&mut self, cell: &mut CellStorage) {
         debug_assert_eq!(self.phase, Phase::Retired, "compact must follow retire");
         self.phase = Phase::Compacted;
-        cell.compact_report(|_from, to| self.transforms.mark_row_dirty(to));
+        cell.compact_report(|_from, to| self.dirty_transforms.mark(to));
     }
 
     /// Frame-boundary upload (§4): coalesced dirty-row write of the transform
@@ -168,7 +170,7 @@ impl GpuStore {
         let col = cell
             .column_for::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
-        self.transforms.sync(&self.queue, &col[..cell.rows_in_use() as usize])
+        self.transforms.sync_region(&self.queue, &col[..cell.rows_in_use() as usize], 0, &self.dirty_transforms)
     }
 
     /// Test 14: build a fresh store on a fresh device purely from the
@@ -186,13 +188,11 @@ impl GpuStore {
         );
         let mut store = Self::new(ctx, cfg);
         let rows = cell.rows_in_use();
-        for row in 0..rows {
-            store.transforms.mark_row_dirty(row);
-        }
+        store.dirty_transforms.mark_range(rows);
         let col = cell
             .column_for::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
-        store.transforms.sync(&store.queue, &col[..rows as usize]);
+        store.transforms.sync_region(&store.queue, &col[..rows as usize], 0, &store.dirty_transforms);
         let gens = cell.registry().generations();
         store.generations.rebuild(&store.queue, gens);
         // Seed the shadow with every uploaded generation so it never drifts
