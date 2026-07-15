@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 dashmap = { workspace = true }
 
 # Reflection system
-pulsar_reflection.workspace = true
+pulsar_reflection = { workspace = true, features = ["ui", "prims-glam", "prims-helio"] }
 pulsar_events.workspace = true
 engine_state.workspace = true
 
