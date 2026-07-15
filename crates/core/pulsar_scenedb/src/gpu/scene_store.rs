@@ -301,6 +301,68 @@ impl SceneGpuStore {
         Ok(CellId(self.cells.len() as u32 - 1))
     }
 
+    /// Test 14 (C0 companion gate): build a fresh multi-cell store on a fresh
+    /// device purely from every cell's CPU-authoritative columns (no GPU-only
+    /// state exists to lose, design §3 "derived data is not stored"). Returns
+    /// the rebuilt store paired with each input cell's freshly assigned
+    /// `CellId`, in the same order as `cells`.
+    ///
+    /// Precondition per cell: no rows may be pinned (all pending retires
+    /// drained via `retire_all`) — recovery of in-flight retirement across a
+    /// device loss is M4 scope; rebuilding while a pin is outstanding would
+    /// strand it permanently (the pin bit lives only in `CellStorage`, and
+    /// this fresh store has no queued `PendingRetire` to eventually unpin
+    /// it). Verbatim message carried over from M2a's `GpuStore::rebuild_from`.
+    ///
+    /// For each cell: `register_cell` already rebuilds that cell's generation
+    /// region, seeds the gen shadow, and marks every occupied row dirty in
+    /// the transform mask (§4.1 warm-up) — but `write_rows` below is an
+    /// UNCONDITIONAL bulk write, so those warm-up marks are cleared right
+    /// after to avoid double-uploading the same bytes at the first boundary.
+    /// The slot mirror has no warm-up marker of its own (its sole dirty
+    /// trigger is `sync_all`'s self-healing boundary scan, which hasn't run
+    /// yet for a freshly rebuilt store), so it is bulk-filled here too —
+    /// scratch and shadow alike — matching exactly what that boundary scan
+    /// would otherwise produce on its first pass.
+    pub fn rebuild(
+        ctx: &EngineGpuContext,
+        cfg: SceneGpuConfig,
+        cells: &[(usize, &CellStorage)],
+    ) -> (Self, Vec<CellId>) {
+        let mut store = Self::new(ctx, cfg);
+        let mut ids = Vec::with_capacity(cells.len());
+        for &(class, cell) in cells {
+            debug_assert!(
+                (0..cell.rows_in_use()).all(|r| !cell.is_row_pinned(r)),
+                "rebuild_from with in-flight retirement: drain retire() before device-loss rebuild — pins would be permanently stranded"
+            );
+            let id = store.register_cell(cell, class).expect("rebuild: cell must fit its class region");
+            let rows = cell.rows_in_use();
+            let row_base = store.cells[id.0 as usize].row_base;
+            let slot_base = store.cells[id.0 as usize].slot_base;
+
+            let col = cell
+                .column_for::<[f32; 16]>()
+                .expect("cell has no [f32; 16] transform column");
+            store.transforms.write_rows(&store.queue, &col[..rows as usize], row_base);
+            store.cells[id.0 as usize].dirty_transforms.clear_all();
+
+            let col0 = cell.slot_column();
+            {
+                let state = &mut store.cells[id.0 as usize];
+                for row in 0..rows {
+                    let local_slot = col0[row as usize];
+                    state.slot_scratch[row as usize] = slot_base + local_slot;
+                    state.slot_shadow[row as usize] = local_slot;
+                }
+            }
+            store.slot_mirror.write_rows(&store.queue, &store.cells[id.0 as usize].slot_scratch[..rows as usize], row_base);
+
+            ids.push(id);
+        }
+        (store, ids)
+    }
+
     /// The single mutation path for the GPU-mirrored transform column (§4):
     /// writes the core column AND sets the row's dirty bit in one operation.
     /// False for stale/invalid handles.

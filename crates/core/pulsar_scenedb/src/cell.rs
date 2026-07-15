@@ -83,7 +83,7 @@ impl CellStorage {
         Some(self.user_column::<T>(idx))
     }
 
-    /// For GPU-mirrored columns, write through `gpu::GpuStore::write_transform`
+    /// For GPU-mirrored columns, write through `gpu::SceneGpuStore::write_transform`
     /// instead — raw writes here bypass dirty tracking and leave VRAM stale
     /// (enforced by the M2b phase machine; convention until then).
     pub fn column_for_mut<T: crate::page::Pod + 'static>(&mut self) -> Option<&mut [T]> {
@@ -172,7 +172,7 @@ impl CellStorage {
     /// Frame-boundary swap-and-pop compaction (spec §4.4). Public form of
     /// [`compact_report`] without move observation.
     ///
-    /// For cells mirrored by a `gpu::GpuStore`, call `GpuStore::compact`
+    /// For cells mirrored by a `gpu::SceneGpuStore`, call `SceneGpuStore::compact_all`
     /// instead — direct compaction skips dirty-marking of moved rows.
     pub fn compact(&mut self) {
         self.compact_report(|_, _| {});
@@ -260,7 +260,7 @@ impl CellStorage {
         self.page.column_slice::<T>(user_col + 1)
     }
 
-    /// For GPU-mirrored columns, write through `gpu::GpuStore::write_transform`
+    /// For GPU-mirrored columns, write through `gpu::SceneGpuStore::write_transform`
     /// instead — raw writes here bypass dirty tracking and leave VRAM stale
     /// (enforced by the M2b phase machine; convention until then).
     pub fn user_column_mut<T: crate::page::Pod>(&mut self, user_col: usize) -> &mut [T] {

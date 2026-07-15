@@ -1,10 +1,11 @@
-//! SceneDB GPU layer (M2a, design Rev 3): persistent scene SSBOs, CPU→GPU
-//! delta-sync, and pin-by-serial retirement. Feature-gated (`gpu`); the core
-//! crate stays graphics-free (CONTRACTS C0).
+//! SceneDB GPU layer (M2b-α, design Rev 2): persistent region-partitioned
+//! scene SSBOs, CPU→GPU delta-sync, and pin-by-serial retirement across N
+//! registered cells. Feature-gated (`gpu`); the core crate stays
+//! graphics-free (CONTRACTS C0).
 //!
-//! Mirrored columns must be written via `GpuStore::write_transform` and
-//! compacted via `GpuStore::compact`; raw column access bypasses dirty
-//! tracking — hard enforcement arrives with the M2b phase machine.
+//! Mirrored columns must be written via `SceneGpuStore::write_transform` and
+//! compacted via `SceneGpuStore::compact_all`; raw column access bypasses
+//! dirty tracking — hard enforcement arrives with the M2b phase machine.
 
 mod buffer;
 mod context;
@@ -12,7 +13,6 @@ mod dirty;
 mod generation;
 mod region;
 mod scene_store;
-mod store;
 mod tracker;
 
 pub use buffer::{SceneBuffer, SyncStats};
@@ -21,7 +21,6 @@ pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
-pub use store::{GpuStore, GpuStoreConfig};
 pub use tracker::SubmissionTracker;
 
 /// Reinterpret a Pod slice as bytes for `queue.write_buffer`.

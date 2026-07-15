@@ -20,19 +20,21 @@
 //!   bit-for-bit against the scalar reference; frustum + AABB
 //! - [`LeaseMask`]/[`Scratchpad`]/[`LivenessSnapshot`] — read-lease pool,
 //!   decaying scratchpads, double-buffered revocation (§9; phase machine is M2)
-//! - `gpu` (feature `gpu`) — M2a GPU-resident store: `EngineGpuContext`,
-//!   `SceneBuffer<T>` row-indexed SSBOs with coalescing delta-sync,
-//!   slot-indexed `GenerationBuffer`, `SubmissionTracker`, and `GpuStore`'s
-//!   pin-by-serial retirement (`retire → compact → sync`). The core stays
-//!   graphics-free (C0); CI guards `--no-default-features`.
+//! - `gpu` (feature `gpu`) — M2b-α region-partitioned GPU-resident store:
+//!   `EngineGpuContext`, `SceneBuffer<T>` row-indexed SSBOs with coalescing
+//!   delta-sync, slot-indexed `GenerationBuffer`, `SubmissionTracker`, and
+//!   `SceneGpuStore`'s multi-cell pin-by-serial retirement
+//!   (`retire_all → compact_all → sync_all`). The core stays graphics-free
+//!   (C0); CI guards `--no-default-features`.
 //!
 //! The inherited archetype ECS modules (`world`, `archetype`, `query`, …)
 //! are retained and will be migrated onto paged storage in later milestones
 //! (the SceneDB-replaces-ECS path, design doc §7).
 //!
 //! Milestone status: M1 (Layer 1) complete; M2a (GPU store, delta-sync,
-//! retirement) complete — verified headless by Tests 3, 6 (host), and 14.
-//! M2b orchestration/streaming and the M3 Helio inversion follow.
+//! retirement) complete — verified headless by Tests 3, 6 (host), and 14;
+//! M2b-α (multi-cell `SceneGpuStore`) complete — the M2a gates now run
+//! against it. M2b orchestration/streaming and the M3 Helio inversion follow.
 
 pub mod actor;
 pub mod archetype;

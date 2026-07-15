@@ -24,7 +24,8 @@ impl GenerationBuffer {
     }
 
     /// Retirement write: the new generation must land here BEFORE the slot
-    /// returns to the free pool (C6) — `GpuStore::retire` owns that ordering.
+    /// returns to the free pool (C6) — `SceneGpuStore::retire_all` owns that
+    /// ordering.
     pub fn write(&self, queue: &wgpu::Queue, slot: u32, generation: u32) {
         assert!(slot < self.max_slots, "slot {slot} beyond generation-buffer capacity {}", self.max_slots);
         queue.write_buffer(&self.buf, slot as u64 * 4, &generation.to_le_bytes());
