@@ -370,11 +370,11 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { #[derive(#(#derive_additions),*)] }
     };
 
-    let category_attr = if category.is_some() && !has_engine_class_category_attr {
-        let cat = category.unwrap();
-        quote! { #[engine_class_category(#cat)] }
-    } else {
-        quote! {}
+    let category_attr = match category {
+        Some(category) if !has_engine_class_category_attr => {
+            quote! { #[engine_class_category(#category)] }
+        }
+        _ => quote! {},
     };
 
     let no_register_attr = if no_register {
