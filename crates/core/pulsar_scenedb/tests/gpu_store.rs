@@ -602,3 +602,146 @@ fn slot_mirror_self_heals_alloc_without_write() {
         "boundary scan must self-heal the never-written re-occupied row"
     );
 }
+
+/// Test 14 extension (C0 companion, M2b-α scope): the single-cell form
+/// (`test14_device_loss_rematerialization`) only proves recovery when a
+/// cell's region happens to start at region base 0. Two cells force distinct
+/// non-zero row/slot bases into the recovery path, and `SceneGpuStore::rebuild`
+/// registers cells in argument order, so — for THIS test's two-cell,
+/// single-class shape — the rebuilt store's bases land on the same offsets as
+/// the original (both register cell A first, cell B second). Compare
+/// region-relative slices regardless, per the design note: absolute buffer
+/// equality is incidental, not the contract.
+#[test]
+fn test14_multicell_device_loss_rematerialization() {
+    let cfg = scene_cfg();
+    // Region geometry, derived from `scene_cfg()` rather than hardcoded: the
+    // row region size is exactly `capacity` (§7); the slot region adds the
+    // tombstone headroom. With capacity=64, headroom=8, max_resident_cells=4:
+    // slot_region_size = 72, so the second class-0 registrant's slot base is
+    // 72 (first registrant's slot base is always 0).
+    let row_capacity = cfg.classes[0].capacity;
+    let headroom = cfg.tombstone_headroom;
+    let slot_region_size = row_capacity + headroom;
+    let max_resident = cfg.classes[0].max_resident_cells;
+    let total_rows = (row_capacity * max_resident) as u64;
+    let total_slots = (slot_region_size * max_resident) as u64;
+    let transform_bytes = total_rows * 64;
+    let mirror_bytes = total_rows * 4;
+    let gen_bytes = total_slots * 4;
+
+    let mut cell_a = transform_cell(64);
+    let mut cell_b = transform_cell(64);
+
+    let ctx1 = test_context();
+    let mut store = SceneGpuStore::new(&ctx1, cfg.clone());
+    let id_a = store.register_cell(&cell_a, 0).unwrap();
+    let id_b = store.register_cell(&cell_b, 0).unwrap();
+
+    // Churn each cell independently, with disjoint seed ranges so a
+    // cross-cell mixup would not accidentally read back as correct.
+    let hs_a: Vec<_> = (0..8).map(|_| cell_a.alloc().unwrap()).collect();
+    for (i, &h) in hs_a.iter().enumerate() {
+        assert!(store.write_transform(id_a, &mut cell_a, h, &mat(i as f32 * 10.0)));
+    }
+    let hs_b: Vec<_> = (0..8).map(|_| cell_b.alloc().unwrap()).collect();
+    for (i, &h) in hs_b.iter().enumerate() {
+        assert!(store.write_transform(id_b, &mut cell_b, h, &mat(1000.0 + i as f32 * 10.0)));
+    }
+    {
+        let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    // Free 2 of 8 per cell via the deferred path; force-complete each serial.
+    for &h in &[hs_a[2], hs_a[5]] {
+        let s = store.tracker().next_serial();
+        assert!(store.free_deferred(id_a, &mut cell_a, h, s));
+        store.tracker().force_complete(s);
+    }
+    for &h in &[hs_b[2], hs_b[5]] {
+        let s = store.tracker().next_serial();
+        assert!(store.free_deferred(id_b, &mut cell_b, h, s));
+        store.tracker().force_complete(s);
+    }
+    {
+        let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
+        scene_boundary(&mut store, &mut slots);
+    }
+
+    let base_a_before = store.row_region_base(id_a) as usize;
+    let base_b_before = store.row_region_base(id_b) as usize;
+    // Slot region bases: no public accessor exists, so derive them from the
+    // deterministic first-fit `RegionPool` allocation order — cell A
+    // registered first gets slot base 0, cell B (registered second, same
+    // class) gets the next region at `slot_region_size`.
+    let slot_base_a_before = 0usize;
+    let slot_base_b_before = slot_region_size as usize;
+
+    let before_rows = readback(&ctx1, store.transform_buffer(), transform_bytes);
+    let before_mirror = readback(&ctx1, store.slot_mirror_buffer(), mirror_bytes);
+    let before_gens = readback(&ctx1, store.generation_buffer(), gen_bytes);
+
+    // Device loss: drop the store, then the entire device.
+    drop(store);
+    drop(ctx1);
+
+    // Fresh device; rebuild both cells from CPU-authoritative columns only.
+    let ctx2 = test_context();
+    let (rebuilt, ids) = SceneGpuStore::rebuild(&ctx2, cfg, &[(0, &cell_a), (0, &cell_b)]);
+    let id2_a = ids[0];
+    let id2_b = ids[1];
+    let base_a_after = rebuilt.row_region_base(id2_a) as usize;
+    let base_b_after = rebuilt.row_region_base(id2_b) as usize;
+    // Same deterministic first-fit order as above — cell A first, cell B
+    // second — so the slot bases in the rebuilt store match the pre-loss
+    // ones. Kept as separate named values (not reused) to make the
+    // region-relative comparison below self-documenting.
+    let slot_base_a_after = 0usize;
+    let slot_base_b_after = slot_region_size as usize;
+
+    let after_rows = readback(&ctx2, rebuilt.transform_buffer(), transform_bytes);
+    let after_mirror = readback(&ctx2, rebuilt.slot_mirror_buffer(), mirror_bytes);
+    let after_gens = readback(&ctx2, rebuilt.generation_buffer(), gen_bytes);
+
+    // Cell A: byte-identity over its region-relative slices.
+    let rows_a = cell_a.rows_in_use() as usize;
+    let rows_bytes_a = rows_a * 64;
+    assert_eq!(
+        after_rows[base_a_after * 64..base_a_after * 64 + rows_bytes_a],
+        before_rows[base_a_before * 64..base_a_before * 64 + rows_bytes_a],
+        "cell A transforms byte-identical across device loss"
+    );
+    let mirror_bytes_a = rows_a * 4;
+    assert_eq!(
+        after_mirror[base_a_after * 4..base_a_after * 4 + mirror_bytes_a],
+        before_mirror[base_a_before * 4..base_a_before * 4 + mirror_bytes_a],
+        "cell A slot mirror byte-identical across device loss"
+    );
+    let gens_bytes_a = cell_a.registry().generations().len() * 4;
+    assert_eq!(
+        after_gens[slot_base_a_after * 4..slot_base_a_after * 4 + gens_bytes_a],
+        before_gens[slot_base_a_before * 4..slot_base_a_before * 4 + gens_bytes_a],
+        "cell A generations byte-identical across device loss"
+    );
+
+    // Cell B: same, at its own (non-zero) region bases.
+    let rows_b = cell_b.rows_in_use() as usize;
+    let rows_bytes_b = rows_b * 64;
+    assert_eq!(
+        after_rows[base_b_after * 64..base_b_after * 64 + rows_bytes_b],
+        before_rows[base_b_before * 64..base_b_before * 64 + rows_bytes_b],
+        "cell B transforms byte-identical across device loss"
+    );
+    let mirror_bytes_b = rows_b * 4;
+    assert_eq!(
+        after_mirror[base_b_after * 4..base_b_after * 4 + mirror_bytes_b],
+        before_mirror[base_b_before * 4..base_b_before * 4 + mirror_bytes_b],
+        "cell B slot mirror byte-identical across device loss"
+    );
+    let gens_bytes_b = cell_b.registry().generations().len() * 4;
+    assert_eq!(
+        after_gens[slot_base_b_after * 4..slot_base_b_after * 4 + gens_bytes_b],
+        before_gens[slot_base_b_before * 4..slot_base_b_before * 4 + gens_bytes_b],
+        "cell B generations byte-identical across device loss"
+    );
+}

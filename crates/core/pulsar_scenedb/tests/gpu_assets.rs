@@ -413,3 +413,91 @@ fn append_fails_when_buffer_full() {
     assert_eq!(err, Err(ClusterError::BufferFull));
     assert_eq!(cluster.len(), 2, "full buffer rejects without growing");
 }
+
+/// Test 14 extension (C0 companion, M2b-α scope): the asset half of
+/// device-loss re-materialization. Unlike `SceneGpuStore`, none of these
+/// three asset stores have a bulk registry-side CPU rebuild call exercised
+/// here on purpose — the caller (asset system) retains the source blobs, and
+/// `MeshRegistry::register`/`ClusterBuffer::append` are the real per-entry
+/// load path, so recovery re-drives them directly rather than going through
+/// the internal `rebuild(queue)` fast path.
+#[test]
+fn test14_assets_device_loss_rematerialization() {
+    let ctx1 = test_context();
+    let mut arena = GeometryArena::new(&ctx1, 4096, 4096);
+    // Caller-retained CPU blobs — the arena itself keeps no CPU copy.
+    let blob_a: Vec<u8> = (0..64u8).collect();
+    let blob_b: Vec<u8> = (100..164u8).collect();
+    let index_blob: Vec<u8> = (0..48u8).map(|b| b.wrapping_mul(3)).collect();
+    let off_a = arena.upload_vertices(ctx1.queue(), &blob_a).unwrap();
+    let off_b = arena.upload_vertices(ctx1.queue(), &blob_b).unwrap();
+    let ioff = arena.upload_indices(ctx1.queue(), &index_blob).unwrap();
+
+    let mut reg = MeshRegistry::new(&ctx1, 8);
+    let traditional = traditional_mesh();
+    let vg = vg_mesh();
+    let midx_a = reg.register(ctx1.queue(), traditional).expect("traditional mesh");
+    let midx_b = reg.register(ctx1.queue(), vg).expect("VG mesh");
+
+    let mut cluster = ClusterBuffer::new(&ctx1, 8);
+    let node1 = test_cluster_node();
+    let node2 = ClusterNode {
+        meshlet_offset: 5,
+        meshlet_count: 3,
+        parent_error: 2.0,
+        self_error: 1.0,
+        group_id: 8,
+        child_offset: 13,
+        child_count: 2,
+        padding: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+    let coff_a = cluster.append(ctx1.queue(), &[node1]).expect("first cluster node");
+    let coff_b = cluster.append(ctx1.queue(), &[node2]).expect("second cluster node");
+
+    // Snapshot every occupied byte of all four asset buffers before loss.
+    let vertex_bytes = off_b as u64 + blob_b.len() as u64;
+    let index_bytes = ioff as u64 + index_blob.len() as u64;
+    let mesh_bytes_len = 2u64 * 72;
+    let cluster_bytes_len = 2u64 * 48;
+    let before_vertex = readback(&ctx1, arena.vertex_buffer(), vertex_bytes);
+    let before_index = readback(&ctx1, arena.index_buffer(), index_bytes);
+    let before_mesh = readback(&ctx1, reg.buffer(), mesh_bytes_len);
+    let before_cluster = readback(&ctx1, cluster.buffer(), cluster_bytes_len);
+
+    // Device loss: drop every GPU-side store, then the entire device. Only
+    // the CPU-retained blobs/records (blob_a, blob_b, index_blob, the mesh
+    // metadata, the cluster nodes) survive.
+    drop(arena);
+    drop(reg);
+    drop(cluster);
+    drop(ctx1);
+
+    // Fresh device; re-drive the real load paths from the retained CPU data.
+    let ctx2 = test_context();
+    let mut arena2 = GeometryArena::new(&ctx2, 4096, 4096);
+    let off_a2 = arena2.upload_vertices(ctx2.queue(), &blob_a).unwrap();
+    let off_b2 = arena2.upload_vertices(ctx2.queue(), &blob_b).unwrap();
+    let ioff2 = arena2.upload_indices(ctx2.queue(), &index_blob).unwrap();
+    assert_eq!((off_a2, off_b2, ioff2), (off_a, off_b, ioff), "fresh arena, same upload order -> same offsets");
+
+    let mut reg2 = MeshRegistry::new(&ctx2, 8);
+    let midx_a2 = reg2.register(ctx2.queue(), traditional).expect("traditional mesh re-register");
+    let midx_b2 = reg2.register(ctx2.queue(), vg).expect("VG mesh re-register");
+    assert_eq!((midx_a2, midx_b2), (midx_a, midx_b), "fresh registry, same register order -> same indices");
+
+    let mut cluster2 = ClusterBuffer::new(&ctx2, 8);
+    let coff_a2 = cluster2.append(ctx2.queue(), &[node1]).expect("first cluster node re-append");
+    let coff_b2 = cluster2.append(ctx2.queue(), &[node2]).expect("second cluster node re-append");
+    assert_eq!((coff_a2, coff_b2), (coff_a, coff_b), "fresh cluster buffer, same append order -> same offsets");
+
+    let after_vertex = readback(&ctx2, arena2.vertex_buffer(), vertex_bytes);
+    let after_index = readback(&ctx2, arena2.index_buffer(), index_bytes);
+    let after_mesh = readback(&ctx2, reg2.buffer(), mesh_bytes_len);
+    let after_cluster = readback(&ctx2, cluster2.buffer(), cluster_bytes_len);
+
+    assert_eq!(after_vertex, before_vertex, "vertex arena byte-identical across device loss");
+    assert_eq!(after_index, before_index, "index arena byte-identical across device loss");
+    assert_eq!(after_mesh, before_mesh, "mesh SSBO byte-identical across device loss");
+    assert_eq!(after_cluster, before_cluster, "cluster SSBO byte-identical across device loss");
+}
