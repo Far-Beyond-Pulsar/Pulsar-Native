@@ -415,12 +415,13 @@ fn append_fails_when_buffer_full() {
 }
 
 /// Test 14 extension (C0 companion, M2b-α scope): the asset half of
-/// device-loss re-materialization. Unlike `SceneGpuStore`, none of these
-/// three asset stores have a bulk registry-side CPU rebuild call exercised
-/// here on purpose — the caller (asset system) retains the source blobs, and
-/// `MeshRegistry::register`/`ClusterBuffer::append` are the real per-entry
-/// load path, so recovery re-drives them directly rather than going through
-/// the internal `rebuild(queue)` fast path.
+/// device-loss re-materialization. This test re-drives the REAL per-entry
+/// load path (`GeometryArena::upload_*` + `MeshRegistry::register` +
+/// `ClusterBuffer::append` from caller-retained CPU data) — the asset-system
+/// recovery path. The purpose-built bulk `MeshRegistry::rebuild` /
+/// `ClusterBuffer::rebuild` fast path is gated separately by
+/// `rebuild_reuploads_entries_over_corrupted_buffers` below, so BOTH recovery
+/// shapes are covered deliberately.
 #[test]
 fn test14_assets_device_loss_rematerialization() {
     let ctx1 = test_context();
@@ -500,4 +501,71 @@ fn test14_assets_device_loss_rematerialization() {
     assert_eq!(after_index, before_index, "index arena byte-identical across device loss");
     assert_eq!(after_mesh, before_mesh, "mesh SSBO byte-identical across device loss");
     assert_eq!(after_cluster, before_cluster, "cluster SSBO byte-identical across device loss");
+}
+
+/// Test 14 (C0 companion): the purpose-built bulk recovery fast path.
+/// `MeshRegistry::rebuild` / `ClusterBuffer::rebuild` re-upload the ENTIRE
+/// CPU-authoritative copy in one write — the same-device complement to the
+/// fresh-device register/append recovery exercised by
+/// `test14_assets_device_loss_rematerialization`. Deliberately corrupting the
+/// SSBOs first (and readback-confirming the corruption landed) makes the
+/// assertion non-vacuous: a `rebuild` that silently no-ops would leave the
+/// 0xAB garbage in place and fail loudly.
+#[test]
+fn rebuild_reuploads_entries_over_corrupted_buffers() {
+    let ctx = test_context();
+
+    // 1. Valid data in both stores, readback-verified before corruption.
+    let mut reg = MeshRegistry::new(&ctx, 8);
+    reg.register(ctx.queue(), traditional_mesh()).expect("traditional mesh");
+    reg.register(ctx.queue(), vg_mesh()).expect("VG mesh");
+    let mut cluster = ClusterBuffer::new(&ctx, 8);
+    let node1 = test_cluster_node();
+    let node2 = ClusterNode {
+        meshlet_offset: 5,
+        meshlet_count: 3,
+        parent_error: 2.0,
+        self_error: 1.0,
+        group_id: 8,
+        child_offset: 13,
+        child_count: 2,
+        padding: 0,
+        bounding_sphere: [0.0, 0.0, 0.0, 1.0],
+    };
+    cluster.append(ctx.queue(), &[node1, node2]).expect("cluster nodes");
+
+    let mesh_len = reg.len() as u64 * 72;
+    let cluster_len = cluster.len() as u64 * 48;
+    let expected_mesh = mesh_bytes(reg.entries());
+    let expected_cluster = cluster_bytes(cluster.nodes());
+    assert_eq!(readback(&ctx, reg.buffer(), mesh_len), expected_mesh, "precondition: mesh SSBO valid");
+    assert_eq!(readback(&ctx, cluster.buffer(), cluster_len), expected_cluster, "precondition: cluster SSBO valid");
+
+    // 2. Deliberately corrupt both SSBOs over their full occupied extent.
+    //    The readbacks force completion (the helper polls to idle) AND prove
+    //    the garbage actually landed — no vacuous pass possible.
+    ctx.queue().write_buffer(reg.buffer(), 0, &vec![0xAB; mesh_len as usize]);
+    ctx.queue().write_buffer(cluster.buffer(), 0, &vec![0xAB; cluster_len as usize]);
+    assert_eq!(readback(&ctx, reg.buffer(), mesh_len), vec![0xAB; mesh_len as usize], "corruption landed in mesh SSBO");
+    assert_eq!(
+        readback(&ctx, cluster.buffer(), cluster_len),
+        vec![0xAB; cluster_len as usize],
+        "corruption landed in cluster SSBO"
+    );
+
+    // 3. The recovery call under test.
+    reg.rebuild(ctx.queue());
+    cluster.rebuild(ctx.queue());
+
+    // 4. CPU-authoritative state healed VRAM, byte-exact.
+    assert_eq!(
+        readback(&ctx, reg.buffer(), mesh_len),
+        expected_mesh,
+        "MeshRegistry::rebuild restored the SSBO from entries()"
+    );
+    assert_eq!(
+        readback(&ctx, cluster.buffer(), cluster_len),
+        expected_cluster,
+        "ClusterBuffer::rebuild restored the SSBO from nodes()"
+    );
 }
