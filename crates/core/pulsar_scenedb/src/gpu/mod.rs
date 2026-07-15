@@ -7,6 +7,7 @@
 //! compacted via `SceneGpuStore::compact_all`; raw column access bypasses
 //! dirty tracking — hard enforcement arrives with the M2b phase machine.
 
+mod assets;
 mod buffer;
 mod context;
 mod dirty;
@@ -15,6 +16,7 @@ mod region;
 mod scene_store;
 mod tracker;
 
+pub use assets::{ArenaError, GeometryArena};
 pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;

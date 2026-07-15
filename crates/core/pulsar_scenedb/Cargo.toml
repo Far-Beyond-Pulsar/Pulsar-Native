@@ -51,3 +51,7 @@ required-features = ["gpu"]
 [[test]]
 name = "gpu_layout"
 required-features = ["gpu"]
+
+[[test]]
+name = "gpu_assets"
+required-features = ["gpu"]
