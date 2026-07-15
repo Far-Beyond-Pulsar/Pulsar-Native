@@ -89,12 +89,14 @@ struct CellGpuState {
     /// (T4; C6 GPU handle validation).
     slot_scratch: Vec<u32>,
     /// Per-ROW shadow of the last LOCAL slot uploaded into the mirror for
-    /// that row; `u32::MAX` = never uploaded. `write_transform` (`&self`)
-    /// only READS it (shadow != handle slot → the row's mirror entry is
-    /// stale → mark `dirty_slots`); `sync_all` (`&mut self`) is the sole
-    /// WRITER, so a plain `Vec` is sound. Row-scoped on purpose: the
-    /// gen-shadow is SLOT-scoped and cannot see a recycled slot landing in a
-    /// different row (fail-open C6 staleness caught in Task 4 review).
+    /// that row; `u32::MAX` = never uploaded. Read and written ONLY by
+    /// `sync_all`'s self-healing boundary scan (`&mut self`), which compares
+    /// it against the authoritative slot column and re-uploads every
+    /// mismatch. Row-scoped on purpose: per-event triggers (gen-gate,
+    /// write-path shadow check, compaction marks) each missed a staleness
+    /// path — e.g. an alloc re-occupying a compaction-vacated row that is
+    /// never written (Task 4 review + re-review); the boundary scan closes
+    /// them all with one invariant.
     slot_shadow: Vec<u32>,
     /// Per-cell deferred-retire queue; nondecreasing serials (debug-asserted,
     /// T11).
@@ -227,7 +229,7 @@ impl SceneGpuStore {
     /// recycled into a different row arrives with its generation already
     /// shadowed (the retire stamped it), so the gate stays silent while the
     /// new row's mirror entry is stale (fail-open C6, Task 4 review). The
-    /// mirror trigger is `slot_shadow` in `write_transform`.
+    /// mirror trigger is `sync_all`'s self-healing boundary scan.
     fn write_generation(&self, state: &CellGpuState, local_slot: u32, generation: u32) {
         assert!(
             local_slot < state.slot_capacity,
@@ -244,8 +246,9 @@ impl SceneGpuStore {
 
     /// §4.1 promotion primitive (α: registration; β reuses it for promotion):
     /// allocates row+slot regions, bulk-rebuilds the generation region from
-    /// the registry, seeds the gen-shadow, marks all occupied rows dirty
-    /// (transforms + slot mirror).
+    /// the registry, seeds the gen-shadow, marks all occupied rows dirty in
+    /// the transform mask. The slot mirror needs no warm-up — the first
+    /// `sync_all` boundary scan uploads every occupied row's slot entry.
     pub fn register_cell(&mut self, cell: &CellStorage, class: usize) -> Result<CellId, RegionError> {
         if self.row_pools[class].free_count() == 0 {
             return Err(RegionError::RowsExhausted);
@@ -273,21 +276,15 @@ impl SceneGpuStore {
         }
 
         let dirty_transforms = DirtyMask::new(row_capacity);
-        let dirty_slots = DirtyMask::new(row_capacity);
         dirty_transforms.mark_range(cell.rows_in_use());
-        dirty_slots.mark_range(cell.rows_in_use());
-
-        // Seed the slot scratch for every occupied row unconditionally (the
-        // dirty_slots mask above already covers `0..rows_in_use`, so the next
-        // sync_all would recompute these anyway — filling now keeps
-        // `slot_scratch` consistent with the mask from the moment the cell is
-        // registered).
-        let rows_in_use = cell.rows_in_use();
-        let col0 = cell.slot_column();
-        let mut slot_scratch = vec![0u32; row_capacity as usize];
-        for row in 0..rows_in_use as usize {
-            slot_scratch[row] = slot_base + col0[row];
-        }
+        // No slot-mirror warm-up: `sync_all`'s self-healing boundary scan is
+        // the SOLE dirty_slots marker and scratch/shadow writer. The shadow
+        // starts all-MAX (= never uploaded; real local slots are always
+        // < slot_capacity < u32::MAX), so the first boundary marks and
+        // uploads every occupied row on its own. Keeping mark/fill paired in
+        // exactly one place removes the "mark without a scratch fill uploads
+        // stale bytes" footgun.
+        let dirty_slots = DirtyMask::new(row_capacity);
 
         self.cells.push(CellGpuState {
             class,
@@ -296,11 +293,7 @@ impl SceneGpuStore {
             slot_capacity,
             dirty_transforms,
             dirty_slots,
-            slot_scratch,
-            // All-MAX (= never uploaded): occupied rows are already marked in
-            // dirty_slots above, so the first sync_all populates the shadow;
-            // any write_transform before that boundary re-marks an
-            // already-marked row (idempotent).
+            slot_scratch: vec![0u32; row_capacity as usize],
             slot_shadow: vec![u32::MAX; row_capacity as usize],
             pending: VecDeque::new(),
             gen_shadow,
@@ -335,15 +328,6 @@ impl SceneGpuStore {
         let col = cell
             .column_for_mut::<[f32; 16]>()
             .expect("cell has no [f32; 16] transform column");
-        // Row-scoped slot-mirror staleness check (T4; C6): if the last LOCAL
-        // slot uploaded for this ROW differs from the handle's slot, the
-        // mirror entry is stale and must be re-uploaded at the next sync.
-        // This catches both the first write after alloc (shadow = u32::MAX)
-        // and a retired slot recycled into a different row — which the
-        // slot-scoped gen-shadow gate cannot see (Task 4 review).
-        if state.slot_shadow[row as usize] != handle.index() {
-            state.dirty_slots.mark(row);
-        }
         col[row as usize] = *m;
         state.dirty_transforms.mark(row);
         self.write_generation(state, handle.index(), handle.generation());
@@ -397,32 +381,32 @@ impl SceneGpuStore {
     }
 
     /// Frame-boundary compaction (§4): every moved row's destination is
-    /// marked dirty in BOTH the transform and slot-mirror masks so the next
-    /// sync re-uploads it.
+    /// marked dirty in the transform mask so the next sync re-uploads it.
+    /// The slot mirror is NOT marked here — `sync_all`'s boundary scan
+    /// detects moved slots on its own.
     pub fn compact_all(&mut self, cells: &mut [CellSlot<'_>]) {
         debug_assert_eq!(self.phase, Phase::Retired, "compact_all must follow retire_all");
         self.phase = Phase::Compacted;
         for slot in cells.iter_mut() {
             let state = &self.cells[slot.id.0 as usize];
             slot.cell.compact_report(|_from, to| {
+                // Only the TRANSFORM mark: the slot mirror needs no
+                // per-move trigger — `sync_all`'s self-healing boundary
+                // scan compares every occupied row's slot shadow against
+                // the slot column and catches swap destinations itself.
                 state.dirty_transforms.mark(to);
-                // REQUIRED, not just insurance: a moved row may never be
-                // written again, so `write_transform`'s slot-shadow check
-                // would never see it — this mark is the only thing keeping
-                // the moved row's mirror entry from going stale (C6).
-                state.dirty_slots.mark(to);
             });
         }
     }
 
     /// Frame-boundary upload (§4): coalesced dirty-row write of each cell's
     /// transform-column region into its disjoint slice of the shared SSBO,
-    /// then the row-indexed global-slot mirror for every row `dirty_slots`
-    /// marks (row-scoped slot-shadow mismatch in `write_transform`, and
-    /// compaction moves) — closes the boundary (next phase is the write
-    /// window). Rows alloc'd but never
-    /// written stay un-uploaded; see `slot_mirror_buffer`'s doc for the
-    /// resulting fail-closed GPU validation behavior.
+    /// then the slot mirror via the self-healing boundary scan — every
+    /// occupied row whose shadow disagrees with the slot column is marked,
+    /// staged, and uploaded, regardless of HOW the slot got there. Closes
+    /// the boundary (next phase is the write window). Post-condition: mirror
+    /// entries `[row_base, row_base + rows_in_use)` equal
+    /// `slot_base + slot_column()[row]` exactly.
     pub fn sync_all(&mut self, cells: &mut [CellSlot<'_>]) -> SyncStats {
         debug_assert_eq!(self.phase, Phase::Compacted, "sync_all must follow compact_all");
         self.phase = Phase::Write;
@@ -438,14 +422,22 @@ impl SceneGpuStore {
             total.ranges += stats.ranges;
             total.bytes += stats.bytes;
 
+            // Self-healing boundary scan — the ONLY slot-mirror dirty
+            // trigger (Task 4 re-review): compare every occupied row's
+            // shadow against the authoritative slot column and mark exactly
+            // the mismatches, whatever moved the slot there (write after
+            // alloc, compaction swap, or an alloc re-occupying a vacated row
+            // that is never written — the ghost-duplicate case no per-event
+            // trigger caught). O(rows) u32 compares per cell per boundary;
+            // uploads only actual mismatches.
             let col0 = slot.cell.slot_column();
             let state = &mut self.cells[slot.id.0 as usize];
             for row in 0..rows as u32 {
-                if state.dirty_slots.is_marked(row) {
-                    state.slot_scratch[row as usize] = state.slot_base + col0[row as usize];
-                    // Sole writer of the row-scoped slot shadow (`&mut self`
-                    // here; `write_transform` only reads it from `&self`).
-                    state.slot_shadow[row as usize] = col0[row as usize];
+                let expect = col0[row as usize];
+                if state.slot_shadow[row as usize] != expect {
+                    state.dirty_slots.mark(row);
+                    state.slot_scratch[row as usize] = state.slot_base + expect;
+                    state.slot_shadow[row as usize] = expect;
                 }
             }
             let state = &self.cells[slot.id.0 as usize];
@@ -465,18 +457,14 @@ impl SceneGpuStore {
         self.transforms.buffer()
     }
 
-    /// Row-indexed global-slot mirror (T4; C6 GPU handle validation): entry
-    /// `row` holds the global slot ID owning that row, kept current by
-    /// `sync_all` for every row `dirty_slots` marks (row-scoped slot-shadow
-    /// mismatch, and compaction moves — see `write_transform`/`compact_all`).
+    /// Row-indexed global-slot mirror (T4; C6 GPU handle validation).
     ///
-    /// Rows that were allocated but never written through `write_transform`
-    /// are NOT uploaded (they stay at their zero-init value, global slot 0,
-    /// or whatever stale entry a prior occupant left behind). This is
-    /// intentional and fails closed: the GPU cull (M3) cross-checks this
-    /// mirror's slot against the generation buffer, and an unwritten row's
-    /// entry will not match the live generation for that slot, so the row is
-    /// rejected rather than silently treated as valid.
+    /// Guarantee: after every `sync_all`, entries
+    /// `[row_base, row_base + rows_in_use)` of each registered cell mirror
+    /// `slot_base + slot_column()[row]` EXACTLY — the boundary scan
+    /// self-heals any row whose slot changed by any mechanism (write after
+    /// alloc, compaction swap, or an alloc into a previously vacated row
+    /// that is never written).
     ///
     /// Mirror entries beyond a cell's `rows_in_use` are stale-but-inert:
     /// compaction shrinks the row count without erasing the mirror tail, so

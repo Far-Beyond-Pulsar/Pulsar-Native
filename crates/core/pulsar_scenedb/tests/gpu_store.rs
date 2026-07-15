@@ -498,3 +498,55 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     assert_eq!(mirror[base + hd_row], 0 + hd.index(), "recycled slot's new row must be re-uploaded");
     assert_eq!(mirror[base + hc_row], 0 + hc.index(), "moved row's mirror entry still correct");
 }
+
+/// Task 4 re-review regression (fail-open residual): alloc() into a row a
+/// prior compaction vacated (rows_in_use shrank past it, then grew back),
+/// never write_transform'd. Any write-path trigger never fires for it, so
+/// mirror[row] would keep the MOVED prior occupant's slot — still live at
+/// its matching generation — a ghost duplicate that VALIDATES. The sync_all
+/// boundary scan must self-heal it.
+#[test]
+fn slot_mirror_self_heals_alloc_without_write() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let ha = cell.alloc().unwrap();
+    let hb = cell.alloc().unwrap();
+    let hc = cell.alloc().unwrap();
+    for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
+        store.write_transform(id, &mut cell, h, &mat(s));
+    }
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    // Retire ha; hc swaps into row0; rows_in_use shrinks to 2 — row2 is
+    // vacated but mirror[row2] still holds hc's slot (stale-but-inert while
+    // unoccupied).
+    let serial = store.tracker().next_serial();
+    store.free_deferred(id, &mut cell, ha, serial);
+    store.tracker().force_complete(serial);
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    // Re-occupy row2 with a recycled slot and DO NOT write its transform:
+    // no write-path trigger can ever fire for this row.
+    let hd = cell.alloc().unwrap();
+    let hd_row = cell.row_of(hd).unwrap() as usize;
+    assert_eq!(hd_row, 2, "precondition: hd re-occupied the vacated tail row");
+    assert_ne!(hd.index(), hc.index(), "precondition: hd's slot differs from the stale mirror entry (non-vacuous)");
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    let base = store.row_region_base(id) as usize;
+    let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
+    // slot_base is 0 for the first class-0 cell — keep the explicit form.
+    assert_eq!(
+        mirror[base + hd_row],
+        0 + hd.index(),
+        "boundary scan must self-heal the never-written re-occupied row"
+    );
+}
