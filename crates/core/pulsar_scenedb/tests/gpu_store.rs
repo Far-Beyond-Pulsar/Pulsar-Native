@@ -449,3 +449,52 @@ fn slot_mirror_tracks_alloc_and_compaction_moves() {
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
     assert_eq!(mirror[base + hc_row], hc.index(), "moved row's mirror entry updated");
 }
+
+/// Task 4 review regression (fail-open C6): a retired slot recycled into a
+/// DIFFERENT row arrives with its generation already stamped by the retire,
+/// so a gen-shadow-gated dirty trigger stays silent and the new row's mirror
+/// entry keeps the previous occupant's slot — which VALIDATES against that
+/// still-live slot's generation. The row-scoped slot shadow must catch it.
+#[test]
+fn slot_mirror_survives_slot_recycling_into_new_row() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let ha = cell.alloc().unwrap();
+    let hb = cell.alloc().unwrap();
+    let hc = cell.alloc().unwrap();
+    for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
+        store.write_transform(id, &mut cell, h, &mat(s));
+    }
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    // Retire ha; hc swaps into ha's row (row 0); boundary uploads the move
+    // and stamps ha's bumped generation into the gen-shadow.
+    let serial = store.tracker().next_serial();
+    store.free_deferred(id, &mut cell, ha, serial);
+    store.tracker().force_complete(serial);
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    // Alloc recycles ha's slot — but into a NEW row (the tail), not ha's old
+    // row, which hc now occupies.
+    let hd = cell.alloc().unwrap();
+    assert_eq!(hd.index(), ha.index(), "precondition: hd recycled ha's slot");
+    let hd_row = cell.row_of(hd).unwrap() as usize;
+    let hc_row = cell.row_of(hc).unwrap() as usize;
+    assert_ne!(hd_row, hc_row, "precondition: recycled slot landed in a different row");
+    store.write_transform(id, &mut cell, hd, &mat(4.0));
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    let base = store.row_region_base(id) as usize;
+    let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
+    // slot_base is 0 for the first class-0 cell — keep the explicit form.
+    assert_eq!(mirror[base + hd_row], 0 + hd.index(), "recycled slot's new row must be re-uploaded");
+    assert_eq!(mirror[base + hc_row], 0 + hc.index(), "moved row's mirror entry still correct");
+}
