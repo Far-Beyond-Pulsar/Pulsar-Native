@@ -172,18 +172,19 @@ fn scene_cfg() -> SceneGpuConfig {
 /// Drives one full frame boundary through the compile-time phase machine
 /// (T11, design Rev 2 §6) — the only path available to callers outside this
 /// crate now that `retire_all`/`compact_all`/`sync_all` are `pub(crate)`.
-/// Consumes the current `SimulateA` witness through the full
-/// Simulate→Harvest→Boundary chain and leaves `*sim` holding a fresh
-/// `SimulateA` (from a new `FrameDriver::begin`) for the next frame's
-/// mutations.
+/// Consumes the current `SimulateA` witness BY VALUE through the full
+/// Simulate→Harvest→Boundary chain, and only then — after the boundary has
+/// run — begins the next frame and returns its fresh `SimulateA`. The
+/// next-frame witness is never manufactured while the old one is still live
+/// (the hoarding pattern the phase machine discourages).
 fn scene_boundary(
     frames: &mut FrameDriver,
-    sim: &mut SimulateA,
+    sim: SimulateA,
     store: &mut SceneGpuStore,
     slots: &mut [CellSlot<'_>],
-) -> pulsar_scenedb::gpu::SyncStats {
-    let cur = std::mem::replace(sim, frames.begin());
-    cur.end().end().end().run(store, slots)
+) -> (SimulateA, pulsar_scenedb::gpu::SyncStats) {
+    let stats = sim.end().end().end().run(store, slots);
+    (frames.begin(), stats)
 }
 
 #[test]
@@ -198,7 +199,7 @@ fn write_transform_is_the_single_mutation_path() {
     assert!(store.write_transform(id, &mut cell, h, &mat(9.0), &sim));
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     let row = cell.row_of(h).unwrap() as usize;
     let base = store.row_region_base(id) as usize;
@@ -226,7 +227,7 @@ fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Free hb via the deferred path; complete its serial; boundary again:
     let serial = store.tracker().next_serial();
@@ -234,7 +235,8 @@ fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
     store.tracker().force_complete(serial);
     let stats = {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots) // retire → compact (hc moves) → sync
+        // Last frame of the test: the returned next-frame witness is dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots).1 // retire → compact (hc moves) → sync
     };
     assert!(stats.ranges >= 1, "the compaction move was re-uploaded");
     // Moved row's GPU bytes are correct at its NEW index:
@@ -269,7 +271,7 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
     // Next frame: a moving object's write is still generation-silent.
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     assert!(store.write_transform(id, &mut cell, h, &mat(3.0), &sim));
     assert_eq!(
@@ -284,8 +286,10 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
     let serial = store.tracker().next_serial();
     assert!(store.free_deferred(id, &mut cell, h, serial, &sim));
     store.tracker().force_complete(serial);
-    let cur = std::mem::replace(&mut sim, frames.begin());
-    let retired = cur.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    // Consume the witness by value — the next frame's witness is not begun
+    // until the boundary completes (no hoarding).
+    let (retired, drained) = sim.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    assert_eq!(drained, 1, "exactly one entry drained");
     assert_eq!(store.generation_write_count(), 2, "retirement writes the bumped generation");
     // Close the frame boundary (phase machine: retire → compact → sync).
     let compacted = retired.compact(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
@@ -297,13 +301,13 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
 /// new generation is in the VRAM buffer; the handle stays row-resolvable but
 /// harvest-dead during the window; afterwards it is rejected. No UB.
 ///
-/// `retire_all`'s drained-count is no longer directly observable outside the
-/// crate (it is `pub(crate)`, T11) — the between-stage asserts that used to
-/// read it now go through `RetiredPhase`/`CompactedPhase` (reachable via
-/// `BoundaryPhase::retire`/`RetiredPhase::compact`) and confirm the SAME fact
-/// via `generation_write_count()`: retirement always bumps a slot's
-/// generation, so the shadow-gated write count rises by exactly the number of
-/// entries drained.
+/// The between-stage asserts go through the staged boundary transitions
+/// (`BoundaryPhase::retire` → `RetiredPhase::compact` → `CompactedPhase::sync`).
+/// `retire` returns the drain count directly — asserted as the primary
+/// observable — and `generation_write_count()` is kept as a second,
+/// independent instrument for the same fact (retirement always bumps a
+/// slot's generation, so the shadow-gated write count rises by exactly the
+/// number of entries drained).
 #[test]
 fn test6_retirement_invariant() {
     let ctx = test_context();
@@ -316,18 +320,19 @@ fn test6_retirement_invariant() {
     store.write_transform(id, &mut cell, h, &mat(42.0), &sim);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
 
     let row = cell.row_of(h).unwrap();
     let serial = store.tracker().next_serial();
     assert!(store.free_deferred(id, &mut cell, h, serial, &sim));
 
-    // Serial INCOMPLETE: boundary runs but nothing retires.
+    // Serial INCOMPLETE: boundary runs but nothing retires. The drain count
+    // is the DIRECT observable; the generation-write-count delta is kept as
+    // a second, independent instrument for the same fact.
     let gens_before = store.generation_write_count();
-    let cur = std::mem::replace(&mut sim, frames.begin());
-    let b = cur.end().end().end();
-    let retired = b.retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    let (retired, drained) = sim.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    assert_eq!(drained, 0, "incomplete serial must not retire");
     assert_eq!(
         store.generation_write_count(),
         gens_before,
@@ -340,6 +345,8 @@ fn test6_retirement_invariant() {
     assert_eq!(cell.rows_in_use(), 1, "pinned row physically survives compaction (only h's row)");
     assert_eq!(cell.row_of(h), Some(row), "row not compacted while pinned");
     compacted.sync(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    // Boundary complete — only now begin the next frame's witness.
+    sim = frames.begin();
     // Still the incomplete-serial window (h's slot not yet reissued): the
     // write window is open again post-sync, but the handle is pending-retire
     // and must be rejected.
@@ -351,9 +358,8 @@ fn test6_retirement_invariant() {
     // Serial COMPLETES: the drain writes VRAM gen BEFORE pooling the slot.
     store.tracker().force_complete(serial);
     let gens_before = store.generation_write_count();
-    let cur = std::mem::replace(&mut sim, frames.begin());
-    let b = cur.end().end().end();
-    let retired = b.retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    let (retired, drained) = sim.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    assert_eq!(drained, 1);
     assert_eq!(store.generation_write_count(), gens_before + 1, "exactly one entry drained and its generation bumped");
     let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
     let slot_base = 0usize; // slot region base for the first class-0 cell
@@ -389,7 +395,7 @@ fn test14_device_loss_rematerialization() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     for &h in &[hs[2], hs[5]] {
         let s = store.tracker().next_serial();
@@ -398,7 +404,8 @@ fn test14_device_loss_rematerialization() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Last frame before device loss: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
     let base_before = store.row_region_base(id) as usize;
     let before_rows = readback(&ctx1, store.transform_buffer(), (64 * 4 * 64) as u64);
@@ -457,14 +464,15 @@ fn two_cells_write_into_disjoint_regions() {
     let idb = store.register_cell(&cell_b, 0).unwrap();
     assert_ne!(store.row_region_base(ida), store.row_region_base(idb));
     let mut frames = FrameDriver::new();
-    let mut sim = frames.begin();
+    let sim = frames.begin();
     let ha = cell_a.alloc().unwrap();
     let hb = cell_b.alloc().unwrap();
     assert!(store.write_transform(ida, &mut cell_a, ha, &mat(1.0), &sim));
     assert!(store.write_transform(idb, &mut cell_b, hb, &mat(2.0), &sim));
     {
         let mut slots = [CellSlot { id: ida, cell: &mut cell_a }, CellSlot { id: idb, cell: &mut cell_b }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Only frame of the test: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
     let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), (64 * 4 * 64) as u64));
     let base_a = store.row_region_base(ida) as usize;
@@ -530,7 +538,7 @@ fn slot_mirror_tracks_alloc_and_compaction_moves() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -542,7 +550,8 @@ fn slot_mirror_tracks_alloc_and_compaction_moves() {
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Last frame of the test: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
     let hc_row = cell.row_of(hc).unwrap() as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -570,7 +579,7 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Retire ha; hc swaps into ha's row (row 0); boundary uploads the move
     // and stamps ha's bumped generation into the gen-shadow.
@@ -579,7 +588,7 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Alloc recycles ha's slot — but into a NEW row (the tail), not ha's old
     // row, which hc now occupies.
@@ -591,7 +600,8 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     store.write_transform(id, &mut cell, hd, &mat(4.0), &sim);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Last frame of the test: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -622,7 +632,7 @@ fn slot_mirror_self_heals_alloc_without_write() {
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Retire ha; hc swaps into row0; rows_in_use shrinks to 2 — row2 is
     // vacated but mirror[row2] still holds hc's slot (stale-but-inert while
@@ -632,7 +642,7 @@ fn slot_mirror_self_heals_alloc_without_write() {
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Re-occupy row2 with a recycled slot and DO NOT write its transform:
     // no write-path trigger can ever fire for this row.
@@ -642,7 +652,8 @@ fn slot_mirror_self_heals_alloc_without_write() {
     assert_ne!(hd.index(), hc.index(), "precondition: hd's slot differs from the stale mirror entry (non-vacuous)");
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Last frame of the test: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -703,7 +714,7 @@ fn test14_multicell_device_loss_rematerialization() {
     }
     {
         let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
     }
     // Free 2 of 8 per cell via the deferred path; force-complete each serial.
     for &h in &[hs_a[2], hs_a[5]] {
@@ -718,7 +729,8 @@ fn test14_multicell_device_loss_rematerialization() {
     }
     {
         let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
-        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
+        // Last frame before device loss: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
     }
 
     let base_a_before = store.row_region_base(id_a) as usize;

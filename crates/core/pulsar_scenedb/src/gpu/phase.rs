@@ -1,11 +1,27 @@
 //! Compile-time frame-phase machine (design Rev 2 §6, C3): zero-size witness
 //! types that make the frame's phase a type, not a runtime value. Holding a
-//! phase value IS the permission to call the APIs gated on it — misuse
-//! (mutating during Harvest, reordering the boundary stages) is a compile
-//! error, not a debug-assert that only fires when a test happens to exercise
-//! the bad path. The runtime `Phase` enum inside `SceneGpuStore` stays as a
-//! debug backstop for untyped callers (FFI) — it is not replaced by this
-//! module, it is redundant with it for the normal Rust call path.
+//! phase value IS the permission to call the APIs gated on it.
+//!
+//! Honest coverage map — what the types close vs. what they do not:
+//!
+//! - CLOSED by the types: witness forgery (all witnesses are ZSTs with
+//!   private fields, `SimulateWitness` is sealed — no external construction
+//!   or impl), boundary-stage reordering, skipping, and double-running
+//!   (each transition consumes `self`; `retire_all`/`compact_all`/`sync_all`
+//!   are `pub(crate)`, reachable only through this chain).
+//! - STILL on the runtime `Phase` debug-asserts (debug builds only): a
+//!   STALE or duplicated Simulate witness. `FrameDriver::begin` does not
+//!   lifetime-tie the witness to the frame, and `write_transform`/
+//!   `free_deferred` take `&impl SimulateWitness` without consuming it — a
+//!   caller who hoards a `SimulateA` across a boundary can mutate during
+//!   what is dynamically the wrong window; only the enum catches that, and
+//!   only in debug.
+//! - Enforced by NOTHING: boundary liveness — no type obliges a caller to
+//!   ever end the frame and run the boundary at all.
+//!
+//! A lifetime-carrying witness (`SimulateA<'frame>` borrowed from the
+//! driver/store) is the candidate hardening for the stale-witness hole —
+//! M2b-β/M4 scope.
 //!
 //! One frame: `FrameDriver::begin` → `SimulateA` → `SimulateB` → `HarvestPhase`
 //! → `BoundaryPhase` → (retire → compact → sync) → back to the next
@@ -91,14 +107,17 @@ pub struct BoundaryPhase(());
 impl BoundaryPhase {
     /// Run the full boundary in one call: retire → compact → sync.
     pub fn run(self, store: &mut SceneGpuStore, cells: &mut [CellSlot<'_>]) -> SyncStats {
-        self.retire(store, cells).compact(store, cells).sync(store, cells)
+        let (retired, _drained) = self.retire(store, cells);
+        retired.compact(store, cells).sync(store, cells)
     }
 
     /// §5 flow step 3: drain every cell's deferred-retire queue against the
-    /// completed-serial watermark.
-    pub fn retire(self, store: &mut SceneGpuStore, cells: &mut [CellSlot<'_>]) -> RetiredPhase {
-        store.retire_all(cells);
-        RetiredPhase(())
+    /// completed-serial watermark. Returns the total number of slots retired
+    /// across every cell — the gate must not lose direct observability of
+    /// what it gates.
+    pub fn retire(self, store: &mut SceneGpuStore, cells: &mut [CellSlot<'_>]) -> (RetiredPhase, u32) {
+        let drained = store.retire_all(cells);
+        (RetiredPhase(()), drained)
     }
 }
 
@@ -136,6 +155,16 @@ impl CompactedPhase {
 /// fn f(store: &SceneGpuStore, id: CellId, cell: &mut pulsar_scenedb::CellStorage,
 ///      h: pulsar_scenedb::Handle, harvest: &HarvestPhase) {
 ///     store.write_transform(id, cell, h, &[0.0; 16], harvest); // not a SimulateWitness
+/// }
+/// ```
+///
+/// The positive counterpart — the same gated call COMPILES with a valid
+/// Simulate witness:
+/// ```
+/// use pulsar_scenedb::gpu::*;
+/// fn f(store: &SceneGpuStore, id: CellId, cell: &mut pulsar_scenedb::CellStorage,
+///      h: pulsar_scenedb::Handle, sim: &SimulateA) {
+///     store.write_transform(id, cell, h, &[0.0; 16], sim); // SimulateA is a SimulateWitness
 /// }
 /// ```
 pub trait SimulateWitness: private::Sealed {}

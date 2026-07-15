@@ -23,9 +23,11 @@
 //! - `gpu` (feature `gpu`) — M2b-α region-partitioned GPU-resident store:
 //!   `EngineGpuContext`, `SceneBuffer<T>` row-indexed SSBOs with coalescing
 //!   delta-sync, slot-indexed `GenerationBuffer`, `SubmissionTracker`, and
-//!   `SceneGpuStore`'s multi-cell pin-by-serial retirement
-//!   (`retire_all → compact_all → sync_all`). The core stays graphics-free
-//!   (C0); CI guards `--no-default-features`.
+//!   `SceneGpuStore`'s multi-cell pin-by-serial retirement, driven through
+//!   the compile-time phase machine (`FrameDriver` → Simulate witnesses →
+//!   `BoundaryPhase::run`, or the staged `retire`/`compact`/`sync`
+//!   transitions). The core stays graphics-free (C0); CI guards
+//!   `--no-default-features`.
 //!
 //! The inherited archetype ECS modules (`world`, `archetype`, `query`, …)
 //! are retained and will be migrated onto paged storage in later milestones
