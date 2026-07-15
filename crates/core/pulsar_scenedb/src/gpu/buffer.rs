@@ -53,6 +53,10 @@ impl<T: Pod> SceneBuffer<T> {
             cpu.len(),
             self.capacity
         );
+        assert!(
+            dirty.capacity() as u64 >= cpu.len() as u64,
+            "dirty mask smaller than the CPU slice — wrong mask for this cell"
+        );
         let stride = std::mem::size_of::<T>() as u64;
         let n = cpu.len() as u32;
         let mut stats = SyncStats { ranges: 0, bytes: 0 };

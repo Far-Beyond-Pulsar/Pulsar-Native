@@ -11,6 +11,7 @@ mod context;
 mod dirty;
 mod generation;
 mod region;
+mod scene_store;
 mod store;
 mod tracker;
 
@@ -19,6 +20,7 @@ pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
 pub use region::{RegionPool, RegionError};
+pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
 pub use store::{GpuStore, GpuStoreConfig};
 pub use tracker::SubmissionTracker;
 

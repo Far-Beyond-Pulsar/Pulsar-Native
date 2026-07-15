@@ -336,3 +336,83 @@ fn test14_device_loss_rematerialization() {
     let s = cell.registry().generations().len() * 4;
     assert_eq!(after_gens[..s], before_gens[..s], "generations byte-identical (incl. bumps)");
 }
+
+use pulsar_scenedb::gpu::{CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
+
+fn scene_cfg() -> SceneGpuConfig {
+    SceneGpuConfig {
+        classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 4 }],
+        tombstone_headroom: 8,
+        max_materials: 16,
+        max_cells_metadata: 16,
+    }
+}
+
+fn scene_boundary(store: &mut SceneGpuStore, slots: &mut [CellSlot<'_>]) -> pulsar_scenedb::gpu::SyncStats {
+    store.retire_all(slots);
+    store.compact_all(slots);
+    store.sync_all(slots)
+}
+
+#[test]
+fn two_cells_write_into_disjoint_regions() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell_a = transform_cell(64);
+    let mut cell_b = transform_cell(64);
+    let ida = store.register_cell(&cell_a, 0).unwrap();
+    let idb = store.register_cell(&cell_b, 0).unwrap();
+    assert_ne!(store.row_region_base(ida), store.row_region_base(idb));
+    let ha = cell_a.alloc().unwrap();
+    let hb = cell_b.alloc().unwrap();
+    assert!(store.write_transform(ida, &mut cell_a, ha, &mat(1.0)));
+    assert!(store.write_transform(idb, &mut cell_b, hb, &mat(2.0)));
+    {
+        let mut slots = [CellSlot { id: ida, cell: &mut cell_a }, CellSlot { id: idb, cell: &mut cell_b }];
+        scene_boundary(&mut store, &mut slots);
+    }
+    let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), (64 * 4 * 64) as u64));
+    let base_a = store.row_region_base(ida) as usize;
+    let base_b = store.row_region_base(idb) as usize;
+    assert_eq!(&gpu[base_a * 16..base_a * 16 + 16], &mat(1.0), "cell A row 0 in region A");
+    assert_eq!(&gpu[base_b * 16..base_b * 16 + 16], &mat(2.0), "cell B row 0 in region B");
+}
+
+#[test]
+fn region_exhaustion_is_a_hard_error() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(
+        &ctx,
+        SceneGpuConfig {
+            classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+            tombstone_headroom: 8,
+            max_materials: 1,
+            max_cells_metadata: 1,
+        },
+    );
+    let c1 = transform_cell(64);
+    let c2 = transform_cell(64);
+    assert!(store.register_cell(&c1, 0).is_ok());
+    assert!(store.register_cell(&c2, 0).is_err(), "second cell exceeds max_resident_cells");
+}
+
+#[test]
+fn registration_rebuilds_generation_region_and_shadow() {
+    // The D2 regression shape (single-region form; recycled-region form is β):
+    // a cell with churned generations registers; its region must mirror the
+    // registry immediately, with zero per-write stamps needed afterwards.
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_cell(64);
+    let h1 = cell.alloc().unwrap();
+    cell.free(h1); // immediate-free churn BEFORE registration: gen bumped to 2 in registry
+    let h2 = cell.alloc().unwrap(); // recycles slot 0 at gen 2
+    let id = store.register_cell(&cell, 0).unwrap();
+    let gens = as_u32s(&readback(&ctx, store.generation_buffer(), 8));
+    let sb = 0usize; // first slot region starts at 0
+    assert_eq!(gens[sb], 2, "registration uploaded the churned generation");
+    // Shadow seeded: writing the transform must NOT re-stamp the generation.
+    let before = store.generation_write_count();
+    assert!(store.write_transform(id, &mut cell, h2, &mat(3.0)));
+    assert_eq!(store.generation_write_count(), before, "shadow already knows gen 2");
+}

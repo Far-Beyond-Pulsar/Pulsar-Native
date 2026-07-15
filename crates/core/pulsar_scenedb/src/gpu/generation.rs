@@ -36,6 +36,14 @@ impl GenerationBuffer {
         queue.write_buffer(&self.buf, 0, super::as_bytes(generations));
     }
 
+    /// Bulk upload from the CPU-authoritative registry into ONE region of the
+    /// slot space (M2b-α §2 `register_cell`): the multi-cell analogue of
+    /// [`Self::rebuild`], offset by the cell's `region_base` slot.
+    pub fn rebuild_region(&self, queue: &wgpu::Queue, region_base: u32, generations: &[u32]) {
+        assert!(region_base as u64 + generations.len() as u64 <= self.max_slots as u64);
+        queue.write_buffer(&self.buf, region_base as u64 * 4, super::as_bytes(generations));
+    }
+
     pub fn buffer(&self) -> &wgpu::Buffer {
         &self.buf
     }
