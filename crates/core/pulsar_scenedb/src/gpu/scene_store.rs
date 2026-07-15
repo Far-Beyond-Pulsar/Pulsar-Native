@@ -11,7 +11,7 @@
 
 use super::{
     DirtyMask, EngineGpuContext, GenerationBuffer, RegionError, RegionPool, SceneBuffer,
-    SubmissionTracker, SyncStats,
+    SimulateWitness, SubmissionTracker, SyncStats,
 };
 use crate::cell::{CellStorage, PendingRetire};
 use crate::handle::Handle;
@@ -378,7 +378,14 @@ impl SceneGpuStore {
     /// live handle (the §4 hot path) issue zero generation-buffer traffic
     /// while the buffer still mirrors `HandleRegistry::generations()` for
     /// every allocated slot (C6).
-    pub fn write_transform(&self, id: CellId, cell: &mut CellStorage, handle: Handle, m: &[f32; 16]) -> bool {
+    pub fn write_transform(
+        &self,
+        id: CellId,
+        cell: &mut CellStorage,
+        handle: Handle,
+        m: &[f32; 16],
+        _sim: &impl SimulateWitness,
+    ) -> bool {
         debug_assert_eq!(self.phase, Phase::Write, "mutation outside the write window");
         let state = &self.cells[id.0 as usize];
         let Some(row) = cell.row_of(handle) else {
@@ -398,17 +405,26 @@ impl SceneGpuStore {
 
     /// §5 flow step 1: liveness-dead + pinned + enqueued against `serial`.
     /// Registry and GPU buffers unchanged until the serial completes.
-    pub fn free_deferred(&mut self, id: CellId, cell: &mut CellStorage, handle: Handle, serial: u64) -> bool {
+    pub fn free_deferred(
+        &mut self,
+        id: CellId,
+        cell: &mut CellStorage,
+        handle: Handle,
+        serial: u64,
+        _sim: &impl SimulateWitness,
+    ) -> bool {
         debug_assert_eq!(self.phase, Phase::Write, "free_deferred outside the write window");
         let Some(pending) = cell.mark_pending_retire(handle) else {
             return false;
         };
-        let queue = &mut self.cells[id.0 as usize].pending;
+        let state = &mut self.cells[id.0 as usize];
         debug_assert!(
-            queue.back().is_none_or(|q| serial >= q.serial),
-            "per-cell retire queue serials must be nondecreasing"
+            state.pending.back().map_or(true, |q| q.serial <= serial),
+            "free_deferred serials must be nondecreasing per cell — the retire \
+             drain's FIFO early-break would silently stall retirement behind an \
+             out-of-order serial"
         );
-        queue.push_back(QueuedRetire { pending, serial });
+        state.pending.push_back(QueuedRetire { pending, serial });
         true
     }
 
@@ -418,7 +434,7 @@ impl SceneGpuStore {
     /// generation to VRAM, then commit in the registry — the gen bump
     /// reaches the GPU before the slot can be re-allocated (C6). Returns the
     /// total number of slots retired across every cell.
-    pub fn retire_all(&mut self, cells: &mut [CellSlot<'_>]) -> u32 {
+    pub(crate) fn retire_all(&mut self, cells: &mut [CellSlot<'_>]) -> u32 {
         debug_assert_eq!(self.phase, Phase::Write, "retire_all must open the frame boundary");
         self.phase = Phase::Retired;
         let done = self.tracker.completed();
@@ -446,7 +462,7 @@ impl SceneGpuStore {
     /// marked dirty in the transform mask so the next sync re-uploads it.
     /// The slot mirror is NOT marked here — `sync_all`'s boundary scan
     /// detects moved slots on its own.
-    pub fn compact_all(&mut self, cells: &mut [CellSlot<'_>]) {
+    pub(crate) fn compact_all(&mut self, cells: &mut [CellSlot<'_>]) {
         debug_assert_eq!(self.phase, Phase::Retired, "compact_all must follow retire_all");
         self.phase = Phase::Compacted;
         for slot in cells.iter_mut() {
@@ -469,7 +485,7 @@ impl SceneGpuStore {
     /// the boundary (next phase is the write window). Post-condition: mirror
     /// entries `[row_base, row_base + rows_in_use)` equal
     /// `slot_base + slot_column()[row]` exactly.
-    pub fn sync_all(&mut self, cells: &mut [CellSlot<'_>]) -> SyncStats {
+    pub(crate) fn sync_all(&mut self, cells: &mut [CellSlot<'_>]) -> SyncStats {
         debug_assert_eq!(self.phase, Phase::Compacted, "sync_all must follow compact_all");
         self.phase = Phase::Write;
         let mut total = SyncStats { ranges: 0, bytes: 0 };

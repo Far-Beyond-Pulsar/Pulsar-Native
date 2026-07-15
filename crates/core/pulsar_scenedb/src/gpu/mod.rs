@@ -4,14 +4,19 @@
 //! graphics-free (CONTRACTS C0).
 //!
 //! Mirrored columns must be written via `SceneGpuStore::write_transform` and
-//! compacted via `SceneGpuStore::compact_all`; raw column access bypasses
-//! dirty tracking — hard enforcement arrives with the M2b phase machine.
+//! compacted via the frame-boundary drivers in [`phase`]; raw column access
+//! bypasses dirty tracking. The frame phase itself is enforced at compile
+//! time (design Rev 2 §6, C3): mutation requires a [`SimulateWitness`], and
+//! the boundary stages (retire → compact → sync) are reachable only through
+//! [`FrameDriver`] and [`BoundaryPhase`]'s consuming transitions — see
+//! `phase.rs` for the witness chain and its compile_fail doc-tests.
 
 mod assets;
 mod buffer;
 mod context;
 mod dirty;
 mod generation;
+mod phase;
 mod region;
 mod scene_store;
 mod tracker;
@@ -21,6 +26,7 @@ pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
+pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
 pub use tracker::SubmissionTracker;

@@ -4,7 +4,7 @@
 use pulsar_scenedb::gpu::EngineGpuContext;
 use pulsar_scenedb::gpu::SceneBuffer;
 use pulsar_scenedb::gpu::DirtyMask;
-use pulsar_scenedb::gpu::{CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
+use pulsar_scenedb::gpu::{CellSlot, FrameDriver, RegionClassConfig, SceneGpuConfig, SceneGpuStore, SimulateA};
 use pulsar_scenedb::{CellStorage, CellType, TypeToken};
 use std::sync::Arc;
 
@@ -169,10 +169,21 @@ fn scene_cfg() -> SceneGpuConfig {
     }
 }
 
-fn scene_boundary(store: &mut SceneGpuStore, slots: &mut [CellSlot<'_>]) -> pulsar_scenedb::gpu::SyncStats {
-    store.retire_all(slots);
-    store.compact_all(slots);
-    store.sync_all(slots)
+/// Drives one full frame boundary through the compile-time phase machine
+/// (T11, design Rev 2 §6) — the only path available to callers outside this
+/// crate now that `retire_all`/`compact_all`/`sync_all` are `pub(crate)`.
+/// Consumes the current `SimulateA` witness through the full
+/// Simulate→Harvest→Boundary chain and leaves `*sim` holding a fresh
+/// `SimulateA` (from a new `FrameDriver::begin`) for the next frame's
+/// mutations.
+fn scene_boundary(
+    frames: &mut FrameDriver,
+    sim: &mut SimulateA,
+    store: &mut SceneGpuStore,
+    slots: &mut [CellSlot<'_>],
+) -> pulsar_scenedb::gpu::SyncStats {
+    let cur = std::mem::replace(sim, frames.begin());
+    cur.end().end().end().run(store, slots)
 }
 
 #[test]
@@ -181,11 +192,13 @@ fn write_transform_is_the_single_mutation_path() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let h = cell.alloc().unwrap();
-    assert!(store.write_transform(id, &mut cell, h, &mat(9.0)));
+    assert!(store.write_transform(id, &mut cell, h, &mat(9.0), &sim));
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let row = cell.row_of(h).unwrap() as usize;
     let base = store.row_region_base(id) as usize;
@@ -194,7 +207,7 @@ fn write_transform_is_the_single_mutation_path() {
     // Stale handle rejected.
     let dead = cell.alloc().unwrap();
     cell.free(dead);
-    assert!(!store.write_transform(id, &mut cell, dead, &mat(0.0)));
+    assert!(!store.write_transform(id, &mut cell, dead, &mat(0.0), &sim));
 }
 
 #[test]
@@ -203,23 +216,25 @@ fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let ha = cell.alloc().unwrap();
     let hb = cell.alloc().unwrap();
     let hc = cell.alloc().unwrap();
     for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
-        store.write_transform(id, &mut cell, h, &mat(s));
+        store.write_transform(id, &mut cell, h, &mat(s), &sim);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Free hb via the deferred path; complete its serial; boundary again:
     let serial = store.tracker().next_serial();
-    assert!(store.free_deferred(id, &mut cell, hb, serial));
+    assert!(store.free_deferred(id, &mut cell, hb, serial, &sim));
     store.tracker().force_complete(serial);
     let stats = {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots) // retire → compact (hc moves) → sync
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots) // retire → compact (hc moves) → sync
     };
     assert!(stats.ranges >= 1, "the compaction move was re-uploaded");
     // Moved row's GPU bytes are correct at its NEW index:
@@ -240,10 +255,12 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let h = cell.alloc().unwrap();
     // Same write window: two transform writes, one generation upload.
-    assert!(store.write_transform(id, &mut cell, h, &mat(1.0)));
-    assert!(store.write_transform(id, &mut cell, h, &mat(2.0)));
+    assert!(store.write_transform(id, &mut cell, h, &mat(1.0), &sim));
+    assert!(store.write_transform(id, &mut cell, h, &mat(2.0), &sim));
     assert_eq!(
         store.generation_write_count(),
         1,
@@ -252,75 +269,97 @@ fn generation_uploads_are_shadow_gated_to_changes_only() {
     // Next frame: a moving object's write is still generation-silent.
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
-    assert!(store.write_transform(id, &mut cell, h, &mat(3.0)));
+    assert!(store.write_transform(id, &mut cell, h, &mat(3.0), &sim));
     assert_eq!(
         store.generation_write_count(),
         1,
         "unchanged generation is never re-uploaded across frames"
     );
-    // Retirement bumps the generation → exactly one more upload.
+    // Retirement bumps the generation → exactly one more upload. Split the
+    // boundary into its individually-consuming stages (`BoundaryPhase`,
+    // `RetiredPhase`) so the assert below lands strictly BETWEEN retire and
+    // compact/sync, same as before the phase machine existed.
     let serial = store.tracker().next_serial();
-    assert!(store.free_deferred(id, &mut cell, h, serial));
+    assert!(store.free_deferred(id, &mut cell, h, serial, &sim));
     store.tracker().force_complete(serial);
-    store.retire_all(&mut [CellSlot { id, cell: &mut cell }]);
+    let cur = std::mem::replace(&mut sim, frames.begin());
+    let retired = cur.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
     assert_eq!(store.generation_write_count(), 2, "retirement writes the bumped generation");
     // Close the frame boundary (phase machine: retire → compact → sync).
-    store.compact_all(&mut [CellSlot { id, cell: &mut cell }]);
-    store.sync_all(&mut [CellSlot { id, cell: &mut cell }]);
+    let compacted = retired.compact(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    compacted.sync(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
 }
 
 /// Test 6 host-side (design §9): the retirement invariant. A slot is never
 /// reissued, and its row never reclaimed, before its serial completes and the
 /// new generation is in the VRAM buffer; the handle stays row-resolvable but
 /// harvest-dead during the window; afterwards it is rejected. No UB.
+///
+/// `retire_all`'s drained-count is no longer directly observable outside the
+/// crate (it is `pub(crate)`, T11) — the between-stage asserts that used to
+/// read it now go through `RetiredPhase`/`CompactedPhase` (reachable via
+/// `BoundaryPhase::retire`/`RetiredPhase::compact`) and confirm the SAME fact
+/// via `generation_write_count()`: retirement always bumps a slot's
+/// generation, so the shadow-gated write count rises by exactly the number of
+/// entries drained.
 #[test]
 fn test6_retirement_invariant() {
     let ctx = test_context();
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let h = cell.alloc().unwrap();
-    store.write_transform(id, &mut cell, h, &mat(42.0));
+    store.write_transform(id, &mut cell, h, &mat(42.0), &sim);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
 
     let row = cell.row_of(h).unwrap();
     let serial = store.tracker().next_serial();
-    assert!(store.free_deferred(id, &mut cell, h, serial));
+    assert!(store.free_deferred(id, &mut cell, h, serial, &sim));
 
     // Serial INCOMPLETE: boundary runs but nothing retires.
+    let gens_before = store.generation_write_count();
+    let cur = std::mem::replace(&mut sim, frames.begin());
+    let b = cur.end().end().end();
+    let retired = b.retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
     assert_eq!(
-        store.retire_all(&mut [CellSlot { id, cell: &mut cell }]),
-        0,
-        "incomplete serial must not retire"
+        store.generation_write_count(),
+        gens_before,
+        "incomplete serial must not retire (no generation bump uploaded)"
     );
-    store.compact_all(&mut [CellSlot { id, cell: &mut cell }]);
+    let compacted = retired.compact(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
     // Physical survival: the only occupied row is h's pinned row (h2 is not
     // alloc'd yet). A pin-ignoring compaction would tail-pop it to 0 without
     // touching the registry mapping, so row_of alone cannot catch that.
     assert_eq!(cell.rows_in_use(), 1, "pinned row physically survives compaction (only h's row)");
     assert_eq!(cell.row_of(h), Some(row), "row not compacted while pinned");
-    store.sync_all(&mut [CellSlot { id, cell: &mut cell }]);
+    compacted.sync(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
     // Still the incomplete-serial window (h's slot not yet reissued): the
     // write window is open again post-sync, but the handle is pending-retire
     // and must be rejected.
-    assert!(!store.write_transform(id, &mut cell, h, &mat(0.0)), "pending-retire handle must not be writable");
+    assert!(!store.write_transform(id, &mut cell, h, &mat(0.0), &sim), "pending-retire handle must not be writable");
     let h2 = cell.alloc().unwrap();
     assert_ne!(h2.index(), h.index(), "slot not reissued while in flight");
     assert_eq!(cell.live_count(), 1, "pending row absent from harvest (only h2 lives)");
 
     // Serial COMPLETES: the drain writes VRAM gen BEFORE pooling the slot.
     store.tracker().force_complete(serial);
-    assert_eq!(store.retire_all(&mut [CellSlot { id, cell: &mut cell }]), 1);
+    let gens_before = store.generation_write_count();
+    let cur = std::mem::replace(&mut sim, frames.begin());
+    let b = cur.end().end().end();
+    let retired = b.retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    assert_eq!(store.generation_write_count(), gens_before + 1, "exactly one entry drained and its generation bumped");
     let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
     let slot_base = 0usize; // slot region base for the first class-0 cell
     assert_eq!(gpu_gens[slot_base + h.index() as usize], h.generation() + 1, "VRAM generation bumped");
-    store.compact_all(&mut [CellSlot { id, cell: &mut cell }]);
-    store.sync_all(&mut [CellSlot { id, cell: &mut cell }]);
+    let compacted = retired.compact(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
+    compacted.sync(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
     assert_eq!(cell.row_of(h), None, "old handle rejected after retirement");
     let h3 = cell.alloc().unwrap();
     assert_eq!(h3.index(), h.index(), "slot recycled only now");
@@ -342,22 +381,24 @@ fn test14_device_loss_rematerialization() {
     let ctx1 = test_context();
     let mut store = SceneGpuStore::new(&ctx1, cfg.clone());
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let hs: Vec<_> = (0..8).map(|_| cell.alloc().unwrap()).collect();
     for (i, &h) in hs.iter().enumerate() {
-        store.write_transform(id, &mut cell, h, &mat(i as f32 * 10.0));
+        store.write_transform(id, &mut cell, h, &mat(i as f32 * 10.0), &sim);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     for &h in &[hs[2], hs[5]] {
         let s = store.tracker().next_serial();
-        store.free_deferred(id, &mut cell, h, s);
+        store.free_deferred(id, &mut cell, h, s, &sim);
         store.tracker().force_complete(s);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let base_before = store.row_region_base(id) as usize;
     let before_rows = readback(&ctx1, store.transform_buffer(), (64 * 4 * 64) as u64);
@@ -415,13 +456,15 @@ fn two_cells_write_into_disjoint_regions() {
     let ida = store.register_cell(&cell_a, 0).unwrap();
     let idb = store.register_cell(&cell_b, 0).unwrap();
     assert_ne!(store.row_region_base(ida), store.row_region_base(idb));
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let ha = cell_a.alloc().unwrap();
     let hb = cell_b.alloc().unwrap();
-    assert!(store.write_transform(ida, &mut cell_a, ha, &mat(1.0)));
-    assert!(store.write_transform(idb, &mut cell_b, hb, &mat(2.0)));
+    assert!(store.write_transform(ida, &mut cell_a, ha, &mat(1.0), &sim));
+    assert!(store.write_transform(idb, &mut cell_b, hb, &mat(2.0), &sim));
     {
         let mut slots = [CellSlot { id: ida, cell: &mut cell_a }, CellSlot { id: idb, cell: &mut cell_b }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), (64 * 4 * 64) as u64));
     let base_a = store.row_region_base(ida) as usize;
@@ -460,12 +503,14 @@ fn registration_rebuilds_generation_region_and_shadow() {
     cell.free(h1); // immediate-free churn BEFORE registration: gen bumped to 2 in registry
     let h2 = cell.alloc().unwrap(); // recycles slot 0 at gen 2
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let sim = frames.begin();
     let gens = as_u32s(&readback(&ctx, store.generation_buffer(), 8));
     let sb = 0usize; // first slot region starts at 0
     assert_eq!(gens[sb], 2, "registration uploaded the churned generation");
     // Shadow seeded: writing the transform must NOT re-stamp the generation.
     let before = store.generation_write_count();
-    assert!(store.write_transform(id, &mut cell, h2, &mat(3.0)));
+    assert!(store.write_transform(id, &mut cell, h2, &mat(3.0), &sim));
     assert_eq!(store.generation_write_count(), before, "shadow already knows gen 2");
 }
 
@@ -475,15 +520,17 @@ fn slot_mirror_tracks_alloc_and_compaction_moves() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let ha = cell.alloc().unwrap();
     let hb = cell.alloc().unwrap();
     let hc = cell.alloc().unwrap();
     for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
-        store.write_transform(id, &mut cell, h, &mat(s));
+        store.write_transform(id, &mut cell, h, &mat(s), &sim);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -491,11 +538,11 @@ fn slot_mirror_tracks_alloc_and_compaction_moves() {
     assert_eq!(&mirror[base..base + 3], &[ha.index(), hb.index(), hc.index()]);
     // Retire hb; hc swaps into its row; the mirror must follow the move.
     let serial = store.tracker().next_serial();
-    store.free_deferred(id, &mut cell, hb, serial);
+    store.free_deferred(id, &mut cell, hb, serial, &sim);
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let hc_row = cell.row_of(hc).unwrap() as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -513,24 +560,26 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let ha = cell.alloc().unwrap();
     let hb = cell.alloc().unwrap();
     let hc = cell.alloc().unwrap();
     for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
-        store.write_transform(id, &mut cell, h, &mat(s));
+        store.write_transform(id, &mut cell, h, &mat(s), &sim);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Retire ha; hc swaps into ha's row (row 0); boundary uploads the move
     // and stamps ha's bumped generation into the gen-shadow.
     let serial = store.tracker().next_serial();
-    store.free_deferred(id, &mut cell, ha, serial);
+    store.free_deferred(id, &mut cell, ha, serial, &sim);
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Alloc recycles ha's slot — but into a NEW row (the tail), not ha's old
     // row, which hc now occupies.
@@ -539,10 +588,10 @@ fn slot_mirror_survives_slot_recycling_into_new_row() {
     let hd_row = cell.row_of(hd).unwrap() as usize;
     let hc_row = cell.row_of(hc).unwrap() as usize;
     assert_ne!(hd_row, hc_row, "precondition: recycled slot landed in a different row");
-    store.write_transform(id, &mut cell, hd, &mat(4.0));
+    store.write_transform(id, &mut cell, hd, &mat(4.0), &sim);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -563,25 +612,27 @@ fn slot_mirror_self_heals_alloc_without_write() {
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
     let mut cell = transform_cell(64);
     let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
     let ha = cell.alloc().unwrap();
     let hb = cell.alloc().unwrap();
     let hc = cell.alloc().unwrap();
     for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
-        store.write_transform(id, &mut cell, h, &mat(s));
+        store.write_transform(id, &mut cell, h, &mat(s), &sim);
     }
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Retire ha; hc swaps into row0; rows_in_use shrinks to 2 — row2 is
     // vacated but mirror[row2] still holds hc's slot (stale-but-inert while
     // unoccupied).
     let serial = store.tracker().next_serial();
-    store.free_deferred(id, &mut cell, ha, serial);
+    store.free_deferred(id, &mut cell, ha, serial, &sim);
     store.tracker().force_complete(serial);
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Re-occupy row2 with a recycled slot and DO NOT write its transform:
     // no write-path trigger can ever fire for this row.
@@ -591,7 +642,7 @@ fn slot_mirror_self_heals_alloc_without_write() {
     assert_ne!(hd.index(), hc.index(), "precondition: hd's slot differs from the stale mirror entry (non-vacuous)");
     {
         let mut slots = [CellSlot { id, cell: &mut cell }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     let base = store.row_region_base(id) as usize;
     let mirror = as_u32s(&readback(&ctx, store.slot_mirror_buffer(), (64 * 4 * 4) as u64));
@@ -637,35 +688,37 @@ fn test14_multicell_device_loss_rematerialization() {
     let mut store = SceneGpuStore::new(&ctx1, cfg.clone());
     let id_a = store.register_cell(&cell_a, 0).unwrap();
     let id_b = store.register_cell(&cell_b, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
 
     // Churn each cell independently, with disjoint seed ranges so a
     // cross-cell mixup would not accidentally read back as correct.
     let hs_a: Vec<_> = (0..8).map(|_| cell_a.alloc().unwrap()).collect();
     for (i, &h) in hs_a.iter().enumerate() {
-        assert!(store.write_transform(id_a, &mut cell_a, h, &mat(i as f32 * 10.0)));
+        assert!(store.write_transform(id_a, &mut cell_a, h, &mat(i as f32 * 10.0), &sim));
     }
     let hs_b: Vec<_> = (0..8).map(|_| cell_b.alloc().unwrap()).collect();
     for (i, &h) in hs_b.iter().enumerate() {
-        assert!(store.write_transform(id_b, &mut cell_b, h, &mat(1000.0 + i as f32 * 10.0)));
+        assert!(store.write_transform(id_b, &mut cell_b, h, &mat(1000.0 + i as f32 * 10.0), &sim));
     }
     {
         let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
     // Free 2 of 8 per cell via the deferred path; force-complete each serial.
     for &h in &[hs_a[2], hs_a[5]] {
         let s = store.tracker().next_serial();
-        assert!(store.free_deferred(id_a, &mut cell_a, h, s));
+        assert!(store.free_deferred(id_a, &mut cell_a, h, s, &sim));
         store.tracker().force_complete(s);
     }
     for &h in &[hs_b[2], hs_b[5]] {
         let s = store.tracker().next_serial();
-        assert!(store.free_deferred(id_b, &mut cell_b, h, s));
+        assert!(store.free_deferred(id_b, &mut cell_b, h, s, &sim));
         store.tracker().force_complete(s);
     }
     {
         let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
-        scene_boundary(&mut store, &mut slots);
+        scene_boundary(&mut frames, &mut sim, &mut store, &mut slots);
     }
 
     let base_a_before = store.row_region_base(id_a) as usize;

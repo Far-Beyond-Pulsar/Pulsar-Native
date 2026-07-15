@@ -21,6 +21,9 @@ impl SubmissionTracker {
 
     /// Register completion for work submitted up to `serial`. The queue
     /// timeline is FIFO: when this callback fires, all work ≤ serial is done.
+    ///
+    /// Must be called only after the work for `serial` has been submitted —
+    /// signaling first completes the watermark early and breaks C6.
     pub fn signal_submitted(&self, queue: &wgpu::Queue, serial: u64) {
         let completed = Arc::clone(&self.completed);
         queue.on_submitted_work_done(move || {
