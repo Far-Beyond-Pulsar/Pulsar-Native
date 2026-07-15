@@ -98,6 +98,10 @@ struct CellGpuState {
 
 /// One cell's region assignment paired with its mutable storage, for the
 /// bulk `*_all` frame-boundary stages.
+///
+/// The (id, cell) pairing is TRUSTED: the store cannot verify that `cell` is
+/// the storage `id` was registered with, and a mismatched pair commits
+/// retires and dirty marks into the wrong cell's regions.
 pub struct CellSlot<'a> {
     pub id: CellId,
     pub cell: &'a mut CellStorage,
@@ -138,8 +142,23 @@ impl SceneGpuStore {
             let slot_region_size = class.capacity + cfg.tombstone_headroom;
             row_pools.push(RegionPool::new(row_offset, class.capacity, class.max_resident_cells));
             slot_pools.push(RegionPool::new(slot_offset, slot_region_size, class.max_resident_cells));
-            row_offset += class.capacity * class.max_resident_cells;
-            slot_offset += slot_region_size * class.max_resident_cells;
+            // Checked accumulation: a pathological config must fail loudly at
+            // construction, not wrap into silently-undersized SSBOs.
+            row_offset = row_offset
+                .checked_add(
+                    class
+                        .capacity
+                        .checked_mul(class.max_resident_cells)
+                        .expect("row capacity overflow"),
+                )
+                .expect("row capacity overflow");
+            slot_offset = slot_offset
+                .checked_add(
+                    slot_region_size
+                        .checked_mul(class.max_resident_cells)
+                        .expect("slot capacity overflow"),
+                )
+                .expect("slot capacity overflow");
         }
         Self {
             device: Arc::clone(ctx.device()),
@@ -147,17 +166,24 @@ impl SceneGpuStore {
             transforms: SceneBuffer::new(ctx.device(), "scenedb-instances", row_offset),
             slot_mirror: SceneBuffer::new(ctx.device(), "scenedb-slot-mirror", row_offset),
             generations: GenerationBuffer::new(ctx.device(), slot_offset),
+            // Material stride is 32 bytes per entry (C5); only the field
+            // LAYOUT is M3-deferred. Sizing at the final stride now keeps the
+            // §10 allocate-once contract — M3 fills the layout in place, no
+            // buffer recreation.
             material: ctx.device().create_buffer(&wgpu::BufferDescriptor {
                 label: Some("scenedb-materials"),
-                size: cfg.max_materials as u64 * 4,
+                size: cfg.max_materials as u64 * 32,
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             }),
+            // Per-cell metadata stride is 8 bytes (design §4.1: f32 alpha +
+            // u32 domain). Allocated at final stride now (§10); α has no
+            // writer.
             cell_metadata: ctx.device().create_buffer(&wgpu::BufferDescriptor {
                 label: Some("scenedb-cell-metadata"),
-                size: cfg.max_cells_metadata as u64 * 4,
+                size: cfg.max_cells_metadata as u64 * 8,
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_DST
                     | wgpu::BufferUsages::COPY_SRC,
@@ -216,6 +242,11 @@ impl SceneGpuStore {
         let row_capacity = self.row_pools[class].region_size();
         let slot_capacity = self.slot_pools[class].region_size();
 
+        assert!(
+            cell.rows_in_use() <= row_capacity,
+            "cell occupies {} rows but class capacity is {row_capacity}",
+            cell.rows_in_use()
+        );
         let gens = cell.registry().generations();
         assert!(gens.len() as u32 <= slot_capacity, "cell has more slots ({}) than its region capacity {slot_capacity}", gens.len());
         self.generations.rebuild_region(&self.queue, slot_base, gens);
