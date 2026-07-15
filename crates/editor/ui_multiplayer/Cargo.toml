@@ -12,7 +12,7 @@ ui_common.workspace = true
 window_manager.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
-engine_fs.workspace = true
+engine_fs = { workspace = true, features = ["p2p"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 tracing.workspace = true
