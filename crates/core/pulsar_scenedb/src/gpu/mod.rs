@@ -9,12 +9,14 @@
 mod buffer;
 mod context;
 mod generation;
+mod region;
 mod store;
 mod tracker;
 
 pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
 pub use generation::GenerationBuffer;
+pub use region::{RegionPool, RegionError};
 pub use store::{GpuStore, GpuStoreConfig};
 pub use tracker::SubmissionTracker;
 
