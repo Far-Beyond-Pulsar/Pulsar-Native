@@ -148,7 +148,7 @@ tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
 
 # ---------- Graphics (external git dep; wgpu is a workspace, not vendored) ----------
-wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
+wgpu = { version = "30", default-features = false }
 
 # ---------- crates.io ----------
 anyhow = "1.0.100"

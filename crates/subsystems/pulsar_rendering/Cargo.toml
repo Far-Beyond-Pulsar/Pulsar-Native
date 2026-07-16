@@ -16,7 +16,7 @@ helio-asset-compat = { workspace = true }
 helio-pass-voxel-mesh = { workspace = true }
 helio-voxel-core = { workspace = true }
 libhelio = { workspace = true }
-wgpu = "30"
+wgpu = { workspace = true }
 bytemuck = "1"
 gpui-ce.workspace = true
 ui.workspace = true
