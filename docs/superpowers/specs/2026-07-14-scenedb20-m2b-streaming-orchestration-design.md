@@ -202,12 +202,19 @@ simulation/harvest eligibility only.
    reference it** and enters the region free list only after that serial
    completes (the M2a pin-by-serial pattern at region granularity — the only
    serial pinning that survives Rev 2, see §6.1).
-2. **Pending-retire disposition (D2):** the region pin's serial dominates
-   every serial queued in the cell's pending-retire queue, so at
-   region-free-completion every queued entry is committed **CPU-side only**
-   (`commit_retire`: unpin row, bump registry generation, pool slot) with
-   **no VRAM write** — the cell owns no region, and writing into a freed
-   (possibly re-allocated) region would corrupt a neighbor.
+2. **Pending-retire disposition (D2) — eviction-timing refinement, binding
+   for β Task 4 (audit-remediation, see
+   `docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`):** every
+   retire queued in the cell's pending-retire queue is committed **CPU-side
+   immediately at eviction** (`commit_retire`: unpin row, bump registry
+   generation, pool slot) — **zero VRAM writes**, not deferred to
+   region-free-completion as originally drafted. The "wait for the region
+   pin's serial" wording existed only to prevent a write landing in a freed
+   (possibly re-allocated) region; since the commit never touches VRAM, there
+   is nothing for a late write to corrupt, so the commit needs no such gate.
+   The region pin (step 1) is unchanged and still governs when the row/slot
+   **byte ranges** themselves re-enter the free list — only the retire
+   *commit* moves earlier, to immediately at eviction.
 3. The cell's gen-shadow slice and dirty words are **dropped** (re-created
    at next promotion via the rebuild above). CPU-side cell data persists
    (host memory is authoritative); handles remain valid CPU-side in every
@@ -382,6 +389,10 @@ compaction moves (mutation-tested per the Task 10 precedent).
 
 ## 10. Deferred
 
+- Global meshlet buffer (spec §19) → **M3** asset-store addition
+  (SceneDB-owned per C0): built nowhere and deferred nowhere until this line
+  (audit-remediation finding; the M3 plan must add it to the asset store
+  beside `ClusterBuffer`).
 - Material 32 B layout + writer + Test 3 row → **M3** (C5).
 - Bindless texture array; cull/indirect/HLOD-stipple shaders; the remap
   table's consumer choice → **M3**.

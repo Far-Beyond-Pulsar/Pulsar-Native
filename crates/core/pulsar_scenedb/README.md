@@ -1,8 +1,12 @@
 # pulsar_scenedb
 
 SceneDB 2.0 Layer 1 storage core. Spec: `docs/superpowers/specs/SceneDB2.0.md`
-(Rev 2.2). Contracts: `docs/superpowers/specs/CONTRACTS.md`. Design:
+(Rev 2.3). Contracts: `docs/superpowers/specs/CONTRACTS.md`. Design:
 `docs/superpowers/specs/2026-06-09-scenedb20-implementation-design.md`.
+
+Conformance baseline: `docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`
+(the cross-milestone spec-conformance audit spanning Stage 0 → M2b-β Task 1;
+CONTRACTS.md and the milestone designs above are re-synchronized against it).
 
 Seeded from `pulsar_ecs` (kept as reference). See the crate docs for the
 module map.

@@ -162,10 +162,15 @@ The mechanism that ends per-frame full re-upload.
   mirrored buffer: scan the dirty words, **coalesce contiguous dirty rows into byte
   ranges**, issue the minimal `queue.write_buffer(buf, row_offset, &col_bytes[range])`
   calls, clear the bits. A zero-mutation, zero-compaction frame writes nothing.
-- **Zero mid-frame heap alloc.** The dirty-word scan and the coalesced-range list
-  use the M1 `Scratchpad`, extended with `get_u64` + a range-list capacity (an
-  explicit M2a task — the §8.1 carry-forward; `Scratchpad` has only `get_u32`
-  today).
+- **Zero mid-frame heap alloc.** **Amendment (audit-remediation, see
+  `docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`):** as
+  shipped, the sync streams coalesced ranges directly from the dirty words
+  (no materialized range list), so it needs no scratch at all — the
+  originally-planned "thread the M1 `Scratchpad`, extended with a range-list
+  capacity" mechanism was never built and the property (zero mid-frame heap
+  alloc) holds without it. `Scratchpad::get_u64` did land in M2a, but its
+  consumer is the M2b-β harvest path (§8.1 carry-forward closed there), not
+  this dirty-word scan.
 
 ## 5. Retirement engine (C6) — pin-by-serial, with new Layer-1 primitives
 

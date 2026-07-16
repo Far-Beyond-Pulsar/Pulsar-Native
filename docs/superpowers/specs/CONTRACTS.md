@@ -58,8 +58,10 @@ during frame-boundary compaction).
 One contiguous 64-byte-aligned allocation per page. Header: length u32,
 capacity u32, column byte offsets u32 × N. Every column starts on a 64-byte
 boundary. Capacity per cell type: default 256, hard ceiling 1024. Combined
-registered stride per element ≤ 128 bytes (compile-time assertion, holistic
-per cell composition). Liveness bitmask: u64 array, 1 bit per element, atomic.
+registered stride per element ≤ 128 bytes — shipped as a **hard runtime
+`Result`** check at cell-type build / page-layout time (holistic per cell
+composition); "compile-time assertion" remains a Rev 2.4 aspiration note, not
+current behavior. Liveness bitmask: u64 array, 1 bit per element, atomic.
 
 ## C3. Frame phases
 
@@ -92,14 +94,33 @@ parent_error f32@8, self_error f32@12 (invariant self_error < parent_error),
 group_id u32@16, child_offset u32@20, child_count u32@24, padding u32@28 (=0),
 bounding_sphere f32×4@32 (xyz center, w radius).
 
+**Amendment (audit-remediation, see
+`docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`):**
+`cluster_table_offset` (mesh metadata, above) is a **node index** into the
+global cluster DAG buffer — byte offset = index × 48 — not a byte offset;
+spec §6.1's "byte offset into global cluster DAG buffer" wording is
+superseded pending Rev 2.4 (§16.2's "indexed by" phrasing is the accurate
+one). **Node 0 is a reserved all-zero sentinel** (never a real table): under
+the XOR rule above, `cluster_table_offset == 0` means "no table", so real
+tables start at node index ≥ 1 and `max_nodes` budgets include the sentinel.
+
 Instance: 64 bytes — row-major mat4 transform. Material: 32 bytes (PBR
 params, defined in M3 plan). Generation buffer: u32 per slot. Draw command:
 index_count u32, instance_count u32 (always 1 or 0), first_index u32,
 vertex_offset i32, first_instance u32 (= command slot, bindless lookup key).
 Per-view command buffers; bounded atomicAdd allocation; CPU-side count clamp.
 
-Enforcement: Test 3 — host struct offsets vs naga reflection of compiled
-WGSL, byte-exact, in CI on every PR touching shared structs.
+Slot mirror (SceneDB-owned; amendment, audit-remediation): u32 per **row** —
+`global_slot = slot_region_base + local_slot`, i.e. `global_slot(global_row)`.
+The GPU resolves `generations[slot_mirror[row]]` for handle validation (C6).
+Maintained solely by the frame-boundary self-healing scan. [Pending spec §10
+amendment in Rev 2.4.]
+
+Enforcement: Test 3 runs in CI on every PR via the `gpu_layout` test target
+(`cargo test --features gpu --test gpu_layout` — naga reflection only, no GPU
+adapter required): host struct offsets vs naga reflection of compiled WGSL,
+byte-exact. Device-dependent suites (`gpu_store`, `gpu_assets`) run locally,
+sequentially (`--test-threads=1`), not in CI.
 
 ## C6. Retirement
 
@@ -109,10 +130,22 @@ generation is written to the VRAM generation buffer before the slot returns
 to the free pool. GPU validates handles against the VRAM generation buffer
 exclusively.
 
+Exception (streaming, M2b §4.1; amendment, audit-remediation): when a cell is
+demoted to non-resident (eviction), its queued deferred retires are committed
+**CPU-side only** — registry generation bump + slot pool — with **no VRAM
+generation write**; the cell owns no generation region at that point, and
+writing into a freed (possibly reallocated) region would corrupt a neighbor.
+VRAM safety is carried by the freed region's serial pin; on re-promotion the
+generation region is bulk-rebuilt and its tail scrubbed from the registry.
+[Pending spec §20.2 amendment in Rev 2.4.]
+
 ## C7. Type registration
 
-TypeToken: dense u32 per registered column type, assigned at registration.
-Registration macros declare: column element type (Pod), per-cell-type
-membership, and stride contribution. Bridged to pulsar_reflection so
-EngineClass metadata, serialization, and SceneDB columns share one
-registration point. Stride guardrails per C2.
+TypeToken: dense u32 per registered column type, assigned at registration
+via the runtime builder API (`TypeToken::of::<T>()`, `CellType::with`/
+`build`) — declaring column element type (Pod), per-cell-type membership,
+and stride contribution. (Amendment, audit-remediation: "registration
+macros" is a Rev 2.4 wording fix — no macro form ships today; the builder
+API above is what's shipped.) Bridged to pulsar_reflection so EngineClass
+metadata, serialization, and SceneDB columns share one registration point.
+Stride guardrails per C2.

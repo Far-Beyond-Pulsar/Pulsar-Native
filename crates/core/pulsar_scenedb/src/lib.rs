@@ -1,4 +1,5 @@
-//! SceneDB 2.0 — Layer 1 storage core (spec Rev 2.2, CONTRACTS.md C1–C4).
+//! SceneDB 2.0 — Layer 1 storage core (spec Rev 2.3, CONTRACTS.md C0–C6;
+//! C5 material layout and Test 13 pending M3).
 //!
 //! Seeded from `pulsar_ecs` (which remains in-tree as the reference
 //! implementation). This crate adds the spec-conformant storage layer:

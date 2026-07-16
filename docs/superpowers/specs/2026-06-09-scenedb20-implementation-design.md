@@ -1,7 +1,9 @@
 # SceneDB 2.0 Implementation Design
 
 **Date:** 2026-06-09 (revised 2026-06-12)
-**Status:** In execution — Stage 0 + Milestone 1 (Layer 1) complete; M2a next (Layer 2 split into M2a/M2b)
+**Status:** In execution — Stage 0, M1, M2a, and M2b-α complete; M2b-β in progress;
+M3/M4 not started. (Status refreshed 2026-07-16 per the holistic audit —
+`docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`.)
 **Spec of record:** `Dev/Research/public/drafts/SceneDB2.0.md` (Rev 2.3)
 **Repos in scope:** `Pulsar-Native` (branch `scenedb`), `Helio` (branch `scenedb20`), `Research` (spec revisions)
 
@@ -27,16 +29,26 @@ outlives any renderer. This is the proof obligation behind the whole design and
 is gated by spec Test 13 (Stateless Renderer Teardown). Every milestone below is
 a consequence of this law, not a negotiation with it.
 
-### 1.1 Current progress (2026-06-12)
+### 1.1 Current progress (2026-07-16, refreshed per the holistic audit)
 
 - **Stage 0 — DONE.** Spec Rev 2.3, frozen `CONTRACTS.md` (C0–C7) mirrored to Helio.
-- **Milestone 1 (Layer 1) — DONE.** `crates/pulsar_scenedb` (seeded from `pulsar_ecs`,
+- **Milestone 1 (Layer 1) — DONE.** `crates/core/pulsar_scenedb` (seeded from `pulsar_ecs`,
   which stays as reference; graphics-free): handles, paged 64B-aligned SoA, liveness +
   swap-and-pop compaction, `TypeToken`/`CellType` bridged to `pulsar_reflection`,
   runtime-dispatched SIMD AABB+frustum queries (AVX2 verified bit-for-bit vs scalar),
   leases/scratchpads, double-buffered liveness snapshot, Part VI Test 1 + Test 2-host
   gates. All tasks dual-reviewed + holistic APPROVE.
-- **M2/M3/M4 — NOT STARTED.**
+- **M2a — DONE.** `pulsar_scenedb::gpu` module: `SceneBuffer`/`GenerationBuffer`
+  delta-sync, pin-by-serial retirement, generation-shadow gating; Tests 3, 6 (host),
+  14 verified headless. See `specs/2026-06-13-scenedb20-m2a-gpu-store-design.md`.
+- **M2b-α — DONE.** Region-partitioned `SceneGpuStore`, asset store (`GeometryArena`/
+  `MeshRegistry`/`ClusterBuffer`), compile-time phase machine, global-slot mirror
+  buffer; Test 3/14 extensions and compile_fail gates green. See
+  `specs/2026-07-14-scenedb20-m2b-streaming-orchestration-design.md`.
+- **M2b-β — IN PROGRESS.** Streaming grid/residency and harvest pipeline (Tests
+  10–12); Task 1 landed as of the holistic-audit commit (`060175b5`), execution
+  paused pending this audit's remediation.
+- **M3/M4 — NOT STARTED.**
 
 ### 1.2 The world being replaced
 
@@ -223,7 +235,8 @@ passes, not ownership.
 
 1. **3.1 Bind SceneDB's buffers + own only derived data.** Helio takes the engine
    device context and SceneDB's persistent SSBO/bind-group handles (instance, material,
-   mesh configurator, generation buffer, geometry, cluster/meshlet — all owned by M2.0)
+   mesh configurator, generation buffer, geometry, cluster/meshlet — all owned by
+   M2a.0/M2b.0, the pre-split label this section originally used)
    and binds them. Helio creates and owns ONLY: pipelines, shaders, the Hi-Z pyramid,
    per-view draw-command/counter buffers, task payload scratch, framebuffers. **No scene
    buffer is allocated in Helio.** This is the precondition for **Test 13** (drop Helio,
