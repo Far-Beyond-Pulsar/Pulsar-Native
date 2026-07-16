@@ -2,13 +2,18 @@
 //!
 //! Classifies each tracked cell into a residency [`Domain`] (`Outer` →
 //! `Margin` → `Inner`) from the observer set, with §5.5 hysteresis to damp
-//! boundary jitter, and tracks a per-cell cross-fade `alpha` (§5.2). This
-//! module is PURE LOGIC: it decides *what* should transition and queues the
-//! decision as a [`Transition`]; it never touches `SceneGpuStore` or wgpu.
-//! The executor that drains [`StreamingGrid::take_transitions`] against the
-//! GPU store is the next task (M2b-β T4) — this module lives under `gpu`
-//! because that executor is its only intended caller and it depends on
-//! [`super::RegionClassConfig`] for the budget check below.
+//! boundary jitter, and tracks a per-cell cross-fade `alpha` (§5.2).
+//! Classification itself (`classify`, `commit_transition`, `advance_crossfade`)
+//! stays PURE LOGIC: it decides *what* should transition and queues the
+//! decision as a [`Transition`], touching neither `SceneGpuStore` nor wgpu.
+//! [`execute_transitions`] (M2b-β T5) is this module's one exception: it
+//! drains [`StreamingGrid::take_transitions`] and wires each transition to
+//! `SceneGpuStore::register_cell`/`unregister_cell`, and
+//! [`StreamingGrid::write_cell_metadata`] packs the per-cell α/domain SSBO
+//! straight from wgpu — both live here because the grid's committed
+//! domain/α state is exactly what they read. This module lives under `gpu`
+//! because it depends on [`super::RegionClassConfig`] for the budget check
+//! below and, now, on the store/wgpu types those two items touch.
 //!
 //! ## β simplification: grid is XZ-planar
 //!
@@ -77,8 +82,8 @@
 
 use std::collections::HashMap;
 
-use super::RegionClassConfig;
-use crate::spatial::Aabb;
+use super::{CellId, RegionClassConfig, RetiredPhase, SceneGpuStore};
+use crate::spatial::{Aabb, SpatialCell};
 
 /// §5.5 tunables. `pad_fraction` default is 0.10 (§5.5 Δpad); `hysteresis`
 /// is δhyst, additional world units layered on top of the pad for the
@@ -158,6 +163,13 @@ struct GridCellState {
     dense_id: u32,
     alpha: f32,
     alpha_target: f32,
+    /// The store-side region assignment while resident (Margin/Inner);
+    /// `None` while `Outer`. Set by [`execute_transitions`] at a successful
+    /// Outer→Margin promotion, cleared at Margin→Outer eviction — the grid
+    /// never allocates or frees this itself, only records what the executor
+    /// reports (module docs: `execute_transitions` is the one place this
+    /// module touches `SceneGpuStore`).
+    gpu_id: Option<CellId>,
 }
 
 /// Pure-logic concentric streaming grid — see module docs for the full
@@ -211,7 +223,13 @@ impl StreamingGrid {
         self.next_dense_id += 1;
         self.cells.insert(
             coord,
-            GridCellState { domain: Domain::Outer, dense_id: id, alpha: 0.0, alpha_target: 0.0 },
+            GridCellState {
+                domain: Domain::Outer,
+                dense_id: id,
+                alpha: 0.0,
+                alpha_target: 0.0,
+                gpu_id: None,
+            },
         );
         id
     }
@@ -226,6 +244,21 @@ impl StreamingGrid {
 
     pub fn dense_id(&self, coord: CellCoord) -> Option<u32> {
         self.cells.get(&coord).map(|s| s.dense_id)
+    }
+
+    /// The store-side region assignment for a resident cell — `None` for an
+    /// `Outer` cell or an untracked coord. Set/cleared by
+    /// [`execute_transitions`] only.
+    pub fn gpu_id(&self, coord: CellCoord) -> Option<CellId> {
+        self.cells.get(&coord).and_then(|s| s.gpu_id)
+    }
+
+    /// Executor-only: record (`Some`) or clear (`None`) a cell's store-side
+    /// region assignment. A no-op for an untracked coord.
+    pub fn set_gpu_id(&mut self, coord: CellCoord, id: Option<CellId>) {
+        if let Some(state) = self.cells.get_mut(&coord) {
+            state.gpu_id = id;
+        }
     }
 
     /// §5 classification via the §5.5 hysteresis band machine (module docs).
@@ -321,6 +354,139 @@ impl StreamingGrid {
             state.alpha = state.alpha.clamp(0.0, 1.0);
         }
     }
+
+    /// Packs `(f32 alpha, u32 domain)` for every materialized cell into
+    /// `buf` at byte offset `dense_id * 8` — the M3 stipple-pass contract.
+    /// Domain encoding: `Outer` = 0, `Margin` = 1, `Inner` = 2.
+    ///
+    /// Simple full rewrite of every materialized entry's 8 bytes on every
+    /// call (bounded by `next_dense_id ≤ max_cells_metadata`, §8);
+    /// delta-tracking (skipping unchanged entries) is a recorded future
+    /// optimization, not built here.
+    pub fn write_cell_metadata(&self, queue: &wgpu::Queue, buf: &wgpu::Buffer) {
+        let mut data = vec![0u8; self.next_dense_id as usize * 8];
+        for state in self.cells.values() {
+            let domain_code: u32 = match state.domain {
+                Domain::Outer => 0,
+                Domain::Margin => 1,
+                Domain::Inner => 2,
+            };
+            let offset = state.dense_id as usize * 8;
+            data[offset..offset + 4].copy_from_slice(&state.alpha.to_le_bytes());
+            data[offset + 4..offset + 8].copy_from_slice(&domain_code.to_le_bytes());
+        }
+        assert!(
+            data.len() as u64 <= buf.size(),
+            "materialized cell count {} needs {} bytes, exceeding the cell-metadata buffer's {} bytes (max_cells_metadata too small)",
+            self.next_dense_id,
+            data.len(),
+            buf.size()
+        );
+        queue.write_buffer(buf, 0, &data);
+    }
+}
+
+/// Outcome tally for one [`execute_transitions`] call.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct TransitionStats {
+    /// Outer→Margin transitions that succeeded (`register_cell` returned
+    /// `Ok`).
+    pub promoted: u32,
+    /// Margin→Outer transitions executed (`unregister_cell`).
+    pub demoted: u32,
+    /// Outer→Margin transitions that `register_cell` declined
+    /// (`Err(RegionError)`, §8 graceful degradation) — the cell stays in its
+    /// current domain and is re-classified on the next `classify` call.
+    pub declined: u32,
+    /// Drained transitions dropped because the grid's committed domain no
+    /// longer matched `t.from` at execution time (T3 reviewer: release-build
+    /// stale-queue hole). A dropped transition is safe by construction —
+    /// the next `classify()` re-derives intent from committed state.
+    pub dropped_stale: u32,
+}
+
+/// Boundary transition executor (M2b-β T5): drains
+/// [`StreamingGrid::take_transitions`] and applies each against `store` and
+/// `cells`, reporting outcomes via [`TransitionStats`].
+///
+/// - **Outer→Margin**: `store.register_cell(cell.storage(), class_of(coord))`.
+///   `Ok(id)` → commit the transition and record `id` via
+///   [`StreamingGrid::set_gpu_id`] (`stats.promoted += 1`). `Err(RegionError)`
+///   → DECLINE: the transition is not committed (the cell stays in its
+///   current domain, grid state unchanged), `stats.declined += 1`, and a
+///   `tracing::warn!` records the exhaustion (§8 graceful degradation).
+/// - **Margin→Outer**: `store.unregister_cell(id, cell.storage_mut(),
+///   eviction_serial)` using the `id` recorded at promotion, then clears it
+///   via `set_gpu_id(coord, None)` and commits (`stats.demoted += 1`).
+/// - **Margin↔Inner**: commit-only — a domain-flag change with no store
+///   interaction.
+///
+/// `_w: &RetiredPhase` is a witness, not a value read here: it proves the
+/// caller has run this frame's `retire` boundary stage (so eviction serials
+/// and pending-retire drains are already resolved) before promoting or
+/// evicting any cell this boundary.
+///
+/// Before applying ANY drained transition, its coord's *current* committed
+/// domain is checked against `t.from`; a mismatch means the queue held a
+/// transition from before some other write invalidated it (T3 reviewer,
+/// release-build stale-queue hole) — it is silently dropped and counted in
+/// `stats.dropped_stale`. A dropped transition is safe by construction — the
+/// next `classify()` re-derives intent from committed state.
+pub fn execute_transitions(
+    grid: &mut StreamingGrid,
+    store: &mut SceneGpuStore,
+    cells: &mut HashMap<CellCoord, SpatialCell>,
+    class_of: &dyn Fn(CellCoord) -> usize,
+    eviction_serial: u64,
+    _w: &RetiredPhase,
+) -> TransitionStats {
+    let mut stats = TransitionStats::default();
+    for t in grid.take_transitions() {
+        if grid.domain(t.coord) != Some(t.from) {
+            // A dropped transition is safe by construction — the next
+            // classify() re-derives intent from committed state.
+            stats.dropped_stale += 1;
+            continue;
+        }
+        let cell = cells
+            .get_mut(&t.coord)
+            .expect("execute_transitions: materialized coord must have a tracked SpatialCell");
+        match (t.from, t.to) {
+            (Domain::Outer, Domain::Margin) => {
+                let class = class_of(t.coord);
+                match store.register_cell(cell.storage(), class) {
+                    Ok(id) => {
+                        grid.set_gpu_id(t.coord, Some(id));
+                        grid.commit_transition(t);
+                        stats.promoted += 1;
+                    }
+                    Err(err) => {
+                        stats.declined += 1;
+                        tracing::warn!(
+                            coord = ?t.coord,
+                            error = ?err,
+                            "region exhausted — declining Outer→Margin promotion; cell stays Outer"
+                        );
+                    }
+                }
+            }
+            (Domain::Margin, Domain::Outer) => {
+                let id = grid
+                    .gpu_id(t.coord)
+                    .expect("Margin cell must carry a gpu_id assigned at its Outer→Margin promotion");
+                store.unregister_cell(id, cell.storage_mut(), eviction_serial);
+                grid.set_gpu_id(t.coord, None);
+                grid.commit_transition(t);
+                stats.demoted += 1;
+            }
+            _ => {
+                // Margin↔Inner: domain-flag change only, no store
+                // interaction (module docs).
+                grid.commit_transition(t);
+            }
+        }
+    }
+    stats
 }
 
 /// A cell's world AABB from `coord × cell_width`. XZ-planar (β

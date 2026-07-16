@@ -936,6 +936,65 @@ fn d2_tail_recycled_region_never_exposes_prior_generations() {
     );
 }
 
+/// M2b-β Task 5: the boundary transition executor wired end-to-end — an
+/// observer inside cell (0,0) queues an Outer→Margin `Transition` via
+/// `classify`; `execute_transitions` (run after this frame's `retire` stage,
+/// per its `&RetiredPhase` witness) drains it, calls `register_cell`, and
+/// records the resulting `CellId` on the grid (`gpu_id`). After
+/// `advance_crossfade`, `write_cell_metadata` packs the cell's α/domain pair
+/// at its dense id's 8-byte slot in the cell-metadata SSBO, read back and
+/// checked byte-for-byte.
+#[test]
+fn transitions_execute_at_boundary_and_metadata_mirrors_state() {
+    use pulsar_scenedb::gpu::{execute_transitions, CellCoord, Domain, GridConfig, StreamingBudget, StreamingGrid};
+    use std::collections::HashMap;
+
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut frames = FrameDriver::new();
+    let mut grid = StreamingGrid::new(
+        GridConfig { cell_width: 100.0, margin_radius: 150.0, pad_fraction: 0.10, hysteresis: 20.0 },
+        StreamingBudget {
+            vram_hlod_budget: u64::MAX,
+            vram_geometry_budget: u64::MAX,
+            max_materialized_cells: 16,
+            proxy_mesh_bytes: 1,
+            mean_cell_geometry_bytes: 1,
+        },
+        &[RegionClassConfig { capacity: 64, max_resident_cells: 4 }],
+    )
+    .unwrap();
+    let c0 = CellCoord { x: 0, z: 0 };
+    grid.materialize(c0);
+    let mut cells = HashMap::new();
+    cells.insert(c0, pulsar_scenedb::SpatialCell::with_transform(64).unwrap());
+
+    // Observer inside cell 0 → Outer→Margin queued:
+    grid.classify(&[pulsar_scenedb::Aabb { min: [40.0, -1.0, -1.0], max: [60.0, 1.0, 1.0] }]);
+
+    let sim = frames.begin();
+    let b = sim.end().end().end();
+    let (retired, _) = b.retire(&mut store, &mut []);
+    let serial = store.tracker().next_serial();
+    let stats = execute_transitions(&mut grid, &mut store, &mut cells, &|_| 0, serial, &retired);
+    assert_eq!(stats.promoted, 1);
+    assert_eq!(stats.demoted, 0);
+    assert_eq!(stats.declined, 0);
+    assert_eq!(stats.dropped_stale, 0);
+    assert_eq!(grid.domain(c0), Some(Domain::Margin));
+    assert!(grid.gpu_id(c0).is_some(), "resident cell has a region");
+
+    retired.compact(&mut store, &mut []).sync(&mut store, &mut []);
+    grid.advance_crossfade(50.0, 100.0);
+    grid.write_cell_metadata(ctx.queue(), store.cell_metadata_buffer());
+
+    let meta = readback(&ctx, store.cell_metadata_buffer(), 8);
+    let alpha = f32::from_le_bytes(meta[0..4].try_into().unwrap());
+    let domain = u32::from_le_bytes(meta[4..8].try_into().unwrap());
+    assert!((alpha - 0.5).abs() < 1e-6);
+    assert_eq!(domain, 1, "Margin encodes as 1");
+}
+
 #[test]
 fn spatial_cell_with_transform_registers_and_syncs() {
     let ctx = test_context();

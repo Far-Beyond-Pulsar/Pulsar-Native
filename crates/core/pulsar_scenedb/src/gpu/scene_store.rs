@@ -437,6 +437,10 @@ impl SceneGpuStore {
     pub fn unregister_cell(&mut self, id: CellId, cell: &mut CellStorage, last_serial: u64) {
         let idx = id.0 as usize;
         let state = self.cells[idx].take().expect("cell already unregistered");
+        debug_assert!(
+            state.pending.back().map_or(true, |q| q.serial <= last_serial),
+            "unregister_cell: last_serial must dominate every queued pending serial — the region pin IS the C6 protection for in-flight reads"
+        );
         for QueuedRetire { pending, .. } in state.pending {
             cell.commit_retire(pending);
         }

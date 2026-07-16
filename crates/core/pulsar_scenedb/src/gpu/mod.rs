@@ -27,7 +27,10 @@ pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
-pub use grid::{BudgetError, CellCoord, Domain, GridConfig, StreamingBudget, StreamingGrid, Transition};
+pub use grid::{
+    execute_transitions, BudgetError, CellCoord, Domain, GridConfig, StreamingBudget,
+    StreamingGrid, Transition, TransitionStats,
+};
 pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
