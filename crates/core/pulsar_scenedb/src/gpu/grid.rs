@@ -17,60 +17,63 @@
 //! extent; that's out of scope for β and is a documented simplification, not
 //! an oversight.
 //!
-//! ## Classification semantics (authoritative — read before editing)
+//! ## Classification: the hysteresis band machine (authoritative)
 //!
 //! A cell's **base bounds** are its world AABB from `coord × cell_width`
 //! (XZ only, Y unbounded — see above). All AABB tests below use **closed**
 //! intervals: touching faces count as intersecting (crate-wide §8.2
-//! discipline; see `spatial.rs`).
+//! discipline; see `spatial.rs`). Let `pad = pad_fraction × cell_width`
+//! (§5.5 Δpad) and `hyst = hysteresis` (§5.5 δhyst).
 //!
-//! **Plain target** (no pad, used only to decide *which way* a cell wants to
-//! move, never to gate the move itself):
-//! - `Inner` if the base bounds intersect the observer union (any-of).
-//! - else `Margin` if the base bounds **grown by `margin_radius`** intersect
-//!   the observer union.
-//! - else `Outer`.
+//! Per cell, four concentric zones are derived from the base bounds, each
+//! tested for intersection against the observer union (any-of):
 //!
-//! **Hysteresis-gated commit** (§5.5 — this is what actually fires a
-//! [`Transition`]):
-//! - To **promote** toward a domain `D` (`Outer→Margin` or `Margin→Inner`),
-//!   the observer union must intersect `D`'s own region
-//!   (`Inner` region = base bounds; `Margin` region = base bounds grown by
-//!   `margin_radius`) **grown further by `pad`** (`pad = pad_fraction ×
-//!   cell_width`). This is strictly *decisive* (this task's Test 11 depends
-//!   on the promotion boundary standing pad-units proud of the plain
-//!   boundary tested above).
-//! - To **demote** away from the currently-held domain, the observer union
-//!   must fall entirely *outside* the held domain's own region grown by
-//!   `pad + hysteresis`; if it still intersects at that larger size, the
-//!   cell holds (no demotion at all — this is the flap-damping band).
+//! | zone             | base grown by                | role                   |
+//! |------------------|------------------------------|------------------------|
+//! | `inner_promote`  | `pad`                        | Margin→Inner trigger   |
+//! | `inner_demote`   | `pad + hyst`                 | Inner→Margin hold zone |
+//! | `margin_promote` | `margin_radius + pad`        | Outer→Margin trigger   |
+//! | `margin_demote`  | `margin_radius + pad + hyst` | Margin→Outer hold zone |
 //!
-//! **Promotion may skip a domain in one `classify` call** — e.g.
-//! `Outer → Inner` directly, when the plain target is already `Inner` and
-//! the `Inner` promotion test is decisive. Spec explicitly allows this
-//! ("Outer→Margin→Inner across two boundaries is fine and simpler"): it is
-//! *simpler* to jump straight to the decisive target than to force an
-//! artificial one-frame dwell in `Margin`. **Demotion is always exactly one
-//! step** (`Inner→Margin` or `Margin→Outer`), even if the plain target has
-//! fallen further than that — gradual eviction, not a violent one-frame
-//! drop. At most one [`Transition`] is queued per cell per `classify` call.
+//! Transition rules — **at most one step per `classify` call**, evaluated
+//! from the cell's *committed* domain only:
+//!
+//! - `Outer`: intersects `margin_promote` → queue `→Margin`. Else nothing.
+//! - `Margin`: intersects `inner_promote` → queue `→Inner`; else if NOT
+//!   intersecting `margin_demote` → queue `→Outer`; else nothing.
+//! - `Inner`: NOT intersecting `inner_demote` → queue `→Margin`. Else
+//!   nothing.
+//!
+//! The promotion boundary stands `pad` proud of the unpadded region edge
+//! (§5.5 PromotionBoundary = CellBounds + Δpad: an observer promotes
+//! *earlier* than the plain edge), and the demotion boundary stands a
+//! further `hyst` beyond that. The gap between them IS the §5.5 hysteresis
+//! band: an observer parked (or jittering) anywhere inside it triggers no
+//! transition in either direction. Multi-ring promotion (`Outer→Inner`)
+//! therefore takes two `classify` calls — one step each — as does the
+//! symmetric demotion cascade.
 //!
 //! **α**: a promoting transition (`to` more resident than `from`) sets
-//! `alpha_target = 1.0`; a demoting transition sets `alpha_target = 0.0`.
+//! `alpha_target = 1.0`; a demoting transition sets `alpha_target = 0.0`
+//! (applied in [`StreamingGrid::commit_transition`], never in `classify`).
 //! [`StreamingGrid::advance_crossfade`] moves `alpha` linearly toward
 //! `alpha_target` by `distance / fade_distance`, clamped to `[0, 1]`.
 //!
+//! ## Drain-every-boundary contract
+//!
 //! `classify` never mutates a cell's committed `domain`/`alpha_target` — it
-//! only queues [`Transition`]s. The caller (executor) drains them via
-//! [`StreamingGrid::take_transitions`], performs the GPU-side work, and
-//! reports the outcome via [`StreamingGrid::commit_transition`] (only on
-//! success — a declined transition simply isn't committed, and the next
-//! `classify` will re-evaluate from the unchanged committed state and queue
-//! it again). A caller that calls `classify` more than once without ever
-//! draining the queue will see the same [`Transition`] pushed again each
-//! call (the queue only ever grows by `push`, `take_transitions` drains it)
-//! — a documented simplification; every test in this module drains the
-//! queue every `classify` call, which is the intended usage.
+//! only queues [`Transition`]s. The caller MUST drain the queue via
+//! [`StreamingGrid::take_transitions`] once per boundary, execute, and
+//! report success via [`StreamingGrid::commit_transition`] (a declined
+//! transition simply isn't committed; the next `classify` re-evaluates from
+//! the unchanged committed state and re-queues it). Calling `classify` with
+//! an undrained queue is a contract violation: a stale queued transition
+//! could contradict what the newer classification would decide (e.g. a
+//! queued `Inner→Margin` surviving a frame in which the observer moved back
+//! inside), and the executor would apply it. `classify` debug-asserts the
+//! queue is empty, and — belt and braces for release builds — drops any
+//! stale queued transition for a cell before queueing that cell's new one,
+//! so the queue never holds two transitions for the same coord.
 
 use std::collections::HashMap;
 
@@ -102,7 +105,8 @@ pub struct CellCoord {
 
 /// Residency domain, ordered `Outer < Margin < Inner` (least to most
 /// resident). The enum's declared variant order is documentation-only —
-/// [`domain_rank`] is the authoritative ordering used by the classifier.
+/// [`domain_rank`] is the authoritative ordering used for the α-target
+/// promotion/demotion distinction.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Domain {
     Inner,
@@ -118,9 +122,9 @@ fn domain_rank(d: Domain) -> u8 {
     }
 }
 
-/// A single queued domain change for one cell. `from` is the domain held at
-/// queue time (not necessarily still current if multiple transitions were
-/// queued without being drained — see module docs).
+/// A single queued domain change for one cell. `from` is the committed
+/// domain at queue time; under the drain-every-boundary contract (module
+/// docs) it is always the cell's current domain when the executor sees it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Transition {
     pub coord: CellCoord,
@@ -157,7 +161,7 @@ struct GridCellState {
 }
 
 /// Pure-logic concentric streaming grid — see module docs for the full
-/// classification/hysteresis/cross-fade contract.
+/// band-machine/cross-fade contract.
 #[derive(Debug)]
 pub struct StreamingGrid {
     cfg: GridConfig,
@@ -224,53 +228,64 @@ impl StreamingGrid {
         self.cells.get(&coord).map(|s| s.dense_id)
     }
 
-    /// §5 classification with §5.5 hysteresis (see module docs for the full
-    /// semantics). Queues at most one [`Transition`] per cell; applies NO
+    /// §5 classification via the §5.5 hysteresis band machine (module docs).
+    /// Queues at most one single-step [`Transition`] per cell; applies NO
     /// state change to `domain`/`alpha_target` — that happens only in
     /// [`Self::commit_transition`].
+    ///
+    /// CONTRACT: the caller must drain [`Self::take_transitions`] every
+    /// boundary, before the next `classify` — an undrained queue can hold a
+    /// transition the newer observer positions would no longer justify.
+    /// Debug builds assert this; release builds additionally self-heal by
+    /// evicting any stale queued transition for a cell before queueing that
+    /// cell's new one.
     pub fn classify(&mut self, observer_aabbs: &[Aabb]) {
+        debug_assert!(
+            self.transitions.is_empty(),
+            "classify() called with undrained transitions — drain via take_transitions() every boundary"
+        );
         let pad = self.cfg.pad_fraction * self.cfg.cell_width;
         let hyst = self.cfg.hysteresis;
-        let margin_radius = self.cfg.margin_radius;
+        let mr = self.cfg.margin_radius;
         let cell_width = self.cfg.cell_width;
 
-        for (&coord, state) in self.cells.iter_mut() {
-            let current = state.domain;
+        for (&coord, state) in self.cells.iter() {
             let base = base_bounds(coord, cell_width);
-            let target = plain_target(base, margin_radius, observer_aabbs);
-            if target == current {
-                continue;
-            }
-
-            let new_domain = if domain_rank(target) > domain_rank(current) {
-                // Promotion: jump as far toward `target` as decisively
-                // supported, but never past it, and never skip past a step
-                // whose own decisive test hasn't been checked.
-                if target == Domain::Inner
-                    && decisive(Domain::Inner, base, margin_radius, pad, observer_aabbs)
-                {
-                    Domain::Inner
-                } else if current == Domain::Outer
-                    && decisive(Domain::Margin, base, margin_radius, pad, observer_aabbs)
-                {
-                    Domain::Margin
-                } else {
-                    current
+            let to = match state.domain {
+                Domain::Outer => {
+                    // margin_promote: base + (margin_radius + pad)
+                    if any_intersect(&grow(base, mr + pad), observer_aabbs) {
+                        Some(Domain::Margin)
+                    } else {
+                        None
+                    }
                 }
-            } else {
-                // Demotion: exactly one step, gated on the CURRENTLY-held
-                // domain's own region grown by pad + hysteresis.
-                let region = region_bounds(current, base, margin_radius);
-                let grown = grow(region, pad + hyst);
-                if !any_intersect(&grown, observer_aabbs) {
-                    step_down(current)
-                } else {
-                    current
+                Domain::Margin => {
+                    // inner_promote: base + pad
+                    if any_intersect(&grow(base, pad), observer_aabbs) {
+                        Some(Domain::Inner)
+                    // margin_demote: base + (margin_radius + pad + hyst)
+                    } else if !any_intersect(&grow(base, mr + pad + hyst), observer_aabbs) {
+                        Some(Domain::Outer)
+                    } else {
+                        None // inside the Margin band: hold
+                    }
+                }
+                Domain::Inner => {
+                    // inner_demote: base + (pad + hyst)
+                    if !any_intersect(&grow(base, pad + hyst), observer_aabbs) {
+                        Some(Domain::Margin)
+                    } else {
+                        None // inside the Inner band (or still inside): hold
+                    }
                 }
             };
-
-            if new_domain != current {
-                self.transitions.push(Transition { coord, from: current, to: new_domain });
+            if let Some(to) = to {
+                // Belt and braces for release builds (the debug_assert above
+                // is the contract): never leave two queued transitions for
+                // the same coord — the newer classification wins.
+                self.transitions.retain(|t| t.coord != coord);
+                self.transitions.push(Transition { coord, from: state.domain, to });
             }
         }
     }
@@ -308,14 +323,6 @@ impl StreamingGrid {
     }
 }
 
-fn step_down(d: Domain) -> Domain {
-    match d {
-        Domain::Inner => Domain::Margin,
-        Domain::Margin => Domain::Outer,
-        Domain::Outer => Domain::Outer,
-    }
-}
-
 /// A cell's world AABB from `coord × cell_width`. XZ-planar (β
 /// simplification): Y is unbounded so observer altitude never affects
 /// classification.
@@ -325,17 +332,6 @@ fn base_bounds(coord: CellCoord, cell_width: f32) -> Aabb {
     Aabb {
         min: [x0, f32::NEG_INFINITY, z0],
         max: [x0 + cell_width, f32::INFINITY, z0 + cell_width],
-    }
-}
-
-/// The domain's own reference region, ungrown by pad/hysteresis: `Inner` is
-/// the base bounds; `Margin` is the base bounds grown by `margin_radius`.
-/// Never called for `Outer` (it has no bounded region).
-fn region_bounds(d: Domain, base: Aabb, margin_radius: f32) -> Aabb {
-    match d {
-        Domain::Inner => base,
-        Domain::Margin => grow(base, margin_radius),
-        Domain::Outer => base,
     }
 }
 
@@ -356,27 +352,6 @@ fn aabb_intersect(a: &Aabb, b: &Aabb) -> bool {
 
 fn any_intersect(region: &Aabb, observers: &[Aabb]) -> bool {
     observers.iter().any(|o| aabb_intersect(region, o))
-}
-
-/// The plain (no pad) target domain: `Inner` if the base bounds intersect
-/// any observer; else `Margin` if the base bounds grown by `margin_radius`
-/// do; else `Outer`. This decides *direction* only — it never gates a
-/// transition by itself (see [`decisive`]).
-fn plain_target(base: Aabb, margin_radius: f32, observers: &[Aabb]) -> Domain {
-    if any_intersect(&base, observers) {
-        Domain::Inner
-    } else if any_intersect(&grow(base, margin_radius), observers) {
-        Domain::Margin
-    } else {
-        Domain::Outer
-    }
-}
-
-/// The §5.5 promotion test: does the observer union intersect `domain`'s
-/// own region grown by `pad`?
-fn decisive(domain: Domain, base: Aabb, margin_radius: f32, pad: f32, observers: &[Aabb]) -> bool {
-    let region = region_bounds(domain, base, margin_radius);
-    any_intersect(&grow(region, pad), observers)
 }
 
 #[cfg(test)]
@@ -401,47 +376,79 @@ mod tests {
         Aabb { min: [x - 10.0, -10.0, -10.0], max: [x + 10.0, 10.0, 10.0] }
     }
 
+    // ── Test 11 gate: threshold derivations (closed intervals) ────────────
+    //
+    // cfg: cell_width 100, margin_radius 150, pad = 0.10 × 100 = 10,
+    // hyst = 20. Cell (5,0): base x ∈ [500, 600]. Observer half-width 10.
+    //
+    //   margin_promote = base ± (150+10)    = [340, 760] on x
+    //     → intersects when center + 10 ≥ 340  ⟺  center ≥ 330
+    //     (the UNPADDED margin edge would be [350, 750] ⟺ center ≥ 340:
+    //      promotion at center 331 < 340 is possible ONLY because Δpad
+    //      advanced the boundary — §5.5 PromotionBoundary = bounds + Δpad)
+    //   margin_demote  = base ± (150+10+20) = [320, 780] on x
+    //     → holds while center + 10 ≥ 320  ⟺  center ≥ 310;
+    //       demotes when center < 310
+    //   inner_promote  = base ± 10          = [490, 610] on x
+    //     → needs center ≥ 480; never touched by these positions
+    //
+    //   ⇒ Margin band (cell held Margin, zero transitions either way):
+    //     center ∈ [310, 330). Jitter range [312, 328] sits inside it.
+
     #[test]
-    fn test11_subpad_jitter_causes_zero_transitions() {
+    fn test11_pad_advances_promotion_band_holds_and_hysteresis_delays_demotion() {
         let mut g = StreamingGrid::new(cfg(), budget(), &[]).unwrap();
-        g.materialize(CellCoord { x: 0, z: 0 });
-        g.materialize(CellCoord { x: 1, z: 0 });
-        // Park the observer just past cell 0's edge toward cell 1, then jitter
-        // within the 10-unit pad (10% of 100).
-        g.classify(&[observer_at(95.0)]);
-        for t in g.take_transitions() {
-            g.commit_transition(t);
-        }
-        let settled: Vec<_> = [CellCoord { x: 0, z: 0 }, CellCoord { x: 1, z: 0 }]
-            .iter()
-            .map(|c| g.domain(*c).unwrap())
-            .collect();
+        let far = CellCoord { x: 5, z: 0 }; // base x ∈ [500, 600]
+        g.materialize(far);
+
+        // (a) Just below the padded promote threshold (center 329 < 330):
+        // no transition.
+        g.classify(&[observer_at(329.0)]);
+        assert!(g.take_transitions().is_empty(), "329 < padded threshold 330: no promotion");
+        assert_eq!(g.domain(far), Some(Domain::Outer));
+
+        // (a) Just past it (center 331 ≥ 330, yet well short of the UNPADDED
+        // threshold 340): promotes — proof that Δpad advances the boundary.
+        g.classify(&[observer_at(331.0)]);
+        let ts = g.take_transitions();
+        assert_eq!(ts.len(), 1, "exactly one transition at the padded boundary");
+        assert_eq!(ts[0], Transition { coord: far, from: Domain::Outer, to: Domain::Margin });
+        g.commit_transition(ts[0]);
+
+        // (b) Jitter inside the band [312, 328] — past the demote-hold
+        // threshold (310), short of the promote threshold (330): the §5.5
+        // band must hold with ZERO transitions in either direction.
         for i in 0..200 {
-            let jitter = ((i % 7) as f32 - 3.0) * 1.0; // ±3 units — sub-pad
-            g.classify(&[observer_at(95.0 + jitter)]);
-            assert!(g.take_transitions().is_empty(), "jitter frame {i} caused a transition");
+            let center = 320.0 + ((i % 9) as f32 - 4.0) * 2.0; // ∈ [312, 328]
+            g.classify(&[observer_at(center)]);
+            assert!(
+                g.take_transitions().is_empty(),
+                "band frame {i} (center {center}) caused a transition"
+            );
         }
-        let after: Vec<_> = [CellCoord { x: 0, z: 0 }, CellCoord { x: 1, z: 0 }]
-            .iter()
-            .map(|c| g.domain(*c).unwrap())
-            .collect();
-        assert_eq!(settled, after, "domains unchanged under sub-pad jitter");
+        assert_eq!(g.domain(far), Some(Domain::Margin), "held Margin through the band");
+
+        // (c) Retreat past the demotion boundary (center 305 < 310):
+        // exactly one demotion — hysteresis delayed it 20 units beyond
+        // where the padded promote boundary sits.
+        g.classify(&[observer_at(305.0)]);
+        let ts = g.take_transitions();
+        assert_eq!(ts.len(), 1);
+        assert_eq!(ts[0], Transition { coord: far, from: Domain::Margin, to: Domain::Outer });
     }
 
     #[test]
     fn test11_decisive_crossing_promotes_exactly_once_and_demotion_lags_by_hysteresis() {
         let mut g = StreamingGrid::new(cfg(), budget(), &[]).unwrap();
-        let far = CellCoord { x: 5, z: 0 }; // cell spanning x ∈ [500, 600)
+        let far = CellCoord { x: 5, z: 0 }; // cell spanning x ∈ [500, 600]
         g.materialize(far);
         g.classify(&[observer_at(0.0)]);
-        for t in g.take_transitions() {
-            g.commit_transition(t);
-        }
+        assert!(g.take_transitions().is_empty());
         assert_eq!(g.domain(far), Some(Domain::Outer));
-        // Decisive move into margin range of the far cell:
-        g.classify(&[observer_at(480.0)]); // 150-unit margin reach + pad covers [500,600)
+        // Decisive move deep into margin range of the far cell:
+        g.classify(&[observer_at(480.0)]);
         let ts = g.take_transitions();
-        assert_eq!(ts.len(), 1, "exactly one transition");
+        assert_eq!(ts.len(), 1, "exactly one transition — single step, no skip past Margin");
         assert_eq!(ts[0], Transition { coord: far, from: Domain::Outer, to: Domain::Margin });
         g.commit_transition(ts[0]);
         // Retreat to just inside the demotion boundary → NO demotion (hysteresis):
@@ -455,10 +462,56 @@ mod tests {
     }
 
     #[test]
+    fn cascade_promotes_one_step_per_classify_as_observer_converges() {
+        let mut g = StreamingGrid::new(cfg(), budget(), &[]).unwrap();
+        let c = CellCoord { x: 0, z: 0 }; // base x ∈ [0, 100]
+        g.materialize(c);
+        // Far away: stays Outer.
+        g.classify(&[observer_at(500.0)]);
+        assert!(g.take_transitions().is_empty());
+        // Call N — converge into margin_promote ([-160, 260] ⟺ center ≤ 270):
+        // ONE step only, Outer→Margin — no skip past Margin even though the
+        // observer will keep closing.
+        g.classify(&[observer_at(200.0)]);
+        let ts = g.take_transitions();
+        assert_eq!(ts, vec![Transition { coord: c, from: Domain::Outer, to: Domain::Margin }]);
+        g.commit_transition(ts[0]);
+        // Call N+1 — converge into inner_promote ([-10, 110] ⟺ center ≤ 120):
+        // second step, Margin→Inner.
+        g.classify(&[observer_at(105.0)]);
+        let ts = g.take_transitions();
+        assert_eq!(ts, vec![Transition { coord: c, from: Domain::Margin, to: Domain::Inner }]);
+        g.commit_transition(ts[0]);
+        assert_eq!(g.domain(c), Some(Domain::Inner));
+    }
+
+    #[test]
+    #[should_panic(expected = "undrained")]
+    fn classify_with_undrained_transitions_panics_in_debug() {
+        let mut g = StreamingGrid::new(cfg(), budget(), &[]).unwrap();
+        g.materialize(CellCoord { x: 0, z: 0 });
+        g.classify(&[observer_at(50.0)]); // queues Outer→Margin
+        g.classify(&[observer_at(50.0)]); // undrained — contract violation
+    }
+
+    #[test]
     fn budget_violation_fails_construction() {
         let mut b = budget();
         b.vram_hlod_budget = 10; // 1024 cells × 1 KiB proxies ≫ 10 bytes
         assert_eq!(StreamingGrid::new(cfg(), b, &[]).unwrap_err(), BudgetError::HlodOverBudget);
+    }
+
+    #[test]
+    fn geometry_budget_violation_fails_construction() {
+        let b = budget();
+        let classes = [RegionClassConfig { capacity: 64, max_resident_cells: 10 }];
+        // 10 resident cells × 1 MiB (mean_cell_geometry_bytes) ≫ this tiny cap.
+        let mut b2 = b;
+        b2.vram_geometry_budget = 1024;
+        assert_eq!(
+            StreamingGrid::new(cfg(), b2, &classes).unwrap_err(),
+            BudgetError::GeometryOverBudget
+        );
     }
 
     #[test]
@@ -470,7 +523,7 @@ mod tests {
         for t in g.take_transitions() {
             g.commit_transition(t);
         }
-        // Now heading resident: α target 1.
+        // Now heading resident (Outer→Margin promotion): α target 1.
         g.advance_crossfade(25.0, 100.0);
         assert!((g.alpha(c).unwrap() - 0.25).abs() < 1e-6);
         g.advance_crossfade(1000.0, 100.0);
@@ -494,19 +547,6 @@ mod tests {
         assert_eq!(g.domain(untracked), None);
         assert_eq!(g.alpha(untracked), None);
         assert_eq!(g.dense_id(untracked), None);
-    }
-
-    #[test]
-    fn geometry_budget_violation_fails_construction() {
-        let b = budget();
-        let classes = [RegionClassConfig { capacity: 64, max_resident_cells: 10 }];
-        // 10 resident cells × 1 MiB (mean_cell_geometry_bytes) ≫ this tiny cap.
-        let mut b2 = b;
-        b2.vram_geometry_budget = 1024;
-        assert_eq!(
-            StreamingGrid::new(cfg(), b2, &classes).unwrap_err(),
-            BudgetError::GeometryOverBudget
-        );
     }
 
     #[test]
