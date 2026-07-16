@@ -17,6 +17,7 @@ mod context;
 mod dirty;
 mod generation;
 mod grid;
+mod harvest;
 mod phase;
 mod region;
 mod scene_store;
@@ -31,6 +32,7 @@ pub use grid::{
     execute_transitions, BudgetError, CellCoord, Domain, GridConfig, StreamingBudget,
     StreamingGrid, Transition, TransitionStats,
 };
+pub use harvest::{HarvestPipeline, HarvestStaging, HarvestStats, MeshClass, View};
 pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};

@@ -247,6 +247,22 @@ pub(crate) fn aabb_scan_scalar(
     hits
 }
 
+/// §8.5 dense compaction (scalar reference): strip `NULL_ROW` sentinels from a
+/// positional token run, pushing `base + token` into `dense` and the ORIGINAL
+/// run index into `remap` (C4 M3-frozen layout: `remap[dense_i] = run index`).
+/// Returns the dense count. AVX2 arm (M2b-b T7) must match bit-for-bit.
+pub(crate) fn compress_tokens(run: &[u32], base: u32, dense: &mut Vec<u32>, remap: &mut Vec<u32>) -> u32 {
+    let mut count = 0;
+    for (i, &t) in run.iter().enumerate() {
+        if t != crate::registry::NULL_ROW {
+            dense.push(base + t);
+            remap.push(i as u32);
+            count += 1;
+        }
+    }
+    count
+}
+
 /// Six frustum planes, each `[nx, ny, nz, d]` with inward normal; a point `p`
 /// is inside the plane iff `nx*px + ny*py + nz*pz + d >= 0`.
 #[derive(Copy, Clone)]

@@ -76,3 +76,7 @@ required-features = ["gpu"]
 [[test]]
 name = "gpu_assets"
 required-features = ["gpu"]
+
+[[test]]
+name = "gpu_harvest"
+required-features = ["gpu"]
