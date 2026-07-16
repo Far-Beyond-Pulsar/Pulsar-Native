@@ -295,7 +295,8 @@ pub enum ClusterError {
 /// Flat host buffer mirrored 1:1 into the cluster-table SSBO (design Rev 2
 /// §6.1): cluster offset `i` is always uploaded at byte offset `i * 48` in
 /// `buf`. Append-only for M2b-α — no CPU free list (unregister is out of
-/// scope here).
+/// scope here). Node 0 is reserved (see `new`): `cluster_table_offset == 0`
+/// means "no table" under the C5 XOR rule, so real tables start at 1.
 pub struct ClusterBuffer {
     buf: wgpu::Buffer,
     nodes: Vec<ClusterNode>,
@@ -303,6 +304,9 @@ pub struct ClusterBuffer {
 }
 
 impl ClusterBuffer {
+    /// `max_nodes` includes the reserved sentinel node at index 0 (see
+    /// below) — a buffer meant to hold N real appended nodes must be sized
+    /// `max_nodes = N + 1`.
     pub fn new(ctx: &EngineGpuContext, max_nodes: u32) -> Self {
         let buf = ctx.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("cluster-buffer"),
@@ -312,7 +316,28 @@ impl ClusterBuffer {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        Self { buf, nodes: Vec::new(), max_nodes }
+        // Node 0 is reserved: `cluster_table_offset == 0` means "no table"
+        // under the C5 XOR rule (enforced in `MeshRegistry::register`), so a
+        // real virtualized-geometry mesh's cluster table can never validly
+        // start at offset 0 — without this sentinel the FIRST VG mesh ever
+        // registered would produce an unrepresentable (and thus rejected)
+        // table. Seed an all-zero sentinel node directly into `nodes`/`buf`
+        // (bypassing `append`'s validation — it is never validated because
+        // it never goes through `append`), so real tables always start at
+        // offset 1 or later.
+        let sentinel = ClusterNode {
+            meshlet_offset: 0,
+            meshlet_count: 0,
+            parent_error: 0.0,
+            self_error: 0.0,
+            group_id: 0,
+            child_offset: 0,
+            child_count: 0,
+            padding: 0,
+            bounding_sphere: [0.0, 0.0, 0.0, 0.0],
+        };
+        ctx.queue().write_buffer(&buf, 0, super::as_bytes(std::slice::from_ref(&sentinel)));
+        Self { buf, nodes: vec![sentinel], max_nodes }
     }
 
     /// Appends a mesh's DAG nodes; returns the starting node offset (the C5

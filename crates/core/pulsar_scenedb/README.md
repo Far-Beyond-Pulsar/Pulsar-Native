@@ -30,9 +30,9 @@ Three pillars complete the α release:
    as promotion primitive (§4.1), `rebuild` for device-loss recovery.
 
 2. **Asset Store**: `GeometryArena` (RangeList suballocation), `MeshRegistry`
-   (C5: 72 B metadata, XOR-validated, NaN-safe single-cell no-NaN invariant),
-   `ClusterBuffer` (C5: 48 B, NaN-rejecting error monotonicity). Both backed by
-   corrupted-VRAM rebuild gates.
+   (C5: 72 B metadata, XOR-validated), `ClusterBuffer` (C5: 48 B,
+   NaN-rejecting error-monotonicity validation). Both backed by corrupted-VRAM
+   rebuild gates.
 
 3. **Phase Machine**: Compile-time frame orchestration — `FrameDriver` → 
    SimulateA→SimulateB→Harvest→Boundary. `BoundaryPhase::retire` returns drain

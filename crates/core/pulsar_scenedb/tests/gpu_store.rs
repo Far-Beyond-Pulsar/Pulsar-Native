@@ -359,7 +359,7 @@ fn test6_retirement_invariant() {
     store.tracker().force_complete(serial);
     let gens_before = store.generation_write_count();
     let (retired, drained) = sim.end().end().end().retire(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
-    assert_eq!(drained, 1);
+    assert_eq!(drained, 1, "completed serial retires exactly one entry");
     assert_eq!(store.generation_write_count(), gens_before + 1, "exactly one entry drained and its generation bumped");
     let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
     let slot_base = 0usize; // slot region base for the first class-0 cell

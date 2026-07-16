@@ -27,9 +27,9 @@
 //!   pending retires, gen shadow, slot shadow), self-healing slot-mirror
 //!   boundary scan, `register_cell` promotion primitive, `rebuild` for device
 //!   loss. Asset store (M2b-α): `GeometryArena` RangeList suballocation,
-//!   `MeshRegistry` (C5: 72 B, XOR-validated, NaN-safe single-cell no-NaN
-//!   invariant), `ClusterBuffer` (C5: 48 B, NaN-rejecting error monotonicity),
-//!   both with corrupted-VRAM rebuild gates. Phase machine (M2b-α):
+//!   `MeshRegistry` (C5: 72 B, XOR-validated), `ClusterBuffer` (C5: 48 B,
+//!   NaN-rejecting error-monotonicity validation), both with corrupted-VRAM
+//!   rebuild gates. Phase machine (M2b-α):
 //!   `FrameDriver` → SimulateA→SimulateB→Harvest→Boundary witnesses;
 //!   `BoundaryPhase::retire` returns drain count; compile_fail + positive
 //!   doc-tests enforce correctness. The core stays graphics-free (C0); CI

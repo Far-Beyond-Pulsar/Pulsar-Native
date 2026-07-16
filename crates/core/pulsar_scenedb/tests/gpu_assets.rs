@@ -249,11 +249,13 @@ fn append_two_valid_nodes_returns_correct_offsets() {
     let offset1 = cluster.append(ctx.queue(), &[node1]).expect("first append");
     let offset2 = cluster.append(ctx.queue(), &[node2]).expect("second append");
 
-    assert_eq!(offset1, 0, "first append returns offset 0");
-    assert_eq!(offset2, 1, "second append returns offset 1");
-    assert_eq!(cluster.len(), 2);
-    assert_eq!(cluster.get(0), &node1);
-    assert_eq!(cluster.get(1), &node2);
+    // Offset 0 is the reserved sentinel node (I1: cluster_table_offset==0
+    // means "no table" under the C5 XOR rule), so real appends start at 1.
+    assert_eq!(offset1, 1, "first append returns offset 1 (offset 0 is the reserved sentinel)");
+    assert_eq!(offset2, 2, "second append returns offset 2");
+    assert_eq!(cluster.len(), 3, "sentinel + two appended nodes");
+    assert_eq!(cluster.get(offset1), &node1);
+    assert_eq!(cluster.get(offset2), &node2);
 }
 
 #[test]
@@ -277,9 +279,11 @@ fn cluster_nodes_readback_byte_exact() {
     cluster.append(ctx.queue(), &[node1]).expect("first append");
     cluster.append(ctx.queue(), &[node2]).expect("second append");
 
-    let gpu = readback(&ctx, cluster.buffer(), 2 * 48);
+    // Three records: the reserved sentinel (index 0) plus the two appended
+    // nodes.
+    let gpu = readback(&ctx, cluster.buffer(), 3 * 48);
     let expected = cluster_bytes(cluster.nodes());
-    assert_eq!(expected.len(), 96, "two 48-byte records");
+    assert_eq!(expected.len(), 144, "sentinel + two 48-byte records");
     assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(nodes())");
 }
 
@@ -302,7 +306,7 @@ fn append_rejects_error_monotonicity_violation() {
 
     let err = cluster.append(ctx.queue(), &[bad_node]);
     assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
-    assert_eq!(cluster.len(), 0, "rejected batch must not consume offsets");
+    assert_eq!(cluster.len(), 1, "rejected batch must not consume offsets beyond the reserved sentinel");
 }
 
 #[test]
@@ -324,7 +328,7 @@ fn append_rejects_padding_nonzero() {
 
     let err = cluster.append(ctx.queue(), &[bad_node]);
     assert_eq!(err, Err(ClusterError::PaddingNonZero));
-    assert_eq!(cluster.len(), 0, "rejected batch must not consume offsets");
+    assert_eq!(cluster.len(), 1, "rejected batch must not consume offsets beyond the reserved sentinel");
 }
 
 #[test]
@@ -339,7 +343,7 @@ fn append_rejects_nan_self_error() {
     // check would silently ACCEPT this node. The `!(a < b)` form must reject.
     let err = cluster.append(ctx.queue(), &[bad_node]);
     assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
-    assert_eq!(cluster.len(), 0, "NaN self_error must not consume offsets");
+    assert_eq!(cluster.len(), 1, "NaN self_error must not consume offsets beyond the reserved sentinel");
 }
 
 #[test]
@@ -353,11 +357,11 @@ fn append_rejects_nan_parent_error() {
     // `self_error < NaN` is false, so `!(a < b)` routes NaN to rejection.
     let err = cluster.append(ctx.queue(), &[bad_node]);
     assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
-    assert_eq!(cluster.len(), 0, "NaN parent_error must not consume offsets");
+    assert_eq!(cluster.len(), 1, "NaN parent_error must not consume offsets beyond the reserved sentinel");
 }
 
 #[test]
-fn batched_appends_return_offsets_0_then_2_and_read_back_byte_exact() {
+fn batched_appends_return_offsets_1_then_3_and_read_back_byte_exact() {
     let ctx = test_context();
     let mut cluster = ClusterBuffer::new(&ctx, 4);
 
@@ -385,25 +389,27 @@ fn batched_appends_return_offsets_0_then_2_and_read_back_byte_exact() {
         bounding_sphere: [-1.0, -2.0, -3.0, 2.0],
     };
 
-    // The brief's literal scenario: a 2-node batch lands at offset 0, then a
-    // 1-node batch lands at offset 2.
+    // The brief's literal scenario: a 2-node batch lands at offset 1 (offset
+    // 0 is the reserved sentinel, I1), then a 1-node batch lands at offset 3.
     let offset_a = cluster.append(ctx.queue(), &[node1, node2]).expect("2-node batch");
     let offset_b = cluster.append(ctx.queue(), &[node3]).expect("1-node batch");
-    assert_eq!(offset_a, 0, "first batch starts at node offset 0");
-    assert_eq!(offset_b, 2, "second batch starts at node offset 2");
-    assert_eq!(cluster.len(), 3);
-    assert_eq!(cluster.nodes(), &[node1, node2, node3]);
+    assert_eq!(offset_a, 1, "first batch starts at node offset 1 (offset 0 is the reserved sentinel)");
+    assert_eq!(offset_b, 3, "second batch starts at node offset 3");
+    assert_eq!(cluster.len(), 4, "sentinel + three appended nodes");
+    assert_eq!(&cluster.nodes()[1..], [node1, node2, node3]);
 
-    let gpu = readback(&ctx, cluster.buffer(), 3 * 48);
+    let gpu = readback(&ctx, cluster.buffer(), 4 * 48);
     let expected = cluster_bytes(cluster.nodes());
-    assert_eq!(expected.len(), 144, "three 48-byte records");
+    assert_eq!(expected.len(), 192, "sentinel + three 48-byte records");
     assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(nodes())");
 }
 
 #[test]
 fn append_fails_when_buffer_full() {
     let ctx = test_context();
-    let mut cluster = ClusterBuffer::new(&ctx, 2);
+    // +1 for the reserved sentinel node 0 (I1) — still exercises the
+    // two-succeed-then-fail boundary the test name promises.
+    let mut cluster = ClusterBuffer::new(&ctx, 3);
 
     let node = test_cluster_node();
 
@@ -411,7 +417,7 @@ fn append_fails_when_buffer_full() {
     assert!(cluster.append(ctx.queue(), &[node]).is_ok());
     let err = cluster.append(ctx.queue(), &[node]);
     assert_eq!(err, Err(ClusterError::BufferFull));
-    assert_eq!(cluster.len(), 2, "full buffer rejects without growing");
+    assert_eq!(cluster.len(), 3, "full buffer rejects without growing (sentinel + 2 appended)");
 }
 
 /// Test 14 extension (C0 companion, M2b-α scope): the asset half of
@@ -434,12 +440,12 @@ fn test14_assets_device_loss_rematerialization() {
     let off_b = arena.upload_vertices(ctx1.queue(), &blob_b).unwrap();
     let ioff = arena.upload_indices(ctx1.queue(), &index_blob).unwrap();
 
-    let mut reg = MeshRegistry::new(&ctx1, 8);
-    let traditional = traditional_mesh();
-    let vg = vg_mesh();
-    let midx_a = reg.register(ctx1.queue(), traditional).expect("traditional mesh");
-    let midx_b = reg.register(ctx1.queue(), vg).expect("VG mesh");
-
+    // Cluster nodes are registered FIRST so the VG mesh below can carry a
+    // REAL appended cluster offset (I1 review point: every prior test dodged
+    // representability by hardcoding cluster_table_offset — this one now
+    // uses the actual return value of `ClusterBuffer::append`, which is
+    // always >= 1 because `ClusterBuffer::new` reserves node 0 as the "no
+    // table" sentinel under the C5 XOR rule).
     let mut cluster = ClusterBuffer::new(&ctx1, 8);
     let node1 = test_cluster_node();
     let node2 = ClusterNode {
@@ -456,11 +462,18 @@ fn test14_assets_device_loss_rematerialization() {
     let coff_a = cluster.append(ctx1.queue(), &[node1]).expect("first cluster node");
     let coff_b = cluster.append(ctx1.queue(), &[node2]).expect("second cluster node");
 
+    let mut reg = MeshRegistry::new(&ctx1, 8);
+    let traditional = traditional_mesh();
+    let mut vg = vg_mesh();
+    vg.cluster_table_offset = coff_a; // real offset, not the old fictional 100
+    let midx_a = reg.register(ctx1.queue(), traditional).expect("traditional mesh");
+    let midx_b = reg.register(ctx1.queue(), vg).expect("VG mesh");
+
     // Snapshot every occupied byte of all four asset buffers before loss.
     let vertex_bytes = off_b as u64 + blob_b.len() as u64;
     let index_bytes = ioff as u64 + index_blob.len() as u64;
     let mesh_bytes_len = 2u64 * 72;
-    let cluster_bytes_len = 2u64 * 48;
+    let cluster_bytes_len = cluster.len() as u64 * 48; // sentinel + 2 appended nodes
     let before_vertex = readback(&ctx1, arena.vertex_buffer(), vertex_bytes);
     let before_index = readback(&ctx1, arena.index_buffer(), index_bytes);
     let before_mesh = readback(&ctx1, reg.buffer(), mesh_bytes_len);

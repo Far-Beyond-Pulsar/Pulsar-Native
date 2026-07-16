@@ -82,11 +82,22 @@ row space `0..page.len()`. M2b reconciles them with **per-cell regions**:
 - **Global-slot mirror buffer (new, α):** a row-indexed `SceneBuffer<u32>`
   holding `global_slot(global_row)` — the data path for C6/§3.3 GPU handle
   validation (the M3 cull pass reads `slot = slot_mirror[row]`, then
-  `generations[slot]`). Maintained at alloc and at every compaction move
-  (`compact_report`'s `(from, to)` + the CPU slot-ID column 0 give the moved
-  slot), dirty-tracked like transforms; Test 3 row included. The shader
-  consumer is M3; the buffer and its maintenance are M2b-α so M3 does not
-  reshape the store.
+  `generations[slot]`). **As shipped**, the sole maintenance trigger is a
+  self-healing boundary scan in `sync_all`: for every occupied row it compares
+  the row-scoped `slot_shadow` against the authoritative slot column
+  (`0..rows_in_use`) and re-uploads exactly the mismatches, regardless of how
+  the slot got there (write after alloc, compaction swap, or an alloc
+  re-occupying a vacated row that is never written). This replaces the
+  originally-proposed per-event triggers (mark at alloc, mark at each
+  compaction move via `compact_report`'s `(from, to)`): Task 4 review found
+  TWO fail-open paths in that scheme — (1) a retired slot recycled into a
+  *different* row arrives with its generation already shadow-gated, so the
+  slot-scoped gen-gate stays silent while the new row's mirror entry is stale;
+  (2) an `alloc` that re-occupies a compaction-vacated row without ever
+  calling `write_transform` has no per-event trigger at all. The single
+  boundary-scan invariant closes both, dirty-tracked like transforms; Test 3
+  row included. The shader consumer is M3; the buffer and its maintenance are
+  M2b-α so M3 does not reshape the store.
 - Harvest emits **global-row tokens** for the M3 consumer, but the SIMD
   kernels are untouched: `query_aabb`/`query_frustum` keep writing **local**
   tokens (bit-identity across scalar/AVX2/NEON arms is preserved). The
@@ -252,6 +263,14 @@ Frame::begin() -> SimulateA -> SimulateB -> Harvest -> (Cull/Draw: M3 no-ops)
   ops are methods on the `BoundaryPhase` witness that consume it in order.
   M2a's runtime `Phase` enum is retained inside `SceneGpuStore` as a
   debug-assert backstop (FFI/plugin code can't be type-checked).
+  **Amendment (M2b-α final review):** `alloc`'s witness-gating lands with the
+  M4 `World` integration, not here — `CellStorage::alloc` is core (graphics-
+  free, C0) CPU API and cannot itself take a `gpu`-module witness type without
+  breaking the no-Helio/no-rendering-dependency boundary the core is built
+  on. `write_transform`/`free_deferred` are already gated because they live on
+  `SceneGpuStore` (gpu-module) itself; `alloc` gating instead has to happen at
+  the `World` call site that holds both a `CellStorage` and a phase witness,
+  which is M4 scope.
 - **Hard-enforces the M2a carry-forwards:** raw mirrored-column writes and
   direct `cell.compact()` lose their footguns because the phase-gated store
   API is the only path exposed at the `World` level (`column_for_mut` stays

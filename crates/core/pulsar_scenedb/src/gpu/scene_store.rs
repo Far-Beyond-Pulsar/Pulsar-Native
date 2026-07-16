@@ -84,9 +84,12 @@ struct CellGpuState {
     slot_capacity: u32,
     dirty_transforms: DirtyMask,
     dirty_slots: DirtyMask,
-    /// Per-row global-slot staging, refreshed by `sync_all` for every row
-    /// `dirty_slots` marks, then uploaded into the shared slot-mirror SSBO
-    /// (T4; C6 GPU handle validation).
+    /// Per-row global-slot staging. `sync_all`'s self-healing boundary scan
+    /// is scan-first, not dirty-mask-first: it compares `slot_shadow` against
+    /// the authoritative slot column for every occupied row, and for each
+    /// mismatch it fills this scratch entry AND marks `dirty_slots` together
+    /// (neither drives the other) before uploading into the shared
+    /// slot-mirror SSBO (T4; C6 GPU handle validation).
     slot_scratch: Vec<u32>,
     /// Per-ROW shadow of the last LOCAL slot uploaded into the mirror for
     /// that row; `u32::MAX` = never uploaded. Read and written ONLY by
