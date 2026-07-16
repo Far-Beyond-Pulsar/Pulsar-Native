@@ -817,6 +817,125 @@ fn test14_multicell_device_loss_rematerialization() {
 /// column token-keyed (`column_for_mut::<[f32;16]>`). Proves
 /// `register_token_column` wires the token index correctly for a
 /// positionally-constructed cell.
+/// M2b-β Task 4 gate 1: a region evicted via `unregister_cell` is pinned by
+/// `last_serial` exactly like the M2a row/slot pin-by-serial pattern —
+/// unusable for a fresh registration until that serial's frame boundary
+/// drains it (`retire_all` now drains both pool families every boundary).
+#[test]
+fn eviction_returns_region_only_after_serial_completes() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(
+        &ctx,
+        SceneGpuConfig {
+            classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+            tombstone_headroom: 8,
+            max_materials: 1,
+            max_cells_metadata: 4,
+        },
+    );
+    let mut frames = FrameDriver::new();
+    let mut cell_a = transform_cell(64);
+    let id_a = store.register_cell(&cell_a, 0).unwrap();
+    let serial = store.tracker().next_serial();
+    store.unregister_cell(id_a, &mut cell_a, serial);
+    // Region still pinned: a new registration must fail.
+    let cell_b = transform_cell(64);
+    assert!(store.register_cell(&cell_b, 0).is_err(), "region pinned until serial completes");
+    // Complete the serial; the drain happens in retire (frame boundary):
+    store.tracker().force_complete(serial);
+    let sim = frames.begin();
+    let b = sim.end().end().end();
+    let (retired, _) = b.retire(&mut store, &mut []);
+    let compacted = retired.compact(&mut store, &mut []);
+    compacted.sync(&mut store, &mut []);
+    assert!(store.register_cell(&cell_b, 0).is_ok(), "region recycled after drain");
+}
+
+/// M2b-β Task 4 gate 2 (D2 eviction-timing refinement): a pending retire
+/// still queued when its cell is evicted commits CPU-side IMMEDIATELY —
+/// zero VRAM writes, since the region is about to be discarded wholesale —
+/// rather than waiting for the eviction serial to complete.
+#[test]
+fn eviction_commits_pending_retires_cpu_side_with_zero_vram_writes() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut frames = FrameDriver::new();
+    let mut cell = transform_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let h = cell.alloc().unwrap();
+    let sim = frames.begin();
+    store.write_transform(id, &mut cell, h, &mat(1.0), &sim);
+    let b = sim.end().end().end();
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        b.run(&mut store, &mut slots);
+    }
+    // Deferred-free h, then evict BEFORE its serial completes:
+    let sim = frames.begin();
+    let s = store.tracker().next_serial();
+    store.free_deferred(id, &mut cell, h, s, &sim);
+    drop(sim);
+    let writes_before = store.generation_write_count();
+    store.unregister_cell(id, &mut cell, s);
+    assert_eq!(store.generation_write_count(), writes_before, "zero VRAM writes at eviction");
+    // CPU-side: handle stale, slot recycled, row unpinned+compactable:
+    assert_eq!(cell.row_of(h), None, "pending retire committed CPU-side");
+    let h2 = cell.alloc().unwrap();
+    assert_eq!(h2.index(), h.index(), "slot recycled");
+}
+
+/// M2b-β Task 4 gate 3 (D2-tail carry-forward, §11): a region recycled from
+/// an evicted tenant must never expose that tenant's stale generations in
+/// the tail beyond the new tenant's occupied-slot prefix — `register_cell`'s
+/// tail scrub zero-fills `[gens.len()..slot_capacity)` in both VRAM and the
+/// gen-shadow on every promotion, fresh region or recycled.
+#[test]
+fn d2_tail_recycled_region_never_exposes_prior_generations() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(
+        &ctx,
+        SceneGpuConfig {
+            classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
+            tombstone_headroom: 8,
+            max_materials: 1,
+            max_cells_metadata: 4,
+        },
+    );
+    let mut frames = FrameDriver::new();
+    // Tenant A: churn slot 0 through several generations so the region holds
+    // non-zero generations across more than one slot.
+    let mut cell_a = transform_cell(64);
+    for _ in 0..3 {
+        let h = cell_a.alloc().unwrap();
+        cell_a.free(h);
+    }
+    for _ in 0..3 {
+        cell_a.alloc().unwrap();
+    }
+    let id_a = store.register_cell(&cell_a, 0).unwrap();
+    let serial = store.tracker().next_serial();
+    store.unregister_cell(id_a, &mut cell_a, serial);
+    store.tracker().force_complete(serial);
+    {
+        let sim = frames.begin();
+        let b = sim.end().end().end();
+        let (r, _) = b.retire(&mut store, &mut []);
+        r.compact(&mut store, &mut []).sync(&mut store, &mut []);
+    }
+    // Tenant B: ONE slot only — the region tail must not show A's residual
+    // generations.
+    let mut cell_b = transform_cell(64);
+    cell_b.alloc().unwrap();
+    let _id_b = store.register_cell(&cell_b, 0).unwrap();
+    let gens = as_u32s(&readback(&ctx, store.generation_buffer(), (72 * 4) as u64));
+    assert_eq!(gens[0], 1, "B's slot 0");
+    assert!(
+        gens[1..72].iter().all(|&g| g == 0),
+        "tail scrubbed — no prior-tenant generations survive (found {:?})",
+        gens[1..72].iter().enumerate().filter(|(_, &g)| g != 0).take(4).collect::<Vec<_>>()
+    );
+}
+
 #[test]
 fn spatial_cell_with_transform_registers_and_syncs() {
     let ctx = test_context();

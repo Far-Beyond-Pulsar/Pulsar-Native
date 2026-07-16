@@ -73,9 +73,9 @@ struct QueuedRetire {
 /// that used to live on `GpuStore` directly (M2a), and the deferred-retire
 /// queue (now one per cell rather than store-wide).
 struct CellGpuState {
-    /// Size class this cell was registered under (β reuses this for
-    /// promotion/eviction; unread this task).
-    #[allow(dead_code)]
+    /// Size class this cell was registered under (M2b-β `unregister_cell`:
+    /// selects which `row_pools`/`slot_pools` entry to return the region
+    /// pair to at eviction).
     class: usize,
     row_base: u32,
     slot_base: u32,
@@ -140,7 +140,12 @@ pub struct SceneGpuStore {
     /// to end in class order (§7).
     row_pools: Vec<RegionPool>,
     slot_pools: Vec<RegionPool>,
-    cells: Vec<CellGpuState>,
+    /// One slot per ever-registered `CellId`. `None` means the cell was
+    /// evicted (`unregister_cell`, M2b-β §4.1) — `CellId`s are NOT recycled,
+    /// so a hole here is permanent for the life of the store; a fresh
+    /// registration always pushes a new `Some(..)` at the end regardless of
+    /// how many holes precede it.
+    cells: Vec<Option<CellGpuState>>,
     /// Instrumentation: total generation-buffer writes issued across every
     /// cell, so tests can assert generation-upload minimality.
     gen_writes: AtomicU64,
@@ -218,6 +223,12 @@ impl SceneGpuStore {
 
     /// Test instrument: how many generation-buffer writes this store has
     /// issued across every cell (asserting upload minimality, §4).
+    ///
+    /// Counts only `write_generation` calls (per-slot, shadow-gated). The
+    /// recycled-region tail scrub in `register_cell` (§11 D2-tail
+    /// carry-forward) bypasses this counter deliberately: it is a
+    /// region-lifecycle bulk write (once per promotion, not per slot), not
+    /// the per-slot stamp this instrument exists to bound.
     #[doc(hidden)]
     pub fn generation_write_count(&self) -> u64 {
         self.gen_writes.load(Ordering::Relaxed)
@@ -273,6 +284,31 @@ impl SceneGpuStore {
         assert!(gens.len() as u32 <= slot_capacity, "cell has more slots ({}) than its region capacity {slot_capacity}", gens.len());
         self.generations.rebuild_region(&self.queue, slot_base, gens);
 
+        // Tail scrub (§11 D2-tail carry-forward, binding for β): `gens`
+        // covers only the registry's allocated-slot prefix, never the full
+        // region. On a FRESH region the tail is already zero (never
+        // written), but on a RECYCLED region (post-eviction, `unregister_cell`)
+        // the tail still holds the prior tenant's VRAM generations — an
+        // allocated-but-never-written slot in the new tenant would fail
+        // fail-open, validating against a stranger's stale generation. Zero
+        // the tail unconditionally; the write is a no-op in cost terms only
+        // when `occupied == slot_capacity` (headroom-free region). Cold
+        // path: once per promotion, not per slot — deliberately NOT counted
+        // by `gen_writes` (see that counter's doc).
+        let occupied = gens.len() as u32;
+        if occupied < slot_capacity {
+            let tail_zeros = vec![0u32; (slot_capacity - occupied) as usize];
+            self.queue.write_buffer(
+                self.generations.buffer(),
+                (slot_base + occupied) as u64 * 4,
+                super::as_bytes(&tail_zeros),
+            );
+        }
+
+        // gen_shadow: 0 by construction for every slot (including the tail
+        // computed above — a recycled region's shadow must forget the prior
+        // tenant's shadow state too, not just its VRAM bytes), then seeded
+        // for the occupied prefix from the registry.
         let gen_shadow: Vec<AtomicU32> = (0..slot_capacity).map(|_| AtomicU32::new(0)).collect();
         for (slot, &generation) in gens.iter().enumerate() {
             gen_shadow[slot].store(generation, Ordering::Relaxed);
@@ -289,7 +325,7 @@ impl SceneGpuStore {
         // stale bytes" footgun.
         let dirty_slots = DirtyMask::new(row_capacity);
 
-        self.cells.push(CellGpuState {
+        self.cells.push(Some(CellGpuState {
             class,
             row_base,
             slot_base,
@@ -300,7 +336,7 @@ impl SceneGpuStore {
             slot_shadow: vec![u32::MAX; row_capacity as usize],
             pending: VecDeque::new(),
             gen_shadow,
-        });
+        }));
         Ok(CellId(self.cells.len() as u32 - 1))
     }
 
@@ -341,29 +377,72 @@ impl SceneGpuStore {
             );
             let id = store.register_cell(cell, class).expect("rebuild: cell must fit its class region");
             let rows = cell.rows_in_use();
-            let row_base = store.cells[id.0 as usize].row_base;
-            let slot_base = store.cells[id.0 as usize].slot_base;
+            let row_base = store.cells[id.0 as usize].as_ref().expect("cell unregistered").row_base;
+            let slot_base = store.cells[id.0 as usize].as_ref().expect("cell unregistered").slot_base;
 
             let col = cell
                 .column_for::<[f32; 16]>()
                 .expect("cell has no [f32; 16] transform column");
             store.transforms.write_rows(&store.queue, &col[..rows as usize], row_base);
-            store.cells[id.0 as usize].dirty_transforms.clear_all();
+            store.cells[id.0 as usize].as_mut().expect("cell unregistered").dirty_transforms.clear_all();
 
             let col0 = cell.slot_column();
             {
-                let state = &mut store.cells[id.0 as usize];
+                let state = store.cells[id.0 as usize].as_mut().expect("cell unregistered");
                 for row in 0..rows {
                     let local_slot = col0[row as usize];
                     state.slot_scratch[row as usize] = slot_base + local_slot;
                     state.slot_shadow[row as usize] = local_slot;
                 }
             }
-            store.slot_mirror.write_rows(&store.queue, &store.cells[id.0 as usize].slot_scratch[..rows as usize], row_base);
+            store.slot_mirror.write_rows(
+                &store.queue,
+                &store.cells[id.0 as usize].as_ref().expect("cell unregistered").slot_scratch[..rows as usize],
+                row_base,
+            );
 
             ids.push(id);
         }
         (store, ids)
+    }
+
+    /// §4.1 eviction (M2b-β, closes the D2 pending-retire disposition and the
+    /// region-recycle side of the two §11 carry-forwards): demote a resident
+    /// cell out of its region.
+    ///
+    /// 1. Every retire still queued in `cell`'s pending-retire queue is
+    ///    committed **CPU-side immediately** (`cell.commit_retire`: unpin the
+    ///    row, bump the registry generation, pool the slot) — **zero VRAM
+    ///    writes**. The design originally deferred this commit until the
+    ///    region's pin serial completed, to keep a late write from landing in
+    ///    a freed (possibly reallocated) region; since this commit never
+    ///    touches VRAM there is nothing for a late write to corrupt, so the
+    ///    audit remediation (see the M2b-β holistic-audit doc) moves the
+    ///    commit earlier, to immediately at eviction. `last_serial` still
+    ///    gates the region's byte-range reuse (step 2) — only the retire
+    ///    *commit* moved earlier.
+    /// 2. Both the row and slot regions are returned to their class's pools
+    ///    via `free_pinned(last_serial)` — reusable only once `last_serial`
+    ///    completes (`retire_all` drains both pool families every boundary).
+    /// 3. The `CellGpuState` (gen-shadow slice, dirty words, slot
+    ///    scratch/shadow) is dropped outright — re-created at the region's
+    ///    next promotion via `register_cell`'s rebuild + tail scrub.
+    ///    CPU-side cell data persists (host memory is authoritative); the
+    ///    `cells` slot for `id` becomes `None` and stays `None` for the life
+    ///    of the store — `CellId`s are NOT recycled, unlike the row/slot
+    ///    regions they used to index.
+    ///
+    /// Panics if `id` was already unregistered (double-eviction is a caller
+    /// bug, not a runtime condition to tolerate).
+    pub fn unregister_cell(&mut self, id: CellId, cell: &mut CellStorage, last_serial: u64) {
+        let idx = id.0 as usize;
+        let state = self.cells[idx].take().expect("cell already unregistered");
+        for QueuedRetire { pending, .. } in state.pending {
+            cell.commit_retire(pending);
+        }
+        self.row_pools[state.class].free_pinned(state.row_base, last_serial);
+        self.slot_pools[state.class].free_pinned(state.slot_base, last_serial);
+        // `state` (gen-shadow, dirty masks, slot scratch/shadow) drops here.
     }
 
     /// The single mutation path for the GPU-mirrored transform column (§4):
@@ -390,7 +469,7 @@ impl SceneGpuStore {
         _sim: &impl SimulateWitness,
     ) -> bool {
         debug_assert_eq!(self.phase, Phase::Write, "mutation outside the write window");
-        let state = &self.cells[id.0 as usize];
+        let state = self.cells[id.0 as usize].as_ref().expect("cell unregistered");
         let Some(row) = cell.row_of(handle) else {
             return false;
         };
@@ -420,7 +499,7 @@ impl SceneGpuStore {
         let Some(pending) = cell.mark_pending_retire(handle) else {
             return false;
         };
-        let state = &mut self.cells[id.0 as usize];
+        let state = self.cells[id.0 as usize].as_mut().expect("cell unregistered");
         debug_assert!(
             state.pending.back().map_or(true, |q| q.serial <= serial),
             "free_deferred serials must be nondecreasing per cell — the retire \
@@ -437,6 +516,11 @@ impl SceneGpuStore {
     /// generation to VRAM, then commit in the registry — the gen bump
     /// reaches the GPU before the slot can be re-allocated (C6). Returns the
     /// total number of slots retired across every cell.
+    ///
+    /// Also drains both pool families (M2b-β §4.1 eviction): every class's
+    /// `row_pools`/`slot_pools` recycles any region pinned by
+    /// `unregister_cell` whose serial has now completed, at exactly this
+    /// frame boundary — the same watermark this cell-level drain uses.
     pub(crate) fn retire_all(&mut self, cells: &mut [CellSlot<'_>]) -> u32 {
         debug_assert_eq!(self.phase, Phase::Write, "retire_all must open the frame boundary");
         self.phase = Phase::Retired;
@@ -445,18 +529,23 @@ impl SceneGpuStore {
         for slot in cells.iter_mut() {
             let idx = slot.id.0 as usize;
             loop {
-                let ready = matches!(self.cells[idx].pending.front(), Some(front) if front.serial <= done);
+                let state = self.cells[idx].as_ref().expect("cell unregistered");
+                let ready = matches!(state.pending.front(), Some(front) if front.serial <= done);
                 if !ready {
                     break; // FIFO serials: everything behind is also incomplete
                 }
-                let QueuedRetire { pending, .. } = self.cells[idx].pending.pop_front().unwrap();
+                let QueuedRetire { pending, .. } =
+                    self.cells[idx].as_mut().expect("cell unregistered").pending.pop_front().unwrap();
                 // Retirement always bumps the generation, so the shadow-gated
                 // write always lands in VRAM (and updates the shadow) before
                 // the registry commit can recycle the slot (C6).
-                self.write_generation(&self.cells[idx], pending.slot, pending.next_gen);
+                self.write_generation(self.cells[idx].as_ref().expect("cell unregistered"), pending.slot, pending.next_gen);
                 slot.cell.commit_retire(pending);
                 drained += 1;
             }
+        }
+        for pool in self.row_pools.iter_mut().chain(self.slot_pools.iter_mut()) {
+            pool.drain_completed(done);
         }
         drained
     }
@@ -469,7 +558,7 @@ impl SceneGpuStore {
         debug_assert_eq!(self.phase, Phase::Retired, "compact_all must follow retire_all");
         self.phase = Phase::Compacted;
         for slot in cells.iter_mut() {
-            let state = &self.cells[slot.id.0 as usize];
+            let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
             slot.cell.compact_report(|_from, to| {
                 // Only the TRANSFORM mark: the slot mirror needs no
                 // per-move trigger — `sync_all`'s self-healing boundary
@@ -498,7 +587,7 @@ impl SceneGpuStore {
                 .cell
                 .column_for::<[f32; 16]>()
                 .expect("cell has no [f32; 16] transform column");
-            let state = &self.cells[slot.id.0 as usize];
+            let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
             let stats = self.transforms.sync_region(&self.queue, &col[..rows], state.row_base, &state.dirty_transforms);
             total.ranges += stats.ranges;
             total.bytes += stats.bytes;
@@ -512,7 +601,7 @@ impl SceneGpuStore {
             // trigger caught). O(rows) u32 compares per cell per boundary;
             // uploads only actual mismatches.
             let col0 = slot.cell.slot_column();
-            let state = &mut self.cells[slot.id.0 as usize];
+            let state = self.cells[slot.id.0 as usize].as_mut().expect("cell unregistered");
             for row in 0..rows as u32 {
                 let expect = col0[row as usize];
                 if state.slot_shadow[row as usize] != expect {
@@ -535,7 +624,7 @@ impl SceneGpuStore {
                     state.slot_shadow[row as usize] = expect;
                 }
             }
-            let state = &self.cells[slot.id.0 as usize];
+            let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
             let stats =
                 self.slot_mirror.sync_region(&self.queue, &state.slot_scratch[..rows], state.row_base, &state.dirty_slots);
             total.ranges += stats.ranges;
@@ -545,7 +634,7 @@ impl SceneGpuStore {
     }
 
     pub fn row_region_base(&self, id: CellId) -> u32 {
-        self.cells[id.0 as usize].row_base
+        self.cells[id.0 as usize].as_ref().expect("cell unregistered").row_base
     }
 
     pub fn transform_buffer(&self) -> &wgpu::Buffer {
