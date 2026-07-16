@@ -54,7 +54,7 @@ pulsar_helio.workspace = true
 glam.workspace = true
 bytemuck = "1.14"
 
-wgpu.workspace = true
+wgpu = "30"
 crossbeam-channel = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }

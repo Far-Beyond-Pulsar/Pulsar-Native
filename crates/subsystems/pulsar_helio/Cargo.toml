@@ -7,7 +7,7 @@ description = "Pulsar-owned bootstrap and integration boundary for Helio"
 [dependencies]
 helio = { workspace = true }
 helio-default-graphs = { workspace = true }
-wgpu = { workspace = true }
+wgpu = "30"
 
 [build-dependencies]
 toml = { workspace = true }
