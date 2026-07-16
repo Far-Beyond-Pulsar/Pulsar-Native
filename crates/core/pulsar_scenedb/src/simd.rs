@@ -247,11 +247,30 @@ pub(crate) fn aabb_scan_scalar(
     hits
 }
 
+/// Runtime-dispatched §8.5 dense compaction. Selects the best available
+/// backend; all backends produce bit-identical `dense`/`remap` appends and
+/// counts (the scalar arm is the reference).
+///
+/// Strips `NULL_ROW` sentinels from a positional token run, pushing
+/// `base + token` into `dense` and the ORIGINAL run index into `remap` (C4
+/// M3-frozen layout: `remap[dense_i] = run index`). Returns the dense count.
+#[inline]
+pub(crate) fn compress_tokens(run: &[u32], base: u32, dense: &mut Vec<u32>, remap: &mut Vec<u32>) -> u32 {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            // SAFETY: guarded by the runtime feature check.
+            return unsafe { compress_tokens_avx2(run, base, dense, remap) };
+        }
+    }
+    compress_tokens_scalar(run, base, dense, remap)
+}
+
 /// §8.5 dense compaction (scalar reference): strip `NULL_ROW` sentinels from a
 /// positional token run, pushing `base + token` into `dense` and the ORIGINAL
 /// run index into `remap` (C4 M3-frozen layout: `remap[dense_i] = run index`).
-/// Returns the dense count. AVX2 arm (M2b-b T7) must match bit-for-bit.
-pub(crate) fn compress_tokens(run: &[u32], base: u32, dense: &mut Vec<u32>, remap: &mut Vec<u32>) -> u32 {
+/// Returns the dense count. The AVX2 arm (M2b-b T7) matches this bit-for-bit.
+pub(crate) fn compress_tokens_scalar(run: &[u32], base: u32, dense: &mut Vec<u32>, remap: &mut Vec<u32>) -> u32 {
     let mut count = 0;
     for (i, &t) in run.iter().enumerate() {
         if t != crate::registry::NULL_ROW {
@@ -259,6 +278,103 @@ pub(crate) fn compress_tokens(run: &[u32], base: u32, dense: &mut Vec<u32>, rema
             remap.push(i as u32);
             count += 1;
         }
+    }
+    count
+}
+
+/// Per-mask lane-compaction permutation table for the AVX2 `compress_tokens`
+/// arm. `COMPRESS_LUT[mask]` is the `_mm256_permutevar8x32_epi32` index
+/// vector that gathers the set bits of `mask` (bit `i` = lane `i` is a hit)
+/// into the front of the result, in ascending lane order — the standard
+/// AVX2 "left-pack"/compress-store idiom. Slots beyond `mask.count_ones()`
+/// are unspecified (never read: callers only take the `count_ones()`-long
+/// prefix of the permuted result).
+///
+/// Built at compile time so there is no runtime table-construction cost.
+#[cfg(target_arch = "x86_64")]
+const fn build_compress_lut() -> [[i32; 8]; 256] {
+    let mut table = [[0i32; 8]; 256];
+    let mut mask = 0usize;
+    while mask < 256 {
+        let mut entry = [0i32; 8];
+        let mut pos = 0usize;
+        let mut lane = 0usize;
+        while lane < 8 {
+            if (mask >> lane) & 1 == 1 {
+                entry[pos] = lane as i32;
+                pos += 1;
+            }
+            lane += 1;
+        }
+        table[mask] = entry;
+        mask += 1;
+    }
+    table
+}
+
+#[cfg(target_arch = "x86_64")]
+static COMPRESS_LUT: [[i32; 8]; 256] = build_compress_lut();
+
+/// AVX2 backend for the §8.5 dense compaction, processing 8 tokens per
+/// iteration.
+///
+/// Produces bit-identical `dense`/`remap` appends and dense count to
+/// [`compress_tokens_scalar`]. Because `NULL_ROW` (`0xFFFF_FFFF`) has the
+/// same bit pattern as `-1i32`, the hit mask is `token != -1` per lane —
+/// computed as the inverse of `_mm256_cmpeq_epi32(vals, splat(-1))`. The
+/// per-mask [`COMPRESS_LUT`] permutation left-packs both the offset dense
+/// values and the (i + lane) remap indices in one shuffle each, preserving
+/// ascending original-index order; only the `popcount(mask)`-long prefix of
+/// each permuted register is appended to the output `Vec`s.
+///
+/// # Safety
+/// The caller must ensure the `avx2` target feature is available at runtime
+/// (verify with `is_x86_feature_detected!("avx2")`). Both the
+/// [`compress_tokens`] dispatcher and the property test guard the call this
+/// way.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+pub(crate) unsafe fn compress_tokens_avx2(run: &[u32], base: u32, dense: &mut Vec<u32>, remap: &mut Vec<u32>) -> u32 {
+    use std::arch::x86_64::*;
+    let len = run.len();
+    let mut count = 0u32;
+    let null_v = _mm256_set1_epi32(-1); // bit pattern of NULL_ROW == u32::MAX
+    let base_v = _mm256_set1_epi32(base as i32);
+    let lane_idx = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
+    let mut tmp_dense = [0u32; 8];
+    let mut tmp_remap = [0u32; 8];
+    let mut i = 0usize;
+    while i + 8 <= len {
+        let vals = _mm256_loadu_si256(run.as_ptr().add(i) as *const __m256i);
+        let is_null = _mm256_cmpeq_epi32(vals, null_v);
+        // Invert: hit lanes (token != NULL_ROW) become all-ones.
+        let hit_mask_v = _mm256_xor_si256(is_null, _mm256_set1_epi32(-1));
+        let mask = (_mm256_movemask_ps(_mm256_castsi256_ps(hit_mask_v)) as u32) & 0xFF;
+        let popcount = mask.count_ones() as usize;
+        if popcount > 0 {
+            let dense_v = _mm256_add_epi32(vals, base_v);
+            let idx_v = _mm256_add_epi32(_mm256_set1_epi32(i as i32), lane_idx);
+            let perm = COMPRESS_LUT[mask as usize];
+            let perm_v = _mm256_loadu_si256(perm.as_ptr() as *const __m256i);
+            let dense_compacted = _mm256_permutevar8x32_epi32(dense_v, perm_v);
+            let idx_compacted = _mm256_permutevar8x32_epi32(idx_v, perm_v);
+            _mm256_storeu_si256(tmp_dense.as_mut_ptr() as *mut __m256i, dense_compacted);
+            _mm256_storeu_si256(tmp_remap.as_mut_ptr() as *mut __m256i, idx_compacted);
+            dense.extend_from_slice(&tmp_dense[..popcount]);
+            remap.extend_from_slice(&tmp_remap[..popcount]);
+            count += popcount as u32;
+        }
+        i += 8;
+    }
+    // Scalar tail (identical predicate/arithmetic to compress_tokens_scalar).
+    while i < len {
+        let t = run[i];
+        if t != crate::registry::NULL_ROW {
+            dense.push(base + t);
+            remap.push(i as u32);
+            count += 1;
+        }
+        i += 1;
     }
     count
 }
@@ -685,6 +801,73 @@ mod tests {
             let hv = unsafe { aabb_scan_neon(&q, &cols, &words, len, &mut out_v) };
             assert_eq!(out_s, out_v, "NEON diverged from scalar at len={len}");
             assert_eq!(hs, hv);
+        }
+    }
+
+    #[test]
+    fn compress_tokens_scalar_strips_nulls_and_offsets() {
+        let run = [5u32, crate::registry::NULL_ROW, 7, crate::registry::NULL_ROW, 9];
+        let mut dense = Vec::new();
+        let mut remap = Vec::new();
+        let count = compress_tokens_scalar(&run, 1000, &mut dense, &mut remap);
+        assert_eq!(count, 3);
+        assert_eq!(dense, vec![1005, 1007, 1009]);
+        assert_eq!(remap, vec![0, 2, 4]);
+    }
+
+    #[test]
+    #[cfg(target_arch = "x86_64")]
+    fn compress_tokens_avx2_matches_scalar_bit_for_bit() {
+        if !is_x86_feature_detected!("avx2") {
+            eprintln!("AVX2 not available on this host; skipping");
+            return;
+        }
+        use rand::{Rng, SeedableRng};
+        let mut rng = rand::rngs::StdRng::seed_from_u64(0xDE1_C0DE ^ 0x7A5C7);
+        let lens = [0usize, 1, 7, 8, 9, 63, 64, 65, 257, 1024];
+        let mut case = 0usize;
+        while case < 200 {
+            // Cycle through the required boundary lengths, then random lengths,
+            // so every listed length is hit at least once across 200 cases.
+            let len = if case < lens.len() { lens[case] } else { rng.gen_range(0..=1200usize) };
+            // Hit density 0-100%: threshold in [0, 100], token is NULL_ROW if
+            // a random percent roll is >= threshold (so threshold=0 -> all
+            // hits, threshold=100 -> all misses).
+            let density_pct = rng.gen_range(0..=100u32);
+            let run: Vec<u32> = (0..len)
+                .map(|i| {
+                    let roll = rng.gen_range(0..100u32);
+                    if roll < density_pct { i as u32 } else { crate::registry::NULL_ROW }
+                })
+                .collect();
+            // Random base, including large bases near u32::MAX-1024 to catch
+            // overflow-adjacent arithmetic. Every hit token equals its own
+            // run index (< len), so the largest possible `base + t` is
+            // `base + len - 1`; cap `base` there so the scalar reference's
+            // `base + t` never panics in debug (a real overflow would panic
+            // the scalar oracle before AVX2 is even compared).
+            let max_t = len.saturating_sub(1) as u32;
+            let base_ceiling = u32::MAX - max_t;
+            let base: u32 = if rng.gen_bool(0.3) {
+                let floor = base_ceiling.saturating_sub(1024);
+                rng.gen_range(floor..=base_ceiling)
+            } else {
+                rng.gen_range(0..=(u32::MAX / 2).min(base_ceiling))
+            };
+
+            let mut dense_s = Vec::new();
+            let mut remap_s = Vec::new();
+            let count_s = compress_tokens_scalar(&run, base, &mut dense_s, &mut remap_s);
+
+            let mut dense_v = Vec::new();
+            let mut remap_v = Vec::new();
+            // SAFETY: guarded by the runtime feature check above.
+            let count_v = unsafe { compress_tokens_avx2(&run, base, &mut dense_v, &mut remap_v) };
+
+            assert_eq!(count_s, count_v, "count diverged at len={len}, density={density_pct}, base={base}");
+            assert_eq!(dense_s, dense_v, "dense diverged at len={len}, density={density_pct}, base={base}");
+            assert_eq!(remap_s, remap_v, "remap diverged at len={len}, density={density_pct}, base={base}");
+            case += 1;
         }
     }
 

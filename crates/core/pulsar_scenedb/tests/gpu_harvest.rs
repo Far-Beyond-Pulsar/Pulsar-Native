@@ -240,3 +240,51 @@ fn harvest_makes_zero_new_allocations_after_warmup() {
     assert_eq!(staging.hlod.capacity(), cap_hlod, "hlod capacity unchanged");
     assert_eq!(staging.remap.capacity(), cap_remap, "remap capacity unchanged (plain path never touches it)");
 }
+
+#[test]
+fn harvest_dei_branch_makes_zero_new_allocations_after_warmup() {
+    // Review fold-in (T6): the zero-alloc warm-up test above only exercises
+    // the plain (>= 25% hit) path — the DEI dense-compaction branch's
+    // no-realloc invariant was unasserted. Mirror it with a 12.5%-hit cell
+    // so `harvest_cell` takes the `compress_tokens` branch both runs.
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let cell = boxed_cell(64, 64, 0.0);
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    let base = store.row_region_base(id);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    // Same cell + same view both runs: box i = [i, i+1); query [10.5, 17.5]
+    // hits i in {10..=17} -> 8/64 = 12.5% < 25% -> DEI path both times.
+    let view = View::Aabb(Aabb { min: [10.5, 0.0, 0.0], max: [17.5, 1.0, 1.0] });
+    let n1 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h);
+    assert_eq!(n1, 8, "12.5% hit ratio");
+    assert_eq!(staging.stats.dei_compacted_runs, 1, "run 1 takes the DEI branch");
+
+    let pad_u32_after1 = pad.buf_len_u32();
+    let pad_u64_after1 = pad.buf_len_u64();
+    let cap_trad = staging.traditional.capacity();
+    let cap_vg = staging.vg.capacity();
+    let cap_hlod = staging.hlod.capacity();
+    let cap_remap = staging.remap.capacity();
+
+    // Clear WITHOUT freeing (S8.1) — a fresh `HarvestStaging::new()` here
+    // would defeat the entire point of this test.
+    staging.clear();
+
+    let n2 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h);
+    assert_eq!(n2, 8, "same cell + view -> identical hit count on the second run");
+    assert_eq!(staging.stats.dei_compacted_runs, 1, "run 2 also takes the DEI branch");
+
+    assert_eq!(pad.buf_len_u32(), pad_u32_after1, "scratch u32 buffer size unchanged after warmup");
+    assert_eq!(pad.buf_len_u64(), pad_u64_after1, "scratch u64 buffer size unchanged after warmup");
+    assert_eq!(staging.traditional.capacity(), cap_trad, "traditional (dense) capacity unchanged across DEI runs");
+    assert_eq!(staging.vg.capacity(), cap_vg, "vg capacity unchanged");
+    assert_eq!(staging.hlod.capacity(), cap_hlod, "hlod capacity unchanged");
+    assert_eq!(staging.remap.capacity(), cap_remap, "remap capacity unchanged across DEI runs (no realloc)");
+}
