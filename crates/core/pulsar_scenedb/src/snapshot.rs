@@ -15,9 +15,15 @@ impl LivenessSnapshot {
     /// SIMD kernel contract (`liveness_words.len() == len.div_ceil(64)`).
     ///
     /// The caller must have already acquired through the Layer 2 phase-boundary
-    /// Acquire fence (or equivalent); the Relaxed loads are correct only because
-    /// that fence establishes happens-before for all prior `set_live`/`set_dead`
-    /// writes. Calling `capture` without the barrier is a silent correctness bug.
+    /// Acquire fence; the Relaxed loads here are correct only because that
+    /// fence establishes happens-before for all prior `set_live`/`set_dead`
+    /// writes. **§9.2.1: the fence is owned** — `pulsar_scenedb::gpu::phase`'s
+    /// `HarvestPhase::end`/`BoundaryPhase::retire` (paired with
+    /// `SimulateB::end`'s `Release`) are that Acquire fence for any caller
+    /// driving frames through the phase machine (see `liveness.rs`'s "Memory
+    /// ordering contract" doc for the full pairing). Calling `capture` from
+    /// outside that phase machine without an equivalent barrier is a silent
+    /// correctness bug.
     #[must_use]
     pub fn capture(mask: &LivenessMask, len: u32) -> Self {
         let n_words = (len as usize).div_ceil(64);

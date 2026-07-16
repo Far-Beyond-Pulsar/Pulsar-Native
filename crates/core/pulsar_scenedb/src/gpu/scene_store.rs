@@ -516,6 +516,20 @@ impl SceneGpuStore {
             for row in 0..rows as u32 {
                 let expect = col0[row as usize];
                 if state.slot_shadow[row as usize] != expect {
+                    // Audit A, G3: mirror `write_generation`'s release-assert
+                    // (scene_store.rs, `write_generation`) so a slot value
+                    // that is allocated but never written (tombstone-headroom
+                    // exhaustion after extreme generation churn — `expect`
+                    // beyond `slot_capacity`) fails loud here instead of
+                    // silently mirroring this row onto a NEIGHBOR cell's
+                    // generation region (fail-open C6). Release, not
+                    // debug-only: this is a corruption guard, not a debug
+                    // convenience.
+                    assert!(
+                        expect < state.slot_capacity,
+                        "slot {expect} beyond region capacity {} — mirror must never point into a neighbor's region",
+                        state.slot_capacity
+                    );
                     state.dirty_slots.mark(row);
                     state.slot_scratch[row as usize] = state.slot_base + expect;
                     state.slot_shadow[row as usize] = expect;

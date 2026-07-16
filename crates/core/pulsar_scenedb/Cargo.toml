@@ -10,6 +10,27 @@ gpu = ["dep:wgpu"]
 
 [dependencies]
 pulsar_core       = { workspace = true }
+# CONTRACTS.md C0 (audit A, V1): SceneDB never depends on Helio.
+# `pulsar_reflection`'s `default` feature list used to include `prims-helio`
+# -> `dep:helio` (Far-Beyond-Pulsar/Helio git crate). SceneDB only uses the
+# core reflection registry/type-info surface (`RuntimeTypeInfo`,
+# `RUNTIME_TYPE_REGISTRY`, `EngineClass`, `REGISTRY` — `src/token.rs`,
+# `src/component_store.rs`), none of which are gated behind any `prims-*`
+# feature at all (see `pulsar_reflection/src/lib.rs`: those symbols are
+# unconditional; only `src/prims/mod.rs`'s primitive-type *registrations* are
+# feature-gated). The edge is cut at the source: `prims-helio` is no longer
+# in `pulsar_reflection`'s `default` list (see that crate's Cargo.toml) — NOT
+# by overriding `default-features` on this edge. A per-edge
+# `default-features = false` override here is both ineffective (Cargo's
+# resolver unifies a shared dependency's activated features by UNION across
+# every workspace member that requests it — one consumer requesting fewer
+# features can never subtract what another consumer's `workspace = true`
+# already turned on) and, separately, rejected by Cargo itself when the
+# `[workspace.dependencies]` entry doesn't declare `default-features`
+# (warns: "this could become a hard error"). Plain inheritance is correct
+# here. Proof: `cargo tree -p pulsar_scenedb --no-default-features -e normal
+# | grep -i helio` (and with `--features gpu`) must output nothing —
+# enforced in CI (audit A, G1).
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
 ahash             = "0.8"

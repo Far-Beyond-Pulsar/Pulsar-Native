@@ -50,6 +50,14 @@ jobs:
       - name: SceneDB graphics-free core guard (CONTRACTS C0)
         run: cargo check -p pulsar_scenedb --no-default-features
 
+      - name: SceneDB no-Helio edge guard (CONTRACTS C0)
+        shell: bash
+        run: |
+          if cargo tree -p pulsar_scenedb -e normal | grep -qi helio; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
+
+      - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
+        run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
+
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 

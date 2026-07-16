@@ -75,6 +75,29 @@ impl CellStorage {
     /// cell so `column_for::<T>()` resolves (M2b-β: `SpatialCell` carries six
     /// same-type bounds columns that CellType's type-keyed tokens cannot
     /// express, plus one token-keyed transform column for the GPU mirror).
+    /// # Aliasing hazard (audit B, GAP-2; β Task 1 review note)
+    ///
+    /// Both guards below are `debug_assert!`, not real checks — in a release
+    /// build, `register_token_column::<T>(wrong_col)` registers a token to
+    /// whatever column `wrong_col` happens to be, with NO error at
+    /// registration time. `Page::assert_column`'s real `assert_eq!` on size
+    /// still catches a *size* mismatch on first read, but if two distinct
+    /// `Pod` types happen to share the same byte size (plausible: many
+    /// 64/128-byte structs), a wrong-column registration silently
+    /// reinterprets one type's bytes as another's — no panic anywhere, ever.
+    ///
+    /// The caller must guarantee `user_col` genuinely addresses a column of
+    /// element type `T` and is not ALSO addressed positionally elsewhere
+    /// (e.g. via `user_column::<U>(user_col)` for some other `U`) — this
+    /// method does not and cannot verify that on its own. Today's only call
+    /// site (`SpatialCell::with_transform`, `spatial.rs`) is self-consistent
+    /// and safe by construction; this is a real weakening of the
+    /// token-keyed-column type-safety story for any FUTURE in-crate caller,
+    /// since this method is `pub(crate)` and the hole is silent. Documented,
+    /// deferred, narrow blast radius today (progress.md, β Task 1 review:
+    /// "register_token_column has no misuse guard against aliasing a
+    /// positional column (safe at today's only call site;
+    /// discipline-guarded)").
     pub(crate) fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
         let id = TypeToken::of::<T>().id();
         debug_assert!(

@@ -11,13 +11,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 ///
 /// `set_live` / `set_dead` use `Relaxed` atomics intentionally. Correct
 /// visibility to harvest-phase readers is NOT self-contained here; it depends
-/// on the Layer 2 phase-boundary barrier (Milestone 2) emitting a **Release**
-/// fence (or equivalent) after all simulation-phase writes complete, and every
-/// harvest-phase reader acquiring through an **Acquire** fence (or equivalent)
-/// before calling `is_live`, `live_count`, or `dead_rows`. Without that
-/// barrier a harvest reader on another core may observe a stale word — a
-/// `Relaxed` load may return any previously stored value. This is a silent
-/// correctness bug, not a compile error.
+/// on a Layer 2 phase-boundary barrier emitting a **Release** fence after all
+/// simulation-phase writes complete, and every harvest-phase reader acquiring
+/// through an **Acquire** fence before calling `is_live`, `live_count`, or
+/// `dead_rows`.
+///
+/// **§9.2.1: the fence is owned.** `pulsar_scenedb::gpu::phase` is the fence
+/// owner — `SimulateB::end` emits the `Release` fence that publishes every
+/// simulate-phase write to this mask; `HarvestPhase::end` and
+/// `BoundaryPhase::retire` each emit the paired `Acquire` fence before any
+/// boundary/harvest code observes it. Any caller that drives a frame through
+/// that phase machine gets this ordering for free. The residual warning is
+/// for callers who read or write `LivenessMask` OUTSIDE the phase machine
+/// (there are none in-crate today): without going through
+/// `SimulateB::end`/`HarvestPhase::end`/`BoundaryPhase::retire`, a harvest
+/// reader on another core may still observe a stale word — a `Relaxed` load
+/// may return any previously stored value. That remains a silent correctness
+/// bug, not a compile error, for anyone who bypasses the phase machine.
 pub struct LivenessMask {
     words: Vec<AtomicU64>,
 }

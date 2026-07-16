@@ -4,7 +4,25 @@ version = "0.1.0"
 edition = "2024"
 
 [features]
-default = ["prims-core", "prims-std", "prims-glam", "prims-helio"]
+# CONTRACTS.md C0 (audit A, V1): `prims-helio` must NOT be a default feature.
+# Cargo's feature resolver unifies a shared dependency's activated features
+# across EVERY workspace member that requests it (union, not per-consumer) —
+# so as long as ANY consumer requested `pulsar_reflection`'s defaults, every
+# other consumer (including `pulsar_scenedb`, C0-bound to stay Helio-free)
+# got `prims-helio` -> `dep:helio` (the Far-Beyond-Pulsar/Helio git crate)
+# pulled into ITS build too, regardless of what that consumer's own Cargo.toml
+# requested. Editing only `pulsar_scenedb`'s dependency edge cannot cut this
+# edge by itself; the shared package's OWN default must not carry it.
+# Verified safe: `prims-helio`'s only registration is `Reflectable for
+# helio::Movability` (src/prims/helio/movability.rs) and nothing in the
+# workspace uses it — every `Movability` reference (engine_backend,
+# pulsar_rendering) constructs the plain `helio::Movability` enum value
+# directly for Helio's own scene-descriptor structs, never as a reflected
+# `#[property]` field requiring this registration. No consumer opts in
+# explicitly, so removing it from `default` is a genuine no-op for every
+# current consumer. Anyone needing Movability reflection in the future opts
+# in with `features = ["prims-helio"]` on that specific edge.
+default = ["prims-core", "prims-std", "prims-glam"]
 prims-core = []
 prims-std = ["prims-core"]
 prims-serde = ["prims-std"]

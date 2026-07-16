@@ -18,6 +18,16 @@
 //!   only in debug.
 //! - Enforced by NOTHING: boundary liveness — no type obliges a caller to
 //!   ever end the frame and run the boundary at all.
+//! - MEMORY ORDERING (§9.2.1): this module OWNS the Release/Acquire
+//!   phase-boundary edge that `LivenessMask`/`LivenessSnapshot` (both
+//!   `Relaxed`-only) depend on for cross-thread visibility.
+//!   `SimulateB::end` emits the `Release` fence that publishes every
+//!   simulate-phase write; `HarvestPhase::end` and `BoundaryPhase::retire`
+//!   each emit a paired `Acquire` fence before boundary/harvest code reads
+//!   that state. Previously undocumented as anyone's job (see prior audit);
+//!   now owned here. Callers that read/write `LivenessMask` outside this
+//!   phase machine (there are none in-crate today) must provide their own
+//!   equivalent barrier.
 //!
 //! A lifetime-carrying witness (`SimulateA<'frame>` borrowed from the
 //! driver/store) is the candidate hardening for the stale-witness hole —
@@ -29,6 +39,8 @@
 //! sub-phases (C3: A = gameplay, B = physics writeback — the distinction
 //! gains teeth once physics lands in M4; both are accepted anywhere a
 //! `SimulateWitness` is required today).
+
+use std::sync::atomic::{fence, Ordering};
 
 use super::{CellSlot, SceneGpuStore, SyncStats};
 
@@ -70,7 +82,23 @@ pub struct SimulateB(());
 
 impl SimulateB {
     /// Physics writeback is done; no further mutation this frame.
+    ///
+    /// §9.2.1: this is THE phase-boundary happens-before edge that
+    /// `LivenessMask`/`LivenessSnapshot`'s `Relaxed` loads rely on
+    /// (`liveness.rs`'s "Memory ordering contract" doc, `snapshot.rs::capture`'s
+    /// doc). All simulate-phase writes (both `SimulateA` and `SimulateB`
+    /// sub-phases — `write_transform`, `free_deferred`, `LivenessMask::set_live`/
+    /// `set_dead`) are published here with a `Release` fence before any
+    /// harvest/boundary reader can observe them; paired with the `Acquire`
+    /// fences in `HarvestPhase::end` and `BoundaryPhase::retire`. On a
+    /// single-threaded caller (today's only caller shape) this fence costs
+    /// effectively nothing — it only orders this thread's own prior stores,
+    /// which the compiler already cannot reorder past a fence, and emits no
+    /// instruction on strongly-ordered hardware (x86/x86-64); it exists for
+    /// the multi-threaded simulate-writer / harvest-reader shape the phase
+    /// machine is designed to support.
     pub fn end(self) -> HarvestPhase {
+        fence(Ordering::Release);
         HarvestPhase(())
     }
 }
@@ -83,7 +111,14 @@ pub struct HarvestPhase(());
 
 impl HarvestPhase {
     /// Harvest is done; open the frame boundary.
+    ///
+    /// §9.2.1: paired `Acquire` fence for the `Release` published in
+    /// `SimulateB::end` — establishes happens-before for every
+    /// `LivenessMask`/`LivenessSnapshot` `Relaxed` load a harvest-phase reader
+    /// performed (or will perform via data captured here) against this
+    /// frame's simulate-phase writes. Single-threaded callers pay ~nothing.
     pub fn end(self) -> BoundaryPhase {
+        fence(Ordering::Acquire);
         BoundaryPhase(())
     }
 }
@@ -115,7 +150,16 @@ impl BoundaryPhase {
     /// completed-serial watermark. Returns the total number of slots retired
     /// across every cell — the gate must not lose direct observability of
     /// what it gates.
+    ///
+    /// §9.2.1: a second `Acquire` fence at boundary entry, belt-and-suspenders
+    /// with `HarvestPhase::end`'s — this is the first line of code the
+    /// frame-boundary machinery runs, so it is the natural place to
+    /// (re-)establish happens-before against every simulate-phase write for
+    /// any reader that reaches this point without having gone through
+    /// `HarvestPhase::end` directly (e.g. the all-in-one `BoundaryPhase::run`
+    /// path). Single-threaded callers pay ~nothing.
     pub fn retire(self, store: &mut SceneGpuStore, cells: &mut [CellSlot<'_>]) -> (RetiredPhase, u32) {
+        fence(Ordering::Acquire);
         let drained = store.retire_all(cells);
         (RetiredPhase(()), drained)
     }
