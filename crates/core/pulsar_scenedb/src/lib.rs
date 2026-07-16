@@ -20,23 +20,31 @@
 //!   bit-for-bit against the scalar reference; frustum + AABB
 //! - [`LeaseMask`]/[`Scratchpad`]/[`LivenessSnapshot`] — read-lease pool,
 //!   decaying scratchpads, double-buffered revocation (§9; phase machine is M2)
-//! - `gpu` (feature `gpu`) — M2b-α region-partitioned GPU-resident store:
-//!   `EngineGpuContext`, `SceneBuffer<T>` row-indexed SSBOs with coalescing
-//!   delta-sync, slot-indexed `GenerationBuffer`, `SubmissionTracker`, and
-//!   `SceneGpuStore`'s multi-cell pin-by-serial retirement, driven through
-//!   the compile-time phase machine (`FrameDriver` → Simulate witnesses →
-//!   `BoundaryPhase::run`, or the staged `retire`/`compact`/`sync`
-//!   transitions). The core stays graphics-free (C0); CI guards
-//!   `--no-default-features`.
+//! - `gpu` (feature `gpu`) — M2a/M2b GPU-resident store: `EngineGpuContext`,
+//!   `SceneBuffer<T>` row-indexed SSBOs with coalescing delta-sync (M2a);
+//!   M2b-α adds region-partitioned global buffers, size-class pools (C2
+//!   default 256 / max 1024 per class), per-cell `CellGpuState` (dirty masks,
+//!   pending retires, gen shadow, slot shadow), self-healing slot-mirror
+//!   boundary scan, `register_cell` promotion primitive, `rebuild` for device
+//!   loss. Asset store (M2b-α): `GeometryArena` RangeList suballocation,
+//!   `MeshRegistry` (C5: 72 B, XOR-validated, NaN-safe single-cell no-NaN
+//!   invariant), `ClusterBuffer` (C5: 48 B, NaN-rejecting error monotonicity),
+//!   both with corrupted-VRAM rebuild gates. Phase machine (M2b-α):
+//!   `FrameDriver` → SimulateA→SimulateB→Harvest→Boundary witnesses;
+//!   `BoundaryPhase::retire` returns drain count; compile_fail + positive
+//!   doc-tests enforce correctness. The core stays graphics-free (C0); CI
+//!   guards `--no-default-features`.
 //!
 //! The inherited archetype ECS modules (`world`, `archetype`, `query`, …)
 //! are retained and will be migrated onto paged storage in later milestones
 //! (the SceneDB-replaces-ECS path, design doc §7).
 //!
 //! Milestone status: M1 (Layer 1) complete; M2a (GPU store, delta-sync,
-//! retirement) complete — verified headless by Tests 3, 6 (host), and 14;
-//! M2b-α (multi-cell `SceneGpuStore`) complete — the M2a gates now run
-//! against it. M2b orchestration/streaming and the M3 Helio inversion follow.
+//! pin-by-serial retirement) complete — verified headless by Tests 3, 6 (host),
+//! and 14. M2b-α (region-partitioned `SceneGpuStore`, asset store, phase
+//! machine, compile-time correctness gates) complete — verified by Tests 3, 6,
+//! 14 extended suites and compile_fail doc-tests. M2b-β (streaming grid,
+//! harvest pipeline, DEI compaction) and M3 (Helio inversion) follow.
 
 pub mod actor;
 pub mod archetype;
