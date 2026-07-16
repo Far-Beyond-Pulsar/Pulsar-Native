@@ -127,8 +127,13 @@ pattern (write-once at load, read-forever):
   `cluster_table_offset`) is validated at registration; violation is a hard
   registration error.
 - **ClusterBuffer** — global cluster-DAG buffer of C5 48 B `ClusterNode`
-  entries (`self_error < parent_error` validated at registration); VG meshes
-  reference it via `cluster_table_offset`.
+  entries (`self_error < parent_error` validated at registration, in the
+  NaN-rejecting `!(a < b)` form); VG meshes reference it via
+  `cluster_table_offset`. **Node 0 is a reserved sentinel** (α final-review
+  finding): C5's XOR rule reads `cluster_table_offset == 0` as "no cluster
+  table", so a real table at offset 0 would be unregistrable — real tables
+  start at node 1, `len()` starts at 1, and `max_nodes` budgets include the
+  sentinel.
 - **HLOD proxies** are ordinary `MeshRegistry` entries indexed by a
   **cell-level handle**: a dedicated proxy cell type (one row per
   content-bearing grid cell; transform = cell placement, mesh = proxy).
@@ -385,3 +390,43 @@ compaction moves (mutation-tested per the Task 10 precedent).
   compress/serialize path is an M4/asset-pipeline concern.
 - Streaming budget stress-walker tool (designer-facing) → **M4/editor**.
 - Physics/editor client integration of the phase machine → **M4** (cutover).
+
+## 11. M2b-α implementation findings & carry-forwards (binding on β/M3/M4)
+
+Recorded from the α review loops and the whole-milestone final review
+(implementation plan: `plans/2026-07-14-scenedb20-m2b-alpha-assets-phases.md`):
+
+**Findings fixed in α (context for later readers):**
+1. **Slot-mirror triggers were fail-open twice** — a slot-scoped gen-gate
+   missed retire→compact→realloc slot recycling, and per-event triggers
+   missed alloc-without-write into a compaction-vacated row (ghost duplicate
+   that *validates*). Shipped mechanism: the **self-healing boundary scan**
+   in `sync_all` is the sole mirror trigger (§2); both shapes are regression
+   tests in `tests/gpu_store.rs`.
+2. **NaN validation bypass** — `a >= b` is not `!(a < b)` under IEEE-754;
+   cluster error-monotonicity now uses the NaN-rejecting form, mutation-tested.
+3. **Cluster offset-0 representability** — node 0 reserved (§3).
+
+**Carry-forwards (must be addressed by the named milestone):**
+- **β — recycled slot-region TAIL scrub:** `register_cell` rebuilds only
+  `gens.len()` generation entries and zero-seeds the shadow tail
+  `[gens.len()..slot_capacity)`. On a *recycled* region (eviction→promotion)
+  that tail keeps the prior cell's VRAM generations while the shadow says 0 —
+  fail-open for an allocated-but-never-written slot. Unreachable in α (no
+  region ever recycles); β's promotion path (§4.1) must scrub or fully
+  rebuild the tail. This extends the §4.1 reset ledger.
+- **β — slot-region exhaustion surfaces as a write-time panic**, not the §8
+  "hard alloc error" (the store cannot intercept `CellStorage::alloc`); β's
+  residency layer owns turning it into a graceful degradation.
+- **β/M4 — phase-machine hardening:** the witness types do not stop
+  hoarded/duplicated Simulate witnesses (debug-assert-only coverage, silent
+  in release) and nothing enforces that a boundary ever runs (liveness). A
+  lifetime-carrying witness (`SimulateA<'frame>`) is the candidate fix; the
+  honest coverage map lives in `src/gpu/phase.rs` module docs.
+- **M3 — cull/draw witness stages** are absent (`HarvestPhase::end()` goes
+  straight to `BoundaryPhase`); inserting them is an API break M3 must plan.
+- **M4 — `alloc` witness-gating and `free()` demotion** at the World level
+  (§6 amendments).
+- **CI/tooling:** GPU test suites must never run concurrently on shared
+  hardware (device contention hangs); run with `--test-threads=1`,
+  sequentially per target.
