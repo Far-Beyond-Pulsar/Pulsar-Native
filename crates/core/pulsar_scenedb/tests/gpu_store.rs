@@ -810,3 +810,27 @@ fn test14_multicell_device_loss_rematerialization() {
         "cell B generations byte-identical across device loss"
     );
 }
+
+/// M2b-β Task 1: a `SpatialCell::with_transform` cell — carrying both the six
+/// bounds columns AND a token-registered `[f32; 16]` transform column — is
+/// accepted end-to-end by `gpu::SceneGpuStore`, which resolves the mirrored
+/// column token-keyed (`column_for_mut::<[f32;16]>`). Proves
+/// `register_token_column` wires the token index correctly for a
+/// positionally-constructed cell.
+#[test]
+fn spatial_cell_with_transform_registers_and_syncs() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut frames = FrameDriver::new();
+    let mut sc = pulsar_scenedb::SpatialCell::with_transform(64).unwrap();
+    let id = store.register_cell(sc.storage(), 0).unwrap();
+    let h = sc.alloc(pulsar_scenedb::Aabb { min: [0.0; 3], max: [1.0; 3] }).unwrap();
+    let sim = frames.begin();
+    assert!(store.write_transform(id, sc.storage_mut(), h, &mat(5.0), &sim));
+    let b = sim.end().end().end();
+    let mut slots = [CellSlot { id, cell: sc.storage_mut() }];
+    b.run(&mut store, &mut slots);
+    let base = store.row_region_base(id) as usize;
+    let gpu = as_f32s(&readback(&ctx, store.transform_buffer(), (64 * 4 * 64) as u64));
+    assert_eq!(&gpu[base * 16..base * 16 + 16], &mat(5.0));
+}

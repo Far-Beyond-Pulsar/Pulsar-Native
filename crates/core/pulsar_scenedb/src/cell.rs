@@ -71,6 +71,24 @@ impl CellStorage {
         Ok(storage)
     }
 
+    /// Register a token→user-column mapping on a positionally-constructed
+    /// cell so `column_for::<T>()` resolves (M2b-β: `SpatialCell` carries six
+    /// same-type bounds columns that CellType's type-keyed tokens cannot
+    /// express, plus one token-keyed transform column for the GPU mirror).
+    pub(crate) fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
+        let id = TypeToken::of::<T>().id();
+        debug_assert!(
+            !self.token_index.iter().any(|(tid, _)| *tid == id),
+            "token already registered on this cell"
+        );
+        debug_assert_eq!(
+            self.page.layout().column_descs()[user_col + 1].size as usize,
+            std::mem::size_of::<T>(),
+            "token type size does not match the column stride"
+        );
+        self.token_index.push((id, user_col));
+    }
+
     /// Typed column access by token (resolves token → user-column index).
     /// Returns None if the token isn't a column of this cell.
     pub fn column_for<T: crate::page::Pod + 'static>(&self) -> Option<&[T]> {

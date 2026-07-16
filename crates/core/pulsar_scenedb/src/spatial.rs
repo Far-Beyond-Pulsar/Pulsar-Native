@@ -19,6 +19,10 @@ const COL_MAX_Z: usize = 5;
 /// Number of bounds columns; cell-type-specific columns start after these.
 pub const SPATIAL_COLUMNS: usize = 6;
 
+/// User-column index of the GPU-mirrored transform column on cells built
+/// with [`SpatialCell::with_transform`].
+pub const TRANSFORM_COLUMN: usize = SPATIAL_COLUMNS;
+
 /// Six inward-normal frustum planes (spec §8.1 frustum query input).
 #[derive(Copy, Clone, Debug)]
 pub struct Frustum {
@@ -51,6 +55,18 @@ impl SpatialCell {
         self.storage.user_column_mut::<f32>(COL_MIN_Z)[row] = bounds.min[2];
         self.storage.user_column_mut::<f32>(COL_MAX_Z)[row] = bounds.max[2];
         Some(h)
+    }
+
+    /// A spatial cell that also carries a token-registered `[f32; 16]`
+    /// transform column (user column [`TRANSFORM_COLUMN`]) so it can be
+    /// registered with `gpu::SceneGpuStore` (which resolves the mirrored
+    /// column token-keyed). Stride: 6×4 + 64 = 88 B ≤ the C2 128 B ceiling.
+    pub fn with_transform(capacity: u32) -> Result<Self, LayoutError> {
+        let mut columns = [ColumnDesc::of::<f32>(); SPATIAL_COLUMNS + 1];
+        columns[TRANSFORM_COLUMN] = ColumnDesc::of::<[f32; 16]>();
+        let mut storage = CellStorage::new(&columns, capacity)?;
+        storage.register_token_column::<[f32; 16]>(TRANSFORM_COLUMN);
+        Ok(Self { storage })
     }
 
     /// Spec §8.2 predicate over all physical rows, writing positionally
@@ -248,6 +264,17 @@ mod tests {
 
     fn unit_box(at: [f32; 3]) -> Aabb {
         Aabb { min: at, max: [at[0] + 1.0, at[1] + 1.0, at[2] + 1.0] }
+    }
+
+    #[test]
+    fn with_transform_exposes_token_keyed_mat4_column() {
+        let mut c = SpatialCell::with_transform(64).unwrap();
+        let h = c.alloc(aabb([0.0; 3], [1.0; 3])).unwrap();
+        let row = c.row_of(h).unwrap() as usize;
+        c.storage_mut().column_for_mut::<[f32; 16]>().unwrap()[row] = [7.0; 16];
+        assert_eq!(c.storage().column_for::<[f32; 16]>().unwrap()[row], [7.0; 16]);
+        // Bounds columns unaffected and still positional:
+        assert_eq!(c.storage().user_column::<f32>(0)[row], 0.0);
     }
 
     #[test]
