@@ -138,6 +138,25 @@ impl Scratchpad {
         self.u64_buf.len()
     }
 
+    /// Borrow both scratch buffers simultaneously. `get_u32`/`get_u64` are
+    /// exclusive `&mut self` borrows and can't be held at once; the harvest
+    /// path needs token output space (`u32`) and a liveness-word snapshot
+    /// (`u64`) live together (spec §8.1). `u32_buf` and `u64_buf` are
+    /// disjoint fields, so borrowing both from `&mut self` simultaneously is
+    /// a legal field-level split borrow. Grows both buffers first, then
+    /// returns non-overlapping slices; neither is zeroed. Updates both peaks.
+    pub fn get_u32_u64(&mut self, len32: usize, len64: usize) -> (&mut [u32], &mut [u64]) {
+        if self.u32_buf.len() < len32 {
+            self.u32_buf.resize(len32, 0);
+        }
+        if self.u64_buf.len() < len64 {
+            self.u64_buf.resize(len64, 0);
+        }
+        self.peak_this_window = self.peak_this_window.max(len32);
+        self.peak_u64_this_window = self.peak_u64_this_window.max(len64);
+        (&mut self.u32_buf[..len32], &mut self.u64_buf[..len64])
+    }
+
     /// Advance the decay window. After `DECAY_FRAMES` frames whose peak usage
     /// stayed below 50% of the buffer size, truncates the buffer to half and
     /// *requests* that the allocator release the surplus (via `shrink_to_fit`;
@@ -220,6 +239,16 @@ mod tests {
             pad.end_frame();
         }
         assert!(pad.buf_len_u32() < cap_before, "capacity decayed after a low-usage window");
+    }
+
+    #[test]
+    fn split_borrow_returns_both_buffers() {
+        let mut pad = Scratchpad::new();
+        let (t, w) = pad.get_u32_u64(100, 4);
+        t[0] = 7;
+        w[0] = 0xFF;
+        assert!(t.len() >= 100 && w.len() >= 4);
+        assert!(pad.buf_len_u32() >= 100 && pad.buf_len_u64() >= 4);
     }
 
     #[test]

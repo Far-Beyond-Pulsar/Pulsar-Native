@@ -87,18 +87,14 @@ impl SpatialCell {
     /// miss. M1b SIMD paths must use **ordered** comparison predicates
     /// (e.g. `_CMP_LE_OQ`/`_CMP_GE_OQ` in AVX, `fcmle`/`fcmge` in NEON) — not
     /// unordered variants — to stay bit-identical to this reference.
+    ///
+    /// Allocates a per-call liveness `Vec<u64>` snapshot. The §8.1 no-allocation
+    /// contract is honored end-to-end by [`Self::query_aabb_in`]: harvest calls
+    /// that with words captured into a `Scratchpad` buffer (M2b). This wrapper
+    /// captures into a local `Vec` and delegates — kept for callers outside the
+    /// harvest path (tests, tools) that don't need the no-alloc discipline.
     pub fn query_aabb(&self, q: &Aabb, out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
-        assert!(out.len() >= len, "scratch buffer too small");
-        let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
-        let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
-        let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
-        let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
-        let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
-        let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
-        // Liveness snapshot. This allocates; the §8.1 no-allocation contract is
-        // honored end-to-end in M2, which threads the Task 7 Scratchpad through
-        // the harvest path. Acceptable here because M1b proves the kernels.
         let n_words = len.div_ceil(64);
         let words: Vec<u64> = self
             .storage
@@ -108,9 +104,28 @@ impl SpatialCell {
             .take(n_words)
             .map(|w| w.load(std::sync::atomic::Ordering::Relaxed))
             .collect();
+        self.query_aabb_in(q, &words, out)
+    }
+
+    /// Identical to [`Self::query_aabb`] but scans against caller-provided
+    /// liveness words instead of capturing its own snapshot (spec §8.1
+    /// no-allocation query path). `liveness_words` must cover rows `0..len`
+    /// (`liveness_words.len() == rows_in_use().div_ceil(64)`); typically
+    /// produced by `LivenessSnapshot::capture_words` into a `Scratchpad`
+    /// u64 buffer. `out.len()` must be ≥ `rows_in_use()`.
+    pub fn query_aabb_in(&self, q: &Aabb, liveness_words: &[u64], out: &mut [u32]) -> u32 {
+        let len = self.storage.rows_in_use() as usize;
+        assert!(out.len() >= len, "scratch buffer too small");
+        debug_assert_eq!(liveness_words.len(), len.div_ceil(64));
+        let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
+        let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
+        let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
+        let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
+        let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
+        let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
         let qb = crate::simd::QueryBounds { min: q.min, max: q.max };
         let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
-        crate::simd::aabb_scan(&qb, &cols, &words, len, out)
+        crate::simd::aabb_scan(&qb, &cols, liveness_words, len, out)
     }
 
     /// Frustum query (§8.1). Same positional-token output contract as
@@ -120,24 +135,35 @@ impl SpatialCell {
     /// Float semantics: `dot >= 0.0` is an ordered comparison — a NaN plane
     /// normal makes the dot NaN, which compares false, so the row is culled.
     /// M1b SIMD arms must use ordered predicates (`_CMP_GE_OQ` in AVX2).
+    ///
+    /// Allocates a per-call liveness `Vec<u64>` snapshot; harvest uses
+    /// [`Self::query_frustum_in`] with `Scratchpad` words instead — §8.1.
     pub fn query_frustum(&self, f: &Frustum, out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
+        let n_words = len.div_ceil(64);
+        let words: Vec<u64> = self.storage.liveness().words().iter().take(n_words)
+            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed)).collect();
+        self.query_frustum_in(f, &words, out)
+    }
+
+    /// Identical to [`Self::query_frustum`] but scans against caller-provided
+    /// liveness words instead of capturing its own snapshot (spec §8.1
+    /// no-allocation query path). `liveness_words` must cover rows `0..len`
+    /// (`liveness_words.len() == rows_in_use().div_ceil(64)`). `out.len()`
+    /// must be ≥ `rows_in_use()`.
+    pub fn query_frustum_in(&self, f: &Frustum, liveness_words: &[u64], out: &mut [u32]) -> u32 {
+        let len = self.storage.rows_in_use() as usize;
         assert!(out.len() >= len, "scratch buffer too small");
+        debug_assert_eq!(liveness_words.len(), len.div_ceil(64));
         let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
         let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
         let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
         let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
         let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
         let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
-        // Liveness snapshot, sliced to the words covering rows 0..len (the
-        // `liveness_words.len() == ceil(len/64)` kernel contract; M2 threads the
-        // Task 7 Scratchpad through to honor §8.1 no-alloc).
-        let n_words = len.div_ceil(64);
-        let words: Vec<u64> = self.storage.liveness().words().iter().take(n_words)
-            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed)).collect();
         let fp = crate::simd::FrustumPlanes { planes: f.planes };
         let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
-        crate::simd::frustum_scan(&fp, &cols, &words, len, out)
+        crate::simd::frustum_scan(&fp, &cols, liveness_words, len, out)
     }
 
     // ── delegation ─────────────────────────────────────────────────────────
@@ -174,6 +200,7 @@ impl SpatialCell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::snapshot::LivenessSnapshot;
 
     fn aabb(min: [f32; 3], max: [f32; 3]) -> Aabb {
         Aabb { min, max }
@@ -275,6 +302,24 @@ mod tests {
         assert_eq!(c.storage().column_for::<[f32; 16]>().unwrap()[row], [7.0; 16]);
         // Bounds columns unaffected and still positional:
         assert_eq!(c.storage().user_column::<f32>(0)[row], 0.0);
+    }
+
+    #[test]
+    fn query_in_variants_match_allocating_queries() {
+        let mut c = SpatialCell::new(256).unwrap();
+        for i in 0..40 {
+            let f = i as f32;
+            c.alloc(aabb([f, 0.0, 0.0], [f + 0.5, 1.0, 1.0])).unwrap();
+        }
+        let q = aabb([3.0, 0.0, 0.0], [20.0, 1.0, 1.0]);
+        let len = c.rows_in_use() as usize;
+        let mut out_a = vec![0u32; len];
+        let mut out_b = vec![0u32; len];
+        let n_a = c.query_aabb(&q, &mut out_a);
+        let mut words = vec![0u64; len.div_ceil(64)];
+        let nw = LivenessSnapshot::capture_words(c.storage().liveness(), len as u32, &mut words);
+        let n_b = c.query_aabb_in(&q, &words[..nw], &mut out_b);
+        assert_eq!((n_a, &out_a), (n_b, &out_b), "in-variant is bit-identical");
     }
 
     #[test]

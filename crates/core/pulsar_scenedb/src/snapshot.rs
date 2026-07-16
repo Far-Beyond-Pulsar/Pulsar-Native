@@ -35,6 +35,35 @@ impl LivenessSnapshot {
         Self { words, len }
     }
 
+    /// Fill the `ceil(len/64)` words covering rows `0..len` of `mask` into
+    /// caller-provided scratch — the no-allocation counterpart to `capture`
+    /// (spec §8.1: harvest threads a `Scratchpad` word buffer through here
+    /// instead of paying a per-call `Vec<u64>` allocation). Returns the word
+    /// count written, satisfying the same `liveness_words.len() ==
+    /// len.div_ceil(64)` SIMD kernel contract as `words()`. `out.len()` must
+    /// be at least that many words.
+    ///
+    /// The caller must have already acquired through the Layer 2 phase-boundary
+    /// Acquire fence; the Relaxed loads here are correct only because that
+    /// fence establishes happens-before for all prior `set_live`/`set_dead`
+    /// writes. **§9.2.1: the fence is owned** — `pulsar_scenedb::gpu::phase`'s
+    /// `HarvestPhase::end`/`BoundaryPhase::retire` (paired with
+    /// `SimulateB::end`'s `Release`) are that Acquire fence for any caller
+    /// driving frames through the phase machine (see `liveness.rs`'s "Memory
+    /// ordering contract" doc for the full pairing). Calling `capture_words`
+    /// from outside that phase machine without an equivalent barrier is a
+    /// silent correctness bug.
+    #[must_use]
+    pub fn capture_words(mask: &LivenessMask, len: u32, out: &mut [u64]) -> usize {
+        let n_words = (len as usize).div_ceil(64);
+        debug_assert!(n_words <= mask.words().len(), "len exceeds mask capacity");
+        assert!(out.len() >= n_words, "scratch buffer too small");
+        for (dst, w) in out[..n_words].iter_mut().zip(mask.words()[..n_words].iter()) {
+            *dst = w.load(Ordering::Relaxed);
+        }
+        n_words
+    }
+
     #[inline]
     #[must_use]
     pub fn is_live(&self, row: u32) -> bool {
@@ -118,6 +147,18 @@ mod tests {
         mask.set_live(61);
         let snap = LivenessSnapshot::capture(&mask, 10);
         assert_eq!(snap.live_count(), 5, "only rows [0,10) count");
+    }
+
+    #[test]
+    fn capture_words_matches_owned_capture() {
+        let mask = LivenessMask::new(128);
+        for i in 0..70 { mask.set_live(i); }
+        mask.set_dead(3);
+        let owned = LivenessSnapshot::capture(&mask, 70);
+        let mut scratch = [0u64; 2];
+        let n = LivenessSnapshot::capture_words(&mask, 70, &mut scratch);
+        assert_eq!(n, 2);
+        assert_eq!(&scratch[..n], owned.words());
     }
 
     #[test]
