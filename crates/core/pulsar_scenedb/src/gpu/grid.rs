@@ -432,6 +432,15 @@ pub struct TransitionStats {
 /// release-build stale-queue hole) — it is silently dropped and counted in
 /// `stats.dropped_stale`. A dropped transition is safe by construction — the
 /// next `classify()` re-derives intent from committed state.
+///
+/// **Trust contract on `class_of`:** its return value is used as-is to index
+/// `SceneGpuStore`'s internal per-class region pools (`register_cell`'s
+/// `row_pools[class]`/`slot_pools[class]`); this function does not validate
+/// it against the store's configured class count. A `class_of` that returns
+/// an index outside the range the `SceneGpuStore` was constructed with (its
+/// `SceneGpuConfig::classes` length) panics inside `register_cell` on the
+/// next Outer→Margin promotion, not here — the caller owns keeping
+/// `class_of`'s range in sync with the store's class configuration.
 pub fn execute_transitions(
     grid: &mut StreamingGrid,
     store: &mut SceneGpuStore,

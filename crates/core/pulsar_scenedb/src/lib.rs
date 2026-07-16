@@ -44,8 +44,15 @@
 //! pin-by-serial retirement) complete — verified headless by Tests 3, 6 (host),
 //! and 14. M2b-α (region-partitioned `SceneGpuStore`, asset store, phase
 //! machine, compile-time correctness gates) complete — verified by Tests 3, 6,
-//! 14 extended suites and compile_fail doc-tests. M2b-β (streaming grid,
-//! harvest pipeline, DEI compaction) and M3 (Helio inversion) follow.
+//! 14 extended suites and compile_fail doc-tests. M2b-β (streaming grid
+//! domains/hysteresis/cross-fade/budget, region-recycle promotion/eviction
+//! with serial-pinned eviction and recycled-region tail scrub, no-alloc
+//! `query_*_in` harvest seams, `HarvestPipeline`/DEI dense compaction, lease
+//! timeout/revocation) **complete** — verified by Test 10 (lease
+//! timeout/revocation), Test 11 (`StreamingGrid` domains/hysteresis/budget),
+//! Test 12 (DEI scalar + AVX2 bit-identity), the D2-tail carry-forward
+//! (recycled-region generation scrub), and eviction serial-pinning, on top of
+//! the α suites above. M3 (Helio inversion) is next.
 
 pub mod actor;
 pub mod archetype;

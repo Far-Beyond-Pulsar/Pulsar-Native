@@ -1,7 +1,7 @@
 # SceneDB 2.0 — Milestone 2b Design: Assets, Streaming Grid, Harvest & Phase Machine
 
 **Date:** 2026-07-14 (rev 2 — post adversarial review)
-**Status:** M2b-α implemented (region-partitioned SceneGpuStore, asset store, phase machine); M2b-β pending (streaming grid, harvest pipeline)
+**Status:** M2b implemented (α+β complete) — α: region-partitioned SceneGpuStore, asset store, phase machine. β: streaming grid (domains/hysteresis/cross-fade/budget), region-recycle promotion/eviction (serial-pinned eviction, recycled-region tail scrub), no-alloc harvest seams + `HarvestPipeline`/DEI dense compaction, lease timeout/revocation. See Task 10's acceptance matrix and `src/lib.rs`'s milestone-status doc for the verifying test list.
 **Governs:** spec §0/C0 (ownership), §5 (concentric streaming), §6/C5 (asset registry, 72 B mesh metadata, 48 B ClusterNode), §8.3–8.5/C4 (harvest, DEI), §9 (leases/scratchpads), C3 (frame phases), C6 (retirement)
 **Spec of record:** `docs/superpowers/specs/SceneDB2.0.md` (Rev 2.3)
 **Master design:** `specs/2026-06-09-scenedb20-implementation-design.md` §5b

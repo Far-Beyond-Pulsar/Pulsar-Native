@@ -8,7 +8,12 @@
 //!   private fields, `SimulateWitness` is sealed — no external construction
 //!   or impl), boundary-stage reordering, skipping, and double-running
 //!   (each transition consumes `self`; `retire_all`/`compact_all`/`sync_all`
-//!   are `pub(crate)`, reachable only through this chain).
+//!   are `pub(crate)`, reachable only through this chain). That closure is
+//!   an EXTERNAL-CRATE guarantee only: `pub(crate)` still lets any function
+//!   inside this crate call `retire_all`/`compact_all`/`sync_all` directly
+//!   (bypassing the witness chain and its phase ordering entirely) — the
+//!   types close the door on downstream callers, not on a same-crate bug
+//!   that reaches around this module.
 //! - STILL on the runtime `Phase` debug-asserts (debug builds only): a
 //!   STALE or duplicated Simulate witness. `FrameDriver::begin` does not
 //!   lifetime-tie the witness to the frame, and `write_transform`/
