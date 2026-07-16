@@ -241,6 +241,41 @@ impl HarvestPipeline {
         }
         revoked
     }
+
+    /// Multi-view harvest (spec §8.4): scan every `(cell, region_base, class)`
+    /// against every `view`, routing each view's hits into its OWN staging
+    /// array — one [`Scratchpad`] and one [`HarvestStaging`] PER VIEW, never
+    /// shared across views. `pads`/`stagings` are indexed in lockstep with
+    /// `views` (`pads[v]`/`stagings[v]` back `views[v]`); a mismatched length
+    /// is a caller bug, asserted at entry rather than silently truncated or
+    /// index-panicking mid-scan.
+    ///
+    /// §8.4's safety claim: because [`Self::harvest_cell`] takes `&self` (this
+    /// pipeline holds no state) and only `&SpatialCell` (read-only — every
+    /// per-cell mutation path takes `&mut SpatialCell` and is unreachable from
+    /// here), queries over different views have no shared mutable state to
+    /// race on and MAY run on separate threads, each with its own
+    /// scratch/staging pair, over the SAME cell references. This method
+    /// itself is a sequential (single-thread) driver over that same call —
+    /// the concurrency claim is exercised directly by
+    /// `concurrent_views_match_sequential` in `tests/gpu_harvest.rs`, not by
+    /// this function.
+    pub fn harvest_views(
+        &self,
+        cells: &[(&SpatialCell, u32 /* region_base */, MeshClass)],
+        views: &[View],
+        pads: &mut [Scratchpad],
+        stagings: &mut [HarvestStaging],
+        _h: &HarvestPhase,
+    ) {
+        assert_eq!(views.len(), pads.len(), "one Scratchpad per view (§8.4)");
+        assert_eq!(views.len(), stagings.len(), "one HarvestStaging per view (§8.4)");
+        for v in 0..views.len() {
+            for &(cell, region_base, class) in cells {
+                self.harvest_cell(cell, region_base, class, &views[v], &mut pads[v], &mut stagings[v], _h);
+            }
+        }
+    }
 }
 
 impl Default for HarvestPipeline {
@@ -270,6 +305,11 @@ impl Default for HarvestPipeline {
 /// sub-phase is read-only, §8/C4); it is not a general cross-frame
 /// staleness fix. A `run` carried across a frame boundary needs a fresh
 /// query, not `revalidate_run`.
+///
+/// **HAZARD:** operates on positional LOCAL token runs (`query_*_in` output)
+/// ONLY — never feed it global tokens from [`HarvestStaging`]; a global
+/// (region-offset) token would misindex the cell's liveness words (no bounds
+/// check) or silently check the wrong row.
 pub fn revalidate_run(cell: &SpatialCell, run: &mut [u32]) -> u32 {
     let liveness = cell.storage().liveness();
     let mut survivors = 0u32;

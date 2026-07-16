@@ -397,3 +397,218 @@ fn lease_pool_exhaustion_returns_none_then_recovers() {
         "a slot frees up after all leases release"
     );
 }
+
+/// M2b-b T9 (spec §8.4): `harvest_views` scans `views × cells`, routing each
+/// view's hits into its OWN `(Scratchpad, HarvestStaging)` pair. This test
+/// checks that the batched multi-view entry point produces byte-identical
+/// results to manually driving the same `views × cells` loop through
+/// `harvest_cell` one view at a time into fresh buffers.
+#[test]
+fn multi_view_harvest_matches_per_view_sequential() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    // Two cells, disjoint regions, both registered under region class 0 (the
+    // only class `scene_cfg` configures).
+    let cell_a = boxed_cell(64, 8, 0.0);
+    let cell_b = boxed_cell(64, 8, 100.0);
+    let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
+    let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
+    let base_a = store.row_region_base(id_a);
+    let base_b = store.row_region_base(id_b);
+    assert_ne!(base_a, base_b, "disjoint regions");
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+
+    let cells: Vec<(&SpatialCell, u32, MeshClass)> = vec![
+        (&cell_a, base_a, MeshClass::Traditional),
+        (&cell_b, base_b, MeshClass::Traditional),
+    ];
+
+    // box i = [x_offset + i, x_offset + i + 1). View 0 ([1.5, 4.5]) hits
+    // cell_a's local rows 1..=4 (4/8 = 50%) and nothing in cell_b (offset
+    // 100 — no overlap). View 1 ([101.5, 104.5]) is the mirror: hits cell_b's
+    // local rows 1..=4 and nothing in cell_a. Two views, disjoint hit
+    // subsets, exactly as the brief calls for.
+    let views = vec![
+        View::Aabb(Aabb { min: [1.5, 0.0, 0.0], max: [4.5, 1.0, 1.0] }),
+        View::Aabb(Aabb { min: [101.5, 0.0, 0.0], max: [104.5, 1.0, 1.0] }),
+    ];
+
+    let mut pads: Vec<Scratchpad> = (0..views.len()).map(|_| Scratchpad::new()).collect();
+    let mut stagings: Vec<HarvestStaging> = (0..views.len()).map(|_| HarvestStaging::new()).collect();
+    pipeline.harvest_views(&cells, &views, &mut pads, &mut stagings, &h);
+
+    // Manually reproduce the same `views × cells` scan sequentially, into
+    // fresh per-view buffers, and compare.
+    let mut expected_pads: Vec<Scratchpad> = (0..views.len()).map(|_| Scratchpad::new()).collect();
+    let mut expected_stagings: Vec<HarvestStaging> =
+        (0..views.len()).map(|_| HarvestStaging::new()).collect();
+    for v in 0..views.len() {
+        for &(cell, base, class) in &cells {
+            pipeline.harvest_cell(
+                cell,
+                base,
+                class,
+                &views[v],
+                &mut expected_pads[v],
+                &mut expected_stagings[v],
+                &h,
+            );
+        }
+    }
+
+    for v in 0..views.len() {
+        assert_eq!(
+            stagings[v].traditional, expected_stagings[v].traditional,
+            "view {v}: traditional mismatch"
+        );
+        assert_eq!(stagings[v].vg, expected_stagings[v].vg, "view {v}: vg mismatch");
+        assert_eq!(stagings[v].hlod, expected_stagings[v].hlod, "view {v}: hlod mismatch");
+        assert_eq!(stagings[v].remap, expected_stagings[v].remap, "view {v}: remap mismatch");
+        assert_eq!(
+            stagings[v].stats.cells, expected_stagings[v].stats.cells,
+            "view {v}: stats.cells mismatch"
+        );
+        assert_eq!(
+            stagings[v].stats.tokens_valid, expected_stagings[v].stats.tokens_valid,
+            "view {v}: stats.tokens_valid mismatch"
+        );
+        assert_eq!(
+            stagings[v].stats.tokens_total, expected_stagings[v].stats.tokens_total,
+            "view {v}: stats.tokens_total mismatch"
+        );
+        assert_eq!(
+            stagings[v].stats.dei_compacted_runs, expected_stagings[v].stats.dei_compacted_runs,
+            "view {v}: stats.dei_compacted_runs mismatch"
+        );
+    }
+
+    // Confirm the two views actually hit disjoint subsets (view 0 -> cell_a
+    // only, view 1 -> cell_b only) rather than both happening to see nothing.
+    assert_eq!(stagings[0].traditional, vec![base_a + 1, base_a + 2, base_a + 3, base_a + 4]);
+    assert_eq!(stagings[1].traditional, vec![base_b + 1, base_b + 2, base_b + 3, base_b + 4]);
+}
+
+/// M2b-b T9 concurrency smoke (spec §8.4's safety claim): `harvest_cell`
+/// takes `&self` (the pipeline carries no state) and only `&SpatialCell`
+/// (read-only — every cell mutation path requires `&mut SpatialCell`, not
+/// reachable from here), so queries over different views may run on separate
+/// threads, each with its own scratch/staging pair, over the SAME cell
+/// references without synchronization. This drives exactly that: two
+/// `std::thread::scope` threads, each owning a private `Scratchpad` +
+/// `HarvestStaging`, both reading the same `&SpatialCell` refs — and checks
+/// the result is identical to running the two views sequentially.
+#[test]
+fn concurrent_views_match_sequential() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    let cell_a = boxed_cell(64, 8, 0.0);
+    let cell_b = boxed_cell(64, 8, 100.0);
+    let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
+    let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
+    let base_a = store.row_region_base(id_a);
+    let base_b = store.row_region_base(id_b);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+
+    let cells: Vec<(&SpatialCell, u32, MeshClass)> = vec![
+        (&cell_a, base_a, MeshClass::Traditional),
+        (&cell_b, base_b, MeshClass::Traditional),
+    ];
+    let view0 = View::Aabb(Aabb { min: [1.5, 0.0, 0.0], max: [4.5, 1.0, 1.0] });
+    let view1 = View::Aabb(Aabb { min: [101.5, 0.0, 0.0], max: [104.5, 1.0, 1.0] });
+
+    // Sequential baseline: same two views, driven one after another into
+    // their own fresh buffers.
+    let mut seq_pad0 = Scratchpad::new();
+    let mut seq_staging0 = HarvestStaging::new();
+    for &(cell, base, class) in &cells {
+        pipeline.harvest_cell(cell, base, class, &view0, &mut seq_pad0, &mut seq_staging0, &h);
+    }
+    let mut seq_pad1 = Scratchpad::new();
+    let mut seq_staging1 = HarvestStaging::new();
+    for &(cell, base, class) in &cells {
+        pipeline.harvest_cell(cell, base, class, &view1, &mut seq_pad1, &mut seq_staging1, &h);
+    }
+
+    // Concurrent run. `HarvestPhase` is `pub struct HarvestPhase(());` — a
+    // ZST with no interior state and no explicit `Send`/`Sync` opt-outs, so
+    // it is auto-`Sync` (and `&HarvestPhase` is therefore `Send`); likewise
+    // `HarvestPipeline(())` and, per `Page`'s `unsafe impl Send`/`Sync`
+    // (page.rs), `SpatialCell`/`CellStorage` are `Sync` all the way down. That
+    // means a single witness/pipeline/cell set can simply be shared by
+    // reference across the two scope threads below — no per-thread
+    // `FrameDriver` needed (that fallback would only be required if
+    // `HarvestPhase` were NOT `Sync`).
+    let (par_staging0, par_staging1) = std::thread::scope(|scope| {
+        let cells_ref = &cells;
+        let pipeline_ref = &pipeline;
+        let h_ref = &h;
+        let view0_ref = &view0;
+        let view1_ref = &view1;
+
+        let t0 = scope.spawn(move || {
+            let mut pad = Scratchpad::new();
+            let mut staging = HarvestStaging::new();
+            for &(cell, base, class) in cells_ref {
+                pipeline_ref.harvest_cell(cell, base, class, view0_ref, &mut pad, &mut staging, h_ref);
+            }
+            staging
+        });
+        let t1 = scope.spawn(move || {
+            let mut pad = Scratchpad::new();
+            let mut staging = HarvestStaging::new();
+            for &(cell, base, class) in cells_ref {
+                pipeline_ref.harvest_cell(cell, base, class, view1_ref, &mut pad, &mut staging, h_ref);
+            }
+            staging
+        });
+        (t0.join().expect("thread 0 panicked"), t1.join().expect("thread 1 panicked"))
+    });
+
+    assert_eq!(par_staging0.traditional, seq_staging0.traditional, "view 0 traditional mismatch");
+    assert_eq!(par_staging0.vg, seq_staging0.vg, "view 0 vg mismatch");
+    assert_eq!(par_staging0.hlod, seq_staging0.hlod, "view 0 hlod mismatch");
+    assert_eq!(par_staging0.remap, seq_staging0.remap, "view 0 remap mismatch");
+    assert_eq!(par_staging0.stats.cells, seq_staging0.stats.cells, "view 0 stats.cells mismatch");
+    assert_eq!(
+        par_staging0.stats.tokens_valid, seq_staging0.stats.tokens_valid,
+        "view 0 stats.tokens_valid mismatch"
+    );
+    assert_eq!(
+        par_staging0.stats.tokens_total, seq_staging0.stats.tokens_total,
+        "view 0 stats.tokens_total mismatch"
+    );
+    assert_eq!(
+        par_staging0.stats.dei_compacted_runs, seq_staging0.stats.dei_compacted_runs,
+        "view 0 stats.dei_compacted_runs mismatch"
+    );
+
+    assert_eq!(par_staging1.traditional, seq_staging1.traditional, "view 1 traditional mismatch");
+    assert_eq!(par_staging1.vg, seq_staging1.vg, "view 1 vg mismatch");
+    assert_eq!(par_staging1.hlod, seq_staging1.hlod, "view 1 hlod mismatch");
+    assert_eq!(par_staging1.remap, seq_staging1.remap, "view 1 remap mismatch");
+    assert_eq!(par_staging1.stats.cells, seq_staging1.stats.cells, "view 1 stats.cells mismatch");
+    assert_eq!(
+        par_staging1.stats.tokens_valid, seq_staging1.stats.tokens_valid,
+        "view 1 stats.tokens_valid mismatch"
+    );
+    assert_eq!(
+        par_staging1.stats.tokens_total, seq_staging1.stats.tokens_total,
+        "view 1 stats.tokens_total mismatch"
+    );
+    assert_eq!(
+        par_staging1.stats.dei_compacted_runs, seq_staging1.stats.dei_compacted_runs,
+        "view 1 stats.dei_compacted_runs mismatch"
+    );
+
+    // Sanity: the two views really did hit disjoint subsets.
+    assert_eq!(seq_staging0.traditional, vec![base_a + 1, base_a + 2, base_a + 3, base_a + 4]);
+    assert_eq!(seq_staging1.traditional, vec![base_b + 1, base_b + 2, base_b + 3, base_b + 4]);
+}
