@@ -173,8 +173,9 @@ cells first, mirroring `rebuild_from`'s documented guard.
   inequalities from configured radii, per-class capacities, mean proxy and
   geometry sizes, **plus a bounded world extent / max-materialized-cells
   input** (lazy grids are otherwise unbounded) and the permanent proxy-class
-  term. `SceneGpuStore::new` fails hard on violation. The designer-facing
-  stress-position walker tool is deferred to M4/editor.
+  term. `StreamingGrid::new` fails hard on violation, returning
+  `Err(BudgetError)` (as shipped). The designer-facing stress-position walker
+  tool is deferred to M4/editor.
 
 ### 4.1 Residency actions and the reset ledger (binding)
 
@@ -441,3 +442,19 @@ Recorded from the α review loops and the whole-milestone final review
 - **CI/tooling:** GPU test suites must never run concurrently on shared
   hardware (device contention hangs); run with `--test-threads=1`,
   sequentially per target.
+- **M3/M4 — harvest `region_base` re-resolution contract:** `region_base`
+  must be re-resolved in the ISSUING frame via `grid.gpu_id(coord)` →
+  `store.row_region_base(id)`, never cached across a frame boundary — a base
+  cached across a boundary that evicted and re-promoted the cell into a
+  different region emits wrong global-row tokens SILENTLY (a stale `CellId`
+  fails loud; a stale `u32` does not). The World driver (M4) owns this chain;
+  documented on `HarvestPipeline::harvest_cell`/`harvest_views` (§5).
+- **M3 — slot-mirror tail is stale-but-inert:** slot-mirror entries beyond
+  `rows_in_use` are never written by the boundary scan and must never be
+  read; the code-comment contract in `sync_all` promotes this from an
+  implicit assumption to a binding carry-forward for M3's cull-pass consumer.
+- **M4 — `register_cell`/`unregister_cell` are un-phase-gated `pub`:**
+  residency transitions are supposed to happen only at the frame boundary
+  (§4.1), but nothing today stops an in-crate or `pub(crate)` caller from
+  invoking either function mid-frame — that discipline is convention only
+  until the World driver (M4) gates them behind a boundary witness.

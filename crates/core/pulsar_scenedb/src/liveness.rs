@@ -28,6 +28,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// reader on another core may still observe a stale word — a `Relaxed` load
 /// may return any previously stored value. That remains a silent correctness
 /// bug, not a compile error, for anyone who bypasses the phase machine.
+///
+/// The Release/Acquire fence pair itself only closes this gap through an
+/// atomic handoff plus a real cross-thread witness (spawn/join, a channel, a
+/// mutex) between writer and reader — see `gpu::phase`'s module doc for the
+/// precise statement; a bare fence pair with neither is not sufficient.
 pub struct LivenessMask {
     words: Vec<AtomicU64>,
 }

@@ -23,7 +23,10 @@ impl LivenessSnapshot {
     /// driving frames through the phase machine (see `liveness.rs`'s "Memory
     /// ordering contract" doc for the full pairing). Calling `capture` from
     /// outside that phase machine without an equivalent barrier is a silent
-    /// correctness bug.
+    /// correctness bug. Note that the fence pair alone is not the mechanism:
+    /// it synchronizes only via an atomic handoff witnessed by a real
+    /// cross-thread link (spawn/join, a channel, a mutex) — see `gpu::phase`'s
+    /// module doc.
     #[must_use]
     pub fn capture(mask: &LivenessMask, len: u32) -> Self {
         let n_words = (len as usize).div_ceil(64);
@@ -52,7 +55,10 @@ impl LivenessSnapshot {
     /// driving frames through the phase machine (see `liveness.rs`'s "Memory
     /// ordering contract" doc for the full pairing). Calling `capture_words`
     /// from outside that phase machine without an equivalent barrier is a
-    /// silent correctness bug.
+    /// silent correctness bug. Note that the fence pair alone is not the
+    /// mechanism: it synchronizes only via an atomic handoff witnessed by a
+    /// real cross-thread link (spawn/join, a channel, a mutex) — see
+    /// `gpu::phase`'s module doc.
     #[must_use]
     pub fn capture_words(mask: &LivenessMask, len: u32, out: &mut [u64]) -> usize {
         let n_words = (len as usize).div_ceil(64);

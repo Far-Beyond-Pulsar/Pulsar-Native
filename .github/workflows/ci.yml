@@ -58,6 +58,9 @@ jobs:
       - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
         run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
 
+      - name: SceneDB gpu-gated lib tests (Test 11 et al., no adapter needed)
+        run: cargo test -p pulsar_scenedb --features gpu --lib
+
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 

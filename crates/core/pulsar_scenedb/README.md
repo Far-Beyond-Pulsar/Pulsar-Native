@@ -89,6 +89,11 @@ cargo test -p pulsar_scenedb --features gpu --test gpu_layout
 # Doc-test phase machine and compile_fail gates
 cargo test -p pulsar_scenedb --features gpu --doc
 
+# gpu-gated inline lib tests (Test 11 grid gates, RegionPool units, and other
+# #[cfg(test)] modules living in src/**; needs NO GPU adapter — these are
+# plain host-side unit tests behind the `gpu` feature, not device tests)
+cargo test -p pulsar_scenedb --features gpu --lib
+
 # Graphics-free core guard (CI check)
 cargo check -p pulsar_scenedb --no-default-features
 ```
@@ -100,9 +105,11 @@ integration-test binary that opens its own headless device (`gpu_store`,
 `gpu_harvest`, `gpu_assets` today; `gpu_layout` and the `--doc` suite have not
 needed it so far, but treat any new GPU-feature test target the same way by
 default). Never invoke two `--features gpu` test binaries concurrently (e.g.
-in parallel `cargo test` jobs) — run them one at a time, in sequence. CI runs
-core tests only plus the `--no-default-features` check to guard the
-graphics-free invariant (C0).
+in parallel `cargo test` jobs) — run them one at a time, in sequence.
+`cargo test -p pulsar_scenedb --features gpu --lib` is the exception: it opens
+no device, so it needs no serialization and no adapter. CI runs core tests,
+the `--no-default-features` check to guard the graphics-free invariant (C0),
+and the gpu-gated lib-test command above (Test 11 et al.'s carrier).
 
 **Benches** (`benches/scenedb_bench.rs`, criterion, `harness = false`; numbers
 land in the Task 10 report, not gates — no assert/regression thresholds):

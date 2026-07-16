@@ -263,6 +263,16 @@ impl SceneGpuStore {
     /// the registry, seeds the gen-shadow, marks all occupied rows dirty in
     /// the transform mask. The slot mirror needs no warm-up — the first
     /// `sync_all` boundary scan uploads every occupied row's slot entry.
+    ///
+    /// **Panic vs. decline:** the two failure modes below are deliberately
+    /// different in kind. Pool exhaustion (`RowsExhausted`/`SlotsExhausted`)
+    /// is an ordinary runtime condition — a graceful `Err` the executor
+    /// declines on (the cell stays in its current domain, §8) — because a
+    /// full grid is expected, not a bug. The `assert!`s below it (cell rows/
+    /// slots exceeding the class's region capacity) are invariant violations:
+    /// a cell that does not fit the size class it was registered under is a
+    /// caller/config bug, not a transient condition, so those panic by
+    /// design rather than returning `Err`.
     pub fn register_cell(&mut self, cell: &CellStorage, class: usize) -> Result<CellId, RegionError> {
         if self.row_pools[class].free_count() == 0 {
             return Err(RegionError::RowsExhausted);

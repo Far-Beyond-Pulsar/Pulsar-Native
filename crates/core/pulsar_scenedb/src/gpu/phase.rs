@@ -32,7 +32,14 @@
 //!   that state. Previously undocumented as anyone's job (see prior audit);
 //!   now owned here. Callers that read/write `LivenessMask` outside this
 //!   phase machine (there are none in-crate today) must provide their own
-//!   equivalent barrier.
+//!   equivalent barrier. **Precision:** a bare `fence(Release)`/`fence(Acquire)`
+//!   pair does not by itself synchronize two threads — the edge exists only
+//!   through an atomic handoff (a store after the Release fence that a load
+//!   before the Acquire fence actually reads), and that handoff still needs a
+//!   real cross-thread witness (spawn/join, a channel, a mutex) linking writer
+//!   and reader so the load is guaranteed to run after the store; two threads
+//!   each calling their own fence with no atomic and no such witness between
+//!   them do not gain any ordering guarantee from the fences alone.
 //!
 //! A lifetime-carrying witness (`SimulateA<'frame>` borrowed from the
 //! driver/store) is the candidate hardening for the stale-witness hole —

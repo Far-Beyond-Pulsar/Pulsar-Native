@@ -49,10 +49,13 @@
 //! with serial-pinned eviction and recycled-region tail scrub, no-alloc
 //! `query_*_in` harvest seams, `HarvestPipeline`/DEI dense compaction, lease
 //! timeout/revocation) **complete** — verified by Test 10 (lease
-//! timeout/revocation), Test 11 (`StreamingGrid` domains/hysteresis/budget),
-//! Test 12 (DEI scalar + AVX2 bit-identity), the D2-tail carry-forward
-//! (recycled-region generation scrub), and eviction serial-pinning, on top of
-//! the α suites above. M3 (Helio inversion) is next.
+//! timeout/revocation), Test 11 (`StreamingGrid` domains/hysteresis/budget —
+//! carried as inline `#[cfg(test)]` modules under the `gpu` feature, not a
+//! `tests/` integration binary; its command is `cargo test -p pulsar_scenedb
+//! --features gpu --lib`, README's test-command matrix), Test 12 (DEI scalar
+//! + AVX2 bit-identity), the D2-tail carry-forward (recycled-region
+//! generation scrub), and eviction serial-pinning, on top of the α suites
+//! above. M3 (Helio inversion) is next.
 
 pub mod actor;
 pub mod archetype;

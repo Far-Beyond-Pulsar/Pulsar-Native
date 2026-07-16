@@ -153,6 +153,15 @@ impl HarvestPipeline {
     /// read-only harvest sub-phase (C4), after the frame's Release fence, so
     /// the liveness words captured below observe a stable, published
     /// simulate-phase snapshot.
+    ///
+    /// **C3/C4 freshness contract:** `region_base` must be re-resolved in the
+    /// ISSUING frame via `grid.gpu_id(coord)` → `store.row_region_base(id)` —
+    /// never cached across a frame boundary. Transitions execute only at
+    /// boundaries (C3), so a base resolved this frame is stable through
+    /// Harvest; a base cached across a boundary that evicted and re-promoted
+    /// the cell into a different region would emit wrong global-row tokens
+    /// SILENTLY (a stale `CellId` fails loud; a stale `u32` does not). The
+    /// World driver owns this chain (M4).
     pub fn harvest_cell(
         &self,
         cell: &SpatialCell,
@@ -260,6 +269,15 @@ impl HarvestPipeline {
     /// the concurrency claim is exercised directly by
     /// `concurrent_views_match_sequential` in `tests/gpu_harvest.rs`, not by
     /// this function.
+    ///
+    /// **C3/C4 freshness contract:** each `region_base` in `cells` must be
+    /// re-resolved in the ISSUING frame via `grid.gpu_id(coord)` →
+    /// `store.row_region_base(id)` — never cached across a frame boundary.
+    /// Transitions execute only at boundaries (C3), so a base resolved this
+    /// frame is stable through Harvest; a base cached across a boundary that
+    /// evicted and re-promoted the cell into a different region would emit
+    /// wrong global-row tokens SILENTLY (a stale `CellId` fails loud; a stale
+    /// `u32` does not). The World driver owns this chain (M4).
     pub fn harvest_views(
         &self,
         cells: &[(&SpatialCell, u32 /* region_base */, MeshClass)],
