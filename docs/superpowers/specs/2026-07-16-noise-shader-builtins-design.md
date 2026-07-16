@@ -222,8 +222,11 @@ regardless of merge timing.
 - `expand_function_source` (`wgsl_codegen.rs:258`) lexes full identifiers and
   replaces only exact param-name matches — helper-calling templates like
   `pn_perlin_2d(p, scale, seed)` cannot be corrupted by short param names. ✅
-- `vec3_split` already exists in `wgsl_std` (`vector.rs:107`) — the Voronoi
-  vec3 output is splittable with existing nodes. ✅
+- ~~`vec3_split` exists~~ **Corrected on closer read:** `vec3_split`
+  (`vector.rs:107`) is a pass-through (`source: "v"`, single vec3 result) —
+  wgsl_std has **no** real component extraction. The plan therefore adds three
+  one-expression nodes `vec3_x`, `vec3_y`, `vec3_z` (Vector category,
+  `source: "v.x"` etc.) so the Voronoi vec3 output is actually consumable. ⚠️→✅
 - The editor preview compiles through the same `compile_fragment_shader`
   codegen path (`shader_editor/src/features/compilation/conversion.rs`). ✅
 - `SHADER_REGISTRY` is a linkme distributed slice (`wgsl_std/src/lib.rs:54`);
