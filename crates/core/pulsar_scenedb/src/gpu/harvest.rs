@@ -17,10 +17,12 @@
 //! `remap[dense_i] = run index` layout that lets a downstream consumer map a
 //! dense output slot back to its source row.
 
+use crate::lease::{Lease, LeaseMask};
 use crate::registry::NULL_ROW;
-use crate::snapshot::LivenessSnapshot;
+use crate::snapshot::{LivenessSnapshot, RevocationFlag};
 use crate::spatial::SpatialCell;
 use crate::Scratchpad;
+use std::sync::Arc;
 
 use super::HarvestPhase;
 
@@ -80,6 +82,49 @@ impl HarvestStaging {
         self.hlod.clear();
         self.remap.clear();
         self.stats = HarvestStats::default();
+    }
+}
+
+/// A held harvest lease: a cell's [`Lease`] slot (RAII — releases on drop)
+/// paired with a revocation flag and the wall-clock (caller-supplied) instant
+/// it was acquired at (spec §9.2/§9.2.1).
+///
+/// Holding a `HarvestLease` across a query means the holder's
+/// [`LivenessSnapshot`] (captured at acquire time, or any time thereafter)
+/// stays valid to read from even after the lease is revoked — revocation
+/// only sets [`RevocationFlag`], it does not retroactively invalidate
+/// already-pinned snapshot words. The holder is expected to re-validate
+/// (via [`revalidate_run`]) against LIVE state before acting on stale
+/// results; see that function's doc for the within-frame-only caveat.
+///
+/// No `std::time` anywhere in this crate's paths: `held_since_ms` and every
+/// clock reading that interacts with it (`now_ms` in
+/// [`HarvestPipeline::acquire_lease`]/[`HarvestPipeline::revoke_overdue`]) is
+/// a plain caller-supplied `f64` millisecond value. The World driver owns
+/// the real wall clock (or a deterministic test clock) and threads it
+/// through; this crate never reads system time itself, which keeps the
+/// isolation-budget check (C4: 2.0 ms) trivially deterministic in tests.
+pub struct HarvestLease<'a> {
+    lease: Lease<'a>,
+    /// One-shot revocation flag (spec §9.2.1). Shared (`Arc`) so a driver
+    /// tracking many outstanding leases can hold its own clone of the flag
+    /// independent of the `HarvestLease`'s lifetime.
+    pub revocation: Arc<RevocationFlag>,
+    /// Caller-supplied clock reading (ms) at the moment this lease was
+    /// acquired. Injectable — never sourced from `std::time` in-crate.
+    pub held_since_ms: f64,
+    /// Attribution for Test 10's "persistent revocations from the same
+    /// client" diagnostic: threaded through to the `tracing::warn!` emitted
+    /// by [`HarvestPipeline::revoke_overdue`] on each revocation.
+    pub client: &'static str,
+}
+
+impl HarvestLease<'_> {
+    /// The underlying cell-lease slot index (delegates to [`Lease::slot`]).
+    #[inline]
+    #[must_use]
+    pub fn slot(&self) -> u32 {
+        self.lease.slot()
     }
 }
 
@@ -145,10 +190,98 @@ impl HarvestPipeline {
         staging.stats.tokens_total += len as u32;
         n
     }
+
+    /// Acquire a harvest lease from `mask` (spec §9.2), tagging it with
+    /// `client` for revocation attribution and `now_ms` as its acquire-time
+    /// clock reading. `None` if the 64-slot pool ([`crate::lease::LEASE_SLOTS`])
+    /// is exhausted — spec §9.2's blocking-retry loop around exhaustion is
+    /// the World driver's scope, not this crate's; a caller that wants to
+    /// block simply calls this in a loop with its own backoff/yield policy.
+    #[must_use]
+    pub fn acquire_lease<'a>(
+        &self,
+        mask: &'a LeaseMask,
+        now_ms: f64,
+        client: &'static str,
+    ) -> Option<HarvestLease<'a>> {
+        let lease = mask.acquire()?;
+        Some(HarvestLease {
+            lease,
+            revocation: Arc::new(RevocationFlag::new()),
+            held_since_ms: now_ms,
+            client,
+        })
+    }
+
+    /// §9.2.1 isolation check (C4: 2.0 ms budget). Revokes every lease in
+    /// `leases` held past `now_ms - held_since_ms >= budget_ms` by setting
+    /// its [`RevocationFlag`] — the slot itself is NOT released here (the
+    /// holder still owns the RAII `Lease` and drops it in its own time,
+    /// e.g. after re-validating its results via [`revalidate_run`]).
+    /// Returns the number of leases revoked by this call; each revocation is
+    /// logged via `tracing::warn!` with the lease's `client` attribution, so
+    /// a client that repeatedly blows the budget shows up as repeated warns
+    /// under the same `client` value ("persistent revocations from the same
+    /// client", Test 10).
+    pub fn revoke_overdue(&self, leases: &[&HarvestLease<'_>], now_ms: f64, budget_ms: f64) -> u32 {
+        let mut revoked = 0u32;
+        for lease in leases {
+            let held_ms = now_ms - lease.held_since_ms;
+            if held_ms >= budget_ms {
+                lease.revocation.revoke();
+                revoked += 1;
+                tracing::warn!(
+                    client = lease.client,
+                    held_ms,
+                    budget_ms,
+                    slot = lease.slot(),
+                    "harvest lease revoked: exceeded §9.2.1 isolation budget"
+                );
+            }
+        }
+        revoked
+    }
 }
 
 impl Default for HarvestPipeline {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Stale-validation lane (spec §9.2.1): re-validate a positional token `run`
+/// against `cell`'s LIVE liveness mask (NOT any pinned snapshot — that is the
+/// point), writing [`NULL_ROW`] over any token whose row has since died.
+/// Returns the surviving (still-live) count.
+///
+/// This is the recovery half of a revoked lease: the holder queried against a
+/// [`LivenessSnapshot`] that is intentionally pinned (§9.2.1 double-buffered
+/// state — a revoked reader must not see its OWN in-flight read torn), so its
+/// `run` may reference rows that have died (freed, or freed-and-reused by a
+/// different object) since capture. `revalidate_run` is how the holder
+/// reconciles before acting on those tokens.
+///
+/// **C4 frame-scoped caveat:** liveness alone cannot distinguish "this row
+/// died and stayed dead" from "this row died AND was compacted away AND its
+/// slot was reused this frame by an unrelated allocation" — both look
+/// identical to a bare `is_live` check (the reused row reads live again, just
+/// as the wrong object). This lane only recovers from revocation WITHIN the
+/// issuing frame, before any compaction/reuse could occur (the harvest
+/// sub-phase is read-only, §8/C4); it is not a general cross-frame
+/// staleness fix. A `run` carried across a frame boundary needs a fresh
+/// query, not `revalidate_run`.
+pub fn revalidate_run(cell: &SpatialCell, run: &mut [u32]) -> u32 {
+    let liveness = cell.storage().liveness();
+    let mut survivors = 0u32;
+    for tok in run.iter_mut() {
+        if *tok == NULL_ROW {
+            continue;
+        }
+        if liveness.is_live(*tok) {
+            survivors += 1;
+        } else {
+            *tok = NULL_ROW;
+        }
+    }
+    survivors
 }

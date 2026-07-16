@@ -32,7 +32,9 @@ pub use grid::{
     execute_transitions, BudgetError, CellCoord, Domain, GridConfig, StreamingBudget,
     StreamingGrid, Transition, TransitionStats,
 };
-pub use harvest::{HarvestPipeline, HarvestStaging, HarvestStats, MeshClass, View};
+pub use harvest::{
+    revalidate_run, HarvestLease, HarvestPipeline, HarvestStaging, HarvestStats, MeshClass, View,
+};
 pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};

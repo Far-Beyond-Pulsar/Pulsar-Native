@@ -4,10 +4,10 @@
 //! harness as `gpu_store.rs`); the test harness owns the `device.poll` pump.
 
 use pulsar_scenedb::gpu::{
-    EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging, MeshClass, RegionClassConfig,
-    SceneGpuConfig, SceneGpuStore, View,
+    revalidate_run, EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging, MeshClass,
+    RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
 };
-use pulsar_scenedb::{Aabb, Scratchpad, SpatialCell};
+use pulsar_scenedb::{Aabb, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
 use std::sync::Arc;
 
 fn test_context() -> EngineGpuContext {
@@ -287,4 +287,113 @@ fn harvest_dei_branch_makes_zero_new_allocations_after_warmup() {
     assert_eq!(staging.vg.capacity(), cap_vg, "vg capacity unchanged");
     assert_eq!(staging.hlod.capacity(), cap_hlod, "hlod capacity unchanged");
     assert_eq!(staging.remap.capacity(), cap_remap, "remap capacity unchanged across DEI runs (no realloc)");
+}
+
+/// Test 10 (spec §9.2/§9.2.1, C4 2.0 ms revocation budget): lease timeout,
+/// revocation, and the stale-validation lane. Pure CPU-side — no GPU context
+/// needed, this exercises `LeaseMask`/`HarvestLease`/`LivenessSnapshot`
+/// against a plain `SpatialCell`.
+#[test]
+fn lease_timeout_revocation_and_stale_lane_revalidation() {
+    // 4 live rows, densely positional: box i = [i, i+1).
+    let mut cell = SpatialCell::new(64).unwrap();
+    let handles: Vec<_> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    let len = cell.rows_in_use() as usize;
+    assert_eq!(len, 4);
+
+    // Capture-time snapshot (pinned) — the lease holder's view (§9.2.1
+    // double-buffered state mask).
+    let snap = LivenessSnapshot::capture(cell.storage().liveness(), len as u32);
+
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+
+    // Acquire a lease at t=0.0 against that snapshot, attributed to
+    // "test10-holder" (Test 10's revocation-attribution client tag).
+    let lease = pipeline
+        .acquire_lease(&mask, 0.0, "test10-holder")
+        .expect("lease pool has room");
+    assert!(mask.any_held(), "the acquired slot is held");
+    assert!(!lease.revocation.is_revoked(), "fresh lease is not revoked");
+
+    // Query via query_aabb_in against the pinned snapshot: all 4 rows hit.
+    let query = Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] };
+    let mut run = vec![0u32; len];
+    let n = cell.query_aabb_in(&query, snap.words(), &mut run);
+    assert_eq!(n, 4, "snapshot query: all 4 live rows hit");
+    assert_eq!(run, vec![0, 1, 2, 3]);
+
+    // Free row 2 AFTER capture. The live mask moves on immediately, but the
+    // pinned snapshot must not.
+    cell.free(handles[2]);
+    assert!(!cell.storage().liveness().is_live(2), "live mask advanced past the free");
+    assert!(snap.is_live(2), "pinned snapshot unaffected by the free (LivenessSnapshot semantics)");
+
+    // Re-running the SAME query against the SAME snapshot after the
+    // mutation must reproduce the identical run — the snapshot, not the
+    // live mask, backs the query.
+    let mut run_after_free = vec![0u32; len];
+    let n_after_free = cell.query_aabb_in(&query, snap.words(), &mut run_after_free);
+    assert_eq!(n_after_free, 4, "pinned-snapshot query result unchanged by the free");
+    assert_eq!(run_after_free, run, "identical run before/after the mutation, via the pinned snapshot");
+
+    // §9.2.1 isolation check: at t=2.5ms with a 2.0ms budget, the lease
+    // (held since t=0.0) is overdue -> revoked.
+    let revoked = pipeline.revoke_overdue(&[&lease], 2.5, 2.0);
+    assert_eq!(revoked, 1, "one overdue lease revoked");
+    assert!(lease.revocation.is_revoked(), "revocation flag observably set");
+
+    // The stale-validation lane then reconciles the (still snapshot-derived)
+    // run against LIVE liveness: row 2 died, so it's stripped to NULL_ROW and
+    // the surviving count drops to 3.
+    let mut reconciled = run_after_free.clone();
+    let surviving = revalidate_run(&cell, &mut reconciled);
+    assert_eq!(surviving, 3, "row 2 died since capture -> 3 survivors");
+    assert_eq!(reconciled, vec![0, 1, NULL_ROW, 3], "freed row's slot is now NULL_ROW");
+
+    // Dropping the RAII guard releases the slot -> compaction may proceed.
+    drop(lease);
+    assert!(!mask.any_held(), "no leases held after the guard drops; compaction may proceed");
+
+    // Second sweep: a freshly acquired, NOT-overdue lease -> 0 revocations.
+    let lease2 = pipeline
+        .acquire_lease(&mask, 10.0, "test10-holder-2")
+        .expect("slot available again");
+    let revoked2 = pipeline.revoke_overdue(&[&lease2], 10.5, 2.0);
+    assert_eq!(revoked2, 0, "0.5ms held < 2.0ms budget -> nothing overdue");
+    assert!(!lease2.revocation.is_revoked());
+}
+
+/// Test 10 (pool exhaustion half): the 65th concurrent lease acquire on a
+/// 64-slot pool returns `None`. Spec §9.2's blocking-retry loop around
+/// exhaustion is the World driver's scope — `HarvestPipeline::acquire_lease`
+/// itself never blocks, it just reports exhaustion immediately.
+#[test]
+fn lease_pool_exhaustion_returns_none_then_recovers() {
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+
+    let mut held = Vec::new();
+    for _ in 0..64 {
+        held.push(
+            pipeline
+                .acquire_lease(&mask, 0.0, "exhaustion-test")
+                .expect("64 slots available"),
+        );
+    }
+    assert!(
+        pipeline.acquire_lease(&mask, 0.0, "exhaustion-test").is_none(),
+        "65th acquire fails on a full 64-slot pool"
+    );
+
+    drop(held);
+    assert!(
+        pipeline.acquire_lease(&mask, 0.0, "exhaustion-test").is_some(),
+        "a slot frees up after all leases release"
+    );
 }
