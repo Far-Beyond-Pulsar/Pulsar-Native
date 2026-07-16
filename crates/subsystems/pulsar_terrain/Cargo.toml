@@ -6,10 +6,16 @@ description = "Authoritative sparse planetary voxel terrain core for Pulsar"
 
 [dependencies]
 anyhow = { workspace = true }
+crossbeam-channel = { workspace = true }
+engine_class_derive = { workspace = true }
 engine_fs = { workspace = true }
+engine_subsystems = { workspace = true }
+pulsar_reflection = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

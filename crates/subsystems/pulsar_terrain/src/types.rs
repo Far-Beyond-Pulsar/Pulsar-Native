@@ -1,12 +1,54 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 pub type MaterialId = u8;
 pub const LOD0_CELL_SIZE_METERS: f64 = 0.1;
 pub const PAGE_EDGE_CELLS: i64 = 32;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct PlanetId(pub [u8; 16]);
+
+impl PlanetId {
+    pub fn from_stable_name(name: &str) -> Self {
+        let digest = Sha256::digest(name.as_bytes());
+        let mut id = [0_u8; 16];
+        id.copy_from_slice(&digest[..16]);
+        Self(id)
+    }
+
+    pub fn from_hex(value: &str) -> Result<Self, PlanetIdParseError> {
+        if value.len() != 32 {
+            return Err(PlanetIdParseError::Length(value.len()));
+        }
+        let mut id = [0_u8; 16];
+        for (index, output) in id.iter_mut().enumerate() {
+            let offset = index * 2;
+            *output = u8::from_str_radix(&value[offset..offset + 2], 16)
+                .map_err(|_| PlanetIdParseError::Hex { offset })?;
+        }
+        Ok(Self(id))
+    }
+
+    pub fn to_hex(self) -> String {
+        let mut output = String::with_capacity(32);
+        for byte in self.0 {
+            use std::fmt::Write as _;
+            write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+        }
+        output
+    }
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum PlanetIdParseError {
+    #[error("planet id must contain exactly 32 hexadecimal characters, got {0}")]
+    Length(usize),
+    #[error("planet id contains invalid hexadecimal at byte offset {offset}")]
+    Hex { offset: usize },
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PlanetPosition {
@@ -170,5 +212,13 @@ mod tests {
             PageKey::new(0, [-1, -2, -3]).parent(),
             Some(PageKey::new(1, [-1, -1, -2]))
         );
+    }
+
+    #[test]
+    fn planet_ids_round_trip_and_stable_names_are_deterministic() {
+        let id = PlanetId::from_stable_name("scene/earth:0");
+        assert_eq!(PlanetId::from_hex(&id.to_hex()).unwrap(), id);
+        assert_eq!(PlanetId::from_stable_name("scene/earth:0"), id);
+        assert_ne!(PlanetId::from_stable_name("scene/earth:1"), id);
     }
 }
