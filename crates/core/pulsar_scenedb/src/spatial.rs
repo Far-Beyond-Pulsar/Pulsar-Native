@@ -113,6 +113,14 @@ impl SpatialCell {
     /// (`liveness_words.len() == rows_in_use().div_ceil(64)`); typically
     /// produced by `LivenessSnapshot::capture_words` into a `Scratchpad`
     /// u64 buffer. `out.len()` must be ≥ `rows_in_use()`.
+    ///
+    /// C4 frame-validity contract: `liveness_words` must be captured in the
+    /// SAME frame phase as this query, after the phase-boundary fence, and the
+    /// returned row tokens are valid for the issuing frame only — compaction
+    /// at the boundary invalidates both. A stale under-sized words slice fails
+    /// fast (index panic in the kernel), never silently; freshness itself is
+    /// the caller's contract (the harvest pipeline recaptures per cell per
+    /// frame).
     pub fn query_aabb_in(&self, q: &Aabb, liveness_words: &[u64], out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
         assert!(out.len() >= len, "scratch buffer too small");
@@ -151,6 +159,14 @@ impl SpatialCell {
     /// no-allocation query path). `liveness_words` must cover rows `0..len`
     /// (`liveness_words.len() == rows_in_use().div_ceil(64)`). `out.len()`
     /// must be ≥ `rows_in_use()`.
+    ///
+    /// C4 frame-validity contract: `liveness_words` must be captured in the
+    /// SAME frame phase as this query, after the phase-boundary fence, and the
+    /// returned row tokens are valid for the issuing frame only — compaction
+    /// at the boundary invalidates both. A stale under-sized words slice fails
+    /// fast (index panic in the kernel), never silently; freshness itself is
+    /// the caller's contract (the harvest pipeline recaptures per cell per
+    /// frame).
     pub fn query_frustum_in(&self, f: &Frustum, liveness_words: &[u64], out: &mut [u32]) -> u32 {
         let len = self.storage.rows_in_use() as usize;
         assert!(out.len() >= len, "scratch buffer too small");
