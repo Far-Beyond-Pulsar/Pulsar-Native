@@ -36,9 +36,8 @@ fn test_context() -> EngineGpuContext {
 }
 
 /// Kept verbatim from `gpu_store.rs`'s helper for parity with the rest of the
-/// GPU test suite, though this file's assertions are all CPU-side (staging
-/// arrays); no test currently reads back a GPU buffer.
-#[allow(dead_code)]
+/// GPU test suite. Live since M3-β T1: the `ViewTokenBuffers` upload tests
+/// below read both device buffers back through it.
 fn readback(ctx: &EngineGpuContext, buf: &wgpu::Buffer, bytes: u64) -> Vec<u8> {
     let staging = ctx.device().create_buffer(&wgpu::BufferDescriptor {
         label: Some("readback"),
@@ -1284,5 +1283,28 @@ fn view_token_buffers_grows_on_demand_and_never_shrinks() {
         buffers.capacity(),
         cap_after_large,
         "capacity retained at the high-water mark -- no shrink/realloc on a smaller upload"
+    );
+
+    // Dip-then-return-to-peak (T1 review low): re-uploading the PEAK-sized
+    // set after the dip must be realloc-free — capacity unchanged AND the
+    // same device buffers (no recreate; buffer identity via size + a global
+    // ID check would need wgpu internals, so capacity equality after a
+    // peak-sized upload is the observable: ensure_capacity's guard never
+    // fires when count <= capacity).
+    staging.clear();
+    let n4 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &large_view, &mut pad, &mut staging, &h);
+    assert_eq!(n4, 32);
+    let uploads_before = buffers.upload_count();
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    assert_eq!(buffers.count(), 32, "count back at peak");
+    assert_eq!(
+        buffers.capacity(),
+        cap_after_large,
+        "return-to-peak upload is realloc-free (capacity stable at the high-water mark)"
+    );
+    assert_eq!(
+        buffers.upload_count(),
+        uploads_before + 2,
+        "return-to-peak still costs exactly the two steady-state write_buffer calls (no growth-path extras)"
     );
 }

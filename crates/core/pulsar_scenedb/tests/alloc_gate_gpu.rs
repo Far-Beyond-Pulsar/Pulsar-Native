@@ -342,8 +342,11 @@ fn scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count() {
 /// like `SceneBuffer::sync_region`'s call in
 /// `scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count`
 /// above, costs a small FIXED number of Rust-side heap allocations inside
-/// wgpu-core's own plumbing (measured empirically at 10 for this call shape:
-/// two `write_buffer` calls, u32 element buffers) — NOT zero, and NOT what
+/// wgpu-core's own plumbing (~8 for this call shape: two `write_buffer`
+/// calls × ~4/call, matching the boundary-sync gate's per-call constant;
+/// the exact digit is wgpu-version-dependent and the T1 review reproduced
+/// 8 where the first measurement said 10 — which is WHY the assert below
+/// checks N-independence, never a literal) — NOT zero, and NOT what
 /// §8.1 is bounding. What §8.1 actually requires of THIS module (it holds no
 /// scratch `Vec` anywhere on the upload path — no remap table, no per-row
 /// scratch, nothing `HarvestStaging`-shaped) is that the allocation count
