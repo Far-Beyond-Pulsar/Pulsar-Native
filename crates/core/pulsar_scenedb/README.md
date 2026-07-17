@@ -182,25 +182,81 @@ let stats = boundary.run(&mut store, &mut [CellSlot { id, cell: &mut cell }]);
 
 ## Benchmarks
 
-Three benchmark suites target different parts of the system.
+Measured on an optimized build (cargo bench profile). All improvements are against the original archetype ECS baseline before the `get_raw`, `merge-insert`, and `reserve_entities` changes landed.
+
+### Spawn throughput
+
+Entities are spawned into a fresh world. The `empty` case spawns into the null archetype. `with_component` spawns and inserts `Pos(f32, f32, f32)`. `with_4_components` spawns and inserts `Pos`, `Vel`, `Health`, and `Tag`.
+
+```
+spawn/empty/100         279 ns   359 Melem/s   51% faster
+spawn/empty/1000        1.84 µs  545 Melem/s   28% faster
+spawn/empty/10000       17.9 µs  560 Melem/s   20% faster
+spawn/empty/50000       92.8 µs  539 Melem/s   22% faster
+
+spawn/with_component/100     4.66 µs   21.5 Melem/s   11% faster
+spawn/with_component/1000    41.4 µs   24.2 Melem/s    9% faster
+spawn/with_component/10000   411 µs    24.3 Melem/s   25% faster
+spawn/with_component/50000   2.10 ms   23.8 Melem/s    9% faster
+
+spawn/with_4_components/100     31.4 µs   3.19 Melem/s   25% faster
+spawn/with_4_components/1000    298 µs    3.36 Melem/s   25% faster
+spawn/with_4_components/10000   3.00 ms   3.33 Melem/s   25% faster
+spawn/with_4_components/50000   14.9 ms   3.35 Melem/s   23% faster
+```
+
+The empty spawn numbers show the clearest improvement. `reserve_entities` eliminates Vec reallocation churn during the batch loop. At 50,000 entities the empty path runs at 539 Melem/s compared to 422 Melem/s at the baseline.
+
+The 4-component case improves consistently across every size. This is the merge-insert for `ArchetypeKey::with`. Each spawn runs four inserts, each insert builds a new archetype key. The old code cloned the Vec and sorted it. The new code preallocates the exact capacity and merges in a single pass.
+
+### Query iteration
+
+Two query shapes. The single benchmark queries `(&Pos, &Health)` across a world where 10% of entities have `Vel` instead of `Pos` and are skipped by the archetype filter. The 8-tuple benchmark queries all eight component types on 10,000 entities.
+
+```
+query_single/iter/100      1.21 µs   82.8 Melem/s   8% faster
+query_single/iter/1000     11.9 µs   84.0 Melem/s   9% faster
+query_single/iter/10000    119 µs    84.4 Melem/s   8% faster
+query_single/iter/50000    595 µs    84.1 Melem/s   7% faster
+
+query_8_tuple/iter         525 µs    19.1 Melem/s   7.5% faster
+```
+
+The improvement comes from replacing `as_any().downcast_ref::<Column<T>>()` with a direct `get_raw(row)` call on the erased column trait. Each fetch skips the TypeId comparison and the second `unwrap_unchecked`. For the 8-tuple query that removes 8 dynamic type checks and 8 unwraps per entity, or 80,000 type checks per frame at 10,000 entities.
+
+### Archetype migration
+
+Entities move between archetypes as components are added and removed. `insert_component` spawns 10,000 entities then inserts `Pos` on each one. `add_then_remove` spawns 10,000 entities, inserts `Pos` and `Health`, then removes `Health` from each.
+
+```
+archetype_migration/insert_component   416 µs   12% faster
+archetype_migration/add_then_remove    1.81 ms  18% faster
+```
+
+The merge-insert in `ArchetypeKey::with` avoids the sort-and-dedup pass on every migration. The old code cloned the Vec, pushed the new ID, sorted, and deduped. The new code checks for the existing ID first and returns early if it is already present, or allocates the exact capacity and merges in one pass otherwise.
+
+### Delta-sync vs full upload
+
+The `legacy_model_bench` benchmark (gpu feature) compares SceneDB delta-sync against a full-upload baseline. It sweeps scene sizes from 1,000 to 100,000 entities and mutation percentages from 0% to 100%.
+
+At 100,000 objects with 0.1% mutation:
+
+```
+scenedb:    168 µs CPU,   6,400 bytes transferred
+legacy:   1,354 µs CPU, 6.4 MB  bytes transferred
+```
+
+Speedup is 8x on CPU time and 1003x on bytes transferred. The upload is a single coalesced range for the 0.1% of rows that changed. The legacy path re-uploads every row every frame regardless.
+
+At 100% mutation the two paths converge. SceneDB issues slightly more CPU work because it runs the dirty mask scan before giving up and uploading everything. The crossover point sits at the 100% mutation level across all scene sizes tested.
+
+### Running the benches
 
 ```
 cargo bench -p pulsar_scenedb --bench ecs_bench
-```
-
-The ECS benchmarks measure spawn throughput and query iteration. They cover empty spawns, single-component spawns, four-component spawns, single-field queries, eight-field tuple queries, and archetype migrations. Results publish as elements per second.
-
-```
 cargo bench -p pulsar_scenedb --features gpu --bench legacy_model_bench
-```
-
-The legacy model benchmark compares SceneDB delta-sync against a full-upload baseline. It sweeps scene sizes from 1,000 to 100,000 entities and mutation percentages from 0% to 100%. CPU wall time covers the entire mark-then-boundary sequence. Bytes transferred covers the GPU uploads only.
-
-```
 cargo bench -p pulsar_scenedb --features gpu --bench scenedb_bench
 ```
-
-The full GPU benchmark suite covers spatial queries (AABB and frustum), region sync, harvest pipeline partitioning, DEI compaction, and promotion-demotion cycles. These benches run headless and do not require a display.
 
 ## Design documents
 
