@@ -476,7 +476,11 @@ pub enum MeshletError {
 /// C5/R12): meshlet offset `i` is always uploaded at byte offset `i * 32` in
 /// `buf`. Append-only for M3-α — no CPU free list (unregister is out of
 /// scope here). Mirrors `ClusterBuffer` exactly (see its doc for the shared
-/// shape rationale).
+/// shape rationale) — EXCEPT the reserved entry 0: clusters reserve node 0
+/// because `MeshMetadata.cluster_table_offset == 0` doubles as the no-table
+/// sentinel (C5), but "no meshlets" is signaled by a COUNT of zero
+/// (`ClusterNode.meshlet_count` / `MeshMetadata.meshlet_count`), never by
+/// offset overload, so meshlet entry 0 is an ordinary, allocatable record.
 pub struct MeshletBuffer {
     buf: wgpu::Buffer,
     entries: Vec<MeshletEntry>,
@@ -677,7 +681,15 @@ impl TextureStore {
         let block_size = desc
             .format
             .block_copy_size(None)
-            .expect("uncompressed format must have a block_copy_size");
+            // Reachable only by 1x1-block formats WITHOUT a defined copy
+            // size: aspect-ambiguous depth-stencil (Depth24Plus[Stencil8],
+            // Depth32FloatStencil8) and multi-planar (NV12/P010) formats —
+            // out of M3-α scope, and loud here rather than a garbage
+            // bytes_per_row downstream.
+            .expect(
+                "depth-stencil and multi-planar formats are out of TextureStore's M3-\u{3b1} scope \
+                 (no single block_copy_size)",
+            );
         let bytes_per_row = block_size * desc.size.width;
         queue.write_texture(
             texture.as_image_copy(),

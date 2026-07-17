@@ -800,19 +800,28 @@ fn unregister_error_paths_do_not_duplicate_the_free_list() {
     let err = store.unregister(slot_a);
     assert_eq!(err, Err(TextureError::SlotVacant));
 
-    store.unregister(slot_b).expect("unregister b succeeds");
-
-    // Free list should now contain exactly {slot_a, slot_b} — one entry
-    // each, not two entries for slot_a. Two fresh registers must therefore
-    // hand back two DISTINCT slots, not the same slot twice.
+    // `slot_b` stays REGISTERED. The free list must now hold exactly one
+    // entry: {slot_a}. A dup-push bug would make it {slot_a, slot_a}, and
+    // because recycling is LIFO, unregistering anything else here would
+    // stack on top and BURY the duplicate — two registers would then pop
+    // distinct slots and this test would pass vacuously (the flaw in this
+    // test's first version, caught by mutation in the Task 6 review).
+    // With only the (possibly duplicated) slot_a entry present, the second
+    // register below is forced to hit either the mint path (correct: a new
+    // slot id) or the duplicate (bug: slot_a again).
     let slot_c = store
         .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[3u8, 3, 3, 3])
         .expect("register c (recycled)");
     let slot_d = store
         .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[4u8, 4, 4, 4])
-        .expect("register d (recycled)");
+        .expect("register d (minted)");
+    assert_eq!(slot_c, slot_a, "c must recycle a's slot (LIFO)");
     assert_ne!(slot_c, slot_d, "a duplicated free-list entry would hand out the same slot twice");
-    assert_eq!(store.slot_count(), 2, "no new slots should have been minted — both recycled");
+    assert_eq!(
+        store.slot_count(),
+        3,
+        "d must be a freshly minted slot (extent grows to 3) — a dup-push impl would recycle slot_a twice and leave the extent at 2"
+    );
 }
 
 // ---------------------------------------------------------------------
