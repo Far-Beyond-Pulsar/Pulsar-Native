@@ -74,6 +74,68 @@ Complete. Three pillars on top of α:
    (`revalidate_run`) for recovering a revoked lease's results within the
    issuing frame.
 
+## M3-α — wgpu-30 Alignment, `SceneDbBinding` Seam
+
+The `gpu` feature's wgpu dependency moved to its own crates.io `wgpu = "30"`
+(with a `naga = "30"` dev-dep) — a distinct dep from the workspace's pinned
+Far-Beyond-Pulsar wgpu fork. **Both coexist by design:** the fork stays the
+workspace-wide dep for every other consumer (editor, other renderers) until
+the M4 gate; `pulsar_scenedb`'s `gpu` feature and the `helio-scenedb` seam
+build against upstream wgpu 30 instead. The two sources never unify — this
+is intentional, not an oversight, and `cargo check -p pulsar_scenedb
+--no-default-features` plus the CI no-Helio-edge guard confirm the core and
+the fork stay decoupled.
+
+Four pillars land in α: the instance-info mirrored column (cull's
+token→mesh link), `TextureStore` (bindless slot table), `MeshletBuffer`
+(C5 32 B), asset-store upload counters (Test 13 instrumentation), the
+expected-generation harvest column (Test 2's data path), and the
+`helio-scenedb` binding seam crate — vendored as a **standalone nested-
+workspace submodule**, never a workspace member, never `[patch]`'d.
+
+**Material buffer (Task 11) is gated on the Rev 2.4 R8 amendment**, which is
+not yet approved — it carries to M3-β rather than landing here.
+
+### Submodule build instructions
+
+Helio (the `helio-scenedb` seam consumer) lives at `crates/renderer/helio`
+as a git submodule, on branch `scenedb20-m3`. It is intentionally NOT a
+Cargo workspace member of Pulsar-Native (C0 — a `[patch]` would recompile
+every legacy consumer against Helio's v4 lineage). Fetch it explicitly:
+
+```bash
+git submodule update --init crates/renderer/helio
+```
+
+### Two-workspace test matrix
+
+SceneDB 2.0 M3-α spans two independent Cargo workspaces — Pulsar-Native
+(this crate) and the vendored Helio submodule. Both must pass; run them
+sequentially, not in parallel (device contention within each, and the
+submodule is a separate build graph entirely).
+
+**Pulsar-Native side (repo root):**
+
+```bash
+cargo check -p pulsar_scenedb --no-default-features
+cargo test -p pulsar_scenedb --lib --tests
+cargo test -p pulsar_scenedb --features gpu --lib
+cargo test -p pulsar_scenedb --features gpu --test gpu_store   -- --test-threads=1
+cargo test -p pulsar_scenedb --features gpu --test gpu_harvest -- --test-threads=1
+cargo test -p pulsar_scenedb --features gpu --test gpu_assets  -- --test-threads=1
+cargo test -p pulsar_scenedb --features gpu --test gpu_layout
+cargo test -p pulsar_scenedb --features gpu --doc
+cargo check -p pulsar_scenedb --features gpu --benches
+```
+
+**Helio side (`crates/renderer/helio`, its own workspace):**
+
+```bash
+cd crates/renderer/helio
+cargo test -p helio-scenedb -- --test-threads=1
+cargo check -p helio-core
+```
+
 **Test the GPU suites locally (must run sequentially due to device contention):**
 
 ```bash

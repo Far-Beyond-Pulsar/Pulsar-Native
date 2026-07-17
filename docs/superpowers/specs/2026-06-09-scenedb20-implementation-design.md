@@ -1,5 +1,7 @@
 # SceneDB 2.0 Implementation Design
 
+> **[2026-07-16] Superseded re: wgpu source** — the `gpu` feature moved to upstream wgpu 30 in M3-α T1; the fork references below are historical.
+
 **Date:** 2026-06-09 (revised 2026-06-12)
 **Status:** In execution — Stage 0, M1, M2a, and M2b-α complete; M2b-β in progress;
 M3/M4 not started. (Status refreshed 2026-07-16 per the holistic audit —

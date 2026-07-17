@@ -1,7 +1,7 @@
 # SceneDB 2.0 — Milestone 3 Design: The Helio Inversion
 
 **Date:** 2026-07-16 (rev 2 — post adversarial review)
-**Status:** Approved (design); implementation plans to follow (three, per §1.1)
+**Status:** M3-α implemented (Tasks 1-10, 12; Task 11 material gated on Rev 2.4 R8 — carried to M3-β)
 **Governs:** spec §0/C0 (Test 13 — THE Ownership Law gate), Part IV §10–14, Part IVb §15–19, C5 (remaining layouts), C6/§20 + Test 2 (GPU validation), C4
 **Spec of record:** `docs/superpowers/specs/SceneDB2.0.md` (Rev 2.3) + the Rev 2.4 punch list (holistic audit; extended by this design — R8–R11 in §11)
 **Predecessors:** M2a design (Rev 3), M2b design (Rev 2 §11)

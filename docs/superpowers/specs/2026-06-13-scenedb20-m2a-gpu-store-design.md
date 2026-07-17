@@ -1,5 +1,7 @@
 # SceneDB 2.0 — Milestone 2a Design: GPU-Resident Store, Delta-Sync & Retirement
 
+> **[2026-07-16] Superseded re: wgpu source** — the `gpu` feature moved to upstream wgpu 30 in M3-α T1; the fork references below are historical.
+
 **Date:** 2026-06-13 (rev 3, 2026-07-12 — single-crate GPU layer)
 **Status:** Approved (design); implementation plan to follow
 **Governs:** spec §0 / CONTRACTS.md **C0** (Ownership Law), C5 (layouts), C6 (retirement)

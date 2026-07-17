@@ -1,5 +1,7 @@
 # SceneDB 2.0 — M2b-α Implementation Plan (Asset Store, Region Reshape, Phase Machine)
 
+> **[2026-07-16] Superseded re: wgpu source** — the `gpu` feature moved to upstream wgpu 30 in M3-α T1; the fork references below are historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reshape the M2a single-cell `GpuStore` into the multi-cell, region-partitioned `SceneGpuStore`, add the load-time asset store (geometry/mesh-metadata/cluster), the global-slot mirror, and the compile-time phase machine — per design Rev 2 §1.1 (M2b-α scope).

@@ -1,5 +1,7 @@
 # SceneDB 2.0 — M2a GPU-Resident Store Implementation Plan
 
+> **[2026-07-16] Superseded re: wgpu source** — the `gpu` feature moved to upstream wgpu 30 in M3-α T1; the fork references below are historical.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build the feature-gated `pulsar_scenedb::gpu` layer — persistent scene SSBOs, CPU→GPU delta-sync, and pin-by-serial retirement — verified headless per the M2a design Rev 3.

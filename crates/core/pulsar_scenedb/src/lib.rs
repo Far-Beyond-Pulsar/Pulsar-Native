@@ -1,5 +1,5 @@
 //! SceneDB 2.0 — Layer 1 storage core (spec Rev 2.3, CONTRACTS.md C0–C6;
-//! C5 material layout and Test 13 pending M3).
+//! C5 material layout pending M3-β (R8-gated), Test 13 pending M3-β).
 //!
 //! Seeded from `pulsar_ecs` (which remains in-tree as the reference
 //! implementation). This crate adds the spec-conformant storage layer:
@@ -55,7 +55,16 @@
 //! --features gpu --lib`, README's test-command matrix), Test 12 (DEI scalar
 //! + AVX2 bit-identity), the D2-tail carry-forward (recycled-region
 //! generation scrub), and eviction serial-pinning, on top of the α suites
-//! above. M3 (Helio inversion) is next.
+//! above. M3-α (wgpu-30 alignment, `SceneDbBinding` seam) **complete** —
+//! `gpu` feature migrated onto upstream crates.io `wgpu = "30"` (own dep;
+//! the workspace fork stays for legacy consumers until M4), instance-info
+//! mirrored column, `TextureStore`, `MeshletBuffer` (C5 32 B), asset-store
+//! upload counters (Test 13 instrumentation), expected-generation harvest
+//! column (Test 2 data path), and the `helio-scenedb` binding seam vendored
+//! as a standalone submodule (`crates/renderer/helio`, no `[patch]`) with
+//! its own Test 3 reflection harness — Tasks 1-10 and 12. Material buffer
+//! (Task 11) is **gated on Rev 2.4 R8** (unapproved as of M3-α) and carries
+//! to M3-β. M3-β (cull/indirect passes, Tests 13/2/4/5) is next.
 
 pub mod actor;
 pub mod archetype;
