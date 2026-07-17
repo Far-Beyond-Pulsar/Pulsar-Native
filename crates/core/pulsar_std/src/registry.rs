@@ -44,6 +44,18 @@ pub struct NodeImport {
     pub items: &'static [&'static str],
 }
 
+/// Output parameter metadata — describes a named output pin on a multi-output node.
+/// Baked at compile time by the `#[blueprint]` macro from `#[output]` attributes or `bp_return!`.
+#[derive(Debug, Clone)]
+pub struct OutputParamMeta {
+    pub name: &'static str,
+    pub ty: &'static str,
+    /// `std::mem::size_of::<T>()` for this output's type, set by the macro.
+    pub size: usize,
+    /// `std::mem::align_of::<T>()` for this output's type, set by the macro.
+    pub align: usize,
+}
+
 /// Complete metadata about a blueprint node
 #[derive(Debug, Clone)]
 pub struct NodeMetadata {
@@ -64,6 +76,8 @@ pub struct NodeMetadata {
     pub category: &'static str,
     pub color: Option<&'static str>,
     pub imports: &'static [NodeImport],
+    /// Named output pins for multi-output nodes. Empty `&[]` for single-output nodes.
+    pub output_params: &'static [OutputParamMeta],
 }
 
 impl NodeMetadata {
@@ -207,6 +221,14 @@ impl NodeMetadata {
         if self.return_type.is_some() && self.get_return_type_info().is_none() {
             if let Some(ty) = self.return_type {
                 unregistered.push(ty);
+            }
+        }
+
+        // Check output param types
+        for out in self.output_params {
+            let info = pulsar_reflection::RUNTIME_TYPE_REGISTRY.get_by_name(out.ty);
+            if info.is_none() {
+                unregistered.push(out.ty);
             }
         }
 

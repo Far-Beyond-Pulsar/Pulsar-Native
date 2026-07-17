@@ -46,8 +46,45 @@ pub struct TypeSlot {
     pub align: usize,
 }
 
+/// Sugar for returning multiple values from a blueprint node with named output pins.
+///
+/// Expands to `return (expr1, expr2, ...)` and generates `#[output]` metadata
+/// (picked up by the enclosing `#[blueprint]` macro).
+///
+/// # Syntax
+///
+/// ```ignore
+/// bp_return!(label1: expr1, label2: expr2, ...)
+/// ```
+///
+/// # Example
+///
+/// ```ignore
+/// #[blueprint(type: NodeTypes::pure, category: "Math")]
+/// fn div_mod(a: i64, b: i64) -> (i64, i64) {
+///     bp_return!(quotient: a / b, remainder: a % b);
+/// }
+/// ```
+///
+/// This is equivalent to:
+///
+/// ```ignore
+/// #[output(name = "quotient")]
+/// #[output(name = "remainder")]
+/// #[blueprint(type: NodeTypes::pure, category: "Math")]
+/// fn div_mod(a: i64, b: i64) -> (i64, i64) {
+///     (a / b, a % b)
+/// }
+/// ```
+#[macro_export]
+macro_rules! bp_return {
+    ($($label:ident : $expr:expr),+ $(,)?) => {
+        return ($($expr),+)
+    };
+}
+
 // Re-export macros
-pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output};
+pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output, output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)

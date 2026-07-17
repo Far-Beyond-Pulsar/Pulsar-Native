@@ -399,6 +399,93 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! { &[#(#imports),*] }
     };
 
+    // ── Multi-output detection ────────────────────────────────────────────────
+    //
+    // Detect named output pins from:
+    //   a. `#[output(name = "...")]` attrs (via doc markers `__bp_output:<name>`)
+    //   b. `bp_return!(name: expr, ...)` macros in the function body
+    //
+    // When outputs are present, the return type MUST be a tuple. The arity must
+    // match the number of output names. Individual tuple element types are used
+    // to compute per-pin size/align for the `OutputParamMeta` array.
+
+    let output_names_from_doc = extract_output_names_from_doc(&input);
+    let bp_return_data = find_bp_return_in_body(&input);
+
+    let output_names: Vec<String> = if !output_names_from_doc.is_empty() {
+        output_names_from_doc
+    } else if let Some((ref labels, _)) = bp_return_data {
+        labels.clone()
+    } else {
+        Vec::new()
+    };
+
+    // Generate output_params array tokens
+    let output_params_tokens = if output_names.is_empty() {
+        quote! { &[] }
+    } else {
+        // Parse return type as tuple and extract element types
+        let tuple_elem_types: Vec<syn::Type> = match &input.sig.output {
+            ReturnType::Type(_, ty) => {
+                if let syn::Type::Tuple(tup) = ty.as_ref() {
+                    if tup.elems.is_empty() {
+                        panic!("#[blueprint] function '{}' has output pins but return type is unit `()`", fn_name_str);
+                    }
+                    tup.elems.iter().cloned().collect()
+                } else {
+                    panic!(
+                        "#[blueprint] function '{}' has output pins but return type is not a tuple. \
+                         Multi-output nodes must return a tuple.",
+                        fn_name_str
+                    );
+                }
+            }
+            ReturnType::Default => {
+                panic!(
+                    "#[blueprint] function '{}' has output pins but no return type. \
+                     Multi-output nodes must return a tuple.",
+                    fn_name_str
+                );
+            }
+        };
+
+        if output_names.len() != tuple_elem_types.len() {
+            panic!(
+                "#[blueprint] function '{}' has {} output pins but the tuple return type has {} elements. \
+                 The number of output pins must match the tuple arity.",
+                fn_name_str,
+                output_names.len(),
+                tuple_elem_types.len()
+            );
+        }
+
+        let output_items: Vec<proc_macro2::TokenStream> = output_names.iter().zip(tuple_elem_types.iter()).map(|(name, elem_ty)| {
+            let ty_str = quote!(#elem_ty).to_string();
+            let (size_expr, align_expr) = if is_generic {
+                let subst = substitute_generics_with_unit(elem_ty, &generic_param_names);
+                (
+                    quote! { ::std::mem::size_of::<#subst>() },
+                    quote! { ::std::mem::align_of::<#subst>() },
+                )
+            } else {
+                (
+                    quote! { ::std::mem::size_of::<#elem_ty>() },
+                    quote! { ::std::mem::align_of::<#elem_ty>() },
+                )
+            };
+            quote! {
+                crate::OutputParamMeta {
+                    name: #name,
+                    ty: #ty_str,
+                    size: #size_expr,
+                    align: #align_expr,
+                }
+            }
+        }).collect();
+
+        quote! { &[#(#output_items),*] }
+    };
+
     // native_only: true (via wasm_safe: false) — node uses OS/threading APIs unavailable
     // in a cdylib context; wrap definition to exclude from those builds.
     let native_only =
@@ -454,6 +541,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             category: #category_str,
             color: #color_opt,
             imports: #imports_array,
+            output_params: #output_params_tokens,
         };
     };
 
@@ -551,6 +639,91 @@ fn parse_import_path(path_str: &str) -> (String, Vec<String>) {
     }
 }
 
+/// Extract output pin names from `#[doc = " __bp_output:<name>"]` markers
+/// injected by the `#[output]` attribute macro.
+fn extract_output_names_from_doc(func: &ItemFn) -> Vec<String> {
+    const PREFIX: &str = " __bp_output:";
+    let mut names = Vec::new();
+    for attr in &func.attrs {
+        if attr.path().is_ident("doc") {
+            if let syn::Meta::NameValue(nv) = &attr.meta {
+                if let syn::Expr::Lit(expr_lit) = &nv.value {
+                    if let syn::Lit::Str(lit_str) = &expr_lit.lit {
+                        let val = lit_str.value();
+                        if let Some(rest) = val.strip_prefix(PREFIX) {
+                            names.push(rest.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Parse a `bp_return!(label1: expr1, label2: expr2, ...)` macro call.
+/// Returns `(labels, expressions)`.
+fn parse_bp_return(tokens: &proc_macro2::TokenStream) -> Option<(Vec<String>, Vec<proc_macro2::TokenStream>)> {
+    // Format: label1 : expr1 , label2 : expr2 , ...
+    // We parse as a series of (ident : expr) pairs separated by commas.
+    use syn::parse::{Parse, ParseStream};
+
+    struct BpReturnArgs {
+        labels: Vec<String>,
+        exprs: Vec<proc_macro2::TokenStream>,
+    }
+
+    impl Parse for BpReturnArgs {
+        fn parse(input: ParseStream) -> syn::Result<Self> {
+            let mut labels = Vec::new();
+            let mut exprs = Vec::new();
+
+            while !input.is_empty() {
+                // Parse label: ident
+                let label: syn::Ident = input.parse()?;
+                // Parse colon
+                let _colon: syn::Token![:] = input.parse()?;
+                // Parse expression
+                let expr: syn::Expr = input.parse()?;
+
+                labels.push(label.to_string());
+                exprs.push(quote!(#expr));
+
+                // Optional trailing comma
+                if !input.is_empty() {
+                    let _comma: syn::Token![,] = input.parse()?;
+                }
+            }
+
+            Ok(BpReturnArgs { labels, exprs })
+        }
+    }
+
+    syn::parse2::<BpReturnArgs>(tokens.clone()).ok().map(|a| (a.labels, a.exprs))
+}
+
+/// Scan the function body for `bp_return!` macro calls and extract output labels + return expressions.
+/// Also rewrites the body to replace `bp_return!` with `return (...)` if requested.
+fn find_bp_return_in_body(func: &ItemFn) -> Option<(Vec<String>, Vec<proc_macro2::TokenStream>)> {
+    for stmt in &func.block.stmts {
+        if let Stmt::Macro(stmt_macro) = stmt {
+            if stmt_macro.mac.path.is_ident("bp_return") {
+                return parse_bp_return(&stmt_macro.mac.tokens);
+            }
+        }
+    }
+    for stmt in &func.block.stmts {
+        if let Stmt::Expr(expr, _) = stmt {
+            if let Expr::Macro(macro_expr) = expr {
+                if macro_expr.mac.path.is_ident("bp_return") {
+                    return parse_bp_return(&macro_expr.mac.tokens);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Find all exec_output!() labels in a function
 fn find_exec_output_labels(func: &ItemFn) -> Vec<String> {
     let mut labels = Vec::new();
@@ -638,6 +811,60 @@ pub fn exec_output(input: TokenStream) -> TokenStream {
 
     TokenStream::from(expanded)
 }
+
+/// Declare a named output pin on a multi-output blueprint node.
+///
+/// Must come before `#[blueprint]`. Each `#[output]` maps positionally to a
+/// tuple element in the return type.  The number of `#[output]` attrs must
+/// match the tuple arity.
+///
+/// # Examples
+///
+/// ```ignore
+/// #[output(name = "quotient")]
+/// #[output(name = "remainder")]
+/// #[blueprint(type: NodeTypes::pure, category: "Math")]
+/// fn div_mod(a: i64, b: i64) -> (i64, i64) {
+///     (a / b, a % b)
+/// }
+/// ```
+///
+/// Alternatively, use the `bp_return!` macro inside the function body which
+/// generates the same metadata automatically:
+///
+/// ```ignore
+/// #[blueprint(type: NodeTypes::pure, category: "Math")]
+/// fn div_mod(a: i64, b: i64) -> (i64, i64) {
+///     bp_return!(quotient: a / b, remainder: a % b);
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn output(args: TokenStream, input: TokenStream) -> TokenStream {
+    // Parse `name = "..."` from args
+    let args_str = args.to_string();
+    let name = extract_string_value(&args_str, "name")
+        .unwrap_or_else(|| panic!("#[output] requires name = \"...\""));
+
+    // Inject a doc-comment marker that #[blueprint] will scan.
+    // We use a doc comment because it survives proc-macro expansion ordering
+    // — #[output] is outer, #[blueprint] is inner, and doc attrs on the
+    // function item are visible to #[blueprint] after #[output] passes through.
+    let marker = format!(" __bp_output:{}", name);
+
+    // The input already has #[blueprint] and the function definition.
+    // We need to inject our doc comment attribute BEFORE all other attrs.
+    let input_str = input.to_string();
+    let result = format!(
+        "#[doc = \"{}\"]\n{}",
+        marker,
+        input_str
+    );
+    result.parse().unwrap_or_else(|e| {
+        panic!("#[output] failed to parse output token stream: {}", e)
+    })
+}
+
+
 
 /// Declare external crate imports for a blueprint node.
 ///
