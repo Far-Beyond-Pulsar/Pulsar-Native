@@ -39,8 +39,6 @@ pub struct SceneGpuConfig {
     /// tombstoned (retired-but-not-yet-recycled) slots without stealing a
     /// neighbor's region (§4.1).
     pub tombstone_headroom: u32,
-    /// Placeholder buffer; layout arrives in M3.
-    pub max_materials: u32,
     /// Per-cell metadata SSBO entries (α: allocated, no writer).
     pub max_cells_metadata: u32,
 }
@@ -147,7 +145,15 @@ pub struct SceneGpuStore {
     instance_infos: SceneBuffer<InstanceInfo>,
     slot_mirror: SceneBuffer<u32>,
     generations: GenerationBuffer,
-    material: wgpu::Buffer,
+    // `material` (32-byte placeholder buffer + `material_buffer()` accessor)
+    // retired M3-α T11 (Rev 2.4 R8, approved 2026-07-16): the real 64-byte
+    // material row (`gpu::MaterialRow`) is owned by the standalone
+    // `gpu::MaterialRegistry`, mirroring `MeshRegistry`'s shape — not by
+    // this store. The placeholder was never written to by anything and
+    // predated R8's row layout by two size classes (32 B here vs. 64 B
+    // there); keeping both would leave two unrelated "material buffer"
+    // concepts in the crate (Ownership Law, CONTRACTS C0: one clear owner
+    // per buffer).
     cell_metadata: wgpu::Buffer,
     tracker: SubmissionTracker,
     phase: Phase,
@@ -201,18 +207,6 @@ impl SceneGpuStore {
             instance_infos: SceneBuffer::new(ctx.device(), "scenedb-instance-info", row_offset),
             slot_mirror: SceneBuffer::new(ctx.device(), "scenedb-slot-mirror", row_offset),
             generations: GenerationBuffer::new(ctx.device(), slot_offset),
-            // Material stride is 32 bytes per entry (C5); only the field
-            // LAYOUT is M3-deferred. Sizing at the final stride now keeps the
-            // §10 allocate-once contract — M3 fills the layout in place, no
-            // buffer recreation.
-            material: ctx.device().create_buffer(&wgpu::BufferDescriptor {
-                label: Some("scenedb-materials"),
-                size: cfg.max_materials as u64 * 32,
-                usage: wgpu::BufferUsages::STORAGE
-                    | wgpu::BufferUsages::COPY_DST
-                    | wgpu::BufferUsages::COPY_SRC,
-                mapped_at_creation: false,
-            }),
             // Per-cell metadata stride is 8 bytes (design §4.1: f32 alpha +
             // u32 domain). Allocated at final stride now (§10); α has no
             // writer.
@@ -785,11 +779,6 @@ impl SceneGpuStore {
 
     pub fn generation_buffer(&self) -> &wgpu::Buffer {
         self.generations.buffer()
-    }
-
-    /// Placeholder buffer; layout arrives in M3.
-    pub fn material_buffer(&self) -> &wgpu::Buffer {
-        &self.material
     }
 
     /// Per-cell metadata SSBO (α: allocated, no writer).

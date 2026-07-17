@@ -640,6 +640,198 @@ impl MeshletBuffer {
     }
 }
 
+/// C5 (§10.1, Rev 2.4 R8 — approved 2026-07-16): 64-byte material registry
+/// row, mirrored 1:1 into the global material-registry SSBO. Field
+/// order/offsets are load-bearing (see the comment column below and the
+/// const size assert) — if the size assert ever fails, fix the field
+/// order/types, never insert manual padding fields. Supersedes the 32-byte
+/// placeholder stride `SceneGpuStore` carried through M2b-α/M3-α T1-T10
+/// (design Rev 2 §11 R8: PBR params + bindless texture indices + a
+/// Radiant-graph reference do not fit in 32 B — the row had to be
+/// renegotiated at spec level before this writer could be coded).
+///
+/// **Sentinels.** `tex_albedo`/`tex_normal`/`tex_metallic_roughness`/
+/// `tex_emissive` use `0xFFFF_FFFF` for "no texture bound" (the project-wide
+/// null sentinel) — shaders binding an unbound slot receive the bind-array
+/// default texture, a failure that is visible, never undefined.
+/// `radiant_graph_index == 0xFFFF_FFFF` selects the default PBR template (no
+/// custom graph).
+///
+/// **Flags** (bits 4-31 reserved, must be zero): bit 0 double-sided, bit 1
+/// alpha blend, bit 2 alpha test (against `alpha_cutoff`), bit 3 has normal
+/// map.
+///
+/// `emissive_intensity` is a nits-scale HDR multiplier over the linear
+/// `emissive_r`/`emissive_g`/`emissive_b` triple — the whole emissive block
+/// stays full-precision `f32` (packing it, like `base_color`, would clamp
+/// emissive to LDR).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MaterialRow {
+    pub base_color: u32,             // 0  RGBA8-unorm packed base color factor (linear)
+    pub metallic: f32,               // 4  metallic factor ∈ [0, 1]
+    pub roughness: f32,              // 8  perceptual roughness factor ∈ [0, 1]
+    pub normal_scale: f32,           // 12 normal-map strength multiplier (1.0 = authored)
+    pub emissive_r: f32,             // 16 emissive color, red (linear)
+    pub emissive_g: f32,             // 20 emissive color, green (linear)
+    pub emissive_b: f32,             // 24 emissive color, blue (linear)
+    pub emissive_intensity: f32,     // 28 HDR emissive multiplier (nits-scale scalar)
+    pub tex_albedo: u32,             // 32 bindless slot: albedo/base-color map
+    pub tex_normal: u32,             // 36 bindless slot: tangent-space normal map
+    pub tex_metallic_roughness: u32, // 40 bindless slot: metallic-roughness (ORM) map
+    pub tex_emissive: u32,           // 44 bindless slot: emissive map
+    pub radiant_graph_index: u32,    // 48 index into the engine's Radiant shader-graph registry
+    pub flags: u32,                  // 52 feature bits 0-3 (see above), 4-31 reserved (must be 0)
+    pub alpha_cutoff: f32,           // 56 alpha-test threshold ∈ [0, 1] (meaningful when flags bit 2 set)
+    pub reserved: u32,               // 60 must be zero
+} // = 64 bytes (C5/§10.1, Rev 2.4 R8)
+const _: () = assert!(std::mem::size_of::<MaterialRow>() == 64);
+// SAFETY: `MaterialRow` is `#[repr(C)]`, `Copy`, every field is itself POD
+// (u32/f32), and the const assert above pins the layout to exactly 64 bytes
+// with no hidden padding — matching the material-registry SSBO stride
+// byte-for-byte. `Pod` is a marker trait (`unsafe trait Pod: Copy {}`) with
+// no methods, so this impl only asserts the bit-pattern/layout claim, not
+// any behavior.
+unsafe impl crate::page::Pod for MaterialRow {}
+
+/// Hard material-registry errors (§8): surfaced to the caller, never
+/// silently coerced or retried. Mirrors `MeshError`'s naming (T7 pattern).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialError {
+    /// `metallic` is outside [0, 1] — NaN-rejecting `!(x >= 0.0 && x <= 1.0)`
+    /// form (R8's validation rule): IEEE-754 makes every comparison with NaN
+    /// false, so a naive range check written the other way round could
+    /// silently accept a NaN metallic factor.
+    InvalidMetallic,
+    /// `roughness` is outside [0, 1] (same NaN-rejecting form as `metallic`).
+    InvalidRoughness,
+    /// `alpha_cutoff` is outside [0, 1] (same NaN-rejecting form).
+    InvalidAlphaCutoff,
+    /// `MaterialRow::reserved` must be exactly 0 (R8's must-be-zero anchor
+    /// for registration-time validation, mirroring the `ClusterNode`/
+    /// `MeshletEntry` padding discipline).
+    ReservedNonZero,
+    /// `MaterialRow::flags` bits 4-31 (reserved) must be exactly 0.
+    FlagsReservedNonZero,
+    RegistryFull,
+}
+
+/// Flat host registry mirrored 1:1 into the material-registry SSBO (Rev 2.4
+/// R8, §10.1): registry index `i` is always uploaded at byte offset `i * 64`
+/// in `buf`. Append-only for M3-α — no CPU free list (unregister is out of
+/// scope here). Mirrors `MeshRegistry` exactly (T7 pattern: `new`/
+/// `register`/`get`/`len`/`entries`/`rebuild`/`buffer`/`upload_count`).
+///
+/// This registry OWNS its buffer, standalone — same shape as
+/// `MeshRegistry`/`ClusterBuffer`/`MeshletBuffer`/`TextureStore`, none of
+/// which live inside `SceneGpuStore` either: material rows are write-once-
+/// ish load-time content, not per-frame scene state. This retires
+/// `SceneGpuStore`'s 32-byte material placeholder (the `material` buffer
+/// field, its `max_materials` config knob, and the `material_buffer()`
+/// accessor — all removed in this same commit): that placeholder predated
+/// R8's 64-byte row and was never written to by anything, so keeping it
+/// alongside this registry would leave two unrelated, inconsistently-sized
+/// "material buffer" concepts in the crate. One clear owner per buffer
+/// (Ownership Law, CONTRACTS C0).
+pub struct MaterialRegistry {
+    buf: wgpu::Buffer,
+    entries: Vec<MaterialRow>,
+    max_materials: u32,
+    /// Test 13 instrumentation (see `upload_count` below).
+    upload_count: u64,
+}
+
+impl MaterialRegistry {
+    pub fn new(ctx: &EngineGpuContext, max_materials: u32) -> Self {
+        let buf = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("material-registry"),
+            size: max_materials as u64 * 64,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        Self { buf, entries: Vec::new(), max_materials, upload_count: 0 }
+    }
+
+    /// R8 validation: `metallic`, `roughness`, `alpha_cutoff` ∈ [0, 1]
+    /// (NaN-rejecting form) and `reserved == 0` and `flags` bits 4-31 zero.
+    /// On success, uploads ONLY the new 64-byte entry — never a bulk
+    /// re-upload.
+    pub fn register(&mut self, queue: &wgpu::Queue, m: MaterialRow) -> Result<u32, MaterialError> {
+        // Deliberate `!(x >= 0.0 && x <= 1.0)` form (not `x < 0.0 || x >
+        // 1.0`): IEEE-754 makes every comparison with NaN false, so the
+        // negated form would silently ACCEPT a NaN scalar (`NaN < 0.0` and
+        // `NaN > 1.0` are both false). The `!(a && b)` form used here routes
+        // NaN to the rejecting branch — matches the crate's conservative-NaN
+        // convention (spatial.rs/simd.rs, ClusterBuffer::append,
+        // MeshletBuffer::append) and R8's own stated validation rule.
+        if !(m.metallic >= 0.0 && m.metallic <= 1.0) {
+            return Err(MaterialError::InvalidMetallic);
+        }
+        if !(m.roughness >= 0.0 && m.roughness <= 1.0) {
+            return Err(MaterialError::InvalidRoughness);
+        }
+        if !(m.alpha_cutoff >= 0.0 && m.alpha_cutoff <= 1.0) {
+            return Err(MaterialError::InvalidAlphaCutoff);
+        }
+        if m.reserved != 0 {
+            return Err(MaterialError::ReservedNonZero);
+        }
+        if m.flags & !0xFu32 != 0 {
+            return Err(MaterialError::FlagsReservedNonZero);
+        }
+        if self.entries.len() as u32 >= self.max_materials {
+            return Err(MaterialError::RegistryFull);
+        }
+        let index = self.entries.len() as u32;
+        queue.write_buffer(&self.buf, index as u64 * 64, super::as_bytes(std::slice::from_ref(&m)));
+        self.upload_count += 1;
+        self.entries.push(m);
+        Ok(index)
+    }
+
+    pub fn get(&self, material_index: u32) -> &MaterialRow {
+        &self.entries[material_index as usize]
+    }
+
+    pub fn len(&self) -> u32 {
+        self.entries.len() as u32
+    }
+
+    /// Test 14 rebuild source: the CPU-authoritative copy of every entry, in
+    /// registry-index order (matches the SSBO's byte layout 1:1).
+    pub fn entries(&self) -> &[MaterialRow] {
+        &self.entries
+    }
+
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.buf
+    }
+
+    /// Test 14 (C0 companion gate): bulk re-upload every entry from the
+    /// CPU-authoritative `entries` copy — device-loss re-materialization,
+    /// same shape as `MeshRegistry::rebuild`. No-op on an empty registry
+    /// (`write_buffer` with a zero-length slice is fine, but skip the call).
+    /// Takes `&mut self` (not `&self`) solely so the Test 13 upload counter
+    /// can be incremented — the CPU-authoritative `entries` are read-only
+    /// here, same as before.
+    pub fn rebuild(&mut self, queue: &wgpu::Queue) {
+        if self.entries.is_empty() {
+            return;
+        }
+        queue.write_buffer(&self.buf, 0, super::as_bytes(&self.entries));
+        self.upload_count += 1;
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window.
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
+    }
+}
+
 /// Bindless texture slot ceiling (spec §10 G4 / recon ceiling). `TextureStore`
 /// asserts `max_slots <= MAX_TEXTURE_SLOTS` in `new`.
 pub const MAX_TEXTURE_SLOTS: u32 = 16384;

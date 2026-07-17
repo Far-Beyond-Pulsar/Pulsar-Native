@@ -62,6 +62,23 @@ struct MeshletEntry {
 @group(0) @binding(6) var<storage, read> meshlets: array<MeshletEntry>;
 "#;
 
+/// The WGSL M3-α's shaders will declare for the material registry
+/// (`src/gpu/assets.rs::MaterialRow`, Rev 2.4 R8, approved 2026-07-16,
+/// C5/§10.1).
+const M3A_MATERIAL_WGSL: &str = r#"
+struct MaterialRow {
+    base_color: u32,
+    metallic: f32, roughness: f32, normal_scale: f32,
+    emissive_r: f32, emissive_g: f32, emissive_b: f32, emissive_intensity: f32,
+    tex_albedo: u32, tex_normal: u32, tex_metallic_roughness: u32, tex_emissive: u32,
+    radiant_graph_index: u32,
+    flags: u32,
+    alpha_cutoff: f32,
+    reserved: u32,
+}
+@group(0) @binding(8) var<storage, read> materials: array<MaterialRow>;
+"#;
+
 /// Reflect (size, [(member_name, offset)]) for a named struct in WGSL source.
 fn wgsl_struct_layout(src: &str, name: &str) -> (u32, Vec<(String, u32)>) {
     let module = naga::front::wgsl::parse_str(src).expect("valid WGSL");
@@ -194,6 +211,39 @@ fn test_meshlet_entry_struct_is_byte_exact() {
             ("data_offset".to_string(), 20),
             ("counts_packed".to_string(), 24),
             ("reserved".to_string(), 28),
+        ]
+    );
+}
+
+/// M3-α T11 (Rev 2.4 R8, approved 2026-07-16): host `MaterialRow`
+/// (`gpu/assets.rs`) vs naga reflection of the WGSL struct shaders will bind
+/// it as, byte-exact — mirrors `test3_cluster_node_struct_is_byte_exact`'s
+/// shape for the new material registry buffer. 16 scalar fields, all 16
+/// offsets asserted.
+#[test]
+fn test_material_row_struct_is_byte_exact() {
+    let (size, members) = wgsl_struct_layout(M3A_MATERIAL_WGSL, "MaterialRow");
+    assert_eq!(size, 64, "WGSL MaterialRow size == size_of::<MaterialRow>()");
+    assert_eq!(size as usize, std::mem::size_of::<pulsar_scenedb::gpu::MaterialRow>());
+    assert_eq!(
+        members,
+        vec![
+            ("base_color".to_string(), 0),
+            ("metallic".to_string(), 4),
+            ("roughness".to_string(), 8),
+            ("normal_scale".to_string(), 12),
+            ("emissive_r".to_string(), 16),
+            ("emissive_g".to_string(), 20),
+            ("emissive_b".to_string(), 24),
+            ("emissive_intensity".to_string(), 28),
+            ("tex_albedo".to_string(), 32),
+            ("tex_normal".to_string(), 36),
+            ("tex_metallic_roughness".to_string(), 40),
+            ("tex_emissive".to_string(), 44),
+            ("radiant_graph_index".to_string(), 48),
+            ("flags".to_string(), 52),
+            ("alpha_cutoff".to_string(), 56),
+            ("reserved".to_string(), 60),
         ]
     );
 }

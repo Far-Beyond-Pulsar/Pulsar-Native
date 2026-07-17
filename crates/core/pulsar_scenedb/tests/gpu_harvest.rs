@@ -68,7 +68,6 @@ fn scene_cfg() -> SceneGpuConfig {
     SceneGpuConfig {
         classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 4 }],
         tombstone_headroom: 8,
-        max_materials: 16,
         max_cells_metadata: 16,
     }
 }

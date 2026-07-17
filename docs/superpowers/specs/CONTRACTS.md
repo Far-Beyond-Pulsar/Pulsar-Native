@@ -104,11 +104,35 @@ one). **Node 0 is a reserved all-zero sentinel** (never a real table): under
 the XOR rule above, `cluster_table_offset == 0` means "no table", so real
 tables start at node index ≥ 1 and `max_nodes` budgets include the sentinel.
 
-Instance: 64 bytes — row-major mat4 transform. Material: 32 bytes (PBR
-params, defined in M3 plan). Generation buffer: u32 per slot. Draw command:
-index_count u32, instance_count u32 (always 1 or 0), first_index u32,
-vertex_offset i32, first_instance u32 (= command slot, bindless lookup key).
-Per-view command buffers; bounded atomicAdd allocation; CPU-side count clamp.
+Instance: 64 bytes — row-major mat4 transform. Generation buffer: u32 per
+slot. Draw command: index_count u32, instance_count u32 (always 1 or 0),
+first_index u32, vertex_offset i32, first_instance u32 (= command slot,
+bindless lookup key). Per-view command buffers; bounded atomicAdd
+allocation; CPU-side count clamp.
+
+MaterialRow (SceneDB-owned, amendment M3-α, Rev 2.4 R8 approved
+2026-07-16): 64 bytes — base_color u32@0 (RGBA8-unorm packed base color
+factor, linear), metallic f32@4 (∈[0,1]), roughness f32@8 (∈[0,1]),
+normal_scale f32@12 (1.0 = authored), emissive_r/g/b f32@16/20/24 (linear),
+emissive_intensity f32@28 (nits-scale HDR multiplier), tex_albedo u32@32,
+tex_normal u32@36, tex_metallic_roughness u32@40, tex_emissive u32@44 (all
+four texture fields: bindless slot, sentinel 0xFFFF_FFFF = unbound),
+radiant_graph_index u32@48 (sentinel 0xFFFF_FFFF = default PBR template),
+flags u32@52 (bit 0 double-sided, bit 1 alpha blend, bit 2 alpha test
+against alpha_cutoff, bit 3 has normal map, bits 4-31 reserved = 0),
+alpha_cutoff f32@56 (∈[0,1], meaningful when flags bit 2 set), reserved
+u32@60 (must be 0). Supersedes the 32-byte placeholder ("Material: 32 bytes
+(PBR params, defined in M3 plan)") this row previously carried — R8's 64-byte
+row is now the binding text (`docs/superpowers/specs/CONTRACTS.md`, restated
+from `Research/public/drafts/SceneDB2.0-Rev2.4-PROPOSAL.md` § "R8 — The
+64-byte material registry row" until Rev 2.4 is applied to the spec of
+record in full). Registration validates metallic/roughness/alpha_cutoff ∈
+[0,1] (NaN-rejecting `!(x >= 0.0 && x <= 1.0)` form) and reserved == 0 and
+flags bits 4-31 == 0. `MaterialRegistry` (`gpu::MaterialRegistry`) mirrors
+`MeshRegistry`'s shape (T7 pattern) and owns its buffer standalone — it
+retires `SceneGpuStore`'s prior 32-byte material placeholder buffer/field/
+`max_materials` config knob (never written to by anything) in the same
+commit.
 
 Slot mirror (SceneDB-owned; amendment, audit-remediation): u32 per **row** —
 `global_slot = slot_region_base + local_slot`, i.e. `global_slot(global_row)`.

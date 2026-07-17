@@ -181,7 +181,6 @@ fn bench_region_sync_1024_dirty_rows(c: &mut Criterion) {
     let cfg = SceneGpuConfig {
         classes: vec![RegionClassConfig { capacity: 1024, max_resident_cells: 1 }],
         tombstone_headroom: 64,
-        max_materials: 16,
         max_cells_metadata: 16,
     };
     let mut store = SceneGpuStore::new(&ctx, cfg);
@@ -298,7 +297,6 @@ fn bench_promotion_demotion_cycle(c: &mut Criterion) {
     let cfg = SceneGpuConfig {
         classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 2 }],
         tombstone_headroom: 8,
-        max_materials: 4,
         max_cells_metadata: 4,
     };
     let mut store = SceneGpuStore::new(&ctx, cfg);

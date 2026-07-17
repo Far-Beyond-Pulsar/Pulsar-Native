@@ -5,7 +5,7 @@
 //! integration test binaries cannot share modules without a common
 //! `tests/common/mod.rs`, and that refactor is deliberately out of scope here.
 
-use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry, MeshletBuffer, MeshletEntry, MeshletError, TextureError, TextureStore};
+use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MaterialError, MaterialRegistry, MaterialRow, MeshError, MeshMetadata, MeshRegistry, MeshletBuffer, MeshletEntry, MeshletError, TextureError, TextureStore};
 use std::sync::Arc;
 
 /// Byte view of `MeshMetadata` entries for readback comparison. Mirrors the
@@ -589,6 +589,255 @@ fn rebuild_reuploads_entries_over_corrupted_buffers() {
         expected_cluster,
         "ClusterBuffer::rebuild restored the SSBO from nodes()"
     );
+}
+
+// ---------------------------------------------------------------------
+// MaterialRegistry (M3-α T11, Rev 2.4 R8 approved 2026-07-16): 64-byte
+// material row, mirroring MeshRegistry's shape (T7 pattern).
+// ---------------------------------------------------------------------
+
+/// Byte view of `MaterialRow` entries for readback comparison. Mirrors the
+/// crate-internal `gpu::as_bytes` (pub(crate) — not visible to this
+/// integration test binary, which only sees the crate's public API).
+///
+/// SAFETY: `MaterialRow` is `#[repr(C)]`, `Copy`, and the crate's own
+/// `const _: () = assert!(size_of::<MaterialRow>() == 64)` pins its layout
+/// to exactly 64 bytes with no padding.
+fn material_bytes(entries: &[MaterialRow]) -> Vec<u8> {
+    unsafe {
+        std::slice::from_raw_parts(entries.as_ptr() as *const u8, std::mem::size_of_val(entries))
+    }
+    .to_vec()
+}
+
+/// A fully in-range, valid material row (every [0,1] scalar strictly
+/// interior, `reserved == 0`, only defined flag bits set, two sentinel
+/// texture slots to exercise `0xFFFF_FFFF` round-tripping byte-exact).
+fn valid_material() -> MaterialRow {
+    MaterialRow {
+        base_color: 0xFF80_4020,
+        metallic: 0.25,
+        roughness: 0.75,
+        normal_scale: 1.0,
+        emissive_r: 0.1,
+        emissive_g: 0.2,
+        emissive_b: 0.3,
+        emissive_intensity: 4.0,
+        tex_albedo: 3,
+        tex_normal: 0xFFFF_FFFF, // sentinel: no normal map bound
+        tex_metallic_roughness: 7,
+        tex_emissive: 0xFFFF_FFFF, // sentinel: no emissive map bound
+        radiant_graph_index: 0xFFFF_FFFF, // sentinel: default PBR template
+        flags: 0b1011,             // double-sided | alpha test | has normal map
+        alpha_cutoff: 0.5,
+        reserved: 0,
+    }
+}
+
+#[test]
+fn material_registered_byte_exact_in_ssbo() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 4);
+
+    let m = valid_material();
+    let idx = reg.register(ctx.queue(), m).expect("valid material row");
+    assert_eq!(idx, 0);
+    assert_eq!(reg.len(), 1);
+    assert_eq!(reg.get(idx), &m);
+
+    let gpu = readback(&ctx, reg.buffer(), 64);
+    let expected = material_bytes(reg.entries());
+    assert_eq!(expected.len(), 64, "one 64-byte record");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(entries()), including the 0xFFFF_FFFF sentinels");
+}
+
+#[test]
+fn register_rejects_metallic_out_of_range_nan_and_inf_but_accepts_negative_zero() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 8);
+
+    let mut below = valid_material();
+    below.metallic = -0.001;
+    assert_eq!(reg.register(ctx.queue(), below), Err(MaterialError::InvalidMetallic));
+
+    let mut above = valid_material();
+    above.metallic = 1.001;
+    assert_eq!(reg.register(ctx.queue(), above), Err(MaterialError::InvalidMetallic));
+
+    // IEEE-754: every comparison with NaN is false, so a naive `x < 0.0 ||
+    // x > 1.0` rejection form would silently ACCEPT NaN. R8's NaN-rejecting
+    // `!(x >= 0.0 && x <= 1.0)` form must reject it instead.
+    let mut nan = valid_material();
+    nan.metallic = f32::NAN;
+    assert_eq!(reg.register(ctx.queue(), nan), Err(MaterialError::InvalidMetallic));
+
+    let mut inf = valid_material();
+    inf.metallic = f32::INFINITY;
+    assert_eq!(reg.register(ctx.queue(), inf), Err(MaterialError::InvalidMetallic));
+
+    // -0.0 is a valid boundary of [0, 1]: `-0.0 >= 0.0` is `true` under
+    // IEEE-754 (negative zero compares equal to positive zero), so it must
+    // be ACCEPTED, not spuriously rejected as "negative".
+    let mut neg_zero = valid_material();
+    neg_zero.metallic = -0.0;
+    assert!(reg.register(ctx.queue(), neg_zero).is_ok(), "-0.0 is within [0,1] and must be accepted");
+
+    assert_eq!(reg.len(), 1, "only the -0.0 boundary case landed; the four rejections must not consume an index");
+}
+
+#[test]
+fn register_rejects_roughness_out_of_range_nan_and_inf_but_accepts_negative_zero() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 8);
+
+    let mut below = valid_material();
+    below.roughness = -0.001;
+    assert_eq!(reg.register(ctx.queue(), below), Err(MaterialError::InvalidRoughness));
+
+    let mut above = valid_material();
+    above.roughness = 1.001;
+    assert_eq!(reg.register(ctx.queue(), above), Err(MaterialError::InvalidRoughness));
+
+    let mut nan = valid_material();
+    nan.roughness = f32::NAN;
+    assert_eq!(reg.register(ctx.queue(), nan), Err(MaterialError::InvalidRoughness));
+
+    let mut inf = valid_material();
+    inf.roughness = f32::INFINITY;
+    assert_eq!(reg.register(ctx.queue(), inf), Err(MaterialError::InvalidRoughness));
+
+    let mut neg_zero = valid_material();
+    neg_zero.roughness = -0.0;
+    assert!(reg.register(ctx.queue(), neg_zero).is_ok(), "-0.0 is within [0,1] and must be accepted");
+
+    assert_eq!(reg.len(), 1, "only the -0.0 boundary case landed; the four rejections must not consume an index");
+}
+
+#[test]
+fn register_rejects_alpha_cutoff_out_of_range_nan_and_inf_but_accepts_negative_zero() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 8);
+
+    let mut below = valid_material();
+    below.alpha_cutoff = -0.001;
+    assert_eq!(reg.register(ctx.queue(), below), Err(MaterialError::InvalidAlphaCutoff));
+
+    let mut above = valid_material();
+    above.alpha_cutoff = 1.001;
+    assert_eq!(reg.register(ctx.queue(), above), Err(MaterialError::InvalidAlphaCutoff));
+
+    let mut nan = valid_material();
+    nan.alpha_cutoff = f32::NAN;
+    assert_eq!(reg.register(ctx.queue(), nan), Err(MaterialError::InvalidAlphaCutoff));
+
+    let mut inf = valid_material();
+    inf.alpha_cutoff = f32::INFINITY;
+    assert_eq!(reg.register(ctx.queue(), inf), Err(MaterialError::InvalidAlphaCutoff));
+
+    let mut neg_zero = valid_material();
+    neg_zero.alpha_cutoff = -0.0;
+    assert!(reg.register(ctx.queue(), neg_zero).is_ok(), "-0.0 is within [0,1] and must be accepted");
+
+    assert_eq!(reg.len(), 1, "only the -0.0 boundary case landed; the four rejections must not consume an index");
+}
+
+#[test]
+fn register_rejects_reserved_nonzero() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 4);
+    let mut m = valid_material();
+    m.reserved = 1;
+    let err = reg.register(ctx.queue(), m);
+    assert_eq!(err, Err(MaterialError::ReservedNonZero));
+    assert_eq!(reg.len(), 0, "rejected registration must not partially land");
+}
+
+#[test]
+fn register_rejects_flags_reserved_bits_nonzero() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 4);
+
+    // Bit 4 is the lowest reserved bit (bits 0-3 are the defined flags).
+    let mut low_bit = valid_material();
+    low_bit.flags = 0b1_0000;
+    assert_eq!(reg.register(ctx.queue(), low_bit), Err(MaterialError::FlagsReservedNonZero));
+
+    // Bit 31 is the highest reserved bit.
+    let mut high_bit = valid_material();
+    high_bit.flags = 1 << 31;
+    assert_eq!(reg.register(ctx.queue(), high_bit), Err(MaterialError::FlagsReservedNonZero));
+
+    assert_eq!(reg.len(), 0, "rejected registrations must not partially land");
+}
+
+#[test]
+fn material_register_fails_hard_once_registry_is_full() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 2);
+    assert!(reg.register(ctx.queue(), valid_material()).is_ok());
+    assert!(reg.register(ctx.queue(), valid_material()).is_ok());
+    let err = reg.register(ctx.queue(), valid_material());
+    assert_eq!(err, Err(MaterialError::RegistryFull));
+    assert_eq!(reg.len(), 2, "full registry rejects without growing");
+}
+
+/// Test 14 (C0 companion gate), material-only complement to
+/// `rebuild_reuploads_entries_over_corrupted_buffers`: deliberately corrupt
+/// the SSBO first (readback-confirming the corruption landed) so the
+/// `rebuild` assertion is non-vacuous — a silent no-op would leave the 0xAB
+/// garbage in place and fail loudly.
+#[test]
+fn material_rebuild_reuploads_entries_over_corrupted_buffer() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 4);
+    reg.register(ctx.queue(), valid_material()).expect("first material");
+    let mut second = valid_material();
+    second.base_color = 0x1122_3344;
+    reg.register(ctx.queue(), second).expect("second material");
+
+    let len = reg.len() as u64 * 64;
+    let expected = material_bytes(reg.entries());
+    assert_eq!(readback(&ctx, reg.buffer(), len), expected, "precondition: material SSBO valid");
+
+    ctx.queue().write_buffer(reg.buffer(), 0, &vec![0xAB; len as usize]);
+    assert_eq!(readback(&ctx, reg.buffer(), len), vec![0xAB; len as usize], "corruption landed");
+
+    reg.rebuild(ctx.queue());
+
+    assert_eq!(
+        readback(&ctx, reg.buffer(), len),
+        expected,
+        "MaterialRegistry::rebuild restored the SSBO from entries()"
+    );
+}
+
+#[test]
+fn material_registry_upload_count_increments_on_register_and_rebuild_not_on_rejection() {
+    let ctx = test_context();
+    let mut reg = MaterialRegistry::new(&ctx, 2);
+    assert_eq!(reg.upload_count(), 0);
+
+    reg.register(ctx.queue(), valid_material()).expect("register");
+    assert_eq!(reg.upload_count(), 1);
+
+    reg.rebuild(ctx.queue());
+    assert_eq!(reg.upload_count(), 2, "rebuild's bulk re-upload counts too");
+
+    // Rejected: reserved != 0 (cheapest validation failure of the
+    // structural checks — the [0,1] scalar checks run first but this one is
+    // simplest to construct without disturbing an otherwise-valid row).
+    let mut bad = valid_material();
+    bad.reserved = 1;
+    let err = reg.register(ctx.queue(), bad);
+    assert_eq!(err, Err(MaterialError::ReservedNonZero));
+    assert_eq!(reg.upload_count(), 2, "rejected registration (reserved nonzero) does not increment");
+
+    // Fill the registry, then a rejected RegistryFull registration.
+    reg.register(ctx.queue(), valid_material()).expect("second register fills the 2-slot registry");
+    assert_eq!(reg.upload_count(), 3);
+    let err = reg.register(ctx.queue(), valid_material());
+    assert_eq!(err, Err(MaterialError::RegistryFull));
+    assert_eq!(reg.upload_count(), 3, "rejected registration (registry full) does not increment");
 }
 
 // ---------------------------------------------------------------------

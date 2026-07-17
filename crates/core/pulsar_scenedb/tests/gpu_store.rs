@@ -195,7 +195,6 @@ fn scene_cfg() -> SceneGpuConfig {
     SceneGpuConfig {
         classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 4 }],
         tombstone_headroom: 8,
-        max_materials: 16,
         max_cells_metadata: 16,
     }
 }
@@ -598,7 +597,6 @@ fn region_exhaustion_is_a_hard_error() {
         SceneGpuConfig {
             classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
             tombstone_headroom: 8,
-            max_materials: 1,
             max_cells_metadata: 1,
         },
     );
@@ -1040,7 +1038,6 @@ fn eviction_returns_region_only_after_serial_completes() {
         SceneGpuConfig {
             classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
             tombstone_headroom: 8,
-            max_materials: 1,
             max_cells_metadata: 4,
         },
     );
@@ -1108,7 +1105,6 @@ fn d2_tail_recycled_region_never_exposes_prior_generations() {
         SceneGpuConfig {
             classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 1 }],
             tombstone_headroom: 8,
-            max_materials: 1,
             max_cells_metadata: 4,
         },
     );
