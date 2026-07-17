@@ -86,7 +86,7 @@ is intentional, not an oversight, and `cargo check -p pulsar_scenedb
 --no-default-features` plus the CI no-Helio-edge guard confirm the core and
 the fork stay decoupled.
 
-Four pillars land in α: the instance-info mirrored column (cull's
+Six pillars land in α: the instance-info mirrored column (cull's
 token→mesh link), `TextureStore` (bindless slot table), `MeshletBuffer`
 (C5 32 B), asset-store upload counters (Test 13 instrumentation), the
 expected-generation harvest column (Test 2's data path), and the

@@ -318,3 +318,27 @@ pipeline; editor visual verification.
   test), data_offset u32@20 (geometry index buffer element offset),
   counts_packed u32@24 (vertex_count u8 | triangle_count u8 << 8 | reserved
   u16 << 16), reserved u32@28. See CONTRACTS.md C5 for the canonical row.
+
+## 12. Post-α carry-forwards (M3-α final review, 2026-07-16)
+
+- **§16.1 meshlet limits unenforced host-side** (T6 review advisory):
+  `MeshletBuffer::append` validates counts nonzero but not the spec's
+  ≤64-vertex/≤124-triangle ceilings (counts are packed u8, so ≤255 is
+  vacuous). Tighten at spec level (Rev 2.4 candidate) or enforce in the
+  γ meshlet-build pipeline — decide in the γ plan.
+- **Nebula vendor de-inheritance re-sync hazard** (T9): the 9
+  `vendor/nebula` subcrates on Helio `scenedb20-m3` had `workspace = true`
+  entries replaced with equal literals (dual-foreign-workspace resolution
+  fix, zero semantic drift — T9 review verified). Any future vendor sync
+  from upstream nebula reintroduces the bug unless the fix is upstreamed.
+  M4-plan input, alongside the helio-snapshot disposition.
+- **Seam bind-group storage budget** (T9/T10): `SceneDbBinding`'s 8
+  read-only storage buffers equal the entire WebGPU default per-stage
+  budget (8); visibility is VERTEX_FRAGMENT | COMPUTE. β's cull/draw
+  passes must raise device limits (adapter-derived) or split the group —
+  budget the β plan for it (doc'd on `SceneDbBinding` itself).
+- **M3-β cull shader MUST bounds-check `mesh_index`** against the mesh
+  table (T4: recycled-tail bytes untrusted — doc'd on
+  `instance_info_buffer()`); and Helio's submodule lockfile carries a
+  second wgpu (23.0.1, via examples→rapier→bevy, pre-existing) — the seam
+  graph unifies on 30.0.0; note for the M4 gate.

@@ -38,8 +38,12 @@ struct ClusterNode {
 @group(0) @binding(4) var<storage, read> slot_mirror: array<u32>;
 "#;
 
-/// The WGSL M3-α's shaders will declare for the instance-info mirror
-/// (`src/spatial.rs::InstanceInfo`, C5 amendment — cull's token→mesh link).
+/// Layout scaffold for the instance-info mirror (`src/spatial.rs::
+/// InstanceInfo`, C5 amendment — cull's token→mesh link). The binding index
+/// here is arbitrary — only the struct layout is under test; the REAL
+/// declaration shaders consume is `helio-scenedb`'s `SCENE_BINDINGS_WGSL`
+/// (instance info at @binding(1)), reflected by that crate's own Test 3
+/// harness (`tests/binding_layout.rs` in the submodule).
 const M3A_WGSL: &str = r#"
 struct InstanceInfo {
     mesh_index: u32,

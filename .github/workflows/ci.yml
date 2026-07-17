@@ -58,6 +58,10 @@ jobs:
           # pipeline sees empty input and would silently pass — fail-open).
           tree="$(cargo tree -p pulsar_scenedb -e normal)"
           if grep -qi helio <<< "$tree"; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
+          # Feature-blind gap (M3-a final review F1): a gpu-feature-gated Helio
+          # edge would evade the featureless tree above — check it too.
+          tree_gpu="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          if grep -qi helio <<< "$tree_gpu"; then echo "C0 violation: pulsar_scenedb (--features gpu) depends on Helio"; exit 1; fi
 
       - name: SceneDB no-GPUI/fork-wgpu edge guard (M3-a T2)
         shell: bash
