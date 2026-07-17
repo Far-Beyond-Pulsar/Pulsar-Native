@@ -18,6 +18,7 @@ fn spawn_n(c: &mut Criterion) {
         group.bench_with_input(criterion::BenchmarkId::new("empty", n), &n, |b, _| {
             b.iter(|| {
                 let mut world = World::new();
+                world.reserve_entities(n);
                 for _ in 0..n {
                     black_box(world.spawn());
                 }
@@ -26,6 +27,7 @@ fn spawn_n(c: &mut Criterion) {
         group.bench_with_input(criterion::BenchmarkId::new("with_component", n), &n, |b, _| {
             b.iter(|| {
                 let mut world = World::new();
+                world.reserve_entities(n);
                 for _ in 0..n {
                     let e = world.spawn();
                     world.insert(e, Pos(1.0, 2.0, 3.0));
@@ -35,6 +37,7 @@ fn spawn_n(c: &mut Criterion) {
         group.bench_with_input(criterion::BenchmarkId::new("with_4_components", n), &n, |b, _| {
             b.iter(|| {
                 let mut world = World::new();
+                world.reserve_entities(n);
                 for _ in 0..n {
                     let e = world.spawn();
                     world.insert(e, Pos(1.0, 2.0, 3.0));

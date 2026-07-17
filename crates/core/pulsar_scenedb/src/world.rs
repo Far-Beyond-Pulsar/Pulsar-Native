@@ -69,6 +69,16 @@ impl World {
 
     // â”€â”€ Entity lifecycle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+    /// Pre-allocate storage for `count` entities.  Call before a batch spawn
+    /// loop to avoid repeated capacity-doubling reallocations of the slot vec
+    /// and the empty archetype's entity vec.
+    pub fn reserve_entities(&mut self, count: u32) {
+        self.entity_slots.reserve(count as usize);
+        self.archetypes[ArchetypeId::EMPTY.0 as usize]
+            .entities
+            .reserve(count as usize);
+    }
+
     /// Allocate a new entity in the empty archetype.
     ///
     /// Recycles a free slot if one is available; otherwise extends the slot

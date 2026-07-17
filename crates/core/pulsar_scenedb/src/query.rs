@@ -1,6 +1,6 @@
-use crate::component::{component_id, ComponentId};
+use crate::component::component_id;
 use crate::archetype::Archetype;
-use crate::component::{Column, Component};
+use crate::component::Component;
 use crate::entity::Entity;
 use crate::world::World;
 use std::marker::PhantomData;
@@ -51,11 +51,8 @@ impl<'w, T: Component> WorldQuery<'w> for &'w T {
         // SAFETY: caller guarantees the column exists and row is in bounds.
         let col = arch.columns.get_unchecked(cid.0 as usize)
             .as_ref()
-            .unwrap_unchecked()
-            .as_any()
-            .downcast_ref::<Column<T>>()
             .unwrap_unchecked();
-        &col.data.get_unchecked(row)
+        &*(col.get_raw(row) as *const T)
     }
 }
 
@@ -73,14 +70,11 @@ impl<'w, T: Component> WorldQuery<'w> for &'w mut T {
     unsafe fn fetch(arch: &'w Archetype, row: usize) -> &'w mut T {
         let cid = component_id::<T>();
         // SAFETY: caller guarantees the column exists and row is in bounds.
-        let col: &Column<T> = arch.columns.get_unchecked(cid.0 as usize)
+        let ptr = arch.columns.get_unchecked(cid.0 as usize)
             .as_ref()
             .unwrap_unchecked()
-            .as_any()
-            .downcast_ref::<Column<T>>()
-            .unwrap_unchecked();
-        let ptr = col.data.as_ptr() as *mut T;
-        &mut *ptr.add(row)
+            .get_raw(row) as *mut T;
+        &mut *ptr
     }
 }
 

@@ -150,6 +150,17 @@ pub(crate) trait ErasedColumn: Any + Send + Sync {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
+    /// Return a raw pointer to the element at `row`.
+    ///
+    /// # Safety
+    /// - `row` must be < `self.len()`.
+    unsafe fn get_raw(&self, row: usize) -> *const ();
+    /// Return a mutable raw pointer to the element at `row`.
+    ///
+    /// # Safety
+    /// - `row` must be < `self.len()`.
+    unsafe fn get_raw_mut(&mut self, row: usize) -> *mut ();
+
     fn new_empty(&self) -> Box<dyn ErasedColumn>;
 }
 
@@ -209,6 +220,14 @@ impl<T: Component> ErasedColumn for Column<T> {
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+
+    unsafe fn get_raw(&self, row: usize) -> *const () {
+        self.data.as_ptr().add(row) as *const ()
+    }
+
+    unsafe fn get_raw_mut(&mut self, row: usize) -> *mut () {
+        self.data.as_mut_ptr().add(row) as *mut ()
     }
 
     fn new_empty(&self) -> Box<dyn ErasedColumn> {

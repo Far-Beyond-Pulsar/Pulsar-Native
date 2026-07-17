@@ -33,10 +33,11 @@ impl ArchetypeKey {
     pub fn with<T: Component>(&self) -> Self {
         let cid = crate::component::component_id::<T>();
         let mut ids = self.0.clone();
-        if !ids.contains(&cid) {
-            ids.push(cid);
+        match ids.binary_search(&cid) {
+            Ok(_) => {}
+            Err(pos) => ids.insert(pos, cid),
         }
-        Self::new(ids)
+        Self(ids)
     }
 
     pub fn without<T: Component>(&self) -> Self {
