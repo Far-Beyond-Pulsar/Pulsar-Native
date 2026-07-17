@@ -1,191 +1,157 @@
 # pulsar_scenedb
 
-SceneDB 2.0 Layer 1 storage core. Spec: `docs/superpowers/specs/SceneDB2.0.md`
-(Rev 2.3). Contracts: `docs/superpowers/specs/CONTRACTS.md`. Design:
-`docs/superpowers/specs/2026-06-09-scenedb20-implementation-design.md`.
+A **cross-device ECS**: one index space, two devices.
 
-Conformance baseline: `docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`
-(the cross-milestone spec-conformance audit spanning Stage 0 → M2b-β Task 1;
-CONTRACTS.md and the milestone designs above are re-synchronized against it).
+Every engine copies data to the GPU every frame. Most make you write the bridge
+code by hand — command buffers, staging buffers, dirty flags, sync fences.
+SceneDB flips it: the entity index is the same on CPU and GPU. A component
+declares where it lives; accessing it natively is zero-cost, accessing it
+remotely triggers an implicit transfer (with a tracing warning so you know).
 
-Seeded from `pulsar_ecs` (kept as reference). See the crate docs for the
-module map.
+```rust
+// This is a GPU-native component. SceneDB mirrors it automatically.
+struct InstanceData {
+    transform: [f32; 16],
+}
 
-## M1 — Storage Core
-
-Milestone status: M1 (Layer 1) — handles, paged SoA, liveness, compaction,
-scalar spatial query.
-
-## M2a — GPU Layer
-
-The `gpu` feature (default-off for C0 graphics-free core) adds GPU-resident
-storage: `EngineGpuContext`, `SceneBuffer<T>` SSBOs with coalescing delta-sync,
-`GenerationBuffer`, and `GpuStore` with pin-by-serial retirement and
-generation-shadow gating for delta-minimality.
-
-## M2b-α — Multi-Cell Scene, Asset Store, Phase Machine
-
-Three pillars complete the α release:
-
-1. **SceneGpuStore (Region-Partitioned)**: Global buffers partitioned into
-   per-cell regions via size-class pools (C2 default 256, hard max 1024 per
-   class). Per-cell `CellGpuState` holds dirty masks, pending retires, gen
-   shadow, slot shadow. Self-healing slot-mirror boundary scan, `register_cell`
-   as promotion primitive (§4.1), `rebuild` for device-loss recovery.
-
-2. **Asset Store**: `GeometryArena` (RangeList suballocation), `MeshRegistry`
-   (C5: 72 B metadata, XOR-validated), `ClusterBuffer` (C5: 48 B,
-   NaN-rejecting error-monotonicity validation). Both backed by corrupted-VRAM
-   rebuild gates.
-
-3. **Phase Machine**: Compile-time frame orchestration — `FrameDriver` → 
-   SimulateA→SimulateB→Harvest→Boundary. `BoundaryPhase::retire` returns drain
-   count for confirmation. Positive doc-tests and `compile_fail` gates prove
-   phase invariants hold in real code.
-
-## M2b-β — Streaming Grid, Harvest Pipeline, DEI Compaction
-
-Complete. Three pillars on top of α:
-
-1. **StreamingGrid**: concentric domains (Outer/Margin/Inner) over a
-   coordinate grid, hysteresis-banded promotion/demotion, cross-fade alpha,
-   and a VRAM/cell-count budget (`StreamingBudget`). `execute_transitions`
-   drains queued transitions at the frame boundary (after `retire`, via the
-   `&RetiredPhase` witness): Outer→Margin calls `SceneGpuStore::register_cell`
-   (declining gracefully on region exhaustion, §8), Margin→Outer calls
-   `unregister_cell` pinned by the eviction serial exactly like M2a's
-   pin-by-serial pattern — recycled only once that serial's frame boundary
-   drains it. `register_cell`'s recycled-region tail scrub (D2-tail
-   carry-forward) zero-fills any prior tenant's residual generations beyond
-   the new tenant's occupied-slot prefix, in both VRAM and the gen-shadow.
-
-2. **HarvestPipeline**: single-scan per-(cell, view) partition over the
-   no-alloc `query_*_in` seams, routing valid tokens (offset by the cell's
-   GPU region base) into per-`MeshClass` staging arrays. Below a 25% hit
-   ratio, `crate::simd::compress_tokens` (scalar reference; AVX2 verified
-   bit-identical) dense-compacts the run instead, appending a
-   `remap[dense_i] = original_run_index` segment. `harvest_views` batches
-   multiple views, each into its own `(Scratchpad, HarvestStaging)` pair —
-   verified thread-safe (no shared mutable state across views) by a
-   `std::thread::scope` concurrency test.
-
-3. **Leases**: `LeaseMask`/`HarvestLease` read-lease pool with §9.2.1
-   isolation-budget revocation (`revoke_overdue`) and a stale-validation lane
-   (`revalidate_run`) for recovering a revoked lease's results within the
-   issuing frame.
-
-## M3-α — wgpu-30 Alignment, `SceneDbBinding` Seam
-
-The `gpu` feature's wgpu dependency moved to its own crates.io `wgpu = "30"`
-(with a `naga = "30"` dev-dep) — a distinct dep from the workspace's pinned
-Far-Beyond-Pulsar wgpu fork. **Both coexist by design:** the fork stays the
-workspace-wide dep for every other consumer (editor, other renderers) until
-the M4 gate; `pulsar_scenedb`'s `gpu` feature and the `helio-scenedb` seam
-build against upstream wgpu 30 instead. The two sources never unify — this
-is intentional, not an oversight, and `cargo check -p pulsar_scenedb
---no-default-features` plus the CI no-Helio-edge guard confirm the core and
-the fork stay decoupled.
-
-Six pillars land in α: the instance-info mirrored column (cull's
-token→mesh link), `TextureStore` (bindless slot table), `MeshletBuffer`
-(C5 32 B), asset-store upload counters (Test 13 instrumentation), the
-expected-generation harvest column (Test 2's data path), and the
-`helio-scenedb` binding seam crate — vendored as a **standalone nested-
-workspace submodule**, never a workspace member, never `[patch]`'d.
-
-**Material buffer (Task 11) is gated on the Rev 2.4 R8 amendment**, which is
-not yet approved — it carries to M3-β rather than landing here.
-
-### Submodule build instructions
-
-Helio (the `helio-scenedb` seam consumer) lives at `crates/renderer/helio`
-as a git submodule, on branch `scenedb20-m3`. It is intentionally NOT a
-Cargo workspace member of Pulsar-Native (C0 — a `[patch]` would recompile
-every legacy consumer against Helio's v4 lineage). Fetch it explicitly:
-
-```bash
-git submodule update --init crates/renderer/helio
+// CPU code reads/writes it through the same handle — no staging, no enqueue.
+cell.write_transform(handle, &matrix, &sim);
+// On the GPU, the same handle indexes directly into the SSBO.
 ```
 
-### Two-workspace test matrix
+The point isn't to hide the GPU. It's to make the bridge so natural that you
+stop thinking about which device owns what — and when you *do* need to care,
+the tools (tracing warnings, per-field locality, delta-sync stats) are right
+there.
 
-SceneDB 2.0 M3-α spans two independent Cargo workspaces — Pulsar-Native
-(this crate) and the vendored Helio submodule. Both must pass; run them
-sequentially, not in parallel (device contention within each, and the
-submodule is a separate build graph entirely).
+## Why this exists
 
-**Pulsar-Native side (repo root):**
+Every frame, engines upload scene data to the GPU. The naive approach—upload
+everything—wastes bandwidth on unchanged data. The efficient approach—track
+what changed, upload only deltas—requires a bespoke dirty-tracking and sync
+layer per buffer. The safest approach—handle stale/dead entity reads gracefully
+instead of crashing—requires runtime validation most engines skip because it's
+too expensive.
 
-```bash
-cargo check -p pulsar_scenedb --no-default-features
-cargo test -p pulsar_scenedb --lib --tests
-cargo test -p pulsar_scenedb --features gpu --lib
-cargo test -p pulsar_scenedb --features gpu --test gpu_store   -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_harvest -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_assets  -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_layout
-cargo test -p pulsar_scenedb --features gpu --doc
-cargo check -p pulsar_scenedb --features gpu --benches
+SceneDB solves all three with one mechanism: **unified handles**.
+
+A `Handle` (packed u64: slot index + generation) is the same value on CPU and
+GPU. Both sides resolve it through the same slot table. On the CPU the slot
+registry maps to a row in a `CellStorage` page. On the GPU the slot-mirror
+SSBO maps to a row in the transform buffer. Compaction moves the data; the
+handle stays valid. Retirement bumps the generation; stale handles are
+rejected instantly.
+
+**Delta-minimal uploads come free**—each mirrored column carries a per-row
+dirty mask. At the frame boundary, only marked rows are uploaded, coalesced
+into the fewest write ranges. Zero-dirty frames issue zero GPU writes. No
+manual shadowing, no separate sync layer.
+
+**GPU-native fields are declarative.** Tag a column in the cell type
+description and SceneDB mirrors it automatically: dirty tracking, coalesced
+delta upload, generation shadowing, slot-mirror self-healing. The distinction
+between CPU-local and GPU-native is a column attribute, not an architectural
+decision.
+
+The handle-based resolution also provides a **safety net**: access a GPU-native
+field from the CPU and SceneDB handles the transfer transparently—with a
+tracing warning so you know it happened. Development stays fluid; you fix the
+cross-device access when you're ready, not when the engine crashes.
+
+## Architecture
+
+Two storage tiers, one index space:
+
+### Tier 1 — Archetype ECS (CPU)
+
+Classic archetype-based ECS with dense `Vec<T>` columns, `u64` bitmask
+filtering, swap-remove slot reuse, and `u32` component IDs. Spawn entities,
+insert/remove components, query with tuples up to 8 components:
+
+```rust
+let mut world = World::new();
+let e = world.spawn();
+world.insert(e, Pos(1.0, 2.0, 3.0));
+world.insert(e, Vel(0.0, 0.0, 0.0));
+
+for (pos, vel) in world.query::<(&Pos, &Vel)>() {
+    // zero-cost slice iteration — no boxing, no hashing
+}
 ```
 
-**Helio side (`crates/renderer/helio`, its own workspace):**
+### Tier 2 — SceneDB Storage (CPU + GPU, `gpu` feature)
 
-```bash
-cd crates/renderer/helio
-cargo test -p helio-scenedb -- --test-threads=1
-cargo check -p helio-core
+Persistent SoA pages (`CellStorage`) with deferred swap-and-pop compaction,
+atomic liveness masks, and slot→row indirection that survives compaction.
+The `gpu` feature adds:
+
+- **`SceneGpuStore`** — region-partitioned SSBOs with coalescing delta-sync.
+  Only dirty rows are uploaded each frame — bytes transferred = `O(mutations)`,
+  not `O(total entities)`.
+- **Compile-time phase machine** — `SimulateWitness` / `HarvestPhase` /
+  `BoundaryPhase` witness types make frame-ordering violations a compile error.
+- **Self-healing slot mirror** — boundary scan catches every slot-staleness
+  path (writes, compaction moves, allocs into vacated rows) in one invariant.
+- **Asset store** — `MeshRegistry`, `ClusterBuffer`, `TextureStore` with
+  corrupted-VRAM rebuild gates.
+- **Streaming grid** — concentric domains (Outer/Margin/Inner) with
+  hysteresis-banded promotion/demotion and VRAM budget enforcement.
+
+## Quick start
+
+```rust
+use pulsar_scenedb::*;
+
+// Tier 1 — CPU ECS
+let mut world = World::new();
+world.reserve_entities(1000);
+for _ in 0..1000 {
+    let e = world.spawn();
+    world.insert(e, Transform::default());
+}
+let count = world.query::<(&Transform,)>().count();
 ```
 
-**Test the GPU suites locally (must run sequentially due to device contention):**
+With the `gpu` feature:
 
-```bash
-# Core CPU tests (pass on any platform, run in CI)
-cargo test -p pulsar_scenedb --lib --tests
+```rust
+use pulsar_scenedb::gpu::*;
 
-# GPU tests (require local GPU, run sequentially with --test-threads=1)
-cargo test -p pulsar_scenedb --features gpu --test gpu_store   -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_harvest -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_assets  -- --test-threads=1
-cargo test -p pulsar_scenedb --features gpu --test gpu_layout
-
-# Doc-test phase machine and compile_fail gates
-cargo test -p pulsar_scenedb --features gpu --doc
-
-# gpu-gated inline lib tests (Test 11 grid gates, RegionPool units, and other
-# #[cfg(test)] modules living in src/**; needs NO GPU adapter — these are
-# plain host-side unit tests behind the `gpu` feature, not device tests)
-cargo test -p pulsar_scenedb --features gpu --lib
-
-# Graphics-free core guard (CI check)
-cargo check -p pulsar_scenedb --no-default-features
+let mut store = SceneGpuStore::new(&ctx, config);
+let mut driver = FrameDriver::new();
+let sim = driver.begin();
+store.write_transform(cell_id, &mut cell, handle, &matrix, &sim);
+let boundary = sim.end().end();  // SimulateA → HarvestPhase → BoundaryPhase
+let stats = boundary.run(&mut store, &mut [CellSlot { id: cell_id, cell: &mut cell }]);
+// stats.ranges, stats.bytes — delta-minimal per frame
 ```
 
-**Note:** GPU test suites are computationally expensive; device contention will
-cause timeouts or failures if run in parallel. Pass `--test-threads=1` to
-serialize all GPU-feature tests — this applies to every `--features gpu`
-integration-test binary that opens its own headless device (`gpu_store`,
-`gpu_harvest`, `gpu_assets` today; `gpu_layout` and the `--doc` suite have not
-needed it so far, but treat any new GPU-feature test target the same way by
-default). Never invoke two `--features gpu` test binaries concurrently (e.g.
-in parallel `cargo test` jobs) — run them one at a time, in sequence.
-`cargo test -p pulsar_scenedb --features gpu --lib` is the exception: it opens
-no device, so it needs no serialization and no adapter. CI runs core tests,
-the `--no-default-features` check to guard the graphics-free invariant (C0),
-and the gpu-gated lib-test command above (Test 11 et al.'s carrier).
+## Feature flags
 
-**Benches** (`benches/scenedb_bench.rs`, criterion, `harness = false`; numbers
-land in the Task 10 report, not gates — no assert/regression thresholds):
+| Flag | Description |
+|------|-------------|
+| *(none)* | CPU-only ECS + SceneDB storage. No GPU dependencies. |
+| `gpu` | GPU-resident store, delta-sync, phase machine, asset store. Adds `wgpu` dep. |
 
-```bash
-# CPU-only spatial-query/churn benches (no GPU feature needed)
-cargo bench -p pulsar_scenedb --bench scenedb_bench
+The core crate is **graphics-free** (`--no-default-features`) by design —
+CONTRACTS.md C0.
 
-# Full set incl. M2b-β GPU-feature benches (region sync, harvest partition,
-# DEI compaction, promotion/demotion cycle) — same device-contention caveat
-# as the GPU test suites above: do not run alongside another GPU-feature
-# process.
+## Benchmarks
+
+```
+# CPU-only ECS benchmarks
+cargo bench -p pulsar_scenedb --bench ecs_bench
+
+# SceneDB delta-sync vs legacy full-upload
+cargo bench -p pulsar_scenedb --features gpu --bench legacy_model_bench
+
+# Full GPU benchmark suite (spatial query, harvest, DEI compaction)
 cargo bench -p pulsar_scenedb --features gpu --bench scenedb_bench
-
-# Compile+smoke only (used in the acceptance matrix; skips full sampling)
-cargo bench -p pulsar_scenedb --features gpu --bench scenedb_bench -- --test
 ```
+
+## Design docs
+
+- `docs/superpowers/specs/SceneDB2.0.md` — full specification (Rev 2.3)
+- `docs/superpowers/specs/CONTRACTS.md` — design contracts C0–C6
+- `docs/superpowers/specs/2026-06-09-scenedb20-implementation-design.md`
+- `docs/superpowers/specs/2026-07-16-scenedb20-holistic-audit.md`
