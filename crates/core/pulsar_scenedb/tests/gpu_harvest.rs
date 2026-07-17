@@ -5,7 +5,7 @@
 
 use pulsar_scenedb::gpu::{
     revalidate_run, CellSlot, EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging,
-    MeshClass, RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
+    MeshClass, RegionClassConfig, SceneGpuConfig, SceneGpuStore, View, ViewTokenBuffers,
 };
 use pulsar_scenedb::{Aabb, Handle, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
 use std::collections::{HashMap, HashSet};
@@ -1112,4 +1112,177 @@ fn concurrent_views_match_sequential() {
     // Sanity: the two views really did hit disjoint subsets.
     assert_eq!(seq_staging0.traditional, vec![base_a + 1, base_a + 2, base_a + 3, base_a + 4]);
     assert_eq!(seq_staging1.traditional, vec![base_b + 1, base_b + 2, base_b + 3, base_b + 4]);
+}
+
+/// M3-β T1 (design §3.1): `ViewTokenBuffers::upload` lands `HarvestStaging`'s
+/// Traditional columns onto the device byte-exact, positionally aligned.
+/// Two gen-diverse cells (T8's fixture, reused verbatim) feed ONE
+/// `HarvestStaging` — the same "two cells into one class array" shape T8's
+/// own CPU-side suite already covers — this test adds the GPU round trip on
+/// top: upload, readback BOTH buffers, and check two things independently:
+/// (1) the GPU bytes match the staging columns exactly; (2) at least one
+/// pair's expected generation is independently RE-DERIVED from cell/handle
+/// state directly (never through `staging`) — the T8 lesson that deriving an
+/// expectation through the very structure under test cannot distinguish a
+/// bug in that structure from a bug-free one.
+#[test]
+fn view_token_buffers_upload_readback_matches_staging_and_cell_contents() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    let (cell_a, all_a) = gen_diverse_boxed_cell(0.0);
+    let (cell_b, all_b) = gen_diverse_boxed_cell(1000.0);
+    let live_a: Vec<Handle> = all_a.iter().copied().filter(|h| cell_a.row_of(*h).is_some()).collect();
+    let live_b: Vec<Handle> = all_b.iter().copied().filter(|h| cell_b.row_of(*h).is_some()).collect();
+
+    let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
+    let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
+    let base_a = store.row_region_base(id_a);
+    let base_b = store.row_region_base(id_b);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    let view_a = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [7.0, 1.0, 1.0] });
+    let n_a = pipeline.harvest_cell(&cell_a, base_a, MeshClass::Traditional, &view_a, &mut pad, &mut staging, &h);
+    let view_b = View::Aabb(Aabb { min: [999.0, 0.0, 0.0], max: [1007.0, 1.0, 1.0] });
+    let n_b = pipeline.harvest_cell(&cell_b, base_b, MeshClass::Traditional, &view_b, &mut pad, &mut staging, &h);
+    assert_eq!(n_a, 4);
+    assert_eq!(n_b, 4);
+    assert_eq!(staging.traditional.len(), 8, "both cells landed in the same Traditional column");
+
+    let mut buffers = ViewTokenBuffers::new(&ctx, "test-view-token", 0);
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    assert_eq!(buffers.count(), 8);
+    assert_eq!(buffers.upload_count(), 2, "one write_buffer for tokens, one for expected_gens");
+
+    let tokens_bytes = readback(&ctx, buffers.tokens_buffer(), buffers.count() as u64 * 4);
+    let gens_bytes = readback(&ctx, buffers.expected_gens_buffer(), buffers.count() as u64 * 4);
+    let tokens_gpu: Vec<u32> = tokens_bytes.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+    let gens_gpu: Vec<u32> = gens_bytes.chunks_exact(4).map(|c| u32::from_le_bytes(c.try_into().unwrap())).collect();
+
+    assert_eq!(tokens_gpu, staging.traditional, "GPU tokens byte-exact vs staging column");
+    assert_eq!(gens_gpu, staging.traditional_gens, "GPU expected_gens byte-exact vs staging column");
+
+    // Independent recomputation (T8 lesson): token 0 (cell A's segment) and
+    // token 4 (cell B's segment, per the 4+4 split above) each re-derived
+    // straight from cell/handle state, NEVER via `staging`.
+    let row0 = tokens_gpu[0] - base_a;
+    let handle0 = live_a
+        .iter()
+        .find(|h| cell_a.row_of(**h) == Some(row0))
+        .expect("a live handle in cell A currently occupies row0");
+    assert_eq!(
+        gens_gpu[0],
+        handle0.generation(),
+        "token 0's GPU-read expected-gen independently matches its live handle's own generation"
+    );
+
+    let row4 = tokens_gpu[4] - base_b;
+    let handle4 = live_b
+        .iter()
+        .find(|h| cell_b.row_of(**h) == Some(row4))
+        .expect("a live handle in cell B currently occupies row4");
+    assert_eq!(
+        gens_gpu[4],
+        handle4.generation(),
+        "token 4's GPU-read expected-gen independently matches its live handle's own generation"
+    );
+}
+
+/// M3-β T1: the upload counter increments once per `write_buffer` call (T7
+/// convention: 2 per nonempty upload — tokens + gens) and must NOT move at
+/// all when the class's staging columns are empty (documented decision: an
+/// empty upload issues zero `write_buffer` calls).
+#[test]
+fn view_token_buffers_upload_counter_increments_only_on_nonempty_upload() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let cell = boxed_cell(64, 4, 0.0);
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    let base = store.row_region_base(id);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    // A view overlapping none of the cell's boxes -> zero hits into the
+    // HlodProxy class.
+    let empty_view = View::Aabb(Aabb { min: [500.0, 0.0, 0.0], max: [501.0, 1.0, 1.0] });
+    let n = pipeline.harvest_cell(&cell, base, MeshClass::HlodProxy, &empty_view, &mut pad, &mut staging, &h);
+    assert_eq!(n, 0);
+    assert!(staging.hlod.is_empty(), "sanity: this view hits nothing");
+
+    let mut buffers = ViewTokenBuffers::new(&ctx, "test-empty-upload", 0);
+    buffers.upload(&ctx, &staging, MeshClass::HlodProxy);
+    assert_eq!(buffers.count(), 0);
+    assert_eq!(buffers.upload_count(), 0, "empty class column -> zero write_buffer calls, counter untouched");
+
+    // A real (nonempty) hit into Traditional -> counter must move by exactly 2.
+    let view = View::Aabb(Aabb { min: [-0.5, 0.0, 0.0], max: [3.5, 1.0, 1.0] });
+    let n2 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h);
+    assert_eq!(n2, 4);
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    assert_eq!(buffers.upload_count(), 2, "nonempty upload issues exactly 2 write_buffer calls (tokens + gens)");
+
+    // A second nonempty upload increments again, by exactly 2.
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    assert_eq!(buffers.upload_count(), 4);
+}
+
+/// M3-β T1: `ViewTokenBuffers` grows on demand (Vec-like slack) and never
+/// shrinks/reallocates below a previously reached high-water mark — the GPU
+/// analogue of `HarvestStaging`'s own §8.1 capacity discipline, extended one
+/// layer onto the device (module doc's stated growth model).
+#[test]
+fn view_token_buffers_grows_on_demand_and_never_shrinks() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let cell = boxed_cell(64, 64, 0.0);
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    let base = store.row_region_base(id);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    let mut buffers = ViewTokenBuffers::new(&ctx, "test-growth", 0);
+    assert_eq!(buffers.capacity(), 0);
+
+    // Small upload (4 hits) -> buffer grows from 0 to >= 4.
+    let small_view = View::Aabb(Aabb { min: [-0.5, 0.0, 0.0], max: [3.5, 1.0, 1.0] });
+    let n1 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &small_view, &mut pad, &mut staging, &h);
+    assert_eq!(n1, 4);
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    let cap_after_small = buffers.capacity();
+    assert!(cap_after_small >= 4, "capacity must cover the uploaded count");
+
+    // Larger upload (32 hits) -> buffer must grow again.
+    staging.clear();
+    let large_view = View::Aabb(Aabb { min: [-0.5, 0.0, 0.0], max: [31.5, 1.0, 1.0] });
+    let n2 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &large_view, &mut pad, &mut staging, &h);
+    assert_eq!(n2, 32);
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    let cap_after_large = buffers.capacity();
+    assert!(cap_after_large >= 32, "capacity must grow to cover the larger upload");
+    assert!(cap_after_large > cap_after_small, "capacity actually grew between the two uploads");
+
+    // Smaller upload again (4 hits) -> capacity must NOT shrink.
+    staging.clear();
+    let n3 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &small_view, &mut pad, &mut staging, &h);
+    assert_eq!(n3, 4);
+    buffers.upload(&ctx, &staging, MeshClass::Traditional);
+    assert_eq!(buffers.count(), 4, "count reflects the smaller upload");
+    assert_eq!(
+        buffers.capacity(),
+        cap_after_large,
+        "capacity retained at the high-water mark -- no shrink/realloc on a smaller upload"
+    );
 }

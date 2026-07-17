@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use pulsar_scenedb::gpu::{
     CellSlot, EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging, MeshClass,
-    RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
+    RegionClassConfig, SceneGpuConfig, SceneGpuStore, View, ViewTokenBuffers,
 };
 use pulsar_scenedb::{Aabb, Handle, Scratchpad, SpatialCell};
 
@@ -330,5 +330,77 @@ fn scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count() {
         allocs_64, allocs_256,
         "§8.1: boundary-sync allocation count must be independent of the dirty row count N \
          (N=64 -> {allocs_64} allocs, N=256 -> {allocs_256} allocs)"
+    );
+}
+
+/// M3-β T1 gate (extends the T2 alloc-gate pattern to `gpu::ViewTokenBuffers`):
+/// after an uncounted warm-up upload (which creates the two device buffers
+/// via `ensure_capacity`'s first grow), a SECOND, steady-state upload of the
+/// SAME (non-growing, non-empty) column pair issues exactly two real
+/// `queue.write_buffer` calls and nothing else on SceneDB's side — no
+/// `ensure_capacity` growth, no staging mutation. `write_buffer` itself,
+/// like `SceneBuffer::sync_region`'s call in
+/// `scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count`
+/// above, costs a small FIXED number of Rust-side heap allocations inside
+/// wgpu-core's own plumbing (measured empirically at 10 for this call shape:
+/// two `write_buffer` calls, u32 element buffers) — NOT zero, and NOT what
+/// §8.1 is bounding. What §8.1 actually requires of THIS module (it holds no
+/// scratch `Vec` anywhere on the upload path — no remap table, no per-row
+/// scratch, nothing `HarvestStaging`-shaped) is that the allocation count
+/// stay INDEPENDENT of the uploaded token count N, i.e. `ViewTokenBuffers`
+/// itself contributes zero N-scaling heap traffic; whatever wgpu-core's
+/// `write_buffer` plumbing costs, it costs the SAME regardless of how many
+/// tokens are in the call. Verified the same way as the boundary-sync gate
+/// above: run at two different steady-state N and assert equal counts
+/// (mirrors that gate's own "N=64 vs N=256" methodology and its documented
+/// reason for comparing rather than asserting a literal zero).
+#[test]
+fn view_token_buffers_upload_alloc_count_independent_of_token_count() {
+    let ctx = test_context();
+
+    let run_with_n = |n: u32| -> u64 {
+        let mut store = SceneGpuStore::new(&ctx, harvest_scene_cfg());
+        let cell = boxed_cell(64, 64, 0.0);
+        let id = store.register_cell(cell.storage(), 0).unwrap();
+        let base = store.row_region_base(id);
+
+        let mut frames = FrameDriver::new();
+        let h = frames.begin().end().end();
+        let pipeline = HarvestPipeline::new();
+        let mut pad = Scratchpad::new();
+        let mut staging = HarvestStaging::new();
+
+        // box i = [i, i+1); query [-0.5, n-0.5] hits i in {0..=n-1} -> n hits.
+        let view = View::Aabb(Aabb { min: [-0.5, 0.0, 0.0], max: [n as f32 - 0.5, 1.0, 1.0] });
+        let hits = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h);
+        assert_eq!(hits, n);
+
+        // Uncounted warm-up upload: grows the buffers 0 -> exactly `n`.
+        let mut buffers = ViewTokenBuffers::new(&ctx, "alloc-gate-view-token-scale", 0);
+        buffers.upload(&ctx, &staging, MeshClass::Traditional);
+        assert_eq!(buffers.count(), n);
+
+        // Steady-state second upload of the SAME staging (no growth): measured.
+        let (allocs, ()) = counted(|| {
+            buffers.upload(&ctx, &staging, MeshClass::Traditional);
+        });
+        assert_eq!(buffers.count(), n, "steady-state upload reproduces the warm-up count");
+        allocs
+    };
+
+    // Priming call (uncounted, result discarded): absorbs wgpu-core's
+    // one-time process-global `write_buffer` plumbing warm-up cost — the
+    // same phenomenon `scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count`
+    // documents above, verified here to also apply to the `write_buffer`
+    // calls issued through `ViewTokenBuffers::upload`.
+    run_with_n(4);
+
+    let allocs_32 = run_with_n(32);
+    let allocs_64 = run_with_n(64);
+    assert_eq!(
+        allocs_32, allocs_64,
+        "§8.1 (M3-β T1): a steady-state (non-growing) ViewTokenBuffers::upload's allocation \
+         count must be independent of the uploaded token count N \
+         (N=32 -> {allocs_32} allocs, N=64 -> {allocs_64} allocs)"
     );
 }

@@ -22,6 +22,7 @@ mod phase;
 mod region;
 mod scene_store;
 mod tracker;
+mod view_upload;
 
 pub use assets::{
     ArenaError, ClusterBuffer, ClusterError, ClusterNode, GeometryArena, MaterialError,
@@ -43,6 +44,7 @@ pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, Retire
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
 pub use tracker::SubmissionTracker;
+pub use view_upload::ViewTokenBuffers;
 // `InstanceInfo` is defined graphics-free in `crate::spatial` (CONTRACTS C0)
 // and already re-exported at the crate root; re-exported here too so GPU-
 // adjacent consumers (e.g. Helio's `helio-scenedb` seam reflection harness,

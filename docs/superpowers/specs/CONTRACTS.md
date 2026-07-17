@@ -154,6 +154,24 @@ size + contents only ("32 B/meshlet beside ClusterBuffer"); this layout is
 the R12 amendment. Meshlet-offset `i` uploaded at byte offset `i * 32` —
 `ClusterNode::meshlet_offset`'s index space.
 
+Per-view token buffer (SceneDB-owned, amendment M3-β T1, design §3.1): one
+u32 per valid harvested token (global row, sentinel-free — the T6 finding
+holds on both the CPU staging column and this device mirror) plus a
+positionally-aligned expected-generation column (u32 per token, same
+count). One `(tokens, expected_gens)` buffer pair per `MeshClass` per view
+(`gpu::ViewTokenBuffers`), uploaded each harvest from
+`HarvestStaging`'s per-class token/gens `Vec`s via `ViewTokenBuffers::upload`
+— one `write_buffer` per column (two total per non-empty upload; an empty
+column issues zero `write_buffer` calls and does not move the upload
+counter). Unlike the region-partitioned scene SSBOs (fixed capacity at
+registration, hard error on overflow), this pair is per-view frame scratch
+that **grows on demand with slack** (Vec-like ~1.5x, never below a
+previously reached high-water mark) — the same discipline `HarvestStaging`
+already holds its own `Vec`s to, extended one layer onto the device. The
+M3-β cull compute pass is the consumer: validates
+`expected_gens[i] == generations[slot_mirror[tokens[i]]]` per §3.1,
+dropping (+telemetry) any mismatch.
+
 Enforcement: Test 3 runs in CI on every PR via the `gpu_layout` test target
 (`cargo test --features gpu --test gpu_layout` — naga reflection only, no GPU
 adapter required): host struct offsets vs naga reflection of compiled WGSL,
