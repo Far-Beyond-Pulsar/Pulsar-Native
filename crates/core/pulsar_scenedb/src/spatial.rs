@@ -205,6 +205,68 @@ impl SpatialCell {
         crate::simd::frustum_scan(&fp, &cols, liveness_words, len, out)
     }
 
+    // ── bench-only seams (perf-val T1/T7) ───────────────────────────────────
+
+    /// Bench-only seam: identical to [`Self::query_aabb`] except it calls
+    /// `crate::simd::aabb_scan_scalar` directly instead of the runtime
+    /// dispatcher (`crate::simd::aabb_scan`). Not public API — exists solely
+    /// because the dispatcher's backend choice is an internal
+    /// `is_x86_feature_detected!` check that cannot be forced to the scalar
+    /// arm from outside the crate, and `benches/scenedb_bench.rs`'s
+    /// `scalar_aabb_scan_*` needs a genuine (non-AVX2) scalar measurement to
+    /// pair against `dispatched_aabb_scan_*`.
+    #[doc(hidden)]
+    pub fn query_aabb_scalar_for_bench(&self, q: &Aabb, out: &mut [u32]) -> u32 {
+        let len = self.storage.rows_in_use() as usize;
+        let n_words = len.div_ceil(64);
+        let words: Vec<u64> = self
+            .storage
+            .liveness()
+            .words()
+            .iter()
+            .take(n_words)
+            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed))
+            .collect();
+        let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
+        let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
+        let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
+        let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
+        let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
+        let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
+        let qb = crate::simd::QueryBounds { min: q.min, max: q.max };
+        let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
+        crate::simd::aabb_scan_scalar(&qb, &cols, &words, len, out)
+    }
+
+    /// Bench-only seam: identical to [`Self::query_frustum`] except it calls
+    /// `crate::simd::frustum_scan_scalar` directly instead of the runtime
+    /// dispatcher (`crate::simd::frustum_scan`). Not public API — same
+    /// rationale as [`Self::query_aabb_scalar_for_bench`]: the dispatcher
+    /// cannot be forced to the scalar arm from outside the crate, and T7's
+    /// scaling study needs a real scalar/dispatched delta for both kernels.
+    #[doc(hidden)]
+    pub fn query_frustum_scalar_for_bench(&self, f: &Frustum, out: &mut [u32]) -> u32 {
+        let len = self.storage.rows_in_use() as usize;
+        let n_words = len.div_ceil(64);
+        let words: Vec<u64> = self
+            .storage
+            .liveness()
+            .words()
+            .iter()
+            .take(n_words)
+            .map(|w| w.load(std::sync::atomic::Ordering::Relaxed))
+            .collect();
+        let min_x = &self.storage.user_column::<f32>(COL_MIN_X)[..len];
+        let max_x = &self.storage.user_column::<f32>(COL_MAX_X)[..len];
+        let min_y = &self.storage.user_column::<f32>(COL_MIN_Y)[..len];
+        let max_y = &self.storage.user_column::<f32>(COL_MAX_Y)[..len];
+        let min_z = &self.storage.user_column::<f32>(COL_MIN_Z)[..len];
+        let max_z = &self.storage.user_column::<f32>(COL_MAX_Z)[..len];
+        let fp = crate::simd::FrustumPlanes { planes: f.planes };
+        let cols = crate::simd::Columns { min_x, max_x, min_y, max_y, min_z, max_z };
+        crate::simd::frustum_scan_scalar(&fp, &cols, &words, len, out)
+    }
+
     // ── delegation ─────────────────────────────────────────────────────────
 
     pub fn free(&mut self, handle: Handle) -> bool {

@@ -14,6 +14,13 @@ use std::sync::Arc;
 #[cfg(feature = "gpu")]
 use std::time::{Duration, Instant};
 
+/// `scalar_aabb_scan_{256,1024}`: the TRUE scalar arm (perf-val T1 fix —
+/// previously this called `query_aabb`, which routes through the runtime
+/// SIMD dispatcher and on this host resolves to AVX2, i.e. it measured the
+/// exact same path as `aabb_dispatch/dispatched_aabb_scan_*`). This now
+/// calls `SpatialCell::query_aabb_scalar_for_bench` (bench-only `#[doc(hidden)]`
+/// seam over `crate::simd::aabb_scan_scalar`), so the scalar/dispatched pair
+/// shows a genuine SIMD delta.
 fn bench_query(c: &mut Criterion) {
     let mut group = c.benchmark_group("spatial_query");
     for &n in &[256u32, 1024] {
@@ -32,7 +39,7 @@ fn bench_query(c: &mut Criterion) {
         };
         let mut out = vec![0u32; n as usize];
         group.bench_function(format!("scalar_aabb_scan_{n}"), |b| {
-            b.iter(|| black_box(cell.query_aabb(black_box(&q), &mut out)))
+            b.iter(|| black_box(cell.query_aabb_scalar_for_bench(black_box(&q), &mut out)))
         });
     }
     group.finish();
@@ -78,6 +85,13 @@ fn bench_aabb_dispatch(c: &mut criterion::Criterion) {
     group.finish();
 }
 
+/// `frustum_scan_1024`: routes through the runtime SIMD dispatcher
+/// (`query_frustum` -> `crate::simd::frustum_scan`), same mislabel risk as
+/// the AABB pair (perf-val T1) — on this host it resolves to AVX2. Paired
+/// below with `scalar_frustum_scan_1024` (true scalar arm) so T7's scaling
+/// study has both arms for both kernels. Bench ID kept stable (never
+/// renamed — criterion `--baseline` comparability, see the campaign plan's
+/// Global Constraints).
 fn bench_frustum(c: &mut criterion::Criterion) {
     let mut cell = SpatialCell::new(1024).unwrap();
     for i in 0..1024u32 {
@@ -92,6 +106,28 @@ fn bench_frustum(c: &mut criterion::Criterion) {
     let mut out = vec![0u32; 1024];
     c.bench_function("frustum_scan_1024", |b| {
         b.iter(|| black_box(cell.query_frustum(black_box(&f), &mut out)))
+    });
+}
+
+/// `scalar_frustum_scan_1024`: the TRUE scalar arm (perf-val T1/T7), added
+/// alongside `frustum_scan_1024` — calls
+/// `SpatialCell::query_frustum_scalar_for_bench` (bench-only `#[doc(hidden)]`
+/// seam over `crate::simd::frustum_scan_scalar`), bypassing the runtime
+/// dispatcher the same way `scalar_aabb_scan_*` bypasses it for AABB.
+fn bench_scalar_frustum(c: &mut criterion::Criterion) {
+    let mut cell = SpatialCell::new(1024).unwrap();
+    for i in 0..1024u32 {
+        let f = i as f32;
+        cell.alloc(Aabb { min: [f, 0.0, 0.0], max: [f + 1.0, 1.0, 1.0] }).unwrap();
+    }
+    let f = Frustum { planes: [
+        [1.0, 0.0, 0.0, 200.0], [-1.0, 0.0, 0.0, 800.0],
+        [0.0, 1.0, 0.0, 10.0], [0.0, -1.0, 0.0, 10.0],
+        [0.0, 0.0, 1.0, 10.0], [0.0, 0.0, -1.0, 10.0],
+    ] };
+    let mut out = vec![0u32; 1024];
+    c.bench_function("scalar_frustum_scan_1024", |b| {
+        b.iter(|| black_box(cell.query_frustum_scalar_for_bench(black_box(&f), &mut out)))
     });
 }
 
@@ -165,6 +201,19 @@ fn bench_boxed_cell(capacity: u32) -> SpatialCell {
 /// this times the CPU-side encode + `write_buffer` submission cost only, NOT
 /// GPU execution time. There is no GPU-side timestamp query in this harness.
 ///
+/// **Honest steady-state (perf-val T1 fix):** every iteration now ends its
+/// UNTIMED section with `queue.submit(empty()) + device.poll(wait)`, so the
+/// `write_buffer` pending-writes staging belt is flushed and reclaimed before
+/// the next iteration runs. Previously nothing in this crate ever submitted
+/// or polled the device, so the staging belt grew without bound across
+/// criterion's iteration-count warm-up (recon measured 17+ GB private bytes
+/// and a statistical run that never converged within the default sample
+/// count — see `.superpowers/sdd/stress-recon-infrastructure.md` §2). The
+/// number recorded here is therefore now a genuine steady-state per-iteration
+/// cost, safe to sample statistically at criterion defaults; the earlier
+/// smoke-mode number (13.08 µs, `--sample-size 10 --measurement-time 1`) rode
+/// an ever-growing staging pool and was not comparable across iterations.
+///
 /// **Why `iter_custom`, not `iter_batched`:** the brief's suggested shape
 /// (`iter_batched(setup = mark all dirty, routine = boundary sync)`) needs
 /// `setup` and `routine` to share the same live `store`/`cell` — but
@@ -173,8 +222,9 @@ fn bench_boxed_cell(capacity: u32) -> SpatialCell {
 /// constructed together and both stay alive for the whole `iter_batched`
 /// call), which the borrow checker rejects. `iter_custom` gives the same
 /// timing isolation — mark-dirty runs untimed inside the loop body, only the
-/// boundary run is bracketed by `Instant::now()` — from a single closure
-/// with ordinary sequential borrows.
+/// boundary run is bracketed by `Instant::now()`, and the submit/poll pump
+/// runs untimed after that bracket — from a single closure with ordinary
+/// sequential borrows.
 #[cfg(feature = "gpu")]
 fn bench_region_sync_1024_dirty_rows(c: &mut Criterion) {
     let ctx = test_context();
@@ -214,6 +264,13 @@ fn bench_region_sync_1024_dirty_rows(c: &mut Criterion) {
                 };
                 total += start.elapsed();
                 black_box(stats);
+                // Untimed: flush the `write_buffer` pending-writes staging
+                // belt every iteration so it doesn't grow unbounded across
+                // criterion's iteration-count warm-up (perf-val T1 fix).
+                ctx.queue().submit(std::iter::empty());
+                ctx.device()
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .expect("poll");
                 sim = Some(frames.begin());
             }
             total
@@ -291,6 +348,18 @@ fn bench_dei_compact_1024_sparse(c: &mut Criterion) {
 /// first would hit `RegionError::RowsExhausted`/`SlotsExhausted` against a
 /// still-pinned region. Same `retire`/`compact`/`sync` split-stage pattern as
 /// `tests/gpu_store.rs::eviction_returns_region_only_after_serial_completes`.
+///
+/// **Honest steady-state (perf-val T1 fix):** `compacted.sync` issues
+/// `queue.write_buffer` calls the same as `region_sync_1024_dirty_rows`
+/// (smaller per-iteration volume here — a 64-row region — but the same
+/// unbounded-staging exposure: nothing in this crate ever submits/polls the
+/// device). Converted from plain `b.iter` to `iter_custom` so the
+/// submit/poll pump can run in an UNTIMED section after each iteration,
+/// outside the `Instant::now()` bracket — the timed bracket covers exactly
+/// what the old `b.iter` closure covered (register → unregister →
+/// force-complete → retire → compact → sync). The recorded number is now a
+/// genuine steady-state cost rather than one measured against an
+/// ever-growing staging pool.
 #[cfg(feature = "gpu")]
 fn bench_promotion_demotion_cycle(c: &mut Criterion) {
     let ctx = test_context();
@@ -304,16 +373,28 @@ fn bench_promotion_demotion_cycle(c: &mut Criterion) {
     let mut frames = FrameDriver::new();
 
     c.bench_function("promotion_demotion_cycle", |b| {
-        b.iter(|| {
-            let id = store.register_cell(&cell, 0).unwrap();
-            let serial = store.tracker().next_serial();
-            store.unregister_cell(id, &mut cell, serial);
-            store.tracker().force_complete(serial);
-            let boundary = frames.begin().end().end().end();
-            let (retired, _drained) = boundary.retire(&mut store, &mut []);
-            let compacted = retired.compact(&mut store, &mut []);
-            let stats = compacted.sync(&mut store, &mut []);
-            black_box(stats);
+        b.iter_custom(|iters| {
+            let mut total = Duration::ZERO;
+            for _ in 0..iters {
+                let start = Instant::now();
+                let id = store.register_cell(&cell, 0).unwrap();
+                let serial = store.tracker().next_serial();
+                store.unregister_cell(id, &mut cell, serial);
+                store.tracker().force_complete(serial);
+                let boundary = frames.begin().end().end().end();
+                let (retired, _drained) = boundary.retire(&mut store, &mut []);
+                let compacted = retired.compact(&mut store, &mut []);
+                let stats = compacted.sync(&mut store, &mut []);
+                total += start.elapsed();
+                black_box(stats);
+                // Untimed: same pump as `region_sync_1024_dirty_rows` —
+                // flush the pending-writes staging belt every iteration.
+                ctx.queue().submit(std::iter::empty());
+                ctx.device()
+                    .poll(wgpu::PollType::wait_indefinitely())
+                    .expect("poll");
+            }
+            total
         });
     });
 }
@@ -325,12 +406,20 @@ criterion_group!(
     bench_churn,
     bench_aabb_dispatch,
     bench_frustum,
+    bench_scalar_frustum,
     bench_region_sync_1024_dirty_rows,
     bench_harvest_partition_1024,
     bench_dei_compact_1024_sparse,
     bench_promotion_demotion_cycle
 );
 #[cfg(not(feature = "gpu"))]
-criterion_group!(benches, bench_query, bench_churn, bench_aabb_dispatch, bench_frustum);
+criterion_group!(
+    benches,
+    bench_query,
+    bench_churn,
+    bench_aabb_dispatch,
+    bench_frustum,
+    bench_scalar_frustum
+);
 
 criterion_main!(benches);
