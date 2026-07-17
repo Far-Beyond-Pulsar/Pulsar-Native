@@ -43,6 +43,11 @@ pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, Retire
 pub use region::{RegionPool, RegionError};
 pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
 pub use tracker::SubmissionTracker;
+// `InstanceInfo` is defined graphics-free in `crate::spatial` (CONTRACTS C0)
+// and already re-exported at the crate root; re-exported here too so GPU-
+// adjacent consumers (e.g. Helio's `helio-scenedb` seam reflection harness,
+// M3-a T10) can reach every C5 struct type through one `gpu::` path.
+pub use crate::spatial::InstanceInfo;
 
 /// Reinterpret a Pod slice as bytes for `queue.write_buffer`.
 pub(crate) fn as_bytes<T: crate::page::Pod>(s: &[T]) -> &[u8] {
