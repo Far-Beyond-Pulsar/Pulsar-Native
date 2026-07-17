@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 /// Number of concurrent read-lease slots per cell (spec §9.2, matches the
 /// bitmask width). Not bound to thread identity — acquired from a pool, so
@@ -8,14 +8,27 @@ pub const LEASE_SLOTS: usize = 64;
 /// Per-cell atomic lease bitmask. A reader acquires a slot for the duration of
 /// a query; the frame-boundary compaction checks `any_held()` is false before
 /// swap-and-pop (enforced by Layer 2's phase machine in M2).
+///
+/// **M3-b / contract #32 addendum:** `any_held()` alone used to be able to
+/// stall compaction indefinitely behind a revoked-but-undropped lease — the
+/// mask bit only ever cleared via a holder's own `Drop`. `Lease::force_release`
+/// (called by `gpu::HarvestPipeline::revoke_overdue` on revocation, §9.2.1)
+/// now lets `any_held()` clear immediately at revocation time, independent of
+/// when the holder actually drops its guard. See `force_release`'s doc for
+/// the ABA hazard that a naive "just clear the bit early" fix would introduce
+/// and how the idempotency guard avoids it.
 pub struct LeaseMask {
     bits: AtomicU64,
 }
 
-/// RAII lease guard — releases its slot on drop.
+/// RAII lease guard — releases its slot on drop (or earlier, via
+/// `force_release`).
 pub struct Lease<'a> {
     mask: &'a LeaseMask,
     slot: u32,
+    /// §9.2.1 / contract #32: set exactly once, by whichever of
+    /// `force_release`/`Drop` executes first — see `force_release`'s doc.
+    force_released: AtomicBool,
 }
 
 impl LeaseMask {
@@ -38,7 +51,7 @@ impl LeaseMask {
                 .compare_exchange_weak(cur, cur | bit, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
-                return Some(Lease { mask: self, slot });
+                return Some(Lease { mask: self, slot, force_released: AtomicBool::new(false) });
             }
         }
     }
@@ -65,10 +78,37 @@ impl Lease<'_> {
     pub fn slot(&self) -> u32 {
         self.slot
     }
+
+    /// §9.2.1 / contract #32: force-release this lease's mask slot NOW,
+    /// decoupled from the holder's own RAII drop. This is what lets
+    /// `any_held()` clear immediately on revocation instead of waiting
+    /// (possibly indefinitely) for the holder to finish and drop its guard —
+    /// the gap the perf-val T6 review found: "a revoked-but-not-dropped
+    /// lease still blocks an `any_held()`-gated compaction indefinitely."
+    ///
+    /// Idempotent and safe under a concurrent/later `Drop`: the mask bit is
+    /// cleared exactly once, by whichever of {this method, `Drop`} runs
+    /// first; the other observes `force_released` already set and becomes a
+    /// no-op. This IS the ABA guard: without it, a slot force-released here
+    /// could be reissued by `LeaseMask::acquire` (which always hands out the
+    /// lowest free bit) to a brand-new, unrelated lease before the ORIGINAL
+    /// holder's `Drop` finally runs; that `Drop`'s unconditional bit-clear
+    /// would then silently un-hold the NEW lease's slot instead of a
+    /// no-longer-existent one — a real correctness hazard that a naive
+    /// "just clear the bit in `revoke_overdue`" fix would introduce.
+    pub(crate) fn force_release(&self) {
+        if self.force_released.swap(true, Ordering::AcqRel) {
+            return; // already released, by a prior call or by Drop
+        }
+        self.mask.release(self.slot);
+    }
 }
 
 impl Drop for Lease<'_> {
     fn drop(&mut self) {
+        if self.force_released.swap(true, Ordering::AcqRel) {
+            return; // already force-released (§9.2.1 revocation) — no-op
+        }
         self.mask.release(self.slot);
     }
 }
@@ -203,6 +243,55 @@ mod tests {
         drop(a);
         drop(b);
         assert!(!mask.any_held(), "all leases released");
+    }
+
+    /// §9.2.1 / contract #32: `force_release` must clear `any_held()`
+    /// immediately, before the holder's own `Drop` ever runs. Mutation-kill
+    /// shape: delete the `force_release` call site (or its body) and this
+    /// assert fails, since the bit would only clear on `drop(lease)` below.
+    #[test]
+    fn force_release_clears_any_held_before_drop() {
+        let mask = LeaseMask::new();
+        let lease = mask.acquire().unwrap();
+        assert!(mask.any_held());
+        lease.force_release();
+        assert!(!mask.any_held(), "force_release must clear any_held() immediately, ahead of Drop");
+        drop(lease); // must not panic and must not touch a reissued slot (next test)
+        assert!(!mask.any_held());
+    }
+
+    /// The ABA hazard `force_release`'s idempotency guard exists to prevent:
+    /// force-release a slot, let a DIFFERENT lease claim the same slot index
+    /// (the mask always hands out the lowest free bit), then let the
+    /// ORIGINAL lease drop late. Without the guard, that late `Drop` would
+    /// blindly clear the bit again — silently un-holding the new lease.
+    #[test]
+    fn force_release_then_late_drop_does_not_reclaim_a_reissued_slot() {
+        let mask = LeaseMask::new();
+        let a = mask.acquire().unwrap();
+        let slot = a.slot();
+        a.force_release();
+        assert!(!mask.any_held());
+        let b = mask.acquire().unwrap();
+        assert_eq!(b.slot(), slot, "lowest-free-bit acquire reissues the just-freed slot");
+        assert!(mask.any_held(), "b now genuinely holds the slot");
+        // `a`'s late drop must be a no-op — must NOT release b's slot.
+        drop(a);
+        assert!(mask.any_held(), "a's late drop must not clear b's still-live slot (ABA guard)");
+        drop(b);
+        assert!(!mask.any_held(), "b's own drop releases it normally");
+    }
+
+    /// Calling `force_release` twice (e.g. a repeated revoke sweep against
+    /// an already-revoked lease) must not panic and must not affect a
+    /// meanwhile-reissued slot.
+    #[test]
+    fn force_release_is_idempotent_under_repeated_calls() {
+        let mask = LeaseMask::new();
+        let a = mask.acquire().unwrap();
+        a.force_release();
+        a.force_release(); // second call: no-op, must not panic
+        assert!(!mask.any_held());
     }
 
     #[test]

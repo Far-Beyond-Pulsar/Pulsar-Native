@@ -869,6 +869,82 @@ fn lease_timeout_revocation_and_stale_lane_revalidation() {
     assert!(!lease2.revocation.is_revoked());
 }
 
+/// M3-b T2 (§9.2.1 / contract #32): `revoke_overdue` must clear `any_held()`
+/// IMMEDIATELY on revocation, without waiting for the holder's own `Drop` —
+/// the gap the perf-val T6 review found ("a revoked-but-not-dropped lease
+/// still blocks an `any_held()`-gated compaction indefinitely"). Mutation-
+/// kill shape: delete `Lease::force_release`'s call site inside
+/// `revoke_overdue` and the `!mask.any_held()` assert below fails (the mask
+/// bit would then only clear on `drop(lease)`, which never runs in this
+/// test body before the assert).
+#[test]
+fn revoke_overdue_clears_any_held_before_holder_drops() {
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+
+    let lease = pipeline.acquire_lease(&mask, 0.0, "m3b-t2-holder").expect("lease pool has room");
+    assert!(mask.any_held(), "the acquired slot is held");
+
+    // Overdue: held since t=0.0, now past the 2.0ms budget.
+    let revoked = pipeline.revoke_overdue(&[&lease], 2.5, 2.0);
+    assert_eq!(revoked, 1, "one overdue lease revoked");
+    assert!(lease.revocation.is_revoked(), "revocation flag observably set");
+
+    // THE point of this test: any_held() clears NOW, before the holder has
+    // dropped its guard (the holder is still alive in scope below).
+    assert!(
+        !mask.any_held(),
+        "MISS: any_held() must clear immediately on revoke_overdue — contract #32 \
+         (a revoked-but-undropped lease must not stall compaction indefinitely)"
+    );
+
+    // The holder's guard is still alive and can still drop normally later
+    // (a no-op release by then — no panic, no double-clear of a reissued
+    // slot, since nothing else has acquired in the meantime here).
+    drop(lease);
+    assert!(!mask.any_held());
+}
+
+/// M3-b T2: `HarvestPipeline::compaction_ready` — the production consumer
+/// of `any_held()` that gates `gpu::RetiredPhase::compact_gated`. Exercises
+/// all three cases the deliverable requires: no lease held (proceed),
+/// held-but-not-yet-overdue (defer, existing Test 10 semantics preserved),
+/// held-and-overdue (revoke then proceed — §9.2.1's immediate path).
+#[test]
+fn compaction_ready_covers_unheld_deferred_and_overdue_cases() {
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+
+    // Case 1: nothing held at all -> ready trivially.
+    assert!(
+        pipeline.compaction_ready(&mask, &[], 0.0, 2.0),
+        "no outstanding lease -> compaction proceeds as today"
+    );
+
+    // Case 2: held, NOT yet overdue -> must defer (regression-pin: existing
+    // any_held()-gated behavior stays for the not-overdue case).
+    let fresh = pipeline.acquire_lease(&mask, 0.0, "fresh-holder").expect("room");
+    assert!(
+        !pipeline.compaction_ready(&mask, &[&fresh], 0.5, 2.0),
+        "0.5ms held < 2.0ms budget -> must defer compaction this boundary"
+    );
+    assert!(!fresh.revocation.is_revoked(), "not-overdue lease must not be revoked as a side effect");
+    assert!(mask.any_held(), "the not-overdue lease is still genuinely held");
+    drop(fresh);
+    assert!(!mask.any_held());
+
+    // Case 3: held AND overdue -> revoke_overdue fires internally, any_held()
+    // clears, gate reports ready (§9.2.1 "compaction proceeds immediately").
+    let overdue = pipeline.acquire_lease(&mask, 0.0, "overdue-holder").expect("room");
+    assert!(
+        pipeline.compaction_ready(&mask, &[&overdue], 2.5, 2.0),
+        "2.5ms held >= 2.0ms budget -> revoke-then-proceed, compaction ready"
+    );
+    assert!(overdue.revocation.is_revoked(), "the overdue lease was revoked as a side effect of the gate");
+    assert!(!mask.any_held(), "any_held() must already be clear — the gate proceeded on it");
+    drop(overdue); // late drop of an already-force-released lease: no-op, no panic
+}
+
 /// Test 10 (pool exhaustion half): the 65th concurrent lease acquire on a
 /// 64-slot pool returns `None`. Spec §9.2's blocking-retry loop around
 /// exhaustion is the World driver's scope — `HarvestPipeline::acquire_lease`

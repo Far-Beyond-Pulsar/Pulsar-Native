@@ -54,7 +54,7 @@
 
 use std::sync::atomic::{fence, Ordering};
 
-use super::{CellSlot, SceneGpuStore, SyncStats};
+use super::{CellId, CellSlot, SceneGpuStore, SyncStats};
 
 /// Owns one frame's progression through the phase machine. `begin` is the
 /// only entry point into a fresh Simulate phase; everything downstream is a
@@ -186,6 +186,28 @@ pub struct RetiredPhase(());
 impl RetiredPhase {
     pub fn compact(self, store: &mut SceneGpuStore, cells: &mut [CellSlot<'_>]) -> CompactedPhase {
         store.compact_all(cells);
+        CompactedPhase(())
+    }
+
+    /// §9.2.1 / contract #32 lease-gated compact: like [`Self::compact`],
+    /// except `ready` (called once per cell, by `CellId`) decides whether
+    /// THIS boundary may run swap-and-pop compaction against that cell.
+    /// Build `ready` from `HarvestPipeline::compaction_ready` for each
+    /// cell's `(LeaseMask, outstanding HarvestLease set)` pair — a cell
+    /// reported not-ready keeps its holes until the next boundary (the same
+    /// shape as a pinned-tail deferral, `CellStorage::compact_report`'s
+    /// doc); ready cells compact exactly as `compact` would. This is the
+    /// seam that consults `any_held()` in production (the perf-val T6
+    /// review's missing consumer) — see `compaction_ready`'s doc for the
+    /// full safety argument for why proceeding against an overdue-revoked
+    /// lease is sound.
+    pub fn compact_gated(
+        self,
+        store: &mut SceneGpuStore,
+        cells: &mut [CellSlot<'_>],
+        ready: impl FnMut(CellId) -> bool,
+    ) -> CompactedPhase {
+        store.compact_all_gated(cells, ready);
         CompactedPhase(())
     }
 }

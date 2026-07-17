@@ -78,11 +78,11 @@
 //! also snapshotted and confirmed unchanged as a third, independent guard.
 
 use pulsar_scenedb::gpu::{
-    execute_transitions, CellCoord, CellId, CellSlot, Domain, EngineGpuContext, FrameDriver,
-    GridConfig, HarvestPipeline, HarvestStaging, MeshClass, RegionClassConfig, SceneGpuConfig,
-    SceneGpuStore, StreamingBudget, StreamingGrid, View,
+    execute_transitions, revalidate_run, CellCoord, CellId, CellSlot, Domain, EngineGpuContext,
+    FrameDriver, GridConfig, HarvestPipeline, HarvestStaging, MeshClass, RegionClassConfig,
+    SceneGpuConfig, SceneGpuStore, StreamingBudget, StreamingGrid, View,
 };
-use pulsar_scenedb::{Aabb, Handle, LeaseMask, Scratchpad, SpatialCell};
+use pulsar_scenedb::{Aabb, Handle, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
@@ -554,10 +554,14 @@ fn storm3_lease_revocation_latency_1000_requests_under_harvest_load() {
     // budget gate is asserted here. What IS proven: revocation-trigger
     // semantics stay correct and the flag-set stays sub-10µs (sanity bound,
     // ~100x the observed p99) under 4-thread contention on a shared mask.
-    // Carried to T8/M3-β: the §9.2.1 pinned-snapshot compaction bypass (the
-    // machinery that makes the 2.0 ms timeout deliver its stall bound) is
-    // UNBUILT — `revoke_overdue` sets the flag but does not release the
-    // slot, and nothing in production consumes `any_held()` yet.
+    // UPDATE (M3-b T2, contract #32 CLOSED): the §9.2.1 pinned-snapshot
+    // compaction bypass this comment used to carry forward as "UNBUILT" now
+    // is — `revoke_overdue` force-releases the slot immediately on
+    // revocation (`Lease::force_release`) and `gpu::HarvestPipeline::
+    // compaction_ready` is the production `any_held()` consumer that gates
+    // `gpu::RetiredPhase::compact_gated`. See the tests immediately below
+    // and the M3-b T2 report for the release-timing decision and its safety
+    // argument.
     const FLAG_SET_SANITY_NS: u128 = 10_000;
     assert!(
         p99 <= FLAG_SET_SANITY_NS,
@@ -565,6 +569,274 @@ fn storm3_lease_revocation_latency_1000_requests_under_harvest_load() {
          an atomic flag write degraded by 100x under contention; investigate before trusting the mask"
     );
     let _ = BUDGET_MS; // retained in the module doc's history; no budget gate exists for it (see above).
+}
+
+// ============================================================================
+// Storm 3 continued — §9.2.1 pinned-snapshot compaction bypass (M3-b T2,
+// contract #32 closure). Builds a real `SceneGpuStore` + phase-machine
+// boundary (unlike the CPU-only `compaction_ready` unit tests in
+// `gpu_harvest.rs`) to prove the gate actually drives `RetiredPhase::
+// compact_gated` correctly end to end.
+// ============================================================================
+
+fn one_cell_store(ctx: &EngineGpuContext, capacity: u32) -> SceneGpuStore {
+    SceneGpuStore::new(
+        ctx,
+        SceneGpuConfig {
+            classes: vec![RegionClassConfig { capacity, max_resident_cells: 1 }],
+            tombstone_headroom: 8,
+            max_cells_metadata: 4,
+        },
+    )
+}
+
+/// (a) Compaction-under-overdue-lease proceeds: a hole sits mid-cell, an
+/// overdue lease is outstanding, `compact_gated`'s ready-gate revokes it and
+/// reports ready, and the boundary actually swap-and-pops the hole away —
+/// no stall, no panic, rows genuinely moved.
+#[test]
+fn storm3_compaction_proceeds_under_overdue_lease_after_revocation() {
+    const BUDGET_MS: f64 = 2.0;
+    let ctx = test_context();
+    let mut store = one_cell_store(&ctx, 8);
+
+    let mut cell = SpatialCell::new(8).unwrap();
+    let handles: Vec<_> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+
+    // Kill a MIDDLE row -> a hole that only compaction (swap-and-pop) fixes.
+    cell.free(handles[1]);
+    assert_eq!(cell.rows_in_use(), 4, "physical removal deferred until compact");
+
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+    let lease = pipeline.acquire_lease(&mask, 0.0, "storm3-overdue-holder").expect("lease pool has room");
+    assert!(mask.any_held());
+
+    let mut frames = FrameDriver::new();
+    let boundary = frames.begin().end().end().end();
+    let (retired, _drained) = boundary.retire(&mut store, &mut []);
+    let now_ms = BUDGET_MS + 0.5; // unconditionally overdue
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        let _compacted = retired.compact_gated(&mut store, &mut slots, |_cell_id| {
+            pipeline.compaction_ready(&mask, &[&lease], now_ms, BUDGET_MS)
+        });
+    }
+    // Reaching here without a panic is itself part of the "no stall" claim.
+
+    assert!(lease.revocation.is_revoked(), "overdue lease must have been revoked by the gate");
+    assert!(!mask.any_held(), "MISS: any_held() must clear post-gate (force_release) — contract #32");
+    assert_eq!(cell.rows_in_use(), 3, "MISS: compaction must have proceeded against the primary layout — the hole must be gone");
+
+    drop(lease); // late drop of an already force-released lease: no-op, no panic, no double-free
+    assert!(!mask.any_held());
+}
+
+/// (d) Regression pin, at the real phase-machine level (not just the
+/// `compaction_ready` unit): a held-but-NOT-overdue lease must still defer
+/// compaction this boundary — existing Test 10 / C4 semantics unchanged.
+#[test]
+fn storm3_not_yet_overdue_lease_defers_real_boundary_compaction() {
+    const BUDGET_MS: f64 = 2.0;
+    let ctx = test_context();
+    let mut store = one_cell_store(&ctx, 8);
+
+    let mut cell = SpatialCell::new(8).unwrap();
+    let handles: Vec<_> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    cell.free(handles[1]);
+    assert_eq!(cell.rows_in_use(), 4, "hole present, uncompacted");
+
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+    let lease = pipeline.acquire_lease(&mask, 0.0, "storm3-fresh-holder").expect("lease pool has room");
+
+    let mut frames = FrameDriver::new();
+    let boundary = frames.begin().end().end().end();
+    let (retired, _drained) = boundary.retire(&mut store, &mut []);
+    let now_ms = 0.5; // held 0.5ms < 2.0ms budget -> NOT overdue
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        let _compacted = retired.compact_gated(&mut store, &mut slots, |_cell_id| {
+            pipeline.compaction_ready(&mask, &[&lease], now_ms, BUDGET_MS)
+        });
+    }
+
+    assert!(!lease.revocation.is_revoked(), "MISS: a not-yet-overdue lease must not be revoked");
+    assert!(mask.any_held(), "the lease is genuinely still held");
+    assert_eq!(cell.rows_in_use(), 4, "MISS: compaction must defer this boundary — the hole must persist untouched");
+
+    drop(lease);
+    assert!(!mask.any_held());
+}
+
+/// (b) Straggler consistency: the pinned `LivenessSnapshot` a holder
+/// captured BEFORE the boundary is byte-for-byte unaffected by a REAL
+/// `compact_gated` pass that swap-and-pops the primary layout underneath
+/// it — this extends `snapshot.rs`'s own unit test (which only proves
+/// pinning against a manual `set_dead`) through the actual frame-boundary
+/// compaction machinery this task wires up.
+#[test]
+fn storm3_straggler_pinned_snapshot_survives_a_real_compaction_byte_for_byte() {
+    const BUDGET_MS: f64 = 2.0;
+    let ctx = test_context();
+    let mut store = one_cell_store(&ctx, 8);
+
+    let mut cell = SpatialCell::new(8).unwrap();
+    let handles: Vec<_> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+
+    let len_before = cell.rows_in_use();
+    assert_eq!(len_before, 4);
+
+    // The straggler's pinned view, captured BEFORE the hole + boundary below
+    // (§9.2.1 double-buffered state) — exactly what a held lease's query
+    // lane reads through, never the live mask.
+    let snap = LivenessSnapshot::capture(cell.storage().liveness(), len_before);
+    let expected_words: Vec<u64> = snap.words().to_vec(); // independent copy, for the bit-for-bit check below
+    let query = Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] };
+    let mut run_before = vec![0u32; len_before as usize];
+    let n_before = cell.query_aabb_in(&query, snap.words(), &mut run_before);
+    assert_eq!(n_before, 4, "GUARD: pre-boundary snapshot query hits all 4 rows");
+    assert_eq!(run_before, vec![0, 1, 2, 3]);
+
+    // Now create a hole and drive a REAL boundary whose compact step
+    // proceeds against the PRIMARY layout despite an overdue straggler
+    // lease — the exact scenario §9.2.1's bypass exists for.
+    cell.free(handles[1]);
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+    let lease = pipeline.acquire_lease(&mask, 0.0, "storm3-straggler").expect("lease pool has room");
+
+    let mut frames = FrameDriver::new();
+    let boundary = frames.begin().end().end().end();
+    let (retired, _drained) = boundary.retire(&mut store, &mut []);
+    let now_ms = BUDGET_MS + 0.5;
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        let _compacted = retired.compact_gated(&mut store, &mut slots, |_cell_id| {
+            pipeline.compaction_ready(&mask, &[&lease], now_ms, BUDGET_MS)
+        });
+    }
+
+    // ---- The primary layout genuinely moved on. ----
+    assert_eq!(cell.rows_in_use(), 3, "GUARD: the primary layout really compacted underneath the straggler");
+    assert!(lease.revocation.is_revoked());
+    assert!(!mask.any_held());
+
+    // ---- The straggler's PINNED snapshot did not move an inch. ----
+    assert_eq!(
+        snap.words(),
+        expected_words.as_slice(),
+        "MISS: a real compaction pass must never mutate an already-captured LivenessSnapshot's pinned words"
+    );
+    assert_eq!(snap.live_count(), 4, "pinned view still reports the PRE-hole, PRE-compaction live count");
+
+    // NOTE what this test deliberately does NOT claim: re-issuing
+    // `query_aabb_in`/`query_frustum_in` against `snap.words()` AFTER a real
+    // compaction is OUT OF CONTRACT (`query_aabb_in`'s own doc: "row tokens
+    // are valid for the issuing frame only — compaction at the boundary
+    // invalidates both"; `len` there is derived from the CURRENT
+    // `rows_in_use()`, not from the snapshot). The safe, in-contract claim
+    // this test proves is narrower and is exactly what §9.2.1's bypass
+    // needs: the pinned BUFFER a straggler is already reading through is
+    // never corrupted by compaction. See the M3-b T2 report's hazard
+    // section for the follow-on gap this narrower claim implies.
+    drop(lease);
+}
+
+/// HAZARD FINDING (documented, not fixed here — out of Task 2's scope; see
+/// the M3-b T2 report). `revalidate_run` checks LIVE LIVENESS ONLY
+/// (`is_live`), never generations, despite §9.2.1's text ("re-validated
+/// against live generations on use") — its own doc already flags that
+/// liveness alone cannot distinguish "died and stayed dead" from "died, was
+/// compacted away, and the slot was reused this frame" (both read as
+/// `is_live == true`), and scopes its safety window to "before any
+/// compaction/reuse could occur". This task's whole point NARROWS that
+/// window: compaction can now proceed on the primary layout the instant an
+/// overdue lease is revoked, which may be before a slow/stuck straggler
+/// ever reaches its own `revalidate_run` call. This test demonstrates the
+/// resulting blind spot concretely (not a memory-safety bug — no OOB, no
+/// UB — a real staleness/correctness gap): after a real `compact_gated`
+/// pass swaps a DIFFERENT live row's data into the exact position the
+/// straggler's stale run still references, `revalidate_run` reports that
+/// position as a "survivor" — indistinguishable from the original object
+/// still being there.
+#[test]
+fn hazard_revalidate_run_cannot_detect_a_row_reused_by_compaction_swap() {
+    const BUDGET_MS: f64 = 2.0;
+    let ctx = test_context();
+    let mut store = one_cell_store(&ctx, 8);
+
+    // 4 rows, box i = [i, i+1) — densely positional (Test 10's fixture shape).
+    let mut cell = SpatialCell::new(8).unwrap();
+    let handles: Vec<_> = (0..4u32)
+        .map(|i| {
+            let x = i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    let len = cell.rows_in_use();
+
+    let snap = LivenessSnapshot::capture(cell.storage().liveness(), len);
+    let query = Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] };
+    let mut run = vec![0u32; len as usize];
+    let n = cell.query_aabb_in(&query, snap.words(), &mut run);
+    assert_eq!(n, 4);
+    assert_eq!(run, vec![0, 1, 2, 3], "the straggler's captured run: row 1 refers to box[1,2)'s handle at capture time");
+
+    // Row 1 dies; row 3 (box[3,4)) is the tail survivor swap-and-pop will
+    // move INTO row 1's slot.
+    cell.free(handles[1]);
+
+    let mask = LeaseMask::new();
+    let pipeline = HarvestPipeline::new();
+    let lease = pipeline.acquire_lease(&mask, 0.0, "hazard-holder").expect("room");
+
+    let mut frames = FrameDriver::new();
+    let boundary = frames.begin().end().end().end();
+    let (retired, _drained) = boundary.retire(&mut store, &mut []);
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        let _compacted = retired.compact_gated(&mut store, &mut slots, |_cell_id| {
+            pipeline.compaction_ready(&mask, &[&lease], BUDGET_MS + 0.5, BUDGET_MS)
+        });
+    }
+    assert_eq!(cell.rows_in_use(), 3, "GUARD: compaction really swapped row 3's live data into row 1's slot");
+    // Confirm row 1 now belongs to what WAS handle[3] (box[3,4)), not a dead row:
+    assert_eq!(cell.row_of(handles[3]), Some(1), "GUARD: handle[3] (originally row 3) now resolves to row 1 post-swap");
+
+    // The straggler, now revalidating its STALE run against LIVE liveness
+    // (the only tool this crate ships for this — `revalidate_run` operates
+    // on plain row indices, no generation/identity available to it):
+    let mut reconciled = run.clone();
+    let survivors = revalidate_run(&cell, &mut reconciled);
+
+    // THE FINDING: row 1 reads back as a "survivor" — revalidate_run cannot
+    // tell that it is now handle[3]'s data, not handle[1]'s (which is truly
+    // dead). A generation-aware check would be required to catch this; none
+    // exists on this positional-token path today.
+    assert_eq!(survivors, 3, "HAZARD: revalidate_run reports row 1 as surviving — it cannot see the swap");
+    assert_ne!(reconciled[1], NULL_ROW, "HAZARD CONFIRMED: the stale reference to 'row 1' is NOT flagged stale, though its object identity changed under compaction");
+
+    drop(lease);
 }
 
 // ============================================================================

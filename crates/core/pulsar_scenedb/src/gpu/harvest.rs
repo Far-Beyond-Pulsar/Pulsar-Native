@@ -273,11 +273,30 @@ impl HarvestPipeline {
         })
     }
 
-    /// §9.2.1 isolation check (C4: 2.0 ms budget). Revokes every lease in
-    /// `leases` held past `now_ms - held_since_ms >= budget_ms` by setting
-    /// its [`RevocationFlag`] — the slot itself is NOT released here (the
-    /// holder still owns the RAII `Lease` and drops it in its own time,
-    /// e.g. after re-validating its results via [`revalidate_run`]).
+    /// §9.2.1 isolation check (C4: 2.0 ms — a hold-duration TIMEOUT, the
+    /// trigger condition for revocation, not a latency budget on any single
+    /// operation; see `tests/stress_gpu.rs`'s storm 3 review note). Revokes
+    /// every lease in `leases` held past `now_ms - held_since_ms >=
+    /// budget_ms`: sets its [`RevocationFlag`] AND force-releases its
+    /// `LeaseMask` slot immediately (M3-b, contract #32 closure) — this is
+    /// the piece the perf-val T6 review found missing: without it, a
+    /// revoked-but-undropped lease blocked an `any_held()`-gated compaction
+    /// indefinitely, because the mask bit only ever cleared on the holder's
+    /// own `Drop`.
+    ///
+    /// **Release timing, chosen reading:** IMMEDIATE, at revocation — not
+    /// deferred to the holder's next check or its eventual `Drop`. This maps
+    /// §9.2.1's "compaction proceeds on the primary layout immediately" onto
+    /// the mask literally: the holder was never on the critical path in the
+    /// spec's design (its reads continue against its own already-pinned
+    /// [`crate::snapshot::LivenessSnapshot`], never the live liveness mask or
+    /// the live row layout), so there is no reason for the SLOT to remain
+    /// "held" for compaction-gating purposes one instant longer than the
+    /// revocation itself. See [`Lease::force_release`] for why this is safe
+    /// against the slot being reissued before the original holder's `Drop`
+    /// eventually runs (that later `Drop` becomes a no-op by construction —
+    /// no double-release, no ABA).
+    ///
     /// Returns the number of leases revoked by this call; each revocation is
     /// logged via `tracing::warn!` with the lease's `client` attribution, so
     /// a client that repeatedly blows the budget shows up as repeated warns
@@ -289,6 +308,7 @@ impl HarvestPipeline {
             let held_ms = now_ms - lease.held_since_ms;
             if held_ms >= budget_ms {
                 lease.revocation.revoke();
+                lease.lease.force_release();
                 revoked += 1;
                 tracing::warn!(
                     client = lease.client,
@@ -300,6 +320,81 @@ impl HarvestPipeline {
             }
         }
         revoked
+    }
+
+    /// §9.2.1 / contract #32 compaction-readiness gate — the production
+    /// consumer of [`LeaseMask::any_held`] the perf-val T6 review found
+    /// missing ("nothing in production consumes `any_held()` yet"). `mask`
+    /// is the cell's per-cell lease pool (CONTRACTS C4: "per-cell atomic u64
+    /// bitmask"); `leases` is every currently outstanding [`HarvestLease`]
+    /// drawn from it that the CALLER is tracking — this crate does not
+    /// itself maintain that set (see the ownership-gap paragraph below).
+    /// Revokes whichever of `leases` are overdue (delegating to
+    /// [`Self::revoke_overdue`], which now force-releases the slot
+    /// immediately) and reports whether a frame boundary may run
+    /// `compact`/`gpu::RetiredPhase::compact_gated` against this cell THIS
+    /// boundary.
+    ///
+    /// - `mask.any_held() == false` after the revoke pass (nothing was
+    ///   outstanding; or every outstanding lease was just revoked by this
+    ///   call; or an earlier boundary already revoked it and its holder has
+    ///   since dropped) -> `true`. This single check covers BOTH the
+    ///   ordinary "no lease held" case and the overdue-revoke-then-proceed
+    ///   case from the very same call — §9.2.1's "compaction proceeds on the
+    ///   primary layout immediately".
+    /// - `mask.any_held() == true` (at least one lease is held AND was not
+    ///   overdue, so `revoke_overdue` left it alone) -> `false`: defer
+    ///   compaction this boundary — unchanged from Test 10's existing
+    ///   `any_held()`-gated behavior ("drop -> `!any_held()` -> compaction
+    ///   may proceed").
+    ///
+    /// **Safety argument for proceeding despite a lease revoked THIS call**
+    /// (its holder may still be mid-query, unaware it was revoked): the
+    /// holder's in-flight reads run against a
+    /// [`crate::snapshot::LivenessSnapshot`] pinned at (or after)
+    /// acquisition — never the live `LivenessMask` and never live page rows
+    /// directly — and per §9.2.1 any positional token it acts on afterward
+    /// is expected to be re-validated against live generations before use
+    /// ([`revalidate_run`]). So compaction moving rows underneath the
+    /// snapshot cannot tear a read the holder is mid-way through (the
+    /// snapshot is an owned, immutable copy — compaction never touches it),
+    /// and cannot cause the holder to silently act on a moved/reused row
+    /// (revalidation catches it). **This argument holds only as long as
+    /// every read path reachable from a held lease goes through the pinned
+    /// snapshot and never the live mask/page directly** — true for every
+    /// query path this crate ships today (`SpatialCell::query_aabb_in`/
+    /// `query_frustum_in` both take an explicit `liveness_words: &[u64]`
+    /// argument and never reach into the live `LivenessMask` themselves; see
+    /// this task's report for the full sweep). A FUTURE read path that
+    /// bypassed the snapshot and read the live mask/page instead would break
+    /// this argument — a real hazard to watch for, not one this gate can
+    /// detect on its own.
+    ///
+    /// **Ownership gap, documented rather than papered over:** neither
+    /// `gpu::CellSlot` nor `gpu::SceneGpuStore` carries a `LeaseMask` or an
+    /// outstanding-lease set today — leases are a caller-owned object,
+    /// per-cell only BY CONVENTION (CONTRACTS C4 says "per-cell", but
+    /// nothing in this crate's types enforces a 1:1 `CellId`<->`LeaseMask`
+    /// binding). `compaction_ready` is therefore a pure function of whatever
+    /// `(mask, leases)` pair the caller supplies for a given cell. Wiring
+    /// "one `LeaseMask` per registered `CellId`, tracked by the store
+    /// itself and threaded automatically through the boundary" is a real
+    /// architecture change (would touch `CellSlot`, `register_cell`, and
+    /// every existing call site constructing a bare `CellSlot { id, cell }`)
+    /// that this task deliberately does NOT make — see the M3-b T2 report.
+    /// That driver-level wiring is M4 World-driver scope.
+    #[must_use]
+    pub fn compaction_ready(
+        &self,
+        mask: &LeaseMask,
+        leases: &[&HarvestLease<'_>],
+        now_ms: f64,
+        budget_ms: f64,
+    ) -> bool {
+        if mask.any_held() {
+            self.revoke_overdue(leases, now_ms, budget_ms);
+        }
+        !mask.any_held()
     }
 
     /// Multi-view harvest (spec §8.4): scan every `(cell, region_base, class)`

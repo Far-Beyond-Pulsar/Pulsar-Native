@@ -81,6 +81,16 @@ thread-bound), 2.0 ms revocation timeout at frame boundary. Scratchpads:
 thread-local, persistent, halved when peak usage < 50% capacity over 8 frames.
 DEI = valid/total; DEI < 25% → host-side dense compaction before upload.
 
+**Amendment (M3-β T2, §9.2.1 / contract #32, implemented — cite Rev 2.4
+routing per the perf report R-PERF-3):** the 2.0 ms is a hold-duration
+TIMEOUT (the trigger condition for revocation), not a latency budget on any
+operation; on expiry `gpu::HarvestPipeline::revoke_overdue` force-releases
+the lease's `LeaseMask` slot immediately (`any_held()` clears without
+waiting for the holder's own drop) and compaction proceeds against the
+primary layout via `gpu::RetiredPhase::compact_gated`, while the straggler
+keeps reading its pinned `LivenessSnapshot`, re-validating against live
+generations before acting on any result (`revalidate_run`).
+
 ## C5. GPU buffer layouts (WGSL, scalar fields only — no vec3)
 
 Mesh metadata: 72 bytes — vertex_offset u32@0, index_offset u32@4,

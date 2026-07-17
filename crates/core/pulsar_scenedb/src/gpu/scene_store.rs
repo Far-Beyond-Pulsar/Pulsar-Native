@@ -641,9 +641,28 @@ impl SceneGpuStore {
     /// marked here — `sync_all`'s boundary scan detects moved slots on its
     /// own.
     pub(crate) fn compact_all(&mut self, cells: &mut [CellSlot<'_>]) {
+        self.compact_all_gated(cells, |_| true);
+    }
+
+    /// Lease-gated variant of [`Self::compact_all`] (§9.2.1, contract #32).
+    /// Identical sweep, except `ready` is consulted once per cell (called
+    /// with that cell's `CellId`) and a cell it reports NOT ready for is
+    /// excluded from THIS boundary's compaction entirely — its holes
+    /// persist to the next boundary, the same "deferred" shape
+    /// `CellStorage::compact_report` already uses for a pinned tail
+    /// (`cell.rs`'s doc). Callers build `ready` from
+    /// `gpu::HarvestPipeline::compaction_ready` for each cell's
+    /// `(LeaseMask, outstanding leases)` pair — this store has no notion of
+    /// leases itself (see that method's ownership-gap doc). `compact_all`
+    /// is exactly this with an always-ready gate, so the two can never
+    /// silently diverge in behavior.
+    pub(crate) fn compact_all_gated(&mut self, cells: &mut [CellSlot<'_>], mut ready: impl FnMut(CellId) -> bool) {
         debug_assert_eq!(self.phase, Phase::Retired, "compact_all must follow retire_all");
         self.phase = Phase::Compacted;
         for slot in cells.iter_mut() {
+            if !ready(slot.id) {
+                continue;
+            }
             let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
             slot.cell.compact_report(|_from, to| {
                 // Only the TRANSFORM and INSTANCE-INFO marks: the slot
