@@ -84,7 +84,12 @@ impl GeometryArena {
         let vertex = ctx.device().create_buffer(&wgpu::BufferDescriptor {
             label: Some("geometry-arena-vertex"),
             size: vertex_bytes,
+            // `VERTEX` (alongside `STORAGE`): the classic vertex-fetch draw
+            // path is still the M3-α default (design Rev 2 §2) — VG/meshlet
+            // raster reads vertices via `STORAGE` instead, but non-VG meshes
+            // bind this buffer as a vertex buffer directly.
             usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::VERTEX
                 | wgpu::BufferUsages::COPY_DST
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
@@ -407,6 +412,166 @@ impl ClusterBuffer {
     }
 }
 
+/// C5 amendment (M3-α, design Rev 2 §2 + Rev 2.4 punch-list R12): 32-byte
+/// meshlet record, mirrored 1:1 into the meshlet SSBO. Spec §19 fixes the
+/// size and contents only ("32 B/meshlet beside ClusterBuffer") — this
+/// layout (field order/offsets) is the R12 amendment itself. Field
+/// order/offsets are load-bearing (see the comment column below and the
+/// const size assert) — if the size assert ever fails, fix the field
+/// order/types, never insert manual padding fields.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MeshletEntry {
+    pub sphere_x: f32,      // 0   bounding sphere center
+    pub sphere_y: f32,      // 4
+    pub sphere_z: f32,      // 8
+    pub sphere_radius: f32, // 12
+    /// 16 — packed normal-cone (§17.2 backface test): bits 0..8 axis.x
+    /// (i8 snorm), bits 8..16 axis.y (i8 snorm), bits 16..24 axis.z (i8
+    /// snorm), bits 24..32 sin(cutoff-angle φ) (i8 snorm). The backface test
+    /// unpacks all four snorm lanes and rejects a meshlet whose cone faces
+    /// away from the viewer beyond the cutoff — see §17.2.
+    pub cone_packed: u32,
+    /// 20 — element offset into the geometry index buffer (the meshlet-local
+    /// triangle indices' base; NOT a byte offset).
+    pub data_offset: u32,
+    /// 24 — packed triangle/vertex counts: bits 0..8 vertex_count (u8),
+    /// bits 8..16 triangle_count (u8), bits 16..32 reserved (u16, must be 0).
+    pub counts_packed: u32,
+    pub reserved: u32, // 28 — must be 0
+} // = 32 bytes (spec §19 / R12)
+const _: () = assert!(std::mem::size_of::<MeshletEntry>() == 32);
+// SAFETY: `MeshletEntry` is `#[repr(C)]`, `Copy`, every field is itself POD
+// (u32/f32), and the const assert above pins the layout to exactly 32 bytes
+// with no hidden padding — matching the meshlet SSBO stride byte-for-byte.
+// `Pod` is a marker trait with no methods, so this impl only asserts the
+// bit-pattern/layout claim.
+unsafe impl crate::page::Pod for MeshletEntry {}
+
+/// Hard meshlet-buffer errors (§8): surfaced to the caller, never silently
+/// coerced or retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MeshletError {
+    /// `sphere_radius` must be strictly greater than 0.0 (NaN-rejecting
+    /// `!(r > 0.0)` form — mirrors the M2b-α T8/ClusterBuffer lesson: IEEE-754
+    /// makes every comparison with NaN false, so a naive `r > 0.0` check
+    /// would silently ACCEPT `r == NaN` if written as `!(r <= 0.0)`; the
+    /// `!(r > 0.0)` form used here routes NaN to the rejecting branch too).
+    InvalidRadius,
+    /// `MeshletEntry::reserved` must be exactly 0.
+    ReservedNonZero,
+    /// `counts_packed`'s reserved u16 (bits 16..32) must be exactly 0.
+    CountsReservedNonZero,
+    /// `counts_packed`'s vertex_count or triangle_count (bits 0..8, 8..16)
+    /// is zero — every meshlet must carry at least one vertex and triangle.
+    /// (No explicit ≤255 check: both fields are packed `u8` lanes, so any
+    /// value already fits in `0..=255` by construction — validating an
+    /// already-packed integer's upper bound would be vacuous.)
+    EmptyCounts,
+    /// Buffer capacity exhausted (no more entries can fit).
+    BufferFull,
+}
+
+/// Flat host buffer mirrored 1:1 into the meshlet SSBO (design Rev 2 §2,
+/// C5/R12): meshlet offset `i` is always uploaded at byte offset `i * 32` in
+/// `buf`. Append-only for M3-α — no CPU free list (unregister is out of
+/// scope here). Mirrors `ClusterBuffer` exactly (see its doc for the shared
+/// shape rationale).
+pub struct MeshletBuffer {
+    buf: wgpu::Buffer,
+    entries: Vec<MeshletEntry>,
+    max_entries: u32,
+}
+
+impl MeshletBuffer {
+    pub fn new(ctx: &EngineGpuContext, max_entries: u32) -> Self {
+        let buf = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+            label: Some("meshlet-buffer"),
+            size: max_entries as u64 * 32,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_DST
+                | wgpu::BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        Self { buf, entries: Vec::new(), max_entries }
+    }
+
+    /// Appends a batch of meshlet entries; returns the starting entry offset
+    /// (the C5 meshlet-offset unit, `ClusterNode::meshlet_offset`'s index
+    /// space). Validates EVERY entry (radius, reserved fields, nonzero
+    /// counts) BEFORE reserving space (a rejected batch must not consume
+    /// offsets). Checks capacity (`BufferFull`), then writes the batch at
+    /// `entry_offset as u64 * 32` and returns the starting offset.
+    pub fn append(&mut self, queue: &wgpu::Queue, entries: &[MeshletEntry]) -> Result<u32, MeshletError> {
+        // Validate EVERY entry before allocating offsets.
+        for entry in entries {
+            // Deliberate `!(r > 0.0)` form (not `r <= 0.0`): IEEE-754 makes
+            // every comparison with NaN false, so `r <= 0.0` would silently
+            // ACCEPT a NaN radius. `!(r > 0.0)` routes NaN to the rejecting
+            // branch — matches the crate's conservative-NaN convention
+            // (spatial.rs/simd.rs, ClusterBuffer::append).
+            if !(entry.sphere_radius > 0.0) {
+                return Err(MeshletError::InvalidRadius);
+            }
+            if entry.reserved != 0 {
+                return Err(MeshletError::ReservedNonZero);
+            }
+            if (entry.counts_packed >> 16) & 0xFFFF != 0 {
+                return Err(MeshletError::CountsReservedNonZero);
+            }
+            let vertex_count = entry.counts_packed & 0xFF;
+            let triangle_count = (entry.counts_packed >> 8) & 0xFF;
+            if vertex_count == 0 || triangle_count == 0 {
+                return Err(MeshletError::EmptyCounts);
+            }
+        }
+
+        // Check capacity BEFORE modifying state.
+        let current_len = self.entries.len() as u32;
+        if current_len + entries.len() as u32 > self.max_entries {
+            return Err(MeshletError::BufferFull);
+        }
+
+        // Record the starting offset, then upload the whole contiguous batch
+        // in one write (destinations are contiguous — matches rebuild's bulk
+        // style).
+        let start_offset = current_len;
+        queue.write_buffer(&self.buf, start_offset as u64 * 32, super::as_bytes(entries));
+        self.entries.extend_from_slice(entries);
+
+        Ok(start_offset)
+    }
+
+    pub fn len(&self) -> u32 {
+        self.entries.len() as u32
+    }
+
+    pub fn get(&self, entry_index: u32) -> &MeshletEntry {
+        &self.entries[entry_index as usize]
+    }
+
+    /// Test 14 rebuild source: the CPU-authoritative copy of every entry, in
+    /// meshlet-offset order (matches the SSBO's byte layout 1:1).
+    pub fn entries(&self) -> &[MeshletEntry] {
+        &self.entries
+    }
+
+    pub fn buffer(&self) -> &wgpu::Buffer {
+        &self.buf
+    }
+
+    /// Test 14 (C0 companion gate): bulk re-upload every entry from the
+    /// CPU-authoritative `entries` copy — device-loss re-materialization,
+    /// same shape as `ClusterBuffer::rebuild`. No-op on an empty buffer
+    /// (`write_buffer` with a zero-length slice is fine, but skip the call).
+    pub fn rebuild(&self, queue: &wgpu::Queue) {
+        if self.entries.is_empty() {
+            return;
+        }
+        queue.write_buffer(&self.buf, 0, super::as_bytes(&self.entries));
+    }
+}
+
 /// Bindless texture slot ceiling (spec §10 G4 / recon ceiling). `TextureStore`
 /// asserts `max_slots <= MAX_TEXTURE_SLOTS` in `new`.
 pub const MAX_TEXTURE_SLOTS: u32 = 16384;
@@ -463,8 +628,11 @@ impl TextureStore {
     /// via `queue.write_texture` with a tightly-packed layout derived from
     /// `desc` (`bytes_per_row = format.block_copy_size(None) * size.width`;
     /// single-mip M3-α scope — mip chains ride to the asset pipeline; only
-    /// uncompressed formats are supported here, since `block_copy_size`'s
-    /// generic block-size arithmetic covers them directly).
+    /// uncompressed (1×1 block) formats are supported here — see the
+    /// `block_dimensions() == (1, 1)` guard below. Block-compressed formats
+    /// (BC/ETC2/ASTC) need `ceil(width / block_width)` row arithmetic, not
+    /// the plain `width` multiply used here, so they are out of scope until
+    /// a later task adds it.
     ///
     /// Owns the resulting `wgpu::Texture` (C0/§10 G4 — Test 13: textures
     /// survive renderer teardown). Caller retains source data for
@@ -490,10 +658,26 @@ impl TextureStore {
 
         let texture = device.create_texture(desc);
 
+        // `block_copy_size(None)` returns `Some(_)` for essentially every
+        // format (BC/ETC2/ASTC included — only depth/multi-planar formats
+        // return `None`), so it cannot itself distinguish "uncompressed" —
+        // guard on the block dimensions instead: uncompressed formats are
+        // exactly the ones with a 1x1 texel block (see `block_dimensions`'s
+        // own doc). A compressed format here would otherwise silently get
+        // the wrong `bytes_per_row` (this arithmetic assumes one block per
+        // texel) and panic deep inside `write_texture` instead of at this
+        // well-documented boundary.
+        assert_eq!(
+            desc.format.block_dimensions(),
+            (1, 1),
+            "TextureStore::register (M3-α scope): only uncompressed (1x1 block) formats are \
+             supported — block-compressed formats (BC/ETC2/ASTC) need block-aware row \
+             arithmetic, not yet implemented"
+        );
         let block_size = desc
             .format
             .block_copy_size(None)
-            .expect("TextureStore::register (M3-α scope): uncompressed formats only");
+            .expect("uncompressed format must have a block_copy_size");
         let bytes_per_row = block_size * desc.size.width;
         queue.write_texture(
             texture.as_image_copy(),

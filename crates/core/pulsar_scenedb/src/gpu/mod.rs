@@ -25,7 +25,8 @@ mod tracker;
 
 pub use assets::{
     ArenaError, ClusterBuffer, ClusterError, ClusterNode, GeometryArena, MeshError, MeshMetadata,
-    MeshRegistry, TextureError, TextureStore, MAX_TEXTURE_SLOTS,
+    MeshRegistry, MeshletBuffer, MeshletEntry, MeshletError, TextureError, TextureStore,
+    MAX_TEXTURE_SLOTS,
 };
 pub use buffer::{SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;

@@ -5,7 +5,7 @@
 //! integration test binaries cannot share modules without a common
 //! `tests/common/mod.rs`, and that refactor is deliberately out of scope here.
 
-use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry, TextureError, TextureStore};
+use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry, MeshletBuffer, MeshletEntry, MeshletError, TextureError, TextureStore};
 use std::sync::Arc;
 
 /// Byte view of `MeshMetadata` entries for readback comparison. Mirrors the
@@ -773,4 +773,340 @@ fn registered_texture_readback_is_byte_exact_with_row_padding() {
 
     let gpu = readback_texture(&ctx, texture, width, height, 4);
     assert_eq!(gpu, data, "readback must be byte-exact vs the uploaded source, padding trimmed");
+}
+
+/// Task 5 review follow-up: a free-list-duplication regression test. Kills an
+/// implementation that pushes a slot onto the free list BEFORE its
+/// `SlotVacant`/`SlotOutOfRange` check fails — such a bug would make
+/// `unregister`'s SECOND (erroring) call on an already-vacant slot silently
+/// duplicate that slot in the free list, so two subsequent `register` calls
+/// would hand out the SAME slot id twice instead of two distinct ones.
+#[test]
+fn unregister_error_paths_do_not_duplicate_the_free_list() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+
+    let slot_a = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[1u8, 1, 1, 1])
+        .expect("register a");
+    let slot_b = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[2u8, 2, 2, 2])
+        .expect("register b");
+    assert_eq!((slot_a, slot_b), (0, 1));
+
+    store.unregister(slot_a).expect("first unregister of a succeeds");
+    // Second unregister of the same (now-vacant) slot must error AND must
+    // not push a second copy of `slot_a` onto the free list.
+    let err = store.unregister(slot_a);
+    assert_eq!(err, Err(TextureError::SlotVacant));
+
+    store.unregister(slot_b).expect("unregister b succeeds");
+
+    // Free list should now contain exactly {slot_a, slot_b} — one entry
+    // each, not two entries for slot_a. Two fresh registers must therefore
+    // hand back two DISTINCT slots, not the same slot twice.
+    let slot_c = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[3u8, 3, 3, 3])
+        .expect("register c (recycled)");
+    let slot_d = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[4u8, 4, 4, 4])
+        .expect("register d (recycled)");
+    assert_ne!(slot_c, slot_d, "a duplicated free-list entry would hand out the same slot twice");
+    assert_eq!(store.slot_count(), 2, "no new slots should have been minted — both recycled");
+}
+
+// ---------------------------------------------------------------------
+// MeshletBuffer (M3-α T6, C5 amendment / punch-list R12): 32 B meshlet
+// records mirroring ClusterBuffer's shape exactly.
+// ---------------------------------------------------------------------
+
+/// Byte view of `MeshletEntry` entries for readback comparison. Mirrors the
+/// crate-internal `gpu::as_bytes` (pub(crate) — not visible to this
+/// integration test binary, which only sees the crate's public API).
+///
+/// SAFETY: `MeshletEntry` is `#[repr(C)]`, `Copy`, and the crate's own
+/// `const _: () = assert!(size_of::<MeshletEntry>() == 32)` pins its layout
+/// to exactly 32 bytes with no padding.
+fn meshlet_bytes(entries: &[MeshletEntry]) -> Vec<u8> {
+    unsafe {
+        std::slice::from_raw_parts(entries.as_ptr() as *const u8, std::mem::size_of_val(entries))
+    }
+    .to_vec()
+}
+
+/// Packs (vertex_count, triangle_count) into `counts_packed`'s bits 0..16,
+/// leaving the reserved bits 16..32 zero.
+fn pack_counts(vertex_count: u8, triangle_count: u8) -> u32 {
+    vertex_count as u32 | (triangle_count as u32) << 8
+}
+
+fn test_meshlet_entry() -> MeshletEntry {
+    MeshletEntry {
+        sphere_x: 1.0,
+        sphere_y: 2.0,
+        sphere_z: 3.0,
+        sphere_radius: 0.5,
+        cone_packed: 0x2010_08F0,
+        data_offset: 128,
+        counts_packed: pack_counts(3, 2),
+        reserved: 0,
+    }
+}
+
+#[test]
+fn append_two_valid_entries_returns_correct_offsets() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+
+    let entry1 = test_meshlet_entry();
+    let entry2 = MeshletEntry {
+        sphere_x: -1.0,
+        sphere_y: -2.0,
+        sphere_z: -3.0,
+        sphere_radius: 2.0,
+        cone_packed: 0x0403_0201,
+        data_offset: 256,
+        counts_packed: pack_counts(64, 32),
+        reserved: 0,
+    };
+
+    let offset1 = meshlets.append(ctx.queue(), &[entry1]).expect("first append");
+    let offset2 = meshlets.append(ctx.queue(), &[entry2]).expect("second append");
+
+    // Unlike ClusterBuffer, there is no reserved-sentinel node — meshlet
+    // offset 0 is a valid real entry (nothing depends on 0 meaning "none").
+    assert_eq!(offset1, 0, "first append starts at entry offset 0");
+    assert_eq!(offset2, 1, "second append returns offset 1");
+    assert_eq!(meshlets.len(), 2);
+    assert_eq!(meshlets.get(offset1), &entry1);
+    assert_eq!(meshlets.get(offset2), &entry2);
+}
+
+#[test]
+fn meshlet_entries_readback_byte_exact() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+
+    let entry1 = test_meshlet_entry();
+    let entry2 = MeshletEntry {
+        sphere_x: -1.0,
+        sphere_y: -2.0,
+        sphere_z: -3.0,
+        sphere_radius: 2.0,
+        cone_packed: 0x0403_0201,
+        data_offset: 256,
+        counts_packed: pack_counts(64, 32),
+        reserved: 0,
+    };
+
+    meshlets.append(ctx.queue(), &[entry1]).expect("first append");
+    meshlets.append(ctx.queue(), &[entry2]).expect("second append");
+
+    let gpu = readback(&ctx, meshlets.buffer(), 2 * 32);
+    let expected = meshlet_bytes(meshlets.entries());
+    assert_eq!(expected.len(), 64, "two 32-byte records");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(entries())");
+}
+
+#[test]
+fn append_rejects_zero_radius() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.sphere_radius = 0.0;
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::InvalidRadius));
+    assert_eq!(meshlets.len(), 0, "rejected entry must not consume an offset");
+}
+
+#[test]
+fn append_rejects_negative_radius() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.sphere_radius = -3.0;
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::InvalidRadius));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn append_rejects_negative_zero_radius() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    // -0.0 == 0.0 under IEEE-754, and `-0.0 > 0.0` is false, so the
+    // NaN-rejecting `!(r > 0.0)` form correctly rejects it too (radius must
+    // be strictly positive, not merely non-negative).
+    bad.sphere_radius = -0.0f32;
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::InvalidRadius));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn append_rejects_nan_radius() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.sphere_radius = f32::NAN;
+    // IEEE-754: `NaN > 0.0` is false, so `!(r > 0.0)` is true -> rejected.
+    // A naive `r <= 0.0` check would have missed this (`NaN <= 0.0` is also
+    // false), silently ACCEPTING the NaN radius.
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::InvalidRadius));
+    assert_eq!(meshlets.len(), 0, "NaN radius must not consume an offset");
+}
+
+#[test]
+fn append_accepts_positive_infinity_radius() {
+    // Documents the boundary of the `!(r > 0.0)` rule: it rejects
+    // non-positive and NaN radii, but `+inf > 0.0` is true, so a +inf radius
+    // is (deliberately) accepted — the validation rule is "strictly
+    // positive", not "finite".
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut entry = test_meshlet_entry();
+    entry.sphere_radius = f32::INFINITY;
+    let offset = meshlets.append(ctx.queue(), &[entry]).expect("+inf radius is > 0.0, accepted");
+    assert_eq!(offset, 0);
+    assert_eq!(meshlets.len(), 1);
+}
+
+#[test]
+fn append_rejects_reserved_nonzero() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.reserved = 1;
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::ReservedNonZero));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn append_rejects_counts_packed_reserved_bits_nonzero() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.counts_packed = pack_counts(3, 2) | (1u32 << 16); // reserved bit 16 set
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::CountsReservedNonZero));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn append_rejects_zero_vertex_count() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.counts_packed = pack_counts(0, 2);
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::EmptyCounts));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn append_rejects_zero_triangle_count() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    let mut bad = test_meshlet_entry();
+    bad.counts_packed = pack_counts(3, 0);
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::EmptyCounts));
+    assert_eq!(meshlets.len(), 0);
+}
+
+#[test]
+fn meshlet_batched_appends_return_sequential_offsets_and_read_back_byte_exact() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 8);
+
+    let entry1 = test_meshlet_entry();
+    let entry2 = MeshletEntry {
+        sphere_x: -1.0,
+        sphere_y: -2.0,
+        sphere_z: -3.0,
+        sphere_radius: 2.0,
+        cone_packed: 0x0403_0201,
+        data_offset: 256,
+        counts_packed: pack_counts(64, 32),
+        reserved: 0,
+    };
+    let entry3 = MeshletEntry {
+        sphere_x: 5.0,
+        sphere_y: 6.0,
+        sphere_z: 7.0,
+        sphere_radius: 1.5,
+        cone_packed: 0x0807_0605,
+        data_offset: 512,
+        counts_packed: pack_counts(1, 1),
+        reserved: 0,
+    };
+
+    let offset_a = meshlets.append(ctx.queue(), &[entry1, entry2]).expect("2-entry batch");
+    let offset_b = meshlets.append(ctx.queue(), &[entry3]).expect("1-entry batch");
+    assert_eq!(offset_a, 0, "first batch starts at entry offset 0");
+    assert_eq!(offset_b, 2, "second batch starts at entry offset 2");
+    assert_eq!(meshlets.len(), 3);
+    assert_eq!(meshlets.entries(), [entry1, entry2, entry3]);
+
+    let gpu = readback(&ctx, meshlets.buffer(), 3 * 32);
+    let expected = meshlet_bytes(meshlets.entries());
+    assert_eq!(expected.len(), 96, "three 32-byte records");
+    assert_eq!(gpu, expected, "SSBO bytes must exactly mirror as_bytes(entries())");
+}
+
+#[test]
+fn meshlet_append_fails_when_buffer_full() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 2);
+    let entry = test_meshlet_entry();
+
+    assert!(meshlets.append(ctx.queue(), &[entry]).is_ok());
+    assert!(meshlets.append(ctx.queue(), &[entry]).is_ok());
+    let err = meshlets.append(ctx.queue(), &[entry]);
+    assert_eq!(err, Err(MeshletError::BufferFull));
+    assert_eq!(meshlets.len(), 2, "full buffer rejects without growing");
+}
+
+/// Test 14 (C0 companion): corruption-heal rebuild — mirrors
+/// `rebuild_reuploads_entries_over_corrupted_buffers`'s shape for
+/// `MeshletBuffer`. Deliberately corrupting the SSBO first (and
+/// readback-confirming the corruption landed) makes the assertion
+/// non-vacuous.
+#[test]
+fn meshlet_rebuild_reuploads_entries_over_corrupted_buffer() {
+    let ctx = test_context();
+
+    let mut meshlets = MeshletBuffer::new(&ctx, 8);
+    let entry1 = test_meshlet_entry();
+    let entry2 = MeshletEntry {
+        sphere_x: -1.0,
+        sphere_y: -2.0,
+        sphere_z: -3.0,
+        sphere_radius: 2.0,
+        cone_packed: 0x0403_0201,
+        data_offset: 256,
+        counts_packed: pack_counts(64, 32),
+        reserved: 0,
+    };
+    meshlets.append(ctx.queue(), &[entry1, entry2]).expect("entries");
+
+    let len = meshlets.len() as u64 * 32;
+    let expected = meshlet_bytes(meshlets.entries());
+    assert_eq!(readback(&ctx, meshlets.buffer(), len), expected, "precondition: meshlet SSBO valid");
+
+    // Deliberately corrupt the SSBO over its full occupied extent.
+    ctx.queue().write_buffer(meshlets.buffer(), 0, &vec![0xCD; len as usize]);
+    assert_eq!(readback(&ctx, meshlets.buffer(), len), vec![0xCD; len as usize], "corruption landed in meshlet SSBO");
+
+    // The recovery call under test.
+    meshlets.rebuild(ctx.queue());
+
+    assert_eq!(
+        readback(&ctx, meshlets.buffer(), len),
+        expected,
+        "MeshletBuffer::rebuild restored the SSBO from entries()"
+    );
 }

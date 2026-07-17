@@ -48,6 +48,16 @@ struct InstanceInfo {
 @group(0) @binding(5) var<storage, read> instance_info: array<InstanceInfo>;
 "#;
 
+/// The WGSL M3-α's shaders will declare for the meshlet buffer
+/// (`src/gpu/assets.rs::MeshletEntry`, C5 amendment / punch-list R12).
+const M3A_MESHLET_WGSL: &str = r#"
+struct MeshletEntry {
+    sphere_x: f32, sphere_y: f32, sphere_z: f32, sphere_radius: f32,
+    cone_packed: u32, data_offset: u32, counts_packed: u32, reserved: u32,
+}
+@group(0) @binding(6) var<storage, read> meshlets: array<MeshletEntry>;
+"#;
+
 /// Reflect (size, [(member_name, offset)]) for a named struct in WGSL source.
 fn wgsl_struct_layout(src: &str, name: &str) -> (u32, Vec<(String, u32)>) {
     let module = naga::front::wgsl::parse_str(src).expect("valid WGSL");
@@ -158,6 +168,30 @@ fn test_instance_info_struct_is_byte_exact() {
     assert_eq!(size, 8, "WGSL InstanceInfo size == size_of::<InstanceInfo>()");
     assert_eq!(size as usize, std::mem::size_of::<pulsar_scenedb::InstanceInfo>());
     assert_eq!(members, vec![("mesh_index".to_string(), 0), ("flags".to_string(), 4)]);
+}
+
+/// M3-α T6 (C5 amendment / R12): host `MeshletEntry` (`gpu/assets.rs`) vs
+/// naga reflection of the WGSL struct shaders will bind it as, byte-exact —
+/// mirrors `test3_cluster_node_struct_is_byte_exact`'s shape for the new
+/// meshlet buffer.
+#[test]
+fn test_meshlet_entry_struct_is_byte_exact() {
+    let (size, members) = wgsl_struct_layout(M3A_MESHLET_WGSL, "MeshletEntry");
+    assert_eq!(size, 32, "WGSL MeshletEntry size == size_of::<MeshletEntry>()");
+    assert_eq!(size as usize, std::mem::size_of::<pulsar_scenedb::gpu::MeshletEntry>());
+    assert_eq!(
+        members,
+        vec![
+            ("sphere_x".to_string(), 0),
+            ("sphere_y".to_string(), 4),
+            ("sphere_z".to_string(), 8),
+            ("sphere_radius".to_string(), 12),
+            ("cone_packed".to_string(), 16),
+            ("data_offset".to_string(), 20),
+            ("counts_packed".to_string(), 24),
+            ("reserved".to_string(), 28),
+        ]
+    );
 }
 
 #[test]

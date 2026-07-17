@@ -311,3 +311,10 @@ pipeline; editor visual verification.
   command-slot-keyed/row-valued (no change — recorded here because rev 1
   nearly drifted it; plus the instance-info column joins §10's buffer
   inventory).
+- **R12:** MeshletEntry layout (32 B, C5 amendment, M3-α T6): spec §19 fixes
+  size + contents only ("32 B/meshlet beside ClusterBuffer") — the field
+  order/offsets are defined here: sphere_x/y/z/radius f32@0/4/8/12,
+  cone_packed u32@16 (i8x3 snorm axis | i8 snorm sin-cutoff, §17.2 backface
+  test), data_offset u32@20 (geometry index buffer element offset),
+  counts_packed u32@24 (vertex_count u8 | triangle_count u8 << 8 | reserved
+  u16 << 16), reserved u32@28. See CONTRACTS.md C5 for the canonical row.

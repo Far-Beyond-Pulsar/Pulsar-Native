@@ -120,6 +120,16 @@ Instance info (SceneDB-owned, amendment M3-α): 8 B per row — mesh_index
 u32@0 (LOD-0 MeshRegistry entry, R9), flags u32@4 (bit 0 near-clip twin, rest
 reserved 0). Row-indexed beside instance transforms.
 
+MeshletEntry (SceneDB-owned, amendment M3-α, design Rev 2 §2 + Rev 2.4
+punch-list R12): 32 bytes — sphere_x/y/z/radius f32@0/4/8/12 (bounding
+sphere), cone_packed u32@16 (i8x3 snorm axis | i8 snorm sin-cutoff φ, §17.2
+backface test), data_offset u32@20 (element offset into the geometry index
+buffer), counts_packed u32@24 (vertex_count u8 | triangle_count u8 << 8 |
+reserved u16 << 16, must be 0), reserved u32@28 (must be 0). Spec §19 fixes
+size + contents only ("32 B/meshlet beside ClusterBuffer"); this layout is
+the R12 amendment. Meshlet-offset `i` uploaded at byte offset `i * 32` —
+`ClusterNode::meshlet_offset`'s index space.
+
 Enforcement: Test 3 runs in CI on every PR via the `gpu_layout` test target
 (`cargo test --features gpu --test gpu_layout` — naga reflection only, no GPU
 adapter required): host struct offsets vs naga reflection of compiled WGSL,
