@@ -5,7 +5,7 @@
 //! integration test binaries cannot share modules without a common
 //! `tests/common/mod.rs`, and that refactor is deliberately out of scope here.
 
-use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry};
+use pulsar_scenedb::gpu::{ArenaError, ClusterBuffer, ClusterError, ClusterNode, EngineGpuContext, GeometryArena, MeshError, MeshMetadata, MeshRegistry, TextureError, TextureStore};
 use std::sync::Arc;
 
 /// Byte view of `MeshMetadata` entries for readback comparison. Mirrors the
@@ -589,4 +589,188 @@ fn rebuild_reuploads_entries_over_corrupted_buffers() {
         expected_cluster,
         "ClusterBuffer::rebuild restored the SSBO from nodes()"
     );
+}
+
+// ---------------------------------------------------------------------
+// TextureStore (M3-α T5, spec §10 G4): SceneDB-owned textures + bindless
+// slot table.
+// ---------------------------------------------------------------------
+
+/// A small RGBA8 texture descriptor. `COPY_SRC` is required for the
+/// readback tests (`copy_texture_to_buffer`); harmless on the others.
+fn rgba_desc<'a>(width: u32, height: u32) -> wgpu::TextureDescriptor<'a> {
+    wgpu::TextureDescriptor {
+        label: Some("texture-store-test"),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    }
+}
+
+/// Test 13 readback helper: mirrors `readback`'s buffer-to-buffer shape but
+/// goes through `copy_texture_to_buffer`, which (unlike `write_texture`)
+/// hard-requires `bytes_per_row` to be a multiple of
+/// `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Pads the staging buffer's row
+/// stride accordingly, then trims the padding back out per-row before
+/// returning — so the caller can compare directly against tightly-packed
+/// source bytes.
+fn readback_texture(
+    ctx: &EngineGpuContext,
+    texture: &wgpu::Texture,
+    width: u32,
+    height: u32,
+    bytes_per_pixel: u32,
+) -> Vec<u8> {
+    let unpadded_bytes_per_row = width * bytes_per_pixel;
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
+
+    let staging = ctx.device().create_buffer(&wgpu::BufferDescriptor {
+        label: Some("texture-readback"),
+        size: (padded_bytes_per_row * height) as u64,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut enc = ctx.device().create_command_encoder(&Default::default());
+    enc.copy_texture_to_buffer(
+        texture.as_image_copy(),
+        wgpu::TexelCopyBufferInfo {
+            buffer: &staging,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(padded_bytes_per_row),
+                rows_per_image: Some(height),
+            },
+        },
+        wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+    );
+    ctx.queue().submit([enc.finish()]);
+    let slice = staging.slice(..);
+    slice.map_async(wgpu::MapMode::Read, |r| r.expect("map"));
+    ctx.device()
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("poll");
+    let padded = slice.get_mapped_range().expect("mapped range").to_vec();
+    staging.unmap();
+
+    // Trim the alignment padding: keep only the first
+    // `unpadded_bytes_per_row` bytes of each `padded_bytes_per_row`-wide row.
+    let mut out = Vec::with_capacity((unpadded_bytes_per_row * height) as usize);
+    for row in 0..height as usize {
+        let start = row * padded_bytes_per_row as usize;
+        out.extend_from_slice(&padded[start..start + unpadded_bytes_per_row as usize]);
+    }
+    out
+}
+
+#[test]
+fn register_two_textures_get_slots_0_and_1() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+    let slot_a = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[1u8, 2, 3, 4])
+        .expect("first register");
+    let slot_b = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[5u8, 6, 7, 8])
+        .expect("second register");
+    assert_eq!((slot_a, slot_b), (0, 1));
+    assert_eq!(store.slot_count(), 2);
+    assert_eq!(store.upload_count(), 2);
+}
+
+#[test]
+fn texture_is_present_after_register_and_absent_after_unregister() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+    let slot = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[9u8, 9, 9, 9])
+        .expect("register");
+    assert!(store.texture(slot).is_some(), "texture(slot) present right after register");
+
+    store.unregister(slot).expect("unregister");
+    assert!(store.texture(slot).is_none(), "texture(slot) absent after unregister — dropped, not just marked");
+}
+
+#[test]
+fn unregister_then_register_recycles_the_slot_lifo() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+    let slot_a = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[1u8, 1, 1, 1])
+        .expect("first register");
+    let slot_b = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[2u8, 2, 2, 2])
+        .expect("second register");
+    assert_eq!((slot_a, slot_b), (0, 1));
+
+    // Free b then a (LIFO order: a freed last, so a is recycled first).
+    store.unregister(slot_b).expect("unregister b");
+    store.unregister(slot_a).expect("unregister a");
+
+    let slot_c = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[3u8, 3, 3, 3])
+        .expect("recycled register");
+    assert_eq!(slot_c, slot_a, "LIFO free list hands back the most-recently-freed slot first");
+    assert_eq!(store.slot_count(), 2, "recycling must not grow the slot table extent");
+}
+
+#[test]
+fn small_store_exhaustion_is_a_hard_error() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(1);
+    assert!(store.register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4]).is_ok());
+    let err = store.register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4]);
+    assert_eq!(err, Err(TextureError::SlotsExhausted));
+}
+
+#[test]
+fn unregister_an_already_vacant_slot_is_an_error() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+    let slot = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4])
+        .expect("register");
+    store.unregister(slot).expect("first unregister succeeds");
+    let err = store.unregister(slot);
+    assert_eq!(err, Err(TextureError::SlotVacant), "second unregister of the same slot must fail");
+}
+
+#[test]
+fn unregister_a_slot_beyond_the_allocated_range_is_an_error() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+    store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4])
+        .expect("register");
+    // Only slot 0 has ever been allocated — slot 5 is out of range, not
+    // merely vacant.
+    let err = store.unregister(5);
+    assert_eq!(err, Err(TextureError::SlotOutOfRange));
+}
+
+#[test]
+fn registered_texture_readback_is_byte_exact_with_row_padding() {
+    let ctx = test_context();
+    let mut store = TextureStore::new(16);
+
+    // 3px-wide RGBA8: 3 * 4 = 12 bytes/row, which pads to 256 under
+    // COPY_BYTES_PER_ROW_ALIGNMENT — exercises the padding/trim path in
+    // `readback_texture`, unlike a 64-wide (already-aligned) texture would.
+    let width = 3;
+    let height = 2;
+    let data: Vec<u8> = (0..(width * height * 4) as u8).collect();
+
+    let slot = store
+        .register(ctx.device(), ctx.queue(), &rgba_desc(width, height), &data)
+        .expect("register");
+    let texture = store.texture(slot).expect("texture present");
+
+    let gpu = readback_texture(&ctx, texture, width, height, 4);
+    assert_eq!(gpu, data, "readback must be byte-exact vs the uploaded source, padding trimmed");
 }

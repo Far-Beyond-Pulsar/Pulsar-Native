@@ -407,6 +407,156 @@ impl ClusterBuffer {
     }
 }
 
+/// Bindless texture slot ceiling (spec §10 G4 / recon ceiling). `TextureStore`
+/// asserts `max_slots <= MAX_TEXTURE_SLOTS` in `new`.
+pub const MAX_TEXTURE_SLOTS: u32 = 16384;
+
+/// Hard texture-store errors (§8): surfaced to the caller, never silently
+/// coerced or retried.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextureError {
+    /// The slot table is at `max_slots` capacity and the free list (recycled
+    /// via `unregister`) is empty — no slot available (spec §10 G4 bindless
+    /// ceiling).
+    SlotsExhausted,
+    /// `slot` is within the allocated range but currently holds no texture
+    /// (already unregistered).
+    SlotVacant,
+    /// `slot` was never allocated (`>= slot_count()`).
+    SlotOutOfRange,
+}
+
+/// SceneDB-owned bindless texture residency (Ownership Law, CONTRACTS C0,
+/// spec §10 G4): SceneDB owns ALL scene data GPU-side. This store holds the
+/// `wgpu::Texture` objects themselves — not views — so they survive renderer
+/// teardown (Test 13); Helio only ever builds VIEWS from `texture(slot)`.
+/// Slot ids recycle LIFO on `unregister`, same shape as the crate's other
+/// slot-recycling stores.
+pub struct TextureStore {
+    textures: Vec<Option<wgpu::Texture>>,
+    free: Vec<u32>,
+    next: u32,
+    max_slots: u32,
+    upload_count: u64,
+}
+
+impl TextureStore {
+    /// `max_slots` must not exceed [`MAX_TEXTURE_SLOTS`] (spec §10 G4
+    /// bindless ceiling) — asserted here, not softly clamped.
+    pub fn new(max_slots: u32) -> Self {
+        assert!(
+            max_slots <= MAX_TEXTURE_SLOTS,
+            "max_slots ({max_slots}) exceeds the MAX_TEXTURE_SLOTS bindless ceiling ({MAX_TEXTURE_SLOTS})"
+        );
+        Self {
+            textures: Vec::new(),
+            free: Vec::new(),
+            next: 0,
+            max_slots,
+            upload_count: 0,
+        }
+    }
+
+    /// Allocates a slot (LIFO free-list reuse, else the next fresh index;
+    /// `SlotsExhausted` once `max_slots` is reached with nothing to recycle),
+    /// creates the `wgpu::Texture` from `desc`, and uploads `data` at mip 0
+    /// via `queue.write_texture` with a tightly-packed layout derived from
+    /// `desc` (`bytes_per_row = format.block_copy_size(None) * size.width`;
+    /// single-mip M3-α scope — mip chains ride to the asset pipeline; only
+    /// uncompressed formats are supported here, since `block_copy_size`'s
+    /// generic block-size arithmetic covers them directly).
+    ///
+    /// Owns the resulting `wgpu::Texture` (C0/§10 G4 — Test 13: textures
+    /// survive renderer teardown). Caller retains source data for
+    /// device-loss re-registration (Test 14; this store is residency only).
+    pub fn register(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        desc: &wgpu::TextureDescriptor<'_>,
+        data: &[u8],
+    ) -> Result<u32, TextureError> {
+        let slot = match self.free.pop() {
+            Some(s) => s,
+            None => {
+                if self.next >= self.max_slots {
+                    return Err(TextureError::SlotsExhausted);
+                }
+                let s = self.next;
+                self.next += 1;
+                s
+            }
+        };
+
+        let texture = device.create_texture(desc);
+
+        let block_size = desc
+            .format
+            .block_copy_size(None)
+            .expect("TextureStore::register (M3-α scope): uncompressed formats only");
+        let bytes_per_row = block_size * desc.size.width;
+        queue.write_texture(
+            texture.as_image_copy(),
+            data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(bytes_per_row),
+                rows_per_image: Some(desc.size.height),
+            },
+            desc.size,
+        );
+        self.upload_count += 1;
+
+        let slot_idx = slot as usize;
+        if slot_idx >= self.textures.len() {
+            self.textures.resize_with(slot_idx + 1, || None);
+        }
+        self.textures[slot_idx] = Some(texture);
+
+        Ok(slot)
+    }
+
+    /// Drops `slot`'s texture and returns the slot id to the LIFO free list
+    /// (the next `register` call recycles it first). `SlotOutOfRange` if
+    /// `slot` was never allocated; `SlotVacant` if it was already freed.
+    pub fn unregister(&mut self, slot: u32) -> Result<(), TextureError> {
+        if slot >= self.next {
+            return Err(TextureError::SlotOutOfRange);
+        }
+        let entry = self
+            .textures
+            .get_mut(slot as usize)
+            .ok_or(TextureError::SlotOutOfRange)?;
+        if entry.take().is_none() {
+            return Err(TextureError::SlotVacant);
+        }
+        self.free.push(slot);
+        Ok(())
+    }
+
+    /// Helio builds VIEWS from these — the store never hands out a view
+    /// itself (C0/§10 G4: SceneDB owns the texture, not the render-side use
+    /// of it).
+    pub fn texture(&self, slot: u32) -> Option<&wgpu::Texture> {
+        self.textures.get(slot as usize).and_then(Option::as_ref)
+    }
+
+    /// The bindless slot table's current extent (one past the highest slot
+    /// id ever allocated) — the size Helio's bindless array must cover, not
+    /// the count of currently-occupied slots (recycled/vacant slots leave
+    /// holes within this range).
+    pub fn slot_count(&self) -> u32 {
+        self.next
+    }
+
+    /// Test 13 instrumentation: total `register` uploads performed, ever
+    /// (not decremented by `unregister`).
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
