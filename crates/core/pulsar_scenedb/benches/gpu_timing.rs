@@ -313,12 +313,15 @@ fn main() {
                 }
             }
             let boundary = this_sim.end().end().end();
+            // Slot list built OUTSIDE the bracket (T3 review minor: the Vec
+            // alloc was uniform-across-N floor cost, but it doesn't belong
+            // in the measurement at all).
+            let mut slots: Vec<CellSlot> = cells
+                .iter_mut()
+                .zip(ids.iter())
+                .map(|(cell, &id)| CellSlot { id, cell })
+                .collect();
             let total_ns = timer.measure_ns(&ctx, || {
-                let mut slots: Vec<CellSlot> = cells
-                    .iter_mut()
-                    .zip(ids.iter())
-                    .map(|(cell, &id)| CellSlot { id, cell })
-                    .collect();
                 let stats = boundary.run(&mut store, &mut slots);
                 std::hint::black_box(stats);
             });
@@ -356,7 +359,9 @@ fn main() {
 
     // ---- Report ----
     println!();
-    println!("path\tN\tmean_ns\tmin_ns\tp95_ns");
+    // All numbers are PER-CELL AMORTIZED (raw 256-cell bracket / REPEATS):
+    // one 1024-capacity cell with N contiguous dirty rows (one write range).
+    println!("path\tN\tmean_ns(/cell)\tmin_ns(/cell)\tp95_ns(/cell)");
     for (n, mean, min, p95) in &delta_results {
         println!("delta\t{n}\t{mean:.1}\t{min:.1}\t{p95:.1}");
     }
@@ -365,7 +370,9 @@ fn main() {
     let crossover = delta_results.iter().find(|(_, mean, _, _)| *mean >= full_mean).map(|(n, _, _, _)| *n);
     match crossover {
         Some(n) => println!(
-            "crossover: delta GPU cost reaches full-upload cost ({full_mean:.1} ns) at N={n}"
+            "crossover: delta GPU cost reaches full-upload cost ({full_mean:.1} ns) at N={n} \
+             (caveat: delta rows carry boundary's O(rows) CPU slot-shadow scan in-bracket, \
+             which full_upload skips — floor-subtracted pure-copy cost does NOT cross here)"
         ),
         None => println!(
             "crossover: delta GPU cost stays below full-upload cost ({full_mean:.1} ns) across every tested N in {ns_list:?} — no crossover observed"
@@ -373,24 +380,31 @@ fn main() {
     }
 
     // ---- Self-check: the harness's honesty gate ----
+    // Two failure modes this must catch (T3 review): (a) a DEAD bracket
+    // (e.g. single-submit form — pending writes splice before user encoders,
+    // so everything reads ~flat ~0): caught by requiring the largest payload
+    // to rise VISIBLY above the empty-payload floor; (b) a NOISE-DOMINATED
+    // bracket (per-sample submission jitter swamping payload): caught by
+    // FIXED absolute slack on the trend asserts — measured-floor-derived
+    // slack would inflate with the noise it's meant to detect.
     let noise_floor = delta_results[0].1; // N=0 mean
     println!();
     println!("noise_floor_ns (N=0 delta mean) = {noise_floor:.1}");
     let (_, m1, _, _) = delta_results[1];
     let (_, m64, _, _) = delta_results[2];
     let (_, m1024, _, _) = delta_results[3];
-    // Generous tolerance: this asserts a TREND, not a strict per-sample
-    // ordering — GPU timing has real jitter at microsecond scale. Slack is
-    // the noise floor itself (or a 50ns absolute floor if the noise floor
-    // rounds to ~0), tripled.
-    let slack = noise_floor.max(50.0) * 3.0;
+    const TREND_SLACK_NS: f64 = 500.0;
     assert!(
-        m1 <= m64 + slack,
-        "monotonicity broken: N=1 mean {m1:.1} ns > N=64 mean {m64:.1} ns + slack {slack:.1} ns — bracket is wrong, fix before reporting"
+        m1024 > noise_floor * 1.5,
+        "payload invisible: N=1024 mean {m1024:.1} ns not clearly above the N=0 floor {noise_floor:.1} ns — dead or misplaced bracket, fix before reporting"
     );
     assert!(
-        m64 <= m1024 + slack,
-        "monotonicity broken: N=64 mean {m64:.1} ns > N=1024 mean {m1024:.1} ns + slack {slack:.1} ns — bracket is wrong, fix before reporting"
+        m1 <= m64 + TREND_SLACK_NS,
+        "monotonicity broken: N=1 mean {m1:.1} ns > N=64 mean {m64:.1} ns + {TREND_SLACK_NS} ns — bracket is wrong or noise-dominated, fix before reporting"
     );
-    println!("self-check OK: N=1 <= N=64 <= N=1024 within tolerance ({slack:.1} ns slack)");
+    assert!(
+        m64 <= m1024 + TREND_SLACK_NS,
+        "monotonicity broken: N=64 mean {m64:.1} ns > N=1024 mean {m1024:.1} ns + {TREND_SLACK_NS} ns — bracket is wrong or noise-dominated, fix before reporting"
+    );
+    println!("self-check OK: payload visible over floor and N=1 <= N=64 <= N=1024 within {TREND_SLACK_NS} ns fixed slack");
 }
