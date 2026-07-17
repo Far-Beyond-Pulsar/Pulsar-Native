@@ -31,12 +31,16 @@ pulsar_core       = { workspace = true }
 # here. Proof: `cargo tree -p pulsar_scenedb --no-default-features -e normal
 # | grep -i helio` (and with `--features gpu`) must output nothing —
 # enforced in CI (audit A, G1).
+#
+# The gpu feature now uses upstream wgpu 30 per the M3 lineage decision
+# (design 2026-07-16-scenedb20-m3-helio-inversion-design.md); the fork
+# remains the workspace dep for legacy consumers until the M4 gate.
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
 ahash             = "0.8"
 profiling         = { workspace = true }
 tracing           = { workspace = true }
-wgpu              = { workspace = true, optional = true }
+wgpu              = { version = "30", optional = true }
 
 [lints]
 workspace = true
@@ -45,9 +49,8 @@ workspace = true
 rand = "0.8"
 criterion = { version = "=0.8.2" }
 pollster = "1.0"
-# rev must stay in lockstep with the workspace `wgpu` git dep in the root
-# Cargo.toml (a path dep can't work: crates/graphics/wgpu is its own workspace).
-naga = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8", features = ["wgsl-in"] }
+# naga tracks the same major as the gpu feature's wgpu (both crates.io 30).
+naga = { version = "30", features = ["wgsl-in"] }
 
 [[bench]]
 name = "ecs_bench"

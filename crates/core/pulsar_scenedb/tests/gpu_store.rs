@@ -21,13 +21,19 @@ fn as_u32s(bytes: &[u8]) -> Vec<u32> {
 }
 
 fn test_context() -> EngineGpuContext {
-    // Fork rev fce5b80 (wgpu 28 API): `Instance::new` takes an owned
-    // `InstanceDescriptor`, not a reference.
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+    // Upstream wgpu 30: `Instance::new` still takes an owned
+    // `InstanceDescriptor`, but the type no longer derives `Default` — use
+    // the `new_without_display_handle()` constructor (headless, no window
+    // system connection), equivalent to the fork's bare `default()`.
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         compatible_surface: None,
         force_fallback_adapter: false,
+        // Upstream wgpu 30 added this field (limit-bucketing/anti-fingerprint
+        // knob); `false` preserves the fork's behavior of exposing the
+        // adapter's real limits, unbucketed.
+        apply_limit_buckets: false,
     }))
     .expect("no adapter — GPU tests need a local GPU");
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
@@ -50,13 +56,15 @@ fn readback(ctx: &EngineGpuContext, buf: &wgpu::Buffer, bytes: u64) -> Vec<u8> {
     ctx.queue().submit([enc.finish()]);
     let slice = staging.slice(..);
     slice.map_async(wgpu::MapMode::Read, |r| r.expect("map"));
-    // Fork rev fce5b80: `PollType::Wait` is a struct variant
-    // (`{ submission_index, timeout }`), not a unit variant; use the
-    // `wait_indefinitely()` convenience constructor instead.
+    // `PollType::Wait` is a struct variant (`{ submission_index, timeout }`),
+    // not a unit variant, on both the fork and upstream 30; the
+    // `wait_indefinitely()` convenience constructor is unchanged.
     ctx.device()
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("poll");
-    let data = slice.get_mapped_range().to_vec();
+    // Upstream wgpu 30: `get_mapped_range()` returns
+    // `Result<BufferView, MapRangeError>` instead of a bare `BufferView`.
+    let data = slice.get_mapped_range().expect("mapped range").to_vec();
     staging.unmap();
     data
 }

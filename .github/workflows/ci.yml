@@ -55,6 +55,32 @@ jobs:
         run: |
           if cargo tree -p pulsar_scenedb -e normal | grep -qi helio; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
 
+      - name: SceneDB resolves outside the workspace (submodule-build precondition)
+        shell: bash
+        run: |
+          set -e
+          # Normalize to forward slashes: on Windows runners GITHUB_WORKSPACE
+          # uses backslashes, which TOML basic strings would otherwise parse
+          # as escape sequences.
+          workspace_fwd="$(printf '%s' "${GITHUB_WORKSPACE}" | tr '\\' '/')"
+          scratch="${RUNNER_TEMP}/scenedb-resolve-check"
+          rm -rf "$scratch"
+          mkdir -p "$scratch/src"
+          touch "$scratch/src/lib.rs"
+          cat > "$scratch/Cargo.toml" <<EOF
+          [package]
+          name = "scenedb-resolve-check"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          pulsar_scenedb = { path = "${workspace_fwd}/crates/core/pulsar_scenedb", features = ["gpu"] }
+
+          [workspace]
+          EOF
+          cd "$scratch"
+          cargo metadata --format-version 1 > /dev/null
+
       - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
         run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
 
