@@ -116,6 +116,10 @@ The GPU resolves `generations[slot_mirror[row]]` for handle validation (C6).
 Maintained solely by the frame-boundary self-healing scan. [Pending spec §10
 amendment in Rev 2.4.]
 
+Instance info (SceneDB-owned, amendment M3-α): 8 B per row — mesh_index
+u32@0 (LOD-0 MeshRegistry entry, R9), flags u32@4 (bit 0 near-clip twin, rest
+reserved 0). Row-indexed beside instance transforms.
+
 Enforcement: Test 3 runs in CI on every PR via the `gpu_layout` test target
 (`cargo test --features gpu --test gpu_layout` — naga reflection only, no GPU
 adapter required): host struct offsets vs naga reflection of compiled WGSL,

@@ -38,6 +38,16 @@ struct ClusterNode {
 @group(0) @binding(4) var<storage, read> slot_mirror: array<u32>;
 "#;
 
+/// The WGSL M3-α's shaders will declare for the instance-info mirror
+/// (`src/spatial.rs::InstanceInfo`, C5 amendment — cull's token→mesh link).
+const M3A_WGSL: &str = r#"
+struct InstanceInfo {
+    mesh_index: u32,
+    flags: u32,
+}
+@group(0) @binding(5) var<storage, read> instance_info: array<InstanceInfo>;
+"#;
+
 /// Reflect (size, [(member_name, offset)]) for a named struct in WGSL source.
 fn wgsl_struct_layout(src: &str, name: &str) -> (u32, Vec<(String, u32)>) {
     let module = naga::front::wgsl::parse_str(src).expect("valid WGSL");
@@ -137,6 +147,17 @@ fn test3_cluster_node_struct_is_byte_exact() {
             ("bs_w".to_string(), 44),
         ]
     );
+}
+
+/// M3-α T4 (C5 amendment): host `InstanceInfo` (`spatial.rs`) vs naga
+/// reflection of the WGSL struct shaders will bind it as, byte-exact —
+/// mirrors `test3_instance_struct_is_byte_exact`'s shape for the new column.
+#[test]
+fn test_instance_info_struct_is_byte_exact() {
+    let (size, members) = wgsl_struct_layout(M3A_WGSL, "InstanceInfo");
+    assert_eq!(size, 8, "WGSL InstanceInfo size == size_of::<InstanceInfo>()");
+    assert_eq!(size as usize, std::mem::size_of::<pulsar_scenedb::InstanceInfo>());
+    assert_eq!(members, vec![("mesh_index".to_string(), 0), ("flags".to_string(), 4)]);
 }
 
 #[test]

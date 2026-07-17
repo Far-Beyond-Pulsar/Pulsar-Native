@@ -99,6 +99,9 @@ pub use query::{QueryIter, WorldQuery};
 pub use registry::{HandleRegistry, NULL_ROW};
 pub use schedule::Schedule;
 pub use snapshot::{LivenessSnapshot, RevocationFlag};
-pub use spatial::{Aabb, Frustum, SpatialCell, SPATIAL_COLUMNS, TRANSFORM_COLUMN};
+pub use spatial::{
+    Aabb, Frustum, InstanceInfo, SpatialCell, INSTANCE_INFO_COLUMN, SPATIAL_COLUMNS,
+    TRANSFORM_COLUMN,
+};
 pub use token::TypeToken;
 pub use world::World;

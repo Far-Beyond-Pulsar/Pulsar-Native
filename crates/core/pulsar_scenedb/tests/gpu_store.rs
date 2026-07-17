@@ -5,7 +5,7 @@ use pulsar_scenedb::gpu::EngineGpuContext;
 use pulsar_scenedb::gpu::SceneBuffer;
 use pulsar_scenedb::gpu::DirtyMask;
 use pulsar_scenedb::gpu::{CellSlot, FrameDriver, RegionClassConfig, SceneGpuConfig, SceneGpuStore, SimulateA};
-use pulsar_scenedb::{CellStorage, CellType, TypeToken};
+use pulsar_scenedb::{CellStorage, CellType, InstanceInfo, TypeToken};
 use std::sync::Arc;
 
 fn mat(seed: f32) -> [f32; 16] {
@@ -168,6 +168,29 @@ fn transform_cell(capacity: u32) -> CellStorage {
     CellStorage::from_cell_type(&ct, capacity).unwrap()
 }
 
+/// M3-α T4: a `CellType`-based cell carrying BOTH the `[f32; 16]` transform
+/// column and the `InstanceInfo` column, for tests that exercise
+/// `write_instance_info`/the instance-info mirror without pulling in
+/// `SpatialCell`'s bounds columns.
+fn transform_info_cell(capacity: u32) -> CellStorage {
+    let ct = CellType::new("m3a-instance-info")
+        .with(TypeToken::of::<[f32; 16]>())
+        .with(TypeToken::of::<InstanceInfo>())
+        .build()
+        .unwrap();
+    CellStorage::from_cell_type(&ct, capacity).unwrap()
+}
+
+fn as_infos(bytes: &[u8]) -> Vec<InstanceInfo> {
+    bytes
+        .chunks_exact(8)
+        .map(|c| InstanceInfo {
+            mesh_index: u32::from_le_bytes(c[0..4].try_into().unwrap()),
+            flags: u32::from_le_bytes(c[4..8].try_into().unwrap()),
+        })
+        .collect()
+}
+
 fn scene_cfg() -> SceneGpuConfig {
     SceneGpuConfig {
         classes: vec![RegionClassConfig { capacity: 64, max_resident_cells: 4 }],
@@ -257,6 +280,84 @@ fn compaction_move_is_resynced_and_generation_buffer_matches_registry() {
     let gpu_gens = as_u32s(&readback(&ctx, store.generation_buffer(), 64 * 4));
     let slot_base = 0usize; // slot region base for the first class-0 cell
     assert_eq!(&gpu_gens[slot_base..slot_base + regs.len()], &regs[..]);
+}
+
+/// M3-α T4 (C5 amendment): `write_instance_info` mirrors `write_transform`'s
+/// machinery byte-exactly — write, drive the frame boundary, and read the
+/// instance-info SSBO back to confirm it matches the CPU-side values row for
+/// row. Also proves the write does NOT touch the generation buffer (the
+/// stamp stays transform-only — see `write_instance_info`'s doc).
+#[test]
+fn write_instance_info_boundary_readback_is_byte_exact() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_info_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
+    let h = cell.alloc().unwrap();
+    let info = InstanceInfo { mesh_index: 7, flags: 1 };
+    assert!(store.write_instance_info(id, &mut cell, h, info, &sim));
+    // The instance-info write alone must not stamp a generation (that stamp
+    // is transform-only, per `write_instance_info`'s doc).
+    assert_eq!(store.generation_write_count(), 0, "write_instance_info never stamps the generation buffer");
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
+    }
+    let row = cell.row_of(h).unwrap() as usize;
+    let base = store.row_region_base(id) as usize;
+    let gpu = as_infos(&readback(&ctx, store.instance_info_buffer(), (64 * 4 * 8) as u64));
+    assert_eq!(gpu[base + row], info, "GPU bytes == CPU instance-info column, by row");
+    // Stale handle rejected, mirroring write_transform's contract.
+    let dead = cell.alloc().unwrap();
+    cell.free(dead);
+    assert!(!store.write_instance_info(id, &mut cell, dead, info, &sim));
+}
+
+/// M3-α T4: mirrors `compaction_move_is_resynced_and_generation_buffer_
+/// matches_registry`'s shape — a compaction-moved row must carry its
+/// instance-info bytes to the new index, exactly like the transform column.
+#[test]
+fn compaction_move_carries_instance_info() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let mut cell = transform_info_cell(64);
+    let id = store.register_cell(&cell, 0).unwrap();
+    let mut frames = FrameDriver::new();
+    let mut sim = frames.begin();
+    let ha = cell.alloc().unwrap();
+    let hb = cell.alloc().unwrap();
+    let hc = cell.alloc().unwrap();
+    for (h, s) in [(ha, 1.0f32), (hb, 2.0), (hc, 3.0)] {
+        store.write_transform(id, &mut cell, h, &mat(s), &sim);
+    }
+    let infos = [(ha, 10u32), (hb, 20u32), (hc, 30u32)];
+    for (h, mesh_index) in infos {
+        store.write_instance_info(id, &mut cell, h, InstanceInfo { mesh_index, flags: 0 }, &sim);
+    }
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        sim = scene_boundary(&mut frames, sim, &mut store, &mut slots).0;
+    }
+    // Free hb via the deferred path; complete its serial; boundary again:
+    // hc swaps into hb's vacated row (row 1).
+    let serial = store.tracker().next_serial();
+    assert!(store.free_deferred(id, &mut cell, hb, serial, &sim));
+    store.tracker().force_complete(serial);
+    let stats = {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        scene_boundary(&mut frames, sim, &mut store, &mut slots).1 // retire → compact (hc moves) → sync
+    };
+    assert!(stats.ranges >= 1, "the compaction move was re-uploaded");
+    let hc_row = cell.row_of(hc).unwrap() as usize;
+    let base = store.row_region_base(id) as usize;
+    let gpu = as_infos(&readback(&ctx, store.instance_info_buffer(), (64 * 4 * 8) as u64));
+    assert_eq!(
+        gpu[base + hc_row],
+        InstanceInfo { mesh_index: 30, flags: 0 },
+        "moved row's instance-info bytes follow the compaction move, like the transform column"
+    );
 }
 
 #[test]
@@ -682,6 +783,12 @@ fn slot_mirror_self_heals_alloc_without_write() {
 /// the original (both register cell A first, cell B second). Compare
 /// region-relative slices regardless, per the design note: absolute buffer
 /// equality is incidental, not the contract.
+///
+/// M3-α T4 extension: cells here also carry the `InstanceInfo` column
+/// (`transform_info_cell`, not the bare `transform_cell`), churned alongside
+/// the transform, so the instance-info SSBO's device-loss recovery is
+/// asserted byte-identical too — same "derived data is not stored" gate
+/// (design §3), now covering both mirrored columns.
 #[test]
 fn test14_multicell_device_loss_rematerialization() {
     let cfg = scene_cfg();
@@ -699,9 +806,10 @@ fn test14_multicell_device_loss_rematerialization() {
     let transform_bytes = total_rows * 64;
     let mirror_bytes = total_rows * 4;
     let gen_bytes = total_slots * 4;
+    let info_bytes = total_rows * 8;
 
-    let mut cell_a = transform_cell(64);
-    let mut cell_b = transform_cell(64);
+    let mut cell_a = transform_info_cell(64);
+    let mut cell_b = transform_info_cell(64);
 
     let ctx1 = test_context();
     let mut store = SceneGpuStore::new(&ctx1, cfg.clone());
@@ -715,10 +823,18 @@ fn test14_multicell_device_loss_rematerialization() {
     let hs_a: Vec<_> = (0..8).map(|_| cell_a.alloc().unwrap()).collect();
     for (i, &h) in hs_a.iter().enumerate() {
         assert!(store.write_transform(id_a, &mut cell_a, h, &mat(i as f32 * 10.0), &sim));
+        assert!(store.write_instance_info(id_a, &mut cell_a, h, InstanceInfo { mesh_index: i as u32, flags: 0 }, &sim));
     }
     let hs_b: Vec<_> = (0..8).map(|_| cell_b.alloc().unwrap()).collect();
     for (i, &h) in hs_b.iter().enumerate() {
         assert!(store.write_transform(id_b, &mut cell_b, h, &mat(1000.0 + i as f32 * 10.0), &sim));
+        assert!(store.write_instance_info(
+            id_b,
+            &mut cell_b,
+            h,
+            InstanceInfo { mesh_index: 1000 + i as u32, flags: 1 },
+            &sim
+        ));
     }
     {
         let mut slots = [CellSlot { id: id_a, cell: &mut cell_a }, CellSlot { id: id_b, cell: &mut cell_b }];
@@ -753,6 +869,7 @@ fn test14_multicell_device_loss_rematerialization() {
     let before_rows = readback(&ctx1, store.transform_buffer(), transform_bytes);
     let before_mirror = readback(&ctx1, store.slot_mirror_buffer(), mirror_bytes);
     let before_gens = readback(&ctx1, store.generation_buffer(), gen_bytes);
+    let before_infos = readback(&ctx1, store.instance_info_buffer(), info_bytes);
 
     // Device loss: drop the store, then the entire device.
     drop(store);
@@ -775,6 +892,7 @@ fn test14_multicell_device_loss_rematerialization() {
     let after_rows = readback(&ctx2, rebuilt.transform_buffer(), transform_bytes);
     let after_mirror = readback(&ctx2, rebuilt.slot_mirror_buffer(), mirror_bytes);
     let after_gens = readback(&ctx2, rebuilt.generation_buffer(), gen_bytes);
+    let after_infos = readback(&ctx2, rebuilt.instance_info_buffer(), info_bytes);
 
     // Cell A: byte-identity over its region-relative slices.
     let rows_a = cell_a.rows_in_use() as usize;
@@ -796,6 +914,12 @@ fn test14_multicell_device_loss_rematerialization() {
         before_gens[slot_base_a_before * 4..slot_base_a_before * 4 + gens_bytes_a],
         "cell A generations byte-identical across device loss"
     );
+    let info_bytes_a = rows_a * 8;
+    assert_eq!(
+        after_infos[base_a_after * 8..base_a_after * 8 + info_bytes_a],
+        before_infos[base_a_before * 8..base_a_before * 8 + info_bytes_a],
+        "cell A instance-info region byte-identical across device loss"
+    );
 
     // Cell B: same, at its own (non-zero) region bases.
     let rows_b = cell_b.rows_in_use() as usize;
@@ -816,6 +940,12 @@ fn test14_multicell_device_loss_rematerialization() {
         after_gens[slot_base_b_after * 4..slot_base_b_after * 4 + gens_bytes_b],
         before_gens[slot_base_b_before * 4..slot_base_b_before * 4 + gens_bytes_b],
         "cell B generations byte-identical across device loss"
+    );
+    let info_bytes_b = rows_b * 8;
+    assert_eq!(
+        after_infos[base_b_after * 8..base_b_after * 8 + info_bytes_b],
+        before_infos[base_b_before * 8..base_b_before * 8 + info_bytes_b],
+        "cell B instance-info region byte-identical across device loss"
     );
 }
 

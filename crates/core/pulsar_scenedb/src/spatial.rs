@@ -23,6 +23,24 @@ pub const SPATIAL_COLUMNS: usize = 6;
 /// with [`SpatialCell::with_transform`].
 pub const TRANSFORM_COLUMN: usize = SPATIAL_COLUMNS;
 
+/// GPU-mirrored per-instance metadata (M3-α, C5 amendment): cull's
+/// token→mesh link. Mirrors row-indexed, beside the transform column, to
+/// `gpu::SceneGpuStore`'s instance-info SSBO via `write_instance_info` (the
+/// GPU mirror itself lives in `gpu::scene_store` — this type is plain Pod
+/// data and stays graphics-free, CONTRACTS C0).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct InstanceInfo {
+    pub mesh_index: u32, // @0 — MeshRegistry index (LOD 0 entry per R9)
+    pub flags: u32,      // @4 — bit 0 reserved: near-clip CPU twin (M3-β); rest 0
+}
+const _: () = assert!(std::mem::size_of::<InstanceInfo>() == 8);
+unsafe impl crate::page::Pod for InstanceInfo {}
+
+/// User-column index of the GPU-mirrored instance-info column on cells built
+/// with [`SpatialCell::with_transform`] (C5 amendment, M3-α).
+pub const INSTANCE_INFO_COLUMN: usize = SPATIAL_COLUMNS + 1; // 7
+
 /// Six inward-normal frustum planes (spec §8.1 frustum query input).
 #[derive(Copy, Clone, Debug)]
 pub struct Frustum {
@@ -58,14 +76,19 @@ impl SpatialCell {
     }
 
     /// A spatial cell that also carries a token-registered `[f32; 16]`
-    /// transform column (user column [`TRANSFORM_COLUMN`]) so it can be
-    /// registered with `gpu::SceneGpuStore` (which resolves the mirrored
-    /// column token-keyed). Stride: 6×4 + 64 = 88 B ≤ the C2 128 B ceiling.
+    /// transform column (user column [`TRANSFORM_COLUMN`]) and a
+    /// token-registered [`InstanceInfo`] column (user column
+    /// [`INSTANCE_INFO_COLUMN`], M3-α C5 amendment — cull's token→mesh link)
+    /// so it can be registered with `gpu::SceneGpuStore` (which resolves both
+    /// mirrored columns token-keyed). Columns: `[6×f32 @0-5, [f32;16] @6,
+    /// InstanceInfo @7]`. Stride: 6×4 + 64 + 8 = 96 B ≤ the C2 128 B ceiling.
     pub fn with_transform(capacity: u32) -> Result<Self, LayoutError> {
-        let mut columns = [ColumnDesc::of::<f32>(); SPATIAL_COLUMNS + 1];
+        let mut columns = [ColumnDesc::of::<f32>(); SPATIAL_COLUMNS + 2];
         columns[TRANSFORM_COLUMN] = ColumnDesc::of::<[f32; 16]>();
+        columns[INSTANCE_INFO_COLUMN] = ColumnDesc::of::<InstanceInfo>();
         let mut storage = CellStorage::new(&columns, capacity)?;
         storage.register_token_column::<[f32; 16]>(TRANSFORM_COLUMN);
+        storage.register_token_column::<InstanceInfo>(INSTANCE_INFO_COLUMN);
         Ok(Self { storage })
     }
 
@@ -315,6 +338,29 @@ mod tests {
         let h = c.alloc(aabb([0.0; 3], [1.0; 3])).unwrap();
         let row = c.row_of(h).unwrap() as usize;
         c.storage_mut().column_for_mut::<[f32; 16]>().unwrap()[row] = [7.0; 16];
+        assert_eq!(c.storage().column_for::<[f32; 16]>().unwrap()[row], [7.0; 16]);
+        // Bounds columns unaffected and still positional:
+        assert_eq!(c.storage().user_column::<f32>(0)[row], 0.0);
+    }
+
+    /// M3-α T4: `with_transform` also exposes a token-keyed `InstanceInfo`
+    /// column (user column [`INSTANCE_INFO_COLUMN`]) alongside the mat4
+    /// transform column, independently addressable and unaffected by writes
+    /// to the other columns — proves `register_token_column` wires BOTH
+    /// tokens correctly on the same positionally-constructed cell.
+    #[test]
+    fn with_transform_exposes_token_keyed_instance_info_column() {
+        let mut c = SpatialCell::with_transform(64).unwrap();
+        let h = c.alloc(aabb([0.0; 3], [1.0; 3])).unwrap();
+        let row = c.row_of(h).unwrap() as usize;
+        c.storage_mut().column_for_mut::<[f32; 16]>().unwrap()[row] = [7.0; 16];
+        c.storage_mut().column_for_mut::<InstanceInfo>().unwrap()[row] =
+            InstanceInfo { mesh_index: 42, flags: 1 };
+        assert_eq!(
+            c.storage().column_for::<InstanceInfo>().unwrap()[row],
+            InstanceInfo { mesh_index: 42, flags: 1 }
+        );
+        // Independent of the transform column written just above:
         assert_eq!(c.storage().column_for::<[f32; 16]>().unwrap()[row], [7.0; 16]);
         // Bounds columns unaffected and still positional:
         assert_eq!(c.storage().user_column::<f32>(0)[row], 0.0);

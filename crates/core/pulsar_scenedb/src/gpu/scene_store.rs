@@ -15,6 +15,7 @@ use super::{
 };
 use crate::cell::{CellStorage, PendingRetire};
 use crate::handle::Handle;
+use crate::spatial::InstanceInfo;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -83,6 +84,15 @@ struct CellGpuState {
     /// cell's region.
     slot_capacity: u32,
     dirty_transforms: DirtyMask,
+    /// Mirrors `dirty_transforms` for the [`InstanceInfo`] column (M3-α T4,
+    /// cull's token→mesh link): same row indexing, same warm-up/move/write
+    /// marking sites — see `write_instance_info`, `compact_all`, `sync_all`,
+    /// `register_cell`. Present on EVERY cell (not only ones built via
+    /// `SpatialCell::with_transform`); marking is column-agnostic (it is
+    /// just a bitmask over row indices), so cells without an `InstanceInfo`
+    /// column simply never have this mask drained by an actual sync — inert,
+    /// not a leak (fixed-size bitset, sized once at registration).
+    dirty_infos: DirtyMask,
     dirty_slots: DirtyMask,
     /// Per-row global-slot staging. `sync_all`'s self-healing boundary scan
     /// is scan-first, not dirty-mask-first: it compares `slot_shadow` against
@@ -130,6 +140,11 @@ pub struct SceneGpuStore {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     transforms: SceneBuffer<[f32; 16]>,
+    /// Cull's token→mesh link (M3-α T4, C5 amendment): row-indexed beside
+    /// `transforms`, mirrored via `write_instance_info`. Optional per cell —
+    /// only cells carrying an [`InstanceInfo`] column (e.g.
+    /// `SpatialCell::with_transform`) are ever written into or synced.
+    instance_infos: SceneBuffer<InstanceInfo>,
     slot_mirror: SceneBuffer<u32>,
     generations: GenerationBuffer,
     material: wgpu::Buffer,
@@ -183,6 +198,7 @@ impl SceneGpuStore {
             device: Arc::clone(ctx.device()),
             queue: Arc::clone(ctx.queue()),
             transforms: SceneBuffer::new(ctx.device(), "scenedb-instances", row_offset),
+            instance_infos: SceneBuffer::new(ctx.device(), "scenedb-instance-info", row_offset),
             slot_mirror: SceneBuffer::new(ctx.device(), "scenedb-slot-mirror", row_offset),
             generations: GenerationBuffer::new(ctx.device(), slot_offset),
             // Material stride is 32 bytes per entry (C5); only the field
@@ -326,6 +342,12 @@ impl SceneGpuStore {
 
         let dirty_transforms = DirtyMask::new(row_capacity);
         dirty_transforms.mark_range(cell.rows_in_use());
+        // Instance-info warm-up mirrors the transform warm-up exactly (same
+        // row range, same mask shape) regardless of whether this cell
+        // actually carries an `InstanceInfo` column — `sync_all` is what
+        // gates on column presence, not this mark.
+        let dirty_infos = DirtyMask::new(row_capacity);
+        dirty_infos.mark_range(cell.rows_in_use());
         // No slot-mirror warm-up: `sync_all`'s self-healing boundary scan is
         // the SOLE dirty_slots marker and scratch/shadow writer. The shadow
         // starts all-MAX (= never uploaded; real local slots are always
@@ -341,6 +363,7 @@ impl SceneGpuStore {
             slot_base,
             slot_capacity,
             dirty_transforms,
+            dirty_infos,
             dirty_slots,
             slot_scratch: vec![0u32; row_capacity as usize],
             slot_shadow: vec![u32::MAX; row_capacity as usize],
@@ -395,6 +418,15 @@ impl SceneGpuStore {
                 .expect("cell has no [f32; 16] transform column");
             store.transforms.write_rows(&store.queue, &col[..rows as usize], row_base);
             store.cells[id.0 as usize].as_mut().expect("cell unregistered").dirty_transforms.clear_all();
+
+            // Instance-info bulk write mirrors the transform bulk write
+            // exactly, gated on column presence — a cell built without
+            // `SpatialCell::with_transform`'s `InstanceInfo` column has
+            // nothing to rebuild here (M3-α T4).
+            if let Some(col_info) = cell.column_for::<InstanceInfo>() {
+                store.instance_infos.write_rows(&store.queue, &col_info[..rows as usize], row_base);
+            }
+            store.cells[id.0 as usize].as_mut().expect("cell unregistered").dirty_infos.clear_all();
 
             let col0 = cell.slot_column();
             {
@@ -499,6 +531,50 @@ impl SceneGpuStore {
         true
     }
 
+    /// The GPU-mirrored [`InstanceInfo`] column companion to
+    /// [`Self::write_transform`] (M3-α T4, cull's token→mesh link): writes
+    /// the core column AND sets the row's dirty bit in one operation. False
+    /// for stale/invalid handles. Requires the cell to carry an
+    /// `InstanceInfo` column (e.g. built via `SpatialCell::with_transform`);
+    /// panics otherwise, mirroring `write_transform`'s own unconditional
+    /// `.expect()` on its column.
+    ///
+    /// Body is IDENTICAL to `write_transform`'s minus the generation stamp:
+    /// **the generation stamp stays transform-only, by design — one
+    /// stamping path.** `write_transform`'s doc explains why the stamp lives
+    /// there (a slot's first generation, assigned at `alloc`, must reach VRAM
+    /// on *some* write path, and retirement is the other trigger); splitting
+    /// it across two mirrored-column writers would mean either double-
+    /// stamping (harmless but redundant — the stamp is shadow-gated and
+    /// idempotent) or deciding which column "owns" a given slot's first
+    /// stamp, a distinction with no purpose. Keeping the stamp solely on
+    /// `write_transform` means every handle's first VRAM generation write is
+    /// guaranteed by the ONE column every registered cell is required to
+    /// carry (transforms, C5-mandatory) rather than the optional one.
+    pub fn write_instance_info(
+        &self,
+        id: CellId,
+        cell: &mut CellStorage,
+        handle: Handle,
+        info: InstanceInfo,
+        _sim: &impl SimulateWitness,
+    ) -> bool {
+        debug_assert_eq!(self.phase, Phase::Write, "mutation outside the write window");
+        let state = self.cells[id.0 as usize].as_ref().expect("cell unregistered");
+        let Some(row) = cell.row_of(handle) else {
+            return false;
+        };
+        if cell.is_row_pinned(row) {
+            return false; // in-flight retirement: logically deleted (§8) — no further mutation
+        }
+        let col = cell
+            .column_for_mut::<InstanceInfo>()
+            .expect("cell has no InstanceInfo column — register via SpatialCell::with_transform");
+        col[row as usize] = info;
+        state.dirty_infos.mark(row);
+        true
+    }
+
     /// §5 flow step 1: liveness-dead + pinned + enqueued against `serial`.
     /// Registry and GPU buffers unchanged until the serial completes.
     pub fn free_deferred(
@@ -565,20 +641,24 @@ impl SceneGpuStore {
     }
 
     /// Frame-boundary compaction (§4): every moved row's destination is
-    /// marked dirty in the transform mask so the next sync re-uploads it.
-    /// The slot mirror is NOT marked here — `sync_all`'s boundary scan
-    /// detects moved slots on its own.
+    /// marked dirty in the transform mask (AND the instance-info mask,
+    /// M3-α T4 — a moved row carries both mirrored columns to their new
+    /// position) so the next sync re-uploads it. The slot mirror is NOT
+    /// marked here — `sync_all`'s boundary scan detects moved slots on its
+    /// own.
     pub(crate) fn compact_all(&mut self, cells: &mut [CellSlot<'_>]) {
         debug_assert_eq!(self.phase, Phase::Retired, "compact_all must follow retire_all");
         self.phase = Phase::Compacted;
         for slot in cells.iter_mut() {
             let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
             slot.cell.compact_report(|_from, to| {
-                // Only the TRANSFORM mark: the slot mirror needs no
-                // per-move trigger — `sync_all`'s self-healing boundary
-                // scan compares every occupied row's slot shadow against
-                // the slot column and catches swap destinations itself.
+                // Only the TRANSFORM and INSTANCE-INFO marks: the slot
+                // mirror needs no per-move trigger — `sync_all`'s
+                // self-healing boundary scan compares every occupied row's
+                // slot shadow against the slot column and catches swap
+                // destinations itself.
                 state.dirty_transforms.mark(to);
+                state.dirty_infos.mark(to);
             });
         }
     }
@@ -605,6 +685,23 @@ impl SceneGpuStore {
             let stats = self.transforms.sync_region(&self.queue, &col[..rows], state.row_base, &state.dirty_transforms);
             total.ranges += stats.ranges;
             total.bytes += stats.bytes;
+
+            // Instance-info mirror (M3-α T4, cull's token→mesh link): same
+            // row-indexed delta-sync as the transform column above, gated on
+            // column presence — cells built without `SpatialCell::with_
+            // transform`'s `InstanceInfo` column (e.g. the M2a `CellType`-
+            // only fixtures) simply have nothing to sync; `dirty_infos`
+            // still exists on every cell but is only ever drained here.
+            if let Some(col_info) = slot.cell.column_for::<InstanceInfo>() {
+                let stats_info = self.instance_infos.sync_region(
+                    &self.queue,
+                    &col_info[..rows],
+                    state.row_base,
+                    &state.dirty_infos,
+                );
+                total.ranges += stats_info.ranges;
+                total.bytes += stats_info.bytes;
+            }
 
             // Self-healing boundary scan — the ONLY slot-mirror dirty
             // trigger (Task 4 re-review): compare every occupied row's
@@ -653,6 +750,12 @@ impl SceneGpuStore {
 
     pub fn transform_buffer(&self) -> &wgpu::Buffer {
         self.transforms.buffer()
+    }
+
+    /// Cull's token→mesh link (M3-α T4, C5 amendment): row-indexed beside
+    /// `transform_buffer()`, mirrored via [`Self::write_instance_info`].
+    pub fn instance_info_buffer(&self) -> &wgpu::Buffer {
+        self.instance_infos.buffer()
     }
 
     /// Row-indexed global-slot mirror (T4; C6 GPU handle validation).
