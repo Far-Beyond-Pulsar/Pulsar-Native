@@ -168,6 +168,7 @@ fn harvest_cell_plain_path_zero_alloc_after_warmup() {
         pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h)
     });
     assert_eq!(n2, 32, "steady-state run reproduces the warm-up hit count");
+    assert_eq!(staging.stats.dei_compacted_runs, 0, "steady-state run also takes the plain path");
     assert_eq!(allocs, 0, "§8.1: harvest_cell (plain path, incl. gens column) must make zero allocations after warm-up");
 }
 
@@ -269,6 +270,14 @@ fn scene_gpu_store_boundary_sync_zero_dirty_rows_zero_alloc() {
 /// scratch Vec anywhere in the sync path that could grow with N. It scales
 /// with byte volume (`stats.bytes`, asserted below) but not with the
 /// allocation COUNT, which is what §8.1 is about.
+///
+/// SCOPE (T2 review probe, campaign finding): independence holds per WRITE
+/// RANGE, not per dirty row. `sync_region`'s coalescing is strict adjacency
+/// (no gap threshold — a 1-row gap splits the run), and wgpu-core allocates
+/// ~4 per `write_buffer` call, so SCATTERED dirtiness scales allocs with the
+/// maximal-contiguous-run count (probe: every-4th-row N=64 → 16 ranges → 64
+/// allocs; N=256 → 64 ranges → 259). All of it wgpu-side; SceneDB stays
+/// zero-heap either way. Recorded in the perf-validation claims ledger.
 #[test]
 fn scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count() {
     let ctx = test_context();
