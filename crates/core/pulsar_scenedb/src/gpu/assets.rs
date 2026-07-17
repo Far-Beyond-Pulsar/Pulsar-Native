@@ -77,6 +77,10 @@ pub struct GeometryArena {
     vfree: RangeList,
     index: wgpu::Buffer,
     ifree: RangeList,
+    /// Test 13 instrumentation (§ see `upload_count` below): one shared
+    /// counter across BOTH buffers — the teardown gate only needs to know
+    /// "did anything get uploaded", not which of the two buffers.
+    upload_count: u64,
 }
 
 impl GeometryArena {
@@ -108,6 +112,7 @@ impl GeometryArena {
             vfree: RangeList::new(vertex_bytes),
             index,
             ifree: RangeList::new(index_bytes),
+            upload_count: 0,
         }
     }
 
@@ -117,6 +122,7 @@ impl GeometryArena {
         let offset = self.vfree.alloc(bytes.len() as u64, 4).ok_or(ArenaError::Exhausted)?;
         debug_assert!(offset <= u32::MAX as u64, "arena offset exceeds the u32 C5 contract");
         queue.write_buffer(&self.vertex, offset, bytes);
+        self.upload_count += 1;
         Ok(offset as u32)
     }
 
@@ -126,6 +132,7 @@ impl GeometryArena {
         let offset = self.ifree.alloc(bytes.len() as u64, 4).ok_or(ArenaError::Exhausted)?;
         debug_assert!(offset <= u32::MAX as u64, "arena offset exceeds the u32 C5 contract");
         queue.write_buffer(&self.index, offset, bytes);
+        self.upload_count += 1;
         Ok(offset as u32)
     }
 
@@ -147,6 +154,14 @@ impl GeometryArena {
 
     pub fn index_buffer(&self) -> &wgpu::Buffer {
         &self.index
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window. Counts BOTH `upload_vertices`
+    /// and `upload_indices` calls in one shared counter (see field doc).
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
     }
 }
 
@@ -199,6 +214,8 @@ pub struct MeshRegistry {
     buf: wgpu::Buffer,
     entries: Vec<MeshMetadata>,
     max_meshes: u32,
+    /// Test 13 instrumentation (see `upload_count` below).
+    upload_count: u64,
 }
 
 impl MeshRegistry {
@@ -211,7 +228,7 @@ impl MeshRegistry {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        Self { buf, entries: Vec::new(), max_meshes }
+        Self { buf, entries: Vec::new(), max_meshes, upload_count: 0 }
     }
 
     /// C5 XOR rule: exactly one of `{lod_count, cluster_table_offset}` must
@@ -226,6 +243,7 @@ impl MeshRegistry {
         }
         let index = self.entries.len() as u32;
         queue.write_buffer(&self.buf, index as u64 * 72, super::as_bytes(std::slice::from_ref(&m)));
+        self.upload_count += 1;
         self.entries.push(m);
         Ok(index)
     }
@@ -252,11 +270,22 @@ impl MeshRegistry {
     /// CPU-authoritative `entries` copy — device-loss re-materialization,
     /// same shape as `SceneGpuStore::rebuild`. No-op on an empty registry
     /// (`write_buffer` with a zero-length slice is fine, but skip the call).
-    pub fn rebuild(&self, queue: &wgpu::Queue) {
+    /// Takes `&mut self` (not `&self`) solely so the Test 13 upload counter
+    /// can be incremented — the CPU-authoritative `entries` are read-only
+    /// here, same as before.
+    pub fn rebuild(&mut self, queue: &wgpu::Queue) {
         if self.entries.is_empty() {
             return;
         }
         queue.write_buffer(&self.buf, 0, super::as_bytes(&self.entries));
+        self.upload_count += 1;
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window.
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
     }
 }
 
@@ -306,6 +335,10 @@ pub struct ClusterBuffer {
     buf: wgpu::Buffer,
     nodes: Vec<ClusterNode>,
     max_nodes: u32,
+    /// Test 13 instrumentation (see `upload_count` below). Starts at 1, not
+    /// 0: `new` itself performs one `write_buffer` (the reserved sentinel
+    /// node), which is a real upload and must be counted like any other.
+    upload_count: u64,
 }
 
 impl ClusterBuffer {
@@ -342,7 +375,7 @@ impl ClusterBuffer {
             bounding_sphere: [0.0, 0.0, 0.0, 0.0],
         };
         ctx.queue().write_buffer(&buf, 0, super::as_bytes(std::slice::from_ref(&sentinel)));
-        Self { buf, nodes: vec![sentinel], max_nodes }
+        Self { buf, nodes: vec![sentinel], max_nodes, upload_count: 1 }
     }
 
     /// Appends a mesh's DAG nodes; returns the starting node offset (the C5
@@ -377,6 +410,7 @@ impl ClusterBuffer {
         // style).
         let start_offset = current_len;
         queue.write_buffer(&self.buf, start_offset as u64 * 48, super::as_bytes(nodes));
+        self.upload_count += 1;
         self.nodes.extend_from_slice(nodes);
 
         Ok(start_offset)
@@ -404,11 +438,24 @@ impl ClusterBuffer {
     /// CPU-authoritative `nodes` copy — device-loss re-materialization,
     /// same shape as `SceneGpuStore::rebuild`. No-op on an empty buffer
     /// (`write_buffer` with a zero-length slice is fine, but skip the call).
-    pub fn rebuild(&self, queue: &wgpu::Queue) {
+    /// Takes `&mut self` (not `&self`) solely so the Test 13 upload counter
+    /// can be incremented — the CPU-authoritative `nodes` are read-only
+    /// here, same as before. (`nodes` is never actually empty in practice —
+    /// the reserved sentinel from `new` always occupies index 0 — but the
+    /// guard is kept for symmetry with the other stores' `rebuild`.)
+    pub fn rebuild(&mut self, queue: &wgpu::Queue) {
         if self.nodes.is_empty() {
             return;
         }
         queue.write_buffer(&self.buf, 0, super::as_bytes(&self.nodes));
+        self.upload_count += 1;
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window.
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
     }
 }
 
@@ -485,6 +532,11 @@ pub struct MeshletBuffer {
     buf: wgpu::Buffer,
     entries: Vec<MeshletEntry>,
     max_entries: u32,
+    /// Test 13 instrumentation (see `upload_count` below). Unlike
+    /// `ClusterBuffer`, `new` performs no sentinel write here (module doc:
+    /// meshlet entry 0 is an ordinary allocatable record), so this starts
+    /// at 0.
+    upload_count: u64,
 }
 
 impl MeshletBuffer {
@@ -497,7 +549,7 @@ impl MeshletBuffer {
                 | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
-        Self { buf, entries: Vec::new(), max_entries }
+        Self { buf, entries: Vec::new(), max_entries, upload_count: 0 }
     }
 
     /// Appends a batch of meshlet entries; returns the starting entry offset
@@ -541,6 +593,7 @@ impl MeshletBuffer {
         // style).
         let start_offset = current_len;
         queue.write_buffer(&self.buf, start_offset as u64 * 32, super::as_bytes(entries));
+        self.upload_count += 1;
         self.entries.extend_from_slice(entries);
 
         Ok(start_offset)
@@ -568,11 +621,22 @@ impl MeshletBuffer {
     /// CPU-authoritative `entries` copy — device-loss re-materialization,
     /// same shape as `ClusterBuffer::rebuild`. No-op on an empty buffer
     /// (`write_buffer` with a zero-length slice is fine, but skip the call).
-    pub fn rebuild(&self, queue: &wgpu::Queue) {
+    /// Takes `&mut self` (not `&self`) solely so the Test 13 upload counter
+    /// can be incremented — the CPU-authoritative `entries` are read-only
+    /// here, same as before.
+    pub fn rebuild(&mut self, queue: &wgpu::Queue) {
         if self.entries.is_empty() {
             return;
         }
         queue.write_buffer(&self.buf, 0, super::as_bytes(&self.entries));
+        self.upload_count += 1;
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window.
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count
     }
 }
 
@@ -745,8 +809,9 @@ impl TextureStore {
         self.next
     }
 
-    /// Test 13 instrumentation: total `register` uploads performed, ever
-    /// (not decremented by `unregister`).
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window. Total `register` uploads
+    /// performed, ever (not decremented by `unregister`).
     #[doc(hidden)]
     pub fn upload_count(&self) -> u64 {
         self.upload_count

@@ -81,6 +81,7 @@
 //! so the queue never holds two transitions for the same coord.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::{CellId, RegionClassConfig, RetiredPhase, SceneGpuStore};
 use crate::spatial::{Aabb, SpatialCell};
@@ -180,6 +181,15 @@ pub struct StreamingGrid {
     cells: HashMap<CellCoord, GridCellState>,
     next_dense_id: u32,
     transitions: Vec<Transition>,
+    /// Test 13 instrumentation (see `upload_count` below). `write_cell_metadata`
+    /// takes `&self` (it only reads `cells`/`next_dense_id`, no mutation), so
+    /// this needs interior mutability — `AtomicU64` with `Relaxed` ordering,
+    /// unlike the plain `u64` counters on the other asset stores (whose
+    /// write methods already take `&mut self`). `Relaxed` is sufficient
+    /// because this is monotonic instrumentation only: the count itself
+    /// carries no data other stores/threads synchronize on, so there is no
+    /// ordering relationship to preserve with any other memory operation.
+    upload_count: AtomicU64,
 }
 
 impl StreamingGrid {
@@ -209,6 +219,7 @@ impl StreamingGrid {
             cells: HashMap::new(),
             next_dense_id: 0,
             transitions: Vec::new(),
+            upload_count: AtomicU64::new(0),
         })
     }
 
@@ -383,6 +394,15 @@ impl StreamingGrid {
             buf.size()
         );
         queue.write_buffer(buf, 0, &data);
+        self.upload_count.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Test 13 instrumentation: the teardown gate asserts these do not move
+    /// across the renderer drop/rebind window. `Relaxed` load — see the
+    /// `upload_count` field doc for why no stronger ordering is needed.
+    #[doc(hidden)]
+    pub fn upload_count(&self) -> u64 {
+        self.upload_count.load(Ordering::Relaxed)
     }
 }
 

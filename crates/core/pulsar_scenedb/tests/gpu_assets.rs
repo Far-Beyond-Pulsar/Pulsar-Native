@@ -725,8 +725,12 @@ fn small_store_exhaustion_is_a_hard_error() {
     let ctx = test_context();
     let mut store = TextureStore::new(1);
     assert!(store.register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4]).is_ok());
+    assert_eq!(store.upload_count(), 1);
     let err = store.register(ctx.device(), ctx.queue(), &rgba_desc(1, 1), &[0u8; 4]);
     assert_eq!(err, Err(TextureError::SlotsExhausted));
+    // Test 13 (M3-α T7): a rejected registration (no `write_texture` ever
+    // reached) must not move the counter.
+    assert_eq!(store.upload_count(), 1, "rejected registration (slots exhausted) does not increment");
 }
 
 #[test]
@@ -1118,4 +1122,108 @@ fn meshlet_rebuild_reuploads_entries_over_corrupted_buffer() {
         expected,
         "MeshletBuffer::rebuild restored the SSBO from entries()"
     );
+}
+
+// ---------------------------------------------------------------------
+// M3-α T7: Test 13 instrumentation — each asset store's `upload_count()`
+// increments on every successful `write_buffer`/`write_texture` call site
+// (including `rebuild`'s bulk re-upload) and must NOT increment on a
+// rejected registration/append (that store's cheapest validation failure).
+// ---------------------------------------------------------------------
+
+#[test]
+fn geometry_arena_upload_count_increments_on_success_not_on_rejection() {
+    let ctx = test_context();
+    let mut arena = GeometryArena::new(&ctx, 16, 16);
+    assert_eq!(arena.upload_count(), 0, "no uploads yet");
+
+    // Fill the vertex arena completely (16 of 16 bytes) so the next
+    // vertex alloc is a genuine `Exhausted` rejection — returned by the
+    // free-list check BEFORE any `write_buffer` call, so no unaligned
+    // partial-write ever reaches wgpu.
+    arena.upload_vertices(ctx.queue(), &[1u8; 16]).expect("vertex upload");
+    assert_eq!(arena.upload_count(), 1, "vertex upload counted");
+
+    arena.upload_indices(ctx.queue(), &[2u8; 8]).expect("index upload");
+    assert_eq!(arena.upload_count(), 2, "index upload counted in the SAME shared counter as vertices");
+
+    // Vertex arena is now fully exhausted — rejected before any
+    // `write_buffer` call, so the counter must not move.
+    let err = arena.upload_vertices(ctx.queue(), &[3u8; 4]);
+    assert_eq!(err, Err(ArenaError::Exhausted));
+    assert_eq!(arena.upload_count(), 2, "rejected upload (arena exhausted) does not increment");
+}
+
+#[test]
+fn mesh_registry_upload_count_increments_on_register_and_rebuild_not_on_rejection() {
+    let ctx = test_context();
+    let mut reg = MeshRegistry::new(&ctx, 2);
+    assert_eq!(reg.upload_count(), 0);
+
+    reg.register(ctx.queue(), traditional_mesh()).expect("register");
+    assert_eq!(reg.upload_count(), 1);
+
+    reg.rebuild(ctx.queue());
+    assert_eq!(reg.upload_count(), 2, "rebuild's bulk re-upload counts too");
+
+    // Rejected: XOR rule violation (cheapest validation failure — checked
+    // before capacity).
+    let mut bad = traditional_mesh();
+    bad.cluster_table_offset = 100; // now BOTH lod_count and cluster_table_offset are non-zero
+    let err = reg.register(ctx.queue(), bad);
+    assert_eq!(err, Err(MeshError::XorRule));
+    assert_eq!(reg.upload_count(), 2, "rejected registration (XOR rule) does not increment");
+
+    // Fill the registry, then a rejected RegistryFull registration.
+    reg.register(ctx.queue(), vg_mesh()).expect("second register fills the 2-slot registry");
+    assert_eq!(reg.upload_count(), 3);
+    let err = reg.register(ctx.queue(), traditional_mesh());
+    assert_eq!(err, Err(MeshError::RegistryFull));
+    assert_eq!(reg.upload_count(), 3, "rejected registration (registry full) does not increment");
+}
+
+#[test]
+fn cluster_buffer_upload_count_increments_on_append_and_rebuild_not_on_rejection() {
+    let ctx = test_context();
+    let mut cluster = ClusterBuffer::new(&ctx, 3);
+    // `new` itself performs one `write_buffer` (the reserved sentinel node
+    // at index 0) — a real upload, and must be counted like any other.
+    assert_eq!(cluster.upload_count(), 1, "reserved-sentinel write counts as an upload");
+
+    let node = test_cluster_node();
+    cluster.append(ctx.queue(), &[node]).expect("append");
+    assert_eq!(cluster.upload_count(), 2);
+
+    cluster.rebuild(ctx.queue());
+    assert_eq!(cluster.upload_count(), 3, "rebuild's bulk re-upload counts too");
+
+    // Rejected: self_error >= parent_error (cheapest validation failure —
+    // checked before capacity).
+    let mut bad = node;
+    bad.self_error = bad.parent_error;
+    let err = cluster.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(ClusterError::ErrorMonotonicity));
+    assert_eq!(cluster.upload_count(), 3, "rejected append (error monotonicity) does not increment");
+}
+
+#[test]
+fn meshlet_buffer_upload_count_increments_on_append_and_rebuild_not_on_rejection() {
+    let ctx = test_context();
+    let mut meshlets = MeshletBuffer::new(&ctx, 4);
+    assert_eq!(meshlets.upload_count(), 0, "no sentinel write here — meshlet entry 0 is ordinary");
+
+    let entry = test_meshlet_entry();
+    meshlets.append(ctx.queue(), &[entry]).expect("append");
+    assert_eq!(meshlets.upload_count(), 1);
+
+    meshlets.rebuild(ctx.queue());
+    assert_eq!(meshlets.upload_count(), 2, "rebuild's bulk re-upload counts too");
+
+    // Rejected: zero radius (cheapest validation failure — checked before
+    // capacity).
+    let mut bad = entry;
+    bad.sphere_radius = 0.0;
+    let err = meshlets.append(ctx.queue(), &[bad]);
+    assert_eq!(err, Err(MeshletError::InvalidRadius));
+    assert_eq!(meshlets.upload_count(), 2, "rejected append (invalid radius) does not increment");
 }

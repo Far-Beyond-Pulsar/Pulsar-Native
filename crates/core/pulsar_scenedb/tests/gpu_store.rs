@@ -1124,7 +1124,14 @@ fn transitions_execute_at_boundary_and_metadata_mirrors_state() {
 
     retired.compact(&mut store, &mut []).sync(&mut store, &mut []);
     grid.advance_crossfade(50.0, 100.0);
+    // Test 13 instrumentation (M3-α T7): `write_cell_metadata` takes `&self`
+    // (see its `AtomicU64` counter), so the assert below proves it moves on
+    // every call — including this one — with no rejection path to test
+    // here (the method has no validation branch, only a hard capacity
+    // assert).
+    assert_eq!(grid.upload_count(), 0, "no cell-metadata upload before the first write_cell_metadata call");
     grid.write_cell_metadata(ctx.queue(), store.cell_metadata_buffer());
+    assert_eq!(grid.upload_count(), 1, "write_cell_metadata counted its upload");
 
     let meta = readback(&ctx, store.cell_metadata_buffer(), 8);
     let alpha = f32::from_le_bytes(meta[0..4].try_into().unwrap());
