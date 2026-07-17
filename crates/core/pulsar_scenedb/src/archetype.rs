@@ -32,10 +32,20 @@ impl ArchetypeKey {
 
     pub fn with<T: Component>(&self) -> Self {
         let cid = crate::component::component_id::<T>();
-        let mut ids = self.0.clone();
-        match ids.binary_search(&cid) {
-            Ok(_) => {}
-            Err(pos) => ids.insert(pos, cid),
+        if self.0.contains(&cid) {
+            return self.clone();
+        }
+        let mut ids = Vec::with_capacity(self.0.len() + 1);
+        let mut inserted = false;
+        for &id in &self.0 {
+            if !inserted && id > cid {
+                ids.push(cid);
+                inserted = true;
+            }
+            ids.push(id);
+        }
+        if !inserted {
+            ids.push(cid);
         }
         Self(ids)
     }
