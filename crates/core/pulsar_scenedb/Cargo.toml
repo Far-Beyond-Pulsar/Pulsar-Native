@@ -83,3 +83,7 @@ required-features = ["gpu"]
 [[test]]
 name = "gpu_harvest"
 required-features = ["gpu"]
+
+[[test]]
+name = "alloc_gate_gpu"
+required-features = ["gpu"]
