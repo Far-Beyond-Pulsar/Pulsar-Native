@@ -754,6 +754,13 @@ impl SceneGpuStore {
 
     /// Cull's token→mesh link (M3-α T4, C5 amendment): row-indexed beside
     /// `transform_buffer()`, mirrored via [`Self::write_instance_info`].
+    ///
+    /// Content contract (same as transforms): a row's bytes are defined only
+    /// once it has been written via [`Self::write_instance_info`]. Rows in a
+    /// recycled region that were never written may hold a prior tenant's
+    /// bytes — readers must not treat `mesh_index` as trusted without the
+    /// row having passed a harvest/liveness gate; the M3-β cull shader
+    /// additionally bounds-checks `mesh_index` against the mesh table.
     pub fn instance_info_buffer(&self) -> &wgpu::Buffer {
         self.instance_infos.buffer()
     }
