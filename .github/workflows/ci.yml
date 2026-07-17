@@ -87,6 +87,11 @@ jobs:
       - name: SceneDB gpu-gated lib tests (Test 11 et al., no adapter needed)
         run: cargo test -p pulsar_scenedb --features gpu --lib
 
+      # Compile-only: benches are the one gpu-gated target the test matrix
+      # never builds (M3-a T1 review caught an unmigrated bench this way).
+      - name: SceneDB gpu-gated benches compile guard
+        run: cargo check -p pulsar_scenedb --features gpu --benches
+
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
