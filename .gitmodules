@@ -37,3 +37,7 @@
 [submodule "crates/graphics/wgpu"]
 	path = crates/graphics/wgpu
 	url = https://github.com/Far-Beyond-Pulsar/wgpu.git
+[submodule "crates/renderer/helio"]
+	path = crates/renderer/helio
+	url = https://github.com/Far-Beyond-Pulsar/Helio.git
+	branch = scenedb20-m3
