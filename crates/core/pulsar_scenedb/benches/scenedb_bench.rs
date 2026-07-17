@@ -1,6 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pulsar_scenedb::{Aabb, Frustum, SpatialCell};
 use std::hint::black_box;
+use std::time::Duration;
 
 #[cfg(feature = "gpu")]
 use pulsar_scenedb::gpu::{
@@ -12,7 +13,7 @@ use pulsar_scenedb::{CellStorage, CellType, Scratchpad, TypeToken};
 #[cfg(feature = "gpu")]
 use std::sync::Arc;
 #[cfg(feature = "gpu")]
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// `scalar_aabb_scan_{256,1024}`: the TRUE scalar arm (perf-val T1 fix —
 /// previously this called `query_aabb`, which routes through the runtime
@@ -129,6 +130,157 @@ fn bench_scalar_frustum(c: &mut criterion::Criterion) {
     c.bench_function("scalar_frustum_scan_1024", |b| {
         b.iter(|| black_box(cell.query_frustum_scalar_for_bench(black_box(&f), &mut out)))
     });
+}
+
+// ---------------------------------------------------------------------------
+// perf-val T7: query-scan scaling study (contract #19/#50) — scalar vs
+// dispatched (AVX2), AABB + frustum, across N ∈ {1024, 16384, 256000,
+// 1000448} rows. CPU-only (no `gpu` feature needed, same as the benches
+// above).
+//
+// **Why K cells × 1024 rows, not one N-row cell:** perf-val T2 established
+// that `SpatialCell` hard-caps at `MAX_PAGE_CAPACITY` = 1024 rows
+// (`src/page.rs`) — a single cell CANNOT hold 16k+ rows. So each N here is
+// K cells of exactly 1024 rows apiece (K = 1, 16, 250, 977), and the timed
+// closure loops over all K cells per iteration, summing the per-cell hit
+// count. This is also the realistic engine shape: the harvest pipeline
+// queries per cell, never across a flattened N-row array.
+//
+// **No per-cell allocation in the timed loop:** one 1024-slot `out: Vec<u32>`
+// is built once and reused across every cell in the K-loop (never
+// reallocated per cell) — the multi-cell analog of the `_in` variants'
+// scratchpad-reuse pattern. The seams here (`query_aabb_scalar_for_bench` /
+// `query_frustum_scalar_for_bench`, and the dispatched `query_aabb` /
+// `query_frustum`) do NOT take a liveness-words scratchpad parameter — they
+// each capture their own `Vec<u64>` liveness snapshot internally (see their
+// doc comments in `src/spatial.rs`), so every per-cell call in this bench
+// pays that small internal allocation regardless of arm. This is a SHARED,
+// non-differential confound: scalar and dispatched both call the same
+// wrapper shape, so it inflates absolute ns/row at high K identically in
+// both arms and cancels out of the scalar/dispatched RATIO — the quantity
+// the contract questions (#19/#50) actually care about. Adding a
+// scratchpad-taking scalar seam would be a `src/` change beyond a thin bench
+// wrapper; not done here since the confound is provably symmetric (see the
+// task report's analysis section for the instruction-level argument).
+//
+// **Selectivity fixed at the T1 fixture pattern (~50% hit rate) for every
+// cell:** box `i` spans `[i, i+1)` on x (`y`/`z` pinned to `[0,1]`), the same
+// construction as `bench_query`/`bench_aabb_dispatch` above. AABB query
+// `min=[0,0,0], max=[512,1,1]` hits `i` in `0..=512` (513/1024 = 50.1%).
+// Frustum plane `[-1,0,0,511.5]` (the only non-vacuous plane against this
+// box population — see the task report) hits `i` in `0..=511` (512/1024 =
+// 50.0% exactly). Every cell at every N uses the identical query, so
+// hit-count scales linearly with N and the per-N honesty guard below can
+// assert scalar/dispatched equality cheaply.
+fn scan_scaling_fixture(k: u32) -> Vec<SpatialCell> {
+    (0..k)
+        .map(|_| {
+            let mut cell = SpatialCell::new(1024).unwrap();
+            for i in 0..1024u32 {
+                let x = i as f32;
+                cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] })
+                    .unwrap();
+            }
+            cell
+        })
+        .collect()
+}
+
+fn bench_scan_scaling(c: &mut Criterion) {
+    let q = Aabb {
+        min: [0.0, 0.0, 0.0],
+        max: [512.0, 1.0, 1.0],
+    };
+    let f = Frustum {
+        planes: [
+            [1.0, 0.0, 0.0, 200.0],
+            [-1.0, 0.0, 0.0, 511.5],
+            [0.0, 1.0, 0.0, 10.0],
+            [0.0, -1.0, 0.0, 10.0],
+            [0.0, 0.0, 1.0, 10.0],
+            [0.0, 0.0, -1.0, 10.0],
+        ],
+    };
+
+    let mut group = c.benchmark_group("scan_scaling");
+    // Reduced from criterion's default (100 samples / 5s measurement time):
+    // 16 bench IDs × (10 warm-up-ish + N timed samples) over 4 row-count
+    // tiers up to 977 cells must stay under the task's ~4-minute budget.
+    // Each single iteration is sub-millisecond even at the largest tier (T1's
+    // baseline extrapolates to well under 1 ms/iteration at 1M rows), so
+    // criterion's auto-tuned iteration count per sample is not the risk —
+    // the fixture-build cost per N tier (up to 977 cells × 1024 allocs) run
+    // once outside the timed section is small (sub-second). 30 samples keeps
+    // criterion's outlier/statistics machinery meaningful while bounding
+    // total wall time comfortably inside budget (see the task report for the
+    // measured wall-clock).
+    group.sample_size(30);
+    group.measurement_time(Duration::from_secs(2));
+
+    for &k in &[1u32, 16, 250, 977] {
+        let n = k * 1024;
+        let cells = scan_scaling_fixture(k);
+        let mut out = vec![0u32; 1024];
+
+        group.bench_function(format!("aabb_scalar_{n}"), |b| {
+            b.iter(|| {
+                let mut hits = 0u32;
+                for cell in &cells {
+                    hits += cell.query_aabb_scalar_for_bench(black_box(&q), &mut out);
+                }
+                black_box(hits)
+            })
+        });
+        group.bench_function(format!("aabb_dispatched_{n}"), |b| {
+            b.iter(|| {
+                let mut hits = 0u32;
+                for cell in &cells {
+                    hits += cell.query_aabb(black_box(&q), &mut out);
+                }
+                black_box(hits)
+            })
+        });
+        group.bench_function(format!("frustum_scalar_{n}"), |b| {
+            b.iter(|| {
+                let mut hits = 0u32;
+                for cell in &cells {
+                    hits += cell.query_frustum_scalar_for_bench(black_box(&f), &mut out);
+                }
+                black_box(hits)
+            })
+        });
+        group.bench_function(format!("frustum_dispatched_{n}"), |b| {
+            b.iter(|| {
+                let mut hits = 0u32;
+                for cell in &cells {
+                    hits += cell.query_frustum(black_box(&f), &mut out);
+                }
+                black_box(hits)
+            })
+        });
+
+        // In-bench honesty guard (perf-val T7): scalar and dispatched must
+        // produce the IDENTICAL total hit count at this N. This is a cheap
+        // proxy at this bench's own fixture scale for the bit-identity
+        // property tests already proven in `src/simd.rs`
+        // (`avx2_matches_scalar_bit_for_bit` / `avx2_frustum_matches_scalar`)
+        // — it would catch a regression in THIS bench's harness/fixture, not
+        // just a kernel-level regression.
+        let mut scratch = vec![0u32; 1024];
+        let (mut aabb_s, mut aabb_d, mut frustum_s, mut frustum_d) = (0u32, 0u32, 0u32, 0u32);
+        for cell in &cells {
+            aabb_s += cell.query_aabb_scalar_for_bench(&q, &mut scratch);
+            aabb_d += cell.query_aabb(&q, &mut scratch);
+            frustum_s += cell.query_frustum_scalar_for_bench(&f, &mut scratch);
+            frustum_d += cell.query_frustum(&f, &mut scratch);
+        }
+        assert_eq!(aabb_s, aabb_d, "AABB scalar/dispatched hit-count mismatch at N={n}");
+        assert_eq!(
+            frustum_s, frustum_d,
+            "frustum scalar/dispatched hit-count mismatch at N={n}"
+        );
+    }
+    group.finish();
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +559,7 @@ criterion_group!(
     bench_aabb_dispatch,
     bench_frustum,
     bench_scalar_frustum,
+    bench_scan_scaling,
     bench_region_sync_1024_dirty_rows,
     bench_harvest_partition_1024,
     bench_dei_compact_1024_sparse,
@@ -419,7 +572,8 @@ criterion_group!(
     bench_churn,
     bench_aabb_dispatch,
     bench_frustum,
-    bench_scalar_frustum
+    bench_scalar_frustum,
+    bench_scan_scaling
 );
 
 criterion_main!(benches);
