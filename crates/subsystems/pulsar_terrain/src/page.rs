@@ -1,4 +1,5 @@
 use crate::{CellWord, ContentHash, DeterministicGenerator, EditLog, EditOp, PageId, PageKey};
+use std::sync::Arc;
 use thiserror::Error;
 
 pub const PAGE_EDGE: usize = 32;
@@ -17,7 +18,7 @@ pub struct VoxelPage {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PageStorage {
     Constant(CellWord),
-    Dense(Box<[CellWord]>),
+    Dense(Arc<[CellWord]>),
 }
 
 impl VoxelPage {
@@ -46,7 +47,7 @@ impl VoxelPage {
             Ok(Self::constant(first))
         } else {
             Ok(Self {
-                storage: PageStorage::Dense(cells.into_boxed_slice()),
+                storage: PageStorage::Dense(cells.into()),
             })
         }
     }
