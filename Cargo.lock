@@ -4509,6 +4509,7 @@ dependencies = [
  "helio-pass-perf-overlay",
  "helio-pass-planar-reflection",
  "helio-pass-postprocess",
+ "helio-pass-radiance-cascades",
  "helio-pass-shadow",
  "helio-pass-shadow-cull",
  "helio-pass-shadow-dirty",
@@ -4689,6 +4690,17 @@ dependencies = [
 
 [[package]]
 name = "helio-pass-postprocess"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=094ac23935b143ac6e7970a553ee6bfda2e997a0#094ac23935b143ac6e7970a553ee6bfda2e997a0"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio",
+ "wgpu",
+]
+
+[[package]]
+name = "helio-pass-radiance-cascades"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=094ac23935b143ac6e7970a553ee6bfda2e997a0#094ac23935b143ac6e7970a553ee6bfda2e997a0"
 dependencies = [
