@@ -86,23 +86,40 @@ fn boxed_cell(capacity: u32, count: u32, x_offset: f32) -> SpatialCell {
     cell
 }
 
-/// M3-α T8 review defect 1 fix: builds a `SpatialCell::with_transform` cell
-/// whose LIVE rows carry genuinely DIFFERENT registry generations. Every
-/// earlier T8 test fixture allocated fresh handles only, and
+/// M3-α T8 review defect 1 fix (and r2 fix — see below): builds a
+/// `SpatialCell::with_transform` cell whose LIVE rows carry genuinely
+/// DIFFERENT registry generations AND a genuinely NON-IDENTITY row→slot
+/// mapping. Every earlier T8 test fixture allocated fresh handles only, and
 /// `HandleRegistry::allocate` gives generation 1 to every fresh slot — so no
 /// live harvested row anywhere in the suite ever carried a generation other
-/// than 1, and the reviewer-verified mutant `dest_gens.push(1)` (a hardcoded
-/// constant standing in for the real per-row registry read) passed all 11
-/// tests. This fixture closes that gap: 4 initial boxes at
-/// `x_offset + {0,1,2,3}`, then two free+compact+realloc round trips on one
-/// slot (-> generation 3) and one round trip on another (-> generation 2),
-/// leaving exactly 4 live rows on a genuine mix of generations (never all
-/// equal). Box positions always land in `[x_offset, x_offset + 6)`, so a
-/// single broad AABB query safely covers every live row regardless of which
+/// than 1 (mutant M1, `dest_gens.push(1)`, survived).
+///
+/// **r2 correction:** the ORIGINAL version of this fixture did two
+/// free+compact+realloc round trips on one slot and one round trip on
+/// another — empirically, that recipe's swaps happened to cancel out, so
+/// every live row ended up back at `slot == row` (identity `col0`), which
+/// let mutant M3 (`regs[local_row]`, skipping the `col0` indirection)
+/// survive too: with `col0` identity, `regs[local_row] == regs[col0
+/// [local_row]]` always, so the missing indirection is invisible. This
+/// version uses exactly ONE free+compact+realloc round trip: free `h1`
+/// (row 1), `compact()` (the LAST live row swaps INTO row 1 — this is what
+/// breaks identity permanently, since nothing later moves it back), then
+/// realloc a NEW handle appended at the new tail row (recycling `h1`'s
+/// freed slot at generation 2). The swapped-in row and the newly-appended
+/// row are BOTH now non-identity (`row != slot`), and — because the
+/// recycled slot's generation (2) differs from the untouched slots'
+/// generation (1) — at least one row's "generation read by naive row-index"
+/// (`regs[row]`, what M3 computes) genuinely differs from its "generation
+/// read by slot index" (`regs[col0[row]]`, the correct read), independent
+/// of `col0`'s exact shape (which callers verify at runtime via
+/// `SpatialCell::row_of`/`Handle::index`, not hand-derived here).
+///
+/// Box positions always land in `[x_offset, x_offset + 5)`, so a single
+/// broad AABB query safely covers every live row regardless of which
 /// physical row ends up holding which handle.
 ///
 /// Returns the cell plus EVERY handle ever allocated (including the
-/// now-dead intermediates from the churn) — callers filter to the
+/// now-dead intermediate from the churn) — callers filter to the
 /// currently-live subset via `cell.row_of(h).is_some()` rather than this
 /// fixture hard-coding which handles survive, so the churn recipe can change
 /// without every call site needing to track it by hand.
@@ -117,21 +134,15 @@ fn gen_diverse_boxed_cell(x_offset: f32) -> (SpatialCell, Vec<Handle>) {
     let h3 = cell.alloc(box_at(x_offset + 3.0)).unwrap();
     all.extend([h0, h1, h2, h3]);
 
-    // h1's slot: two free+compact+realloc round trips -> generation 3.
+    // ONE free+compact+realloc round trip on h1's slot: free row 1, compact
+    // (the last live row — h3's — swaps INTO row 1, permanently breaking
+    // identity for that row since nothing later undoes it), then realloc a
+    // new handle appended at the new tail row, recycling the freed slot at
+    // generation 2.
     cell.free(h1);
     cell.compact();
     let h1b = cell.alloc(box_at(x_offset + 4.0)).unwrap();
     all.push(h1b);
-    cell.free(h1b);
-    cell.compact();
-    let h1c = cell.alloc(box_at(x_offset + 4.0)).unwrap();
-    all.push(h1c);
-
-    // h3's slot: one free+compact+realloc round trip -> generation 2.
-    cell.free(h3);
-    cell.compact();
-    let h3b = cell.alloc(box_at(x_offset + 5.0)).unwrap();
-    all.push(h3b);
 
     (cell, all)
 }
@@ -326,6 +337,20 @@ fn dei_below_quarter_compacts_with_roundtrip_remap() {
 /// still verified via [`expected_gens`], which recomputes purely from
 /// `SpatialCell::row_of`/`Handle::generation()` — public API, never
 /// `harvest_cell`'s own crate-private `slot_column` binding.
+///
+/// **r2 fix (M3 regression):** the first rework's `gen_diverse_boxed_cell`
+/// did enough churn that its swaps canceled out, leaving every live row at
+/// `slot == row` (identity `col0`) — under an identity mapping, mutant M3
+/// (`regs[local_row]`, dropping the `col0` indirection) is INDISTINGUISHABLE
+/// from the correct `regs[col0[local_row]]` read, so it silently survived.
+/// This version's guard block below is SELF-VERIFYING: it asserts, via
+/// public API only (`SpatialCell::row_of`, `Handle::index`,
+/// `registry().generations()`), that the fixture's `col0` is genuinely
+/// non-identity AND that at least one row's naive (`regs[row]`, what M3
+/// computes) and correct (`regs[col0[row]]`, via the live handle's own
+/// generation) reads genuinely differ — if a future change to
+/// `gen_diverse_boxed_cell`'s churn recipe ever re-cancels this property,
+/// THIS test fails loudly here instead of silently losing M3 coverage again.
 #[test]
 fn harvest_gens_column_matches_expected_generation_plain_path() {
     let ctx = test_context();
@@ -346,6 +371,28 @@ fn harvest_gens_column_matches_expected_generation_plain_path() {
     let distinct_b: HashSet<u32> = live_b.iter().map(|h| h.generation()).collect();
     assert!(distinct_a.len() > 1, "cell A fixture must carry genuinely different generations across live rows");
     assert!(distinct_b.len() > 1, "cell B fixture must carry genuinely different generations across live rows");
+
+    // r2 self-verifying guard: non-identity col0 (via public row_of/index)
+    // AND a genuine naive-vs-correct gen mismatch on at least one row, for
+    // BOTH cells. `naive_gen(row) = regs[row]` is exactly what mutant M3
+    // computes (treating the row index AS a slot index); `correct_gen(row)
+    // = live_handle_at(row).generation()` is what the real `col0` indirection
+    // reads. If these never differ, M3 is invisible to this test.
+    for (cell, live, label) in [(&cell_a, &live_a, "A"), (&cell_b, &live_b, "B")] {
+        let regs = cell.storage().registry().generations();
+        let non_identity = live.iter().any(|h| cell.row_of(*h) != Some(h.index()));
+        assert!(non_identity, "cell {label}: fixture must have at least one row whose slot != its row index");
+        let naive_mismatch = live.iter().any(|h| {
+            let row = cell.row_of(*h).unwrap();
+            regs[row as usize] != h.generation()
+        });
+        assert!(
+            naive_mismatch,
+            "cell {label}: fixture must have at least one row where regs[row] (M3's naive read) != \
+             regs[col0[row]] (the correct read, == the live handle's own generation) — otherwise M3 \
+             is invisible to this test"
+        );
+    }
 
     let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
     let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
@@ -545,11 +592,18 @@ fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
         h1.end().run(&mut store, &mut slots);
     }
 
-    // Free ONE live handle via the deferred path, force its serial complete,
-    // and drive the boundary — retirement commits CPU-side and bumps the
-    // registry generation for that slot (§5 flow step 3).
-    let freed = live[0];
-    let survivors: Vec<Handle> = live[1..].to_vec();
+    // Free the handle with the STRICTLY-HIGHEST live generation, via the
+    // deferred path, force its serial complete, and drive the boundary —
+    // retirement commits CPU-side and bumps the registry generation for that
+    // slot (§5 flow step 3). r2 fix (de-coincidence): freeing the max-gen
+    // handle is provably collision-free — its bumped value (max+1) exceeds
+    // every OTHER live handle's generation (all <= max by construction), so
+    // it can never coincide with a survivor's gen. The original version
+    // freed `live[0]` arbitrarily, and the reviewer found an empirical
+    // coincidence (the freed slot's bumped gen happened to equal another
+    // live slot's gen), which masked mutant M3 in this test.
+    let freed = *live.iter().max_by_key(|h| h.generation()).unwrap();
+    let survivors: Vec<Handle> = live.iter().copied().filter(|&h| h != freed).collect();
     let sim2 = frames.begin();
     let serial = store.tracker().next_serial();
     assert!(store.free_deferred(id, cell.storage_mut(), freed, serial, &sim2));
@@ -561,10 +615,19 @@ fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
     }
 
     let live_gens = cell.storage().registry().generations().to_vec();
-    assert_ne!(
-        live_gens[freed.index() as usize],
-        freed.generation(),
-        "free_deferred + boundary bumped the freed slot's generation"
+    let bumped = live_gens[freed.index() as usize];
+    assert_ne!(bumped, freed.generation(), "free_deferred + boundary bumped the freed slot's generation");
+
+    // r2 self-verifying de-coincidence guard: the bumped generation must be
+    // unique among the surviving live handles' CURRENT generations — proven
+    // by construction (freed had the max pre-free generation, so bumped =
+    // max+1 exceeds every survivor's unchanged generation), but asserted
+    // here so a future change to the "pick the freed handle" strategy fails
+    // loudly instead of silently reintroducing the coincidence.
+    assert!(
+        survivors.iter().all(|h| h.generation() != bumped),
+        "the freed slot's post-bump generation ({bumped}) must be unique among surviving live generations \
+         — otherwise M3 (regs[local_row] skipping col0) can produce a value-identical wrong answer"
     );
 
     // Walk EVERY live handle's OLD-run entry (found via the pre-free row
