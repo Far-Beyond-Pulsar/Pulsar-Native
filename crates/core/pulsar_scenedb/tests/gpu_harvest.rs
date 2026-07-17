@@ -4,10 +4,10 @@
 //! harness as `gpu_store.rs`); the test harness owns the `device.poll` pump.
 
 use pulsar_scenedb::gpu::{
-    revalidate_run, EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging, MeshClass,
-    RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
+    revalidate_run, CellSlot, EngineGpuContext, FrameDriver, HarvestPipeline, HarvestStaging,
+    MeshClass, RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
 };
-use pulsar_scenedb::{Aabb, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
+use pulsar_scenedb::{Aabb, Handle, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
 use std::sync::Arc;
 
 fn test_context() -> EngineGpuContext {
@@ -83,6 +83,47 @@ fn boxed_cell(capacity: u32, count: u32, x_offset: f32) -> SpatialCell {
         cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap();
     }
     cell
+}
+
+/// Like [`boxed_cell`] but also returns the handles, in allocation order
+/// (M3-α T8, design §3.1): the gens-column tests need to free/re-locate
+/// specific rows, and to independently recompute a row's expected
+/// generation from OUTSIDE the crate they use [`SpatialCell::row_of`] (a
+/// handle → its CURRENT row) rather than `harvest_cell`'s own crate-private
+/// slot-column binding — `harvest.rs`'s `col0 = cell.storage().slot_column()`
+/// is `pub(crate)` and unreachable from this integration-test crate by
+/// design.
+fn boxed_cell_with_handles(capacity: u32, count: u32, x_offset: f32) -> (SpatialCell, Vec<Handle>) {
+    let mut cell = SpatialCell::with_transform(capacity).unwrap();
+    let handles = (0..count)
+        .map(|i| {
+            let x = x_offset + i as f32;
+            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
+        })
+        .collect();
+    (cell, handles)
+}
+
+/// Independently recompute the expected generation for every `token` in
+/// `tokens` (each `base + row`): find, among `handles`, the one CURRENTLY
+/// occupying that row (via `SpatialCell::row_of`, public API) and read its
+/// generation. This is the test-side oracle for
+/// `HarvestStaging::{traditional,vg,hlod}_gens` (M3-α T8, design §3.1) — it
+/// deliberately does NOT reuse any of `harvest_cell`'s own machinery, so a
+/// bug in the production alignment logic cannot cancel out against the same
+/// bug here.
+fn expected_gens(cell: &SpatialCell, handles: &[Handle], tokens: &[u32], base: u32) -> Vec<u32> {
+    tokens
+        .iter()
+        .map(|&t| {
+            let row = t - base;
+            let h = handles
+                .iter()
+                .find(|h| cell.row_of(**h) == Some(row))
+                .unwrap_or_else(|| panic!("no live handle in `handles` currently occupies row {row}"));
+            h.generation()
+        })
+        .collect()
 }
 
 #[test]
@@ -207,6 +248,196 @@ fn dei_below_quarter_compacts_with_roundtrip_remap() {
     assert_eq!(staging.remap.len(), 8, "plain path never touches remap");
 }
 
+/// M3-α T8 (design §3.1 — Test 2's CPU-side data path), plain-path half: for
+/// every token the (non-DEI) plain routing path emits, `traditional_gens`/
+/// `vg_gens` must hold exactly that token's expected generation, positionally
+/// aligned one-for-one. Verified by independently recomputing the expected
+/// value via [`expected_gens`] rather than trusting `harvest_cell`'s own
+/// arithmetic.
+#[test]
+fn harvest_gens_column_matches_expected_generation_plain_path() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    let (cell_a, handles_a) = boxed_cell_with_handles(64, 4, 0.0);
+    let (cell_b, handles_b) = boxed_cell_with_handles(64, 4, 100.0);
+    let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
+    let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
+    let base_a = store.row_region_base(id_a);
+    let base_b = store.row_region_base(id_b);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    // Broad views: every box in both cells hits (100% >= 25% -> plain path
+    // both times).
+    let view_a = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] });
+    let n_a =
+        pipeline.harvest_cell(&cell_a, base_a, MeshClass::Traditional, &view_a, &mut pad, &mut staging, &h);
+    let view_b = View::Aabb(Aabb { min: [99.0, 0.0, 0.0], max: [110.0, 1.0, 1.0] });
+    let n_b =
+        pipeline.harvest_cell(&cell_b, base_b, MeshClass::VirtualGeometry, &view_b, &mut pad, &mut staging, &h);
+    assert_eq!(n_a, 4);
+    assert_eq!(n_b, 4);
+    assert_eq!(staging.stats.dei_compacted_runs, 0, "both runs are well above the 25% DEI threshold");
+
+    assert_eq!(staging.traditional.len(), staging.traditional_gens.len(), "traditional/gens stay aligned");
+    assert_eq!(staging.vg.len(), staging.vg_gens.len(), "vg/gens stay aligned");
+    assert_eq!(staging.hlod.len(), staging.hlod_gens.len(), "hlod/gens stay aligned (both empty)");
+    assert!(staging.hlod.is_empty(), "nothing harvested as HlodProxy");
+
+    assert_eq!(
+        expected_gens(&cell_a, &handles_a, &staging.traditional, base_a),
+        staging.traditional_gens,
+        "traditional_gens matches the independently recomputed expected generation, per token"
+    );
+    assert_eq!(
+        expected_gens(&cell_b, &handles_b, &staging.vg, base_b),
+        staging.vg_gens,
+        "vg_gens matches the independently recomputed expected generation, per token"
+    );
+}
+
+/// M3-α T8 (design §3.1), DEI-path half: `compress_tokens` compacts the
+/// dense token array via [`crate::simd`]'s AVX2/scalar backends — the gens
+/// column must stay aligned with that compacted output too, mapping each
+/// dense slot back through the SAME `remap[dense_i] = original_run_index`
+/// entry the token itself was derived from (not the token value, and not
+/// simply the dense index).
+#[test]
+fn harvest_gens_column_matches_expected_generation_dei_path() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    let (cell1, handles1) = boxed_cell_with_handles(64, 64, 0.0);
+    let id1 = store.register_cell(cell1.storage(), 0).unwrap();
+    let base1 = store.row_region_base(id1);
+
+    let mut frames = FrameDriver::new();
+    let h = frames.begin().end().end();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+
+    // 8/64 = 12.5% < 25% -> DEI dense-compaction path (mirrors
+    // `dei_below_quarter_compacts_with_roundtrip_remap`'s fixture).
+    let view1 = View::Aabb(Aabb { min: [10.5, 0.0, 0.0], max: [17.5, 1.0, 1.0] });
+    let n1 =
+        pipeline.harvest_cell(&cell1, base1, MeshClass::Traditional, &view1, &mut pad, &mut staging, &h);
+    assert_eq!(n1, 8, "12.5% hit ratio");
+    assert_eq!(staging.stats.dei_compacted_runs, 1, "DEI path taken");
+    assert_eq!(staging.traditional.len(), staging.traditional_gens.len(), "dense/gens stay aligned");
+    assert_eq!(staging.remap.len(), 8);
+
+    assert_eq!(
+        expected_gens(&cell1, &handles1, &staging.traditional, base1),
+        staging.traditional_gens,
+        "DEI dense_gens matches the independently recomputed expected generation, per token"
+    );
+
+    // Cross-check directly against the remap segment (C4 M3-frozen layout:
+    // remap[dense_i] = original run index = local row): the gen at dense
+    // index i must equal the generation of whichever handle sits at row
+    // remap[i], not the token value at that index.
+    for i in 0..staging.remap.len() {
+        let row = staging.remap[i];
+        let h_at_row = handles1.iter().find(|h| cell1.row_of(**h) == Some(row)).unwrap();
+        assert_eq!(
+            staging.traditional_gens[i],
+            h_at_row.generation(),
+            "gens[{i}] must be remap[{i}]'s row's generation"
+        );
+    }
+}
+
+/// Test 2's CPU-side data path (design §3.1): a harvested run's gens column
+/// is a point-in-time snapshot — it goes stale the moment its row's occupant
+/// is freed and a boundary bumps that slot's generation. A consumer holding
+/// an OLD harvest result can detect this by comparing its snapshot gen
+/// against the LIVE `registry().generations()` for that slot (the M3-β cull
+/// shader's job, GPU-side; this proves the CPU-side data it will read is
+/// correct). A fresh re-harvest after the boundary reflects live state and
+/// matches.
+#[test]
+fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
+    let ctx = test_context();
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+
+    let (mut cell, handles) = boxed_cell_with_handles(64, 4, 0.0);
+    let id = store.register_cell(cell.storage(), 0).unwrap();
+    let base = store.row_region_base(id);
+
+    let mut frames = FrameDriver::new();
+    let pipeline = HarvestPipeline::new();
+    let mut pad = Scratchpad::new();
+    let mut staging = HarvestStaging::new();
+    let view = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] });
+
+    // Frame 1: harvest the OLD run (all 4 rows live, generation 1 each),
+    // then close the boundary with nothing pending — required to legally
+    // reach a fresh SimulateA for frame 2 below (the phase machine's chain).
+    let h1 = frames.begin().end().end();
+    let n1 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h1);
+    assert_eq!(n1, 4);
+    let old_tokens = staging.traditional.clone();
+    let old_gens = staging.traditional_gens.clone();
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        h1.end().run(&mut store, &mut slots);
+    }
+
+    // Frame 2: free handles[1] (row 1) via the deferred path, force its
+    // serial complete, and drive the boundary — retirement commits CPU-side
+    // and bumps the registry generation for that slot (§5 flow step 3).
+    let sim2 = frames.begin();
+    let serial = store.tracker().next_serial();
+    assert!(store.free_deferred(id, cell.storage_mut(), handles[1], serial, &sim2));
+    store.tracker().force_complete(serial);
+    let h2 = sim2.end().end();
+    {
+        let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
+        h2.end().run(&mut store, &mut slots);
+    }
+
+    // The freed handle's slot generation has moved in the LIVE registry.
+    let freed_slot = handles[1].index() as usize;
+    let live_gens = cell.storage().registry().generations().to_vec();
+    assert_ne!(
+        live_gens[freed_slot], handles[1].generation(),
+        "free_deferred + boundary bumped the freed slot's generation"
+    );
+
+    // OLD run: the staging snapshot captured BEFORE the free still holds the
+    // pre-free generation for that slot's token (row 1 at OLD-harvest time
+    // was handles[1] — no compaction had happened yet). It must no longer
+    // match the LIVE registry value for that slot — exactly the staleness
+    // the M3-β cull shader is meant to catch.
+    let stale_index = old_tokens.iter().position(|&t| t == base + 1).expect("row 1 was harvested");
+    assert_ne!(
+        old_gens[stale_index], live_gens[freed_slot],
+        "OLD run's gen for the freed row must no longer match the LIVE registry generation"
+    );
+
+    // NEW run: re-harvest after the boundary. Only 3 rows remain (the last
+    // live row swaps into row 1 by compaction); every gen in this fresh run
+    // must match the live registry, independently recomputed via `row_of`
+    // over the surviving handles.
+    let survivors = [handles[0], handles[2], handles[3]];
+    let h3 = frames.begin().end().end();
+    staging.clear();
+    let n3 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h3);
+    assert_eq!(n3, 3, "one row fewer after the free");
+    assert_eq!(staging.traditional.len(), staging.traditional_gens.len());
+    assert_eq!(
+        expected_gens(&cell, &survivors, &staging.traditional, base),
+        staging.traditional_gens,
+        "NEW run's gens match the live registry for every surviving row"
+    );
+}
+
 #[test]
 fn harvest_makes_zero_new_allocations_after_warmup() {
     let ctx = test_context();
@@ -233,6 +464,11 @@ fn harvest_makes_zero_new_allocations_after_warmup() {
     let cap_vg = staging.vg.capacity();
     let cap_hlod = staging.hlod.capacity();
     let cap_remap = staging.remap.capacity();
+    // M3-α T8: the gens columns are persistent staging arrays too — their
+    // capacity must survive warm-up exactly like their token counterparts.
+    let cap_trad_gens = staging.traditional_gens.capacity();
+    let cap_vg_gens = staging.vg_gens.capacity();
+    let cap_hlod_gens = staging.hlod_gens.capacity();
 
     // Clear WITHOUT freeing (S8.1) — a fresh `HarvestStaging::new()` here
     // would defeat the entire point of this test.
@@ -247,6 +483,9 @@ fn harvest_makes_zero_new_allocations_after_warmup() {
     assert_eq!(staging.vg.capacity(), cap_vg, "vg capacity unchanged");
     assert_eq!(staging.hlod.capacity(), cap_hlod, "hlod capacity unchanged");
     assert_eq!(staging.remap.capacity(), cap_remap, "remap capacity unchanged (plain path never touches it)");
+    assert_eq!(staging.traditional_gens.capacity(), cap_trad_gens, "traditional_gens capacity unchanged");
+    assert_eq!(staging.vg_gens.capacity(), cap_vg_gens, "vg_gens capacity unchanged");
+    assert_eq!(staging.hlod_gens.capacity(), cap_hlod_gens, "hlod_gens capacity unchanged");
 }
 
 #[test]
@@ -280,6 +519,14 @@ fn harvest_dei_branch_makes_zero_new_allocations_after_warmup() {
     let cap_vg = staging.vg.capacity();
     let cap_hlod = staging.hlod.capacity();
     let cap_remap = staging.remap.capacity();
+    // M3-α T8: the gens columns are persistent staging arrays too — their
+    // capacity must survive warm-up exactly like their token counterparts,
+    // including on the DEI branch (the remap-segment loop grows
+    // `traditional_gens` by exactly `dest`'s growth, so it warms up
+    // identically).
+    let cap_trad_gens = staging.traditional_gens.capacity();
+    let cap_vg_gens = staging.vg_gens.capacity();
+    let cap_hlod_gens = staging.hlod_gens.capacity();
 
     // Clear WITHOUT freeing (S8.1) — a fresh `HarvestStaging::new()` here
     // would defeat the entire point of this test.
@@ -295,6 +542,13 @@ fn harvest_dei_branch_makes_zero_new_allocations_after_warmup() {
     assert_eq!(staging.vg.capacity(), cap_vg, "vg capacity unchanged");
     assert_eq!(staging.hlod.capacity(), cap_hlod, "hlod capacity unchanged");
     assert_eq!(staging.remap.capacity(), cap_remap, "remap capacity unchanged across DEI runs (no realloc)");
+    assert_eq!(
+        staging.traditional_gens.capacity(),
+        cap_trad_gens,
+        "traditional_gens capacity unchanged across DEI runs"
+    );
+    assert_eq!(staging.vg_gens.capacity(), cap_vg_gens, "vg_gens capacity unchanged");
+    assert_eq!(staging.hlod_gens.capacity(), cap_hlod_gens, "hlod_gens capacity unchanged");
 }
 
 /// Test 10 (spec §9.2/§9.2.1, C4 2.0 ms revocation budget): lease timeout,

@@ -55,6 +55,27 @@ pub struct HarvestStaging {
     /// M3-frozen: `remap[dense_i] = original_run_index`. Only ever grown by
     /// DEI-compacted runs (§8.5); plain-path runs append nothing here.
     pub remap: Vec<u32>,
+    /// Expected-generation harvest column (design §3.1, M3-α T8 — Test 2's
+    /// CPU-side data path): `traditional_gens[i]` is the registry generation
+    /// expected for the handle backing `traditional[i]`, at the moment of
+    /// harvest — positionally aligned with `traditional` one-for-one (C4
+    /// "aligned across columns"). The downstream M3-β cull shader compares
+    /// this against the LIVE generations buffer at the token's global slot
+    /// and drops rows whose generation has since moved (stale/reused slot).
+    ///
+    /// **Sentinel handling:** [`NULL_ROW`] never reaches `traditional`,
+    /// `vg`, or `hlod` in EITHER routing path (the plain path's
+    /// `if *t != NULL_ROW` filter and [`crate::simd::compress_tokens`]'s
+    /// unconditional sentinel strip both drop it before any push), so no
+    /// gens column ever needs to hold a value for a sentinel row — every
+    /// push into a token array is paired, in the same statement or the same
+    /// small loop body, with exactly one push into its gens column. That
+    /// pairing is the invariant [`HarvestPipeline::harvest_cell`] asserts
+    /// after every cell: `traditional.len() == traditional_gens.len()`
+    /// (and the `vg`/`hlod` pairs likewise).
+    pub traditional_gens: Vec<u32>,
+    pub vg_gens: Vec<u32>,
+    pub hlod_gens: Vec<u32>,
     pub stats: HarvestStats,
 }
 
@@ -81,6 +102,9 @@ impl HarvestStaging {
         self.vg.clear();
         self.hlod.clear();
         self.remap.clear();
+        self.traditional_gens.clear();
+        self.vg_gens.clear();
+        self.hlod_gens.clear();
         self.stats = HarvestStats::default();
     }
 }
@@ -179,21 +203,48 @@ impl HarvestPipeline {
             View::Aabb(q) => cell.query_aabb_in(q, &words[..nw], tokens),
             View::Frustum(f) => cell.query_frustum_in(f, &words[..nw], tokens),
         };
-        let dest = match class {
-            MeshClass::Traditional => &mut staging.traditional,
-            MeshClass::VirtualGeometry => &mut staging.vg,
-            MeshClass::HlodProxy => &mut staging.hlod,
+        // §3.1 expected-generation alignment (M3-a T8): bound once per cell,
+        // consumed by both the plain and DEI paths below. `col0` is
+        // LOCAL-row-indexed (never offset by `region_base` — only the
+        // emitted TOKEN in `dest` gets that offset, the gen lookup never
+        // does); `regs` is the registry's slot-indexed generation array, so
+        // `regs[col0[local_row] as usize]` is the generation the handle
+        // currently owning that row is expected to carry.
+        let regs = cell.storage().registry().generations();
+        let col0 = cell.storage().slot_column();
+        let (dest, dest_gens) = match class {
+            MeshClass::Traditional => (&mut staging.traditional, &mut staging.traditional_gens),
+            MeshClass::VirtualGeometry => (&mut staging.vg, &mut staging.vg_gens),
+            MeshClass::HlodProxy => (&mut staging.hlod, &mut staging.hlod_gens),
         };
         if len > 0 && (n as f32 / len as f32) < 0.25 {
+            let remap_start = staging.remap.len();
             crate::simd::compress_tokens(&tokens[..len], region_base, dest, &mut staging.remap);
             staging.stats.dei_compacted_runs += 1;
+            // DEI remap holds LOCAL run indices — exactly what `col0` needs.
+            // Only the NEW segment this call appended (`remap_start..`) maps
+            // to this cell's hits; earlier segments belong to prior cells in
+            // the same (persistent) staging buffer.
+            for &ri in &staging.remap[remap_start..] {
+                dest_gens.push(regs[col0[ri as usize] as usize]);
+            }
         } else {
-            for t in &tokens[..len] {
+            for (local_row, t) in tokens[..len].iter().enumerate() {
                 if *t != NULL_ROW {
                     dest.push(region_base + *t);
+                    dest_gens.push(regs[col0[local_row] as usize]);
                 }
             }
         }
+        // Invariant (§3.1): each dest/dest_gens pair stays positionally
+        // aligned one-for-one — every push above is paired, so this can
+        // never legitimately drift; a debug-only guard is enough to catch a
+        // future edit that breaks the pairing.
+        debug_assert_eq!(
+            dest.len(),
+            dest_gens.len(),
+            "harvest gens column must stay positionally aligned with its token array (§3.1)"
+        );
         staging.stats.cells += 1;
         staging.stats.tokens_valid += n;
         staging.stats.tokens_total += len as u32;

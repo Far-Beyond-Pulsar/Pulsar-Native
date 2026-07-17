@@ -631,6 +631,79 @@ fn registration_rebuilds_generation_region_and_shadow() {
     assert_eq!(store.generation_write_count(), before, "shadow already knows gen 2");
 }
 
+/// M3-α T4 review, folded carry-forward (closed by M3-α T8's orchestration):
+/// `register_cell`'s warm-up (`dirty_transforms.mark_range`/
+/// `dirty_infos.mark_range`, scene_store.rs) is mutation-surviving in the
+/// sense that no prior test ever registered a cell whose rows were already
+/// populated CPU-side BEFORE registration — every existing test writes its
+/// rows AFTER registration, via `write_transform`/`write_instance_info`,
+/// whose OWN dirty-marking would mask a missing warm-up mark. This test
+/// populates 3 rows directly through `CellStorage::column_for_mut` (bypassing
+/// both mirrored-column writers entirely) BEFORE the cell is ever registered,
+/// then runs one boundary with NO `write_transform`/`write_instance_info`
+/// calls in it at all — the only thing that can put these rows' bytes in
+/// VRAM is `register_cell`'s warm-up mark plus the first `sync_all`.
+#[test]
+fn register_cell_warmup_syncs_rows_populated_before_registration() {
+    let ctx = test_context();
+    let mut cell = transform_info_cell(64);
+
+    // Populate 3 rows' worth of CPU-side truth BEFORE any `SceneGpuStore`
+    // exists. `_handles` only needs to keep the rows live (alloc marks
+    // liveness) — this test addresses rows by index, not by handle.
+    let _handles: Vec<_> = (0..3).map(|_| cell.alloc().unwrap()).collect();
+    let want_mats = [mat(11.0), mat(12.0), mat(13.0)];
+    let want_infos = [
+        InstanceInfo { mesh_index: 101, flags: 0 },
+        InstanceInfo { mesh_index: 102, flags: 1 },
+        InstanceInfo { mesh_index: 103, flags: 0 },
+    ];
+    {
+        let cols = cell.column_for_mut::<[f32; 16]>().unwrap();
+        for (row, m) in want_mats.iter().enumerate() {
+            cols[row] = *m;
+        }
+    }
+    {
+        let cols = cell.column_for_mut::<InstanceInfo>().unwrap();
+        for (row, info) in want_infos.iter().enumerate() {
+            cols[row] = *info;
+        }
+    }
+
+    // NOW register — this is the warm-up under test.
+    let mut store = SceneGpuStore::new(&ctx, scene_cfg());
+    let id = store.register_cell(&cell, 0).unwrap();
+    let base = store.row_region_base(id) as usize;
+
+    // One empty boundary: zero `write_transform`/`write_instance_info` calls
+    // in this frame. If the sync uploads anything for these 3 rows, it can
+    // only be because `register_cell`'s warm-up marked them dirty.
+    let mut frames = FrameDriver::new();
+    let sim = frames.begin();
+    {
+        let mut slots = [CellSlot { id, cell: &mut cell }];
+        // Only frame of the test: next-frame witness dropped.
+        scene_boundary(&mut frames, sim, &mut store, &mut slots);
+    }
+
+    let gpu_mats = as_f32s(&readback(&ctx, store.transform_buffer(), (64 * 4 * 64) as u64));
+    for (row, want) in want_mats.iter().enumerate() {
+        assert_eq!(
+            &gpu_mats[(base + row) * 16..(base + row) * 16 + 16],
+            want,
+            "row {row}: pre-registration transform must reach VRAM via register_cell's warm-up"
+        );
+    }
+    let gpu_infos = as_infos(&readback(&ctx, store.instance_info_buffer(), (64 * 4 * 8) as u64));
+    for (row, want) in want_infos.iter().enumerate() {
+        assert_eq!(
+            gpu_infos[base + row], *want,
+            "row {row}: pre-registration instance-info must reach VRAM via register_cell's warm-up"
+        );
+    }
+}
+
 #[test]
 fn slot_mirror_tracks_alloc_and_compaction_moves() {
     let ctx = test_context();
