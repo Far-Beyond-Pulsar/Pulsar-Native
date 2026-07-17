@@ -8,6 +8,7 @@ use pulsar_scenedb::gpu::{
     MeshClass, RegionClassConfig, SceneGpuConfig, SceneGpuStore, View,
 };
 use pulsar_scenedb::{Aabb, Handle, LeaseMask, LivenessSnapshot, Scratchpad, SpatialCell, NULL_ROW};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 fn test_context() -> EngineGpuContext {
@@ -85,23 +86,89 @@ fn boxed_cell(capacity: u32, count: u32, x_offset: f32) -> SpatialCell {
     cell
 }
 
-/// Like [`boxed_cell`] but also returns the handles, in allocation order
-/// (M3-α T8, design §3.1): the gens-column tests need to free/re-locate
-/// specific rows, and to independently recompute a row's expected
-/// generation from OUTSIDE the crate they use [`SpatialCell::row_of`] (a
-/// handle → its CURRENT row) rather than `harvest_cell`'s own crate-private
-/// slot-column binding — `harvest.rs`'s `col0 = cell.storage().slot_column()`
-/// is `pub(crate)` and unreachable from this integration-test crate by
-/// design.
-fn boxed_cell_with_handles(capacity: u32, count: u32, x_offset: f32) -> (SpatialCell, Vec<Handle>) {
-    let mut cell = SpatialCell::with_transform(capacity).unwrap();
-    let handles = (0..count)
-        .map(|i| {
-            let x = x_offset + i as f32;
-            cell.alloc(Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] }).unwrap()
-        })
-        .collect();
-    (cell, handles)
+/// M3-α T8 review defect 1 fix: builds a `SpatialCell::with_transform` cell
+/// whose LIVE rows carry genuinely DIFFERENT registry generations. Every
+/// earlier T8 test fixture allocated fresh handles only, and
+/// `HandleRegistry::allocate` gives generation 1 to every fresh slot — so no
+/// live harvested row anywhere in the suite ever carried a generation other
+/// than 1, and the reviewer-verified mutant `dest_gens.push(1)` (a hardcoded
+/// constant standing in for the real per-row registry read) passed all 11
+/// tests. This fixture closes that gap: 4 initial boxes at
+/// `x_offset + {0,1,2,3}`, then two free+compact+realloc round trips on one
+/// slot (-> generation 3) and one round trip on another (-> generation 2),
+/// leaving exactly 4 live rows on a genuine mix of generations (never all
+/// equal). Box positions always land in `[x_offset, x_offset + 6)`, so a
+/// single broad AABB query safely covers every live row regardless of which
+/// physical row ends up holding which handle.
+///
+/// Returns the cell plus EVERY handle ever allocated (including the
+/// now-dead intermediates from the churn) — callers filter to the
+/// currently-live subset via `cell.row_of(h).is_some()` rather than this
+/// fixture hard-coding which handles survive, so the churn recipe can change
+/// without every call site needing to track it by hand.
+fn gen_diverse_boxed_cell(x_offset: f32) -> (SpatialCell, Vec<Handle>) {
+    let mut cell = SpatialCell::with_transform(64).unwrap();
+    let box_at = |x: f32| Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] };
+    let mut all = Vec::new();
+
+    let h0 = cell.alloc(box_at(x_offset)).unwrap();
+    let h1 = cell.alloc(box_at(x_offset + 1.0)).unwrap();
+    let h2 = cell.alloc(box_at(x_offset + 2.0)).unwrap();
+    let h3 = cell.alloc(box_at(x_offset + 3.0)).unwrap();
+    all.extend([h0, h1, h2, h3]);
+
+    // h1's slot: two free+compact+realloc round trips -> generation 3.
+    cell.free(h1);
+    cell.compact();
+    let h1b = cell.alloc(box_at(x_offset + 4.0)).unwrap();
+    all.push(h1b);
+    cell.free(h1b);
+    cell.compact();
+    let h1c = cell.alloc(box_at(x_offset + 4.0)).unwrap();
+    all.push(h1c);
+
+    // h3's slot: one free+compact+realloc round trip -> generation 2.
+    cell.free(h3);
+    cell.compact();
+    let h3b = cell.alloc(box_at(x_offset + 5.0)).unwrap();
+    all.push(h3b);
+
+    (cell, all)
+}
+
+/// M3-α T8 review defect 2 fix: builds a small cell for the DEI
+/// (dense-compaction) path whose single harvested hit row has a SLOT that
+/// genuinely diverges from its ROW index, and a generation that genuinely
+/// diverges from the fixture's gen-1 baseline — the exact double-blind spot
+/// mutants M2 (DEI: `regs[ri]`, dropping the `col0` slot-column indirection)
+/// and M1 (`dest_gens.push(1)`) exploit when every prior DEI fixture was
+/// identity-mapped (`col0[row] == row`) and gen-1-uniform.
+///
+/// 6 "filler" boxes occupy `x_offset .. x_offset + 6` (rows 0..5, generation
+/// 1, slot == row, never queried). One filler (originally row 2, slot 2) is
+/// freed and compacted away — the LAST live row swaps into row 2 — and then
+/// slot 2 is immediately recycled by a brand-new handle appended at the new
+/// tail row; that handle's slot (2) no longer matches its row, and its
+/// generation (2, from the recycle) no longer matches the gen-1 baseline.
+/// Its box sits far outside the filler cluster (`x_offset + 100`) so a query
+/// can select it alone: 6 live rows total, so a 1-hit query is 1/6 ≈ 16.7%
+/// < 25% — DEI territory.
+///
+/// Returns the cell, the scrambled hit handle, and its box's x-position (so
+/// callers can build a precise single-hit query without needing to know
+/// which physical row the handle landed on).
+fn scrambled_dei_cell(x_offset: f32) -> (SpatialCell, Handle, f32) {
+    let mut cell = SpatialCell::with_transform(64).unwrap();
+    let box_at = |x: f32| Aabb { min: [x, 0.0, 0.0], max: [x + 1.0, 1.0, 1.0] };
+
+    let fillers: Vec<Handle> = (0..6u32).map(|i| cell.alloc(box_at(x_offset + i as f32)).unwrap()).collect();
+
+    cell.free(fillers[2]);
+    cell.compact();
+    let hit_x = x_offset + 100.0;
+    let hit = cell.alloc(box_at(hit_x)).unwrap();
+
+    (cell, hit, hit_x)
 }
 
 /// Independently recompute the expected generation for every `token` in
@@ -248,19 +315,38 @@ fn dei_below_quarter_compacts_with_roundtrip_remap() {
     assert_eq!(staging.remap.len(), 8, "plain path never touches remap");
 }
 
-/// M3-α T8 (design §3.1 — Test 2's CPU-side data path), plain-path half: for
-/// every token the (non-DEI) plain routing path emits, `traditional_gens`/
-/// `vg_gens` must hold exactly that token's expected generation, positionally
-/// aligned one-for-one. Verified by independently recomputing the expected
-/// value via [`expected_gens`] rather than trusting `harvest_cell`'s own
-/// arithmetic.
+/// M3-α T8 review defect 1 fix: the ORIGINAL plain-path alignment test used
+/// only fresh (never-freed) handles, so every live harvested row carried
+/// registry generation 1 — the reviewer-verified mutant `dest_gens.push(1)`
+/// (a hardcoded constant standing in for the real `regs[col0[local_row]]`
+/// read) passed the entire 11-test suite under that fixture. This version
+/// uses [`gen_diverse_boxed_cell`], whose live rows carry genuinely
+/// different generations via free+realloc churn, so a constant-push mutant
+/// is immediately distinguishable from the real per-row read. Values are
+/// still verified via [`expected_gens`], which recomputes purely from
+/// `SpatialCell::row_of`/`Handle::generation()` — public API, never
+/// `harvest_cell`'s own crate-private `slot_column` binding.
 #[test]
 fn harvest_gens_column_matches_expected_generation_plain_path() {
     let ctx = test_context();
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
 
-    let (cell_a, handles_a) = boxed_cell_with_handles(64, 4, 0.0);
-    let (cell_b, handles_b) = boxed_cell_with_handles(64, 4, 100.0);
+    let (cell_a, all_a) = gen_diverse_boxed_cell(0.0);
+    let (cell_b, all_b) = gen_diverse_boxed_cell(1000.0);
+    let live_a: Vec<Handle> = all_a.iter().copied().filter(|h| cell_a.row_of(*h).is_some()).collect();
+    let live_b: Vec<Handle> = all_b.iter().copied().filter(|h| cell_b.row_of(*h).is_some()).collect();
+    assert_eq!(live_a.len(), 4, "gen_diverse_boxed_cell always nets out to 4 live rows");
+    assert_eq!(live_b.len(), 4);
+
+    // Guard the guard: the fixture must have genuine gen diversity, not
+    // coincidentally regress to a uniform gen-1 baseline (review defect 1) —
+    // a fixture that silently lost its diversity would make every assertion
+    // below pass just as vacuously as the original.
+    let distinct_a: HashSet<u32> = live_a.iter().map(|h| h.generation()).collect();
+    let distinct_b: HashSet<u32> = live_b.iter().map(|h| h.generation()).collect();
+    assert!(distinct_a.len() > 1, "cell A fixture must carry genuinely different generations across live rows");
+    assert!(distinct_b.len() > 1, "cell B fixture must carry genuinely different generations across live rows");
+
     let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
     let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
     let base_a = store.row_region_base(id_a);
@@ -272,12 +358,12 @@ fn harvest_gens_column_matches_expected_generation_plain_path() {
     let mut pad = Scratchpad::new();
     let mut staging = HarvestStaging::new();
 
-    // Broad views: every box in both cells hits (100% >= 25% -> plain path
-    // both times).
-    let view_a = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] });
+    // Broad views: every live box in both cells hits (100% >= 25% -> plain
+    // path both times). Box positions always land in `x_offset .. x_offset+6`.
+    let view_a = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [7.0, 1.0, 1.0] });
     let n_a =
         pipeline.harvest_cell(&cell_a, base_a, MeshClass::Traditional, &view_a, &mut pad, &mut staging, &h);
-    let view_b = View::Aabb(Aabb { min: [99.0, 0.0, 0.0], max: [110.0, 1.0, 1.0] });
+    let view_b = View::Aabb(Aabb { min: [999.0, 0.0, 0.0], max: [1007.0, 1.0, 1.0] });
     let n_b =
         pipeline.harvest_cell(&cell_b, base_b, MeshClass::VirtualGeometry, &view_b, &mut pad, &mut staging, &h);
     assert_eq!(n_a, 4);
@@ -290,31 +376,65 @@ fn harvest_gens_column_matches_expected_generation_plain_path() {
     assert!(staging.hlod.is_empty(), "nothing harvested as HlodProxy");
 
     assert_eq!(
-        expected_gens(&cell_a, &handles_a, &staging.traditional, base_a),
+        expected_gens(&cell_a, &live_a, &staging.traditional, base_a),
         staging.traditional_gens,
-        "traditional_gens matches the independently recomputed expected generation, per token"
+        "traditional_gens matches the independently recomputed expected generation, per token, \
+         with genuine per-row diversity — kills a constant-push mutant (review M1)"
     );
     assert_eq!(
-        expected_gens(&cell_b, &handles_b, &staging.vg, base_b),
+        expected_gens(&cell_b, &live_b, &staging.vg, base_b),
         staging.vg_gens,
-        "vg_gens matches the independently recomputed expected generation, per token"
+        "vg_gens matches the independently recomputed expected generation, per token, \
+         with genuine per-row diversity — kills a constant-push mutant (review M1)"
     );
 }
 
-/// M3-α T8 (design §3.1), DEI-path half: `compress_tokens` compacts the
-/// dense token array via [`crate::simd`]'s AVX2/scalar backends — the gens
-/// column must stay aligned with that compacted output too, mapping each
-/// dense slot back through the SAME `remap[dense_i] = original_run_index`
-/// entry the token itself was derived from (not the token value, and not
-/// simply the dense index).
+/// M3-α T8 review defect 2 fix: the ORIGINAL DEI alignment test only ever
+/// exercised a fresh, identity-mapped cell (`col0[row] == row`, every gen 1)
+/// with exactly ONE DEI-compacted cell per staging buffer. Under that
+/// fixture, reviewer-verified mutants M2 (DEI: `regs[ri as usize]`, dropping
+/// the `col0` slot-column indirection) and M4 (DEI: iterating the FULL
+/// `staging.remap` instead of only the `remap_start..` segment THIS cell's
+/// `compress_tokens` call appended) both survived — M2 because `ri == col0
+/// [ri]` when identity-mapped, so skipping the indirection changes nothing;
+/// M4 because a single DEI cell's `remap_start` is always 0, so ignoring the
+/// segmentation changes nothing either.
+///
+/// This version harvests TWO DEI-triggering cells into ONE shared
+/// `HarvestStaging` (pins `remap_start` segmentation — M4's exact blind
+/// spot: the SECOND cell's `remap_start` is nonzero), each built via
+/// [`scrambled_dei_cell`] so its single hit row's slot genuinely diverges
+/// from its row and its generation genuinely diverges from the gen-1
+/// baseline (M2/M1's exact blind spot). Expected values are recomputed via
+/// `SpatialCell::row_of`/`Handle::generation()` ALONE — never through
+/// `staging.remap` — the exact same-buggy-path trap the task brief flagged
+/// (the review's minor defect: deriving an expectation through the very
+/// structure under test cannot distinguish a bug in that structure from a
+/// bug-free one).
 #[test]
-fn harvest_gens_column_matches_expected_generation_dei_path() {
+fn harvest_gens_column_dei_path_scrambled_slots_and_two_cell_segmentation() {
     let ctx = test_context();
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
 
-    let (cell1, handles1) = boxed_cell_with_handles(64, 64, 0.0);
-    let id1 = store.register_cell(cell1.storage(), 0).unwrap();
-    let base1 = store.row_region_base(id1);
+    let (cell_a, hit_a, hit_x_a) = scrambled_dei_cell(0.0);
+    let (cell_b, hit_b, hit_x_b) = scrambled_dei_cell(10_000.0);
+    assert_ne!(
+        hit_a.index(),
+        cell_a.row_of(hit_a).unwrap(),
+        "cell A's hit row must NOT equal its slot (non-identity col0) — the M2 blind spot"
+    );
+    assert_ne!(
+        hit_b.index(),
+        cell_b.row_of(hit_b).unwrap(),
+        "cell B's hit row must NOT equal its slot (non-identity col0) — the M2 blind spot"
+    );
+    assert_ne!(hit_a.generation(), 1, "cell A's hit gen must diverge from the gen-1 baseline — the M1 blind spot");
+    assert_ne!(hit_b.generation(), 1, "cell B's hit gen must diverge from the gen-1 baseline — the M1 blind spot");
+
+    let id_a = store.register_cell(cell_a.storage(), 0).unwrap();
+    let id_b = store.register_cell(cell_b.storage(), 0).unwrap();
+    let base_a = store.row_region_base(id_a);
+    let base_b = store.row_region_base(id_b);
 
     let mut frames = FrameDriver::new();
     let h = frames.begin().end().end();
@@ -322,35 +442,49 @@ fn harvest_gens_column_matches_expected_generation_dei_path() {
     let mut pad = Scratchpad::new();
     let mut staging = HarvestStaging::new();
 
-    // 8/64 = 12.5% < 25% -> DEI dense-compaction path (mirrors
-    // `dei_below_quarter_compacts_with_roundtrip_remap`'s fixture).
-    let view1 = View::Aabb(Aabb { min: [10.5, 0.0, 0.0], max: [17.5, 1.0, 1.0] });
-    let n1 =
-        pipeline.harvest_cell(&cell1, base1, MeshClass::Traditional, &view1, &mut pad, &mut staging, &h);
-    assert_eq!(n1, 8, "12.5% hit ratio");
-    assert_eq!(staging.stats.dei_compacted_runs, 1, "DEI path taken");
-    assert_eq!(staging.traditional.len(), staging.traditional_gens.len(), "dense/gens stay aligned");
-    assert_eq!(staging.remap.len(), 8);
+    let view_a = View::Aabb(Aabb { min: [hit_x_a + 0.25, 0.0, 0.0], max: [hit_x_a + 0.75, 1.0, 1.0] });
+    let n_a =
+        pipeline.harvest_cell(&cell_a, base_a, MeshClass::Traditional, &view_a, &mut pad, &mut staging, &h);
+    assert_eq!(n_a, 1, "cell A: exactly the scrambled hit row (1/6 rows)");
+    assert_eq!(staging.stats.dei_compacted_runs, 1, "cell A took the DEI path — remap_start was 0 for this call");
 
+    let view_b = View::Aabb(Aabb { min: [hit_x_b + 0.25, 0.0, 0.0], max: [hit_x_b + 0.75, 1.0, 1.0] });
+    let n_b =
+        pipeline.harvest_cell(&cell_b, base_b, MeshClass::Traditional, &view_b, &mut pad, &mut staging, &h);
+    assert_eq!(n_b, 1, "cell B: exactly the scrambled hit row (1/6 rows)");
     assert_eq!(
-        expected_gens(&cell1, &handles1, &staging.traditional, base1),
-        staging.traditional_gens,
-        "DEI dense_gens matches the independently recomputed expected generation, per token"
+        staging.stats.dei_compacted_runs, 2,
+        "cell B ALSO took the DEI path — its remap_start was 1, not 0 (the M4 blind spot)"
     );
 
-    // Cross-check directly against the remap segment (C4 M3-frozen layout:
-    // remap[dense_i] = original run index = local row): the gen at dense
-    // index i must equal the generation of whichever handle sits at row
-    // remap[i], not the token value at that index.
-    for i in 0..staging.remap.len() {
-        let row = staging.remap[i];
-        let h_at_row = handles1.iter().find(|h| cell1.row_of(**h) == Some(row)).unwrap();
-        assert_eq!(
-            staging.traditional_gens[i],
-            h_at_row.generation(),
-            "gens[{i}] must be remap[{i}]'s row's generation"
-        );
-    }
+    // Segmentation: exactly one remap entry contributed per cell.
+    assert_eq!(staging.remap.len(), 2, "two DEI cells -> two remap entries total, no cross-contamination");
+    assert_eq!(staging.traditional.len(), 2);
+    assert_eq!(
+        staging.traditional_gens.len(),
+        2,
+        "dest/gens length parity across BOTH DEI cells — kills M4 (iterating the full remap on cell B's \
+         call would re-walk cell A's already-counted entry too, growing gens past the token count)"
+    );
+
+    // Expected values, independently recomputed via `row_of`/`generation()`
+    // ALONE — NEVER via `staging.remap` (the flagged same-path trap).
+    let row_a = cell_a.row_of(hit_a).unwrap();
+    let row_b = cell_b.row_of(hit_b).unwrap();
+    assert_eq!(staging.traditional[0], base_a + row_a, "token 0 is cell A's hit row");
+    assert_eq!(staging.traditional[1], base_b + row_b, "token 1 is cell B's hit row");
+    assert_eq!(
+        staging.traditional_gens[0],
+        hit_a.generation(),
+        "gens[0] must be cell A's hit handle's generation, read via col0[{row_a}] == slot {} (NOT regs[{row_a}], which would read slot {row_a}'s OWN generation — a different, still-live handle)",
+        hit_a.index()
+    );
+    assert_eq!(
+        staging.traditional_gens[1],
+        hit_b.generation(),
+        "gens[1] must be cell B's hit handle's generation, read via col0[{row_b}] == slot {} (NOT regs[{row_b}])",
+        hit_b.index()
+    );
 }
 
 /// Test 2's CPU-side data path (design §3.1): a harvested run's gens column
@@ -361,12 +495,30 @@ fn harvest_gens_column_matches_expected_generation_dei_path() {
 /// shader's job, GPU-side; this proves the CPU-side data it will read is
 /// correct). A fresh re-harvest after the boundary reflects live state and
 /// matches.
+///
+/// M3-α T8 review defect 3 fix: uses [`gen_diverse_boxed_cell`] (genuinely
+/// different generations per live row, not a uniform gen-1 baseline) so a
+/// position mix-up is actually detectable, and additionally asserts every
+/// NON-freed OLD entry still matches the LIVE registry (not merely skipping
+/// past them) — a regression that marked the WHOLE old run stale, not only
+/// the freed slot, would have passed the original version of this test.
 #[test]
 fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
     let ctx = test_context();
     let mut store = SceneGpuStore::new(&ctx, scene_cfg());
 
-    let (mut cell, handles) = boxed_cell_with_handles(64, 4, 0.0);
+    let (mut cell, all) = gen_diverse_boxed_cell(0.0);
+    let live: Vec<Handle> = all.iter().copied().filter(|h| cell.row_of(*h).is_some()).collect();
+    assert_eq!(live.len(), 4);
+    let distinct: HashSet<u32> = live.iter().map(|h| h.generation()).collect();
+    assert!(distinct.len() > 1, "fixture must carry genuine gen diversity so position is pinned");
+
+    // Every live handle's row AT OLD-HARVEST TIME, captured now (before the
+    // free below) — `row_of` only resolves LIVE handles, and this mapping is
+    // what lets the OLD-run checks below address a specific handle's entry
+    // regardless of how compaction reshuffles rows afterwards.
+    let pre_free_rows: HashMap<Handle, u32> = live.iter().map(|&h| (h, cell.row_of(h).unwrap())).collect();
+
     let id = store.register_cell(cell.storage(), 0).unwrap();
     let base = store.row_region_base(id);
 
@@ -374,9 +526,9 @@ fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
     let pipeline = HarvestPipeline::new();
     let mut pad = Scratchpad::new();
     let mut staging = HarvestStaging::new();
-    let view = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [10.0, 1.0, 1.0] });
+    let view = View::Aabb(Aabb { min: [-1.0, 0.0, 0.0], max: [7.0, 1.0, 1.0] });
 
-    // Frame 1: harvest the OLD run (all 4 rows live, generation 1 each),
+    // Frame 1: harvest the OLD run (all 4 live rows, genuinely mixed gens),
     // then close the boundary with nothing pending — required to legally
     // reach a fresh SimulateA for frame 2 below (the phase machine's chain).
     let h1 = frames.begin().end().end();
@@ -384,17 +536,23 @@ fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
     assert_eq!(n1, 4);
     let old_tokens = staging.traditional.clone();
     let old_gens = staging.traditional_gens.clone();
+    assert!(
+        old_gens.iter().collect::<HashSet<_>>().len() > 1,
+        "the OLD run itself must be non-uniform, or the freed-vs-surviving comparisons below can't pin position"
+    );
     {
         let mut slots = [CellSlot { id, cell: cell.storage_mut() }];
         h1.end().run(&mut store, &mut slots);
     }
 
-    // Frame 2: free handles[1] (row 1) via the deferred path, force its
-    // serial complete, and drive the boundary — retirement commits CPU-side
-    // and bumps the registry generation for that slot (§5 flow step 3).
+    // Free ONE live handle via the deferred path, force its serial complete,
+    // and drive the boundary — retirement commits CPU-side and bumps the
+    // registry generation for that slot (§5 flow step 3).
+    let freed = live[0];
+    let survivors: Vec<Handle> = live[1..].to_vec();
     let sim2 = frames.begin();
     let serial = store.tracker().next_serial();
-    assert!(store.free_deferred(id, cell.storage_mut(), handles[1], serial, &sim2));
+    assert!(store.free_deferred(id, cell.storage_mut(), freed, serial, &sim2));
     store.tracker().force_complete(serial);
     let h2 = sim2.end().end();
     {
@@ -402,30 +560,49 @@ fn harvest_gens_go_stale_after_free_deferred_and_boundary() {
         h2.end().run(&mut store, &mut slots);
     }
 
-    // The freed handle's slot generation has moved in the LIVE registry.
-    let freed_slot = handles[1].index() as usize;
     let live_gens = cell.storage().registry().generations().to_vec();
     assert_ne!(
-        live_gens[freed_slot], handles[1].generation(),
+        live_gens[freed.index() as usize],
+        freed.generation(),
         "free_deferred + boundary bumped the freed slot's generation"
     );
 
-    // OLD run: the staging snapshot captured BEFORE the free still holds the
-    // pre-free generation for that slot's token (row 1 at OLD-harvest time
-    // was handles[1] — no compaction had happened yet). It must no longer
-    // match the LIVE registry value for that slot — exactly the staleness
-    // the M3-β cull shader is meant to catch.
-    let stale_index = old_tokens.iter().position(|&t| t == base + 1).expect("row 1 was harvested");
-    assert_ne!(
-        old_gens[stale_index], live_gens[freed_slot],
-        "OLD run's gen for the freed row must no longer match the LIVE registry generation"
-    );
+    // Walk EVERY live handle's OLD-run entry (found via the pre-free row
+    // map, never via any post-boundary row): the freed one must no longer
+    // match LIVE (the staleness the M3-β cull shader is meant to catch);
+    // every SURVIVING one must still match LIVE (review defect 3 — the
+    // original test only ever checked the freed slot, so a regression that
+    // marked the WHOLE old run stale would have passed).
+    for &handle in &live {
+        let row = pre_free_rows[&handle];
+        let old_idx = old_tokens
+            .iter()
+            .position(|&t| t == base + row)
+            .unwrap_or_else(|| panic!("row {row} (handle {handle:?}) was not in the OLD run"));
+        assert_eq!(
+            old_gens[old_idx], handle.generation(),
+            "OLD run's gen for {handle:?} must equal its own generation at harvest time"
+        );
+        if handle == freed {
+            assert_ne!(
+                old_gens[old_idx],
+                live_gens[handle.index() as usize],
+                "OLD run's gen for the FREED row must no longer match LIVE after the free+boundary"
+            );
+        } else {
+            assert_eq!(
+                old_gens[old_idx],
+                live_gens[handle.index() as usize],
+                "OLD run's gen for a NON-freed row must STILL match LIVE (untouched slot) — \
+                 review defect 3: a regression that staled the whole run, not just the freed slot"
+            );
+        }
+    }
 
-    // NEW run: re-harvest after the boundary. Only 3 rows remain (the last
-    // live row swaps into row 1 by compaction); every gen in this fresh run
-    // must match the live registry, independently recomputed via `row_of`
-    // over the surviving handles.
-    let survivors = [handles[0], handles[2], handles[3]];
+    // NEW run: re-harvest after the boundary. Only 3 rows remain (one live
+    // row swaps into the freed row by compaction); every gen in this fresh
+    // run must match the live registry, independently recomputed via
+    // `row_of` over the surviving handles.
     let h3 = frames.begin().end().end();
     staging.clear();
     let n3 = pipeline.harvest_cell(&cell, base, MeshClass::Traditional, &view, &mut pad, &mut staging, &h3);
