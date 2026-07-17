@@ -81,15 +81,24 @@ thread-bound), 2.0 ms revocation timeout at frame boundary. Scratchpads:
 thread-local, persistent, halved when peak usage < 50% capacity over 8 frames.
 DEI = valid/total; DEI < 25% → host-side dense compaction before upload.
 
-**Amendment (M3-β T2, §9.2.1 / contract #32, implemented — cite Rev 2.4
-routing per the perf report R-PERF-3):** the 2.0 ms is a hold-duration
-TIMEOUT (the trigger condition for revocation), not a latency budget on any
-operation; on expiry `gpu::HarvestPipeline::revoke_overdue` force-releases
-the lease's `LeaseMask` slot immediately (`any_held()` clears without
-waiting for the holder's own drop) and compaction proceeds against the
-primary layout via `gpu::RetiredPhase::compact_gated`, while the straggler
-keeps reading its pinned `LivenessSnapshot`, re-validating against live
-generations before acting on any result (`revalidate_run`).
+**Amendment (M3-β T2, §9.2.1 / contract #32 — PRIMITIVES DELIVERED, wiring
+pending; cite Rev 2.4 routing per the perf report R-PERF-3):** the 2.0 ms
+is a hold-duration TIMEOUT (the trigger condition for revocation), not a
+latency budget on any operation. On expiry
+`gpu::HarvestPipeline::revoke_overdue` force-releases the lease's
+`LeaseMask` slot immediately (`any_held()` clears without waiting for the
+holder's own drop), and the gated compaction seams
+(`gpu::RetiredPhase::compact_gated` / `SceneGpuStore::compact_all_gated` /
+`HarvestPipeline::compaction_ready`) let a driver proceed against the
+primary layout while the straggler keeps reading its pinned
+`LivenessSnapshot`. **Scope honesty:** nothing in production binds
+`LeaseMask` to cells or calls the gated seams yet — the default boundary
+path (`BoundaryPhase::run` → `compact_all`) remains ungated; wiring is M4
+World-driver scope, so #32's stall bound is deliverable but not yet
+delivered by default. `revalidate_run` is liveness-only, not
+generation-aware — see the committed hazard repro test; generation-aware
+revalidation is an M3-γ/M4 prerequisite for any production reliance
+post-revocation.
 
 ## C5. GPU buffer layouts (WGSL, scalar fields only — no vec3)
 

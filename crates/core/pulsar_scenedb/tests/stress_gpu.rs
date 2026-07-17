@@ -554,12 +554,16 @@ fn storm3_lease_revocation_latency_1000_requests_under_harvest_load() {
     // budget gate is asserted here. What IS proven: revocation-trigger
     // semantics stay correct and the flag-set stays sub-10µs (sanity bound,
     // ~100x the observed p99) under 4-thread contention on a shared mask.
-    // UPDATE (M3-b T2, contract #32 CLOSED): the §9.2.1 pinned-snapshot
-    // compaction bypass this comment used to carry forward as "UNBUILT" now
-    // is — `revoke_overdue` force-releases the slot immediately on
-    // revocation (`Lease::force_release`) and `gpu::HarvestPipeline::
-    // compaction_ready` is the production `any_held()` consumer that gates
-    // `gpu::RetiredPhase::compact_gated`. See the tests immediately below
+    // UPDATE (M3-b T2, contract #32 PRIMITIVES DELIVERED — not yet wired):
+    // the §9.2.1 pinned-snapshot compaction bypass this comment used to
+    // carry forward as "UNBUILT" now exists as additive seams —
+    // `revoke_overdue` force-releases the slot immediately on revocation
+    // (`Lease::force_release`) and `gpu::HarvestPipeline::compaction_ready`
+    // is the `any_held()` consumer gating `gpu::RetiredPhase::compact_gated`
+    // — but the DEFAULT boundary path (`BoundaryPhase::run` → `compact_all`)
+    // is unchanged and ungated: binding `LeaseMask` to cells and routing the
+    // default flow through the gate is M4 World-driver scope (T2 review).
+    // See the tests immediately below
     // and the M3-b T2 report for the release-timing decision and its safety
     // argument.
     const FLAG_SET_SANITY_NS: u128 = 10_000;
