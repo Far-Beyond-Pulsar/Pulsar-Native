@@ -255,10 +255,11 @@ fn drain_registration_warmup(
     frames.begin()
 }
 
-/// One SceneDB frame: mark `counts[cell]` contiguous rows dirty per cell (or
-/// the scattered `local_indices[cell]` set, if given), then one boundary run.
-/// Slot-Vec construction stays OUTSIDE the timed bracket (T3 review
-/// discipline: bench-harness bookkeeping is not part of "the frame cost").
+/// One SceneDB frame: mark `row_lists[cell]`'s rows dirty per cell, then one
+/// boundary run. Slot-Vec construction AND the row-selection lists stay
+/// OUTSIDE the timed bracket (T3/T4 review discipline: bench-harness
+/// bookkeeping is not part of "the frame cost" — the lists are stable
+/// fixture data per (S, M) config, precomputed once by the caller).
 /// Returns (cpu_micros, stats) and refills `sim`.
 #[allow(clippy::too_many_arguments)]
 fn run_scenedb_frame(
@@ -269,14 +270,14 @@ fn run_scenedb_frame(
     handles: &[Vec<Handle>],
     frames: &mut FrameDriver,
     sim: &mut Option<pulsar_scenedb::gpu::SimulateA>,
-    rows_to_mark: &dyn Fn(usize) -> Vec<u32>,
+    row_lists: &[Vec<u32>],
 ) -> (f64, SyncStats) {
     let this_sim = sim.take().expect("witness refilled at the end of every iteration");
     let mut slots: Vec<CellSlot> =
         cells.iter_mut().zip(ids.iter()).map(|(c, &id)| CellSlot { id, cell: c }).collect();
     let start = Instant::now();
     for (cell_idx, (slot, hs)) in slots.iter_mut().zip(handles.iter()).enumerate() {
-        for &li in &rows_to_mark(cell_idx) {
+        for &li in &row_lists[cell_idx] {
             let h = hs[li as usize];
             store.write_transform(slot.id, slot.cell, h, &mat(li as f32), &this_sim);
         }
@@ -539,6 +540,9 @@ fn main() {
         let mut cpu_means_by_m: Vec<f64> = Vec::new();
         for &m in &M_VALUES {
             let counts = contiguous_counts(&rpc, m);
+            // Precomputed once per (S, M) — fixture data, never in-bracket.
+            let row_lists: Vec<Vec<u32>> =
+                counts.iter().map(|&c| (0..c).collect()).collect();
             let mut cpu_samples = Vec::with_capacity(ITERS);
             let mut last_stats = SyncStats { ranges: 0, bytes: 0 };
             for it in 0..(WARMUP + ITERS) {
@@ -550,7 +554,7 @@ fn main() {
                     &handles,
                     &mut frames,
                     &mut sim,
-                    &|cell_idx| (0..counts[cell_idx]).collect(),
+                    &row_lists,
                 );
                 if it >= WARMUP {
                     cpu_samples.push(us);
@@ -619,13 +623,22 @@ fn main() {
                 w[1]
             );
         }
-        println!("  S={s}: monotonic-in-M check OK (slack={slack:.1} us)");
+        // Pairwise slack alone permits a cumulative decline of
+        // (windows × slack) while "passing" (T4 review nit) — pin the
+        // endpoints too: full mutation must cost strictly more than none.
+        let (first_m, last_m) =
+            (cpu_means_by_m.first().copied().unwrap(), cpu_means_by_m.last().copied().unwrap());
+        assert!(
+            last_m > first_m,
+            "honesty check: M=100% mean ({last_m:.1} us) must exceed M=0 mean ({first_m:.1} us) at S={s}"
+        );
+        println!("  S={s}: monotonic-in-M check OK (slack={slack:.1} us, endpoints {first_m:.1} -> {last_m:.1})");
     }
 
     // ---- §5: scattered vs contiguous at S=10k, M=1% ----
     println!();
     println!("scattered-vs-contiguous @ S=10000, M=1%:");
-    let (scattered_cpu_mean, scattered_ranges, scattered_bytes) = {
+    let (scattered_cpu_mean, scattered_cpu_p95, scattered_ranges, scattered_bytes) = {
         // Rebuild a fresh S=10k scene dedicated to this comparison, isolated
         // from the M-sweep's accumulated dirty-mask history.
         let (mut store, mut cells, ids, handles, rpc) = build_scene(&ctx, 10_000);
@@ -648,20 +661,20 @@ fn main() {
                 &handles,
                 &mut frames,
                 &mut sim,
-                &|cell_idx| sel[cell_idx].clone(),
+                &sel,
             );
             if it >= WARMUP {
                 cpu_samples.push(us);
                 last_stats = stats_out;
             }
         }
-        let (mean, _min, _p95) = stats(cpu_samples);
-        (mean, last_stats.ranges, last_stats.bytes)
+        let (mean, _min, p95) = stats(cpu_samples);
+        (mean, p95, last_stats.ranges, last_stats.bytes)
     };
     if let Some((c_mean, c_ranges, c_bytes)) = contiguous_10k_1pct {
         println!("  contiguous: cpu_mean_us={c_mean:.2} ranges={c_ranges} bytes={c_bytes}");
         println!(
-            "  scattered:  cpu_mean_us={scattered_cpu_mean:.2} ranges={scattered_ranges} bytes={scattered_bytes}"
+            "  scattered:  cpu_mean_us={scattered_cpu_mean:.2} cpu_p95_us={scattered_cpu_p95:.2} ranges={scattered_ranges} bytes={scattered_bytes}"
         );
         assert_eq!(
             c_bytes, scattered_bytes,
