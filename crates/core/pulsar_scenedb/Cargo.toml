@@ -97,3 +97,7 @@ required-features = ["gpu"]
 [[test]]
 name = "alloc_gate_gpu"
 required-features = ["gpu"]
+
+[[test]]
+name = "stress_gpu"
+required-features = ["gpu"]
