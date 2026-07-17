@@ -68,6 +68,11 @@ harness = false
 name = "scenedb_bench"
 harness = false
 
+[[bench]]
+name = "gpu_timing"
+harness = false
+required-features = ["gpu"]
+
 [[test]]
 name = "gpu_store"
 required-features = ["gpu"]
