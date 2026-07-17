@@ -16,10 +16,12 @@
 //!    64 logical cells over a 16-cell residency budget, round-robin
 //!    promote/demote x500 -> region-pool footprint plateaus, VRAM survives
 //!    the churn byte-exact, promote+demote latency distribution recorded.
-//! 3. **Lease revocation latency** (contract #32, C4 2.0 ms budget,
+//! 3. **Lease revocation trigger semantics** (contract #32 / C4,
 //!    `src/lease.rs` + `src/gpu/harvest.rs`'s `revoke_overdue`): 1000
 //!    revocations under concurrent harvest-workload contention, full
-//!    histogram, p99 <= 2.0 ms.
+//!    revoker-side histogram. NOTE (T6 review correction): C4's 2.0 ms is
+//!    a hold-duration TIMEOUT, not a latency budget — no budget gate is
+//!    asserted; see the storm's in-body note for what IS proven.
 //! 4. **DEI threshold straddle** (contract #22, `src/gpu/harvest.rs`'s 25%
 //!    gate): 24%/25%/26% hit-rate cells straddling the strict `< 0.25` cut,
 //!    bit-identical-vs-oracle output, byte-delta accounting.
@@ -531,29 +533,38 @@ fn storm3_lease_revocation_latency_1000_requests_under_harvest_load() {
     });
 
     let (min, mean, p50, p95, p99, max) = latency_histogram(&mut latencies_ns);
-    let budget_ns = (BUDGET_MS * 1_000_000.0) as u128;
 
     println!(
         "[storm3 lease] {N} revocations under {WORKERS}-thread concurrent harvest workload (shared LeaseMask, {} slots)",
         pulsar_scenedb::LEASE_SLOTS
     );
     println!(
-        "[storm3 lease] request->dropped latency (ns, synchronous flag-set under contention): min={min} mean={mean:.1} p50={p50} p95={p95} p99={p99} max={max}"
+        "[storm3 lease] revoker-side flag-set latency (ns, under contention): min={min} mean={mean:.1} p50={p50} p95={p95} p99={p99} max={max}"
     );
-    println!("[storm3 lease] budget: {budget_ns} ns (2.0 ms); p99/budget = {:.4}", p99 as f64 / budget_ns as f64);
 
-    if p99 > budget_ns {
-        // Honest-violation protocol: do NOT weaken the assert below. If this
-        // branch is ever hit, the storm must be re-run under
-        // `#[ignore = "perf-val T6.3: lease revocation p99 busted the 2.0ms \
-        // C4 budget — see .superpowers/sdd/perfval-task-6-report.md"]` and
-        // the report must carry the full histogram prominently.
-        eprintln!("[storm3 lease] HONEST VIOLATION: p99 ({p99} ns) exceeds the 2.0ms C4 budget ({budget_ns} ns)");
-    }
+    // WHAT THIS STORM PROVES — corrected per the T6 review (which read C4 +
+    // spec §9.2.1 against the first version's "p99 <= 2.0 ms budget PASS"
+    // assert and found it vacuous): C4's 2.0 ms is a hold-duration TIMEOUT
+    // (revocation fires when a lease is still held 2.0 ms into the isolation
+    // phase), not a latency budget on the revoker's flag-set — and §9.2.1
+    // takes holder observation off the critical path entirely (compaction
+    // proceeds on the primary layout immediately; the holder reads a pinned
+    // snapshot). A flag-set-vs-2ms assert can only fail via OS preemption
+    // between two Instant::now() calls — noise, never signal — so no such
+    // budget gate is asserted here. What IS proven: revocation-trigger
+    // semantics stay correct and the flag-set stays sub-10µs (sanity bound,
+    // ~100x the observed p99) under 4-thread contention on a shared mask.
+    // Carried to T8/M3-β: the §9.2.1 pinned-snapshot compaction bypass (the
+    // machinery that makes the 2.0 ms timeout deliver its stall bound) is
+    // UNBUILT — `revoke_overdue` sets the flag but does not release the
+    // slot, and nothing in production consumes `any_held()` yet.
+    const FLAG_SET_SANITY_NS: u128 = 10_000;
     assert!(
-        p99 <= budget_ns,
-        "C4 budget violated: p99 revocation latency {p99} ns > {budget_ns} ns (2.0 ms) — see the honest-violation protocol note above this assert"
+        p99 <= FLAG_SET_SANITY_NS,
+        "revoker-side flag-set p99 ({p99} ns) exceeds the {FLAG_SET_SANITY_NS} ns sanity bound — \
+         an atomic flag write degraded by 100x under contention; investigate before trusting the mask"
     );
+    let _ = BUDGET_MS; // retained in the module doc's history; no budget gate exists for it (see above).
 }
 
 // ============================================================================
