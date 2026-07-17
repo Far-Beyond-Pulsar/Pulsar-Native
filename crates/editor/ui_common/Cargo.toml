@@ -22,7 +22,13 @@ engine_state.workspace = true
 pulsar_auth.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true
-pulsar_reflection.workspace = true
+# M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —
+# `property_editor_registry.rs` iterates `inventory::iter::<UiPropertyEditorHint>`
+# expecting GPUI editor registrations, and `reflected_properties_panel.rs`
+# constructs `PropertyEditorArgs` with its GPUI-typed `on_bool_toggle`/
+# `on_enum_select` fields. `gpui-ce`/`ui` are already unconditional deps of
+# this crate above.
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "charset", "http2", "rustls-no-provider", "system-proxy"] }
 
 [lints]

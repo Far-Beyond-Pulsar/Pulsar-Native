@@ -2,10 +2,22 @@
 
 use crate::pulsar_type;
 
-#[pulsar_type(
-    serialize_json_with = serialize_i32_json,
-    deserialize_json_with = deserialize_i32_json,
-    editor = render_i32_editor
+// M3-alpha Task 2 (audit follow-up): see bool.rs — `editor` is GPUI-typed and
+// only present behind `prims-gpui`.
+#[cfg_attr(
+    feature = "prims-gpui",
+    pulsar_type(
+        serialize_json_with = serialize_i32_json,
+        deserialize_json_with = deserialize_i32_json,
+        editor = render_i32_editor
+    )
+)]
+#[cfg_attr(
+    not(feature = "prims-gpui"),
+    pulsar_type(
+        serialize_json_with = serialize_i32_json,
+        deserialize_json_with = deserialize_i32_json
+    )
 )]
 type RegisteredI32 = i32;
 
@@ -23,6 +35,7 @@ fn deserialize_i32_json(value: serde_json::Value) -> crate::ReflectResult<i32> {
         })
 }
 
+#[cfg(feature = "prims-gpui")]
 fn render_i32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};

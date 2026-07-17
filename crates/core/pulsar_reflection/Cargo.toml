@@ -28,6 +28,23 @@ prims-std = ["prims-core"]
 prims-serde = ["prims-std"]
 prims-glam = ["prims-core", "dep:glam"]
 prims-helio = ["prims-core", "dep:helio"]
+# M3-alpha Task 2 (audit follow-up to C0/prims-helio): `gpui-ce` (lib name
+# `gpui`, pulls the workspace's git-forked `wgpu` transitively) and `ui` must
+# NOT be unconditional deps either, for the same reason `prims-helio` was cut
+# from `default` — Cargo's feature-union resolver means any unconditional dep
+# here rides along into every one of the 14 workspace consumers of this
+# crate's tree, including `pulsar_scenedb` (M3: upstream wgpu 30, no fork).
+# `ui`/`gpui-ce` are used ONLY by the GPUI property-editor render fns behind
+# `#[pulsar_type(editor = ...)]` in `src/prims/core/{bool,i32,f32,color,vec3}.rs`
+# and by the two GPUI-typed callback fields on `PropertyEditorArgs` (lib.rs) —
+# nothing else in this crate touches them. `prims-gpui` must NOT be in
+# `default`; per CONTRACTS.md C0 precedent, a per-edge `default-features =
+# false` override on any consumer is defeated by workspace feature
+# unification. Consumers that actually construct `PropertyEditorArgs` or read
+# `UiPropertyEditorHint` registrations (`ui_common`, `ui_level_editor`,
+# `pulsar_rendering` — verified via grep across all 14 consumers) opt in with
+# `features = ["prims-gpui"]` on their own edge.
+prims-gpui = ["dep:gpui-ce", "dep:ui"]
 
 [dependencies]
 inventory = "0.3"
@@ -40,8 +57,8 @@ uuid = { workspace = true, features = ["v4", "serde"] }
 dashmap = { workspace = true }
 glam = { workspace = true, features = ["serde"], optional = true }
 helio = { workspace = true, optional = true }
-gpui-ce.workspace = true
-ui = { workspace = true }
+gpui-ce = { workspace = true, optional = true }
+ui = { workspace = true, optional = true }
 
 [lints]
 workspace = true

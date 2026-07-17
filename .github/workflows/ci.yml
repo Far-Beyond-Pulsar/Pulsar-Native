@@ -55,6 +55,24 @@ jobs:
         run: |
           if cargo tree -p pulsar_scenedb -e normal | grep -qi helio; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
 
+      - name: SceneDB no-GPUI/fork-wgpu edge guard (M3-a T2)
+        shell: bash
+        run: |
+          set -e
+          # `pulsar_reflection`'s `gpui-ce`/`ui` deps (gated behind its own
+          # `prims-gpui` feature, not requested by pulsar_scenedb) pull the
+          # workspace's git-forked wgpu transitively (gpui-ce's lib is named
+          # `gpui`). SceneDB is on upstream wgpu 30 and must never carry
+          # either edge.
+          if cargo tree -p pulsar_scenedb --features gpu -e normal | grep -iE "gpui|wgpui"; then
+            echo "M3-a T2 violation: pulsar_scenedb (--features gpu) depends on gpui/wgpui"
+            exit 1
+          fi
+          if cargo tree -p pulsar_scenedb --features gpu -e normal | grep -i "wgpu" | grep -i "http"; then
+            echo "M3-a T2 violation: pulsar_scenedb (--features gpu) wgpu edge is git-sourced, not registry wgpu 30"
+            exit 1
+          fi
+
       - name: SceneDB resolves outside the workspace (submodule-build precondition)
         shell: bash
         run: |

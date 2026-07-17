@@ -83,7 +83,9 @@ pub struct PropertyEditorArgs<'a> {
     pub type_info: &'static RuntimeTypeInfo,
     pub current_json: &'a Value,
     pub widgets: std::collections::HashMap<std::any::TypeId, Arc<dyn std::any::Any + Send + Sync>>,
+    #[cfg(feature = "prims-gpui")]
     pub on_bool_toggle: Arc<dyn Fn(bool, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
+    #[cfg(feature = "prims-gpui")]
     pub on_enum_select: Arc<dyn Fn(usize, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
 }
 
@@ -137,6 +139,10 @@ inventory::collect!(UiPropertyEditorHint);
 ///
 /// This is a `const fn` so it can be called inside `inventory::submit!`
 /// static initialisers emitted by proc macros.
+///
+/// Gated behind `prims-gpui` (M3-alpha Task 2): the signature is GPUI-typed,
+/// so it can only exist when the crate is compiled with GPUI available.
+#[cfg(feature = "prims-gpui")]
 pub const fn erase_property_editor_fn_ptr(
     f: fn(&PropertyEditorArgs<'_>, &gpui::App) -> gpui::AnyElement,
 ) -> fn() {
