@@ -84,7 +84,7 @@ macro_rules! bp_return {
 }
 
 // Re-export macros
-pub use pulsar_macros::{blueprint, blueprint_type, bp_import, exec_output, output};
+pub use pulsar_macros::{blueprint, blueprint_type, bp_import, conversion, exec_output, output};
 
 // =============================================================================
 // Node Type Enum (for blueprint attribute)

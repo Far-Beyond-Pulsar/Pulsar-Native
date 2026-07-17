@@ -15,7 +15,7 @@
 //! - 2D vectors are represented as tuples: `(f32, f32)` for (x, y)
 //! - 3D vectors are represented as tuples: `(f32, f32, f32)` for (x, y, z)
 
-use crate::blueprint;
+use crate::{blueprint, output};
 
 // =============================================================================
 // Vector2 Construction
@@ -40,6 +40,8 @@ use crate::blueprint;
 /// Use this node to construct 2D points, directions, or velocities for further calculations.
 /// # Make Vector2
 /// Creates a 2D vector from X and Y components.
+#[output(name = "x")]
+#[output(name = "y")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn make_vector2(x: f32, y: f32) -> (f32, f32) {
     (x, y)
@@ -63,6 +65,8 @@ pub fn make_vector2(x: f32, y: f32) -> (f32, f32) {
 /// This node is useful for constructing 2D vectors for geometry, graphics, or math operations.
 /// # Vector2 New
 /// Creates a new 2D vector from x and y components.
+#[output(name = "x")]
+#[output(name = "y")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector2_new(x: f32, y: f32) -> (f32, f32) {
     (x, y)
@@ -92,6 +96,9 @@ pub fn vector2_new(x: f32, y: f32) -> (f32, f32) {
 /// Use this node to construct 3D points, directions, or colors (if using RGB).
 /// # Make Vector3
 /// Creates a 3D vector from X, Y, and Z components.
+#[output(name = "x")]
+#[output(name = "y")]
+#[output(name = "z")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn make_vector3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     (x, y, z)
@@ -116,6 +123,9 @@ pub fn make_vector3(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
 /// This node is useful for constructing 3D vectors for use in graphics, physics, or spatial calculations.
 /// # Vector3 New
 /// Creates a new 3D vector from x, y, and z components.
+#[output(name = "x")]
+#[output(name = "y")]
+#[output(name = "z")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn vector3_new(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
     (x, y, z)
@@ -142,10 +152,11 @@ pub fn vector3_new(x: f32, y: f32, z: f32) -> (f32, f32, f32) {
 /// Useful for extracting individual coordinates from a vector.
 /// # Break Vector2
 /// Breaks a 2D vector into X and Y components.
+#[output(name = "x")]
+#[output(name = "y")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn break_vector2(vector: (f32, f32)) -> (f32, f32) {
-    let (x, y) = vector;
-    (x, y)
+    crate::bp_return!(x: vector.0, y: vector.1)
 }
 
 // =============================================================================
@@ -169,10 +180,12 @@ pub fn break_vector2(vector: (f32, f32)) -> (f32, f32) {
 /// Useful for extracting individual components from a 3D vector.
 /// # Break Vector3
 /// Breaks a 3D vector into X, Y, and Z components.
+#[output(name = "x")]
+#[output(name = "y")]
+#[output(name = "z")]
 #[blueprint(type: NodeTypes::pure, category: "Vector", color: "#9013FE")]
 pub fn break_vector3(vector: (f32, f32, f32)) -> (f32, f32, f32) {
-    let (x, y, z) = vector;
-    (x, y, z)
+    crate::bp_return!(x: vector.0, y: vector.1, z: vector.2)
 }
 
 // =============================================================================

@@ -399,6 +399,9 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! { &[#(#imports),*] }
     };
 
+    // ── Conversion metadata ───────────────────────────────────────────────────
+    let conversion_tokens = extract_conversion(&input);
+
     // ── Multi-output detection ────────────────────────────────────────────────
     //
     // Detect named output pins from:
@@ -542,6 +545,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             color: #color_opt,
             imports: #imports_array,
             output_params: #output_params_tokens,
+            conversion: #conversion_tokens,
         };
     };
 
@@ -581,6 +585,37 @@ fn extract_bp_imports(func: &ItemFn) -> Vec<proc_macro2::TokenStream> {
     }
 
     imports
+}
+
+/// Extract conversion metadata from `#[conversion(from = "...", to = "...", lossless = true/false)]`
+fn extract_conversion(func: &ItemFn) -> proc_macro2::TokenStream {
+    for attr in &func.attrs {
+        if attr.path().is_ident("conversion") {
+            if let Ok(meta) = attr.meta.require_list() {
+                let tokens_str = meta.tokens.to_string();
+                let from = extract_string_value(&tokens_str, "from")
+                    .expect("#[conversion] requires from = \"...\"");
+                let to = extract_string_value(&tokens_str, "to")
+                    .expect("#[conversion] requires to = \"...\"");
+                let lossless_str = extract_string_value(&tokens_str, "lossless")
+                    .unwrap_or_else(|| "false".to_string());
+                let lossless = lossless_str == "true";
+                let lossless_lit = if lossless {
+                    quote! { true }
+                } else {
+                    quote! { false }
+                };
+                return quote! {
+                    Some(crate::ConversionMeta {
+                        from_type: #from,
+                        to_type: #to,
+                        lossless: #lossless_lit,
+                    })
+                };
+            }
+        }
+    }
+    quote! { None }
 }
 
 /// Parse a bp_import attribute into NodeImport tokens
@@ -893,6 +928,31 @@ pub fn output(args: TokenStream, input: TokenStream) -> TokenStream {
 pub fn bp_import(_args: TokenStream, input: TokenStream) -> TokenStream {
     // This is a marker attribute - it doesn't transform the code
     // The #[blueprint] macro extracts these attributes
+    input
+}
+
+/// Declare that a blueprint node performs an explicit type conversion.
+///
+/// Must come before `#[blueprint]`. The compiler uses this metadata to
+/// auto-insert conversion nodes when connecting mismatched pin types.
+///
+/// # Syntax
+///
+/// - `from`: The source type string (e.g. `"i64"`)
+/// - `to`: The target type string (e.g. `"f64"`)
+/// - `lossless`: `true` if the conversion is lossless (no data discarded)
+///
+/// # Examples
+///
+/// ```ignore
+/// #[conversion(from = "i64", to = "f64", lossless = true)]
+/// #[blueprint(type: NodeTypes::pure, category: "Conversion")]
+/// fn i64_to_f64(value: i64) -> f64 { value as f64 }
+/// ```
+#[proc_macro_attribute]
+pub fn conversion(_args: TokenStream, input: TokenStream) -> TokenStream {
+    // Marker attribute — passes through unchanged.
+    // #[blueprint] scans func.attrs for this attribute.
     input
 }
 

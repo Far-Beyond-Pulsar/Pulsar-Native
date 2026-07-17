@@ -56,6 +56,15 @@ pub struct OutputParamMeta {
     pub align: usize,
 }
 
+/// Conversion metadata — declares that this node converts one type to another.
+/// Baked at compile time by the `#[blueprint]` macro from the `#[conversion]` attribute.
+#[derive(Debug, Clone)]
+pub struct ConversionMeta {
+    pub from_type: &'static str,
+    pub to_type: &'static str,
+    pub lossless: bool,
+}
+
 /// Complete metadata about a blueprint node
 #[derive(Debug, Clone)]
 pub struct NodeMetadata {
@@ -78,6 +87,10 @@ pub struct NodeMetadata {
     pub imports: &'static [NodeImport],
     /// Named output pins for multi-output nodes. Empty `&[]` for single-output nodes.
     pub output_params: &'static [OutputParamMeta],
+    /// If `Some`, this node performs an explicit type conversion from
+    /// `conversion.from_type` to `conversion.to_type`.  The compiler uses
+    /// this to auto-insert conversion nodes when connecting mismatched types.
+    pub conversion: Option<ConversionMeta>,
 }
 
 impl NodeMetadata {
