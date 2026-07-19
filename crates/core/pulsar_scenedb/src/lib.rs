@@ -100,8 +100,8 @@ pub use handle::Handle;
 pub use lease::{Lease, LeaseMask, Scratchpad, DECAY_FRAMES, LEASE_SLOTS};
 pub use liveness::LivenessMask;
 pub use page::{
-    ColumnDesc, LayoutError, Page, PageLayout, Pod, DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY,
-    MAX_STRIDE_BYTES,
+    Column, ColumnDesc, GenericColumn, LayoutError, Page, PageLayout, Pod, PodColumn,
+    DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY, MAX_STRIDE_BYTES,
 };
 pub use pulsar_core::GameTime;
 pub use query::{QueryIter, WorldQuery};
@@ -112,5 +112,5 @@ pub use spatial::{
     Aabb, Frustum, InstanceInfo, SpatialCell, INSTANCE_INFO_COLUMN, SPATIAL_COLUMNS,
     TRANSFORM_COLUMN,
 };
-pub use token::TypeToken;
+pub use token::{HasTypeToken, TypeToken};
 pub use world::World;

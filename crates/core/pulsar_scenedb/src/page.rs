@@ -1,4 +1,6 @@
 use std::alloc::{alloc_zeroed, dealloc, Layout};
+use std::any::Any;
+use std::mem::MaybeUninit;
 
 /// Hard ceiling on per-page element capacity (spec §4.3).
 pub const MAX_PAGE_CAPACITY: u32 = 1024;
@@ -29,6 +31,179 @@ impl_pod!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f
 // C5 instance element: 64-byte row-major mat4. Kept in the graphics-free core
 // so the transform column exists independent of the gpu feature.
 unsafe impl Pod for [f32; 16] {}
+
+// ── Non-Pod column support (pre-work item 1) ─────────────────────────────
+
+/// Type-erased operations on a generic (non-Pod) column, so that `Page` and
+/// `CellStorage` can swap / drop elements without knowing the concrete type.
+pub(crate) trait GenericColumnAny: Send + Sync {
+    fn push_row(&mut self);
+    fn pop_row(&mut self);
+    fn swap(&self, a: u32, b: u32);
+    fn len(&self) -> usize;
+    fn as_any_ref(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+/// A column of non-Pod elements backed by `MaybeUninit<T>`.  Each slot is
+/// either initialized (a valid `T`) or uninitialized; an initialization
+/// bitmap tracks which is which.
+pub struct GenericColumn<T: 'static> {
+    data: Vec<MaybeUninit<T>>,
+    init_bits: Vec<u64>,
+}
+
+// SAFETY: `MaybeUninit` interior provides no extra thread-safety affordances;
+// external `&`/`&mut` borrowing discipline is sufficient.
+unsafe impl<T: 'static> Send for GenericColumn<T> {}
+unsafe impl<T: 'static> Sync for GenericColumn<T> {}
+
+impl<T: 'static> GenericColumn<T> {
+    pub fn new(capacity: u32) -> Self {
+        let cap = capacity as usize;
+        Self {
+            data: Vec::with_capacity(cap),
+            init_bits: vec![0u64; cap.div_ceil(64)],
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn get(&self, idx: usize) -> Option<&T> {
+        if idx < self.data.len() && self.is_init(idx) {
+            Some(unsafe { self.data[idx].assume_init_ref() })
+        } else {
+            None
+        }
+    }
+
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut T> {
+        if idx < self.data.len() && self.is_init(idx) {
+            Some(unsafe { self.data[idx].assume_init_mut() })
+        } else {
+            None
+        }
+    }
+
+    /// Write a value into slot `idx`.  Drops any previously-initialized value.
+    pub fn set(&mut self, idx: usize, value: T) {
+        if idx < self.data.len() && self.is_init(idx) {
+            unsafe { self.data[idx].assume_init_drop(); }
+            self.data[idx] = MaybeUninit::new(value);
+        } else {
+            // Extend vec if necessary (shouldn't happen in normal use — rows
+            // are pushed before being written).
+            while self.data.len() <= idx {
+                self.data.push(MaybeUninit::uninit());
+            }
+            self.data[idx] = MaybeUninit::new(value);
+        }
+        self.set_init(idx);
+    }
+
+    /// Drop the value at `idx` and mark the slot uninitialized.
+    pub fn free(&mut self, idx: usize) {
+        if idx < self.data.len() && self.is_init(idx) {
+            unsafe { self.data[idx].assume_init_drop(); }
+            self.data[idx] = MaybeUninit::uninit();
+            self.clear_init(idx);
+        }
+    }
+
+    /// Swap elements at indices `a` and `b` (works on uninitialized slots too).
+    pub fn swap(&self, a: u32, b: u32) {
+        let (a, b) = (a as usize, b as usize);
+        // SAFETY: index bounds are caller's responsibility.
+        unsafe {
+            std::ptr::swap(
+                self.data[a].as_ptr() as *mut MaybeUninit<T>,
+                self.data[b].as_ptr() as *mut MaybeUninit<T>,
+            );
+        }
+    }
+
+    fn is_init(&self, idx: usize) -> bool {
+        self.init_bits[idx / 64] & (1u64 << (idx % 64)) != 0
+    }
+
+    fn set_init(&mut self, idx: usize) {
+        self.init_bits[idx / 64] |= 1u64 << (idx % 64);
+    }
+
+    fn clear_init(&mut self, idx: usize) {
+        self.init_bits[idx / 64] &= !(1u64 << (idx % 64));
+    }
+}
+
+impl<T: 'static> Drop for GenericColumn<T> {
+    fn drop(&mut self) {
+        for idx in 0..self.data.len() {
+            if self.is_init(idx) {
+                unsafe { self.data[idx].assume_init_drop(); }
+            }
+        }
+    }
+}
+
+impl<T: 'static> GenericColumnAny for GenericColumn<T> {
+    fn push_row(&mut self) {
+        self.data.push(MaybeUninit::uninit());
+    }
+
+    fn pop_row(&mut self) {
+        let idx = self.data.len().wrapping_sub(1);
+        if self.is_init(idx) {
+            unsafe { self.data[idx].assume_init_drop(); }
+            self.clear_init(idx);
+        }
+        self.data.pop();
+    }
+
+    fn swap(&self, a: u32, b: u32) {
+        GenericColumn::swap(self, a, b);
+    }
+
+    fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// A view over a Pod column's zero-initialized page memory.  Does not own
+/// the data; the backing `Page` must outlive this view.
+pub struct PodColumn<T: Pod> {
+    pub(crate) data: *const T,
+    pub(crate) len: usize,
+    pub(crate) capacity: usize,
+}
+
+impl<T: Pod> PodColumn<T> {
+    pub fn as_slice(&self) -> &[T] {
+        unsafe { std::slice::from_raw_parts(self.data, self.len) }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+}
+
+/// A typed column that is either backed by zero-initialized page memory
+/// (Pod) or by `MaybeUninit<T>` heap storage (generic).
+pub enum Column<T: Pod + 'static> {
+    Pod(PodColumn<T>),
+    Generic(GenericColumn<T>),
+}
+
+// ── End non-Pod column support ──────────────────────────────────────────
 
 /// Size/alignment descriptor for one column's element type.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -110,13 +285,17 @@ fn next_multiple(n: usize, m: usize) -> usize {
 }
 
 /// One SoA page: a single 64-byte-aligned contiguous allocation holding all
-/// columns. `len` counts live+dead rows up to the compaction frontier; the
-/// liveness bitmask (liveness.rs) tracks which are alive.
+/// Pod columns, plus a parallel `Vec` of type-erased [`GenericColumnAny`]
+/// boxes for non-Pod columns.  `len` counts live+dead rows up to the
+/// compaction frontier; the liveness bitmask (liveness.rs) tracks which
+/// are alive.  Generic columns grow/shrink in lockstep with `push_row` /
+/// `pop_row`.
 pub struct Page {
     data: *mut u8,
     layout: PageLayout,
     alloc_layout: Layout,
     len: u32,
+    generic_columns: Vec<Box<dyn GenericColumnAny>>,
 }
 
 // SAFETY: Page owns its allocation exclusively; all access goes through
@@ -139,6 +318,7 @@ impl Page {
             layout: layout.clone(),
             alloc_layout,
             len: 0,
+            generic_columns: Vec::new(),
         }
     }
 
@@ -165,19 +345,63 @@ impl Page {
     }
 
     /// Reserve the next row, returning its index. None when full.
+    /// Also grows every generic column by one uninitialized slot.
     pub fn push_row(&mut self) -> Option<u32> {
         if self.len >= self.layout.capacity {
             return None;
         }
         let row = self.len;
         self.len += 1;
+        for gc in &mut self.generic_columns {
+            gc.push_row();
+        }
         Some(row)
     }
 
     /// Drop the last row (used by swap-and-pop compaction).
+    /// Also drops the trailing element of every generic column.
     pub fn pop_row(&mut self) {
         debug_assert!(self.len > 0);
         self.len -= 1;
+        for gc in &mut self.generic_columns {
+            gc.pop_row();
+        }
+    }
+
+    /// Number of generic columns stored on this page.
+    pub fn generic_column_count(&self) -> usize {
+        self.generic_columns.len()
+    }
+
+    /// Access a generic column by index (type-safe via downcast).
+    pub fn generic_column<T: 'static>(&self, idx: usize) -> Option<&GenericColumn<T>> {
+        self.generic_columns
+            .get(idx)?
+            .as_any_ref()
+            .downcast_ref::<GenericColumn<T>>()
+    }
+
+    /// Mutable access to a generic column by index.
+    pub fn generic_column_mut<T: 'static>(&mut self, idx: usize) -> Option<&mut GenericColumn<T>> {
+        self.generic_columns
+            .get_mut(idx)?
+            .as_any_mut()
+            .downcast_mut::<GenericColumn<T>>()
+    }
+
+    /// Push a new generic column onto this page (used during cell construction).
+    pub(crate) fn push_generic_column(&mut self, col: Box<dyn GenericColumnAny>) {
+        self.generic_columns.push(col);
+    }
+
+    /// Iterate generic columns (for type-erased operations in CellStorage).
+    pub(crate) fn generic_columns(&self) -> &[Box<dyn GenericColumnAny>] {
+        &self.generic_columns
+    }
+
+    /// Mutable iteration over generic columns.
+    pub(crate) fn generic_columns_mut(&mut self) -> &mut [Box<dyn GenericColumnAny>] {
+        &mut self.generic_columns
     }
 
     /// Raw pointer to a column's first element (for tests / future SIMD).
@@ -211,6 +435,13 @@ impl Page {
         let ptr = self.column_ptr_mut(col) as *mut T;
         // SAFETY: as column_slice, under &mut self with a *mut derived from &mut self.
         unsafe { std::slice::from_raw_parts_mut(ptr, len) }
+    }
+
+    /// Raw bytes of a Pod column up to `rows` elements (for GPU sync).
+    pub fn column_raw_bytes(&self, col: usize, rows: u32) -> &[u8] {
+        let desc = self.layout.column_descs[col];
+        let byte_len = desc.size as usize * rows as usize;
+        unsafe { std::slice::from_raw_parts(self.column_ptr(col), byte_len) }
     }
 
     /// Validates the column's element size matches `T` and returns the slice length.

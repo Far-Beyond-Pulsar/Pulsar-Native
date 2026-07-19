@@ -1,4 +1,5 @@
 use crate::page::Pod;
+use std::any::Any;
 use std::marker::PhantomData;
 
 /// Delta-sync instrumentation: how many `write_buffer` ranges and bytes the
@@ -7,6 +8,26 @@ use std::marker::PhantomData;
 pub struct SyncStats {
     pub ranges: u32,
     pub bytes: u64,
+}
+
+/// Type-erased GPU buffer dispatch: allows `SceneGpuStore` to sync any
+/// column's byte data through a matching `SceneBuffer<T>` without knowing
+/// `T` at compile time.
+pub trait GpuBufferDispatch: Send + Sync {
+    /// Coalescing delta-sync from a byte slice (reinterpreted as `&[T]`
+    /// inside the implementation).  Clears the dirty mask.
+    fn sync_region(
+        &self,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        row_base: u32,
+        dirty: &super::DirtyMask,
+    ) -> SyncStats;
+
+    fn element_size(&self) -> usize;
+    fn buffer(&self) -> &wgpu::Buffer;
+    fn capacity(&self) -> u32;
+    fn as_any(&self) -> &dyn Any;
 }
 
 /// One persistent **row-indexed** scene SSBO (M2a §3/§4; M2b-α §2: dirty
@@ -109,5 +130,41 @@ impl<T: Pod> SceneBuffer<T> {
 
     pub fn capacity(&self) -> u32 {
         self.capacity
+    }
+}
+
+impl<T: Pod + Send + Sync + 'static> GpuBufferDispatch for SceneBuffer<T> {
+    fn sync_region(
+        &self,
+        queue: &wgpu::Queue,
+        data: &[u8],
+        row_base: u32,
+        dirty: &super::DirtyMask,
+    ) -> SyncStats {
+        // Reinterpret the byte slice as &[T]
+        assert_eq!(
+            data.len() % std::mem::size_of::<T>(),
+            0,
+            "byte slice length not a multiple of element size"
+        );
+        let typed: &[T] =
+            unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len() / std::mem::size_of::<T>()) };
+        SceneBuffer::sync_region(self, queue, typed, row_base, dirty)
+    }
+
+    fn element_size(&self) -> usize {
+        std::mem::size_of::<T>()
+    }
+
+    fn buffer(&self) -> &wgpu::Buffer {
+        &self.buf
+    }
+
+    fn capacity(&self) -> u32 {
+        self.capacity
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

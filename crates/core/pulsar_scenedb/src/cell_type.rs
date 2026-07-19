@@ -1,33 +1,57 @@
-use crate::page::{ColumnDesc, MAX_STRIDE_BYTES};
+use crate::component::ComponentId;
+use crate::page::{ColumnDesc, GenericColumnAny, MAX_STRIDE_BYTES};
 use crate::token::TypeToken;
+use std::any::TypeId;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CellTypeError {
     /// Combined stride (slot-ID column + all user columns) exceeds 128 bytes.
     StrideExceeded { stride: u32 },
     /// The same token was declared twice.
-    DuplicateColumn { id: crate::component::ComponentId },
+    DuplicateColumn { id: ComponentId },
     /// No columns declared.
     Empty,
+}
+
+/// Descriptor for a single generic (non-Pod) column in a cell type.
+/// Stores a constructor function pointer so `CellStorage::from_cell_type`
+/// can produce the correct monomorphized `GenericColumn<T>` at runtime.
+#[derive(Clone)]
+pub(crate) struct GenericColumnDesc {
+    pub component_id: ComponentId,
+    pub type_id: TypeId,
+    pub construct: fn(u32) -> Box<dyn GenericColumnAny>,
 }
 
 /// A registered cell composition: the ordered set of column types a cell
 /// stores, validated holistically against the per-element stride budget
 /// (§7.1 / CONTRACTS.md C2). Build with the fluent API, then hand to
 /// [`CellStorage::from_cell_type`](crate::cell::CellStorage::from_cell_type).
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct CellType {
     name: &'static str,
     tokens: Vec<TypeToken>,
+    generic_entries: Vec<GenericColumnDesc>,
+}
+
+// Manual Debug: GenericColumnDesc's construct closure isn't Debug.
+impl std::fmt::Debug for CellType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CellType")
+            .field("name", &self.name)
+            .field("tokens", &self.tokens)
+            .field("generic_entries", &self.generic_entries.len())
+            .finish()
+    }
 }
 
 impl CellType {
     #[must_use]
     pub fn new(name: &'static str) -> Self {
-        Self { name, tokens: Vec::new() }
+        Self { name, tokens: Vec::new(), generic_entries: Vec::new() }
     }
 
-    /// Declare the next user column. Order is significant: it becomes the
+    /// Declare the next user Pod column. Order is significant: it becomes the
     /// user-column index.
     #[must_use]
     pub fn with(mut self, token: TypeToken) -> Self {
@@ -35,22 +59,45 @@ impl CellType {
         self
     }
 
+    /// Declare the next user generic (non-Pod) column. Order among generic
+    /// columns is significant — it determines the generic-column index in
+    /// `CellStorage::column_for_generic::<T>()`.
+    #[must_use]
+    pub fn with_generic<T: 'static>(mut self) -> Self {
+        fn make<T_: 'static>(cap: u32) -> Box<dyn GenericColumnAny> {
+            Box::new(crate::page::GenericColumn::<T_>::new(cap))
+        }
+        self.generic_entries.push(GenericColumnDesc {
+            component_id: crate::component::component_id::<T>(),
+            type_id: TypeId::of::<T>(),
+            construct: make::<T>,
+        });
+        self
+    }
+
     /// Validate and freeze the layout. Performs the **holistic** stride check
-    /// across the implicit u32 slot-ID column plus every declared user column
-    /// (§7.1): splitting a layout into many small columns cannot bypass the
-    /// 128-byte budget.
+    /// across the implicit u32 slot-ID column plus every declared Pod user
+    /// column (§7.1): splitting a layout into many small columns cannot bypass
+    /// the 128-byte budget. Generic columns are not subject to the stride
+    /// budget (they are stored outside the SoA allocation).
     pub fn build(self) -> Result<RegisteredCellType, CellTypeError> {
-        if self.tokens.is_empty() {
+        if self.tokens.is_empty() && self.generic_entries.is_empty() {
             return Err(CellTypeError::Empty);
         }
-        // Reject duplicate column types (same dense id declared twice).
+        // Reject duplicate Pod column types (same dense id declared twice).
         let mut seen = std::collections::HashSet::with_capacity(self.tokens.len());
         for token in &self.tokens {
             if !seen.insert(token.id()) {
                 return Err(CellTypeError::DuplicateColumn { id: token.id() });
             }
         }
-        // Holistic stride: slot-ID column (u32 = 4 bytes) + all user columns.
+        // Also check generic entries don't clash with Pod entries.
+        for gen in &self.generic_entries {
+            if !seen.insert(gen.component_id) {
+                return Err(CellTypeError::DuplicateColumn { id: gen.component_id });
+            }
+        }
+        // Holistic stride: slot-ID column (u32 = 4 bytes) + all Pod user columns.
         let user_stride: u32 = self.tokens.iter().map(|t| t.desc().size).sum();
         let stride = user_stride + ColumnDesc::of::<u32>().size;
         if stride > MAX_STRIDE_BYTES {
@@ -59,16 +106,28 @@ impl CellType {
         Ok(RegisteredCellType {
             name: self.name,
             tokens: self.tokens,
+            generic_entries: self.generic_entries,
         })
     }
 }
 
 /// A validated cell composition. Maps tokens → user-column indices and yields
 /// the `ColumnDesc` list a `CellStorage` page needs.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct RegisteredCellType {
     name: &'static str,
-    tokens: Vec<TypeToken>,
+    pub(crate) tokens: Vec<TypeToken>,
+    pub(crate) generic_entries: Vec<GenericColumnDesc>,
+}
+
+impl std::fmt::Debug for RegisteredCellType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisteredCellType")
+            .field("name", &self.name)
+            .field("tokens", &self.tokens)
+            .field("generic_entries", &self.generic_entries.len())
+            .finish()
+    }
 }
 
 impl RegisteredCellType {
@@ -89,7 +148,7 @@ impl RegisteredCellType {
         self.tokens.iter().position(|t| t.id() == token.id())
     }
 
-    /// The user-column `ColumnDesc` list (in declaration order) for building
+    /// The Pod user-column `ColumnDesc` list (in declaration order) for building
     /// the page layout.
     #[must_use]
     pub fn user_descs(&self) -> Vec<ColumnDesc> {
@@ -98,8 +157,17 @@ impl RegisteredCellType {
 
     /// Token dense ids in declaration order (for building token→index maps).
     #[must_use]
-    pub fn token_ids(&self) -> Vec<crate::component::ComponentId> {
+    pub fn token_ids(&self) -> Vec<ComponentId> {
         self.tokens.iter().map(|t| t.id()).collect()
+    }
+
+    /// Generic entry descriptor data (component id + type id) in declaration
+    /// order.
+    pub(crate) fn generic_descs(&self) -> Vec<(ComponentId, TypeId)> {
+        self.generic_entries
+            .iter()
+            .map(|e| (e.component_id, e.type_id))
+            .collect()
     }
 }
 
