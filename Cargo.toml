@@ -77,6 +77,7 @@ pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
+pulsar_terrain                     = { path = "crates/subsystems/pulsar_terrain" }
 
 # ---------- Agent Providers ----------
 agent_chat_core                    = { path = "crates/agent-providers/agent_chat_core" }
