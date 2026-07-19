@@ -2,15 +2,11 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::super::VoxelDataSource;
-
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("General", category_color = "#4ADE80")]
 pub struct GeneralTerrainProps {
     #[property(category = "General")]
     pub enabled: bool,
-    #[property(category = "General")]
-    pub voxel_data_source: VoxelDataSource,
     #[property(category = "General")]
     pub voxel_asset: String,
     #[property(min = 0.1, max = 1000.0, step = 0.1, category = "General")]
@@ -25,7 +21,6 @@ impl Default for GeneralTerrainProps {
     fn default() -> Self {
         Self {
             enabled: true,
-            voxel_data_source: VoxelDataSource::Empty,
             voxel_asset: String::new(),
             voxel_size: 100.0,
             chunk_size: 32,
@@ -38,14 +33,6 @@ impl GeneralTerrainProps {
     pub(crate) fn apply_from_component_data(&mut self, obj: &serde_json::Map<String, Value>) {
         if let Some(v) = obj.get("enabled").and_then(|v| v.as_bool()) {
             self.enabled = v;
-        }
-        if let Some(ix) = obj.get("voxel_data_source").and_then(|v| v.as_u64()) {
-            self.voxel_data_source = match ix {
-                0 => VoxelDataSource::Empty,
-                1 => VoxelDataSource::Procedural,
-                2 => VoxelDataSource::FromAsset,
-                _ => self.voxel_data_source,
-            };
         }
         if let Some(v) = obj.get("voxel_asset").and_then(|v| v.as_str()) {
             self.voxel_asset = v.to_string();
@@ -63,19 +50,9 @@ impl GeneralTerrainProps {
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
         out.insert("enabled".to_string(), Value::from(self.enabled));
-        out.insert(
-            "voxel_data_source".to_string(),
-            Value::from(self.voxel_data_source as u64),
-        );
-        out.insert(
-            "voxel_asset".to_string(),
-            Value::from(self.voxel_asset.clone()),
-        );
+        out.insert("voxel_asset".to_string(), Value::from(self.voxel_asset.clone()));
         out.insert("voxel_size".to_string(), Value::from(self.voxel_size));
         out.insert("chunk_size".to_string(), Value::from(self.chunk_size));
-        out.insert(
-            "render_distance".to_string(),
-            Value::from(self.render_distance),
-        );
+        out.insert("render_distance".to_string(), Value::from(self.render_distance));
     }
 }

@@ -60,7 +60,7 @@ ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
 profiling                          = { path = "crates/core/profiling" }
-engine_fs                          = { path = "crates/core/engine_fs" }
+engine_fs                          = { path = "crates/core/engine_fs", default-features = false }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
 engine_subsystems                  = { path = "crates/subsystems/engine_subsystems" }
@@ -74,10 +74,12 @@ pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_ecs                         = { path = "crates/core/pulsar_ecs" }
 pulsar_scenedb                     = { path = "crates/core/pulsar_scenedb" }
 pulsar_scenedb_derive              = { path = "crates/core/pulsar_scenedb_derive" }
-pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
+# Runtime-safe baseline; UI and renderer consumers opt into their integrations locally.
+pulsar_reflection                  = { path = "crates/core/pulsar_reflection", default-features = false, features = ["prims-core", "prims-std"] }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
+pulsar_terrain                     = { path = "crates/subsystems/pulsar_terrain" }
 
 # ---------- Agent Providers ----------
 agent_chat_core                    = { path = "crates/agent-providers/agent_chat_core" }
@@ -96,6 +98,7 @@ agent_provider_cohere              = { path = "crates/agent-providers/agent_prov
 
 # ---------- Subsystem Crates ----------
 pulsar_physics        = { path = "crates/subsystems/pulsar_physics" }
+pulsar_helio          = { path = "crates/subsystems/pulsar_helio" }
 pulsar_rendering      = { path = "crates/subsystems/pulsar_rendering" }
 
 
@@ -127,9 +130,13 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
-helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
-helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "b88e366d6a6792e34d5b9c7afd1a197a78c54747" }
+helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+helio-snapshot        = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+helio-voxel-core      = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+libhelio              = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
+helio-pass-voxel-mesh = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "af456b40a2d687ea0255162642345525bcc47481" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
@@ -143,7 +150,7 @@ tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
 
 # ---------- Graphics (external git dep; wgpu is a workspace, not vendored) ----------
-wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
+wgpu = { version = "30", default-features = false }
 
 # ---------- crates.io ----------
 anyhow = "1.0.100"

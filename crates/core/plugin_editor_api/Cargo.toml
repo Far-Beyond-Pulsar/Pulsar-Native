@@ -19,7 +19,7 @@ ui.workspace = true
 engine_subsystems = { workspace = true }
 
 # Reflection system (for EngineClass — plugin components use full reflection)
-pulsar_reflection = { workspace = true }
+pulsar_reflection = { workspace = true, features = ["ui"] }
 [build-dependencies]
 tracing = { workspace = true }
 

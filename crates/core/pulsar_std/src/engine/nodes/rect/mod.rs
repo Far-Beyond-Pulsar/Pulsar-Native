@@ -14,7 +14,7 @@
 //! - Position is a 2D vector (x, y)
 //! - Size is a 2D vector (width, height)
 
-use crate::blueprint;
+use crate::{blueprint, output};
 
 // =============================================================================
 // Rectangle Construction
@@ -39,6 +39,8 @@ use crate::blueprint;
 /// Use this node to define rectangles for rendering, hitboxes, or layout regions.
 /// # Rect New
 /// Creates a new rectangle from position and size.
+#[output(name = "position")]
+#[output(name = "size")]
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn rect_new(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f32)) {
     (position, size)
@@ -63,6 +65,8 @@ pub fn rect_new(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f3
 /// Use this node to define rectangles for rendering, hitboxes, or layout regions.
 /// # Make Rect
 /// Creates a rectangle from position and size components.
+#[output(name = "position")]
+#[output(name = "size")]
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn make_rect(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f32)) {
     (position, size)
@@ -90,6 +94,8 @@ pub fn make_rect(position: (f32, f32), size: (f32, f32)) -> ((f32, f32), (f32, f
 /// The format of the rectangle must match the expected input type for correct extraction.
 /// # Break Rect
 /// Breaks a rectangle into position and size components.
+#[output(name = "position")]
+#[output(name = "size")]
 #[blueprint(type: NodeTypes::pure, category: "Rect", color: "#F5A623")]
 pub fn break_rect(rect: ((f32, f32), (f32, f32))) -> ((f32, f32), (f32, f32)) {
     let (position, size) = rect;

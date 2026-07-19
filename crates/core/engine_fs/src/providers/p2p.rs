@@ -1,5 +1,4 @@
 use anyhow::{bail, Context as _, Result};
-use std::collections::HashSet;
 use std::future::Future;
 use std::path::Path;
 use std::sync::Arc;
@@ -15,15 +14,11 @@ use crate::events;
 
 pub struct P2pFsProvider {
     channel: Arc<dyn SessionChannel>,
-    project_id: String,
 }
 
 impl P2pFsProvider {
-    pub fn new(channel: Arc<dyn SessionChannel>, project_id: String) -> Self {
-        Self {
-            channel,
-            project_id,
-        }
+    pub fn new(channel: Arc<dyn SessionChannel>, _project_id: String) -> Self {
+        Self { channel }
     }
 
     fn to_rel(&self, path: &Path) -> String {

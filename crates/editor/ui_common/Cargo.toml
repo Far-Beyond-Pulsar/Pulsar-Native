@@ -20,7 +20,7 @@ smallvec.workspace = true
 smol = { workspace = true }
 engine_state.workspace = true
 pulsar_auth.workspace = true
-engine_fs.workspace = true
+engine_fs = { workspace = true, features = ["editor"] }
 plugin_editor_api.workspace = true
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —
 # `property_editor_registry.rs` iterates `inventory::iter::<UiPropertyEditorHint>`

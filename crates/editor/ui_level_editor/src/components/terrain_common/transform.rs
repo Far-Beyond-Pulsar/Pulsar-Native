@@ -45,14 +45,8 @@ impl TransformTerrainProps {
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert(
-            "position".to_string(),
-            Value::from(self.position.to_vec()),
-        );
-        out.insert(
-            "rotation".to_string(),
-            Value::from(self.rotation.to_vec()),
-        );
+        out.insert("position".to_string(), Value::from(self.position.to_vec()));
+        out.insert("rotation".to_string(), Value::from(self.rotation.to_vec()));
         out.insert("world_size".to_string(), Value::from(self.world_size));
     }
 }
