@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true }
+pulsar_scenedb = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }

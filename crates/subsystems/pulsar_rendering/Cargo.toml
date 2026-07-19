@@ -15,6 +15,7 @@ engine_class_derive = { workspace = true }
 # feature set, not this crate's dependency tree.
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 pulsar_events = { workspace = true }
+pulsar_scenedb = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
