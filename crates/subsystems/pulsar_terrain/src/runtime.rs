@@ -147,6 +147,12 @@ pub enum TerrainRuntimeEvent {
         planet_id: PlanetId,
         retired_generation: u64,
     },
+    EvictPage {
+        planet_id: PlanetId,
+        page_key: PageKey,
+        planet_generation: u64,
+        retired_page_generation: u64,
+    },
     StaleRejected {
         planet_id: PlanetId,
         page_key: PageKey,
@@ -187,6 +193,7 @@ pub struct TerrainRuntimeCounters {
     pub coalesced: u64,
     pub priority_upgrades: u64,
     pub cancelled: u64,
+    pub evicted: u64,
     pub stale_rejected: u64,
     pub backpressured: u64,
     pub published: u64,
@@ -1016,6 +1023,95 @@ impl TerrainRuntimeHandle {
         })
     }
 
+    /// Retire one disposable resident page and all work targeting its current
+    /// generation. The compacted content hash remains authoritative, so a
+    /// later request can deterministically rehydrate the same page.
+    pub fn evict_page(
+        &self,
+        planet_id: PlanetId,
+        page_key: PageKey,
+    ) -> Result<bool, TerrainRuntimeError> {
+        let mut state = lock(&self.shared.state);
+        if !state.running {
+            return Err(TerrainRuntimeError::NotRunning);
+        }
+        let Some((planet_generation, page_generation, is_resident)) =
+            state.planets.get(&planet_id).map(|planet| {
+                (
+                    planet.generation,
+                    planet.page_generations.get(&page_key).copied().unwrap_or(1),
+                    planet.core.page(page_key).is_some(),
+                )
+            })
+        else {
+            return Err(TerrainRuntimeError::PlanetMissing(planet_id));
+        };
+        let has_active = state
+            .active
+            .keys()
+            .any(|identity| identity.planet_id == planet_id && identity.page_key == page_key);
+        if !is_resident && !has_active {
+            return Ok(false);
+        }
+        if state.events.len() >= self.shared.config.event_capacity {
+            record_backpressure(
+                &mut state,
+                &self.shared.config,
+                Some(planet_id),
+                Some(page_key),
+                TerrainBackpressure::EventQueue,
+            );
+            return Err(TerrainRuntimeError::EventBackpressure {
+                capacity: self.shared.config.event_capacity,
+            });
+        }
+
+        let cancelled = self.shared.queue.cancel_where(|job| {
+            job.identity.planet_id == planet_id && job.identity.page_key == page_key
+        });
+        for job in cancelled {
+            state.cancel_active(job.identity);
+        }
+        let remaining = state
+            .active
+            .iter()
+            .filter_map(|(identity, active)| {
+                (identity.planet_id == planet_id
+                    && identity.page_key == page_key
+                    && active.phase != RequestPhase::Completed)
+                    .then_some(*identity)
+            })
+            .collect::<Vec<_>>();
+        for identity in remaining {
+            state.cancel_active(identity);
+        }
+
+        let next_page_generation = page_generation
+            .checked_add(1)
+            .ok_or(TerrainRuntimeError::GenerationOverflow)?;
+        let planet = state
+            .planets
+            .get_mut(&planet_id)
+            .expect("planet remains registered while state is locked");
+        planet
+            .page_generations
+            .insert(page_key, next_page_generation);
+        planet.core.evict_resident_page(page_key);
+        state.counters.evicted = state.counters.evicted.saturating_add(1);
+        let pushed = state.push_event(
+            TerrainRuntimeEvent::EvictPage {
+                planet_id,
+                page_key,
+                planet_generation,
+                retired_page_generation: page_generation,
+            },
+            self.shared.config.event_capacity,
+        );
+        debug_assert!(pushed, "event capacity was checked before page eviction");
+        state.refresh_resident_counters();
+        Ok(true)
+    }
+
     pub fn pump(&self, max_completions: usize) -> usize {
         let mut processed = 0;
         while processed < max_completions {
@@ -1057,6 +1153,18 @@ impl TerrainRuntimeHandle {
             .get(&planet_id)
             .and_then(|planet| planet.core.page(page_key))
             .cloned()
+    }
+
+    pub fn resident_page_keys(
+        &self,
+        planet_id: PlanetId,
+    ) -> Result<Vec<PageKey>, TerrainRuntimeError> {
+        let state = lock(&self.shared.state);
+        let planet = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        Ok(planet.core.resident_page_keys().collect())
     }
 
     fn publish_completion(&self, state: &mut RuntimeState, completion: WorkCompletion) {
@@ -1529,6 +1637,47 @@ mod tests {
             TerrainRuntimeEvent::StaleRejected { page_key, .. } if *page_key == key
         )));
         assert!(handle.page_snapshot(id, key).is_none());
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn eviction_retires_active_generation_and_allows_exact_rehydration() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let id = planet(12).planet_id;
+        handle.upsert_planet(planet(12)).unwrap();
+        let key = PageKey::new(0, [0; 3]);
+        handle
+            .request_page(id, key, TerrainRequestClass::Visible, 1)
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while handle.counters().in_flight + handle.counters().completed == 0
+            && Instant::now() < deadline
+        {
+            thread::yield_now();
+        }
+        assert!(handle.evict_page(id, key).unwrap());
+        assert!(matches!(
+            handle.drain_events(1).as_slice(),
+            [TerrainRuntimeEvent::EvictPage { page_key, .. }] if *page_key == key
+        ));
+        handle.pump(8);
+        assert!(handle.page_snapshot(id, key).is_none());
+        assert_eq!(handle.counters().outstanding, 0);
+
+        handle
+            .request_page(id, key, TerrainRequestClass::Visible, 2)
+            .unwrap();
+        let events = wait_for_events(&handle, 1);
+        let page_id = events.iter().find_map(|event| match event {
+            TerrainRuntimeEvent::PageReady { record, .. } => Some(record.page_id),
+            _ => None,
+        });
+        assert_eq!(
+            page_id,
+            handle.page_snapshot(id, key).map(|page| page.page_id())
+        );
+        assert_eq!(handle.counters().evicted, 1);
         subsystem.shutdown().unwrap();
     }
 

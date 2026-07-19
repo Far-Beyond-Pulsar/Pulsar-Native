@@ -212,6 +212,16 @@ pub struct PageDemand {
 }
 
 impl PageDemand {
+    #[cfg(test)]
+    pub(crate) const fn for_test(page_key: PageKey, request_class: TerrainRequestClass) -> Self {
+        Self {
+            page_key,
+            request_class,
+            projected_error_px: 0.0,
+            distance_m: 0.0,
+        }
+    }
+
     pub const fn page_key(self) -> PageKey {
         self.page_key
     }
@@ -253,6 +263,19 @@ pub struct TerrainStreamingPlan {
 }
 
 impl TerrainStreamingPlan {
+    #[cfg(test)]
+    pub(crate) fn for_test(planet_id: PlanetId, demands: Vec<PageDemand>) -> Self {
+        Self {
+            planet_id,
+            counters: TerrainStreamingCounters {
+                page_high_water: demands.len(),
+                ..TerrainStreamingCounters::default()
+            },
+            demands,
+            limits: Vec::new(),
+        }
+    }
+
     pub const fn planet_id(&self) -> PlanetId {
         self.planet_id
     }
