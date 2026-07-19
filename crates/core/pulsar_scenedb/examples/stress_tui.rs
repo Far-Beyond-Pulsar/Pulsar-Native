@@ -206,13 +206,33 @@ impl Workload for SpatialQueryStorm {
             ];
             sc.alloc(Aabb { min, max });
         }
-        let mut out = vec![0u32; sc.rows_in_use() as usize];
+        // Pre-allocated scratch buffers — expand under load, retract when idle.
+        let mut out: Vec<u32> = Vec::with_capacity(1024);
+        let mut liveness_words: Vec<u64> = Vec::with_capacity(1024 / 64);
+        let mut iter = 0u64;
         state.log(Color::Cyan, "Spatial query storm started — 1000 AABBs, AABB + frustum queries");
         while m.running.load(Ordering::Relaxed) {
             while state.paused.load(Ordering::Relaxed) {
                 std::thread::sleep(Duration::from_millis(10));
             }
             let t0 = Instant::now();
+            let len = sc.rows_in_use() as usize;
+            let n_words = len.div_ceil(64);
+
+            // Expand buffers on demand.
+            if out.len() < len {
+                out.resize(len, 0);
+            }
+            if liveness_words.len() < n_words {
+                liveness_words.resize(n_words, 0);
+            }
+
+            // Capture liveness snapshot without allocation.
+            let lw = sc.liveness().words();
+            for (i, w) in lw.iter().enumerate().take(n_words) {
+                liveness_words[i] = w.load(std::sync::atomic::Ordering::Relaxed);
+            }
+
             // AABB query.
             let q = Aabb {
                 min: [rand::random::<f32>() * 2000.0 - 1000.0; 3],
@@ -222,7 +242,7 @@ impl Workload for SpatialQueryStorm {
                     rand::random::<f32>() * 100.0 + 0.1,
                 ],
             };
-            sc.query_aabb(&q, &mut out);
+            sc.query_aabb_in(&q, &liveness_words[..n_words], &mut out[..len]);
             // Frustum query.
             let planes = [
                 [1.0, 0.0, 0.0, 1000.0],
@@ -232,7 +252,21 @@ impl Workload for SpatialQueryStorm {
                 [0.0, 0.0, 1.0, 1000.0],
                 [0.0, 0.0, -1.0, 1000.0],
             ];
-            sc.query_frustum(&Frustum { planes }, &mut out);
+            sc.query_frustum_in(&Frustum { planes }, &liveness_words[..n_words], &mut out[..len]);
+
+            // Retract buffers every 256 iterations if over-allocated >2x.
+            iter += 1;
+            if iter & 0xFF == 0 {
+                if liveness_words.len() > n_words.max(16) * 2 {
+                    liveness_words.truncate(n_words.max(16));
+                    liveness_words.shrink_to_fit();
+                }
+                if out.len() > len.max(1024) * 2 {
+                    out.truncate(len.max(1024));
+                    out.shrink_to_fit();
+                }
+            }
+
             m.tick(t0.elapsed());
         }
     }
@@ -410,6 +444,8 @@ impl Workload for MixedFrame {
         let m = &state.metrics[idx];
         let mut sc = SpatialCell::new(1024).unwrap();
         let mut handles = Vec::with_capacity(1024);
+        let mut out: Vec<u32> = Vec::with_capacity(1024);
+        let mut liveness_words: Vec<u64> = Vec::with_capacity(1024 / 64);
         state.log(Color::Cyan, "Mixed frame started — full game-loop simulation");
         while m.running.load(Ordering::Relaxed) {
             while state.paused.load(Ordering::Relaxed) {
@@ -417,7 +453,6 @@ impl Workload for MixedFrame {
             }
             let t0 = Instant::now();
             // ── Simulate phase ──
-            // Spawn new entities with random AABBs.
             for _ in 0..50 {
                 if handles.len() < 900 {
                     let min = [rand::random::<f32>() * 100.0 - 50.0; 3];
@@ -431,18 +466,21 @@ impl Workload for MixedFrame {
                     }
                 }
             }
-            // Free a portion (simulating killed entities).
             let to_kill = handles.len() / 10;
             for h in handles.drain(..to_kill) {
                 sc.free(h);
             }
-            // ── Harvest phase ──
-            let mut out = vec![0u32; sc.rows_in_use() as usize];
-            let q = Aabb {
-                min: [-100.0; 3],
-                max: [100.0; 3],
-            };
-            sc.query_aabb(&q, &mut out);
+            // ── Harvest phase (zero-alloc) ──
+            let len = sc.rows_in_use() as usize;
+            let n_words = len.div_ceil(64);
+            if out.len() < len { out.resize(len, 0); }
+            if liveness_words.len() < n_words { liveness_words.resize(n_words, 0); }
+            let lw = sc.liveness().words();
+            for (i, w) in lw.iter().enumerate().take(n_words) {
+                liveness_words[i] = w.load(std::sync::atomic::Ordering::Relaxed);
+            }
+            let q = Aabb { min: [-100.0; 3], max: [100.0; 3] };
+            sc.query_aabb_in(&q, &liveness_words[..n_words], &mut out[..len]);
             // ── Boundary phase ──
             sc.compact();
             m.tick(t0.elapsed());

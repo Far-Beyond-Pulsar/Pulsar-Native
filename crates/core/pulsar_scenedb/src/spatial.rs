@@ -1,5 +1,6 @@
 use crate::cell::CellStorage;
 use crate::handle::Handle;
+use crate::liveness::LivenessMask;
 use crate::page::{ColumnDesc, LayoutError};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -287,6 +288,10 @@ impl SpatialCell {
 
     pub fn live_count(&self) -> u32 {
         self.storage.live_count()
+    }
+
+    pub fn liveness(&self) -> &LivenessMask {
+        self.storage.liveness()
     }
 
     pub fn storage(&self) -> &CellStorage {
