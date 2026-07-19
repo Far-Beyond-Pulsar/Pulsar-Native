@@ -27,7 +27,8 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, List, ListItem, Paragraph, Sparkline,
+    Block, BorderType, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+    ScrollbarState, Sparkline,
 };
 use ratatui::Terminal;
 use std::io::stdout;
@@ -678,31 +679,41 @@ fn render_workload(frame: &mut ratatui::Frame, area: Rect, m: &WorkloadMetrics, 
 }
 
 fn render_log(frame: &mut ratatui::Frame, area: Rect, state: &AppState, scroll: usize) {
-    let inner_h = area.height.saturating_sub(2) as usize;
-    let scroll_desc = if scroll == 0 { "bottom".to_string() } else { format!("-{}", scroll) };
     let block = Block::default()
         .title(format!(
-            " Event Log [{} entries, scroll {}] ",
+            " Event Log [{} entries] ",
             state.log.lock().map(|l| l.len()).unwrap_or(0),
-            scroll_desc,
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded);
 
-    let entries: Vec<ListItem> = if let Ok(l) = state.log.lock() {
-        let visible = inner_h.max(1);
+    let inner = block.inner(area);
+
+    let (entries, total) = if let Ok(l) = state.log.lock() {
+        let visible = inner.height.max(1) as usize;
         let total = l.len();
         // scroll=0 means bottom (latest); positive means offset from bottom.
-        let start = if scroll >= total { 0 } else { total - scroll.min(total) };
-        let end = (start + visible).min(total);
-        l[start..end].iter().rev().map(|e| {
+        let end = if scroll >= total { total } else { total - scroll };
+        let start = end.saturating_sub(visible);
+        let items = l[start..end].iter().rev().map(|e| {
             ListItem::new(Line::from(Span::styled(e.msg.clone(), Style::default().fg(e.color))))
-        }).collect()
+        }).collect();
+        (items, total)
     } else {
-        vec![ListItem::new("")]
+        (vec![ListItem::new("")], 0)
     };
 
     frame.render_widget(List::new(entries).block(block), area);
+
+    if total > 0 {
+        let visible = inner.height.max(1) as usize;
+        let end = if scroll >= total { total } else { total - scroll };
+        let position = end.saturating_sub(visible);
+        let scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight);
+        let mut scrollbar_state = ScrollbarState::new(total).position(position);
+        frame.render_stateful_widget(scrollbar, inner, &mut scrollbar_state);
+    }
 }
 
 fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
