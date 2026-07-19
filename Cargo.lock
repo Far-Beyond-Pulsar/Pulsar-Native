@@ -9187,7 +9187,9 @@ dependencies = [
  "pulsar_core",
  "pulsar_reflection",
  "rand 0.8.7",
+ "serde",
  "serde_json",
+ "socket2 0.5.10",
  "tracing",
  "wgpu 30.0.0",
 ]
