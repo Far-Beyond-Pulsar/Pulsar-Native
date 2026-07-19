@@ -16,6 +16,22 @@ pub struct PlanetDefinition {
     pub max_resident_pages: usize,
 }
 
+impl PlanetDefinition {
+    /// Whether every discrete cell touched by the spherical source fits the
+    /// centered sparse hierarchy root represented by `root_lod`.
+    pub fn fits_centered_root(&self) -> bool {
+        if !(1..=62).contains(&self.root_lod) {
+            return false;
+        }
+        let half_span = i128::from(crate::PAGE_EDGE_CELLS) << (self.root_lod - 1);
+        let radius = i128::from(self.radius_cells);
+        self.center_cell.iter().all(|axis| {
+            let center = i128::from(*axis);
+            center - radius >= -half_span && center + radius < half_span
+        })
+    }
+}
+
 /// Runtime-owned planetary terrain definition. Legacy editor terrain
 /// components remain separate while this production contract is validated.
 #[engine_class(category = "Terrain", clone, debug, serialize, deserialize)]
@@ -82,14 +98,18 @@ impl PlanetTerrainComponent {
         } else {
             PlanetId::from_hex(explicit_id)?
         };
-        Ok(PlanetDefinition {
+        let definition = PlanetDefinition {
             planet_id,
             center_cell: [self.center_cell_x, self.center_cell_y, self.center_cell_z],
             radius_cells: self.radius_cells,
             material,
             root_lod,
             max_resident_pages,
-        })
+        };
+        if !definition.fits_centered_root() {
+            return Err(ComponentError::PlanetOutsideRoot);
+        }
+        Ok(definition)
     }
 }
 
@@ -156,6 +176,8 @@ pub enum ComponentError {
     RootLod(u64),
     #[error("max_resident_pages must fit usize and be greater than zero, got {0}")]
     ResidentPages(u64),
+    #[error("planet bounds must fit inside the centered sparse hierarchy root")]
+    PlanetOutsideRoot,
     #[error("TerrainRuntimeHandle is not registered in the component context")]
     RuntimeUnavailable,
     #[error(transparent)]
@@ -227,6 +249,19 @@ mod tests {
             explicit.definition("different").unwrap().planet_id,
             first.planet_id
         );
+    }
+
+    #[test]
+    fn component_rejects_a_planet_that_does_not_fit_its_root() {
+        let component = PlanetTerrainComponent {
+            radius_cells: 10_000,
+            root_lod: 4,
+            ..PlanetTerrainComponent::default()
+        };
+        assert!(matches!(
+            component.definition("too-large"),
+            Err(ComponentError::PlanetOutsideRoot)
+        ));
     }
 
     #[test]

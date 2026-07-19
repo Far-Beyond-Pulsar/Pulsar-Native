@@ -1278,6 +1278,7 @@ fn validate_definition(
     if definition.radius_cells == 0
         || definition.material == 0
         || !(1..=62).contains(&definition.root_lod)
+        || !definition.fits_centered_root()
         || definition.max_resident_pages == 0
         || definition.max_resident_pages > config.max_resident_pages
     {
@@ -1358,6 +1359,19 @@ mod tests {
         let mut subsystem = TerrainSubsystem::new(config(worker_count)).unwrap();
         subsystem.init(&SubsystemContext::new()).unwrap();
         subsystem
+    }
+
+    #[test]
+    fn runtime_rejects_planets_outside_their_centered_root() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let mut invalid = planet(1);
+        invalid.root_lod = 1;
+        assert!(matches!(
+            handle.upsert_planet(invalid),
+            Err(TerrainRuntimeError::InvalidConfig(_))
+        ));
+        subsystem.shutdown().unwrap();
     }
 
     fn wait_for_events(handle: &TerrainRuntimeHandle, count: usize) -> Vec<TerrainRuntimeEvent> {
