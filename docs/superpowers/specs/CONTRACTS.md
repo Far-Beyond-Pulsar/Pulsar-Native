@@ -123,11 +123,24 @@ one). **Node 0 is a reserved all-zero sentinel** (never a real table): under
 the XOR rule above, `cluster_table_offset == 0` means "no table", so real
 tables start at node index ≥ 1 and `max_nodes` budgets include the sentinel.
 
-Instance: 64 bytes — row-major mat4 transform. Generation buffer: u32 per
+Instance: 64 bytes — mat4 transform. Generation buffer: u32 per
 slot. Draw command: index_count u32, instance_count u32 (always 1 or 0),
 first_index u32, vertex_offset i32, first_instance u32 (= command slot,
 bindless lookup key). Per-view command buffers; bounded atomicAdd
 allocation; CPU-side count clamp.
+
+**Amendment (M3-β T5 review — instance transform flattening, empirically
+resolved on a real GPU):** the instance element's 16 floats are the
+**column-major flattening**, `array[4 * col + row] = M[row][col]` — what a
+column-major library's `to_cols_array()` emits, and what WGSL's
+`mat4x4<f32>` consumes with no transpose (`m * vec4(local, 1.0)`). This
+row previously said "row-major mat4"; that wording is superseded because
+its natural literal reading transposes the rotation block and silently
+corrupts the §11 |M₃ₓ₃| world-AABB extents (probe: Rz(30°)·Rx(40°) gives
+extent y = 1.9417 correct vs 1.7509 transposed — enough to flip a
+frustum decision). Translation-only transforms are identical under both
+readings, which is why it went unnoticed until the M3-β cull pass became
+the first shader to consume a transform. Rev 2.4 routing per R-PERF-3.
 
 MaterialRow (SceneDB-owned, amendment M3-α, Rev 2.4 R8 approved
 2026-07-16): 64 bytes — base_color u32@0 (RGBA8-unorm packed base color

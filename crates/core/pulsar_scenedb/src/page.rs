@@ -28,8 +28,26 @@ macro_rules! impl_pod {
     ($($t:ty),*) => { $( unsafe impl Pod for $t {} )* };
 }
 impl_pod!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
-// C5 instance element: 64-byte row-major mat4. Kept in the graphics-free core
+// C5 instance element: 64-byte mat4 transform. Kept in the graphics-free core
 // so the transform column exists independent of the gpu feature.
+//
+// **Flattening convention (M3-β T5 review, empirically resolved on a real
+// GPU — do not "fix" this to match the old wording):** the array is the
+// COLUMN-MAJOR flattening, `array[4 * col + row] = M[row][col]`. That is
+// exactly what a column-major math library's `to_cols_array()` produces, and
+// what WGSL's `mat4x4<f32>` expects when the buffer is read as one — the
+// shader then applies `m * vec4(local, 1.0)` directly, with no transpose.
+//
+// This comment previously read "row-major mat4", which is a landmine: its
+// most natural literal reading (translation left at flat indices 12..14, the
+// 3x3 rotation block written row-major) silently transposes the rotation, so
+// the §11 |M_3x3| world-AABB extents come out as if built from R-transpose.
+// Probed with Rz(30°)·Rx(40°) (a two-axis rotation — a single-axis one has
+// |R| == |R^T| and cannot discriminate): correct flattening yields extent
+// y = 1.9417 and the instance is visible; the naive row-major reading yields
+// y = 1.7509 and the same instance is frustum-culled. Translation-only
+// transforms are unaffected either way, which is why nothing caught this
+// until a shader first consumed rotations.
 unsafe impl Pod for [f32; 16] {}
 
 // ── Non-Pod column support (pre-work item 1) ─────────────────────────────
