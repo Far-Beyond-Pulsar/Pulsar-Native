@@ -21,11 +21,12 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, Clear, List, ListItem, Paragraph,
+    Block, BorderType, Borders, List, ListItem, Paragraph,
 };
 use ratatui::Terminal;
 use std::io::stdout;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -491,7 +492,6 @@ impl Workload for MixedFrame {
 // ── TUI Rendering ─────────────────────────────────────────────────────────
 
 fn render(frame: &mut ratatui::Frame, state: &AppState) {
-    frame.render_widget(Clear, frame.area());
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -710,16 +710,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .collect();
 
-    // TUI event loop.
-    let mut tick_count = 0u64;
-    loop {
-        terminal.draw(|f| render(f, &state))?;
+    // Dedicated input thread — blocks on event::read() so the draw loop
+    // never touches crossterm's event system and can never freeze.
+    // Dropped when the process exits; no clean shutdown needed since the
+    // terminal is restored before main returns.
+    let (tx, rx) = mpsc::channel::<Event>();
+    std::thread::Builder::new()
+        .name("tui-input".to_string())
+        .spawn(move || {
+            loop {
+                match event::read() {
+                    Ok(ev) => { let _ = tx.send(ev); }
+                    Err(_) => break,
+                }
+            }
+        })
+        .unwrap();
 
-        if event::poll(Duration::from_millis(33))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == KeyEventKind::Press {
+    // Draw loop — never polls, never blocks on input.
+    let mut draw_count = 0u64;
+    let mut should_quit = false;
+    while !should_quit {
+        // Drain all queued events (non-blocking).
+        while let Ok(ev) = rx.try_recv() {
+            match ev {
+                Event::Key(key) if key.kind == KeyEventKind::Press => {
                     match key.code {
-                        KeyCode::Char('q') => break,
+                        KeyCode::Char('q') | KeyCode::Esc => should_quit = true,
                         KeyCode::Char('p') => {
                             let p = state.paused.fetch_xor(true, Ordering::Relaxed);
                             state.log(
@@ -737,12 +754,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         _ => {}
                     }
                 }
+                Event::Resize(..) => {
+                    let _ = terminal.clear();
+                }
+                _ => {}
             }
         }
+        if should_quit { break; }
 
-        tick_count += 1;
-        if tick_count % 60 == 0 {
-            // Periodic status log.
+        terminal.draw(|f| render(f, &state))?;
+
+        draw_count += 1;
+        if draw_count % 10 == 0 {
             let total_ops: u64 = state.metrics.iter().map(|m| m.ops.load(Ordering::Relaxed)).sum();
             let total_errs: u64 = state.metrics.iter().map(|m| m.errors.load(Ordering::Relaxed)).sum();
             let msg = format!(
@@ -753,6 +776,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             state.log(Color::DarkGray, msg);
         }
+
+        // Cap draw rate to 30 FPS — enough for smooth visuals, gentle on
+        // the Windows ConPTY buffer.
+        std::thread::sleep(Duration::from_millis(33));
     }
 
     // Clean shutdown: signal all workers to stop.
