@@ -59,7 +59,7 @@ ui           = { path = "crates/ui/wgpui-component/crates/ui" }
 ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
-profiling                          = { path = "crates/core/profiling" }
+profiling                          = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Profiling", rev = "12424a5f75166332f9f1d2741281f6fc4847b44d" }
 engine_fs                          = { path = "crates/core/engine_fs" }
 pulsar_std                         = { path = "crates/core/pulsar_std" }
 engine_state                       = { path = "crates/core/engine_state" }
@@ -71,9 +71,8 @@ pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
-pulsar_scenedb                     = { path = "crates/core/pulsar_scenedb" }
-pulsar_scenedb_derive              = { path = "crates/core/pulsar_scenedb_derive" }
-pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "9b08a497c1e5c63ba198640611611d94dab661da" }
+pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "cf37ed000fedb9a01424c7e575d1d6ee30db7281" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
@@ -183,7 +182,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { path = "crates/core/pulsar_reflection_derive" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "cf37ed000fedb9a01424c7e575d1d6ee30db7281" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
