@@ -148,6 +148,44 @@ fn delta_minimality_clean_frame_writes_nothing_and_scattered_rows_coalesce() {
     assert_eq!(stats.bytes, 5 * 64);
 }
 
+/// M3-b T3 (R-PERF-1 measured decision, REJECT — see
+/// `pulsar_scenedb::gpu::GAP_MERGE_THRESHOLD`'s doc): pins the T2 alloc-gate
+/// scope note's claim that was previously asserted only in prose and never
+/// tested — `sync_region`'s coalescing at `GAP_MERGE_THRESHOLD == 0` is
+/// STRICT adjacency, meaning a SINGLE clean row between two dirty rows is
+/// already enough to split them into two ranges (it does not take a run of
+/// several clean rows). The `assert_eq!` on the constant itself is
+/// deliberate: if a future change ever ships a nonzero G, this test must
+/// fail loudly and be revisited rather than silently asserting behavior the
+/// binary no longer has.
+#[test]
+fn sync_region_gap_of_one_row_splits_at_g0() {
+    assert_eq!(
+        pulsar_scenedb::gpu::GAP_MERGE_THRESHOLD, 0,
+        "this test pins G=0's strict-adjacency behavior — update it (not just this assert) \
+         if the shipped gap threshold ever changes"
+    );
+    let ctx = test_context();
+    let buf = SceneBuffer::<[f32; 16]>::new(ctx.device(), "gap-test", 8);
+    let dirty = DirtyMask::new(8);
+    // Rows 2 and 4 dirty; row 3 (the ONLY row between them) clean.
+    dirty.mark(2);
+    dirty.mark(4);
+    let cpu: Vec<[f32; 16]> = (0..8).map(|i| mat(i as f32)).collect();
+    let stats = buf.sync_region(ctx.queue(), &cpu, 0, &dirty);
+    assert_eq!(
+        stats.ranges, 2,
+        "a ONE-row gap between two dirty rows must still split into two ranges at G=0"
+    );
+    assert_eq!(stats.bytes, 2 * 64, "only the two dirty rows' bytes upload — the clean gap row is not re-uploaded");
+    let gpu = as_f32s(&readback(&ctx, buf.buffer(), 8 * 64));
+    // Row 3 (never dirtied, never uploaded) must read back as all-zero
+    // (SceneBuffer is freshly allocated, never written) — proof the gap row
+    // was genuinely skipped, not silently bridged.
+    let row3 = &gpu[3 * 16..4 * 16];
+    assert!(row3.iter().all(|&f| f == 0.0), "un-uploaded gap row must stay at its pre-sync (zero) bytes");
+}
+
 use pulsar_scenedb::gpu::GenerationBuffer;
 
 #[test]

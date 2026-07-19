@@ -271,13 +271,24 @@ fn scene_gpu_store_boundary_sync_zero_dirty_rows_zero_alloc() {
 /// with byte volume (`stats.bytes`, asserted below) but not with the
 /// allocation COUNT, which is what §8.1 is about.
 ///
-/// SCOPE (T2 review probe, campaign finding): independence holds per WRITE
-/// RANGE, not per dirty row. `sync_region`'s coalescing is strict adjacency
-/// (no gap threshold — a 1-row gap splits the run), and wgpu-core allocates
-/// ~4 per `write_buffer` call, so SCATTERED dirtiness scales allocs with the
+/// SCOPE (T2 review probe, campaign finding; gap-threshold decision recorded
+/// at M3-b T3, R-PERF-1): independence holds per WRITE RANGE, not per dirty
+/// row. `sync_region`'s coalescing is strict adjacency at the shipped
+/// `GAP_MERGE_THRESHOLD == 0` (a 1-row gap splits the run — now pinned,
+/// not just asserted in prose, by `tests/gpu_store.rs`'s
+/// `sync_region_gap_of_one_row_splits_at_g0`), and wgpu-core allocates ~4 per
+/// `write_buffer` call, so SCATTERED dirtiness scales allocs with the
 /// maximal-contiguous-run count (probe: every-4th-row N=64 → 16 ranges → 64
 /// allocs; N=256 → 64 ranges → 259). All of it wgpu-side; SceneDB stays
 /// zero-heap either way. Recorded in the perf-validation claims ledger.
+/// M3-b T3 measured a gap-tolerant alternative (bounded G > 0, merging runs
+/// across a bounded run of clean rows) and REJECTED it as the shipped
+/// default — see `pulsar_scenedb::gpu::GAP_MERGE_THRESHOLD`'s doc and
+/// `.superpowers/sdd/m3b-task-3-report.md` for the measured decision: no G in
+/// the swept range helps the exact scattered pattern this scope note
+/// describes without a bandwidth cost (measured up to 90x at the G that would
+/// help it) the campaign's own byte-savings claims call unacceptable. This
+/// SCOPE note's claim stands unchanged.
 #[test]
 fn scene_gpu_store_boundary_sync_alloc_count_independent_of_dirty_row_count() {
     let ctx = test_context();
