@@ -29,7 +29,7 @@ pub use assets::{
     MaterialRegistry, MaterialRow, MeshError, MeshMetadata, MeshRegistry, MeshletBuffer,
     MeshletEntry, MeshletError, TextureError, TextureStore, MAX_TEXTURE_SLOTS,
 };
-pub use buffer::{SceneBuffer, SyncStats};
+pub use buffer::{GpuBufferDispatch, SceneBuffer, SyncStats};
 pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;
@@ -42,7 +42,10 @@ pub use harvest::{
 };
 pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
-pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
+pub use scene_store::{
+    CellId, CellSlot, GpuColumnDesc, GpuColumnSet, MirrorMode, RegionClassConfig, SceneGpuConfig,
+    SceneGpuStore,
+};
 pub use tracker::SubmissionTracker;
 pub use view_upload::ViewTokenBuffers;
 // `InstanceInfo` is defined graphics-free in `crate::spatial` (CONTRACTS C0)

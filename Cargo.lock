@@ -2942,6 +2942,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection",
+ "pulsar_scenedb",
  "quote",
  "syn 2.0.118",
 ]
@@ -9104,6 +9105,7 @@ version = "0.1.0"
 dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
+ "pulsar_scenedb",
  "serde",
  "serde_json",
  "tracing",
@@ -9149,6 +9151,7 @@ dependencies = [
  "plugin_editor_api",
  "pulsar_events",
  "pulsar_reflection",
+ "pulsar_scenedb",
  "serde",
  "serde_json",
  "tracing",
@@ -9187,6 +9190,15 @@ dependencies = [
  "serde_json",
  "tracing",
  "wgpu 30.0.0",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -13524,6 +13536,7 @@ dependencies = [
  "pulsar_physics",
  "pulsar_reflection",
  "pulsar_rendering",
+ "pulsar_scenedb",
  "raw-window-handle",
  "rfd",
  "rust-i18n 4.1.0",

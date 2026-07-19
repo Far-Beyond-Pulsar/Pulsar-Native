@@ -1,9 +1,11 @@
-use crate::cell_type::RegisteredCellType;
+use crate::cell_type::{GenericColumnDesc, RegisteredCellType};
+use crate::component::ComponentId;
 use crate::handle::Handle;
 use crate::liveness::LivenessMask;
-use crate::page::{ColumnDesc, LayoutError, Page, PageLayout};
+use crate::page::{ColumnDesc, GenericColumn, LayoutError, Page, PageLayout};
 use crate::registry::HandleRegistry;
 use crate::token::TypeToken;
+use std::any::TypeId;
 
 /// Layer 1 storage for one cell: page + liveness + handle registry, wired
 /// per spec §4.4 / CONTRACTS.md C1–C3.
@@ -21,8 +23,12 @@ pub struct CellStorage {
     liveness: LivenessMask,
     registry: HandleRegistry,
     user_column_count: usize,
-    /// Token id → user-column index, populated only via `from_cell_type`.
-    token_index: Vec<(crate::component::ComponentId, usize)>,
+    /// Token id → user-column index for Pod columns, populated only via
+    /// `from_cell_type`.
+    token_index: Vec<(ComponentId, usize)>,
+    /// Generic-column (ComponentId, TypeId) → generic-column-index mapping,
+    /// also populated via `from_cell_type`.
+    generic_token_index: Vec<(ComponentId, TypeId, usize)>,
     /// Row pin bitmask (M2a §5): a set bit means the row is in the
     /// pin-by-serial deferred-retirement window — excluded from compaction
     /// even though liveness already marked it dead. One bit per row, packed
@@ -50,12 +56,13 @@ impl CellStorage {
             registry: HandleRegistry::new(),
             user_column_count: user_columns.len(),
             token_index: Vec::new(),
+            generic_token_index: Vec::new(),
             pins: vec![0u64; capacity.div_ceil(64) as usize],
         })
     }
 
     /// Build a cell from a registered cell type (token-keyed). Preferred over
-    /// `new` for typed call sites.
+    /// `new` for typed call sites.  Creates both Pod and generic columns.
     pub fn from_cell_type(
         cell_type: &RegisteredCellType,
         capacity: u32,
@@ -68,6 +75,12 @@ impl CellStorage {
             .enumerate()
             .map(|(idx, id)| (id, idx))
             .collect();
+        // Build generic columns from the registered cell type.
+        for (gen_idx, entry) in cell_type.generic_entries.iter().enumerate() {
+            let col = (entry.construct)(capacity);
+            storage.page.push_generic_column(col);
+            storage.generic_token_index.push((entry.component_id, entry.type_id, gen_idx));
+        }
         Ok(storage)
     }
 
@@ -98,7 +111,7 @@ impl CellStorage {
     /// "register_token_column has no misuse guard against aliasing a
     /// positional column (safe at today's only call site;
     /// discipline-guarded)").
-    pub(crate) fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
+    pub fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
         let id = TypeToken::of::<T>().id();
         debug_assert!(
             !self.token_index.iter().any(|(tid, _)| *tid == id),
@@ -135,6 +148,43 @@ impl CellStorage {
             .find(|(tid, _)| *tid == id)
             .map(|(_, i)| *i)?;
         Some(self.user_column_mut::<T>(idx))
+    }
+
+    /// Typed read access to a generic (non-Pod) column by type.  Returns
+    /// `None` if this cell doesn't carry a column of type `T` (or if `T`
+    /// is Pod — use [`column_for`] for those).
+    pub fn column_for_generic<T: 'static>(&self) -> Option<&GenericColumn<T>> {
+        let type_id = TypeId::of::<T>();
+        let idx = self
+            .generic_token_index
+            .iter()
+            .find(|(_, tid, _)| *tid == type_id)
+            .map(|(_, _, i)| *i)?;
+        self.page.generic_column::<T>(idx)
+    }
+
+    /// Typed write access to a generic (non-Pod) column by type.
+    pub fn column_for_generic_mut<T: 'static>(&mut self) -> Option<&mut GenericColumn<T>> {
+        let type_id = TypeId::of::<T>();
+        let idx = self
+            .generic_token_index
+            .iter()
+            .find(|(_, tid, _)| *tid == type_id)
+            .map(|(_, _, i)| *i)?;
+        self.page.generic_column_mut::<T>(idx)
+    }
+
+    /// Return the raw backing bytes of a Pod column identified by
+    /// `ComponentId`.  Only Pod columns support raw-byte access (for GPU
+    /// sync); returns `None` for generic columns or unknown IDs.
+    pub fn column_raw_bytes(&self, id: ComponentId) -> Option<&[u8]> {
+        let idx = self
+            .token_index
+            .iter()
+            .find(|(tid, _)| *tid == id)
+            .map(|(_, i)| *i)?;
+        let rows = self.page.len();
+        Some(self.page.column_raw_bytes(idx + 1, rows))
     }
 
     /// Physical column 0 — the slot-ID column (one owning slot per row).
@@ -269,7 +319,8 @@ impl CellStorage {
         }
     }
 
-    /// Byte-wise swap of two rows across every physical column.
+    /// Byte-wise swap of two rows across every physical column and every
+    /// generic column.
     fn swap_rows(&mut self, a: u32, b: u32) {
         for col in 0..self.user_column_count + 1 {
             let desc_size = self.column_size(col);
@@ -283,6 +334,10 @@ impl CellStorage {
                     desc_size,
                 );
             }
+        }
+        // Swap generic column entries.
+        for gc in self.page.generic_columns_mut() {
+            gc.swap(a, b);
         }
     }
 

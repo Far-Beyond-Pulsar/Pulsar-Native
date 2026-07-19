@@ -4,6 +4,19 @@ use pulsar_reflection::{RuntimeTypeInfo, RUNTIME_TYPE_REGISTRY};
 use std::any::TypeId;
 use std::hash::{Hash, Hasher};
 
+/// Trait for types that carry a [`TypeToken`].  Automatically implemented
+/// for every `T: Pod + 'static` via the blanket impl.  Derive macros for
+/// SceneComponent types will generate manual impls.
+pub trait HasTypeToken {
+    fn type_token() -> TypeToken;
+}
+
+impl<T: Pod + 'static> HasTypeToken for T {
+    fn type_token() -> TypeToken {
+        TypeToken::of::<T>()
+    }
+}
+
 /// A dense, typed handle to a registered SceneDB column type (spec §7,
 /// CONTRACTS.md C7).
 ///
@@ -33,7 +46,8 @@ impl Hash for TypeToken {
 
 impl TypeToken {
     /// Token for column element type `T`. Allocates `T`'s dense id on first
-    /// use (per-process), then returns the same id forever.
+    /// use (per-process), then returns the same id forever.  Requires `Pod`
+    /// because the token carries a [`ColumnDesc`] for SoA layout.
     #[must_use]
     pub fn of<T: Pod + 'static>() -> Self {
         Self {

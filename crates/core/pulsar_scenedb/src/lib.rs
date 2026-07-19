@@ -92,7 +92,7 @@ pub mod gpu;
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use cell::CellStorage;
-pub use cell_type::{CellType, CellTypeError, RegisteredCellType};
+pub use cell_type::{CellType, CellTypeError, RegisteredCellType, SceneColumnSet};
 pub use component::{component_id, Component, ComponentId};
 pub use component_store::{__bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, ComponentStore};
 pub use entity::Entity;
@@ -100,8 +100,8 @@ pub use handle::Handle;
 pub use lease::{Lease, LeaseMask, Scratchpad, DECAY_FRAMES, LEASE_SLOTS};
 pub use liveness::LivenessMask;
 pub use page::{
-    ColumnDesc, LayoutError, Page, PageLayout, Pod, DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY,
-    MAX_STRIDE_BYTES,
+    Column, ColumnDesc, GenericColumn, LayoutError, Page, PageLayout, Pod, PodColumn,
+    DEFAULT_PAGE_CAPACITY, MAX_PAGE_CAPACITY, MAX_STRIDE_BYTES,
 };
 pub use pulsar_core::GameTime;
 pub use query::{QueryIter, WorldQuery};
@@ -112,5 +112,7 @@ pub use spatial::{
     Aabb, Frustum, InstanceInfo, SpatialCell, INSTANCE_INFO_COLUMN, SPATIAL_COLUMNS,
     TRANSFORM_COLUMN,
 };
-pub use token::TypeToken;
+#[cfg(feature = "gpu")]
+pub use gpu::{GpuBufferDispatch, GpuColumnDesc, GpuColumnSet, MirrorMode};
+pub use token::{HasTypeToken, TypeToken};
 pub use world::World;
