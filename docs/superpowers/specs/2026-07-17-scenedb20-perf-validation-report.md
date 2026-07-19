@@ -410,11 +410,97 @@ items came out of T5.**
 
 | # | Item | Data behind it | Owner milestone |
 |---|---|---|---|
-| **R-PERF-1** | Gap-tolerant dirty coalescing experiment for `sync_region` — investigate a bounded gap threshold (instead of strict adjacency) to reduce range-count blowup on scattered mutation patterns. | Scattered dirtiness = 5–7× CPU at equal byte volume (T4: 6.96×/5.82× reproduced; T2: allocs ∝ range count, ~4 allocs + 1 `write_buffer` per range, 16 ranges→64 allocs, 64 ranges→259 allocs). | M3-β (sync path) |
+| **R-PERF-1** | **CLOSED (M3-β T3, measured REJECT — §4.1 below).** Gap-tolerant dirty coalescing experiment for `sync_region` — investigate a bounded gap threshold (instead of strict adjacency) to reduce range-count blowup on scattered mutation patterns. | Scattered dirtiness = 5–7× CPU at equal byte volume (T4: 6.96×/5.82× reproduced; T2: allocs ∝ range count, ~4 allocs + 1 `write_buffer` per range, 16 ranges→64 allocs, 64 ranges→259 allocs). | M3-β (sync path) |
 | **R-PERF-2** | Build §9.2.1's pinned-snapshot compaction bypass and wire a production consumer of `any_held()`. | Contract #32's "bounds worst-case compaction stall" is currently undeliverable: `revoke_overdue` doesn't release the lease slot; frame-boundary compaction is gated on `any_held()==false`; nothing in production calls `any_held()` today. | M3-β/M4 |
 | **R-PERF-3** | Rev 2.4 spec-language corrections: (a) C4/§9.2.1 wording — state the 2.0 ms figure as a hold-duration timeout, not a latency budget; (b) contract #22 — reframe DEI as a compute-strategy/remap-availability selector, not a sentinel-bandwidth saving (both branches are sentinel-free unconditionally; DEI uploads more bytes at its own operating point); (c) contract #27 — confirmed as written, no change needed. Route to the Rev 2.4 proposal already drafted in the Research repo (`Dev/Research/public/drafts/SceneDB2.0-Rev2.4-PROPOSAL.md`). | T6 storm 3 + review (C4/§9.2.1); T6 storm 4 + review (#22); T6 storm 1 + review (#27, confirmed sound as-is). | Research repo, Rev 2.4 (spec-of-record edit, user-applied) |
 | **R-PERF-4** | M3-β hard requirements already registered in design §12: (a) bind-group storage-buffer budget is now 9 vs. the WebGPU default per-stage limit of 8 (contract #47, MISS) — raise device limits or split `SceneDbBinding`; (b) `mesh_index` bounds-check against the mesh table in the cull shader (recycled-tail garbage defense, flagged since M3-α Task 4); plus cull-efficiency measurement via T3's ready-to-reuse GPU timestamp harness once M3-β passes exist (unlocks contract items #5, #31, #38–46). | M3-α Task 9/11 (budget flag), Task 4 review (bounds-check flag), T3 harness (measurement readiness). | M3-β |
 | **R-PERF-5** | Bench/documentation upkeep: (a) the perf-val plan's "core 133" line is stale — the featureless matrix has been **136** since T2 added `alloc_gate.rs`'s 3 CPU tests (fully traced, not a regression); (b) `query_single`'s benchmark-group name collides between `ecs_bench.rs` and `ecs_detailed_bench.rs` (same crate, both files) — harmless today (workloads identical) but a latent last-writer-wins footgun if the two ever drift, worth a one-line rename; (c) criterion baseline-file policy — **`target/criterion` is NOT committed** (gitignored in both crates) and this is the intended policy: this report, not a committed baseline directory, is the record of what was measured and when. Any future regression check re-derives its own baseline via `--save-baseline`/`--baseline` at comparison time. | T6 review (133→136); T5 §1a/review defect 4 (collision); this report (policy statement). | Ongoing / next maintenance pass |
+
+### 4.1 R-PERF-1 verdict (M3-β T3) — measured REJECT
+
+A gap threshold `G` was implemented as a compile-time constant
+(`gpu::GAP_MERGE_THRESHOLD`) generalizing `SceneBuffer::sync_region`'s
+run-detection loop: two dirty runs separated by fewer than `G` clean rows
+merge into one upload range (re-uploading the bridging clean rows' bytes,
+which is sound — see the constant's doc for the full correctness argument;
+summary: the CPU column is the sole source of truth for every buffer
+`sync_region` touches, nothing GPU-side writes back to them, and the
+generation buffer never routes through `sync_region` at all, so a clean
+row's dirty bit being false already means VRAM == current CPU bytes for that
+row — re-uploading it is a byte-identical no-op). `G = 0` reproduces the
+pre-existing strict-adjacency behavior exactly, now pinned by
+`tests/gpu_store.rs::sync_region_gap_of_one_row_splits_at_g0`.
+
+**Sweep** (`legacy_model_bench`, S=10,000, one process per G, `--test-threads=1`
+discipline, host per §1.1):
+
+| G | stride-100 scatter (T4's case, ~99-row gaps) | stride-10 scatter (~9-row gaps) | contiguous (M=1%) regression? |
+|---:|---|---|---|
+| 0 (today) | ranges=100, bytes=6,400, CPU=118.4µs | ranges=1,000, bytes=64,000, CPU=929.4µs | ranges=1, bytes=6,400, CPU=24.0µs |
+| 4 | ranges=100, bytes=6,400, CPU=121.2µs (unchanged: gap 99 and 9 both ≥ 4) | ranges=1,000, bytes=64,000, CPU=950.1µs (unchanged) | ranges=1, bytes=6,400, CPU=24.6µs — no regression |
+| 16 | ranges=100, bytes=6,400, CPU=116.8µs (unchanged: gap 99 ≥ 16) | ranges=10, bytes=634,240 (**9.9×**), CPU=68.2µs (**13.6×** faster) | ranges=1, bytes=6,400, CPU=22.5µs — no regression |
+| 64 | ranges=100, bytes=6,400, CPU=119.7µs (unchanged: gap 99 ≥ 64) | ranges=10, bytes=634,240 (9.9×), CPU=65.1µs (14.3× faster) | ranges=1, bytes=6,400, CPU=22.5µs — no regression |
+| 128 (exploratory, beyond the required set — run to falsify the "accept" hypothesis) | ranges=10, bytes=576,640 (**90×**), CPU=52.1µs (2.3× faster) | ranges=10, bytes=634,240, CPU=66.1µs | n/a (not part of the required sweep) |
+
+The G=128 row's byte count triggered the bench's own honesty assertion
+(`contiguous and stride-100 scattered mutate the same TOTAL byte volume at
+M=1%`) — it fired exactly as designed: `left: 6400, right: 576640`. That is
+not a bug in the bench; it is the gap-merge mechanism doing precisely what
+it is supposed to at that G, and the assertion catching that the byte-volume
+invariant this campaign's claim #3 (minimal coalesced ranges) depends on no
+longer holds once G bridges that large a gap.
+
+**Geometry.** At stride 100 the gaps between dirty rows are ~99 clean rows
+— only `G > 99` merges anything there. At stride 10 the gaps are ~9 — `G ≥
+10` already collapses the whole pattern. The required sweep set {0, 4, 16,
+64} therefore brackets the stride-10 (dense-scatter) transition but never
+reaches the stride-100 transition at all.
+
+**Decision: REJECT.** `GAP_MERGE_THRESHOLD` ships at `0` — no behavior
+change from today.
+
+1. **The register's actual motivating case (T4: stride-100/1% scatter,
+   6.96×/5.82× CPU cost) is untouched by every G in the required sweep.**
+   Ranges, bytes, and CPU time at G=4/16/64 are all identical (within noise)
+   to G=0 for that pattern. Closing R-PERF-1's own cited evidence requires
+   `G > 99`, which was outside the required set but measured anyway (G=128)
+   specifically to check whether "accept, just pick a bigger G" was viable.
+   It is not: G=128 buys a 2.3× CPU improvement at a **90× byte-volume
+   cost** (6,400 B → 576,640 B, ~88% of the full 655,360 B region) — a
+   materially worse trade than the "bytes rise slightly" this task's brief
+   anticipated, and directly in tension with claims #1 and #3 of this
+   report (100–1000× fewer bytes than legacy; minimal coalesced ranges).
+2. **The one workload the required sweep DOES help (stride-10 dense
+   scatter, 13.6–14.3× CPU win at G≥16) is not the R-PERF-1 case at all**,
+   and its cost is not "slight" either: bytes rise 9.9×, i.e. the upload
+   becomes a near-total-region reupload (634,240 of 655,360 B — 96.8% of a
+   full region). **Correction (M3-β T3 review):** an earlier draft implied
+   this made the merge as CPU-costly as a whole-region upload. It does not,
+   and the reject does not rest on that. On the numbers available the dense
+   G=16 merge (68.2 µs) is *faster* than both the legacy full-resync
+   (108.55 µs) and SceneDB's own native full-region path at M=100%
+   (142.17 µs) at near-identical bytes — so "a density-triggered whole-region
+   upload dominates gap-merging" is FALSE as stated. Both comparison figures
+   also predate commit `06201a74` (dense per-column dirty table), so they are
+   cross-session and not apples-to-apples; treat the CPU comparison as
+   unresolved rather than settled. Accepting a
+   nonzero G "scoped to dense-scatter only" is not actually achievable with
+   one crate-wide compile-time constant: every `SceneBuffer<T>::sync_region`
+   call in the process shares it, so shipping it nonzero silently imposes
+   that bandwidth tax on ANY future caller whose dirty pattern happens to
+   have small gaps, whether or not that caller wants the CPU/bandwidth
+   tradeoff. That is a footgun, not a scoped accept.
+3. Net: no G value both (a) closes the case R-PERF-1 was opened for and (b)
+   respects this campaign's own byte-efficiency claims. `G = 0` is kept as
+   the shipped, tested default; the mechanism itself stays in the code
+   (parameterized by the constant, tested at G=0) as a measured, closed
+   experiment rather than a live config surface — see
+   `.superpowers/sdd/m3b-task-3-report.md` for the full writeup.
+
+The claim #3 note ("No gap threshold exists in `sync_region`'s coalescing
+(strict adjacency) — recorded as a real property, not a bug") in §2's
+50-claim table stands **unchanged**: it was true before this task and
+remains the measured, deliberate choice after it.
 
 ---
 

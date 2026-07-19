@@ -28,8 +28,26 @@ macro_rules! impl_pod {
     ($($t:ty),*) => { $( unsafe impl Pod for $t {} )* };
 }
 impl_pod!(u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize, f32, f64);
-// C5 instance element: 64-byte row-major mat4. Kept in the graphics-free core
+// C5 instance element: 64-byte mat4 transform. Kept in the graphics-free core
 // so the transform column exists independent of the gpu feature.
+//
+// **Flattening convention (M3-β T5 review, empirically resolved on a real
+// GPU — do not "fix" this to match the old wording):** the array is the
+// COLUMN-MAJOR flattening, `array[4 * col + row] = M[row][col]`. That is
+// exactly what a column-major math library's `to_cols_array()` produces, and
+// what WGSL's `mat4x4<f32>` expects when the buffer is read as one — the
+// shader then applies `m * vec4(local, 1.0)` directly, with no transpose.
+//
+// This comment previously read "row-major mat4", which is a landmine: its
+// most natural literal reading (translation left at flat indices 12..14, the
+// 3x3 rotation block written row-major) silently transposes the rotation, so
+// the §11 |M_3x3| world-AABB extents come out as if built from R-transpose.
+// Probed with Rz(30°)·Rx(40°) (a two-axis rotation — a single-axis one has
+// |R| == |R^T| and cannot discriminate): correct flattening yields extent
+// y = 1.9417 and the instance is visible; the naive row-major reading yields
+// y = 1.7509 and the same instance is frustum-culled. Translation-only
+// transforms are unaffected either way, which is why nothing caught this
+// until a shader first consumed rotations.
 unsafe impl Pod for [f32; 16] {}
 
 // ── Non-Pod column support (pre-work item 1) ─────────────────────────────
@@ -39,7 +57,7 @@ unsafe impl Pod for [f32; 16] {}
 pub(crate) trait GenericColumnAny: Send + Sync {
     fn push_row(&mut self);
     fn pop_row(&mut self);
-    fn swap(&self, a: u32, b: u32);
+    fn swap(&mut self, a: u32, b: u32);
     fn len(&self) -> usize;
     fn as_any_ref(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -112,8 +130,8 @@ impl<T: 'static> GenericColumn<T> {
         }
     }
 
-    /// Swap elements at indices `a` and `b` (works on uninitialized slots too).
-    pub fn swap(&self, a: u32, b: u32) {
+    /// Swap elements and initialization bits at indices `a` and `b`.
+    pub fn swap(&mut self, a: u32, b: u32) {
         let (a, b) = (a as usize, b as usize);
         // SAFETY: index bounds are caller's responsibility.
         unsafe {
@@ -121,6 +139,15 @@ impl<T: 'static> GenericColumn<T> {
                 self.data[a].as_ptr() as *mut MaybeUninit<T>,
                 self.data[b].as_ptr() as *mut MaybeUninit<T>,
             );
+        }
+        // Swap init bits to keep them in sync with data (§4.5: every swap
+        // must preserve the init-bit→row invariant; the previous omission
+        // was GAP-1 / the init-bit desync soundness hole).
+        let init_a = self.is_init(a);
+        let init_b = self.is_init(b);
+        if init_a != init_b {
+            self.init_bits[a / 64] ^= 1u64 << (a % 64);
+            self.init_bits[b / 64] ^= 1u64 << (b % 64);
         }
     }
 
@@ -161,7 +188,7 @@ impl<T: 'static> GenericColumnAny for GenericColumn<T> {
         self.data.pop();
     }
 
-    fn swap(&self, a: u32, b: u32) {
+    fn swap(&mut self, a: u32, b: u32) {
         GenericColumn::swap(self, a, b);
     }
 

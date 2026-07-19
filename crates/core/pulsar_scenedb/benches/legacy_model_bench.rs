@@ -76,7 +76,7 @@
 
 use pulsar_scenedb::gpu::{
     CellId, CellSlot, EngineGpuContext, FrameDriver, RegionClassConfig, SceneGpuConfig,
-    SceneGpuStore, SyncStats,
+    SceneGpuStore, SyncStats, GAP_MERGE_THRESHOLD,
 };
 use pulsar_scenedb::{CellStorage, CellType, Handle, TypeToken};
 use std::sync::Arc;
@@ -635,26 +635,33 @@ fn main() {
         println!("  S={s}: monotonic-in-M check OK (slack={slack:.1} us, endpoints {first_m:.1} -> {last_m:.1})");
     }
 
-    // ---- §5: scattered vs contiguous at S=10k, M=1% ----
+    // ---- §5: scattered vs contiguous at S=10k, M=1% (stride ~100, T4's
+    // case), plus a denser scatter (stride 10) for the M3-b T3 gap-tolerant
+    // coalescing sweep (R-PERF-1). At stride 100 the gaps between dirty rows
+    // are ~99 clean rows (only G > 99 could ever merge anything there); at
+    // stride 10 the gaps are ~9 clean rows (G >= 10 collapses the whole
+    // scatter into one range) — printing both at whatever GAP_MERGE_THRESHOLD
+    // this binary was built with is what the T3 sweep reruns across G values.
     println!();
+    println!("GAP_MERGE_THRESHOLD = {GAP_MERGE_THRESHOLD}");
     println!("scattered-vs-contiguous @ S=10000, M=1%:");
-    let (scattered_cpu_mean, scattered_cpu_p95, scattered_ranges, scattered_bytes) = {
-        // Rebuild a fresh S=10k scene dedicated to this comparison, isolated
-        // from the M-sweep's accumulated dirty-mask history.
-        let (mut store, mut cells, ids, handles, rpc) = build_scene(&ctx, 10_000);
+
+    /// Runs the scattered-mutation shape at a fixed GLOBAL row stride on a
+    /// fresh S=10k scene (isolated from the M-sweep's accumulated dirty-mask
+    /// history) and returns (cpu_mean_us, cpu_p95_us, ranges, bytes) of the
+    /// last measured frame.
+    fn measure_scattered_stride(ctx: &EngineGpuContext, stride: u32) -> (f64, f64, u32, u64) {
+        let (mut store, mut cells, ids, handles, rpc) = build_scene(ctx, 10_000);
         let mut frames = FrameDriver::new();
         let mut sim =
-            Some(drain_registration_warmup(&ctx, &mut store, &mut cells, &ids, &mut frames));
-
-        let target_count: u32 = contiguous_counts(&rpc, 1.0).iter().sum();
-        let stride = 10_000 / target_count; // == 100
+            Some(drain_registration_warmup(ctx, &mut store, &mut cells, &ids, &mut frames));
         let sel = scattered_local_indices(&rpc, stride);
 
         let mut cpu_samples = Vec::with_capacity(ITERS);
         let mut last_stats = SyncStats { ranges: 0, bytes: 0 };
         for it in 0..(WARMUP + ITERS) {
             let (us, stats_out) = run_scenedb_frame(
-                &ctx,
+                ctx,
                 &mut store,
                 &mut cells,
                 &ids,
@@ -670,26 +677,43 @@ fn main() {
         }
         let (mean, _min, p95) = stats(cpu_samples);
         (mean, p95, last_stats.ranges, last_stats.bytes)
-    };
+    }
+
+    let (scattered_cpu_mean, scattered_cpu_p95, scattered_ranges, scattered_bytes) =
+        measure_scattered_stride(&ctx, 100);
+    let (dense_cpu_mean, dense_cpu_p95, dense_ranges, dense_bytes) =
+        measure_scattered_stride(&ctx, 10);
+
     if let Some((c_mean, c_ranges, c_bytes)) = contiguous_10k_1pct {
-        println!("  contiguous: cpu_mean_us={c_mean:.2} ranges={c_ranges} bytes={c_bytes}");
+        println!("  contiguous (stride 1, the base M=1% run): cpu_mean_us={c_mean:.2} ranges={c_ranges} bytes={c_bytes}");
         println!(
-            "  scattered:  cpu_mean_us={scattered_cpu_mean:.2} cpu_p95_us={scattered_cpu_p95:.2} ranges={scattered_ranges} bytes={scattered_bytes}"
+            "  scattered  (stride 100, ~99-row gaps): cpu_mean_us={scattered_cpu_mean:.2} cpu_p95_us={scattered_cpu_p95:.2} ranges={scattered_ranges} bytes={scattered_bytes}"
+        );
+        println!(
+            "  dense      (stride  10, ~9-row gaps):  cpu_mean_us={dense_cpu_mean:.2} cpu_p95_us={dense_cpu_p95:.2} ranges={dense_ranges} bytes={dense_bytes}"
         );
         assert_eq!(
             c_bytes, scattered_bytes,
-            "honesty check: contiguous and scattered mutate the same TOTAL byte volume at M=1%"
+            "honesty check: contiguous and stride-100 scattered mutate the same TOTAL byte volume at M=1%"
         );
         assert!(
-            scattered_ranges > c_ranges,
-            "honesty check: scattered mutation must coalesce into MORE ranges than contiguous \
-             (T2 finding) — got scattered={scattered_ranges} contiguous={c_ranges}"
+            scattered_ranges >= c_ranges,
+            "honesty check: scattered mutation must coalesce into AT LEAST as many ranges as \
+             contiguous (T2 finding; strictly more at G below the stride's gap size) — got \
+             scattered={scattered_ranges} contiguous={c_ranges}"
         );
         println!(
-            "  T2 range-count finding at frame level: scattered {:.1}x the ranges of contiguous \
-             ({scattered_ranges} vs {c_ranges}), cpu_mean {:.2}x ({scattered_cpu_mean:.2} us vs {c_mean:.2} us)",
+            "  T2 range-count finding at frame level (stride 100): scattered {:.1}x the ranges of \
+             contiguous ({scattered_ranges} vs {c_ranges}), cpu_mean {:.2}x ({scattered_cpu_mean:.2} us vs {c_mean:.2} us)",
             scattered_ranges as f64 / c_ranges.max(1) as f64,
             scattered_cpu_mean / c_mean.max(0.001)
+        );
+        println!(
+            "  dense (stride 10) vs contiguous: ranges {dense_ranges} vs {c_ranges}, cpu_mean {:.2}x \
+             ({dense_cpu_mean:.2} us vs {c_mean:.2} us), bytes {dense_bytes} (vs {c_bytes} contiguous — \
+             10x the mutated rows, so 10x the true dirty bytes; only bytes ABOVE that 10x baseline are \
+             gap-merge inflation)",
+            dense_cpu_mean / c_mean.max(0.001)
         );
     }
 

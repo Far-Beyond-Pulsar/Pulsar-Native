@@ -29,7 +29,7 @@ pub use assets::{
     MaterialRegistry, MaterialRow, MeshError, MeshMetadata, MeshRegistry, MeshletBuffer,
     MeshletEntry, MeshletError, TextureError, TextureStore, MAX_TEXTURE_SLOTS,
 };
-pub use buffer::{GpuBufferDispatch, SceneBuffer, SyncStats};
+pub use buffer::{GpuBufferDispatch, SceneBuffer, SyncStats, GAP_MERGE_THRESHOLD};
 pub use context::EngineGpuContext;
 pub use dirty::DirtyMask;
 pub use generation::GenerationBuffer;

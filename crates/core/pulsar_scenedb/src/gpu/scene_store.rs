@@ -126,11 +126,23 @@ pub(crate) struct CellGpuState {
     /// Class capacity + headroom; bounds every gen/slot write into this
     /// cell's region.
     pub(crate) slot_capacity: u32,
-    /// Per-column dirty masks keyed by `ComponentId`.  Replaces the old
-    /// named `dirty_transforms` / `dirty_infos` fields (pre-work item 2).
-    /// The slot-mirror dirty mask (`dirty_slots`) is kept separate because
-    /// it is driven by the self-healing boundary scan, not by column writes.
-    pub(crate) dirty_columns: HashMap<ComponentId, DirtyMask>,
+    /// Per-column dirty masks in a DENSE table indexed by `ComponentId.0`,
+    /// replacing the old named `dirty_transforms` / `dirty_infos` fields
+    /// (pre-work item 2). The slot-mirror dirty mask (`dirty_slots`) is kept
+    /// separate because it is driven by the self-healing boundary scan, not
+    /// by column writes.
+    ///
+    /// **Why dense, not a `HashMap`:** every mirrored write (`write_transform`,
+    /// `write_instance_info`, and every derive-generated `write_gpu`) marks a
+    /// row through this table, so it sits in the hottest path the crate has.
+    /// `ComponentId`s are dense and allocated from 1 (`component::component_id`),
+    /// so a `Vec` index replaces a hash of the key on every single write.
+    /// Measured on the delta-vs-legacy head-to-head (`legacy_model_bench`,
+    /// 2 runs): the hashed form cost ~+15% CPU at 1% mutation and ~+50% at
+    /// 100% mutation versus the named-field form it generalized. Index 0 is
+    /// always `None` (`ComponentId` 0 is reserved); the table is sized to the
+    /// highest registered GPU-column id at `register_cell`.
+    pub(crate) dirty_columns: Vec<Option<DirtyMask>>,
     dirty_slots: DirtyMask,
     /// Per-row global-slot staging. `sync_all`'s self-healing boundary scan
     /// is scan-first, not dirty-mask-first: it compares `slot_shadow` against
@@ -156,6 +168,26 @@ pub(crate) struct CellGpuState {
     /// delta-minimality on the write path), seeded from the registry at
     /// `register_cell`. Atomic because `write_transform` takes `&self`.
     gen_shadow: Vec<AtomicU32>,
+}
+
+impl CellGpuState {
+    /// The dirty mask for one mirrored column, or `None` if this cell has no
+    /// such column registered. One bounds-checked index — no hashing (see
+    /// [`CellGpuState::dirty_columns`]).
+    #[inline]
+    fn dirty_column(&self, id: ComponentId) -> Option<&DirtyMask> {
+        self.dirty_columns.get(id.0 as usize).and_then(Option::as_ref)
+    }
+
+    /// Every registered column's `(id, mask)` pair, skipping the dense
+    /// table's holes. Frame-boundary use (compact/sync), not the write path.
+    #[inline]
+    fn dirty_columns_iter(&self) -> impl Iterator<Item = (ComponentId, &DirtyMask)> {
+        self.dirty_columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.as_ref().map(|mask| (ComponentId(i as u32), mask)))
+    }
 }
 
 /// One cell's region assignment paired with its mutable storage, for the
@@ -299,7 +331,7 @@ impl SceneGpuStore {
         let state = self.cells[id.0 as usize]
             .as_ref()
             .expect("cell unregistered");
-        if let Some(mask) = state.dirty_columns.get(&component_id) {
+        if let Some(mask) = state.dirty_column(component_id) {
             mask.mark(row);
         }
     }
@@ -373,7 +405,11 @@ impl SceneGpuStore {
     /// Used by write paths to lazily create the mask when a column is first
     /// written (instead of requiring it to exist at registration time).
     fn ensure_dirty_column(state: &mut CellGpuState, id: ComponentId, row_capacity: u32) -> &mut DirtyMask {
-        state.dirty_columns.entry(id).or_insert_with(|| DirtyMask::new(row_capacity))
+        let idx = id.0 as usize;
+        if state.dirty_columns.len() <= idx {
+            state.dirty_columns.resize_with(idx + 1, || None);
+        }
+        state.dirty_columns[idx].get_or_insert_with(|| DirtyMask::new(row_capacity))
     }
 
     /// §4.1 promotion primitive (α: registration; β reuses it for promotion):
@@ -447,11 +483,16 @@ impl SceneGpuStore {
         // the first sync_all uploads every occupied row.  Any additional
         // GPU-mirrored columns registered via register_gpu_buffer are also
         // warmed up here.
-        let mut dirty_columns: HashMap<ComponentId, DirtyMask> = HashMap::new();
+        // Dense table sized to the highest registered GPU-column id; holes
+        // (unregistered ids, and index 0 which `ComponentId` reserves) stay
+        // `None`. Built once here so every subsequent write is a Vec index.
+        let widest = self.gpu_buffers.keys().map(|id| id.0 as usize).max().unwrap_or(0);
+        let mut dirty_columns: Vec<Option<DirtyMask>> = Vec::new();
+        dirty_columns.resize_with(widest + 1, || None);
         for (id, _buf) in &self.gpu_buffers {
             let mask = DirtyMask::new(row_capacity);
             mask.mark_range(cell.rows_in_use());
-            dirty_columns.insert(*id, mask);
+            dirty_columns[id.0 as usize] = Some(mask);
         }
         // No slot-mirror warm-up: `sync_all`'s self-healing boundary scan is
         // the SOLE dirty_slots marker and scratch/shadow writer. The shadow
@@ -531,7 +572,7 @@ impl SceneGpuStore {
 
             // Clear warm-up marks that were just satisfied by the bulk writes.
             let state = store.cells[id.0 as usize].as_mut().expect("cell unregistered");
-            for mask in state.dirty_columns.values_mut() {
+            for mask in state.dirty_columns.iter_mut().flatten() {
                 mask.clear_all();
             }
 
@@ -639,8 +680,7 @@ impl SceneGpuStore {
         col[row as usize] = *m;
         let comp_id = component_id::<[f32; 16]>();
         state
-            .dirty_columns
-            .get(&comp_id)
+            .dirty_column(comp_id)
             .expect("transform dirty mask missing — register_gpu_buffer not called for [f32; 16]")
             .mark(row);
         self.write_generation(state, handle.index(), handle.generation());
@@ -693,8 +733,7 @@ impl SceneGpuStore {
         col[row as usize] = info;
         let comp_id = component_id::<InstanceInfo>();
         state
-            .dirty_columns
-            .get(&comp_id)
+            .dirty_column(comp_id)
             .expect("InstanceInfo dirty mask missing — register_gpu_buffer not called for InstanceInfo")
             .mark(row);
         true
@@ -800,7 +839,7 @@ impl SceneGpuStore {
                 // the moved row, so the next sync re-uploads everything.
                 // The slot mirror is NOT marked here — `sync_all`'s
                 // self-healing boundary scan detects moved slots on its own.
-                for mask in state.dirty_columns.values() {
+                for mask in state.dirty_columns.iter().flatten() {
                     mask.mark(to);
                 }
             });
@@ -825,9 +864,9 @@ impl SceneGpuStore {
 
             // Sync every dirty GPU-mirrored column.
             let state = self.cells[slot.id.0 as usize].as_ref().expect("cell unregistered");
-            for (id, dirty_mask) in &state.dirty_columns {
-                if let Some(buffer) = self.gpu_buffers.get(id) {
-                    if let Some(col_bytes) = cell_ref.column_raw_bytes(*id) {
+            for (id, dirty_mask) in state.dirty_columns_iter() {
+                if let Some(buffer) = self.gpu_buffers.get(&id) {
+                    if let Some(col_bytes) = cell_ref.column_raw_bytes(id) {
                         let row_count = rows.min(col_bytes.len() / buffer.element_size());
                         if row_count > 0 {
                             let stats = buffer.sync_region(
