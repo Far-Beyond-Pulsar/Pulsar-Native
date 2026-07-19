@@ -56,12 +56,19 @@ The hierarchy, edit log, and persisted pages are authoritative. GPU voxel pages 
 
 ```text
 PlanetId
-PlanetPosition { sector: [i64; 3], offset_m: [f64; 3] }
+PlanetPosition { lod0_cell: [i64; 3], subcell_m: [f64; 3] }
 PageKey { lod: u8, page_xyz: [i64; 3] }
 NodeState = Air | Solid(material) | Procedural(source) | Branch | Page(PageId)
 ```
 
 Do not use one 64-bit Morton key for the full address. About 27 binary levels are required to span an Earth diameter down to 10 cm, which exceeds 64 bits when three coordinate bits are interleaved at every level. Keep level and signed axes explicit on CPU and serialize them canonically.
+
+`PlanetPosition.lod0_cell` is the signed authoritative 10 cm address.
+`subcell_m` is normalized to the half-open interval `[0, 0.1)` on every axis;
+negative positions use Euclidean cell decomposition. Invalid or non-finite
+remainders are rejected during construction and deserialization. Large
+absolute coordinates are never collapsed into one floating-point value before
+the active frame origin is subtracted.
 
 GPU page addresses are camera-relative 32-bit values plus a per-frame origin. WGSL has no concrete 64-bit integer type, and absolute planet coordinates must never reach shader arithmetic as one `f32`.
 
@@ -105,7 +112,7 @@ canonical planet position (i64/f64)
         -> local f32 transform for rendering/physics
 ```
 
-The active origin snaps to a stable sector/page boundary. Rebasing changes derived transforms and cache keys, not canonical object or terrain positions.
+The active origin snaps to a stable LOD0 page boundary. Rebasing changes derived transforms and cache keys, not canonical object or terrain positions.
 
 This avoids an engine-wide conversion of existing scene components, Helio camera buffers, mesh transforms, and Rapier APIs from `f32`. Existing objects remain valid. New large-world objects opt into a `LargeWorldTransform`/planet-frame component, while legacy transforms remain local-world components.
 
