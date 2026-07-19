@@ -39,7 +39,7 @@ unsafe impl Pod for [f32; 16] {}
 pub(crate) trait GenericColumnAny: Send + Sync {
     fn push_row(&mut self);
     fn pop_row(&mut self);
-    fn swap(&self, a: u32, b: u32);
+    fn swap(&mut self, a: u32, b: u32);
     fn len(&self) -> usize;
     fn as_any_ref(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
@@ -112,8 +112,8 @@ impl<T: 'static> GenericColumn<T> {
         }
     }
 
-    /// Swap elements at indices `a` and `b` (works on uninitialized slots too).
-    pub fn swap(&self, a: u32, b: u32) {
+    /// Swap elements and initialization bits at indices `a` and `b`.
+    pub fn swap(&mut self, a: u32, b: u32) {
         let (a, b) = (a as usize, b as usize);
         // SAFETY: index bounds are caller's responsibility.
         unsafe {
@@ -121,6 +121,15 @@ impl<T: 'static> GenericColumn<T> {
                 self.data[a].as_ptr() as *mut MaybeUninit<T>,
                 self.data[b].as_ptr() as *mut MaybeUninit<T>,
             );
+        }
+        // Swap init bits to keep them in sync with data (§4.5: every swap
+        // must preserve the init-bit→row invariant; the previous omission
+        // was GAP-1 / the init-bit desync soundness hole).
+        let init_a = self.is_init(a);
+        let init_b = self.is_init(b);
+        if init_a != init_b {
+            self.init_bits[a / 64] ^= 1u64 << (a % 64);
+            self.init_bits[b / 64] ^= 1u64 << (b % 64);
         }
     }
 
@@ -161,7 +170,7 @@ impl<T: 'static> GenericColumnAny for GenericColumn<T> {
         self.data.pop();
     }
 
-    fn swap(&self, a: u32, b: u32) {
+    fn swap(&mut self, a: u32, b: u32) {
         GenericColumn::swap(self, a, b);
     }
 
