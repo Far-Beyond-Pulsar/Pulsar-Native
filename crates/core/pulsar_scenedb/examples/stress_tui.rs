@@ -1,16 +1,22 @@
 //! Pulsar SceneDB — AAA-Grade Stress Test TUI
 //!
-//! Simulates an absurdly-maxed-out game scene hammering every subsystem of
-//! pulsar_scenedb simultaneously.  Displays live throughput, error counts,
-//! and memory pressure in a ratatui dashboard.
+//! Interactive dashboard with keyboard navigation, drill-down workload
+//! details, and scrollable event log.
 //!
-//! Run:
-//!   cargo run -p pulsar_scenedb --example stress_tui
+//! Run:  cargo run -p pulsar_scenedb --example stress_tui
 //!
 //! Controls:
-//!   q  — quit
-//!   p  — pause / resume all workloads
-//!   r  — reset all counters
+//!   Tab         — cycle focus: workloads ↔ log
+//!   ↑/↓         — move cursor (workloads) / scroll (log)
+//!   Enter / d   — toggle detail view for highlighted workload
+//!   1-8         — open detail for workload N
+//!   Esc         — back from detail / quit
+//!   q           — quit
+//!   p           — pause / resume
+//!   r           — reset counters
+//!   Home        — scroll log to top
+//!   End         — scroll log to bottom
+//!   PgUp / PgDn — scroll log by page
 
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
@@ -21,7 +27,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, List, ListItem, Paragraph,
+    Block, BorderType, Borders, List, ListItem, Paragraph, Sparkline,
 };
 use ratatui::Terminal;
 use std::io::stdout;
@@ -29,6 +35,18 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+// ── UI State ────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Copy, PartialEq)]
+enum Focus { Workloads, Log }
+
+struct UiState {
+    focus: Focus,
+    selected: Option<usize>,
+    highlight: usize,
+    log_scroll: usize,
+}
 
 // ── Metrics ────────────────────────────────────────────────────────────────
 
@@ -491,7 +509,7 @@ impl Workload for MixedFrame {
 
 // ── TUI Rendering ─────────────────────────────────────────────────────────
 
-fn render(frame: &mut ratatui::Frame, state: &AppState) {
+fn render(frame: &mut ratatui::Frame, state: &AppState, ui: &UiState) {
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -502,26 +520,36 @@ fn render(frame: &mut ratatui::Frame, state: &AppState) {
         ])
         .split(area);
 
-    render_header(frame, chunks[0], state);
-    render_body(frame, chunks[1], state);
+    render_header(frame, chunks[0], state, ui);
+    if let Some(idx) = ui.selected {
+        render_workload_detail(frame, chunks[1], state, idx);
+    } else {
+        render_body(frame, chunks[1], state, ui);
+    }
     render_footer(frame, chunks[2], state);
 }
 
-fn render_header(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
+fn render_header(frame: &mut ratatui::Frame, area: Rect, state: &AppState, ui: &UiState) {
     let elapsed = state.start.elapsed();
-    let title = format!(
+    let mut title = format!(
         " Pulsar SceneDB AAA Stress Test  [{:02}:{:02}:{:02}] ",
         elapsed.as_secs() / 3600,
         (elapsed.as_secs() / 60) % 60,
         elapsed.as_secs() % 60,
     );
-    let paused = if state.paused.load(Ordering::Relaxed) {
-        "  ** PAUSED ** "
-    } else {
-        ""
+    if state.paused.load(Ordering::Relaxed) {
+        title.push_str("  ** PAUSED ** ");
+    }
+    if let Some(idx) = ui.selected {
+        title.push_str(&format!("  [{} detail] ", state.metrics[idx].name));
+    }
+    let focus_hint = match ui.focus {
+        Focus::Workloads => " [Workloads]",
+        Focus::Log => " [Log]",
     };
+    title.push_str(focus_hint);
     let block = Block::default()
-        .title(format!("{}{}", title, paused))
+        .title(title)
         .title_alignment(ratatui::layout::Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Double)
@@ -529,21 +557,63 @@ fn render_header(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     frame.render_widget(block, area);
 }
 
-fn render_body(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
+fn render_body(frame: &mut ratatui::Frame, area: Rect, state: &AppState, ui: &UiState) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
         .split(area);
 
-    render_workloads(frame, chunks[0], state);
-    render_log(frame, chunks[1], state);
+    render_workloads(frame, chunks[0], state, ui);
+    render_log(frame, chunks[1], state, ui.log_scroll);
 }
 
-fn render_workloads(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
+fn render_workload_detail(frame: &mut ratatui::Frame, area: Rect, state: &AppState, idx: usize) {
+    let m = &state.metrics[idx];
+    let ops = m.ops.load(Ordering::Relaxed);
+    let errs = m.errors.load(Ordering::Relaxed);
+    let lat_ns = m.latency_ns.load(Ordering::Relaxed);
+    let running = m.running.load(Ordering::Relaxed);
+    let lat_us = lat_ns / 1000;
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Length(5), Constraint::Min(0)])
+        .split(area);
+
+    // Sparkline
+    let spark_data: Vec<u64> = m.spark_data.lock().ok().map(|sd| sd.clone()).unwrap_or_default();
+    let spark = Sparkline::default()
+        .block(Block::default().title(" Latency (µs) ").borders(Borders::ALL).border_type(BorderType::Rounded))
+        .data(&spark_data)
+        .style(Style::default().fg(Color::Magenta));
+    frame.render_widget(spark, chunks[0]);
+
+    // Stats line
+    let status = if running { "▶ Running" } else { "⏹ Stopped" };
+    let status_color = if running { Color::Green } else { Color::DarkGray };
+    let stats = format!(
+        "  {}  |  Ops: {}  Latency: {}µs  Errors: {}  |  {}",
+        status, ops, lat_us, errs, m.desc,
+    );
+    let s = if errs > 0 { Style::default().fg(Color::Red) } else { Style::default().fg(status_color) };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(stats, s))).block(
+            Block::default().borders(Borders::ALL).border_type(BorderType::Rounded)),
+        chunks[1],
+    );
+
+    // Log panel below detail, with scroll.
+    render_log(frame, chunks[2], state, 0);
+}
+
+fn render_workloads(frame: &mut ratatui::Frame, area: Rect, state: &AppState, ui: &UiState) {
+    let focused = ui.focus == Focus::Workloads;
+    let border_color = if focused { Color::Cyan } else { Color::White };
     let block = Block::default()
-        .title(" Workloads ")
+        .title(format!(" Workloads {} ", if focused { "◀" } else { "" }))
         .borders(Borders::ALL)
-        .border_type(BorderType::Rounded);
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(border_color));
 
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -554,18 +624,26 @@ fn render_workloads(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
         .split(inner);
 
     for (i, chunk) in chunks.iter().enumerate() {
-        render_workload(frame, *chunk, &state.metrics[i]);
+        let is_highlighted = i == ui.highlight;
+        render_workload(frame, *chunk, &state.metrics[i], is_highlighted, focused);
     }
 }
 
-fn render_workload(frame: &mut ratatui::Frame, area: Rect, m: &WorkloadMetrics) {
+fn render_workload(frame: &mut ratatui::Frame, area: Rect, m: &WorkloadMetrics, highlighted: bool, focused: bool) {
     let ops = m.ops.load(Ordering::Relaxed);
     let errs = m.errors.load(Ordering::Relaxed);
     let lat_ns = m.latency_ns.load(Ordering::Relaxed);
     let running = m.running.load(Ordering::Relaxed);
 
+    let bg = if highlighted && focused {
+        Style::default().bg(Color::DarkGray)
+    } else if highlighted {
+        Style::default().bg(Color::Rgb(40, 40, 40))
+    } else {
+        Style::default()
+    };
+
     let status_color = if running { Color::Green } else { Color::DarkGray };
-    let _err_color = if errs > 0 { Color::Red } else { Color::DarkGray };
 
     let cols = Layout::default()
         .direction(Direction::Horizontal)
@@ -576,61 +654,54 @@ fn render_workload(frame: &mut ratatui::Frame, area: Rect, m: &WorkloadMetrics) 
         ])
         .split(area);
 
-    // Name + status
     let name = format!(
         " {} {}",
         if running { "▶" } else { "⏹" },
         m.name
     );
-    let name_style = Style::default().fg(status_color).add_modifier(Modifier::BOLD);
-    let name_p = Paragraph::new(Line::from(Span::styled(name, name_style)));
-    frame.render_widget(name_p, cols[0]);
+    let name_style = bg.fg(status_color).add_modifier(Modifier::BOLD);
+    frame.render_widget(Paragraph::new(Line::from(Span::styled(name, name_style))), cols[0]);
 
-    // Ops/s estimate
     let ops_text = format!("{}", ops);
-    let ops_p = Paragraph::new(Line::from(Span::styled(
-        ops_text,
-        Style::default().fg(Color::Yellow),
-    )));
-    frame.render_widget(ops_p, cols[1]);
-
-    // Latency + errors (uses remaining space)
-    let lat_us = lat_ns / 1000;
-    let detail = format!(
-        "  {:>6} ops  {:>5}µs  err:{}",
-        ops,
-        lat_us,
-        errs,
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(ops_text, bg.fg(Color::Yellow)))),
+        cols[1],
     );
-    let detail_style = if errs > 0 {
-        Style::default().fg(Color::Red)
-    } else {
-        Style::default().fg(Color::White)
-    };
-    let detail_p = Paragraph::new(Line::from(Span::styled(detail, detail_style)));
-    frame.render_widget(detail_p, cols[2]);
+
+    let lat_us = lat_ns / 1000;
+    let detail = format!("  {:>6} ops  {:>5}µs  err:{}", ops, lat_us, errs);
+    let detail_color = if errs > 0 { Color::Red } else { Color::White };
+    frame.render_widget(
+        Paragraph::new(Line::from(Span::styled(detail, bg.fg(detail_color)))),
+        cols[2],
+    );
 }
 
-fn render_log(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
+fn render_log(frame: &mut ratatui::Frame, area: Rect, state: &AppState, scroll: usize) {
+    let inner_h = area.height.saturating_sub(2) as usize;
     let block = Block::default()
-        .title(" Event Log ")
+        .title(format!(
+            " Event Log [{} entries, scroll {}] ",
+            state.log.lock().map(|l| l.len()).unwrap_or(0),
+            if scroll == 0 { "bottom" } else { format!("-{}", scroll).as_str() },
+        ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded);
 
-    let entries = if let Ok(l) = state.log.lock() {
-        let items: Vec<ListItem> = l.iter().rev().take(32).map(|e| {
-            ListItem::new(Line::from(Span::styled(
-                e.msg.clone(),
-                Style::default().fg(e.color),
-            )))
-        }).collect();
-        items
+    let entries: Vec<ListItem> = if let Ok(l) = state.log.lock() {
+        let visible = inner_h.max(1);
+        let total = l.len();
+        // scroll=0 means bottom (latest); positive means offset from bottom.
+        let start = if scroll >= total { 0 } else { total - scroll.min(total) };
+        let end = (start + visible).min(total);
+        l[start..end].iter().rev().map(|e| {
+            ListItem::new(Line::from(Span::styled(e.msg.clone(), Style::default().fg(e.color))))
+        }).collect()
     } else {
         vec![ListItem::new("")]
     };
 
-    let list = List::new(entries).block(block);
-    frame.render_widget(list, area);
+    frame.render_widget(List::new(entries).block(block), area);
 }
 
 fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
@@ -644,7 +715,7 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     };
 
     let text = format!(
-        "  [Q]uit  [P]ause  [R]eset  |  Total ops: {}  Errors: {}  Overall: {} ops/s  Frame: 16.7ms (60 FPS target)",
+        "  [Q]uit  [P]ause  [R]eset  |  Total ops: {}  Errors: {}  Overall: {} ops/s",
         total_ops, total_errs, overall_ops_s,
     );
     let style = if total_errs > 0 {
@@ -656,8 +727,7 @@ fn render_footer(frame: &mut ratatui::Frame, area: Rect, state: &AppState) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Double);
-    let p = Paragraph::new(Line::from(Span::styled(text, style))).block(block);
-    frame.render_widget(p, area);
+    frame.render_widget(Paragraph::new(Line::from(Span::styled(text, style))).block(block), area);
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────
@@ -666,6 +736,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     enable_raw_mode()?;
     stdout().execute(EnterAlternateScreen)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
+    terminal.clear()?;
 
     let state = Arc::new(AppState {
         metrics: [
@@ -703,94 +774,147 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let s = Arc::clone(&state);
             std::thread::Builder::new()
                 .name(name.to_string())
-                .spawn(move || {
-                    w.run(&s, i);
-                })
+                .spawn(move || w.run(&s, i))
                 .unwrap()
         })
         .collect();
 
-    // Dedicated input thread — blocks on event::read() so the draw loop
-    // never touches crossterm's event system and can never freeze.
-    // Dropped when the process exits; no clean shutdown needed since the
-    // terminal is restored before main returns.
+    // Dedicated input thread — never touches the draw path.
     let (tx, rx) = mpsc::channel::<Event>();
     std::thread::Builder::new()
         .name("tui-input".to_string())
         .spawn(move || {
-            loop {
-                match event::read() {
-                    Ok(ev) => { let _ = tx.send(ev); }
-                    Err(_) => break,
-                }
-            }
+            loop { match event::read() { Ok(ev) => { let _ = tx.send(ev); } Err(_) => break } }
         })
         .unwrap();
 
-    // Draw loop — never polls, never blocks on input.
-    let mut draw_count = 0u64;
+    // ── Draw loop ──────────────────────────────────────────────────────────
+    let mut ui = UiState {
+        focus: Focus::Workloads,
+        selected: None,
+        highlight: 0,
+        log_scroll: 0,
+    };
     let mut should_quit = false;
     while !should_quit {
-        // Drain all queued events (non-blocking).
+        // Drain queued events.
         while let Ok(ev) = rx.try_recv() {
             match ev {
                 Event::Key(key) if key.kind == KeyEventKind::Press => {
                     match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => should_quit = true,
+                        KeyCode::Char('q') => should_quit = ui.selected.is_none(),
+                        KeyCode::Esc => {
+                            if ui.selected.is_some() { ui.selected = None; }
+                            else { should_quit = true; }
+                        }
+                        KeyCode::Tab => {
+                            ui.focus = match ui.focus {
+                                Focus::Workloads => Focus::Log,
+                                Focus::Log => Focus::Workloads,
+                            };
+                        }
+                        KeyCode::Up => match ui.focus {
+                            Focus::Workloads => {
+                                if ui.selected.is_none() {
+                                    ui.highlight = ui.highlight.saturating_sub(1);
+                                }
+                            }
+                            Focus::Log => {
+                                let total = state.log.lock().map(|l| l.len()).unwrap_or(0);
+                                if ui.log_scroll < total { ui.log_scroll += 1; }
+                            }
+                        },
+                        KeyCode::Down => match ui.focus {
+                            Focus::Workloads => {
+                                if ui.selected.is_none() {
+                                    ui.highlight = (ui.highlight + 1).min(NUM_WORKLOADS - 1);
+                                }
+                            }
+                            Focus::Log => {
+                                ui.log_scroll = ui.log_scroll.saturating_sub(1);
+                            }
+                        },
+                        KeyCode::Enter => {
+                            if ui.focus == Focus::Workloads && ui.selected.is_none() {
+                                ui.selected = Some(ui.highlight);
+                            }
+                        }
+                        KeyCode::Char('d') => {
+                            if ui.focus == Focus::Workloads && ui.selected.is_none() {
+                                ui.selected = Some(ui.highlight);
+                            }
+                        }
+                        KeyCode::Home => {
+                            if ui.focus == Focus::Log {
+                                let total = state.log.lock().map(|l| l.len()).unwrap_or(0);
+                                ui.log_scroll = total;
+                            }
+                        }
+                        KeyCode::End => { ui.log_scroll = 0; }
+                        KeyCode::PageUp => {
+                            if ui.focus == Focus::Log {
+                                ui.log_scroll = ui.log_scroll.saturating_add(10);
+                            }
+                        }
+                        KeyCode::PageDown => {
+                            if ui.focus == Focus::Log {
+                                ui.log_scroll = ui.log_scroll.saturating_sub(10);
+                            }
+                        }
                         KeyCode::Char('p') => {
                             let p = state.paused.fetch_xor(true, Ordering::Relaxed);
-                            state.log(
-                                Color::Yellow,
-                                if p { "Resumed" } else { "Paused — workloads frozen" },
-                            );
+                            state.log(Color::Yellow, if p { "Resumed" } else { "Paused — workloads frozen" });
                         }
                         KeyCode::Char('r') => {
-                            for m in &state.metrics {
-                                m.ops.store(0, Ordering::Relaxed);
-                                m.errors.store(0, Ordering::Relaxed);
-                            }
+                            for m in &state.metrics { m.ops.store(0, Ordering::Relaxed); m.errors.store(0, Ordering::Relaxed); }
                             state.log(Color::Yellow, "Counters reset");
                         }
-                        _ => {}
+                        _ => {
+                            // 1-8 quick-jump to workload detail.
+                            if let KeyCode::Char(c) = key.code {
+                                if let Some(n) = c.to_digit(10) {
+                                    let idx = n as usize - 1;
+                                    if idx < NUM_WORKLOADS {
+                                        ui.selected = Some(idx);
+                                        ui.focus = Focus::Workloads;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
-                Event::Resize(..) => {
-                    let _ = terminal.clear();
-                }
+                Event::Resize(..) => { let _ = terminal.clear(); }
                 _ => {}
             }
         }
         if should_quit { break; }
 
-        terminal.draw(|f| render(f, &state))?;
+        terminal.draw(|f| render(f, &state, &ui))?;
 
-        draw_count += 1;
-        if draw_count % 10 == 0 {
-            let total_ops: u64 = state.metrics.iter().map(|m| m.ops.load(Ordering::Relaxed)).sum();
-            let total_errs: u64 = state.metrics.iter().map(|m| m.errors.load(Ordering::Relaxed)).sum();
-            let msg = format!(
-                "Status: {} total ops, {} errors, {}s elapsed",
-                total_ops,
-                total_errs,
-                state.start.elapsed().as_secs(),
-            );
-            state.log(Color::DarkGray, msg);
+        // Status log every ~3 seconds (every 90 draws at 30 FPS).
+        // Use a static counter to avoid Atomic overhead in the hot loop.
+        {
+            // Draw counter stored as a local — incremented each frame.
+            // We use a small AtomicU64 for the periodic log to keep it simple.
+            static DRAW_COUNTER: AtomicU64 = AtomicU64::new(0);
+            let c = DRAW_COUNTER.fetch_add(1, Ordering::Relaxed);
+            if c % 90 == 0 {
+                let total_ops: u64 = state.metrics.iter().map(|m| m.ops.load(Ordering::Relaxed)).sum();
+                let total_errs: u64 = state.metrics.iter().map(|m| m.errors.load(Ordering::Relaxed)).sum();
+                state.log(
+                    Color::DarkGray,
+                    format!("Status: {} total ops, {} errors, {}s elapsed",
+                        total_ops, total_errs, state.start.elapsed().as_secs()),
+                );
+            }
         }
 
-        // Cap draw rate to 30 FPS — enough for smooth visuals, gentle on
-        // the Windows ConPTY buffer.
         std::thread::sleep(Duration::from_millis(33));
     }
 
-    // Clean shutdown: signal all workers to stop.
-    for m in &state.metrics {
-        m.running.store(false, Ordering::Relaxed);
-    }
-    for h in handles {
-        h.join().ok();
-    }
-
-    state.log(Color::Green, "All workers stopped — shutting down");
+    // Clean shutdown.
+    for m in &state.metrics { m.running.store(false, Ordering::Relaxed); }
+    for h in handles { h.join().ok(); }
 
     disable_raw_mode()?;
     stdout().execute(LeaveAlternateScreen)?;
