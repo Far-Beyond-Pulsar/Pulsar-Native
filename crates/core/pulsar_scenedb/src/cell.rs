@@ -363,11 +363,35 @@ impl CellStorage {
         self.page.column_slice_mut::<T>(user_col + 1)
     }
 
+    /// Access the token→user-column index (telemetry).
+    pub(crate) fn token_index_slice(&self) -> &[(ComponentId, usize)] {
+        &self.token_index
+    }
+
+    /// Access the generic-column index (telemetry).
+    pub(crate) fn generic_token_index_slice(&self) -> &[(ComponentId, TypeId, usize)] {
+        &self.generic_token_index
+    }
+
+    /// Number of user columns (telemetry).
+    pub(crate) fn user_column_count(&self) -> usize {
+        self.user_column_count
+    }
+
+    /// Column capacity (telemetry).
+    pub(crate) fn capacity(&self) -> u32 {
+        self.page.layout().capacity()
+    }
+
+    /// Element size of a physical column (telemetry).
+    pub(crate) fn column_size_pub(&self, col: usize) -> usize {
+        self.column_size(col)
+    }
+
     pub fn live_count(&self) -> u32 {
         self.liveness.live_count()
     }
 
-    /// Physical rows currently occupied (live + not-yet-compacted dead).
     pub fn rows_in_use(&self) -> u32 {
         self.page.len()
     }

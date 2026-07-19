@@ -89,6 +89,9 @@ pub mod world;
 #[cfg(feature = "gpu")]
 pub mod gpu;
 
+#[cfg(feature = "telemetry")]
+pub mod telemetry;
+
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use cell::CellStorage;
@@ -116,3 +119,6 @@ pub use spatial::{
 pub use gpu::{GpuBufferDispatch, GpuColumnDesc, GpuColumnSet, MirrorMode};
 pub use token::{HasTypeToken, TypeToken};
 pub use world::World;
+
+#[cfg(feature = "telemetry")]
+pub use telemetry::{TelemetryServer, TelemetrySnapshot};

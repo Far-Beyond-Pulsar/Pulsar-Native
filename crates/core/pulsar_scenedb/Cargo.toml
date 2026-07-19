@@ -7,6 +7,7 @@ description = "SceneDB 2.0 — engine-wide spatial database (Layer 1 storage cor
 [features]
 default = []
 gpu = ["dep:wgpu"]
+telemetry = ["dep:socket2", "dep:serde", "gpu"]
 
 [dependencies]
 pulsar_core       = { workspace = true }
@@ -37,6 +38,8 @@ pulsar_core       = { workspace = true }
 # remains the workspace dep for legacy consumers until the M4 gate.
 pulsar_reflection = { workspace = true }
 serde_json        = { workspace = true }
+socket2           = { workspace = true, optional = true }
+serde             = { workspace = true, optional = true }
 ahash             = "0.8"
 profiling         = { workspace = true }
 tracing           = { workspace = true }

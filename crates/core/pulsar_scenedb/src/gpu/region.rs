@@ -72,6 +72,11 @@ impl RegionPool {
     pub fn free_count(&self) -> u32 {
         self.free.len() as u32
     }
+
+    /// Total number of regions this pool manages (allocated + free + pinned).
+    pub fn total_regions(&self) -> u32 {
+        self.count
+    }
 }
 
 #[cfg(test)]
