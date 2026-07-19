@@ -127,6 +127,17 @@ This avoids an engine-wide conversion of existing scene components, Helio camera
 - GPU data uses a few large suballocated buffers. Never allocate one wgpu buffer per terrain page.
 - Coarse pages use conservative filtering so thin solid features do not disappear or flip topology unpredictably.
 
+Successive complete demand plans use a bounded two-set handoff. The currently
+committed visible/prefetch set remains resident while its replacement is
+materialized. The handoff commits, and obsolete pages become evictable, only
+after every replacement page is CPU-ready. The union of both sets has its own
+explicit transition-page budget; a plan that cannot fit is rejected without
+mutating the committed set. A newer camera plan cancels uncommitted obsolete
+work, and page-generation retirement prevents a late result from republishing
+an evicted page. Dense CPU pages may then be dropped while their compacted
+content hash and hierarchy record remain authoritative; rehydration must
+reproduce that hash from the deterministic generator and ordered edit prefix.
+
 The planet seen from orbit is coarse voxel geometry from the same field, not a heightmap proxy. Atmosphere and oceans may be separate render systems, but they do not replace terrain geometry.
 
 ## Rendering decision

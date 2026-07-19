@@ -29,6 +29,7 @@ pub struct TerrainWorkCounters {
     pub cells_generated: u64,
     pub cells_replayed: u64,
     pub edit_candidates_replayed: u64,
+    pub pages_rehydrated: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -178,23 +179,26 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
                 if self.pages.contains_key(&key) {
                     return Ok(PageBuildPreparation::Current(*record));
                 }
-                return Err(TerrainCoreError::BasePageUnavailable(key));
             }
         }
 
+        let base_page = self.pages.get(&key).cloned();
+        // Dense pages are a disposable cache. If one was evicted, rebuild it
+        // from the deterministic source and full relevant edit prefix.
+        let replay_from_sequence = if base_page.is_some() {
+            previous_sequence
+        } else {
+            0
+        };
         let relevant = self
             .edit_index
-            .operations_for_page(&self.edits, key, previous_sequence);
-        let base_page = self.pages.get(&key).cloned();
-        if previous_sequence != 0 && base_page.is_none() {
-            return Err(TerrainCoreError::BasePageUnavailable(key));
-        }
+            .operations_for_page(&self.edits, key, replay_from_sequence);
         Ok(PageBuildPreparation::Build(PageBuildRequest {
             key,
             generator: self.generator.clone(),
             base_page_id: base_page.as_ref().map(VoxelPage::page_id),
             base_page,
-            previous_sequence,
+            previous_sequence: replay_from_sequence,
             target_sequence: latest_sequence,
             operations: relevant,
         }))
@@ -211,17 +215,40 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             });
         }
         if let Some(current) = self.compacted.get(&result.key).copied() {
-            if current.compacted_through_sequence == result.target_sequence
-                && self.pages.contains_key(&result.key)
-            {
-                return Ok(PageBuildCommitOutcome::Duplicate(current));
-            }
-            if current.compacted_through_sequence != result.previous_sequence
-                || self.pages.get(&result.key).map(VoxelPage::page_id) != result.base_page_id
-            {
-                return Ok(PageBuildCommitOutcome::Stale {
-                    newest_sequence: current.compacted_through_sequence.max(latest_sequence),
-                });
+            if !self.pages.contains_key(&result.key) && result.previous_sequence == 0 {
+                let rebuilt_page_id = result.page.page_id();
+                if current.compacted_through_sequence == result.target_sequence {
+                    if current.page_id != rebuilt_page_id {
+                        return Err(TerrainCoreError::RehydratedPageMismatch(result.key));
+                    }
+                    self.pages.insert(result.key, result.page);
+                    self.work.pages_rehydrated = self.work.pages_rehydrated.saturating_add(1);
+                    self.work.cells_generated = self
+                        .work
+                        .cells_generated
+                        .saturating_add(crate::CELL_COUNT as u64);
+                    self.work.edit_candidates_replayed = self
+                        .work
+                        .edit_candidates_replayed
+                        .saturating_add(result.replayed_operations as u64);
+                    return Ok(PageBuildCommitOutcome::Duplicate(current));
+                }
+                // This resident cache was evicted before newer edits arrived.
+                // The full replay below safely replaces the older compacted
+                // record because target_sequence was checked above.
+            } else {
+                if current.compacted_through_sequence == result.target_sequence
+                    && self.pages.contains_key(&result.key)
+                {
+                    return Ok(PageBuildCommitOutcome::Duplicate(current));
+                }
+                if current.compacted_through_sequence != result.previous_sequence
+                    || self.pages.get(&result.key).map(VoxelPage::page_id) != result.base_page_id
+                {
+                    return Ok(PageBuildCommitOutcome::Stale {
+                        newest_sequence: current.compacted_through_sequence.max(latest_sequence),
+                    });
+                }
             }
         } else if result.previous_sequence != 0 || result.base_page_id.is_some() {
             return Ok(PageBuildCommitOutcome::Stale {
@@ -295,6 +322,13 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
         self.pages.keys().copied()
     }
 
+    /// Drop one decompressed page while retaining its authoritative compacted
+    /// record and hierarchy entry. A later request rehydrates the exact bytes
+    /// from the deterministic generator and ordered edit prefix.
+    pub fn evict_resident_page(&mut self, key: PageKey) -> bool {
+        self.pages.remove(&key).is_some()
+    }
+
     /// Exact whole-root replacement. Resident pages remain disposable caches;
     /// the root state is immediately authoritative without iterating over them.
     pub fn set_root(&mut self, state: NodeState) -> Result<(), TerrainCoreError> {
@@ -355,10 +389,8 @@ pub enum TerrainCoreError {
     Edit(#[from] EditError),
     #[error(transparent)]
     Page(#[from] PageCodecError),
-    #[error(
-        "compacted page {0:?} is not resident; reload it from the content store before replay"
-    )]
-    BasePageUnavailable(PageKey),
+    #[error("rehydrated page {0:?} does not match its authoritative content hash")]
+    RehydratedPageMismatch(PageKey),
 }
 
 #[cfg(test)]
@@ -576,5 +608,69 @@ mod tests {
         );
         assert_eq!(core.work_counters().pages_compacted, 1);
         assert_eq!(core.memory_counters().compacted_page_records, 1);
+    }
+
+    #[test]
+    fn evicted_dense_page_rehydrates_to_the_authoritative_hash() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([6; 16]), 12, generator).unwrap();
+        let key = PageKey::new(0, [0; 3]);
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [7; 16],
+            shape: EditShape::Sphere {
+                center_cell: [8; 3],
+                radius_cells: 3,
+            },
+            mode: EditMode::Paint,
+            material: 12,
+        })
+        .unwrap();
+        let original = core.compact_page(key).unwrap();
+        let snapshot_before = core.snapshot();
+
+        assert!(core.evict_resident_page(key));
+        assert!(!core.evict_resident_page(key));
+        assert!(core.page(key).is_none());
+        assert_eq!(core.snapshot(), snapshot_before);
+
+        let rehydrated = core.compact_page(key).unwrap();
+        assert_eq!(rehydrated, original);
+        assert_eq!(core.page(key).unwrap().page_id(), original.page_id);
+        assert_eq!(core.work_counters().pages_rehydrated, 1);
+        assert_eq!(core.work_counters().pages_compacted, 1);
+    }
+
+    #[test]
+    fn evicted_page_full_replay_includes_edits_added_while_absent() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([7; 16]), 12, generator).unwrap();
+        let key = PageKey::new(0, [0; 3]);
+        core.compact_page(key).unwrap();
+        assert!(core.evict_resident_page(key));
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [8; 16],
+            shape: EditShape::Sphere {
+                center_cell: [8; 3],
+                radius_cells: 2,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        })
+        .unwrap();
+
+        let updated = core.compact_page(key).unwrap();
+        assert_eq!(updated.compacted_through_sequence, 1);
+        assert_eq!(core.work_counters().pages_compacted, 2);
+        assert_eq!(core.work_counters().edit_candidates_replayed, 1);
     }
 }

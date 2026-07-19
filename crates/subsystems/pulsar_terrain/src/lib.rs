@@ -11,6 +11,7 @@ mod edit;
 mod generator;
 mod hierarchy;
 mod page;
+mod residency;
 mod runtime;
 mod snapshot;
 mod store;
@@ -30,6 +31,10 @@ pub use hierarchy::{HierarchyError, SparseBrickTree};
 pub use page::{
     PageCodecError, VoxelPage, CELL_COUNT, MICROBRICKS_PER_AXIS, MICROBRICK_COUNT, MICROBRICK_EDGE,
     PAGE_EDGE,
+};
+pub use residency::{
+    TerrainResidencyConfig, TerrainResidencyCounters, TerrainResidencyError,
+    TerrainResidencyReport, TerrainResidencySession,
 };
 pub use runtime::{
     TerrainBackpressure, TerrainRequestClass, TerrainRequestOutcome, TerrainRuntimeConfig,
