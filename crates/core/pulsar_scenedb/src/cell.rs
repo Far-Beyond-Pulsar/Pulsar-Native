@@ -111,7 +111,7 @@ impl CellStorage {
     /// "register_token_column has no misuse guard against aliasing a
     /// positional column (safe at today's only call site;
     /// discipline-guarded)").
-    pub(crate) fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
+    pub fn register_token_column<T: crate::page::Pod + 'static>(&mut self, user_col: usize) {
         let id = TypeToken::of::<T>().id();
         debug_assert!(
             !self.token_index.iter().any(|(tid, _)| *tid == id),

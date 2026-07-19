@@ -92,7 +92,7 @@ pub mod gpu;
 pub use actor::{Actor, ActorRegistry};
 pub use archetype::{Archetype, ArchetypeId, ArchetypeKey};
 pub use cell::CellStorage;
-pub use cell_type::{CellType, CellTypeError, RegisteredCellType};
+pub use cell_type::{CellType, CellTypeError, RegisteredCellType, SceneColumnSet};
 pub use component::{component_id, Component, ComponentId};
 pub use component_store::{__bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, ComponentStore};
 pub use entity::Entity;
@@ -112,5 +112,7 @@ pub use spatial::{
     Aabb, Frustum, InstanceInfo, SpatialCell, INSTANCE_INFO_COLUMN, SPATIAL_COLUMNS,
     TRANSFORM_COLUMN,
 };
+#[cfg(feature = "gpu")]
+pub use gpu::{GpuBufferDispatch, GpuColumnDesc, GpuColumnSet, MirrorMode};
 pub use token::{HasTypeToken, TypeToken};
 pub use world::World;

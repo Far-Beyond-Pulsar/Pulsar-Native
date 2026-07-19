@@ -42,7 +42,10 @@ pub use harvest::{
 };
 pub use phase::{BoundaryPhase, CompactedPhase, FrameDriver, HarvestPhase, RetiredPhase, SimulateA, SimulateB, SimulateWitness};
 pub use region::{RegionPool, RegionError};
-pub use scene_store::{CellId, CellSlot, RegionClassConfig, SceneGpuConfig, SceneGpuStore};
+pub use scene_store::{
+    CellId, CellSlot, GpuColumnDesc, GpuColumnSet, MirrorMode, RegionClassConfig, SceneGpuConfig,
+    SceneGpuStore,
+};
 pub use tracker::SubmissionTracker;
 pub use view_upload::ViewTokenBuffers;
 // `InstanceInfo` is defined graphics-free in `crate::spatial` (CONTRACTS C0)
