@@ -64,32 +64,23 @@ fn pod_alignment_bypass_write_misaligned() {
 
 #[test]
 fn generic_column_swap_desyncs_init_bit_cause_ub_on_read() {
-    // Use u64 (Copy, no Drop glue) so the column can be cleaned up after
-    // the desync is demonstrated.  Miri catches the assume_init_ref() on
-    // uninit bytes even with a Copy type.
+    // After the §4.5 fix, GenericColumn::swap correctly swaps BOTH the
+    // MaybeUninit bytes AND the init bits.  This test now asserts the
+    // CORRECT behavior rather than the desync bug (which GAP-1 documented).
     let mut col = GenericColumn::<u64>::new(4);
     col.set(0, 42);
     col.set(1, 100);
-    col.free(1); // slot 1 uninit
+    col.free(1);
     assert!(col.get(0).is_some(), "slot 0 is init");
     assert!(col.get(1).is_none(), "slot 1 is uninit");
 
-    // swap(0, 1) — moves only MaybeUninit bytes, init bits unchanged.
+    // swap(0, 1) — moves both data AND init bits (post-fix).
     col.swap(0, 1);
 
-    // Now init_bits says slot 0 is init, slot 1 is uninit, but the DATA
-    // has been swapped.  Reading slot 0 via get() calls assume_init_ref()
-    // on the bytes that were NEVER initialized → UB (detected by Miri).
-    let val = col.get(0);
-    assert!(val.is_some(), "init_bit lies: slot 0 reads as init after swap");
-    // Slot 1 has the 42 value but is marked uninit → leaked unless cleaned up.
-    assert!(col.get(1).is_none(), "init_bit lies: slot 1 reads as uninit after swap");
-
-    // Clean up the column to avoid leaking slot 1's value.
-    col.set(0, 0);   // re-init slot 0 (overwrites uninit bytes)
-    col.free(0);     // clean
-    col.set(1, 42);  // re-init slot 1 (recovers the leaked value)
-    col.free(1);     // clean
+    // After the swap: slot 0 carries the uninit bytes from old slot 1;
+    // slot 1 carries the value 42 from old slot 0.  Init bits match.
+    assert!(col.get(0).is_none(), "slot 0 is uninit after swap with freed slot 1");
+    assert_eq!(*col.get(1).unwrap(), 42, "slot 1 carries value from old slot 0");
 }
 
 // ---------------------------------------------------------------------------
