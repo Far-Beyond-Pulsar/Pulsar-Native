@@ -304,6 +304,34 @@ impl SceneGpuStore {
         }
     }
 
+    /// Generic write path for any GPU-mirrored component type.
+    /// Writes data to the CPU columns via the trait's `write_gpu`, marks dirty
+    /// for GPU sync, and stamps the generation.
+    ///
+    /// Returns `false` for stale/invalid handles or pinned rows.
+    pub fn write_gpu<T: GpuColumnSet>(
+        &self,
+        id: CellId,
+        cell: &mut CellStorage,
+        handle: Handle,
+        data: &T,
+        phase: &impl SimulateWitness,
+    ) -> bool {
+        debug_assert_eq!(self.phase, Phase::Write, "mutation outside the write window");
+        let state = self.cells[id.0 as usize].as_ref().expect("cell unregistered");
+        let Some(row) = cell.row_of(handle) else {
+            return false;
+        };
+        if cell.is_row_pinned(row) {
+            return false;
+        }
+        // Delegate to the trait's write_gpu — writes CPU columns + marks dirty
+        T::write_gpu(self, id, cell, handle, data, phase);
+        // Stamp generation (shadow-gated, idempotent)
+        self.write_generation(state, handle.index(), handle.generation());
+        true
+    }
+
     /// Test instrument: how many generation-buffer writes this store has
     /// issued across every cell (asserting upload minimality, §4).
     ///
@@ -489,32 +517,21 @@ impl SceneGpuStore {
             let row_base = store.cells[id.0 as usize].as_ref().expect("cell unregistered").row_base;
             let slot_base = store.cells[id.0 as usize].as_ref().expect("cell unregistered").slot_base;
 
-            let transform_id = component_id::<[f32; 16]>();
-            let info_id = component_id::<InstanceInfo>();
-
-            // Bulk-write transforms
-            if let Some(buf) = store.gpu_buffers.get(&transform_id) {
-                let col = cell
-                    .column_for::<[f32; 16]>()
-                    .expect("cell has no [f32; 16] transform column");
-                let typed_buf = buf.as_any().downcast_ref::<SceneBuffer<[f32; 16]>>().unwrap();
-                typed_buf.write_rows(&store.queue, &col[..rows as usize], row_base);
-            }
-
-            // Bulk-write instance infos (optional column)
-            if let Some(col_info) = cell.column_for::<InstanceInfo>() {
-                if let Some(buf) = store.gpu_buffers.get(&info_id) {
-                    let typed_buf = buf.as_any().downcast_ref::<SceneBuffer<InstanceInfo>>().unwrap();
-                    typed_buf.write_rows(&store.queue, &col_info[..rows as usize], row_base);
+            // Bulk-write every registered GPU buffer via the generic
+            // type-erased path.  Replaces the old hardcoded downcasts to
+            // `SceneBuffer<[f32; 16]>` / `SceneBuffer<InstanceInfo>`.
+            for (id, buffer) in &store.gpu_buffers {
+                if let Some(col_bytes) = cell.column_raw_bytes(*id) {
+                    let row_bytes = buffer.element_size() * rows as usize;
+                    if row_bytes > 0 && col_bytes.len() >= row_bytes {
+                        buffer.write_rows_raw(&store.queue, &col_bytes[..row_bytes], row_base);
+                    }
                 }
             }
 
             // Clear warm-up marks that were just satisfied by the bulk writes.
             let state = store.cells[id.0 as usize].as_mut().expect("cell unregistered");
-            if let Some(mask) = state.dirty_columns.get_mut(&transform_id) {
-                mask.clear_all();
-            }
-            if let Some(mask) = state.dirty_columns.get_mut(&info_id) {
+            for mask in state.dirty_columns.values_mut() {
                 mask.clear_all();
             }
 
@@ -585,6 +602,10 @@ impl SceneGpuStore {
     /// writes the core column AND sets the row's dirty bit in one operation.
     /// False for stale/invalid handles.
     ///
+    /// This is the hardcoded equivalent of [`Self::write_gpu`] — `[f32; 16]`
+    /// is a bare type, not a derive'd struct, but uses the same generic
+    /// `dirty_columns` machinery internally.
+    ///
     /// Also stamps the handle's generation into the slot-indexed generation
     /// buffer (adaptation to §5/§7): the design's "written by retirement"
     /// trigger only ever bumps a slot's entry on retire, so a slot's *first*
@@ -633,6 +654,10 @@ impl SceneGpuStore {
     /// `InstanceInfo` column (e.g. built via `SpatialCell::with_transform`);
     /// panics otherwise, mirroring `write_transform`'s own unconditional
     /// `.expect()` on its column.
+    ///
+    /// This is the hardcoded equivalent of [`Self::write_gpu`] — `InstanceInfo`
+    /// is a bare type, not a derive'd struct, but uses the same generic
+    /// `dirty_columns` machinery internally.
     ///
     /// Body is IDENTICAL to `write_transform`'s minus the generation stamp:
     /// **the generation stamp stays transform-only, by design — one
@@ -900,8 +925,9 @@ impl SceneGpuStore {
         self.slot_mirror.buffer()
     }
 
-    /// Return the registered GpuColumnDesc entries for all cells of a given type.
-    /// Currently returns empty — the derive macro will wire this up in Phase 4.
+    /// Return the registered GpuColumnDesc entries for the given cell.
+    /// Stub for future use — the derive macro will wire this up for editor
+    /// property inspection and debug tooling. Currently returns empty.
     pub fn gpu_column_descs_for(&self, _cell_id: CellId) -> Vec<GpuColumnDesc> {
         Vec::new()
     }

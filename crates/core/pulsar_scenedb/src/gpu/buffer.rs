@@ -28,6 +28,9 @@ pub trait GpuBufferDispatch: Send + Sync {
     fn buffer(&self) -> &wgpu::Buffer;
     fn capacity(&self) -> u32;
     fn as_any(&self) -> &dyn Any;
+
+    /// Unconditional bulk write from raw bytes (reinterpreted as `&[T]`).
+    fn write_rows_raw(&self, queue: &wgpu::Queue, data: &[u8], row_base: u32);
 }
 
 /// One persistent **row-indexed** scene SSBO (M2a §3/§4; M2b-α §2: dirty
@@ -166,5 +169,13 @@ impl<T: Pod + Send + Sync + 'static> GpuBufferDispatch for SceneBuffer<T> {
 
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn write_rows_raw(&self, queue: &wgpu::Queue, data: &[u8], row_base: u32) {
+        assert_eq!(data.len() % std::mem::size_of::<T>(), 0);
+        let typed: &[T] = unsafe {
+            std::slice::from_raw_parts(data.as_ptr() as *const T, data.len() / std::mem::size_of::<T>())
+        };
+        self.write_rows(queue, typed, row_base);
     }
 }
