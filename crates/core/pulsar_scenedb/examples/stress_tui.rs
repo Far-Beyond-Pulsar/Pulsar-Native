@@ -21,7 +21,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Borders, List, ListItem, Paragraph,
+    Block, BorderType, Borders, Clear, List, ListItem, Paragraph,
 };
 use ratatui::Terminal;
 use std::io::stdout;
@@ -453,6 +453,7 @@ impl Workload for MixedFrame {
 // ── TUI Rendering ─────────────────────────────────────────────────────────
 
 fn render(frame: &mut ratatui::Frame, state: &AppState) {
+    frame.render_widget(Clear, frame.area());
     let area = frame.area();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
