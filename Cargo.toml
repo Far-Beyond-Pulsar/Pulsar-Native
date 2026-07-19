@@ -73,6 +73,7 @@ pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_ecs                         = { path = "crates/core/pulsar_ecs" }
 pulsar_scenedb                     = { path = "crates/core/pulsar_scenedb" }
+pulsar_scenedb_derive              = { path = "crates/core/pulsar_scenedb_derive" }
 pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }

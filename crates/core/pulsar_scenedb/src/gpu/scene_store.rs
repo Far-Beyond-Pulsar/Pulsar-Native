@@ -287,6 +287,23 @@ impl SceneGpuStore {
         self.gpu_buffers.insert(id, Box::new(buffer));
     }
 
+    /// Mark a column's row as dirty for the next GPU sync.
+    /// Called by the derive macro's generated `write_gpu()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `id` has not been registered.  Silently ignores unknown
+    /// component ids (the column was registered via `register_gpu_buffer`,
+    /// and every `#[gpu]` field's type gets one).
+    pub fn mark_column_dirty(&self, id: CellId, component_id: ComponentId, row: u32) {
+        let state = self.cells[id.0 as usize]
+            .as_ref()
+            .expect("cell unregistered");
+        if let Some(mask) = state.dirty_columns.get(&component_id) {
+            mask.mark(row);
+        }
+    }
+
     /// Test instrument: how many generation-buffer writes this store has
     /// issued across every cell (asserting upload minimality, §4).
     ///
