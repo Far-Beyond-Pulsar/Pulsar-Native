@@ -679,11 +679,12 @@ fn render_workload(frame: &mut ratatui::Frame, area: Rect, m: &WorkloadMetrics, 
 
 fn render_log(frame: &mut ratatui::Frame, area: Rect, state: &AppState, scroll: usize) {
     let inner_h = area.height.saturating_sub(2) as usize;
+    let scroll_desc = if scroll == 0 { "bottom".to_string() } else { format!("-{}", scroll) };
     let block = Block::default()
         .title(format!(
             " Event Log [{} entries, scroll {}] ",
             state.log.lock().map(|l| l.len()).unwrap_or(0),
-            if scroll == 0 { "bottom" } else { format!("-{}", scroll).as_str() },
+            scroll_desc,
         ))
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded);
