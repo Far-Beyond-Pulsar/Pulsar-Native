@@ -1,5 +1,5 @@
 use quote::quote;
-use syn::{DataStruct, Fields, Ident, ImplGenerics, TypeGenerics, WhereClause, parse_quote};
+use syn::{DataStruct, Fields, Ident, ImplGenerics, TypeGenerics, WhereClause};
 
 use crate::field_info;
 

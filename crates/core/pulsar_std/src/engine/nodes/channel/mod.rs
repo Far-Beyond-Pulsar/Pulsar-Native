@@ -9,7 +9,7 @@
 //!
 //! All operations use Rust's standard library MPSC (Multi-Producer, Single-Consumer) channels from `std::sync::mpsc`.
 
-use crate::blueprint;
+use crate::{blueprint, output};
 use std::sync::mpsc::{Receiver, Sender};
 
 // =============================================================================
@@ -29,6 +29,8 @@ use std::sync::mpsc::{Receiver, Sender};
 /// The channel is unbounded and will buffer messages until they are received.
 /// # Channel New
 /// Creates a new message-passing channel for thread communication.
+#[output(name = "sender")]
+#[output(name = "receiver")]
 #[blueprint(type: NodeTypes::pure, category: "Channel", color: "#3498DB")]
 pub fn channel_new() -> (Sender<String>, Receiver<String>) {
     std::sync::mpsc::channel()

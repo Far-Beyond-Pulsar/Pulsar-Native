@@ -23,6 +23,7 @@ edition = "2024"
 # current consumer. Anyone needing Movability reflection in the future opts
 # in with `features = ["prims-helio"]` on that specific edge.
 default = ["prims-core", "prims-std", "prims-glam"]
+ui = ["prims-gpui"]
 prims-core = []
 prims-std = ["prims-core"]
 prims-serde = ["prims-std"]

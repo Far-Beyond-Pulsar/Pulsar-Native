@@ -32,7 +32,10 @@ impl Default for GpuInfo {
 pub fn detect_primary_gpu() -> GpuInfo {
     let instance = Instance::new(InstanceDescriptor {
         backends: Backends::all(),
-        ..Default::default()
+        flags: wgpu::InstanceFlags::default(),
+        backend_options: wgpu::BackendOptions::default(),
+        memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
+        display: None,
     });
 
     let adapters = block_on(instance.enumerate_adapters(Backends::all()));

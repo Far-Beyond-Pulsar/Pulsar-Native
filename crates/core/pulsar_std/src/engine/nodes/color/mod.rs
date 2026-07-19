@@ -12,7 +12,7 @@
 //! Colors are represented as RGBA tuples: `(f32, f32, f32, f32)` for (red, green, blue, alpha)
 //! Each component typically ranges from 0.0 to 1.0.
 
-use crate::blueprint;
+use crate::{blueprint, output};
 
 // =============================================================================
 // Color Construction
@@ -38,6 +38,10 @@ use crate::blueprint;
 /// Use this node to construct colors for rendering, UI, or data visualization.
 /// # Color New
 /// Creates a new color from RGBA components.
+#[output(name = "r")]
+#[output(name = "g")]
+#[output(name = "b")]
+#[output(name = "a")]
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn color_new(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
     (r, g, b, a)
@@ -64,6 +68,10 @@ pub fn color_new(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
 /// Use this node to construct colors for rendering, UI, or data visualization.
 /// # Make Color
 /// Creates a color from R, G, B, A components.
+#[output(name = "r")]
+#[output(name = "g")]
+#[output(name = "b")]
+#[output(name = "a")]
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn make_color(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
     (r, g, b, a)
@@ -90,6 +98,10 @@ pub fn make_color(r: f32, g: f32, b: f32, a: f32) -> (f32, f32, f32, f32) {
 /// Useful for extracting color channels for further processing or analysis.
 /// # Break Color
 /// Breaks a color into R, G, B, A components.
+#[output(name = "r")]
+#[output(name = "g")]
+#[output(name = "b")]
+#[output(name = "a")]
 #[blueprint(type: NodeTypes::pure, category: "Color", color: "#FF6B9D")]
 pub fn break_color(color: (f32, f32, f32, f32)) -> (f32, f32, f32, f32) {
     let (r, g, b, a) = color;

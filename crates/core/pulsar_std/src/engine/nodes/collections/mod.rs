@@ -8,7 +8,7 @@
 //!
 //! All operations work with Rust's standard library collection types.
 
-use crate::blueprint;
+use crate::{blueprint, output};
 use std::collections::{HashMap, HashSet};
 
 // =============================================================================
@@ -100,6 +100,8 @@ pub fn hashmap_get(map: HashMap<String, String>, key: String) -> Option<String> 
 /// The original HashMap is consumed and a new one is returned with the entry removed if present.
 /// # HashMap Remove
 /// Removes a key-value pair from a HashMap.
+#[output(name = "map")]
+#[output(name = "removed")]
 #[blueprint(type: NodeTypes::pure, category: "Collections", color: "#9B59B6")]
 pub fn hashmap_remove(
     map: HashMap<String, String>,
