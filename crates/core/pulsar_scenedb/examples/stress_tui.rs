@@ -22,6 +22,7 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use pulsar_scenedb::*;
+use pulsar_scenedb_derive::SceneStore;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
@@ -51,7 +52,7 @@ struct UiState {
 
 // ── Metrics ────────────────────────────────────────────────────────────────
 
-const NUM_WORKLOADS: usize = 8;
+const NUM_WORKLOADS: usize = 9;
 
 struct WorkloadMetrics {
     name: &'static str,
@@ -113,6 +114,24 @@ impl AppState {
             }
         }
     }
+}
+
+// ── GPU Test Component (exercises #[derive(SceneStore)] + #[gpu] fields) ────
+
+/// SceneStore component with mixed GPU/CPU fields.
+///
+/// When `gpu` feature is on the `#[cfg_attr]` expands to `#[gpu]`, and the
+/// derive macro generates a `GpuColumnSet` impl (descriptors + write path).
+/// When `gpu` is off the attributes vanish and `SceneColumnSet` is tested alone.
+#[derive(Copy, Clone, SceneStore)]
+struct GpuTestComponent {
+    #[cfg_attr(feature = "gpu", gpu)]
+    x: f32,
+    #[cfg_attr(feature = "gpu", gpu)]
+    y: f64,
+    health: u16,
+    #[cfg_attr(feature = "gpu", gpu(mirror = Once))]
+    color: u32,
 }
 
 // ── Workload trait ─────────────────────────────────────────────────────────
@@ -508,6 +527,86 @@ impl Workload for MixedFrame {
     }
 }
 
+// ── Workload 9: GPU Component Stress ───────────────────────────────────────
+//
+// Hammers the #[derive(SceneStore)] macro output — column creation, Pod
+// round-trip, and (when `gpu` feature is on) GpuColumnSet::gpu_columns()
+// descriptor verification.  This is a key failure point: the init-bit desync
+// in swap, the stride-budget check, and the GpuColumnSet path all live here.
+
+struct GpuComponentStress;
+impl Workload for GpuComponentStress {
+    fn run(&self, state: &AppState, idx: usize) {
+        let m = &state.metrics[idx];
+        state.log(Color::Cyan, "GPU component stress started — SceneStore derive + #[gpu] fields");
+        let mut cell = GpuTestComponent::create_cell(256).unwrap();
+        let mut handles = Vec::with_capacity(256);
+        while m.running.load(Ordering::Relaxed) {
+            while state.paused.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let t0 = Instant::now();
+
+            #[cfg(feature = "gpu")]
+            {
+                let descs = GpuTestComponent::gpu_columns();
+                assert_eq!(descs.len(), 3);
+                assert_eq!(descs[0].buffer_name, "x");
+                assert_eq!(descs[0].mode, MirrorMode::DirtyTracked);
+                assert_eq!(descs[1].buffer_name, "y");
+                assert_eq!(descs[1].mode, MirrorMode::DirtyTracked);
+                assert_eq!(descs[2].buffer_name, "color");
+                assert_eq!(descs[2].mode, MirrorMode::Once);
+            }
+
+            // Allocate batch.
+            let start = handles.len();
+            for _ in 0..32 {
+                if let Some(h) = cell.alloc() {
+                    let row = cell.row_of(h).unwrap() as usize;
+                    let x = m.ops.load(Ordering::Relaxed) as f32;
+                    let y = (m.ops.load(Ordering::Relaxed) as f64) * 0.5;
+                    // Write via Pod column access — tests the SceneColumnSet layout.
+                    if let Some(col) = cell.column_for_mut::<f32>() {
+                        col[row] = x;
+                    }
+                    if let Some(col) = cell.column_for_mut::<f64>() {
+                        col[row] = y;
+                    }
+                    if let Some(col) = cell.column_for_mut::<u16>() {
+                        col[row] = 42;
+                    }
+                    if let Some(col) = cell.column_for_mut::<u32>() {
+                        col[row] = 0xFF00_00FF;
+                    }
+                    handles.push(h);
+                } else {
+                    break;
+                }
+            }
+
+            // Read-back verification.
+            for &h in &handles[start..] {
+                let row = cell.row_of(h).unwrap() as usize;
+                if let Some(col) = cell.column_for::<f32>() {
+                    let _ = col[row];
+                }
+            }
+
+            // Free a portion and compact under pressure.
+            let to_free = handles.len().min(16);
+            for h in handles.drain(..to_free) {
+                cell.free(h);
+            }
+            if handles.len() < 64 && handles.capacity() > 128 {
+                cell.compact();
+            }
+
+            m.tick(t0.elapsed());
+        }
+    }
+}
+
 // ── TUI Rendering ─────────────────────────────────────────────────────────
 
 fn render(frame: &mut ratatui::Frame, state: &AppState, ui: &UiState) {
@@ -760,13 +859,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             WorkloadMetrics::new("GenericColStress", "GenericColumn swap desync"),
             WorkloadMetrics::new("ConcurrentRW", "Multi-threaded LivenessMask"),
             WorkloadMetrics::new("MixedFrame", "Full game-loop sim"),
+            WorkloadMetrics::new("GpuComponentStress", "SceneStore #[gpu] fields + column ops"),
         ],
         log: Mutex::new(Vec::with_capacity(64)),
         paused: AtomicBool::new(false),
         start: Instant::now(),
     });
 
-    state.log(Color::Green, "SceneDB stress test initialized — 8 workers ready");
+    state.log(Color::Green, "SceneDB stress test initialized — 9 workers ready");
 
     let workers: Vec<(Box<dyn Workload>, &str)> = vec![
         (Box::new(EntityStorm), "EntityStorm"),
@@ -777,6 +877,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (Box::new(GenericColumnStress), "GenericColStress"),
         (Box::new(ConcurrentRW), "ConcurrentRW"),
         (Box::new(MixedFrame), "MixedFrame"),
+        (Box::new(GpuComponentStress), "GpuComponentStress"),
     ];
 
     let handles: Vec<_> = workers

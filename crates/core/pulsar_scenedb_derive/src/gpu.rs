@@ -13,17 +13,17 @@ pub fn generate_gpu_column_set(
 ) -> TokenStream {
     if gpu_fields.is_empty() {
         return quote! {
-            impl #impl_generics ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name #ty_generics #where_clause {
-                fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
+            impl #impl_generics ::pulsar_scenedb::GpuColumnSet for #name #ty_generics #where_clause {
+                fn gpu_columns() -> Vec<::pulsar_scenedb::GpuColumnDesc> {
                     Vec::new()
                 }
                 fn write_gpu(
-                    _store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
-                    _id: ::pulsar_scenedb::gpu::scene_store::CellId,
+                    _store: &::pulsar_scenedb::gpu::SceneGpuStore,
+                    _id: ::pulsar_scenedb::gpu::CellId,
                     _cell: &mut ::pulsar_scenedb::cell::CellStorage,
                     _handle: ::pulsar_scenedb::handle::Handle,
                     _data: &Self,
-                    _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
+                    _phase: &impl ::pulsar_scenedb::gpu::SimulateWitness,
                 ) {
                 }
             }
@@ -38,14 +38,14 @@ pub fn generate_gpu_column_set(
             let field_type = &f.ty;
             let mirror_mode = match f.mirror_mode {
                 MirrorModeAttr::DirtyTracked => {
-                    quote! { ::pulsar_scenedb::gpu::scene_store::MirrorMode::DirtyTracked }
+                    quote! { ::pulsar_scenedb::MirrorMode::DirtyTracked }
                 }
                 MirrorModeAttr::Once => {
-                    quote! { ::pulsar_scenedb::gpu::scene_store::MirrorMode::Once }
+                    quote! { ::pulsar_scenedb::MirrorMode::Once }
                 }
             };
             quote! {
-                ::pulsar_scenedb::gpu::scene_store::GpuColumnDesc {
+                ::pulsar_scenedb::GpuColumnDesc {
                     field_token: ::pulsar_scenedb::token::TypeToken::of::<#field_type>(),
                     field_offset: ::std::mem::offset_of!(#name, #field_ident),
                     mode: #mirror_mode,
@@ -77,19 +77,19 @@ pub fn generate_gpu_column_set(
         .collect();
 
     quote! {
-        impl #impl_generics ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name #ty_generics #where_clause {
-            fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
+        impl #impl_generics ::pulsar_scenedb::GpuColumnSet for #name #ty_generics #where_clause {
+            fn gpu_columns() -> Vec<::pulsar_scenedb::GpuColumnDesc> {
                 vec![
                     #(#column_descs),*
                 ]
             }
             fn write_gpu(
-                store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
-                id: ::pulsar_scenedb::gpu::scene_store::CellId,
+                store: &::pulsar_scenedb::gpu::SceneGpuStore,
+                id: ::pulsar_scenedb::gpu::CellId,
                 cell: &mut ::pulsar_scenedb::cell::CellStorage,
                 handle: ::pulsar_scenedb::handle::Handle,
                 data: &Self,
-                _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
+                _phase: &impl ::pulsar_scenedb::gpu::SimulateWitness,
             ) {
                 let descs = Self::gpu_columns();
                 for desc in &descs {

@@ -9257,6 +9257,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_core",
  "pulsar_reflection",
+ "pulsar_scenedb_derive",
  "rand 0.8.7",
  "ratatui",
  "serde",

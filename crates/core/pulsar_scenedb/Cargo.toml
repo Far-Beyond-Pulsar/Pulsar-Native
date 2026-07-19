@@ -58,6 +58,7 @@ naga = { version = "30", features = ["wgsl-in"] }
 # stress_tui example deps
 ratatui = "0.29"
 crossterm = "0.28"
+pulsar_scenedb_derive = { path = "../pulsar_scenedb_derive" }
 
 [[example]]
 name = "stress_tui"
