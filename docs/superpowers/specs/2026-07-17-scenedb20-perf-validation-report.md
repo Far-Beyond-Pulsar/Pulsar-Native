@@ -473,8 +473,17 @@ change from today.
 2. **The one workload the required sweep DOES help (stride-10 dense
    scatter, 13.6–14.3× CPU win at G≥16) is not the R-PERF-1 case at all**,
    and its cost is not "slight" either: bytes rise 9.9×, i.e. the upload
-   becomes a near-total-region reupload (634,240 of 655,360 B) — the same
-   order of degradation as the M=100% legacy-crossover row. Accepting a
+   becomes a near-total-region reupload (634,240 of 655,360 B — 96.8% of a
+   full region). **Correction (M3-β T3 review):** an earlier draft implied
+   this made the merge as CPU-costly as a whole-region upload. It does not,
+   and the reject does not rest on that. On the numbers available the dense
+   G=16 merge (68.2 µs) is *faster* than both the legacy full-resync
+   (108.55 µs) and SceneDB's own native full-region path at M=100%
+   (142.17 µs) at near-identical bytes — so "a density-triggered whole-region
+   upload dominates gap-merging" is FALSE as stated. Both comparison figures
+   also predate commit `06201a74` (dense per-column dirty table), so they are
+   cross-session and not apples-to-apples; treat the CPU comparison as
+   unresolved rather than settled. Accepting a
    nonzero G "scoped to dense-scatter only" is not actually achievable with
    one crate-wide compile-time constant: every `SceneBuffer<T>::sync_region`
    call in the process shares it, so shipping it nonzero silently imposes
