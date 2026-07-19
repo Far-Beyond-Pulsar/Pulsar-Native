@@ -3,51 +3,31 @@ name = "engine_fs"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["editor", "remote", "p2p"]
-editor = [
-    "dep:ui_types_common",
-    "dep:pulsar_reflection",
-    "dep:uuid",
-    "dep:dashmap",
-    "dep:plugin_manager",
-    "dep:plugin_editor_api",
-    "dep:notify",
-    "dep:walkdir",
-    "dep:profiling",
-    "dep:image",
-    "dep:helio-snapshot",
-    "dep:tool_registry",
-    "dep:tool_registry_macros",
-]
-remote = ["dep:urlencoding", "dep:ureq", "dep:base64"]
-p2p = ["dep:pulsar-multiplayer-core", "dep:futures"]
-
 [dependencies]
-ui_types_common = { workspace = true, optional = true }
-pulsar_reflection = { workspace = true, optional = true }
-uuid = { workspace = true, optional = true }
-dashmap = { workspace = true, optional = true }
-plugin_manager = { workspace = true, optional = true }
-plugin_editor_api = { workspace = true, optional = true }
+ui_types_common = { workspace = true }
+pulsar_reflection = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+plugin_manager = { workspace = true }
+plugin_editor_api = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-notify = { workspace = true, optional = true }
-walkdir = { workspace = true, optional = true }
-profiling = { workspace = true, optional = true }
-image = { workspace = true, optional = true }
-helio-snapshot = { workspace = true, optional = true }
+notify = { workspace = true }
+walkdir = { workspace = true }
+profiling = { workspace = true }
+image = { workspace = true }
+helio-snapshot = { workspace = true }
 parking_lot = { workspace = true }
-urlencoding = { workspace = true, optional = true }
-ureq = { version = "3.0", features = ["json"], optional = true }
-base64 = { workspace = true, optional = true }
-tool_registry = { workspace = true, optional = true }
-tool_registry_macros = { workspace = true, optional = true }
+urlencoding = { workspace = true }
+ureq = { version = "3.0", features = ["json"] }
+base64 = { workspace = true }
+tool_registry = { workspace = true }
+tool_registry_macros = { workspace = true }
 tokio = { workspace = true, features = ["sync"] }
-futures = { workspace = true, optional = true }
-pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core", optional = true }
+futures = { workspace = true }
+pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

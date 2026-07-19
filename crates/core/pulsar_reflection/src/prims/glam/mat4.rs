@@ -33,5 +33,4 @@ fn deserialize_mat4_json(value: serde_json::Value) -> crate::ReflectResult<glam:
     serialize_json_with = serialize_mat4_json,
     deserialize_json_with = deserialize_mat4_json
 )]
-#[allow(dead_code)]
 type RegisteredMat4 = glam::Mat4;

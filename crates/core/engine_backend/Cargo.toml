@@ -27,7 +27,7 @@ thiserror = { workspace = true }
 dashmap = { workspace = true }
 
 # Reflection system
-pulsar_reflection = { workspace = true, features = ["ui", "prims-glam", "prims-helio"] }
+pulsar_reflection.workspace = true
 pulsar_events.workspace = true
 engine_state.workspace = true
 
@@ -50,7 +50,6 @@ flume = { workspace = true }
 # Helio rendering (wgpu-based)
 helio.workspace = true
 helio-asset-compat = { workspace = true }
-pulsar_helio.workspace = true
 glam.workspace = true
 bytemuck = "1.14"
 

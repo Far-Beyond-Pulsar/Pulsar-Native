@@ -311,8 +311,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 tex_occlusion: GpuMaterial::NO_TEXTURE,
                 workflow: 0,
                 flags: 0,
-                material_class: 0,
-                class_params: [0.0; 4],
+                _pad: 0,
             };
             let matid = renderer.scene_mut().insert_material(mat);
             // Store in cache

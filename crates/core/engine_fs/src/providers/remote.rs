@@ -194,15 +194,7 @@ impl FsProvider for RemoteFsProvider {
             .body_mut()
             .read_json()
             .context("RemoteFs read: JSON parse error")?;
-        let bytes = decode_b64(&body.content)?;
-        if bytes.len() as u64 != body.size {
-            bail!(
-                "RemoteFs read returned {} decoded bytes but declared {}",
-                bytes.len(),
-                body.size
-            );
-        }
-        Ok(bytes)
+        decode_b64(&body.content)
     }
 
     fn write_file(&self, path: &Path, content: &[u8]) -> Result<()> {

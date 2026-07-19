@@ -2,7 +2,7 @@ use engine_class_derive::engine_class;
 use serde_json::Value;
 use std::collections::HashMap;
 
-use super::MeshingAlgorithm;
+use super::super::MeshingAlgorithm;
 
 #[engine_class(no_register, clone, debug, serialize, deserialize)]
 #[category("Rendering", category_color = "#22D3EE", default_collapsed = true)]
@@ -69,12 +69,24 @@ impl RenderingTerrainProps {
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
-        out.insert("meshing_algorithm".to_string(), Value::from(self.meshing_algorithm as u64));
+        out.insert(
+            "meshing_algorithm".to_string(),
+            Value::from(self.meshing_algorithm as u64),
+        );
         out.insert("enable_lod".to_string(), Value::from(self.enable_lod));
         out.insert("lod_levels".to_string(), Value::from(self.lod_levels));
-        out.insert("enable_collision".to_string(), Value::from(self.enable_collision));
+        out.insert(
+            "enable_collision".to_string(),
+            Value::from(self.enable_collision),
+        );
         out.insert("cast_shadows".to_string(), Value::from(self.cast_shadows));
-        out.insert("receive_shadows".to_string(), Value::from(self.receive_shadows));
-        out.insert("wireframe_overlay".to_string(), Value::from(self.wireframe_overlay));
+        out.insert(
+            "receive_shadows".to_string(),
+            Value::from(self.receive_shadows),
+        );
+        out.insert(
+            "wireframe_overlay".to_string(),
+            Value::from(self.wireframe_overlay),
+        );
     }
 }

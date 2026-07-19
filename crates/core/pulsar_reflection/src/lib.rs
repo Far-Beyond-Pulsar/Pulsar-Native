@@ -29,7 +29,6 @@ pub mod dynamic_types;
 pub mod json_codec;
 pub mod runtime_registry;
 pub mod runtime_types;
-#[cfg(feature = "ui")]
 pub mod type_renderer;
 pub mod type_traits;
 
@@ -40,7 +39,6 @@ use serde_json::Value;
 use std::any::{Any, TypeId};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-#[cfg(feature = "ui")]
 use std::sync::Arc;
 
 // Re-export for convenience
@@ -64,7 +62,6 @@ pub use dynamic_types::{
 };
 
 // Re-export type renderer system
-#[cfg(feature = "ui")]
 pub use type_renderer::{
     RenderResult, TYPE_RENDERER_REGISTRY, TypeRenderer, TypeRendererRegistration,
     TypeRendererRegistry, register_type_renderer,
@@ -78,7 +75,6 @@ pub use pulsar_reflection_derive::{Reflectable, pulsar_type};
 /// Widget state is carried as a type-erased map so the reflection crate has
 /// zero knowledge of what widget types exist.  Each render function retrieves
 /// its own stateful entity by concrete type via [`get_widget`].
-#[cfg(feature = "ui")]
 pub struct PropertyEditorArgs<'a> {
     pub id_prefix: &'a str,
     pub class_name: &'a str,
@@ -93,7 +89,6 @@ pub struct PropertyEditorArgs<'a> {
     pub on_enum_select: Arc<dyn Fn(usize, &mut gpui::Window, &mut gpui::App) + Send + Sync>,
 }
 
-#[cfg(feature = "ui")]
 impl<'a> PropertyEditorArgs<'a> {
     pub fn get_widget<T: std::any::Any + Clone>(&self) -> Option<T> {
         self.widgets
@@ -124,7 +119,6 @@ impl<'a> PropertyEditorArgs<'a> {
 /// Only submit function pointers whose actual Rust type matches the above
 /// signature.  The transmute in `ui_common` is safe by construction as long as
 /// this invariant is upheld.
-#[cfg(feature = "ui")]
 pub struct UiPropertyEditorHint {
     /// [`TypeId`](std::any::TypeId) of the type this editor handles.
     pub type_id: std::any::TypeId,
@@ -133,7 +127,6 @@ pub struct UiPropertyEditorHint {
     pub fn_ptr: fn(),
 }
 
-#[cfg(feature = "ui")]
 inventory::collect!(UiPropertyEditorHint);
 
 /// Erase a two-argument render function to the opaque `fn()` stored in

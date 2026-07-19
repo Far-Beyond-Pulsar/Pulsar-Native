@@ -14,7 +14,7 @@ ui_common.workspace = true
 window_manager.workspace = true
 
 # Engine dependencies
-engine_fs = { workspace = true, features = ["editor"] }
+engine_fs.workspace = true
 plugin_editor_api.workspace = true
 rust-i18n.workspace = true
 

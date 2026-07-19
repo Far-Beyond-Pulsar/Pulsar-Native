@@ -16,7 +16,7 @@ struct GpuPolicyProbe {
 fn probe_gpu_policy() -> GpuPolicyProbe {
     let instance = Instance::new(InstanceDescriptor {
         backends: Backends::all(),
-        ..InstanceDescriptor::new_without_display_handle()
+        ..Default::default()
     });
 
     let adapters = futures::executor::block_on(instance.enumerate_adapters(Backends::all()));

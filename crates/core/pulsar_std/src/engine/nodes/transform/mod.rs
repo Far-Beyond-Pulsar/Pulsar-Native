@@ -12,7 +12,7 @@
 //! `((f32, f32, f32), (f32, f32, f32), (f32, f32, f32))` for (position, rotation, scale)
 //! Each component is a 3D vector (x, y, z).
 
-use crate::{blueprint, output};
+use crate::blueprint;
 
 // =============================================================================
 // Transform Construction
@@ -39,9 +39,6 @@ use crate::{blueprint, output};
 /// This node is useful for constructing transform objects for use in 3D graphics or spatial calculations.
 /// # Transform New
 /// Creates a new transform from position, rotation, and scale.
-#[output(name = "position")]
-#[output(name = "rotation")]
-#[output(name = "scale")]
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn transform_new(
     position: (f32, f32, f32),
@@ -72,9 +69,6 @@ pub fn transform_new(
 /// Use this node to assemble transform data for 3D objects, physics, or rendering.
 /// # Make Transform
 /// Creates a transform from position, rotation, and scale components.
-#[output(name = "position")]
-#[output(name = "rotation")]
-#[output(name = "scale")]
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn make_transform(
     position: (f32, f32, f32),
@@ -109,9 +103,6 @@ pub fn make_transform(
 /// Use this node to extract individual transform components for further manipulation.
 /// # Break Transform
 /// Breaks a transform into position, rotation, and scale components.
-#[output(name = "position")]
-#[output(name = "rotation")]
-#[output(name = "scale")]
 #[blueprint(type: NodeTypes::pure, category: "Transform", color: "#50E3C2")]
 pub fn break_transform(
     transform: ((f32, f32, f32), (f32, f32, f32), (f32, f32, f32)),
