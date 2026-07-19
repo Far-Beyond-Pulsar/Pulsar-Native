@@ -52,6 +52,14 @@ pollster = "1.0"
 # naga tracks the same major as the gpu feature's wgpu (both crates.io 30).
 naga = { version = "30", features = ["wgsl-in"] }
 
+# stress_tui example deps
+ratatui = "0.29"
+crossterm = "0.28"
+
+[[example]]
+name = "stress_tui"
+required-features = []
+
 [[bench]]
 name = "ecs_bench"
 harness = false
