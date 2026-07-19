@@ -2,16 +2,23 @@
 
 use crate::pulsar_type;
 
-#[cfg_attr(feature = "ui", pulsar_type(
-    serialize_json_with = serialize_vec3_json,
-    deserialize_json_with = deserialize_vec3_json,
-    editor = render_vec3_editor
-))]
-#[cfg_attr(not(feature = "ui"), pulsar_type(
-    serialize_json_with = serialize_vec3_json,
-    deserialize_json_with = deserialize_vec3_json
-))]
-#[allow(dead_code)]
+// M3-alpha Task 2 (audit follow-up): see bool.rs — `editor` is GPUI-typed and
+// only present behind `prims-gpui`.
+#[cfg_attr(
+    feature = "prims-gpui",
+    pulsar_type(
+        serialize_json_with = serialize_vec3_json,
+        deserialize_json_with = deserialize_vec3_json,
+        editor = render_vec3_editor
+    )
+)]
+#[cfg_attr(
+    not(feature = "prims-gpui"),
+    pulsar_type(
+        serialize_json_with = serialize_vec3_json,
+        deserialize_json_with = deserialize_vec3_json
+    )
+)]
 type RegisteredVec3 = [f32; 3];
 
 fn serialize_vec3_json(value: &[f32; 3]) -> crate::ReflectResult<serde_json::Value> {
@@ -40,7 +47,7 @@ fn deserialize_vec3_json(value: serde_json::Value) -> crate::ReflectResult<[f32;
     ])
 }
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "prims-gpui")]
 fn render_vec3_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, h_flex};

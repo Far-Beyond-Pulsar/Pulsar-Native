@@ -7,7 +7,7 @@ description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, 
 [dependencies]
 # Core primitives (extracted)
 pulsar_core  = { workspace = true }
-pulsar_ecs   = { workspace = true }
+pulsar_scenedb   = { workspace = true }
 
 # Profiling + logging
 profiling   = { workspace = true }
@@ -27,7 +27,6 @@ pulsar_reflection = { workspace = true }
 
 # Windowed rendering (Helio + winit + wgpu)
 helio   = { workspace = true }
-pulsar_helio = { workspace = true }
 winit   = { workspace = true }
 wgpu    = { workspace = true }
 glam    = { workspace = true }

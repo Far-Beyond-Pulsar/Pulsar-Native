@@ -13,7 +13,7 @@ ui_common.workspace = true
 engine_state.workspace = true
 engine_backend.workspace = true
 window_manager.workspace = true
-engine_fs = { workspace = true, features = ["remote"] }
+engine_fs.workspace = true
 pulsar_auth.workspace = true
 ui_git_manager.workspace = true
 ui_friends.workspace = true

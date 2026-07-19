@@ -8,7 +8,7 @@ publish = false
 anyhow = { workspace = true }
 engine_state = { workspace = true }
 serde_json = { workspace = true }
-engine_fs = { workspace = true, features = ["editor"] }
+engine_fs = { workspace = true }
 plugin_manager = { workspace = true }
 tracing.workspace = true
 tool_registry = { workspace = true }

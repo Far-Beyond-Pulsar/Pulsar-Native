@@ -13,12 +13,11 @@ use helio::{
     SceneActorId, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
-use pulsar_helio::new_external_renderer;
 use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache, VoxelTerrainCache};
+use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{ObjectType, SceneObjectSnapshot};
@@ -97,8 +96,6 @@ struct HelioInner {
     /// Tracks scene object instances keyed by tag for incremental
     /// update (avoid cascade-free on clear-all-insert-each-frame).
     object_cache: SceneObjectCache,
-    /// Tracks per-scene-object voxel terrain state.
-    voxel_cache: VoxelTerrainCache,
 }
 
 impl HelioRenderer {
@@ -169,7 +166,7 @@ impl HelioRenderer {
             // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
-            let mut r = new_external_renderer(
+            let mut r = Renderer::new_with_external_device(
                 device_arc.clone(),
                 queue_arc.clone(),
                 RendererConfig::new(width, height, format),
@@ -187,7 +184,6 @@ impl HelioRenderer {
                 scene_picker: ScenePicker::new(),
                 mesh_cache: MeshCache::new(),
                 object_cache: SceneObjectCache::new(),
-                voxel_cache: VoxelTerrainCache::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -772,8 +768,6 @@ impl HelioRenderer {
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
-            subsystems.register::<Arc<wgpu::Queue>>(inner.queue.clone());
-            subsystems.register_ref::<VoxelTerrainCache>(&mut inner.voxel_cache);
             let project_root = engine_state::get_project_path()
                 .map(PathBuf::from)
                 .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
@@ -784,12 +778,12 @@ impl HelioRenderer {
                 project_root,
             };
 
-            for (component_index, class_name, data) in &component_instances {
+            for (component_index, class_name, data) in component_instances {
                 let _ = apply_runtime_behavior_for_class(
                     class_name.as_str(),
                     &owner,
-                    *component_index,
-                    data,
+                    component_index,
+                    &data,
                     &mut ctx,
                 );
             }
@@ -812,23 +806,6 @@ impl HelioRenderer {
         // Cull script registrations for objects no longer in the scene.
         let registry = script_registry();
         registry.write().retain_keys(live_keys.inner());
-
-        // Flush dirty voxel terrain entries to the GPU and remove stale ones.
-        tracing::info!(
-            "[TERRAIN] sync_scene: retaining voxel cache keys ({} live objects)",
-            live_keys.inner().len()
-        );
-        inner.voxel_cache.retain_keys(live_keys.inner());
-        tracing::info!("[TERRAIN] sync_scene: calling voxel_cache.flush()");
-        inner
-            .voxel_cache
-            .flush(&mut inner.renderer, &inner.queue);
-
-        let vc = inner.renderer.scene().gpu_scene().voxel_volume_count;
-        tracing::info!(
-            "[TERRAIN] sync_scene: after flush, voxel_volume_count={}",
-            vc
-        );
 
         // Rebuild scene picker BVH after any insertions or removals.
         let t_picker = std::time::Instant::now();

@@ -17,11 +17,17 @@ window_manager.workspace = true
 plugin_editor_api.workspace = true
 anyhow.workspace = true
 tool_registry = { workspace = true }
+pulsar_scenedb = { workspace = true }
 
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
-pulsar_reflection = { workspace = true, features = ["ui"] }
+# M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —
+# `level_editor/ui/properties/object_type_fields/property_renderer.rs`
+# constructs `pulsar_reflection::PropertyEditorArgs`'s GPUI-typed
+# `on_bool_toggle`/`on_enum_select` fields directly. `gpui-ce`/`ui` are
+# already unconditional deps of this crate above.
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 engine_class_derive = { workspace = true }
 pulsar_rendering.workspace = true
 pulsar_physics.workspace = true

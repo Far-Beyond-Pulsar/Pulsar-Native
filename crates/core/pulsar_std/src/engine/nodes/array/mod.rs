@@ -11,7 +11,7 @@
 //!
 //! All operations work with Rust's `Vec<T>` type for dynamic arrays.
 
-use crate::{blueprint, output};
+use crate::blueprint;
 
 // =============================================================================
 // Array Creation
@@ -78,8 +78,6 @@ pub fn array_push<T>(array: Vec<T>, item: T) -> Vec<T> {
 /// This operation removes and returns the last element.
 /// # Array Pop
 /// Removes and returns the last element from a vector.
-#[output(name = "array")]
-#[output(name = "popped")]
 #[blueprint(type: NodeTypes::fn_, category: "Array", color: "#50E3C2")]
 pub fn array_pop<T: Clone>(array: Vec<T>) -> (Vec<T>, Option<T>) {
     let mut arr = array;

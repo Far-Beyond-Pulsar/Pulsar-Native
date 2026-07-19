@@ -1,6 +1,6 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Item, ItemType, Meta, Path, parse_macro_input, punctuated::Punctuated};
+use syn::{Expr, Item, ItemType, Meta, Path, parse_macro_input, punctuated::Punctuated};
 
 use crate::util;
 
@@ -115,6 +115,17 @@ pub fn expand_primitive_alias(
     };
     let clone_impl = quote! { typed.clone() };
 
+    // NOTE (M3-alpha Task 2): this `editor_submit` block is GPUI-typed
+    // (`&::gpui::App`, `::gpui::AnyElement`) and is only emitted when the
+    // caller passes `editor = ...`. This macro does NOT gate it behind any
+    // feature itself — a `#[cfg(feature = "...")]` embedded here would be
+    // evaluated against whichever crate invokes `#[pulsar_type]` (e.g.
+    // `pulsar_rendering`, which depends on `gpui-ce`/`ui` unconditionally and
+    // has no `prims-gpui` feature of its own), not against `pulsar_reflection`.
+    // `pulsar_reflection`'s own GPUI-optional primitives (`src/prims/core/
+    // {bool,i32,f32,color,vec3}.rs`) instead select between two `#[cfg_attr]`-
+    // gated `#[pulsar_type(...)]` invocations (with/without `editor = ...`) so
+    // this macro's behavior stays uniform for every caller.
     let editor_submit = if let Some(editor_fn) = override_editor {
         quote! {
             ::pulsar_reflection::inventory::submit! {

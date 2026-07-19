@@ -5,19 +5,23 @@ edition = "2024"
 
 [dependencies]
 engine_class_derive = { workspace = true }
-pulsar_reflection = { workspace = true, features = ["ui", "prims-glam", "prims-helio"] }
+# M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here — this
+# crate defines its own GPUI property editors (`render_script_asset_editor`,
+# `render_mesh_asset_editor` in src/components/{script,static_mesh}_component.rs)
+# via `#[pulsar_reflection::pulsar_type(editor = ...)]`, which needs
+# `pulsar_reflection::PropertyEditorArgs`'s GPUI-typed fields and
+# `erase_property_editor_fn_ptr`. `gpui-ce`/`ui` are already unconditional
+# deps of this crate below, so this only affects `pulsar_reflection`'s own
+# feature set, not this crate's dependency tree.
+pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 pulsar_events = { workspace = true }
+pulsar_scenedb = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
-helio = { workspace = true }
+helio.workspace = true
 helio-asset-compat = { workspace = true }
-helio-pass-voxel-mesh = { workspace = true }
-helio-voxel-core = { workspace = true }
-libhelio = { workspace = true }
-wgpu = { workspace = true }
-bytemuck = "1"
 gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true

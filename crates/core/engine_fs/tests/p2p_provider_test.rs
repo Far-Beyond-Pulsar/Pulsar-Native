@@ -1,5 +1,3 @@
-#![cfg(feature = "p2p")]
-
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::Arc;

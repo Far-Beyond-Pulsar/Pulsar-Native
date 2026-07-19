@@ -1,7 +1,7 @@
 use crate::blueprint_runtime::{BlueprintDispatcher, BlueprintEvent};
 use crate::window::{WindowBridge, WindowCommand, WindowDescriptor, WindowHandle, WindowManager};
 use pulsar_core::{Clock, GameTime, TaskPool, TickMode};
-use pulsar_ecs::{ActorRegistry, Schedule, World};
+use pulsar_scenedb::{ActorRegistry, Schedule, World};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

@@ -1,0 +1,115 @@
+[package]
+name = "pulsar_scenedb"
+version = "0.1.0"
+edition = "2021"
+description = "SceneDB 2.0 — engine-wide spatial database (Layer 1 storage core)"
+
+[features]
+default = []
+gpu = ["dep:wgpu"]
+telemetry = ["dep:socket2", "dep:serde", "gpu"]
+
+[dependencies]
+pulsar_core       = { workspace = true }
+# CONTRACTS.md C0 (audit A, V1): SceneDB never depends on Helio.
+# `pulsar_reflection`'s `default` feature list used to include `prims-helio`
+# -> `dep:helio` (Far-Beyond-Pulsar/Helio git crate). SceneDB only uses the
+# core reflection registry/type-info surface (`RuntimeTypeInfo`,
+# `RUNTIME_TYPE_REGISTRY`, `EngineClass`, `REGISTRY` — `src/token.rs`,
+# `src/component_store.rs`), none of which are gated behind any `prims-*`
+# feature at all (see `pulsar_reflection/src/lib.rs`: those symbols are
+# unconditional; only `src/prims/mod.rs`'s primitive-type *registrations* are
+# feature-gated). The edge is cut at the source: `prims-helio` is no longer
+# in `pulsar_reflection`'s `default` list (see that crate's Cargo.toml) — NOT
+# by overriding `default-features` on this edge. A per-edge
+# `default-features = false` override here is both ineffective (Cargo's
+# resolver unifies a shared dependency's activated features by UNION across
+# every workspace member that requests it — one consumer requesting fewer
+# features can never subtract what another consumer's `workspace = true`
+# already turned on) and, separately, rejected by Cargo itself when the
+# `[workspace.dependencies]` entry doesn't declare `default-features`
+# (warns: "this could become a hard error"). Plain inheritance is correct
+# here. Proof: `cargo tree -p pulsar_scenedb --no-default-features -e normal
+# | grep -i helio` (and with `--features gpu`) must output nothing —
+# enforced in CI (audit A, G1).
+#
+# The gpu feature now uses upstream wgpu 30 per the M3 lineage decision
+# (design 2026-07-16-scenedb20-m3-helio-inversion-design.md); the fork
+# remains the workspace dep for legacy consumers until the M4 gate.
+pulsar_reflection = { workspace = true }
+serde_json        = { workspace = true }
+socket2           = { workspace = true, optional = true }
+serde             = { workspace = true, optional = true }
+ahash             = "0.8"
+profiling         = { workspace = true }
+tracing           = { workspace = true }
+wgpu              = { version = "30", optional = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+rand = "0.8"
+criterion = { version = "=0.8.2" }
+pollster = "1.0"
+# naga tracks the same major as the gpu feature's wgpu (both crates.io 30).
+naga = { version = "30", features = ["wgsl-in"] }
+
+# stress_tui example deps
+ratatui = "0.29"
+crossterm = "0.28"
+pulsar_scenedb_derive = { path = "../pulsar_scenedb_derive" }
+
+[[example]]
+name = "stress_tui"
+required-features = []
+
+[[bench]]
+name = "ecs_bench"
+harness = false
+
+[[bench]]
+name = "hotpath_profiler"
+harness = false
+
+[[bench]]
+name = "ecs_detailed_bench"
+harness = false
+
+[[bench]]
+name = "scenedb_bench"
+harness = false
+
+[[bench]]
+name = "gpu_timing"
+harness = false
+required-features = ["gpu"]
+
+[[bench]]
+name = "legacy_model_bench"
+harness = false
+required-features = ["gpu"]
+
+[[test]]
+name = "gpu_store"
+required-features = ["gpu"]
+
+[[test]]
+name = "gpu_layout"
+required-features = ["gpu"]
+
+[[test]]
+name = "gpu_assets"
+required-features = ["gpu"]
+
+[[test]]
+name = "gpu_harvest"
+required-features = ["gpu"]
+
+[[test]]
+name = "alloc_gate_gpu"
+required-features = ["gpu"]
+
+[[test]]
+name = "stress_gpu"
+required-features = ["gpu"]

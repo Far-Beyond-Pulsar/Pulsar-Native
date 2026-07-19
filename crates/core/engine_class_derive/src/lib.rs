@@ -299,6 +299,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut add_debug = false;
     let mut register_runtime = false;
     let mut register_scene_props = false;
+    let mut add_scene_store = false;
     let mut no_register = false;
 
     for arg in args {
@@ -311,6 +312,7 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
             Meta::Path(path) if path.is_ident("runtime_behavior") => register_runtime = true,
             Meta::Path(path) if path.is_ident("no_register") => no_register = true,
             Meta::Path(path) if path.is_ident("scene_props_applier") => register_scene_props = true,
+            Meta::Path(path) if path.is_ident("scene_store") => add_scene_store = true,
             Meta::NameValue(name_value) if name_value.path.is_ident("category") => {
                 if let Expr::Lit(expr_lit) = &name_value.value {
                     if let Lit::Str(lit_str) = &expr_lit.lit {
@@ -370,11 +372,11 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { #[derive(#(#derive_additions),*)] }
     };
 
-    let category_attr = match category {
-        Some(category) if !has_engine_class_category_attr => {
-            quote! { #[engine_class_category(#category)] }
-        }
-        _ => quote! {},
+    let category_attr = if category.is_some() && !has_engine_class_category_attr {
+        let cat = category.unwrap();
+        quote! { #[engine_class_category(#cat)] }
+    } else {
+        quote! {}
     };
 
     let no_register_attr = if no_register {
@@ -417,12 +419,166 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
+    // ── SceneStore impl generation (auto-derived for every engine_class) ──
+
+    // Collect field info for Pod + SceneColumnSet + GpuColumnSet generation.
+    struct NamedField {
+        ident: syn::Ident,
+        ty: syn::Type,
+        is_gpu: bool,
+    }
+
+    let named_fields: Vec<NamedField> = match &item_struct.fields {
+        Fields::Named(named) => named
+            .named
+            .iter()
+            .map(|f| {
+                let ident = f.ident.clone().unwrap();
+                let ty = f.ty.clone();
+                let is_gpu = f.attrs.iter().any(|a| a.path().is_ident("gpu"));
+                NamedField { ident, ty, is_gpu }
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    let scenedb_impls = if !add_scene_store || named_fields.is_empty() {
+        quote! {}
+    } else {
+        // ── Pod ──
+        let pod_bounds: Vec<_> = named_fields
+            .iter()
+            .map(|f| { let ty = &f.ty; quote! { #ty: ::pulsar_scenedb::page::Pod } })
+            .collect();
+        let pod_impl = if pod_bounds.is_empty() {
+            quote! { unsafe impl ::pulsar_scenedb::page::Pod for #name {} }
+        } else {
+            quote! { unsafe impl ::pulsar_scenedb::page::Pod for #name where #(#pod_bounds),* {} }
+        };
+
+        // ── HasTypeToken ──
+        let has_type_token = quote! {
+            impl ::pulsar_scenedb::token::HasTypeToken for #name {
+                fn type_token() -> ::pulsar_scenedb::token::TypeToken {
+                    ::pulsar_scenedb::token::TypeToken::of::<Self>()
+                }
+            }
+        };
+
+        // ── SceneColumnSet ──
+        let cell_entries: Vec<_> = named_fields
+            .iter()
+            .map(|f| { let ty = &f.ty; quote! { .with(::pulsar_scenedb::token::TypeToken::of::<#ty>()) } })
+            .collect();
+        let name_str = name.to_string();
+        let scene_column_set = quote! {
+            impl ::pulsar_scenedb::cell_type::SceneColumnSet for #name {
+                fn cell_type() -> ::pulsar_scenedb::cell_type::RegisteredCellType {
+                    ::pulsar_scenedb::cell_type::CellType::new(#name_str)
+                        #(#cell_entries)*
+                        .build()
+                        .expect("SceneColumnSet cell_type: CellType::build failed")
+                }
+            }
+        };
+
+        // ── GpuColumnSet (gated behind the `gpu` feature) ──
+        let gpu_fields: Vec<&NamedField> = named_fields.iter().filter(|f| f.is_gpu).collect();
+        let gpu_column_set = if gpu_fields.is_empty() {
+            quote! {
+                #[cfg(feature = "gpu")]
+                impl ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name {
+                    fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
+                        Vec::new()
+                    }
+                    fn write_gpu(
+                        _store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
+                        _id: ::pulsar_scenedb::gpu::scene_store::CellId,
+                        _cell: &mut ::pulsar_scenedb::cell::CellStorage,
+                        _handle: ::pulsar_scenedb::handle::Handle,
+                        _data: &Self,
+                        _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
+                    ) {}
+                }
+            }
+        } else {
+            let descs: Vec<_> = gpu_fields
+                .iter()
+                .map(|f| {
+                    let field_ident = &f.ident;
+                    let field_name = field_ident.to_string();
+                    let field_ty = &f.ty;
+                    quote! {
+                        ::pulsar_scenedb::gpu::scene_store::GpuColumnDesc {
+                            field_token: ::pulsar_scenedb::token::TypeToken::of::<#field_ty>(),
+                            field_offset: ::std::mem::offset_of!(#name, #field_ident),
+                            mode: ::pulsar_scenedb::gpu::scene_store::MirrorMode::DirtyTracked,
+                            buffer_name: #field_name,
+                        }
+                    }
+                })
+                .collect();
+            let arms: Vec<_> = gpu_fields
+                .iter()
+                .map(|f| {
+                    let field_ident = &f.ident;
+                    let field_name = field_ident.to_string();
+                    let field_ty = &f.ty;
+                    quote! {
+                        #field_name => {
+                            let row = cell.row_of(handle).unwrap_or_else(|| {
+                                panic!("write_gpu: handle {:?} not found in cell", handle);
+                            }) as usize;
+                            if let Some(col) = cell.column_for_mut::<#field_ty>() {
+                                col[row] = data.#field_ident;
+                            }
+                            let comp_id = ::pulsar_scenedb::component::component_id::<#field_ty>();
+                            store.mark_column_dirty(id, comp_id, row as u32);
+                        }
+                    }
+                })
+                .collect();
+            quote! {
+                #[cfg(feature = "gpu")]
+                impl ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name {
+                    fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
+                        vec![ #(#descs),* ]
+                    }
+                    fn write_gpu(
+                        store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
+                        id: ::pulsar_scenedb::gpu::scene_store::CellId,
+                        cell: &mut ::pulsar_scenedb::cell::CellStorage,
+                        handle: ::pulsar_scenedb::handle::Handle,
+                        data: &Self,
+                        _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
+                    ) {
+                        let descs = Self::gpu_columns();
+                        for desc in &descs {
+                            match desc.buffer_name {
+                                #(#arms)*
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        quote! {
+            #pod_impl
+            #has_type_token
+            #scene_column_set
+            #gpu_column_set
+        }
+    };
+
     quote! {
         #derive_attr
         #category_attr
         #no_register_attr
         #item_struct
         #sub_props_marker_impl
+        #scenedb_impls
         #runtime_registration
         #scene_props_registration
     }

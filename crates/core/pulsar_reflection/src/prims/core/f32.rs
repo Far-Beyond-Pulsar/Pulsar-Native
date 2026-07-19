@@ -2,16 +2,23 @@
 
 use crate::pulsar_type;
 
-#[cfg_attr(feature = "ui", pulsar_type(
-    serialize_json_with = serialize_f32_json,
-    deserialize_json_with = deserialize_f32_json,
-    editor = render_f32_editor
-))]
-#[cfg_attr(not(feature = "ui"), pulsar_type(
-    serialize_json_with = serialize_f32_json,
-    deserialize_json_with = deserialize_f32_json
-))]
-#[allow(dead_code)]
+// M3-alpha Task 2 (audit follow-up): see bool.rs — `editor` is GPUI-typed and
+// only present behind `prims-gpui`.
+#[cfg_attr(
+    feature = "prims-gpui",
+    pulsar_type(
+        serialize_json_with = serialize_f32_json,
+        deserialize_json_with = deserialize_f32_json,
+        editor = render_f32_editor
+    )
+)]
+#[cfg_attr(
+    not(feature = "prims-gpui"),
+    pulsar_type(
+        serialize_json_with = serialize_f32_json,
+        deserialize_json_with = deserialize_f32_json
+    )
+)]
 type RegisteredF32 = f32;
 
 fn serialize_f32_json(value: &f32) -> crate::ReflectResult<serde_json::Value> {
@@ -28,7 +35,7 @@ fn deserialize_f32_json(value: serde_json::Value) -> crate::ReflectResult<f32> {
         })
 }
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "prims-gpui")]
 fn render_f32_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, Sizable, h_flex, input::NumberInput};

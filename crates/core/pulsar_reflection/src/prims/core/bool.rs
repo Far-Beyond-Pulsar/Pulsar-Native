@@ -2,16 +2,25 @@
 
 use crate::pulsar_type;
 
-#[cfg_attr(feature = "ui", pulsar_type(
-    serialize_json_with = serialize_bool_json,
-    deserialize_json_with = deserialize_bool_json,
-    editor = render_bool_editor
-))]
-#[cfg_attr(not(feature = "ui"), pulsar_type(
-    serialize_json_with = serialize_bool_json,
-    deserialize_json_with = deserialize_bool_json
-))]
-#[allow(dead_code)]
+// M3-alpha Task 2 (audit follow-up): `editor = render_bool_editor` registers a
+// GPUI-typed property editor. `gpui-ce`/`ui` are optional deps of this crate
+// behind `prims-gpui` (see Cargo.toml), so the `editor` argument — and the
+// render fn it names — must only be present when that feature is enabled.
+#[cfg_attr(
+    feature = "prims-gpui",
+    pulsar_type(
+        serialize_json_with = serialize_bool_json,
+        deserialize_json_with = deserialize_bool_json,
+        editor = render_bool_editor
+    )
+)]
+#[cfg_attr(
+    not(feature = "prims-gpui"),
+    pulsar_type(
+        serialize_json_with = serialize_bool_json,
+        deserialize_json_with = deserialize_bool_json
+    )
+)]
 type RegisteredBool = bool;
 
 fn serialize_bool_json(value: &bool) -> crate::ReflectResult<serde_json::Value> {
@@ -27,7 +36,7 @@ fn deserialize_bool_json(value: serde_json::Value) -> crate::ReflectResult<bool>
         })
 }
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "prims-gpui")]
 fn render_bool_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{prelude::*, *};
     use ui::{ActiveTheme, Sizable, h_flex, switch::Switch};

@@ -1,16 +1,23 @@
 //! [f32; 4] primitive type implementation (Color)
 use crate::pulsar_type;
 
-#[cfg_attr(feature = "ui", pulsar_type(
-    serialize_json_with = serialize_color_json,
-    deserialize_json_with = deserialize_color_json,
-    editor = render_color_editor
-))]
-#[cfg_attr(not(feature = "ui"), pulsar_type(
-    serialize_json_with = serialize_color_json,
-    deserialize_json_with = deserialize_color_json
-))]
-#[allow(dead_code)]
+// M3-alpha Task 2 (audit follow-up): see bool.rs — `editor` is GPUI-typed and
+// only present behind `prims-gpui`.
+#[cfg_attr(
+    feature = "prims-gpui",
+    pulsar_type(
+        serialize_json_with = serialize_color_json,
+        deserialize_json_with = deserialize_color_json,
+        editor = render_color_editor
+    )
+)]
+#[cfg_attr(
+    not(feature = "prims-gpui"),
+    pulsar_type(
+        serialize_json_with = serialize_color_json,
+        deserialize_json_with = deserialize_color_json
+    )
+)]
 type RegisteredColor = [f32; 4];
 
 fn serialize_color_json(value: &[f32; 4]) -> crate::ReflectResult<serde_json::Value> {
@@ -40,7 +47,7 @@ fn deserialize_color_json(value: serde_json::Value) -> crate::ReflectResult<[f32
     ])
 }
 
-#[cfg(feature = "ui")]
+#[cfg(feature = "prims-gpui")]
 fn render_color_editor(args: &crate::PropertyEditorArgs<'_>, cx: &gpui::App) -> gpui::AnyElement {
     use gpui::{Corner, prelude::*, *};
     use ui::{ActiveTheme, color_picker::ColorPicker, h_flex};

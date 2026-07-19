@@ -19,7 +19,6 @@ use winit::{
 };
 
 use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
-use pulsar_helio::new_external_renderer;
 
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
@@ -73,7 +72,7 @@ impl GameWindow {
         };
         surface.configure(&device, &surface_config);
 
-        let mut renderer = new_external_renderer(
+        let mut renderer = Renderer::new(
             device.clone(),
             queue.clone(),
             RendererConfig::new(surface_config.width, surface_config.height, surface_format),

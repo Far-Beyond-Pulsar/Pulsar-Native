@@ -47,6 +47,78 @@ jobs:
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
+      - name: SceneDB graphics-free core guard (CONTRACTS C0)
+        run: cargo check -p pulsar_scenedb --no-default-features
+
+      - name: SceneDB no-Helio edge guard (CONTRACTS C0)
+        shell: bash
+        run: |
+          set -e
+          # Capture first so a cargo-tree failure fails the step (grep on a
+          # pipeline sees empty input and would silently pass — fail-open).
+          tree="$(cargo tree -p pulsar_scenedb -e normal)"
+          if grep -qi helio <<< "$tree"; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
+          # Feature-blind gap (M3-a final review F1): a gpu-feature-gated Helio
+          # edge would evade the featureless tree above — check it too.
+          tree_gpu="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          if grep -qi helio <<< "$tree_gpu"; then echo "C0 violation: pulsar_scenedb (--features gpu) depends on Helio"; exit 1; fi
+
+      - name: SceneDB no-GPUI/fork-wgpu edge guard (M3-a T2)
+        shell: bash
+        run: |
+          set -e
+          # `pulsar_reflection`'s `gpui-ce`/`ui` deps (gated behind its own
+          # `prims-gpui` feature, not requested by pulsar_scenedb) pull the
+          # workspace's git-forked wgpu transitively (gpui-ce's lib is named
+          # `gpui`). SceneDB is on upstream wgpu 30 and must never carry
+          # either edge. Tree captured first: fail-closed if cargo tree errors.
+          tree="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          if grep -iE "gpui|wgpui" <<< "$tree"; then
+            echo "M3-a T2 violation: pulsar_scenedb (--features gpu) depends on gpui/wgpui"
+            exit 1
+          fi
+          if grep -i "wgpu" <<< "$tree" | grep -i "http"; then
+            echo "M3-a T2 violation: pulsar_scenedb (--features gpu) wgpu edge is git-sourced, not registry wgpu 30"
+            exit 1
+          fi
+
+      - name: SceneDB resolves outside the workspace (submodule-build precondition)
+        shell: bash
+        run: |
+          set -e
+          # Normalize to forward slashes: on Windows runners GITHUB_WORKSPACE
+          # uses backslashes, which TOML basic strings would otherwise parse
+          # as escape sequences.
+          workspace_fwd="$(printf '%s' "${GITHUB_WORKSPACE}" | tr '\\' '/')"
+          scratch="${RUNNER_TEMP}/scenedb-resolve-check"
+          rm -rf "$scratch"
+          mkdir -p "$scratch/src"
+          touch "$scratch/src/lib.rs"
+          cat > "$scratch/Cargo.toml" <<EOF
+          [package]
+          name = "scenedb-resolve-check"
+          version = "0.1.0"
+          edition = "2021"
+
+          [dependencies]
+          pulsar_scenedb = { path = "${workspace_fwd}/crates/core/pulsar_scenedb", features = ["gpu"] }
+
+          [workspace]
+          EOF
+          cd "$scratch"
+          cargo metadata --format-version 1 > /dev/null
+
+      - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
+        run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
+
+      - name: SceneDB gpu-gated lib tests (Test 11 et al., no adapter needed)
+        run: cargo test -p pulsar_scenedb --features gpu --lib
+
+      # Compile-only: benches are the one gpu-gated target the test matrix
+      # never builds (M3-a T1 review caught an unmigrated bench this way).
+      - name: SceneDB gpu-gated benches compile guard
+        run: cargo check -p pulsar_scenedb --features gpu --benches
+
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 

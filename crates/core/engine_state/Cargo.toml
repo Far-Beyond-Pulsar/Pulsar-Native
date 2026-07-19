@@ -37,7 +37,7 @@ pulsar_auth.workspace = true
 
 # Multiplayer session bridge
 pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
-engine_fs = { workspace = true, features = ["editor"] }
+engine_fs = { workspace = true }
 futures = { workspace = true }
 
 [lints]

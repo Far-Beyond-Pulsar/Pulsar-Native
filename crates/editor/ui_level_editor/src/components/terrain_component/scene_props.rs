@@ -11,9 +11,9 @@ impl ScenePropsProjector for TerrainComponent {
 
     fn apply_scene_props(props: &mut HashMap<String, Value>, component_data: Option<&Value>) {
         for key in [
-            "enabled", "voxel_asset", "voxel_size", "chunk_size", "render_distance",
-            "position", "rotation", "world_size",
-            "base_color", "roughness", "metallic", "material_override",
+            "enabled", "voxel_data_source", "voxel_asset", "voxel_size", "chunk_size",
+            "render_distance", "position", "rotation", "world_size",
+            "voxel_material_source", "palette_texture", "base_color", "roughness", "metallic",
             "meshing_algorithm", "enable_lod", "lod_levels", "enable_collision",
             "cast_shadows", "receive_shadows", "wireframe_overlay",
         ] {

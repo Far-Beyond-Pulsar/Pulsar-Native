@@ -351,7 +351,7 @@ impl FlamegraphRenderer {
             vertex: wgpu::VertexState {
                 module: &text_mod,
                 entry_point: Some("vs_main"),
-                buffers: &[Some(text_vbl)],
+                buffers: &[text_vbl],
                 compilation_options: Default::default(),
             },
             fragment: Some(wgpu::FragmentState {

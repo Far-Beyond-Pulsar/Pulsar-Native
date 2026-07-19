@@ -6,7 +6,7 @@
 //! components can subscribe to indexing progress and diagnostics.
 
 mod path_utils;
-pub use path_utils::{path_to_uri, uri_to_path};
+pub use path_utils::path_to_uri;
 
 use anyhow::{anyhow, Result};
 use gpui::{Context, EventEmitter, Window};
@@ -1181,7 +1181,7 @@ impl RustAnalyzerManager {
         if let Some(params) = msg.get("params") {
             if let Some(diagnostics_array) = params.get("diagnostics").and_then(|d| d.as_array()) {
                 if let Some(uri) = params.get("uri").and_then(|u| u.as_str()) {
-                    let file_path = path_utils::uri_to_path(uri);
+                    let file_path = uri.trim_start_matches("file:///").replace("%20", " ");
                     let diagnostics: Vec<Diagnostic> = diagnostics_array
                         .iter()
                         .filter_map(|diag| Self::parse_diagnostic(diag, &file_path))
@@ -1279,7 +1279,7 @@ impl RustAnalyzerManager {
         if let Some(changes) = edit.get("changes").and_then(|c| c.as_object()) {
             for (edit_uri, edit_array) in changes {
                 if let Some(edit_list) = edit_array.as_array() {
-                    let edit_file = path_utils::uri_to_path(edit_uri);
+                    let edit_file = edit_uri.trim_start_matches("file:///").replace("%20", " ");
                     for text_edit in edit_list {
                         if let Some(te) = Self::parse_text_edit(text_edit, &edit_file) {
                             edits.push(te);
@@ -1297,7 +1297,7 @@ impl RustAnalyzerManager {
                     let edit_file = text_doc
                         .get("uri")
                         .and_then(|u| u.as_str())
-                        .map(path_utils::uri_to_path)
+                        .map(|u| u.trim_start_matches("file:///").replace("%20", " "))
                         .unwrap_or_default();
 
                     if let Some(edit_list) = doc_change.get("edits").and_then(|e| e.as_array()) {
@@ -1345,7 +1345,9 @@ impl RustAnalyzerManager {
                                     let info_uri = location
                                         .get("uri")
                                         .and_then(|u| u.as_str())
-                                        .map(path_utils::uri_to_path)
+                                        .map(|u| {
+                                            u.trim_start_matches("file:///").replace("%20", " ")
+                                        })
                                         .unwrap_or_else(|| file_path.to_string());
 
                                     let edit = TextEdit {
@@ -2001,7 +2003,13 @@ impl RustAnalyzerManager {
 
     /// Convert a file URI to a local path string.
     fn uri_to_path(uri: &str) -> String {
-        path_utils::uri_to_path(uri)
+        let path = uri.trim_start_matches("file:///");
+        path.replace("%20", " ")
+            .replace("%3A", ":")
+            .replace("%5C", "\\")
+            .replace("%2F", "/")
+            .replace("%23", "#")
+            .replace("%25", "%")
     }
 
     /// Return unresolved code actions (have `data` but no `edit`).
