@@ -14,6 +14,7 @@ mod page;
 mod runtime;
 mod snapshot;
 mod store;
+mod streaming;
 mod types;
 
 pub use component::{
@@ -37,6 +38,11 @@ pub use runtime::{
 };
 pub use snapshot::{CompactedPageRecord, SnapshotCodecError, TerrainSnapshot};
 pub use store::{SnapshotRecord, TerrainStore, TerrainStoreError};
+pub use streaming::{
+    PageDemand, PlanetView, TerrainRegion, TerrainRegionClassifier, TerrainStreamingConfig,
+    TerrainStreamingCounters, TerrainStreamingError, TerrainStreamingLimit, TerrainStreamingPlan,
+    TerrainStreamingPlanner,
+};
 pub use types::{
     CellWord, ContentHash, MaterialId, NodeState, PageId, PageKey, PlanetFrame, PlanetFramePayload,
     PlanetId, PlanetIdParseError, PlanetPosition, PositionError, LOD0_CELL_SIZE_METERS,
