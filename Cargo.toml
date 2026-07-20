@@ -71,7 +71,7 @@ pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
-pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "9b08a497c1e5c63ba198640611611d94dab661da" }
+pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
 pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "cf37ed000fedb9a01424c7e575d1d6ee30db7281" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
@@ -141,8 +141,8 @@ tool_registry_macros  = { git = "https://github.com/Far-Beyond-Pulsar/ToolbeltRS
 # ---------- Installer ----------
 rustup = { git = "https://github.com/tristanpoland/rustup", default-features = false, features = ["reqwest-native-tls"] }
 
-# ---------- Graphics (external git dep; wgpu is a workspace, not vendored) ----------
-wgpu = { git = "https://github.com/Far-Beyond-Pulsar/wgpu", rev = "fce5b80e8017304449124b12637ec324417e40c8" }
+# ---------- Graphics ----------
+wgpu = "30"
 
 # ---------- crates.io ----------
 anyhow = "1.0.100"

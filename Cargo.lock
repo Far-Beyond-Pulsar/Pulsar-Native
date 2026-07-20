@@ -1129,7 +1129,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_bp_executor",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_std",
  "pulsar_std_bundle",
  "schemars",
@@ -1142,7 +1142,7 @@ dependencies = [
  "ui",
  "ui_common",
  "uuid",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "windows 0.62.2",
 ]
 
@@ -2914,7 +2914,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_lsp",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scene",
  "rapier3d",
@@ -2931,7 +2931,7 @@ dependencies = [
  "ui_gen_macros",
  "uuid",
  "walkdir",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "winapi",
  "windows 0.62.2",
 ]
@@ -2941,7 +2941,7 @@ name = "engine_class_derive"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "quote",
  "syn 2.0.119",
@@ -2964,7 +2964,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar-multiplayer-core",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tempfile",
@@ -4059,6 +4059,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "glow"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29038e1c483364cc6bb3cf78feee1816002e127c331a1eec55a4d202b9e1adb5"
+dependencies = [
+ "js-sys",
+ "slotmap",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "glutin_wgl_sys"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4175,7 +4187,7 @@ dependencies = [
  "usvg",
  "uuid",
  "waker-fn",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "winit",
 ]
 
@@ -7571,6 +7583,7 @@ dependencies = [
  "bitflags 2.13.1",
  "objc2 0.6.4",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation 0.3.2",
  "objc2-metal 0.3.2",
 ]
@@ -8314,7 +8327,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -8359,7 +8372,7 @@ dependencies = [
  "tracing",
  "ui",
  "uuid",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -9014,7 +9027,7 @@ dependencies = [
  "ui_loading_screen",
  "ui_log_viewer",
  "urlencoding",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "window_manager",
  "windows 0.62.2",
  "winresource",
@@ -9041,7 +9054,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_bp_executor",
  "pulsar_core",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_settings",
@@ -9051,7 +9064,7 @@ dependencies = [
  "tracing",
  "ui",
  "uuid",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "winit",
 ]
 
@@ -9097,27 +9110,11 @@ name = "pulsar_physics"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "pulsar_reflection"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Repository?rev=4db2da0538b9e32170726dece1926218aa270e01#4db2da0538b9e32170726dece1926218aa270e01"
-dependencies = [
- "dashmap",
- "glam 0.33.2",
- "inventory",
- "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Repository?rev=4db2da0538b9e32170726dece1926218aa270e01)",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -9130,23 +9127,12 @@ dependencies = [
  "gpui-ce",
  "inventory",
  "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection_derive",
  "serde",
  "serde_json",
  "tracing",
  "ui",
  "uuid",
-]
-
-[[package]]
-name = "pulsar_reflection_derive"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Repository?rev=4db2da0538b9e32170726dece1926218aa270e01#4db2da0538b9e32170726dece1926218aa270e01"
-dependencies = [
- "owo-colors",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -9171,7 +9157,7 @@ dependencies = [
  "helio-asset-compat",
  "plugin_editor_api",
  "pulsar_events",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "serde",
  "serde_json",
@@ -9189,7 +9175,7 @@ dependencies = [
  "helio 0.17.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=b88e366d6a6792e34d5b9c7afd1a197a78c54747)",
  "helio-asset-compat",
  "pulsar_events",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "serde",
  "serde_json",
@@ -9199,11 +9185,11 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=9b08a497c1e5c63ba198640611611d94dab661da#9b08a497c1e5c63ba198640611611d94dab661da"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0#43921b0d432e99654161e1de65799fb65fa629f0"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Repository?rev=4db2da0538b9e32170726dece1926218aa270e01)",
+ "pulsar_reflection",
  "serde_json",
  "tracing",
 ]
@@ -9222,8 +9208,8 @@ dependencies = [
  "engine_fs",
  "linkme",
  "pulsar_macros",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
+ "pulsar_reflection_derive",
  "rand 0.10.2",
  "rlua",
  "serde",
@@ -9253,7 +9239,7 @@ dependencies = [
  "engine_class_derive",
  "engine_fs",
  "engine_subsystems",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -11015,7 +11001,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "psgc",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -13305,7 +13291,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_auth",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "reqwest 0.13.4",
  "rust-i18n 4.1.0",
  "rust-i18n-macro 4.1.0",
@@ -13347,7 +13333,7 @@ dependencies = [
  "plugin_manager",
  "plugin_matter",
  "pulsar_physics",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "rfd",
  "rust-i18n 4.1.0",
  "schemars",
@@ -13494,7 +13480,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "window_manager",
 ]
 
@@ -13573,7 +13559,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_physics",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scenedb",
  "raw-window-handle",
@@ -13588,7 +13574,7 @@ dependencies = [
  "ui",
  "ui_common",
  "ui_types_common 0.1.0",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "winapi",
  "window_manager",
 ]
@@ -13640,7 +13626,7 @@ dependencies = [
  "tracing",
  "ui",
  "ui_common",
- "wgpu 28.0.0",
+ "wgpu 30.0.0",
  "window_manager",
  "windows 0.62.2",
  "winreg 0.56.0",
@@ -14435,6 +14421,7 @@ dependencies = [
  "js-sys",
  "log",
  "naga 30.0.0",
+ "parking_lot",
  "portable-atomic",
  "profiling 1.0.18",
  "raw-window-handle",
@@ -14472,8 +14459,8 @@ dependencies = [
  "rustc-hash 1.1.0",
  "smallvec",
  "thiserror 2.0.19",
- "wgpu-core-deps-apple",
- "wgpu-core-deps-emscripten",
+ "wgpu-core-deps-apple 28.0.0",
+ "wgpu-core-deps-emscripten 28.0.0",
  "wgpu-core-deps-windows-linux-android 28.0.0",
  "wgpu-hal 28.0.0",
  "wgpu-types 28.0.0",
@@ -14505,6 +14492,8 @@ dependencies = [
  "rustc-hash 1.1.0",
  "smallvec",
  "thiserror 2.0.19",
+ "wgpu-core-deps-apple 30.0.0",
+ "wgpu-core-deps-emscripten 30.0.0",
  "wgpu-core-deps-windows-linux-android 30.0.0",
  "wgpu-hal 30.0.0",
  "wgpu-naga-bridge",
@@ -14520,11 +14509,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "wgpu-core-deps-apple"
+version = "30.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3283b6da70d7fc892de95840215aa36381b5d0cbc479e88ee2b173c7b992b225"
+dependencies = [
+ "wgpu-hal 30.0.0",
+]
+
+[[package]]
 name = "wgpu-core-deps-emscripten"
 version = "28.0.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/wgpu?rev=fce5b80e8017304449124b12637ec324417e40c8#fce5b80e8017304449124b12637ec324417e40c8"
 dependencies = [
  "wgpu-hal 28.0.0",
+]
+
+[[package]]
+name = "wgpu-core-deps-emscripten"
+version = "30.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85dcf2b2e5c2afb9eda64c570a87a4e570304bf39e52eddbaaf222d655b656ad"
+dependencies = [
+ "wgpu-hal 30.0.0",
 ]
 
 [[package]]
@@ -14558,7 +14565,7 @@ dependencies = [
  "bytemuck",
  "cfg-if 1.0.4",
  "cfg_aliases",
- "glow",
+ "glow 0.16.0",
  "glutin_wgl_sys",
  "gpu-allocator",
  "gpu-descriptor",
@@ -14606,16 +14613,28 @@ dependencies = [
  "ash",
  "bit-set 0.10.0",
  "bitflags 2.13.1",
+ "block2 0.6.2",
  "bytemuck",
  "cfg-if 1.0.4",
  "cfg_aliases",
+ "glow 0.17.0",
+ "glutin_wgl_sys",
  "gpu-allocator",
  "hashbrown 0.17.1",
+ "js-sys",
+ "khronos-egl",
  "libc",
  "libloading 0.8.9",
  "log",
  "naga 30.0.0",
  "naga-types",
+ "ndk-sys",
+ "objc2 0.6.4",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
+ "objc2-metal 0.3.2",
+ "objc2-quartz-core 0.3.2",
  "once_cell",
  "ordered-float",
  "parking_lot",
@@ -14629,10 +14648,14 @@ dependencies = [
  "smallvec",
  "static_assertions",
  "thiserror 2.0.19",
+ "wasm-bindgen",
+ "wayland-sys",
+ "web-sys",
  "wgpu-naga-bridge",
  "wgpu-types 30.0.0",
  "windows 0.62.2",
  "windows-core",
+ "windows-result 0.4.1",
 ]
 
 [[package]]
