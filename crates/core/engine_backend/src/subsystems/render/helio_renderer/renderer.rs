@@ -167,7 +167,8 @@ impl HelioRenderer {
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
             let scene = Scene::new(device_arc.clone(), queue_arc.clone());
-            let graph = RenderGraph::new_with_external_device(&device_arc, &queue_arc);
+            let mut graph = RenderGraph::new_with_external_device(&device_arc, &queue_arc);
+            graph.lock(width, height);
             let debug_camera_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("debug_camera"),
                 size: 64,
