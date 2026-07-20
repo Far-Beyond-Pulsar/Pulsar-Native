@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use winit::{
@@ -18,7 +18,10 @@ use winit::{
     window::{CursorGrabMode, Window, WindowId},
 };
 
-use helio::{required_wgpu_features, required_wgpu_limits, Camera, Renderer, RendererConfig};
+use helio::{
+    required_wgpu_features, required_wgpu_limits, Camera, DebugDrawState, Renderer,
+    RendererConfig, Scene,
+};
 
 use crate::freecam::FreeCam;
 use crate::window::{RenderCamera, WindowBridge, WindowCommand, WindowDescriptor, WindowHandle};
@@ -31,6 +34,8 @@ struct GameWindow {
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
     device: Arc<wgpu::Device>,
+    /// wgpu 30 moved `SurfaceTexture::present()` to `Queue::present()`.
+    queue: Arc<wgpu::Queue>,
     renderer: Renderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
@@ -69,13 +74,55 @@ impl GameWindow {
             alpha_mode: caps.alpha_modes[0],
             view_formats: vec![],
             desired_maximum_frame_latency: 2,
+            color_space: wgpu::SurfaceColorSpace::Auto,
         };
         surface.configure(&device, &surface_config);
+
+        // Build the Helio renderer. `pulsar_game` owns its device (unlike the
+        // editor's wgpui-hosted viewport, which shares GPUI's device via
+        // `Renderer::new_with_external_device`), so we use the plain `new`
+        // constructor and build the default render graph ourselves — mirrors
+        // `engine_backend::subsystems::render::helio_renderer`.
+        let render_config =
+            RendererConfig::new(surface_config.width, surface_config.height, surface_format);
+        let scene = Scene::new(device.clone(), queue.clone());
+        let debug_camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Pulsar Game Debug Camera Buffer"),
+            size: 64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let cull_stats_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Pulsar Game Cull Stats Buffer"),
+            size: 64,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
+        let graph = helio_default_graphs::build_default_graph_external(
+            &device,
+            &queue,
+            &scene,
+            render_config,
+            debug_state.clone(),
+            &debug_camera_buffer,
+            &cull_stats_buffer,
+            None,
+        );
 
         let mut renderer = Renderer::new(
             device.clone(),
             queue.clone(),
-            RendererConfig::new(surface_config.width, surface_config.height, surface_format),
+            surface_format,
+            surface_config.width,
+            surface_config.height,
+            render_config.render_scale,
+            render_config,
+            scene,
+            graph,
+            debug_state,
+            debug_camera_buffer,
+            cull_stats_buffer,
         );
         // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
         // All illumination comes from lights in the scene file — same as editor.
@@ -88,6 +135,7 @@ impl GameWindow {
             surface,
             surface_config,
             device,
+            queue,
             renderer,
             freecam: FreeCam::default(),
         }
@@ -105,11 +153,12 @@ impl GameWindow {
 
     fn acquire_after_surface_recovery(&self) -> Option<wgpu::SurfaceTexture> {
         match self.surface.get_current_texture() {
-            Ok(texture) => Some(texture),
-            Err(error) => {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Some(t),
+            other => {
                 tracing::warn!(
                     window = self.handle.id(),
-                    ?error,
+                    ?other,
                     "Skipping frame after surface recovery"
                 );
                 None
@@ -137,9 +186,17 @@ impl GameWindow {
             cam.far,
         );
 
+        // wgpu 30 replaced `Result<SurfaceTexture, SurfaceError>` with the
+        // `CurrentSurfaceTexture` enum (see wgpui's
+        // `platform/cross/renderer.rs` for the template this mirrors).
+        // `Suboptimal` is treated the same as `Success` — matching wgpui's
+        // choice — rather than forcing a reconfigure after every present;
+        // an actually-outdated surface will surface as `Outdated` on the
+        // next frame's acquire and get reconfigured then.
         let output = match self.surface.get_current_texture() {
-            Ok(texture) => texture,
-            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 // The surface no longer matches its last known configuration.
                 // Reconfigure once and retry rather than dropping every later
                 // frame after a resize or compositor transition.
@@ -149,29 +206,28 @@ impl GameWindow {
                 };
                 texture
             }
-            Err(wgpu::SurfaceError::Timeout) => {
+            wgpu::CurrentSurfaceTexture::Timeout => {
                 tracing::warn!(
                     window = self.handle.id(),
                     "Skipping frame after surface acquisition timeout"
                 );
                 return;
             }
-            Err(wgpu::SurfaceError::OutOfMemory) => {
-                tracing::error!(
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                tracing::warn!(
                     window = self.handle.id(),
-                    "Surface acquisition ran out of memory"
+                    "Skipping frame: window occluded"
                 );
                 return;
             }
-            Err(wgpu::SurfaceError::Other) => {
+            wgpu::CurrentSurfaceTexture::Validation => {
                 tracing::warn!(
                     window = self.handle.id(),
-                    "Skipping frame after surface error"
+                    "Skipping frame after surface validation error"
                 );
                 return;
             }
         };
-        let reconfigure_after_present = output.suboptimal;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -180,11 +236,7 @@ impl GameWindow {
             tracing::error!(window = self.handle.id(), "Render error: {:?}", e);
         }
 
-        output.present();
-
-        if reconfigure_after_present {
-            self.surface.configure(&self.device, &self.surface_config);
-        }
+        self.queue.present(output);
     }
 }
 
@@ -204,7 +256,7 @@ impl GpuContext {
                 wgpu::InstanceDescriptor {
                     backends: wgpu::Backends::all(),
                     flags: wgpu::InstanceFlags::empty(),
-                    ..Default::default()
+                    ..wgpu::InstanceDescriptor::new_without_display_handle()
                 }
                 .with_display_handle(Box::new(display)),
             ),
@@ -224,6 +276,7 @@ impl GpuContext {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             }))
             .expect("No suitable GPU adapter found");
 

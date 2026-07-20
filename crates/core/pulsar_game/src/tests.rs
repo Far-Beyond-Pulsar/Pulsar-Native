@@ -101,7 +101,13 @@ mod actors {
         fn begin_play(&mut self, _e: Entity, _w: &mut World) {
             self.0.lock().unwrap().push("begin");
         }
-        fn tick(&mut self, _e: Entity, _w: &mut World, _t: GameTime) {
+        // NOTE: `Actor::tick` (from `pulsar_scenedb`) requires
+        // `pulsar_scenedb::GameTime`, not the `GameTime` re-exported by this
+        // crate's prelude (which is `pulsar_core::GameTime`). The two are
+        // structurally identical but nominally distinct types — a leftover
+        // of the SceneDB extraction. Using the fully-qualified path here
+        // rather than the prelude import.
+        fn tick(&mut self, _e: Entity, _w: &mut World, _t: pulsar_scenedb::GameTime) {
             self.0.lock().unwrap().push("tick");
         }
         fn end_play(&mut self, _e: Entity, _w: &mut World) {
@@ -149,7 +155,10 @@ mod schedule_tests {
             o2.lock().unwrap().push(2);
         });
 
-        let time = GameTime {
+        // `Schedule::run` (from `pulsar_scenedb`) requires
+        // `pulsar_scenedb::GameTime`, not the prelude's `pulsar_core::GameTime`
+        // — see note in the `actors` test module above.
+        let time = pulsar_scenedb::GameTime {
             elapsed: std::time::Duration::ZERO,
             delta: std::time::Duration::from_millis(16),
             tick: 0,
