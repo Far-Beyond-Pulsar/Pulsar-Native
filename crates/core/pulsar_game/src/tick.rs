@@ -266,7 +266,15 @@ impl TickLoop {
 
         // PulsarApp owns the TickLoop; it spawns the ECS thread in `resumed()`
         // *after* all initial windows are open.
-        let mut app = PulsarApp::new(bridge, self, initial_windows, project_root, default_scene);
+        let display = event_loop.owned_display_handle();
+        let mut app = PulsarApp::new(
+            bridge,
+            self,
+            initial_windows,
+            project_root,
+            default_scene,
+            display,
+        );
 
         // Main thread: drive the winit event loop (required on macOS).
         event_loop

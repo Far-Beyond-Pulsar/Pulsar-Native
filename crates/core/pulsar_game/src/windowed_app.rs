@@ -30,7 +30,7 @@ struct GameWindow {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     surface_config: wgpu::SurfaceConfiguration,
-    surface_format: wgpu::TextureFormat,
+    device: Arc<wgpu::Device>,
     renderer: Renderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
@@ -87,7 +87,7 @@ impl GameWindow {
             window,
             surface,
             surface_config,
-            surface_format,
+            device,
             renderer,
             freecam: FreeCam::default(),
         }
@@ -101,6 +101,20 @@ impl GameWindow {
         self.surface_config.height = height;
         self.surface.configure(device, &self.surface_config);
         self.renderer.set_render_size(width, height);
+    }
+
+    fn acquire_after_surface_recovery(&self) -> Option<wgpu::SurfaceTexture> {
+        match self.surface.get_current_texture() {
+            Ok(texture) => Some(texture),
+            Err(error) => {
+                tracing::warn!(
+                    window = self.handle.id(),
+                    ?error,
+                    "Skipping frame after surface recovery"
+                );
+                None
+            }
+        }
     }
 
     /// Render one frame.
@@ -124,12 +138,40 @@ impl GameWindow {
         );
 
         let output = match self.surface.get_current_texture() {
-            Ok(t) => t,
-            Err(e) => {
-                tracing::warn!(window = self.handle.id(), "Surface error: {:?}", e);
+            Ok(texture) => texture,
+            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost) => {
+                // The surface no longer matches its last known configuration.
+                // Reconfigure once and retry rather than dropping every later
+                // frame after a resize or compositor transition.
+                self.surface.configure(&self.device, &self.surface_config);
+                let Some(texture) = self.acquire_after_surface_recovery() else {
+                    return;
+                };
+                texture
+            }
+            Err(wgpu::SurfaceError::Timeout) => {
+                tracing::warn!(
+                    window = self.handle.id(),
+                    "Skipping frame after surface acquisition timeout"
+                );
+                return;
+            }
+            Err(wgpu::SurfaceError::OutOfMemory) => {
+                tracing::error!(
+                    window = self.handle.id(),
+                    "Surface acquisition ran out of memory"
+                );
+                return;
+            }
+            Err(wgpu::SurfaceError::Other) => {
+                tracing::warn!(
+                    window = self.handle.id(),
+                    "Skipping frame after surface error"
+                );
                 return;
             }
         };
+        let reconfigure_after_present = output.suboptimal;
         let view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -139,6 +181,10 @@ impl GameWindow {
         }
 
         output.present();
+
+        if reconfigure_after_present {
+            self.surface.configure(&self.device, &self.surface_config);
+        }
     }
 }
 
@@ -152,13 +198,16 @@ struct GpuContext {
 }
 
 impl GpuContext {
-    fn new() -> Self {
+    fn new(display: winit::event_loop::OwnedDisplayHandle) -> Self {
         Self {
-            instance: wgpu::Instance::new(wgpu::InstanceDescriptor {
-                backends: wgpu::Backends::all(),
-                flags: wgpu::InstanceFlags::empty(),
-                ..Default::default()
-            }),
+            instance: wgpu::Instance::new(
+                wgpu::InstanceDescriptor {
+                    backends: wgpu::Backends::all(),
+                    flags: wgpu::InstanceFlags::empty(),
+                    ..Default::default()
+                }
+                .with_display_handle(Box::new(display)),
+            ),
             adapter: None,
             device: None,
             queue: None,
@@ -237,10 +286,11 @@ impl PulsarApp {
         initial_windows: Vec<(WindowHandle, WindowDescriptor)>,
         project_root: PathBuf,
         default_scene: Option<PathBuf>,
+        display: winit::event_loop::OwnedDisplayHandle,
     ) -> Self {
         Self {
             bridge,
-            gpu: GpuContext::new(),
+            gpu: GpuContext::new(display),
             tick_loop: Some(tick_loop),
             initial_windows,
             winit_to_handle: HashMap::new(),
