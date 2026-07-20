@@ -1,7 +1,15 @@
 # SceneDB 2.0 — Milestone 3 Design: The Helio Inversion
 
 **Date:** 2026-07-16 (rev 2 — post adversarial review)
-**Status:** M3-α implemented (Tasks 1-10, 12; Task 11 material gated on Rev 2.4 R8 — carried to M3-β)
+**Status:** M3-β implemented (M3-α Tasks 1-12 complete; M3-β T1-T10 complete). Shipped
+this milestone: per-view token + expected-generation upload (`ViewTokenBuffers`, C5),
+§9.2.1-adjacent bypass primitives (lease/compaction hazard tests), the cull compute pass
+(gen validation, bounds-check, frustum, indirect-command emission, design §4), the
+indirect draw executor (`record` and `record_multi_indirect`, §14.1), Test 2 (stale-token
+drop), Test 4 (GPU-path transform sweep), Test 5 (overflow clamp), Test 13 (stateless
+renderer teardown, C0's binding gate — MET, mutation-proven), GPU-vs-CPU cull equality,
+and GPU pass-timing instrumentation (§14.2 below). §9(a) is now CLOSED — see §13.
+M3-γ (VG cluster traversal, meshlets, HLOD) is next.
 **Governs:** spec §0/C0 (Test 13 — THE Ownership Law gate), Part IV §10–14, Part IVb §15–19, C5 (remaining layouts), C6/§20 + Test 2 (GPU validation), C4
 **Spec of record:** `docs/superpowers/specs/SceneDB2.0.md` (Rev 2.3) + the Rev 2.4 punch list (holistic audit; extended by this design — R8–R11 in §11)
 **Predecessors:** M2a design (Rev 3), M2b design (Rev 2 §11)
@@ -283,11 +291,16 @@ not UB).
 
 ## 9. Open items for the α plan (not blocking design approval)
 
-(a) §14.2 clamp strategy: counter readback vs conservative max-count —
-measure on wgpu 30. (b) Radiant-graph ↔ material-row interplay beyond the
-R8 row shape (graph index field reserved). (c) The Helio-side reflection
-harness's exact mechanism (naga on WGSL source vs compiled-module
-introspection).
+(a) **CLOSED (M3-β T9/T10, measured — see §13.2).** §14.2 clamp strategy:
+counter readback vs conservative max-count — measure on wgpu 30. The
+recommendation flipped during review: strategy (b′)
+(`multi_draw_indexed_indirect` over a repacked, tightly-packed 20 B args
+buffer) beats readback-then-clamp (a), which beats a naive CPU-loop
+conservative max-count (b). Full numbers, methodology, and the honestly-flagged
+projected-not-measured crossover caveat are in §13.2. (b) Radiant-graph ↔
+material-row interplay beyond the R8 row shape (graph index field reserved).
+(c) The Helio-side reflection harness's exact mechanism (naga on WGSL source
+vs compiled-module introspection).
 
 ## 10. Deferred to M4
 
@@ -297,6 +310,22 @@ the gizmo/selection dual-writes); `EngineGpuContext` single device root
 lights/voxel/water/post ownership (R10) + `ComponentRegistry` dismantle;
 `scenedb2` feature flag + legacy SceneDb replacement; authored HLOD proxy
 pipeline; editor visual verification.
+
+- **Required migration step — re-point the seam's path dependency (M3-β
+  T10 addition).** SceneDB has been extracted to its own repository
+  (`Far-Beyond-Pulsar/SceneDB`); Pulsar-Native's in-tree
+  `crates/core/pulsar_scenedb` is being superseded and is frozen to source
+  edits as of M3-β T10. `helio-scenedb`'s `Cargo.toml` currently depends on
+  it via `pulsar_scenedb = { path = "../../../../core/pulsar_scenedb",
+  features = ["gpu"] }` (§3/§6's nested-workspace path-dep mechanism). When
+  Pulsar-Native switches to consuming the standalone SceneDB repo instead
+  of its in-tree copy, this relative path breaks (the target directory
+  either moves or disappears from Pulsar-Native's tree entirely) and the
+  seam needs re-pointing — either to a git dependency on the new repo or to
+  wherever Pulsar-Native's own consumption strategy lands (vendored
+  submodule, published crate, etc.). Named as a required M4 input; the
+  exact target depends on decisions the extraction itself hasn't finalized
+  yet.
 
 ## 11. Rev 2.4 punch-list additions (contract changes this design requires)
 
@@ -342,3 +371,177 @@ pipeline; editor visual verification.
   `instance_info_buffer()`); and Helio's submodule lockfile carries a
   second wgpu (23.0.1, via examples→rapier→bevy, pre-existing) — the seam
   graph unifies on 30.0.0; note for the M4 gate.
+- **Test 13's streaming-frozen scope is narrower than "streaming coexists
+  with zero-reupload"** (M3-β T8/T10): the gate's window holds streaming
+  transitions frozen for its N-frame duration and asserts zero scene-object
+  reupload *within that frozen window* — it does not exercise a
+  promote/demote cycle happening *during* the zero-reupload window. The
+  gate proves teardown-then-rebuild is clean; it does not yet prove
+  streaming and the zero-reupload property compose. A dedicated
+  streaming-during-teardown-window test is M3-γ/M4 scope.
+- **`revalidate_run` is generation-blind** (M3-β T2 `stress_gpu`,
+  `hazard_revalidate_run_cannot_detect_a_row_reused_by_compaction_swap`,
+  committed and green): a row reused by a compaction swap between a
+  snapshot and its revalidation is not detectable by generation comparison
+  alone in that specific hazard shape. The repro is committed as a live
+  test, not just a note — closing it (or scoping it as an accepted, proven
+  hazard) is M3-γ/M4 work.
+- **Cull is dispatch-overhead-bound at 1k–10k tokens, on this host** (M3-β
+  T9): cull dispatch cost is ~9.5–15 µs essentially flat from N=1,000 to
+  N=10,000, with real N-dependence only becoming visible by N=100,000
+  (~12.5–15 µs). This is directly relevant to the still-DEFERRED per-view
+  multi-dispatch item (perf-validation report contract #44, design carried
+  forward as R-PERF-4/#44): fixed per-dispatch overhead at this scale means
+  batching multiple views' cull dispatches will matter more than N-scaling
+  alone would suggest.
+- **The draw-side transpose pin needs an asymmetric quad.** C5's
+  column-major instance-transform convention (M3-β T5 review amendment) is
+  today pinned only on the cull side (world-AABB extents, via a
+  non-symmetric rotation probe). The draw-side executor (`record` /
+  `record_multi_indirect`) has no equivalent asymmetric-geometry pin of its
+  own — a symmetric quad fixture would not distinguish a correctly- vs.
+  transposed-flattened transform in a rendered-pixel assertion. M3-γ/M4
+  carry-forward.
+- **`generation_write_count`'s shadow-gate scope** needs a doc note on the
+  gate itself (`generation_uploads_are_shadow_gated_to_changes_only`,
+  `gpu_store.rs`) clarifying exactly which write paths it covers and which
+  it doesn't (streaming eviction's CPU-side-only retirement path, C6, is a
+  documented exception already; the note is about making that exception
+  discoverable from the gate's own doc, not a behavior change). This is
+  now **owed to SceneDB's own repo** (Far-Beyond-Pulsar/SceneDB) rather
+  than actionable here — `crates/core/pulsar_scenedb/src/**` is frozen to
+  edits in Pulsar-Native as of M3-β T10 (extraction in progress, see §10).
+  Deferred by the extraction, not dropped.
+- **The equivalence spot-pin has a `first_instance` blind spot** (M3-β T9
+  follow-up, `tests/draw_multi_indirect_equivalence.rs`): the repack
+  spot-pin checks three slots (first visible, first zero-instance, last at
+  capacity) field-for-field against the source `CullRecord`, but the
+  follow-up's own mutation-kill note records that a `first_instance = 0`
+  mutation (dropping the §14.1 command-slot bindless key entirely) does
+  NOT fail at the spot-pin for those three slots — it happens to only
+  surface downstream, at the "both mesh colors present" guard, because
+  those three particular slots' real `first_instance` values are
+  legitimately 0 or the mutation's effect is masked by construction. A
+  spot-pin slot whose real `first_instance` is guaranteed nonzero would
+  close this gap directly. M3-γ/M4 carry-forward.
+
+## 13. M3-β decisions: device requirements (§14.1) and clamp strategy (§14.2)
+
+### 13.1 Device requirement: `INDIRECT_FIRST_INSTANCE` (spec §14.1)
+
+**Promoted out of a test doc comment (M3-β T10).** Spec §14.1's indirect
+draw-command contract keys every command on `first_instance == command
+slot` — the bindless lookup key downstream passes use to fetch
+`visible_instance_ids[first_instance]` and, transitively, the row it
+addresses. This is not optional decoration: without
+`wgpu::Features::INDIRECT_FIRST_INSTANCE` enabled on the device, wgpu 30's
+own documentation states a nonzero `first_instance` in an indirect draw's
+`DrawIndexedIndirectArgs` "has to be 0, unless
+`Features::INDIRECT_FIRST_INSTANCE` is enabled" — and this stack's actual
+observed behavior (both the Vulkan and the platform-default backend,
+empirically confirmed, M3-β T7) is to execute the draw **as if
+`first_instance` were zero, silently, with no validation error**. Every
+indirect draw's `@builtin(instance_index)` would then read record 0 no
+matter which slot the draw call's args actually named — breaking §14.1's
+bindless key outright, with no diagnostic to point at the cause. The
+capability is widely supported on desktop GPUs (Vulkan/DX12/Metal all
+expose it natively; the WebGPU spec merely gates it behind an opt-in
+feature).
+
+**Device-requirements callout (binding for any device the M3-β/γ cull or
+draw passes run on):** `wgpu::Features::INDIRECT_FIRST_INSTANCE` MUST be
+requested at `request_device` alongside `wgpu::Limits::default()` (T4
+established the seam otherwise fits under the WebGPU-portable default
+limits — this is the one additional feature the draw path genuinely
+needs, and no more).
+
+**Cross-reference — the two consumers cannot drift.** Helio's own renderer
+already hard-requires this feature independently, with its own pinning
+test:
+- `helio/src/renderer/config.rs:14-18` — `required_wgpu_features` ORs
+  `INDIRECT_FIRST_INSTANCE` into the required set unconditionally (both
+  the native and the wasm32 arms), plus a unit test
+  (`indirect_first_instance_is_required_even_when_adapter_does_not_report_it`)
+  pinning that it survives even against an empty adapter-features input.
+- `helio/src/renderer/setup.rs:73-74` — a runtime `assert!` at renderer
+  construction that the device's features contain
+  `INDIRECT_FIRST_INSTANCE`, with the message: *"Helio requires
+  INDIRECT_FIRST_INSTANCE because GPU-driven object and meshlet draws use
+  non-zero indirect first_instance values; create the device with
+  helio::required_wgpu_features(adapter.features())"*.
+
+`helio-scenedb`'s own GPU test contexts
+(`crates/helio-scenedb/tests/support/mod.rs`,
+`test_context_indirect_first_instance`) request the same feature
+independently for the draw-executor test suites, with the requirement's
+full rationale documented on the constructor. This design-doc callout and
+the parallel CONTRACTS.md entry (§C5) exist so a future device-construction
+path (e.g. the M4 real-Helio-pass integration, or a from-scratch consumer)
+cannot silently reintroduce Helio's own renderer requirement without
+requesting it for the SceneDB seam too, or vice versa — the two call sites
+are independent code paths today and must be kept honest against each
+other by documentation until M4 unifies device construction
+(`EngineGpuContext` single device root, §10).
+
+### 13.2 Clamp strategy — decided, closing §9(a) (spec §14.2)
+
+**Measured at N=10,000 tokens / 10% visible** (the plan brief's named
+operating point), 8 independent `cargo bench` process invocations (M3-β
+T9, reworked after review):
+
+| Strategy | mean-of-run-means (ns) |
+|---|---:|
+| (a) readback-then-clamp | 221,567.1 (range 205,743.3–247,113.3) |
+| (b) conservative max-count, CPU draw-call loop | 1,572,062.1 (range 1,502,923.3–1,638,666.7) |
+| (b′) conservative max-count, GPU repack + `multi_draw_indexed_indirect` | 136,049.2 (range 126,140.0–176,910.0) |
+
+Per-run ordering: **(b′) < (a) < (b) in 8 of 8 runs, no exceptions.** The
+reviewer independently reproduced this on a separate 8-run session:
+(b′) < (a) in 8/8 runs, ratio range 1.485×–2.253× (report's own range:
+1.40×–1.79×) — same order, no inversions, consistent magnitude band.
+
+**The decision flips.** (b′) — `RenderPass::multi_draw_indexed_indirect`
+issuing all indirect draws from ONE call, fed by a GPU-side compute
+`RepackPass` that turns the 32 B `CullRecord` array into a tightly-packed
+20 B `DrawIndexedIndirectArgs` buffer (no CPU stall, no extra
+`wgpu::Features` beyond the universal `DownlevelFlags::INDIRECT_EXECUTION`)
+— beats readback-then-clamp (a) consistently, because it pays neither
+(a)'s CPU stall (~45–85 µs) nor (b)'s CPU draw-recording loop. The repack
+pass itself costs **~24–60 µs GPU-side** at capacity=10,000 — cheap enough
+not to erase (b′)'s advantage over (a) at this operating point.
+
+**Correctness, not just speed: (a) and (b′) render byte-identical output.**
+`tests/draw_multi_indirect_equivalence.rs` (promoted to a permanent pin,
+M3-β T9 follow-up) renders one fixture (24 tokens, 5 visible at distinct
+screen columns, 19 frustum-culled) via both strategies and asserts
+byte-identical 64×64 RGBA8 offscreen targets: **0/16384 differing bytes.**
+The reviewer independently built and ran a second, throwaway
+output-equivalence probe before trusting the report's claim and got the
+same result. This closes the concern that (b′)'s always-issued
+`instance_count = 0` no-op draws (9,000 of 10,000 at this operating point)
+might leak stray rasterized content — they provably do not.
+
+**Recommendation for M3-γ/M4 integration:** adopt **(b′)** as the default
+at visible fractions the design expects to be typical (≥~5–10%, the regime
+this task actually measured) — faster, avoids the CPU stall entirely, and
+`record_multi_indirect` is now a shipped `DrawExecutor` capability, not a
+bench-only prototype.
+
+**What is NOT settled, stated as speculation, not a finding:** the
+crossover below which (a) may win again (because (a)'s real-draw-count
+cost shrinks with the visible fraction while (b′)'s repack/multi-draw cost
+stays roughly flat at ≈`capacity`) was **projected from already-measured
+component costs, not independently measured by a dedicated low-visibility
+sweep**. The task-9 report's own arithmetic (`V* ≈ 400–500`, ≈4–5%
+visible) used stall-cost inputs carried over from an earlier session. The
+**reviewer's own 8-run session measured a higher stall mean directly**
+(`a_stall_mean` mean ≈ 85.8 µs across its 8 runs, vs. the ~50–70 µs the
+report's crossover arithmetic assumed) and re-derived, using its own
+session's data throughout: `V* ≈ 363` — about 15–30% lower than the
+report's figure, shifting the projected crossover to an even lower visible
+fraction (≈3.6% rather than ≈4–5%). This is the figure this design doc
+records as the more conservative, better-grounded projection — but it
+remains a **projection, not a measurement**: no dedicated sweep across low
+visible fractions (1%, 2%, 5%) was run. A future integration targeting
+extreme-culling scenes (well under ~5% visible) should run that sweep
+before relying on either crossover estimate.

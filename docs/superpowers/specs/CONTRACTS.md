@@ -129,6 +129,30 @@ first_index u32, vertex_offset i32, first_instance u32 (= command slot,
 bindless lookup key). Per-view command buffers; bounded atomicAdd
 allocation; CPU-side count clamp.
 
+**Device requirement, parallel to #47 (M3-β T10, promoted out of a test doc
+comment):** any device that issues indirect draws against this row's
+`first_instance = command slot` contract MUST request
+`wgpu::Features::INDIRECT_FIRST_INSTANCE` at `request_device`. Per wgpu-types
+30's own documentation on `DrawIndexedIndirectArgs::first_instance`, it "has
+to be 0, unless `Features::INDIRECT_FIRST_INSTANCE` is enabled." Without the
+feature, this stack's observed behavior on wgpu 30 (both the Vulkan and the
+platform-default backend, empirically confirmed M3-β T7) is to execute the
+indirect draw **as if `first_instance` were zero — silently, with no
+validation error** — which breaks this row's bindless lookup key outright:
+every indirect draw's `@builtin(instance_index)` reads record 0 regardless of
+which slot the draw call's args actually named, with no diagnostic pointing
+at the cause. Widely supported on desktop GPUs (Vulkan/DX12/Metal all expose
+it; the WebGPU spec merely gates it behind an opt-in feature). Enforcement:
+Helio's own renderer hard-requires this feature independently — this is the
+SAME requirement, not a new one, and the two call sites must be kept in sync
+by design: `helio/src/renderer/config.rs:14-18` (`required_wgpu_features`,
+pinned by `indirect_first_instance_is_required_even_when_adapter_does_not_
+report_it`) and `helio/src/renderer/setup.rs:73-74` (construction-time
+`assert!`). `helio-scenedb`'s own GPU test contexts request it independently
+for the draw-executor suites (`crates/helio-scenedb/tests/support/mod.rs`,
+`test_context_indirect_first_instance`). See design doc §13.1 for the full
+callout.
+
 **Amendment (M3-β T5 review — instance transform flattening, empirically
 resolved on a real GPU):** the instance element's 16 floats are the
 **column-major flattening**, `array[4 * col + row] = M[row][col]` — what a
