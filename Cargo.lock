@@ -331,7 +331,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -342,7 +342,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1713,7 +1713,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -2615,7 +2615,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2909,6 +2909,7 @@ dependencies = [
  "gpui-ce",
  "helio 0.18.0",
  "helio-asset-compat",
+ "helio-default-graphs",
  "lsp-types",
  "parking_lot",
  "profiling 0.1.0",
@@ -3155,7 +3156,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4497,30 +4498,30 @@ dependencies = [
  "arrayvec",
  "bytemuck",
  "glam 0.29.3",
- "helio-pass-billboard",
+ "helio-pass-billboard 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "helio-pass-debug",
- "helio-pass-deferred-light",
+ "helio-pass-deferred-light 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "helio-pass-depth-prepass",
- "helio-pass-fxaa",
- "helio-pass-gbuffer",
- "helio-pass-hiz",
- "helio-pass-hlfs",
- "helio-pass-indirect-dispatch",
- "helio-pass-light-cull",
- "helio-pass-occlusion-cull",
- "helio-pass-perf-overlay",
- "helio-pass-shadow",
- "helio-pass-shadow-dirty",
- "helio-pass-shadow-matrix",
- "helio-pass-simple-cube",
- "helio-pass-sky",
- "helio-pass-sky-lut",
+ "helio-pass-fxaa 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-gbuffer 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-hiz 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-hlfs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-indirect-dispatch 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-light-cull 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-occlusion-cull 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-perf-overlay 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-shadow 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-shadow-dirty 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-shadow-matrix 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-simple-cube 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-sky 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-sky-lut 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "helio-pass-smaa",
  "helio-pass-ssao",
- "helio-pass-taa",
- "helio-pass-transparent",
- "helio-pass-virtual-geometry",
- "helio-pass-water-sim",
+ "helio-pass-taa 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-transparent 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-virtual-geometry 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
+ "helio-pass-water-sim 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "helio-v3",
  "image",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
@@ -4590,6 +4591,58 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-default-graphs"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "helio 0.18.0",
+ "helio-core",
+ "helio-pass-billboard 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-corona",
+ "helio-pass-debug-overlay",
+ "helio-pass-decal",
+ "helio-pass-deferred-light 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-fxaa 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-gbuffer 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-hiz 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-hlfs 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-indirect-dispatch 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-light-cull 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-occlusion-cull 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-perf-overlay 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-planar-reflection",
+ "helio-pass-postprocess",
+ "helio-pass-radiance-cascades",
+ "helio-pass-shadow 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-shadow-cull",
+ "helio-pass-shadow-dirty 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-shadow-matrix 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-simple-cube 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-sky 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-sky-lut 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-ssr",
+ "helio-pass-taa 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-transparent 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-virtual-geometry 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "helio-pass-volumetric-fog",
+ "helio-pass-voxel-mesh",
+ "helio-pass-water-sim 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "image",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-billboard"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
 name = "helio-pass-billboard"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
@@ -4601,6 +4654,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-corona"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
 name = "helio-pass-debug"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
@@ -4609,6 +4673,40 @@ dependencies = [
  "helio-v3",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-debug-overlay"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-decal"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-deferred-light"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4637,12 +4735,36 @@ dependencies = [
 [[package]]
 name = "helio-pass-fxaa"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-fxaa"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-gbuffer"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio 0.18.0",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4660,12 +4782,36 @@ dependencies = [
 [[package]]
 name = "helio-pass-hiz"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-hiz"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "log",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-hlfs"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.2",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4683,11 +4829,33 @@ dependencies = [
 [[package]]
 name = "helio-pass-indirect-dispatch"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-indirect-dispatch"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-light-cull"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4704,11 +4872,33 @@ dependencies = [
 [[package]]
 name = "helio-pass-occlusion-cull"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-occlusion-cull"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-perf-overlay"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4723,6 +4913,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-planar-reflection"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
+]
+
+[[package]]
 name = "helio-pass-postprocess"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
@@ -4730,6 +4932,29 @@ dependencies = [
  "bytemuck",
  "helio-core",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-radiance-cascades"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-shadow"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
  "wgpu 30.0.0",
 ]
 
@@ -4746,6 +4971,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-shadow-cull"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-shadow-dirty"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
 name = "helio-pass-shadow-dirty"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
@@ -4758,11 +5005,34 @@ dependencies = [
 [[package]]
 name = "helio-pass-shadow-matrix"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-shadow-matrix"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-simple-cube"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4779,12 +5049,34 @@ dependencies = [
 [[package]]
 name = "helio-pass-sky"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-sky"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
  "helio-v3",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-sky-lut"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4821,6 +5113,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "helio-pass-ssr"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-taa"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
 name = "helio-pass-taa"
 version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
@@ -4829,6 +5143,17 @@ dependencies = [
  "helio-v3",
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-transparent"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -4845,6 +5170,18 @@ dependencies = [
 [[package]]
 name = "helio-pass-virtual-geometry"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-virtual-geometry"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9#f124aeac0057c8f11c159931ea0c57d4c3b7fef9"
 dependencies = [
  "bytemuck",
@@ -4852,6 +5189,42 @@ dependencies = [
  "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=f124aeac0057c8f11c159931ea0c57d4c3b7fef9)",
  "log",
  "wgpu 28.0.0",
+]
+
+[[package]]
+name = "helio-pass-volumetric-fog"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-voxel-mesh"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "glam 0.33.2",
+ "helio-core",
+ "helio-voxel-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "log",
+ "wgpu 30.0.0",
+]
+
+[[package]]
+name = "helio-pass-water-sim"
+version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88#2752d0edadb9665a8dcf619790be7876a3773a88"
+dependencies = [
+ "bytemuck",
+ "helio-core",
+ "libhelio 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=2752d0edadb9665a8dcf619790be7876a3773a88)",
+ "wgpu 30.0.0",
 ]
 
 [[package]]
@@ -5487,7 +5860,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -6821,7 +7194,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8418,7 +8791,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03da047801ff44bb6a4d407d4860c05fd70bb81714e6b2f3812603d5b145b042"
 dependencies = [
  "heck",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "log",
  "multimap",
  "petgraph",
@@ -8437,7 +8810,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b570b25f7617e43d59005d0990ccb79e950a423952cea19671b7a876da390adf"
 dependencies = [
  "anyhow",
- "itertools 0.14.0",
+ "itertools 0.10.5",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -9040,7 +9413,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10051,7 +10424,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10119,7 +10492,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -10978,7 +11351,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11278,7 +11651,7 @@ dependencies = [
  "cfg-if 1.0.4",
  "libc",
  "psm",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -11716,7 +12089,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -11755,7 +12128,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -12854,7 +13227,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -14479,7 +14852,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -14987,7 +15360,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if 1.0.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

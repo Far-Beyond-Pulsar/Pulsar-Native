@@ -128,6 +128,7 @@ plugin_manager        = { path = "crates/core/plugin_manager" }
 # ---------- Helio Renderer (external git dep) ----------
 helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2752d0edadb9665a8dcf619790be7876a3773a88" }
 helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2752d0edadb9665a8dcf619790be7876a3773a88" }
+helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2752d0edadb9665a8dcf619790be7876a3773a88" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

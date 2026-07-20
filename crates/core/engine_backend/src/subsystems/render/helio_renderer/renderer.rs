@@ -9,8 +9,8 @@ use std::time::Instant;
 use engine_fs::virtual_fs;
 use helio::{
     Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId, MaterialId,
-    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, RenderGraph, Renderer,
-    RendererConfig, Scene, SceneActor, SceneActorId, ScenePicker, SkyActor,
+    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer, RendererConfig, Scene,
+    SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
@@ -167,8 +167,6 @@ impl HelioRenderer {
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
             let scene = Scene::new(device_arc.clone(), queue_arc.clone());
-            let mut graph = RenderGraph::new_with_external_device(&device_arc, &queue_arc);
-            graph.lock(width, height);
             let debug_camera_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("debug_camera"),
                 size: 64,
@@ -182,6 +180,17 @@ impl HelioRenderer {
                 mapped_at_creation: false,
             });
             let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
+            let config = RendererConfig::new(width, height, format);
+            let graph = helio_default_graphs::build_default_graph_external(
+                &device_arc,
+                &queue_arc,
+                &scene,
+                config,
+                debug_state.clone(),
+                &debug_camera_buffer,
+                &cull_stats_buffer,
+                None,
+            );
             let mut r = Renderer::new_with_external_device(
                 device_arc.clone(),
                 queue_arc.clone(),
@@ -189,7 +198,7 @@ impl HelioRenderer {
                 width,
                 height,
                 1.0,
-                RendererConfig::new(width, height, format),
+                config,
                 scene,
                 graph,
                 debug_state,
