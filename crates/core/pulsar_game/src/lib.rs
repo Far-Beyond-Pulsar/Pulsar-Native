@@ -11,7 +11,7 @@
 //! - **Game time** — `GameTime` and `DeltaTime`.
 
 pub use pulsar_core::{EventBuffer, EventReader, EventWriter, GameTime, TaskPool, TickMode};
-pub use pulsar_ecs::{
+pub use pulsar_scenedb::{
     __bp_clear_comp_ctx, __bp_set_comp_ctx, __bp_with_comp, Actor, ActorRegistry, Archetype,
     ArchetypeId, ArchetypeKey, Component, ComponentStore, Entity, QueryIter, Schedule, World,
     WorldQuery,
@@ -44,7 +44,7 @@ pub mod prelude {
         window::{RenderCamera, WindowDescriptor, WindowHandle, WindowManager},
     };
     pub use pulsar_core::{EventReader, EventWriter, GameTime, TaskPool, TickMode};
-    pub use pulsar_ecs::{
+    pub use pulsar_scenedb::{
         Actor, ActorRegistry, Component, ComponentStore, Entity, QueryIter, Schedule, World,
         WorldQuery,
     };

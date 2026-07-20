@@ -108,24 +108,24 @@ enum Phase {
     Compacted,
 }
 
-struct QueuedRetire {
-    pending: PendingRetire,
-    serial: u64,
+pub(crate) struct QueuedRetire {
+    pub(crate) pending: PendingRetire,
+    pub(crate) serial: u64,
 }
 
 /// Per-cell GPU-side bookkeeping: the region assignment, the dirty state
 /// that used to live on `GpuStore` directly (M2a), and the deferred-retire
 /// queue (now one per cell rather than store-wide).
-struct CellGpuState {
+pub(crate) struct CellGpuState {
     /// Size class this cell was registered under (M2b-β `unregister_cell`:
     /// selects which `row_pools`/`slot_pools` entry to return the region
     /// pair to at eviction).
-    class: usize,
-    row_base: u32,
-    slot_base: u32,
+    pub(crate) class: usize,
+    pub(crate) row_base: u32,
+    pub(crate) slot_base: u32,
     /// Class capacity + headroom; bounds every gen/slot write into this
     /// cell's region.
-    slot_capacity: u32,
+    pub(crate) slot_capacity: u32,
     /// Per-column dirty masks in a DENSE table indexed by `ComponentId.0`,
     /// replacing the old named `dirty_transforms` / `dirty_infos` fields
     /// (pre-work item 2). The slot-mirror dirty mask (`dirty_slots`) is kept
@@ -142,7 +142,7 @@ struct CellGpuState {
     /// 100% mutation versus the named-field form it generalized. Index 0 is
     /// always `None` (`ComponentId` 0 is reserved); the table is sized to the
     /// highest registered GPU-column id at `register_cell`.
-    dirty_columns: Vec<Option<DirtyMask>>,
+    pub(crate) dirty_columns: Vec<Option<DirtyMask>>,
     dirty_slots: DirtyMask,
     /// Per-row global-slot staging. `sync_all`'s self-healing boundary scan
     /// is scan-first, not dirty-mask-first: it compares `slot_shadow` against
@@ -163,7 +163,7 @@ struct CellGpuState {
     slot_shadow: Vec<u32>,
     /// Per-cell deferred-retire queue; nondecreasing serials (debug-asserted,
     /// T11).
-    pending: VecDeque<QueuedRetire>,
+    pub(crate) pending: VecDeque<QueuedRetire>,
     /// CPU-side shadow of the last generation uploaded per LOCAL slot (§4
     /// delta-minimality on the write path), seeded from the registry at
     /// `register_cell`. Atomic because `write_transform` takes `&self`.
@@ -978,5 +978,27 @@ impl SceneGpuStore {
     /// Per-cell metadata SSBO (α: allocated, no writer).
     pub fn cell_metadata_buffer(&self) -> &wgpu::Buffer {
         &self.cell_metadata
+    }
+
+    // ── Telemetry / snapshot accessors (pub(crate)) ──────────────────────
+
+    /// GPU buffers map for telemetry snapshot.
+    pub(crate) fn telemetry_gpu_buffers(&self) -> &HashMap<ComponentId, Box<dyn GpuBufferDispatch>> {
+        &self.gpu_buffers
+    }
+
+    /// Row region pools for telemetry snapshot.
+    pub(crate) fn telemetry_row_pools(&self) -> &[RegionPool] {
+        &self.row_pools
+    }
+
+    /// Slot region pools for telemetry snapshot.
+    pub(crate) fn telemetry_slot_pools(&self) -> &[RegionPool] {
+        &self.slot_pools
+    }
+
+    /// Per-cell GPU state for telemetry snapshot.
+    pub(crate) fn telemetry_cells(&self) -> &[Option<CellGpuState>] {
+        &self.cells
     }
 }

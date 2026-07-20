@@ -71,7 +71,6 @@ pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
-pulsar_ecs                         = { path = "crates/core/pulsar_ecs" }
 pulsar_scenedb                     = { path = "crates/core/pulsar_scenedb" }
 pulsar_scenedb_derive              = { path = "crates/core/pulsar_scenedb_derive" }
 pulsar_reflection                  = { path = "crates/core/pulsar_reflection" }
@@ -151,6 +150,7 @@ log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_repr = "0.1.20"
 serde_json = "1.0.149"
+socket2 = "0.5"
 schemars = "1.2.0"
 smallvec = "1.15.1"
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "bmp", "tga", "gif", "webp"] }

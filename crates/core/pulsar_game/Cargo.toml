@@ -7,7 +7,7 @@ description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, 
 [dependencies]
 # Core primitives (extracted)
 pulsar_core  = { workspace = true }
-pulsar_ecs   = { workspace = true }
+pulsar_scenedb   = { workspace = true }
 
 # Profiling + logging
 profiling   = { workspace = true }

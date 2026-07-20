@@ -112,17 +112,18 @@ pub fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
     let gpu_fields: Vec<&FieldInfo> = field_infos.iter().filter(|f| f.is_gpu).collect();
 
     let pod_impl = generate_pod_impl(name, &impl_generics, &ty_generics, where_clause, &field_types);
-    let has_type_token =
-        generate_has_type_token(name, &impl_generics, &ty_generics, where_clause);
     let scene_column_set =
         generate_scene_column_set(name, &impl_generics, &ty_generics, where_clause, &field_infos);
     let gpu_column_set =
         generate_gpu_column_set(name, &impl_generics, &ty_generics, where_clause, &gpu_fields);
+    // NOTE: HasTypeToken is NOT generated here — the blanket impl in
+    // `pulsar_scenedb::token` covers `T: Pod + 'static`, which our Pod impl
+    // satisfies.  An explicit impl would conflict.
 
     Ok(quote! {
         #pod_impl
-        #has_type_token
         #scene_column_set
+        #[cfg(feature = "gpu")]
         #gpu_column_set
     })
 }
@@ -160,19 +161,4 @@ fn generate_pod_impl(
     }
 }
 
-// ── HasTypeToken impl ─────────────────────────────────────────────────────
 
-fn generate_has_type_token(
-    name: &Ident,
-    impl_generics: &syn::ImplGenerics,
-    ty_generics: &syn::TypeGenerics,
-    where_clause: Option<&syn::WhereClause>,
-) -> TokenStream {
-    quote! {
-        impl #impl_generics ::pulsar_scenedb::token::HasTypeToken for #name #ty_generics #where_clause {
-            fn type_token() -> ::pulsar_scenedb::token::TypeToken {
-                ::pulsar_scenedb::token::TypeToken::of::<Self>()
-            }
-        }
-    }
-}
