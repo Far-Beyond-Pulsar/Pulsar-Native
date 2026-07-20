@@ -126,8 +126,8 @@ plugin_editor_api     = { path = "crates/core/plugin_editor_api"}
 plugin_manager        = { path = "crates/core/plugin_manager" }
 
 # ---------- Helio Renderer (external git dep) ----------
-helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96591880650cbb2b5117052b005ce17729336fe0" }
-helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "96591880650cbb2b5117052b005ce17729336fe0" }
+helio                 = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2752d0edadb9665a8dcf619790be7876a3773a88" }
+helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "2752d0edadb9665a8dcf619790be7876a3773a88" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
@@ -213,6 +213,7 @@ toml = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 regex = "1"
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
+bytemuck = { version = "1", features = ["derive"] }
 similar = "3"
 quinn = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
