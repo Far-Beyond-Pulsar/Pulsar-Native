@@ -193,6 +193,73 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
         quote! { None }
     };
 
+    // Extract output data pins
+    let outputs_str = extract_string_value(&args_str, "outputs");
+    let output_params: Vec<proc_macro2::TokenStream> = if let Some(out_str) = outputs_str {
+        out_str
+            .split(',')
+            .filter_map(|pair| {
+                let pair = pair.trim();
+                if pair.is_empty() {
+                    return None;
+                }
+                let parts: Vec<&str> = pair.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let name = parts[0].trim();
+                    let ty = parts[1].trim();
+                    Some(quote! {
+                        crate::NodeParameter {
+                            name: #name,
+                            ty: #ty,
+                            size: 0,
+                            align: 0,
+                            type_info_fn: None,
+                        }
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let output_params_array = if output_params.is_empty() {
+        quote! { &[] }
+    } else {
+        quote! { &[#(#output_params),*] }
+    };
+
+    // Extract conversion metadata
+    let conversion_str = extract_string_value(&args_str, "conversion");
+    let conversion_expr = if let Some(conv_str) = conversion_str {
+        let parts: Vec<&str> = conv_str.splitn(2, "->").collect();
+        if parts.len() == 2 {
+            let from_type = parts[0].trim();
+            let to_type = parts[1].trim();
+            // Split on comma for optional lossless flag
+            let (to_type_clean, lossless) = if let Some(comma_pos) = to_type.find(',') {
+                let typ = to_type[..comma_pos].trim();
+                let rest = to_type[comma_pos + 1..].trim();
+                let ll = rest == "lossless" || rest == "true";
+                (typ, ll)
+            } else {
+                (to_type, true)
+            };
+            quote! {
+                Some(crate::registry::ConversionMetadata {
+                    from_type: #from_type,
+                    to_type: #to_type_clean,
+                    lossless: #lossless,
+                })
+            }
+        } else {
+            quote! { None }
+        }
+    } else {
+        quote! { None }
+    };
+
     // Extract parameters — bake size_of/align_of at compile time using the actual type token.
     // For generic functions: substitute each unbound type parameter with `()` before computing
     // size_of/align_of.  This means:
@@ -443,6 +510,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             name: #fn_name_str,
             node_type: crate::NodeTypes::#node_type_ident,
             params: &[#(#params),*],
+            output_params: #output_params_array,
             return_type: #return_type,
             return_size: #return_size,
             return_align: #return_align,
@@ -454,6 +522,7 @@ pub fn blueprint(args: TokenStream, input: TokenStream) -> TokenStream {
             category: #category_str,
             color: #color_opt,
             imports: #imports_array,
+            conversion: #conversion_expr,
         };
     };
 

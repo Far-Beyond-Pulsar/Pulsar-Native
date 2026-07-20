@@ -44,12 +44,23 @@ pub struct NodeImport {
     pub items: &'static [&'static str],
 }
 
+/// Conversion metadata — declares that this node converts one type to another.
+#[derive(Debug, Clone)]
+pub struct ConversionMetadata {
+    pub from_type: &'static str,
+    pub to_type: &'static str,
+    pub lossless: bool,
+}
+
 /// Complete metadata about a blueprint node
 #[derive(Debug, Clone)]
 pub struct NodeMetadata {
     pub name: &'static str,
     pub node_type: NodeTypes,
     pub params: &'static [NodeParameter],
+    /// Output data pins (mirrors `params` for inputs).
+    /// Set via `outputs: "name: Type, ..."` in the `#[blueprint]` attribute.
+    pub output_params: &'static [NodeParameter],
     pub return_type: Option<&'static str>,
     /// `std::mem::size_of::<ReturnType>()`, set by the `#[blueprint]` macro. 0 for void.
     pub return_size: usize,
@@ -64,6 +75,9 @@ pub struct NodeMetadata {
     pub category: &'static str,
     pub color: Option<&'static str>,
     pub imports: &'static [NodeImport],
+    /// Optional conversion metadata for PBGC codegen.
+    /// Set via `conversion: "from_type -> to_type"` in the `#[blueprint]` attribute.
+    pub conversion: Option<ConversionMetadata>,
 }
 
 impl NodeMetadata {

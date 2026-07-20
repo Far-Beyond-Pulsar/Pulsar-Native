@@ -33,29 +33,42 @@ pub fn begin_play() {
     exec_output!("Body");
 }
 
-/// Emit a custom event (placeholder: does nothing).
+/// Emit a custom event by publishing raw bytes to the instance's EventBus.
 ///
 /// # Inputs
-/// - `event`: The event name
-/// - `payload`: The event payload (as string)
+/// - `type_id`: The deterministic 64-bit type ID for the event (from Event::stable_type_id).
+/// - `payload_ptr`: Raw pointer to the repr(C) event struct.
+/// - `payload_len`: Size of the event struct in bytes.
 ///
-/// # Events Emit
-/// Emits a custom event with a payload.
+/// # Custom Event Emit
+/// Publishes raw event bytes to all subscribers.
+///
+/// Called by bytecode generated from `emit_custom_event` dispatch nodes.
+/// The blueprint actor owns a `gamma_core::EventBus` and the generated
+/// `begin_play` calls `__init_events()` to register subscribers.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn emit_event(_event: String, _payload: String) {
-    // In a real implementation, this would notify listeners
+pub fn emit_event() {
+    // Resolved at runtime: the executor reads the type_id and payload
+    // from the bytecode stack and calls EventBus::publish_raw.
+    // Implementation lives in pulsar_bp_executor.
 }
 
-/// Register a handler for a custom event (placeholder: does nothing).
+/// Register a handler for a custom event.
 ///
 /// # Inputs
-/// - `event`: The event name
+/// - `type_id`: The deterministic 64-bit type ID for the event.
+/// - `handler_ptr`: Pointer to the handler function.
 ///
-/// # Events On
-/// Registers a handler for a custom event.
+/// # On Event
+/// Registers a raw handler for a custom event on the instance's EventBus.
+///
+/// Called internally by the generated `__init_events()` method of the
+/// blueprint actor. The actual subscription uses `EventBus::subscribe_raw`.
 #[blueprint(type: crate::NodeTypes::fn_, category: "Events")]
-pub fn on_event(_event: String) {
-    // In a real implementation, this would register a callback
+pub fn on_event() {
+    // Implementation lives in the generated actor code via
+    // __init_events() → self.events.subscribe_raw(type_id, callback).
+    // This function is kept as a pulsar_std entry point for type resolution.
 }
 
 /// Remove an event handler (placeholder: does nothing).
