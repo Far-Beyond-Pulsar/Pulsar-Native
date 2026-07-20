@@ -123,7 +123,14 @@ structurally/indirectly supported, no dedicated quantitative bench built) ·
 (met, and the campaign's re-measurement replaced a stale/wrong prior number) ·
 **REFRAMED** (the contract's language, not the implementation, is what's wrong — stated
 correction given) · **MISS** (gap, with the remediation item that closes it) ·
+**CLOSED** (was MISS or DEFERRED at campaign close; a later milestone measured/built the
+missing piece — verdict flip, with numbers, recorded inline) ·
 **DEFERRED** (needs M3-β/γ or M4; exactly which milestone is named).
+
+> **M3-β verdict-flip note (T10):** rows #5, #6, and #47 below were **DEFERRED — M3-β**
+> or **MISS** when this report closed (2026-07-17); M3-β (this milestone) built the
+> missing consumers and re-measured. Their table cells are updated in place with the new
+> verdict and numbers; the tally in §2.8 reflects the flip. No other row changed.
 
 ### 2.1 The motivating bet (legacy elimination)
 
@@ -133,8 +140,8 @@ correction given) · **MISS** (gap, with the remediation item that closes it) ·
 | 2 | Zero-mutation frame uploads nothing | **MET** | `(ranges, bytes) == (0, 0)` asserted in-bench (T4) at every S, and independently as a dedicated zero-alloc test (T2 `alloc_gate_gpu`: 0 heap allocations too, not just 0 bytes). |
 | 3 | Minimal coalesced ranges | **MET** | Contiguous dirty runs coalesce to exactly 1 range regardless of run length (T2, T4); scattered dirty rows produce exactly one range per maximal contiguous run — proven at both the allocation-count level (T2: 16 ranges → 64 allocs, 64 ranges → 259 allocs) and the whole-frame level (T4: 100 scattered rows @ 10k/1% → 100 ranges, same 6,400 B as the contiguous case). No gap threshold exists in `sync_region`'s coalescing (strict adjacency) — recorded as a real property, not a bug. |
 | 4 | Generation writes are delta-minimal | **MET** | Pre-existing M2a generation-write-count gate, unchanged; green in every campaign-task matrix run (85/26/… gpu suites), not independently re-measured this campaign beyond regression-checking. |
-| 5 | CPU out of the GPU inner loop | **DEFERRED — M3-β** | No renderer consumes harvest output yet; unfalsifiable until M3-β passes exist. T3's timestamp harness is ready to measure it once they do. |
-| 6 | Test 13 — teardown costs zero scene re-upload | **DEFERRED — M3-β** | Asset write-counter instrumentation landed in M3-α (11/11 write sites); the full Test-13 assertion set needs a real teardown/rebuild consumer, which is M3-β scope. |
+| 5 | CPU out of the GPU inner loop | **MET (M3-β T9) — scoped** | Measured: cull+draw vs. a no-cull "draw everything" baseline, headless GPU-timestamp microbenchmark (`crates/helio-scenedb/benches/pass_timing.rs`), N∈{1k,10k,100k}: **≈1× (break-even) at 100% visible, ≈2× at 50% visible, ≈6–10× at 10% visible.** Scoped honestly: this is a headless microbenchmark of the cull-vs-no-cull pass pair in isolation, NOT a frame-budget measurement — no real scene, no other passes competing for the frame, no GPU-completion wait folded into any strategy's timing. M4 still owes the frame-budget number. |
+| 6 | Test 13 — teardown costs zero scene re-upload | **MET (M3-β T8, C0's binding gate)** | Executable and mutation-proven, not just instrumented: `crates/helio-scenedb/tests/renderer_teardown.rs::stateless_renderer_teardown_zero_reupload_identical_hash_ssbos_alive`. Drop-Helio-A → construct-Helio-B → N-frame window: Σ`SyncStats.bytes == 0` (transform + slot-mirror + instance-info syncs), Δ`generation_write_count == 0`, all M3-α asset-store write counters zero, G-buffer readback hash byte-identical (jitter pinned), device + every scene SSBO alive throughout (buffer IDs unchanged). Review (M3b-T8) ran live mutations against the test/shader source (not read-only inspection) and confirmed the priority checks actually fire — not vacuous. Scope note carried forward in design §12: streaming transitions are held frozen for the window, which proves teardown-then-rebuild is clean but not that streaming composes with zero-reupload mid-window (M3-γ/M4). |
 | 7 | Test 14 — device-loss rebuild, byte-identical | **MET** | Pre-existing (M2a + M2b-α extension), unchanged, green throughout the campaign's regression matrix. |
 
 ### 2.2 Storage & cache architecture
@@ -205,7 +212,7 @@ correction given) · **MISS** (gap, with the remediation item that closes it) ·
 | 44 | Per-view command buffers over view tags (concurrent dispatch) | **DEFERRED — M3-β** | No multi-view dispatch exists yet. |
 | 45 | Traditional-first draw ordering improves VG cull efficiency | **DEFERRED — M3-γ** | Needs culled-meshlet counters under both orderings; no consumer exists. |
 | 46 | GPU-vs-CPU cull equality (exact visible-set match) | **DEFERRED — M3-β** | Planned, not built. |
-| 47 | Seam bind-group budget: `SceneDbBinding`'s storage-buffer count fits the default per-stage limit (8) | **MISS** | The seam now uses **9** read-only storage buffers (8 scene + `MaterialRegistry`'s row added at M3-α Task 11), exceeding the WebGPU default per-stage limit of 8 — flagged and documented on the type since M3-α Task 9/11 as a **hard M3-β requirement** (raise device limits or split the bind group). Not fixed this campaign (out of scope for perf-val); registered in design §12 and carried forward as R-PERF-4. |
+| 47 | Seam bind-group budget: `SceneDbBinding`'s storage-buffer count fits the default per-stage limit (8) | **CLOSED (M3-β T4)** | Was **MISS** at campaign close (9 read-only storage buffers vs. the WebGPU default per-stage limit of 8). M3-β T4 split the seam into separate cull/draw bind groups, each fitting under `wgpu::Limits::default()` — construction-proven: `crates/helio-scenedb/tests/support/mod.rs`'s `test_context` builds its device with `required_limits: wgpu::Limits::default()` (no `adapter.limits()` workaround) and every M3-β cull/draw GPU test suite (24 tests, `cargo test -p helio-scenedb`) constructs and uses `SceneDbBinding` successfully against it. R-PERF-4(a) closed. |
 | 48 | Texture store bindless ceiling 16384 slots | **MET** | Structural, landed M3-α, unchanged. |
 | 49 | Tombstone headroom default 64/slot region | **MET** | Structural, region-pool tests unchanged. |
 | 50 | Existing bench baselines to defend (regression floor) | **REVISED-MET** | Every baseline this contract row names is now recorded, several corrected from stale/mislabeled figures. See §3.4 for the full table — headline corrections: `scalar_aabb_scan_1024` was **762 ns** in the pre-campaign contract doc (itself the AVX2/dispatched path, mislabeled) → now genuinely **1.120 µs** (T1) / **1.09 µs** (T7 cross-check, same bench). `dispatched_aabb_scan_1024` 609 ns → **579–598 ns** (T1) confirmed. `frustum_scan_1024` 1.22 µs → **1.19–1.28 µs** confirmed as the dispatched path (a true `scalar_frustum_scan_1024` now also exists: **4.70–4.75 µs**). The five previously-**unbaselined** benches all now have recorded numbers (three of the five — `alloc_free_compact_256`, `harvest_partition_1024`, `dei_compact_1024_sparse` — were still unrecorded at the end of T7 and were spot-run for this report; see §3.4 for the honest disclosure and exact numbers). |
@@ -214,12 +221,17 @@ correction given) · **MISS** (gap, with the remediation item that closes it) ·
 
 | Verdict | Count |
 |---|---|
-| MET (incl. MET-QUALITATIVE, REVISED-MET) | 29 |
+| MET (incl. MET-QUALITATIVE, REVISED-MET) | 31 (+2: #5, #6 — M3-β T10 flip) |
 | MET-WITH-NUANCE | 5 |
 | REFRAMED | 1 (#22; #32 carries a REFRAMED sub-aspect too, see below) |
-| MISS | 2 (#32, #47) |
-| DEFERRED | 13 (#5, #6, #21, #31, #38–46) |
+| MISS | 1 (#32) (−1: #47 CLOSED — M3-β T10 flip) |
+| CLOSED | 1 (#47 — M3-β T10 flip) |
+| DEFERRED | 11 (#21, #31, #38–46) (−2: #5, #6 flipped to MET) |
 | **Total** | **50** |
+
+**As of M3-β (T10, this milestone):** 32 fully closed (31 MET/MET-QUALITATIVE/REVISED-MET
++ 1 CLOSED), 5 MET-WITH-NUANCE, 1 REFRAMED, 1 MISS (#32, owned by R-PERF-2, M3-β/M4), 11
+DEFERRED (M3-γ/M4 scope: #21, #31, #38–46). Sums to 50.
 
 Note on #32: it is presented above under MISS because its most consequential aspect —
 the contract's "bounds worst-case compaction stall" promise — is undeliverable by
@@ -394,6 +406,16 @@ with 4–8 components at n≥10k (+9–13%, "regression"), empty-spawn at n≥10
 "win"), `large_scale/query/500000` (−19.6%, reproduced isolated) — are all,
 per §1.3(b), cross-binary codegen/layout artifacts, not architecture. **No remediation
 items came out of T5.**
+
+**Supersession note (M3-β T10):** this head-to-head is no longer reproducible —
+`pulsar_ecs` has since been deleted upstream ("Finally removed Pulsar ECS in favor of
+SceneDB!"). The finding above stands as a historical record, not a live regression
+check, and is in fact **why deleting the duplicate was safe**: T5 had already shown the
+two implementations at par on the overwhelming majority of criterion IDs, with the
+handful of movers traced to cross-binary codegen artifacts rather than a real
+architectural or performance deficit in SceneDB's ECS-compat layer. Nothing about
+removing `pulsar_ecs` reopens this comparison; there is no longer a second binary to
+compare against.
 
 ### 3.5 T1/T2/T3 harness-repair baselines (feed §2's #19/#50, cited compactly)
 
