@@ -18,7 +18,6 @@ notify = { workspace = true }
 walkdir = { workspace = true }
 profiling = { workspace = true }
 image = { workspace = true }
-helio-snapshot = { workspace = true }
 parking_lot = { workspace = true }
 urlencoding = { workspace = true }
 ureq = { version = "3.0", features = ["json"] }

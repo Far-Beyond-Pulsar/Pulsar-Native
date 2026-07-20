@@ -342,16 +342,6 @@ fn compute_cache_key(path: &Path) -> String {
 
 fn generate_rgba(abs_path: &Path, ext: &str) -> Option<image::RgbaImage> {
     match ext {
-        "fbx" | "gltf" | "glb" | "obj" | "usd" | "usda" => helio_snapshot::render_snapshot(
-            abs_path,
-            helio_snapshot::SnapshotConfig {
-                width: THUMB_PX,
-                height: THUMB_PX,
-                ..Default::default()
-            },
-        )
-        .map_err(|e| tracing::debug!("snapshot failed for {:?}: {}", abs_path, e))
-        .ok(),
         "png" | "jpg" | "jpeg" | "webp" | "tga" | "bmp" | "gif" => {
             let img = image::open(abs_path)
                 .map_err(|e| tracing::debug!("image load failed for {:?}: {}", abs_path, e))
