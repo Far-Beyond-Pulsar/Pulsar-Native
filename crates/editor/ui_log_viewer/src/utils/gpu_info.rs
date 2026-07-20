@@ -32,7 +32,9 @@ impl Default for GpuInfo {
 pub fn detect_primary_gpu() -> GpuInfo {
     let instance = Instance::new(InstanceDescriptor {
         backends: Backends::all(),
-        ..Default::default()
+        flags: wgpu::InstanceFlags::default(),
+        dx12_shader_compiler: wgpu::Dx12Compiler::default(),
+        gles_minor_version: wgpu::Gles3MinorVersion::default(),
     });
 
     let adapters = block_on(instance.enumerate_adapters(Backends::all()));
