@@ -176,7 +176,7 @@ impl HelioRenderer {
             });
             let cull_stats_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("cull_stats"),
-                size: 16,
+                size: 64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
