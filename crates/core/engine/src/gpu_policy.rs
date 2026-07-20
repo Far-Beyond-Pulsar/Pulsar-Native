@@ -16,7 +16,10 @@ struct GpuPolicyProbe {
 fn probe_gpu_policy() -> GpuPolicyProbe {
     let instance = Instance::new(InstanceDescriptor {
         backends: Backends::all(),
-        ..Default::default()
+        flags: wgpu::InstanceFlags::default(),
+        backend_options: wgpu::BackendOptions::default(),
+        display: None,
+        memory_budget_thresholds: wgpu::MemoryBudgetThresholds::default(),
     });
 
     let adapters = futures::executor::block_on(instance.enumerate_adapters(Backends::all()));
