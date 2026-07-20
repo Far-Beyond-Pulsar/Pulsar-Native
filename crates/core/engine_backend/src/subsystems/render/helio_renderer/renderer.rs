@@ -8,9 +8,9 @@ use std::time::Instant;
 
 use engine_fs::virtual_fs;
 use helio::{
-    Camera, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId, MaterialId, MeshId,
-    MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer, RendererConfig, SceneActor,
-    SceneActorId, ScenePicker, SkyActor,
+    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId, MaterialId,
+    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, RenderGraph, Renderer,
+    RendererConfig, Scene, SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
@@ -166,10 +166,34 @@ impl HelioRenderer {
             // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
+            let scene = Scene::new(device_arc.clone(), queue_arc.clone());
+            let graph = RenderGraph::new_with_external_device(&device_arc, &queue_arc);
+            let debug_camera_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("debug_camera"),
+                size: 64,
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let cull_stats_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("cull_stats"),
+                size: 16,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
             let mut r = Renderer::new_with_external_device(
                 device_arc.clone(),
                 queue_arc.clone(),
+                format,
+                width,
+                height,
+                1.0,
                 RendererConfig::new(width, height, format),
+                scene,
+                graph,
+                debug_state,
+                debug_camera_buffer,
+                cull_stats_buffer,
             );
             r.set_editor_mode(true);
             r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
