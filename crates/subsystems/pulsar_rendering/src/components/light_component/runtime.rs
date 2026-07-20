@@ -54,6 +54,12 @@ impl ComponentRuntimeBehavior for LightComponent {
             light_type: helio_type as u32,
             inner_angle: light.attenuation.inner_cone_angle.to_radians(),
             _pad: 0,
+            god_rays_enabled: 0,
+            god_rays_density: 0.0,
+            god_rays_weight: 0.0,
+            god_rays_decay: 0.0,
+            god_rays_exposure: 0.0,
+            _pad2: [0; 3],
         };
 
         let tag = scene_id_to_tag(owner.scene_object_id);
