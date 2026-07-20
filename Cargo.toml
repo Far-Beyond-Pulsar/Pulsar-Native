@@ -155,8 +155,6 @@ schemars = "1.2.0"
 smallvec = "1.15.1"
 image = { version = "0.25.9", default-features = false, features = ["png", "jpeg", "bmp", "tga", "gif", "webp"] }
 rust-i18n = "=4.1.0"
-rust-i18n-macro = "=4.1.0"
-rust-i18n-support = "=4.1.0"
 raw-window-handle = "0.6.2"
 winit = "0.30.12"
 smol = "2.0.0"
@@ -270,6 +268,7 @@ engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "cf37ed000fedb9a01424c7e575d1d6ee30db7281" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }

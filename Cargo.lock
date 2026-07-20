@@ -331,7 +331,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -342,7 +342,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1120,7 +1120,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_bp_executor",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
+ "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
  "pulsar_std",
  "pulsar_std_bundle",
  "schemars",
@@ -1693,7 +1693,7 @@ version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "faf9468729b8cbcea668e36183cb69d317348c2e08e994829fb56ebfdfbaac34"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2595,7 +2595,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3136,7 +3136,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5774,7 +5774,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
 dependencies = [
  "hermit-abi",
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7070,7 +7070,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -9064,25 +9064,6 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733#62bb5c130603c3d823a3ee9633cc4c374bdd2733"
-dependencies = [
- "dashmap",
- "glam 0.33.2",
- "gpui-ce",
- "helio 0.17.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=b88e366d6a6792e34d5b9c7afd1a197a78c54747)",
- "inventory",
- "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733)",
- "serde",
- "serde_json",
- "tracing",
- "ui",
- "uuid",
-]
-
-[[package]]
-name = "pulsar_reflection"
-version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281#cf37ed000fedb9a01424c7e575d1d6ee30db7281"
 dependencies = [
  "dashmap",
@@ -9091,25 +9072,6 @@ dependencies = [
  "inventory",
  "once_cell",
  "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
- "serde",
- "serde_json",
- "tracing",
- "ui",
- "uuid",
-]
-
-[[package]]
-name = "pulsar_reflection"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326#f91bbba2b90ebad0afa6b9940ecd52da0430e326"
-dependencies = [
- "dashmap",
- "glam 0.33.2",
- "gpui-ce",
- "helio 0.17.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=b88e366d6a6792e34d5b9c7afd1a197a78c54747)",
- "inventory",
- "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326)",
  "serde",
  "serde_json",
  "tracing",
@@ -9131,29 +9093,7 @@ dependencies = [
 [[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=62bb5c130603c3d823a3ee9633cc4c374bdd2733#62bb5c130603c3d823a3ee9633cc4c374bdd2733"
-dependencies = [
- "owo-colors",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "pulsar_reflection_derive"
-version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281#cf37ed000fedb9a01424c7e575d1d6ee30db7281"
-dependencies = [
- "owo-colors",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "pulsar_reflection_derive"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326#f91bbba2b90ebad0afa6b9940ecd52da0430e326"
 dependencies = [
  "owo-colors",
  "proc-macro2",
@@ -9374,7 +9314,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.5",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10385,7 +10325,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -10453,7 +10393,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11016,7 +10956,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "psgc",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Native?rev=f91bbba2b90ebad0afa6b9940ecd52da0430e326)",
+ "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
  "schemars",
  "serde",
  "serde_json",
@@ -11312,7 +11252,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -11603,7 +11543,7 @@ dependencies = [
  "cfg-if 1.0.4",
  "libc",
  "psm",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12041,7 +11981,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -12080,7 +12020,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "230a1b821ccbd75b185820a1f1ff7b14d21da1e442e22c0863ea5f08771a8874"
 dependencies = [
  "rustix 1.1.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13179,7 +13119,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -13300,6 +13240,8 @@ dependencies = [
  "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
  "reqwest 0.13.4",
  "rust-i18n 4.1.0",
+ "rust-i18n-macro 4.1.0",
+ "rust-i18n-support 4.1.0",
  "serde",
  "serde_json",
  "smallvec",
@@ -14628,7 +14570,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -15136,7 +15078,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if 1.0.4",
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

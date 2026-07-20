@@ -13,6 +13,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 anyhow.workspace = true
 rust-i18n.workspace = true
+rust-i18n-macro = "=4.1.0"
+rust-i18n-support = "=4.1.0"
 tracing.workspace = true
 parking_lot = { workspace = true }
 image.workspace = true
