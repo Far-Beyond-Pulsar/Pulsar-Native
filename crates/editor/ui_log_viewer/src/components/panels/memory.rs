@@ -217,7 +217,7 @@ impl Render for MemoryBreakdownPanel {
                         h_flex().w_full().justify_between().px_2()
                             .child(div().text_size(px(11.0)).font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(theme.foreground).child("Engine Allocations"))
-                            .child(div().text_size(px(11.0)).text_color(theme.accent)
+                            .child(div().text_size(px(11.0)).text_color(theme.foreground)
                                 .child(format!("{:.2} MB", cached_alloc as f64 / 1024.0 / 1024.0)))
                     )
             )

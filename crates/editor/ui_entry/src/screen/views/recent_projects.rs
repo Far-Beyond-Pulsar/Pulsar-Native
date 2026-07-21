@@ -310,11 +310,10 @@ fn render_git_status(
             vec![
                 Icon::new(IconName::Refresh)
                     .size(px(12.))
-                    .text_color(theme.accent)
                     .into_any_element(),
                 div()
                     .text_xs()
-                    .text_color(theme.accent)
+                    .text_color(theme.foreground)
                     .child("fetching")
                     .into_any_element(),
             ]

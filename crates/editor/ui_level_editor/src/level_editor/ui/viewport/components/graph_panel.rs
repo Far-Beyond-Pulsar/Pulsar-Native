@@ -166,7 +166,7 @@ impl<T: Clone + 'static> GraphPanel<T> {
             h_flex()
                 .gap_2()
                 .items_center()
-                .child(Icon::new(icon).size_4().text_color(cx.theme().accent))
+                .child(Icon::new(icon).size_4())
                 .child(
                     div()
                         .text_sm()

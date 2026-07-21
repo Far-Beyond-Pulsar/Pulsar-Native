@@ -418,7 +418,7 @@ pub fn render_file_content(
                                 .border_color(cx.theme().accent)
                                 .text_sm()
                                 .font_medium()
-                                .text_color(cx.theme().accent)
+                                .text_color(cx.theme().foreground)
                                 .child("Release mouse to begin import"),
                         ),
                 )
@@ -1022,7 +1022,7 @@ pub fn render_combined_toolbar(
                 .border_color(cx.theme().accent.opacity(0.3))
                 .text_xs()
                 .font_medium()
-                .text_color(cx.theme().accent)
+                .text_color(cx.theme().foreground)
                 .child(t!("FileManager.Items", count => items.len()).to_string()),
         )
         .when(engine_fs::virtual_fs::is_remote(), |e| {
@@ -1187,8 +1187,7 @@ pub fn render_clickable_breadcrumb(
         .border_color(cx.theme().border)
         .child(
             Icon::new(IconName::Folder)
-                .size_4()
-                .text_color(cx.theme().accent),
+                .size_4(),
         )
         .children(parts.into_iter().enumerate().flat_map(|(i, (name, path))| {
             let mut els: Vec<AnyElement> = Vec::new();

@@ -43,7 +43,7 @@ pub fn render_header(
                             div()
                                 .text_xs()
                                 .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(theme.accent)
+                                .text_color(theme.foreground)
                                 .child(format!("{} online", online_count)),
                         ),
                 )

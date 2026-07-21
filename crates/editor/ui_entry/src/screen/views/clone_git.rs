@@ -94,8 +94,7 @@ pub fn render_clone_git(
                                             .items_center()
                                             .child(
                                                 Icon::new(IconName::Download)
-                                                    .size(px(16.))
-                                                    .text_color(theme.accent),
+                                                    .size(px(16.)),
                                             )
                                             .child(
                                                 div()

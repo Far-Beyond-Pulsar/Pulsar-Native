@@ -47,7 +47,7 @@ pub fn render_header<V>(
                             .bg(cx.theme().accent.opacity(0.15))
                             .text_xs()
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(cx.theme().accent)
+                            .text_color(cx.theme().foreground)
                             .child(selected_badge_label),
                     )
                 }),

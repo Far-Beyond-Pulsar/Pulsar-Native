@@ -426,7 +426,6 @@ impl FlamegraphWindow {
                                                             div()
                                                                 .mt_0p5()
                                                                 .text_sm()
-                                                                .text_color(theme.accent)
                                                                 .child("•"),
                                                         )
                                                         .child(
@@ -448,7 +447,6 @@ impl FlamegraphWindow {
                                                             div()
                                                                 .mt_0p5()
                                                                 .text_sm()
-                                                                .text_color(theme.accent)
                                                                 .child("•"),
                                                         )
                                                         .child(
@@ -470,7 +468,6 @@ impl FlamegraphWindow {
                                                             div()
                                                                 .mt_0p5()
                                                                 .text_sm()
-                                                                .text_color(theme.accent)
                                                                 .child("•"),
                                                         )
                                                         .child(
@@ -731,13 +728,12 @@ impl Render for FlamegraphWindow {
                                 .border_color(theme.accent.opacity(0.16))
                                 .child(
                                     Icon::new(IconName::Database)
-                                        .size(px(12.0))
-                                        .text_color(theme.accent),
+                                        .size(px(12.0)),
                                 )
                                 .child(
                                     div()
                                         .text_xs()
-                                        .text_color(theme.accent)
+                                        .text_color(theme.foreground)
                                         .font_weight(gpui::FontWeight::MEDIUM)
                                         .child(
                                             self.current_db_path

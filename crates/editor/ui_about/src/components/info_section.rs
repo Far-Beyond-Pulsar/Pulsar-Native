@@ -26,7 +26,7 @@ pub fn render_title_version(theme: &ui::Theme) -> impl IntoElement {
                     div()
                         .text_sm()
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(theme.accent)
+                        .text_color(theme.foreground)
                         .child("Version 0.1.47"),
                 ),
         )

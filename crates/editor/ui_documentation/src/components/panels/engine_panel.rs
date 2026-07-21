@@ -114,7 +114,7 @@ impl EngineDocsPanel {
                             .bg(theme.accent.opacity(0.12))
                             .text_xs()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.accent)
+                            .text_color(theme.foreground)
                             .child(format!("{}", tree_nodes.len())),
                     ),
             )
@@ -199,8 +199,7 @@ impl EngineDocsPanel {
                 let mut crumbs = h_flex().gap_2().items_center();
                 crumbs = crumbs.child(
                     Icon::new(IconName::BookOpen)
-                        .size_4()
-                        .text_color(theme.accent),
+                        .size_4(),
                 );
                 for (idx, part) in parts.iter().enumerate() {
                     if idx > 0 {

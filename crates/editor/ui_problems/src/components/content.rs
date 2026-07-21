@@ -131,8 +131,7 @@ pub fn render_grouped_view(
                             .items_center()
                             .child(
                                 ui::Icon::new(IconName::Folder)
-                                    .size_4()
-                                    .text_color(cx.theme().accent),
+                                    .size_4(),
                             )
                             .child(
                                 div()
@@ -584,8 +583,7 @@ pub fn render_hint_diff(
                         .items_center()
                         .child(
                             ui::Icon::new(IconName::Info)
-                                .size_4()
-                                .text_color(cx.theme().accent),
+                                .size_4(),
                         )
                         .child(
                             div()

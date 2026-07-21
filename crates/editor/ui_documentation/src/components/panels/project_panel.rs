@@ -107,7 +107,7 @@ impl ProjectDocsPanel {
                             .bg(theme.accent.opacity(0.12))
                             .text_xs()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(theme.accent)
+                            .text_color(theme.foreground)
                             .child(format!("{}", tree_nodes.len())),
                     ),
             )

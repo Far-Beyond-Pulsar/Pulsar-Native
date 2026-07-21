@@ -15,7 +15,7 @@ pub fn render_feature_cards(theme: &ui::Theme) -> impl IntoElement {
                 .border_1()
                 .border_color(theme.border.opacity(0.5))
                 .items_center()
-                .child(Icon::new(IconName::Activity).size_5().text_color(theme.accent))
+                .child(Icon::new(IconName::Activity).size_5())
                 .child(
                     div()
                         .text_xs()
@@ -34,7 +34,7 @@ pub fn render_feature_cards(theme: &ui::Theme) -> impl IntoElement {
                 .border_1()
                 .border_color(theme.border.opacity(0.5))
                 .items_center()
-                .child(Icon::new(IconName::Code).size_5().text_color(theme.accent))
+                .child(Icon::new(IconName::Code).size_5())
                 .child(
                     div()
                         .text_xs()
@@ -53,7 +53,7 @@ pub fn render_feature_cards(theme: &ui::Theme) -> impl IntoElement {
                 .border_1()
                 .border_color(theme.border.opacity(0.5))
                 .items_center()
-                .child(Icon::new(IconName::Globe).size_5().text_color(theme.accent))
+                .child(Icon::new(IconName::Globe).size_5())
                 .child(
                     div()
                         .text_xs()

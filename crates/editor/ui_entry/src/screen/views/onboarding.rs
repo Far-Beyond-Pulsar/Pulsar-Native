@@ -1070,7 +1070,7 @@ fn render_account_card(
                                 div()
                                     .text_2xl()
                                     .font_weight(FontWeight::BOLD)
-                                    .text_color(theme.accent)
+                                    .text_color(theme.foreground)
                                     .child(initial),
                             )
                             .into_any_element()

@@ -170,8 +170,7 @@ impl DocumentationWindow {
                             .justify_center()
                             .child(
                                 Icon::new(IconName::BookOpen)
-                                    .size(px(18.0))
-                                    .text_color(theme.accent),
+                                    .size(px(18.0)),
                             ),
                     )
                     .child(

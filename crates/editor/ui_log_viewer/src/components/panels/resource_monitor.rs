@@ -285,7 +285,7 @@ impl Render for ResourceMonitorPanel {
                                 div()
                                     .text_size(px(18.0))
                                     .font_weight(gpui::FontWeight::BOLD)
-                                    .text_color(theme.accent)
+                                    .text_color(theme.foreground)
                                     .child(if current_fps > 0.0 {
                                         format!("{:.0} FPS", current_fps)
                                     } else {

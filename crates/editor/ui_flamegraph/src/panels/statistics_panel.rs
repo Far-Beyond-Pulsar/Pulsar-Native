@@ -175,7 +175,7 @@ impl StatisticsPanel {
                 theme.muted_foreground
             })
             .cursor_pointer()
-            .hover(|style| style.text_color(theme.accent))
+            .hover(|style| style.text_color(theme.foreground))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _event, _window, cx| {

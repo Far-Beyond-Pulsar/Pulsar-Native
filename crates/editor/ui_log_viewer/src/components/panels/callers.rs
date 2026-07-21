@@ -159,7 +159,7 @@ impl CallerSitesPanel {
             .font_weight(FontWeight::SEMIBOLD)
             .text_color(color)
             .cursor_pointer()
-            .hover(|s| s.text_color(theme.accent))
+            .hover(|s| s.text_color(theme.foreground))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |this, _ev, _window, cx| {

@@ -182,8 +182,7 @@ where
                         .items_center()
                         .child(
                             Icon::new(IconName::Activity)
-                                .size_3()
-                                .text_color(cx.theme().accent),
+                                .size_3(),
                         )
                         .child(
                             div()

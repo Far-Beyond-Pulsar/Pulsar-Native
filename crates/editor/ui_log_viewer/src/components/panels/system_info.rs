@@ -52,7 +52,7 @@ impl SystemInfoPanel {
             .w_full()
             .text_size(px(12.0))
             .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(theme.accent)
+            .text_color(theme.foreground)
             .pb_2()
             .child(title.into())
     }

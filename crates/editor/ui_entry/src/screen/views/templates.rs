@@ -229,7 +229,7 @@ fn render_template_card(
                             .rounded_full()
                             .bg(theme.accent.opacity(0.15))
                             .text_xs()
-                            .text_color(theme.accent)
+                            .text_color(theme.foreground)
                             .child(category_label),
                     ),
                 ),

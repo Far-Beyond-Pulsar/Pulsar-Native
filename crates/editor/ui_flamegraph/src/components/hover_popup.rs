@@ -141,7 +141,7 @@ fn popup_row_improved(
             div()
                 .text_xs()
                 .font_weight(FontWeight::BOLD)
-                .text_color(theme.accent)
+                .text_color(theme.foreground)
                 .child(value)
         } else {
             div()

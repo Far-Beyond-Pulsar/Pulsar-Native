@@ -138,8 +138,7 @@ impl WorldSettings {
                             .bg(cx.theme().accent.opacity(0.15))
                             .child(
                                 ui::Icon::new(IconName::Globe)
-                                    .size(px(20.0))
-                                    .text_color(cx.theme().accent),
+                                    .size(px(20.0)),
                             ),
                     )
                     .child(

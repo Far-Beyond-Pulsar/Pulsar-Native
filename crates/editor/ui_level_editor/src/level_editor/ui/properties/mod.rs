@@ -165,8 +165,7 @@ impl PropertiesPanel {
                             .bg(cx.theme().accent.opacity(0.15))
                             .child(
                                 ui::Icon::new(icon)
-                                    .size(px(20.0))
-                                    .text_color(cx.theme().accent),
+                                    .size(px(20.0)),
                             ),
                     )
                     .child(
@@ -608,8 +607,7 @@ impl PropertiesPanel {
                     .hover(|s| s.border_color(cx.theme().accent.opacity(0.5)))
                     .child(
                         ui::Icon::new(icon)
-                            .size(px(14.0))
-                            .text_color(cx.theme().accent),
+                            .size(px(14.0)),
                     )
                     .child(
                         div()

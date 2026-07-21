@@ -69,7 +69,7 @@ fn dialog_header(
             h_flex()
                 .gap_3()
                 .items_center()
-                .child(Icon::new(IconName::Plus).size_4().text_color(theme.accent))
+                .child(Icon::new(IconName::Plus).size_4())
                 .child(
                     div()
                         .text_base()

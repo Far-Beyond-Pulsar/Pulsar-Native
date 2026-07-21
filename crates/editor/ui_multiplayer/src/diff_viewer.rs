@@ -343,8 +343,7 @@ impl DiffViewer {
                                     .items_center()
                                     .child(
                                         ui::Icon::new(IconName::Folder)
-                                            .size_4()
-                                            .text_color(cx.theme().accent),
+                                            .size_4(),
                                     )
                                     .child(
                                         div()

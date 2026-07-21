@@ -177,8 +177,7 @@ impl PulsarApp {
                                     .ghost()
                                     .icon(
                                         Icon::new(IconName::Database)
-                                            .size(px(16.))
-                                            .text_color(cx.theme().accent),
+                                            .size(px(16.)),
                                     )
                                     .relative()
                                     .px_2()

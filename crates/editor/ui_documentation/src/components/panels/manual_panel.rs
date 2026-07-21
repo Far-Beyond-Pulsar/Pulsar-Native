@@ -122,7 +122,7 @@ impl ManualDocsPanel {
                                     .bg(theme.accent.opacity(0.12))
                                     .text_xs()
                                     .font_weight(gpui::FontWeight::MEDIUM)
-                                    .text_color(theme.accent)
+                                    .text_color(theme.foreground)
                                     .child(format!("{}", file_count)),
                             ),
                     )
@@ -184,8 +184,7 @@ impl ManualDocsPanel {
                             .when(has_selection, |this| {
                                 this.child(
                                     Icon::new(IconName::BookOpen)
-                                        .size_4()
-                                        .text_color(theme.accent),
+                                        .size_4(),
                                 )
                             })
                             .child(

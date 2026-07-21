@@ -253,8 +253,7 @@ pub fn render_empty_state(drawer: &TypeDebuggerDrawer, cx: &App) -> Div {
                             .justify_center()
                             .child(
                                 ui::Icon::new(IconName::Database)
-                                    .size(px(32.0))
-                                    .text_color(cx.theme().accent),
+                                    .size(px(32.0)),
                             ),
                     )
                     .child(
