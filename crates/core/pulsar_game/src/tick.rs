@@ -82,8 +82,20 @@ impl TickLoop {
         };
 
         profiling::profile_scope!("TickLoop::tick");
-        self.schedule.run(&mut self.world, time);
-        self.actors.tick_all(&mut self.world, time);
+        // `pulsar_core::GameTime` and `pulsar_scenedb::GameTime` are two
+        // independent, structurally-identical types — a byproduct of the
+        // SceneDB extraction (pulsar_scenedb now lives in its own repo and
+        // carries its own copy of `GameTime` rather than depending on
+        // pulsar_core). This is a type-identity artifact, not a wgpu 30
+        // change; converting at this single call site is the minimal fix
+        // that avoids touching either crate's source.
+        let scenedb_time = pulsar_scenedb::GameTime {
+            elapsed: time.elapsed,
+            delta: time.delta,
+            tick: time.tick,
+        };
+        self.schedule.run(&mut self.world, scenedb_time);
+        self.actors.tick_all(&mut self.world, scenedb_time);
 
         // Drive runtime blueprint lifecycle + tick events after ECS + actor
         // updates. `begin_play` for newly-registered instances is deferred to

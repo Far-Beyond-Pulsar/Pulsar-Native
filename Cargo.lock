@@ -9103,6 +9103,7 @@ dependencies = [
  "engine_state",
  "glam 0.33.2",
  "helio 0.18.0",
+ "helio-default-graphs",
  "pbgc",
  "pollster 1.0.1",
  "profiling 0.1.0",
