@@ -35,3 +35,4 @@ docs/AGENT_CHAT_PROVIDER_PLAN.md
 blueprint_graph_debug.json
 /discovery
 /.opencode
+*.lg
