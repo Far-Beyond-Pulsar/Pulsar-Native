@@ -11,6 +11,7 @@ mod edit;
 mod generator;
 mod hierarchy;
 mod page;
+mod render;
 mod residency;
 mod runtime;
 mod snapshot;
@@ -32,14 +33,20 @@ pub use page::{
     PageCodecError, VoxelPage, CELL_COUNT, MICROBRICKS_PER_AXIS, MICROBRICK_COUNT, MICROBRICK_EDGE,
     PAGE_EDGE,
 };
+pub use render::{
+    TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict, TerrainRenderCommand,
+    TerrainRenderDelta, TerrainRenderDeltaConfig, TerrainRenderDeltaCounters,
+    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainTransitionFace,
+    TerrainVisiblePage, TerrainVisiblePageSet, TERRAIN_TRANSITION_FACE_MASK,
+};
 pub use residency::{
     TerrainResidencyConfig, TerrainResidencyCounters, TerrainResidencyError,
     TerrainResidencyReport, TerrainResidencySession,
 };
 pub use runtime::{
-    TerrainBackpressure, TerrainRequestClass, TerrainRequestOutcome, TerrainRuntimeConfig,
-    TerrainRuntimeCounters, TerrainRuntimeError, TerrainRuntimeEvent, TerrainRuntimeHandle,
-    TerrainSubsystem, TERRAIN_SUBSYSTEM_ID,
+    TerrainBackpressure, TerrainRequestClass, TerrainRequestOutcome, TerrainResidentPageGeneration,
+    TerrainRuntimeConfig, TerrainRuntimeCounters, TerrainRuntimeError, TerrainRuntimeEvent,
+    TerrainRuntimeHandle, TerrainSubsystem, TERRAIN_SUBSYSTEM_ID,
 };
 pub use snapshot::{CompactedPageRecord, SnapshotCodecError, TerrainSnapshot};
 pub use store::{SnapshotRecord, TerrainStore, TerrainStoreError};

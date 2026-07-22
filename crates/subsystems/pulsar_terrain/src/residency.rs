@@ -143,6 +143,17 @@ impl TerrainResidencySession {
         self.counters
     }
 
+    /// Returns true when this exact plan is the stable committed resident set.
+    /// A newer pending handoff does not invalidate the old committed set until
+    /// every replacement page is ready.
+    pub fn has_committed_plan(&self, plan: &TerrainStreamingPlan) -> bool {
+        self.planet_id == plan.planet_id()
+            && self.committed.len() == plan.demands().len()
+            && plan.demands().iter().all(|demand| {
+                self.committed.get(&demand.page_key()) == Some(&demand.request_class())
+            })
+    }
+
     pub fn reconcile(
         &mut self,
         runtime: &TerrainRuntimeHandle,
@@ -189,10 +200,7 @@ impl TerrainResidencySession {
             committed_pages: self.committed.len(),
             ..TerrainResidencyReport::default()
         };
-        let committed_matches = self.committed.len() == plan.demands().len()
-            && plan.demands().iter().all(|demand| {
-                self.committed.get(&demand.page_key()) == Some(&demand.request_class())
-            });
+        let committed_matches = self.has_committed_plan(plan);
         if self.pending.is_none() && committed_matches {
             report.ready_pages = desired_keys.len();
             return Ok(report);

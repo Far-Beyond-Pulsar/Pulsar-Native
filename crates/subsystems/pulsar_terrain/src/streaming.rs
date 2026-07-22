@@ -3,7 +3,7 @@ use crate::{
     LOD0_CELL_SIZE_METERS,
 };
 use std::cmp::Ordering;
-use std::collections::{BTreeSet, BinaryHeap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
 use thiserror::Error;
 
 /// Conservative classification of one hierarchical terrain page.
@@ -315,6 +315,34 @@ impl TerrainStreamingPlan {
                     .is_none_or(|neighbor| leaf.lod.abs_diff(neighbor.lod) <= 1)
             })
         })
+    }
+
+    /// Six-face transition masks for the complete deterministic leaf set.
+    ///
+    /// Bit order is `-X,+X,-Y,+Y,-Z,+Z`. A bit is set on the fine page when
+    /// its covering face neighbor is exactly one LOD coarser. Coarse pages do
+    /// not mark faces adjacent to finer leaves.
+    pub fn transition_masks(&self) -> BTreeMap<PageKey, u8> {
+        let leaves = self
+            .demands
+            .iter()
+            .map(|demand| demand.page_key())
+            .collect::<BTreeSet<_>>();
+        leaves
+            .iter()
+            .copied()
+            .map(|leaf| {
+                let mut mask = 0_u8;
+                for (face, (axis, direction)) in faces().into_iter().enumerate() {
+                    if covering_face_neighbor(leaf, axis, direction, &leaves)
+                        .is_some_and(|neighbor| neighbor.lod == leaf.lod.saturating_add(1))
+                    {
+                        mask |= 1 << face;
+                    }
+                }
+                (leaf, mask)
+            })
+            .collect()
     }
 }
 
