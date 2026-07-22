@@ -13,14 +13,15 @@
 
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
-use pulsar_reflection::REGISTRY;
+use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Arc;
 use ui::button::ButtonVariants as _;
+use ui::dropdown::{SearchableList, SearchableListEvent};
 use ui::{v_flex, ActiveTheme};
 use ui_common::{MeshAssetPicker, PropertyStateManager};
 
-use super::super::dialogs::add_component_dialog::AddComponentDialog;
 use crate::level_editor::scene_database::SceneDatabase;
 use crate::level_editor::state::LevelEditorState;
 
@@ -33,8 +34,8 @@ pub struct ObjectTypeFieldsSection {
     pub(super) scene_db: SceneDatabase,
     /// Currently selected component index (reserved for future highlight use).
     pub(super) selected_component: Option<usize>,
-    /// Add-component dialog entity.
-    pub(super) add_component_dialog: Entity<AddComponentDialog>,
+    /// Searchable component list for the add-component popover.
+    pub(super) component_list: Entity<SearchableList<String>>,
     /// Shared level-editor state (expand/collapse, selection).
     pub(super) state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     /// Shared property widget state (numeric inputs, colour pickers, asset pickers).
@@ -55,19 +56,45 @@ impl ObjectTypeFieldsSection {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        let dialog_object_id = object_id.clone();
-        let dialog_scene_db = scene_db.clone();
-        let add_component_dialog =
-            cx.new(|cx| AddComponentDialog::new(dialog_object_id, dialog_scene_db, window, cx));
+        let mut items: Vec<String> = REGISTRY
+            .get_class_names()
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect();
 
-        // Refresh the inspector whenever a component is added.
+        if let Some(pm) = plugin_manager::global() {
+            let pm = pm.read();
+            let plugin_defs = pm.get_all_component_definitions();
+            for def in &plugin_defs {
+                if !items.contains(&def.id) {
+                    items.push(def.id.clone());
+                }
+            }
+        }
+        items.sort();
+
+        let component_list = cx.new(|cx| {
+            SearchableList::new(window, cx, items, |name| name.clone())
+                .with_empty_text("No components found")
+                .with_max_width(px(240.0))
+                .with_max_height(px(320.0))
+                .with_icon_getter(|_| ui::IconName::Component)
+        });
+
+        let scene_db_for_add = scene_db.clone();
+        let object_id_for_add = object_id.clone();
         cx.subscribe(
-            &add_component_dialog,
-            |_this,
-             _dialog,
-             _event: &super::super::dialogs::add_component_dialog::ComponentAddedEvent,
-             cx| {
-                cx.notify();
+            &component_list,
+            move |_this, _, event: &SearchableListEvent<String>, cx| {
+                if let SearchableListEvent::Select(class_name) = event {
+                    Self::add_component(
+                        &scene_db_for_add,
+                        &object_id_for_add,
+                        class_name,
+                        cx,
+                    );
+                    cx.notify();
+                }
             },
         )
         .detach();
@@ -76,12 +103,49 @@ impl ObjectTypeFieldsSection {
             object_id,
             scene_db,
             selected_component: None,
-            add_component_dialog,
+            component_list,
             state_arc,
             property_state: PropertyStateManager::new(),
             icon_asset_picker: None,
             collapsed_property_categories: HashSet::new(),
             expanded_property_categories: HashSet::new(),
+        }
+    }
+
+    fn add_component(
+        scene_db: &SceneDatabase,
+        object_id: &String,
+        class_name: &str,
+        _cx: &mut Context<Self>,
+    ) {
+        let class_name = class_name.to_string();
+        if REGISTRY.has_class(&class_name) {
+            if let Some(mut instance) = REGISTRY.create_instance(&class_name) {
+                let props = instance.get_properties();
+                let mut map = serde_json::Map::new();
+                for prop in &props {
+                    let v = (prop.getter)(instance.as_ref());
+                    let json_value = RUNTIME_TYPE_REGISTRY
+                        .serialize_json_for_any(v.as_ref())
+                        .unwrap_or(serde_json::json!(null));
+                    map.insert(prop.name.to_string(), json_value);
+                }
+                scene_db.add_component(object_id, class_name, Value::Object(map));
+            }
+        } else if let Some(instance) = engine_backend::EngineBackend::global().and_then(|b| {
+            let guard = b.read();
+            guard.plugin_components().create_instance(&class_name)
+        }) {
+            let props = instance.get_properties();
+            let mut map = serde_json::Map::new();
+            for prop in &props {
+                let v = (prop.getter)(instance.as_ref());
+                let json_value = RUNTIME_TYPE_REGISTRY
+                    .serialize_json_for_any(v.as_ref())
+                    .unwrap_or(serde_json::json!(null));
+                map.insert(prop.name.to_string(), json_value);
+            }
+            scene_db.add_component(object_id, class_name, Value::Object(map));
         }
     }
 
@@ -128,14 +192,14 @@ impl Render for ObjectTypeFieldsSection {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         use super::ComponentHierarchyPanel;
         use ui::popover::Popover;
-        use ui::{IconName, Sizable};
+        use ui::{IconName, Sizable as _};
 
         // ── Object icon picker row ─────────────────────────────────────────
         let icon_row = self.render_icon_row(window, cx);
 
         // ── Component hierarchy panel (tree + add-component button) ────────
-        let dialog = self.add_component_dialog.clone();
-        let add_popover = Popover::<AddComponentDialog>::new("add-component-picker")
+        let list = self.component_list.clone();
+        let add_popover = Popover::<SearchableList<String>>::new("add-component-picker")
             .anchor(Corner::TopRight)
             .trigger(
                 ui::button::Button::new("add-component-btn")
@@ -143,7 +207,7 @@ impl Render for ObjectTypeFieldsSection {
                     .xsmall()
                     .ghost(),
             )
-            .content(move |_window, _cx| dialog.clone())
+            .content(move |_window, _cx| list.clone())
             .into_any_element();
 
         let component_hierarchy =
