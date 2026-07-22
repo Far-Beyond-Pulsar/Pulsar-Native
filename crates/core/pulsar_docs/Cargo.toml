@@ -23,7 +23,7 @@ tracing = { workspace = true }
 [build-dependencies]
 syn = { workspace = true, features = ["full", "parsing", "extra-traits", "visit"] }
 quote = { workspace = true }
-prettyplease = "0.3"
+prettyplease = "0.2"
 walkdir = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
