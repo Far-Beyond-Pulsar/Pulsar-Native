@@ -92,7 +92,7 @@ criterion = { version = "=0.8.2", features = ["async_tokio"] }
 proptest = "=1.11.0"
 mockall = "=0.15.0"
 tempfile = { workspace = true }
-reqwest = { version = "0.13", features = ["json"] }
+reqwest = { version = "=0.13.4", features = ["json"] }
 
 # [[bench]]
 # name = "relay_throughput"
