@@ -1682,6 +1682,61 @@ mod tests {
     }
 
     #[test]
+    fn coarse_page_publishes_and_rehydrates_with_a_new_generation() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let id = planet(13).planet_id;
+        handle.upsert_planet(planet(13)).unwrap();
+        let key = PageKey::new(5, [-1, 0, 0]);
+        handle
+            .request_page(id, key, TerrainRequestClass::Visible, 1)
+            .unwrap();
+        let first = wait_for_events(&handle, 1)
+            .into_iter()
+            .find_map(|event| match event {
+                TerrainRuntimeEvent::PageReady {
+                    page_key,
+                    page_generation,
+                    record,
+                    ..
+                } if page_key == key => Some((page_generation, record.page_id)),
+                _ => None,
+            })
+            .expect("coarse page must publish");
+        assert_eq!(first.0, 1);
+        assert_eq!(handle.page_snapshot(id, key).unwrap().page_id(), first.1);
+
+        assert!(handle.evict_page(id, key).unwrap());
+        assert!(matches!(
+            handle.drain_events(1).as_slice(),
+            [TerrainRuntimeEvent::EvictPage {
+                page_key,
+                retired_page_generation: 1,
+                ..
+            }] if *page_key == key
+        ));
+        handle
+            .request_page(id, key, TerrainRequestClass::Visible, 2)
+            .unwrap();
+        let second = wait_for_events(&handle, 1)
+            .into_iter()
+            .find_map(|event| match event {
+                TerrainRuntimeEvent::PageReady {
+                    page_key,
+                    page_generation,
+                    record,
+                    ..
+                } if page_key == key => Some((page_generation, record.page_id)),
+                _ => None,
+            })
+            .expect("coarse page must rehydrate");
+        assert_eq!(second.0, 2);
+        assert_eq!(second.1, first.1);
+        assert_eq!(handle.page_snapshot(id, key).unwrap().page_id(), first.1);
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
     fn signed_coordinates_and_planets_remain_distinct_across_worker_counts() {
         fn run(worker_count: usize) -> BTreeMap<(PlanetId, PageKey), crate::PageId> {
             let mut subsystem = start(worker_count);

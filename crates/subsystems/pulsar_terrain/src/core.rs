@@ -294,8 +294,8 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
         Ok(PageBuildCommitOutcome::Committed(record))
     }
 
-    /// Fold the current ordered edit prefix into one content-addressed LOD0
-    /// page and publish that page into the canonical hierarchy.
+    /// Fold the current ordered edit prefix into one content-addressed page at
+    /// its requested LOD and publish it into the canonical hierarchy.
     pub fn compact_page(&mut self, key: PageKey) -> Result<CompactedPageRecord, TerrainCoreError>
     where
         G: Clone,
@@ -672,5 +672,33 @@ mod tests {
         assert_eq!(updated.compacted_through_sequence, 1);
         assert_eq!(core.work_counters().pages_compacted, 2);
         assert_eq!(core.work_counters().edit_candidates_replayed, 1);
+    }
+
+    #[test]
+    fn coarse_compaction_replays_edits_attached_to_fine_descendants() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 10_000,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([9; 16]), 12, generator).unwrap();
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: [16; 3],
+                radius_cells: 1,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        })
+        .unwrap();
+
+        let key = PageKey::new(2, [0; 3]);
+        core.compact_page(key).unwrap();
+        let edited_sample = core.page(key).unwrap().get([4; 3]).unwrap();
+        assert!(!edited_sample.is_solid());
+        assert_eq!(core.work_counters().edit_candidates_replayed, 1);
+        assert_eq!(core.memory_counters().resident_pages, 1);
     }
 }

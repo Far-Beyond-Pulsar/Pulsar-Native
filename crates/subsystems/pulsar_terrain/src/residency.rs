@@ -323,7 +323,10 @@ fn is_backpressure(error: &TerrainRuntimeError) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{PageDemand, PlanetDefinition, TerrainRuntimeConfig, TerrainSubsystem, CELL_COUNT};
+    use crate::{
+        PageDemand, PlanetDefinition, PlanetPosition, PlanetView, TerrainRuntimeConfig,
+        TerrainStreamingConfig, TerrainStreamingPlanner, TerrainSubsystem, CELL_COUNT,
+    };
     use engine_subsystems::{Subsystem, SubsystemContext};
     use std::thread;
     use std::time::{Duration, Instant};
@@ -565,6 +568,80 @@ mod tests {
         assert_eq!(counters.active_page_high_water, 1);
         assert_eq!(counters.transition_page_high_water, 2);
         assert_eq!(handle.counters().resident_page_high_water, 2);
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn mixed_lod_plan_materializes_and_commits_end_to_end() {
+        let max_pages = 64;
+        let mut subsystem = TerrainSubsystem::new(TerrainRuntimeConfig {
+            worker_count: 4,
+            max_planets: 1,
+            max_component_sources: 1,
+            request_capacity: max_pages,
+            critical_request_reserve: 4,
+            completion_capacity: max_pages,
+            event_capacity: max_pages * 2,
+            max_resident_pages: max_pages,
+            max_resident_dense_bytes: max_pages * DENSE_PAGE_BYTES,
+            max_completions_per_frame: max_pages,
+        })
+        .unwrap();
+        subsystem.init(&SubsystemContext::new()).unwrap();
+        let handle = subsystem.runtime_handle();
+        let mut planet = definition();
+        planet.radius_cells = 1_000;
+        planet.root_lod = 6;
+        planet.max_resident_pages = max_pages;
+        handle.upsert_planet(planet.clone()).unwrap();
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            target_projected_error_px: 2.0,
+            prediction_seconds: 0.0,
+            max_pages,
+            max_traversal_nodes: 4_096,
+        })
+        .unwrap();
+        let view = PlanetView::new(
+            PlanetPosition::from_lod0_cell([1_000, 0, 0]),
+            [-1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            60_f64.to_radians(),
+            [1280, 720],
+            0.1,
+            20_000_000.0,
+            [0.0; 3],
+        )
+        .unwrap();
+        let plan = planner.plan_fixed_sphere(&planet, view).unwrap();
+        assert!(plan
+            .demands()
+            .iter()
+            .any(|demand| demand.page_key().lod == 0));
+        assert!(plan
+            .demands()
+            .iter()
+            .any(|demand| demand.page_key().lod > 0));
+        assert!(plan.is_face_balanced());
+        assert!(plan.demands().len() <= max_pages);
+
+        let mut session = TerrainResidencySession::new(
+            planet.planet_id,
+            TerrainResidencyConfig {
+                max_active_pages: max_pages,
+                max_transition_pages: max_pages * 2,
+                max_requests_per_reconcile: max_pages,
+                ..TerrainResidencyConfig::default()
+            },
+        )
+        .unwrap();
+        let report = settle(&mut session, &handle, &plan);
+        assert!(report.handoff_committed);
+        assert_eq!(report.committed_pages, plan.demands().len());
+        assert_eq!(
+            handle.resident_page_keys(planet.planet_id).unwrap().len(),
+            plan.demands().len()
+        );
         subsystem.shutdown().unwrap();
     }
 }
