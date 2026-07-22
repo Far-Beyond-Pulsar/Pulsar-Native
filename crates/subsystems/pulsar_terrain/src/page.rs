@@ -65,17 +65,20 @@ impl VoxelPage {
         generator: &dyn DeterministicGenerator,
         operations: &[EditOp],
     ) -> Result<Self, PageCodecError> {
-        if key.lod != 0 {
+        if key.lod > 57 {
             return Err(PageCodecError::UnsupportedLod(key.lod));
         }
         let origin = key
             .lod0_cell_min()
             .ok_or(PageCodecError::CoordinateOverflow)?;
+        let scale = 1_i64
+            .checked_shl(u32::from(key.lod))
+            .ok_or(PageCodecError::CoordinateOverflow)?;
         let mut cells = Vec::with_capacity(CELL_COUNT);
         for z in 0..PAGE_EDGE as i64 {
             for y in 0..PAGE_EDGE as i64 {
                 for x in 0..PAGE_EDGE as i64 {
-                    let coordinate = [origin[0] + x, origin[1] + y, origin[2] + z];
+                    let coordinate = sample_coordinate(origin, scale, [x, y, z])?;
                     let mut cell = generator.sample_cell(coordinate);
                     for operation in operations {
                         let (min, max) = operation.shape.bounds();
@@ -99,17 +102,20 @@ impl VoxelPage {
         key: PageKey,
         operations: &[EditOp],
     ) -> Result<Self, PageCodecError> {
-        if key.lod != 0 {
+        if key.lod > 57 {
             return Err(PageCodecError::UnsupportedLod(key.lod));
         }
         let origin = key
             .lod0_cell_min()
             .ok_or(PageCodecError::CoordinateOverflow)?;
+        let scale = 1_i64
+            .checked_shl(u32::from(key.lod))
+            .ok_or(PageCodecError::CoordinateOverflow)?;
         let mut cells = Vec::with_capacity(CELL_COUNT);
         for z in 0..PAGE_EDGE as i64 {
             for y in 0..PAGE_EDGE as i64 {
                 for x in 0..PAGE_EDGE as i64 {
-                    let coordinate = [origin[0] + x, origin[1] + y, origin[2] + z];
+                    let coordinate = sample_coordinate(origin, scale, [x, y, z])?;
                     let mut cell = self.get([x as usize, y as usize, z as usize]).unwrap();
                     for operation in operations {
                         let (min, max) = operation.shape.bounds();
@@ -261,6 +267,21 @@ impl VoxelPage {
     }
 }
 
+fn sample_coordinate(
+    origin: [i64; 3],
+    scale: i64,
+    local: [i64; 3],
+) -> Result<[i64; 3], PageCodecError> {
+    let mut coordinate = [0_i64; 3];
+    for axis in 0..3 {
+        coordinate[axis] = local[axis]
+            .checked_mul(scale)
+            .and_then(|offset| origin[axis].checked_add(offset))
+            .ok_or(PageCodecError::CoordinateOverflow)?;
+    }
+    Ok(coordinate)
+}
+
 fn read_u32(bytes: &[u8], offset: usize) -> Result<u32, PageCodecError> {
     let value = bytes
         .get(offset..offset + 4)
@@ -280,7 +301,7 @@ pub enum PageCodecError {
     TruncatedOrTrailing,
     #[error("terrain page uses a non-canonical run encoding")]
     NonCanonical,
-    #[error("materialized pages currently require LOD0, received LOD{0}")]
+    #[error("terrain page LOD{0} exceeds the supported materialized range")]
     UnsupportedLod(u8),
     #[error("terrain page coordinate overflow")]
     CoordinateOverflow,
@@ -407,13 +428,71 @@ mod tests {
             mode: EditMode::Union,
             material: 9,
         };
-        let key = PageKey::new(0, [0; 3]);
         let prefix = EditLog::from_scheduled(vec![first]).unwrap();
         let complete = EditLog::from_scheduled(vec![second, first]).unwrap();
-        let prefix_page = VoxelPage::generate(key, &generator, &prefix).unwrap();
-        let incremental = prefix_page.apply_edit_tail(key, &[second]).unwrap();
-        let replayed = VoxelPage::generate(key, &generator, &complete).unwrap();
-        assert_eq!(incremental, replayed);
-        assert_eq!(incremental.page_id(), replayed.page_id());
+        for key in [PageKey::new(0, [0; 3]), PageKey::new(4, [0; 3])] {
+            let prefix_page = VoxelPage::generate(key, &generator, &prefix).unwrap();
+            let incremental = prefix_page.apply_edit_tail(key, &[second]).unwrap();
+            let replayed = VoxelPage::generate(key, &generator, &complete).unwrap();
+            assert_eq!(incremental, replayed, "LOD{}", key.lod);
+            assert_eq!(incremental.page_id(), replayed.page_id(), "LOD{}", key.lod);
+        }
+    }
+
+    #[test]
+    fn coarse_pages_sample_the_same_canonical_field_in_fixed_work() {
+        let generator = FixedSphereGenerator {
+            center_cell: [-40, 17, 9],
+            radius_cells: 180,
+            material: 6,
+        };
+        let edit = EditOp {
+            sequence: 1,
+            stable_id: [3; 16],
+            shape: EditShape::Sphere {
+                center_cell: [-32, 32, 0],
+                radius_cells: 24,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        };
+        let edits = EditLog::from_scheduled(vec![edit]).unwrap();
+        let key = PageKey::new(3, [-1, 0, -1]);
+        let page = VoxelPage::generate(key, &generator, &edits).unwrap();
+        assert_eq!(page.cells().len(), CELL_COUNT);
+        let origin = key.lod0_cell_min().unwrap();
+        let scale = 1_i64 << key.lod;
+        for local in [[0, 0, 0], [1, 7, 13], [16, 16, 16], [31, 31, 31]] {
+            let coordinate = std::array::from_fn(|axis| {
+                origin[axis] + i64::try_from(local[axis]).unwrap() * scale
+            });
+            let expected = edits.apply(coordinate, generator.sample_cell(coordinate));
+            assert_eq!(page.get(local), Some(expected));
+        }
+    }
+
+    #[test]
+    fn coincident_samples_match_across_lods_and_negative_page_boundaries() {
+        let generator = FixedSphereGenerator {
+            center_cell: [-20, 10, 5],
+            radius_cells: 90,
+            material: 4,
+        };
+        let edits = EditLog::default();
+        let coarse_key = PageKey::new(1, [-1, 0, 0]);
+        let fine_key = PageKey::new(0, [-2, 0, 0]);
+        let coarse = VoxelPage::generate(coarse_key, &generator, &edits).unwrap();
+        let fine = VoxelPage::generate(fine_key, &generator, &edits).unwrap();
+        for z in 0..16 {
+            for y in 0..16 {
+                for x in 0..16 {
+                    assert_eq!(
+                        coarse.get([x, y, z]),
+                        fine.get([x * 2, y * 2, z * 2]),
+                        "coincident sample at {x},{y},{z}"
+                    );
+                }
+            }
+        }
     }
 }

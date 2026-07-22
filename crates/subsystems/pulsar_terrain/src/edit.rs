@@ -1,5 +1,5 @@
 use crate::{CellWord, ContentHash, MaterialId, PageKey};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
 
 const EDIT_LOG_MAGIC: &[u8; 8] = b"PTEDIT01";
@@ -161,14 +161,19 @@ enum EditAttachment {
 /// Derived sparse spatial index for the canonical edit log.
 ///
 /// Every edit contributes exactly one reference, either at the root or at its
-/// smallest covering hierarchy region. Page replay walks only the page's
-/// ancestor chain, so work is proportional to relevant candidates rather than
-/// the total logical volume or the total global edit count.
+/// smallest covering hierarchy region. Fine-page replay walks its ancestor
+/// chain. Coarse-page replay additionally follows occupancy-only hierarchy
+/// branches to relevant descendant attachments, so it sees every edit inside
+/// its volume without scanning the total logical volume or global edit log.
 #[derive(Clone, Debug)]
 pub(crate) struct EditIndex {
     root_lod: u8,
     root: Vec<usize>,
     regions: BTreeMap<PageKey, Vec<usize>>,
+    /// Hierarchy nodes that contain one or more region attachments. Edit
+    /// payloads remain stored exactly once in `regions`; these occupancy marks
+    /// let a coarse-page query descend only into relevant branches.
+    occupied_subtrees: BTreeSet<PageKey>,
 }
 
 impl EditIndex {
@@ -177,6 +182,7 @@ impl EditIndex {
             root_lod,
             root: Vec::new(),
             regions: BTreeMap::new(),
+            occupied_subtrees: BTreeSet::new(),
         }
     }
 
@@ -185,6 +191,11 @@ impl EditIndex {
             EditAttachment::Root => self.root.push(operation_index),
             EditAttachment::Region(key) => {
                 self.regions.entry(key).or_default().push(operation_index);
+                let mut ancestor = Some(key);
+                while let Some(node) = ancestor.filter(|node| node.lod < self.root_lod) {
+                    self.occupied_subtrees.insert(node);
+                    ancestor = node.parent();
+                }
             }
         }
     }
@@ -203,12 +214,50 @@ impl EditIndex {
             }
             ancestor = key.parent();
         }
+        self.collect_descendant_indices(key, &mut indices);
         indices.sort_unstable();
+        indices.dedup();
         indices
             .into_iter()
             .filter_map(|index| log.operations().get(index).copied())
             .filter(|operation| operation.sequence > after_sequence)
             .collect()
+    }
+
+    fn collect_descendant_indices(&self, parent: PageKey, indices: &mut Vec<usize>) {
+        let Some(child_lod) = parent.lod.checked_sub(1) else {
+            return;
+        };
+        for z in 0..2_i64 {
+            for y in 0..2_i64 {
+                for x in 0..2_i64 {
+                    let offsets = [x, y, z];
+                    let mut page_xyz = [0_i64; 3];
+                    let mut valid = true;
+                    for axis in 0..3 {
+                        let Some(coordinate) = parent.page_xyz[axis]
+                            .checked_mul(2)
+                            .and_then(|coordinate| coordinate.checked_add(offsets[axis]))
+                        else {
+                            valid = false;
+                            break;
+                        };
+                        page_xyz[axis] = coordinate;
+                    }
+                    if !valid {
+                        continue;
+                    }
+                    let child = PageKey::new(child_lod, page_xyz);
+                    if !self.occupied_subtrees.contains(&child) {
+                        continue;
+                    }
+                    if let Some(attached) = self.regions.get(&child) {
+                        indices.extend_from_slice(attached);
+                    }
+                    self.collect_descendant_indices(child, indices);
+                }
+            }
+        }
     }
 
     pub(crate) fn region_count(&self) -> usize {
@@ -575,5 +624,43 @@ mod tests {
         );
         assert_eq!(index.region_count(), 3);
         assert_eq!(index.reference_count(), operations.len());
+    }
+
+    #[test]
+    fn coarse_page_queries_descend_only_into_occupied_edit_branches() {
+        let inside = EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: [3_208, 3_208, 3_208],
+                radius_cells: 1,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        };
+        let outside = EditOp {
+            sequence: 2,
+            stable_id: [2; 16],
+            shape: EditShape::Sphere {
+                center_cell: [6_400, 3_208, 3_208],
+                radius_cells: 1,
+            },
+            mode: EditMode::Union,
+            material: 5,
+        };
+        let mut log = EditLog::default();
+        let mut index = EditIndex::new(12);
+        for operation in [inside, outside] {
+            let operation_index = log.operations().len();
+            log.push(operation).unwrap();
+            index.insert(operation_index, operation);
+        }
+
+        let first_region = index.operations_for_page(&log, PageKey::new(7, [0, 0, 0]), 0);
+        assert_eq!(first_region, vec![inside]);
+        let second_region = index.operations_for_page(&log, PageKey::new(7, [1, 0, 0]), 0);
+        assert_eq!(second_region, vec![outside]);
+        assert_eq!(index.reference_count(), 2);
+        assert!(index.occupied_subtrees.len() <= 2 * 12);
     }
 }
