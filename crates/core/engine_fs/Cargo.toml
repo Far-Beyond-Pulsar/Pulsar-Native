@@ -30,7 +30,7 @@ pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-async-trait = "0.1"
+async-trait = "=0.1.91"
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
