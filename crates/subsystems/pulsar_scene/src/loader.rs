@@ -32,8 +32,8 @@ use helio::Renderer;
 use serde_json::Value;
 
 use pulsar_reflection::{
-    apply_runtime_behavior_for_class, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
-    Subsystems,
+    ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
+    apply_runtime_behavior_for_class,
 };
 use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 
@@ -252,10 +252,9 @@ mod tests {
             pulsar_rendering::PLANET_TERRAIN_CLASS_NAME,
             &owner,
             0,
-            &Value::Null,
+            &serde_json::to_value(pulsar_rendering::PlanetTerrainComponent::default()).unwrap(),
             &mut context,
         ));
-        assert_eq!(context.errors.len(), 1);
-        assert!(context.errors[0].contains("is invalid"));
+        assert!(context.errors.is_empty());
     }
 }
