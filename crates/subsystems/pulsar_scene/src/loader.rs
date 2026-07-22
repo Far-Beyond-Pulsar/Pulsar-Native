@@ -44,6 +44,7 @@ use crate::format::{SceneFile, SceneLoadError};
 // linker from dropping pulsar_rendering's #[used] inventory statics.
 // (ComponentRuntimeContext dispatch only works if those statics are linked in.)
 pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
+pub use pulsar_rendering::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
 pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
 pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 
@@ -203,4 +204,58 @@ pub fn build_transform_parts(position: [f32; 3], rotation: [f32; 3], scale: [f32
         rotation[2].to_radians(),
     );
     Mat4::from_scale_rotation_translation(Vec3::from_array(scale), q, Vec3::from_array(position))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pulsar_reflection::ComponentRuntimeContext;
+    use std::path::{Path, PathBuf};
+
+    struct LinkageContext {
+        project_root: PathBuf,
+        subsystems: Subsystems,
+        errors: Vec<String>,
+    }
+
+    impl ComponentRuntimeContext for LinkageContext {
+        fn subsystems_mut(&mut self) -> &mut Subsystems {
+            &mut self.subsystems
+        }
+
+        fn project_root(&self) -> &Path {
+            &self.project_root
+        }
+
+        fn report_error(&mut self, message: String) {
+            self.errors.push(message);
+        }
+    }
+
+    #[test]
+    fn shared_scene_loader_links_planet_terrain_runtime_behavior() {
+        let props = HashMap::new();
+        let owner = RuntimeComponentOwner {
+            scene_object_id: "earth",
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+            props: &props,
+        };
+        let mut context = LinkageContext {
+            project_root: PathBuf::from("."),
+            subsystems: Subsystems::new(),
+            errors: Vec::new(),
+        };
+
+        assert!(apply_runtime_behavior_for_class(
+            pulsar_rendering::PLANET_TERRAIN_CLASS_NAME,
+            &owner,
+            0,
+            &Value::Null,
+            &mut context,
+        ));
+        assert_eq!(context.errors.len(), 1);
+        assert!(context.errors[0].contains("is invalid"));
+    }
 }

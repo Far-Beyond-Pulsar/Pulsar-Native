@@ -192,7 +192,13 @@ The terrain subsystem provides:
 
 Create `crates/subsystems/pulsar_terrain` as the authoritative runtime crate. It owns planet definitions, coordinates, hierarchy, generation, edit scheduling, persistence, streaming, collision requests, and replication-facing data.
 
-Create `PlanetTerrainComponent` in that runtime crate. Do not repurpose the current editor-only `TerrainComponent` or `ProceduralTerrainComponent` during the prototype. Their runtime methods are empty today, and retaining them avoids a scene-format migration while the new contract is validated.
+Keep `PlanetDefinition` and the authoritative runtime in `pulsar_terrain`.
+House the reflected `PlanetTerrainComponent` and its Helio projection in
+`pulsar_rendering::components`, matching Pulsar's component-owned runtime
+projection pattern. Do not repurpose the current editor-only `TerrainComponent`
+or `ProceduralTerrainComponent` during the prototype. Their runtime methods are
+empty today, and retaining them avoids a scene-format migration while the new
+contract is validated.
 
 `pulsar_rendering` consumes immutable render deltas/page uploads from `pulsar_terrain`; it does not own terrain state. `engine_backend` registers the terrain subsystem through the existing subsystem/plugin injection path. The level editor provides inspectors and debug views for the runtime component.
 

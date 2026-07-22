@@ -1,9 +1,10 @@
-//! Explicit boundary between Pulsar's authoritative terrain runtime and
-//! Helio's disposable planetary GPU cache.
+//! Renderer projection owned by [`super::PlanetTerrainComponent`].
 //!
 //! `pulsar_terrain` deliberately has no Helio dependency. This module is the
 //! only place where its immutable render messages become Helio protocol
 //! values, keeping package identity and source-generation semantics auditable.
+//! The adapter is component infrastructure, not an engine subsystem: Helio
+//! remains the long-lived renderer and Pulsar terrain remains authoritative.
 
 use std::collections::{BTreeSet, VecDeque};
 
@@ -12,9 +13,9 @@ use helio_pass_planetary_voxel::{
     PlanetaryVoxelResidency,
 };
 use helio_planet_voxel_core::{
-    AddressError, ContractError, EvictOutcome, PageEvict, PageKey, PageUpload, PlanetFrameUniform,
-    PlanetId, PlanetPageKey, SourceGeneration, VisibilityOutcome, VisiblePage, VisiblePageSet,
-    LOD0_CELL_SIZE_METERS, PAGE_EDGE_CELLS,
+    AddressError, ContractError, EvictOutcome, LOD0_CELL_SIZE_METERS, PAGE_EDGE_CELLS, PageEvict,
+    PageKey, PageUpload, PlanetFrameUniform, PlanetId, PlanetPageKey, SourceGeneration,
+    VisibilityOutcome, VisiblePage, VisiblePageSet,
 };
 use pulsar_terrain::{
     PlanetFramePayload, TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict,
@@ -72,11 +73,11 @@ pub enum PlanetaryTerrainRenderError {
 
 /// Owns Helio's bounded planetary residency while leaving canonical terrain,
 /// scheduling, persistence, and event ownership in `pulsar_terrain`.
-pub struct PlanetaryTerrainRenderAdapter {
+pub struct PlanetTerrainComponentRenderAdapter {
     residency: PlanetaryVoxelResidency,
 }
 
-impl PlanetaryTerrainRenderAdapter {
+impl PlanetTerrainComponentRenderAdapter {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -328,12 +329,12 @@ fn translate_page_key(page: pulsar_terrain::PageKey) -> Result<PageKey, AddressE
 mod tests {
     use super::*;
     use helio_planet_voxel_core::{
-        UploadOutcome, PAGE_CELL_COUNT, PAGE_EDGE as HELIO_PAGE_EDGE, TRANSITION_FACE_MASK,
+        PAGE_CELL_COUNT, PAGE_EDGE as HELIO_PAGE_EDGE, TRANSITION_FACE_MASK, UploadOutcome,
     };
     use pulsar_terrain::{
-        CellWord as TerrainCellWord, PageKey as TerrainPageKey, PlanetFrame, PlanetId as TerrainId,
-        PlanetPosition, TerrainRenderDeltaCounters, TerrainVisiblePage, CELL_COUNT,
-        LOD0_CELL_SIZE_METERS as TERRAIN_CELL_SIZE_METERS, PAGE_EDGE, TERRAIN_TRANSITION_FACE_MASK,
+        CELL_COUNT, CellWord as TerrainCellWord, LOD0_CELL_SIZE_METERS as TERRAIN_CELL_SIZE_METERS,
+        PAGE_EDGE, PageKey as TerrainPageKey, PlanetFrame, PlanetId as TerrainId, PlanetPosition,
+        TERRAIN_TRANSITION_FACE_MASK, TerrainRenderDeltaCounters, TerrainVisiblePage,
     };
 
     fn terrain_upload(
@@ -483,7 +484,7 @@ mod tests {
                 })
                 .await
                 .unwrap();
-            let mut renderer = PlanetaryTerrainRenderAdapter::new(
+            let mut renderer = PlanetTerrainComponentRenderAdapter::new(
                 &device,
                 &queue,
                 PlanetaryVoxelGpuConfig::new(2, 8, 8, 1, 4, 2).unwrap(),

@@ -9265,6 +9265,7 @@ name = "pulsar_rendering"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
+ "engine_subsystems",
  "glam 0.33.2",
  "gpui-ce",
  "helio 0.18.0",
@@ -9356,10 +9357,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossbeam-channel",
- "engine_class_derive",
  "engine_fs",
  "engine_subsystems",
- "pulsar_reflection",
  "serde",
  "serde_json",
  "sha2 0.11.0",

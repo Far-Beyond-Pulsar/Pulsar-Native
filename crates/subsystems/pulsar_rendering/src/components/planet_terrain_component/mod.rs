@@ -1,39 +1,26 @@
-use crate::{PlanetId, PlanetIdParseError, TerrainRuntimeHandle};
+//! Scene component and render bridge for production planetary terrain.
+//!
+//! `pulsar_terrain` owns canonical terrain state and long-lived workers. This
+//! component owns the scene-facing configuration and the only translation
+//! boundary into Helio, matching the ownership pattern used by the other
+//! rendering components.
+
+mod render_adapter;
+
+pub use render_adapter::*;
+
 use engine_class_derive::{engine_class, register_runtime_behavior};
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
+use pulsar_terrain::{
+    PlanetDefinition, PlanetId, PlanetIdParseError, TerrainRuntimeError, TerrainRuntimeHandle,
+};
 use serde_json::Value;
 use thiserror::Error;
 
 pub const PLANET_TERRAIN_CLASS_NAME: &str = "PlanetTerrainComponent";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PlanetDefinition {
-    pub planet_id: PlanetId,
-    pub center_cell: [i64; 3],
-    pub radius_cells: u64,
-    pub material: u8,
-    pub root_lod: u8,
-    pub max_resident_pages: usize,
-}
-
-impl PlanetDefinition {
-    /// Whether every discrete cell touched by the spherical source fits the
-    /// centered sparse hierarchy root represented by `root_lod`.
-    pub fn fits_centered_root(&self) -> bool {
-        if !(1..=62).contains(&self.root_lod) {
-            return false;
-        }
-        let half_span = i128::from(crate::PAGE_EDGE_CELLS) << (self.root_lod - 1);
-        let radius = i128::from(self.radius_cells);
-        self.center_cell.iter().all(|axis| {
-            let center = i128::from(*axis);
-            center - radius >= -half_span && center + radius < half_span
-        })
-    }
-}
-
-/// Runtime-owned planetary terrain definition. Legacy editor terrain
-/// components remain separate while this production contract is validated.
+/// Scene-owned planetary terrain definition. Canonical data and worker state
+/// remain in the `pulsar_terrain` runtime retrieved from the component context.
 #[engine_class(category = "Terrain", clone, debug, serialize, deserialize)]
 pub struct PlanetTerrainComponent {
     #[property]
@@ -181,20 +168,19 @@ pub enum ComponentError {
     #[error("TerrainRuntimeHandle is not registered in the component context")]
     RuntimeUnavailable,
     #[error(transparent)]
-    Runtime(#[from] crate::TerrainRuntimeError),
+    Runtime(#[from] TerrainRuntimeError),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{TerrainRuntimeConfig, TerrainSubsystem};
     use engine_subsystems::{Subsystem, SubsystemContext};
-    use pulsar_reflection::{
-        apply_runtime_behavior_for_class, ComponentRuntimeContext, EngineClass,
-        RuntimeComponentOwner, Subsystems,
+    use pulsar_reflection::{EngineClass, Subsystems, apply_runtime_behavior_for_class};
+    use pulsar_terrain::{TerrainRuntimeConfig, TerrainSubsystem};
+    use std::{
+        collections::HashMap,
+        path::{Path, PathBuf},
     };
-    use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
 
     struct TestRuntimeContext {
         project_root: PathBuf,
@@ -266,11 +252,11 @@ mod tests {
 
     #[test]
     fn registered_runtime_behavior_upserts_and_removes_the_planet() {
-        let config = TerrainRuntimeConfig {
+        let mut terrain = TerrainSubsystem::new(TerrainRuntimeConfig {
             worker_count: 1,
             ..TerrainRuntimeConfig::default()
-        };
-        let mut terrain = TerrainSubsystem::new(config).unwrap();
+        })
+        .unwrap();
         terrain.init(&SubsystemContext::new()).unwrap();
         let handle = terrain.runtime_handle();
 

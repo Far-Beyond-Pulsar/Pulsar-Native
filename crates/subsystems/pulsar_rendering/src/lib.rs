@@ -4,8 +4,6 @@
 //! engine's reflection system for automatic UI generation.
 
 pub mod components;
-pub mod planetary_terrain;
 pub mod subsystems;
 
 pub use components::*;
-pub use planetary_terrain::*;
