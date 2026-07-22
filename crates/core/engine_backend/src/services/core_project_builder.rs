@@ -3,6 +3,13 @@ use std::path::Path;
 use engine_fs::virtual_fs;
 use engine_state::{register_default_settings, ProjectSettings};
 
+/// Helio revision selected by the Pulsar workspace.
+///
+/// The build script derives this from `[workspace.dependencies]` and rejects
+/// mismatched Helio package revisions. Generated games use the same revision
+/// so their direct Helio values remain compatible with Pulsar's public API.
+pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
+
 fn settings_string(
     settings: Option<&ProjectSettings>,
     owner: &str,
@@ -132,14 +139,15 @@ serde = {{ version = \"1.0\", features = [\"derive\"] }}\n\
 serde_json = \"1.0\"\n\
 tracing = \"0.1\"\n\
 tracing-subscriber = {{ version = \"0.3\", features = [\"fmt\", \"env-filter\"] }}\n\
-helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\" }}\n\
+helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{helio_rev}\" }}\n\
 winit = \"0.30\"\n\n\
 [profile.dev]\n\
 opt-level = {}\n\
 debug = {}\n",
         package_lines.join("\n"),
         profile_opt,
-        profile_debug
+        profile_debug,
+        helio_rev = HELIO_GIT_REVISION,
     );
 
     virtual_fs::write_file(&cargo_toml_path, cargo_content.as_bytes())
@@ -531,4 +539,24 @@ fn ensure_level_json(project_root: &Path) -> Result<(), String> {
 
     virtual_fs::write_file(&level_json, pretty.as_bytes())
         .map_err(|e| format!("Failed to write Pulsar/level.json: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ensure_core_cargo_toml, HELIO_GIT_REVISION};
+
+    #[test]
+    fn generated_project_pins_the_workspace_helio_revision() {
+        let project = tempfile::tempdir().unwrap();
+        ensure_core_cargo_toml(project.path()).unwrap();
+
+        let manifest = std::fs::read_to_string(project.path().join("Cargo.toml")).unwrap();
+        let expected = format!(
+            "helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{HELIO_GIT_REVISION}\" }}"
+        );
+        assert!(manifest.lines().any(|line| line == expected));
+        assert!(!manifest
+            .lines()
+            .any(|line| { line.starts_with("helio = ") && !line.contains("rev = ") }));
+    }
 }

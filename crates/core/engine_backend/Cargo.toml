@@ -11,6 +11,9 @@ opt-level = 3
 [dev-dependencies]
 tempfile = { workspace = true }
 
+[build-dependencies]
+toml = { workspace = true }
+
 [lints]
 workspace = true
 

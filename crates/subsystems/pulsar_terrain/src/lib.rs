@@ -5,12 +5,12 @@
 //! snapshots. Rendering and physics consume derived data and never become the
 //! source of truth.
 
-mod component;
 mod core;
 mod edit;
 mod generator;
 mod hierarchy;
 mod page;
+mod planet;
 mod render;
 mod residency;
 mod runtime;
@@ -19,9 +19,6 @@ mod store;
 mod streaming;
 mod types;
 
-pub use component::{
-    ComponentError, PlanetDefinition, PlanetTerrainComponent, PLANET_TERRAIN_CLASS_NAME,
-};
 pub use core::{
     PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest, PageBuildResult, TerrainCore,
     TerrainCoreError, TerrainMemoryCounters, TerrainWorkCounters,
@@ -33,6 +30,7 @@ pub use page::{
     PageCodecError, VoxelPage, CELL_COUNT, MICROBRICKS_PER_AXIS, MICROBRICK_COUNT, MICROBRICK_EDGE,
     PAGE_EDGE,
 };
+pub use planet::PlanetDefinition;
 pub use render::{
     TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict, TerrainRenderCommand,
     TerrainRenderDelta, TerrainRenderDeltaConfig, TerrainRenderDeltaCounters,

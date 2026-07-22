@@ -22,10 +22,19 @@ tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio.workspace = true
 helio-asset-compat = { workspace = true }
+helio-planet-voxel-core = { workspace = true }
+helio-pass-planetary-voxel = { workspace = true }
+pulsar_terrain.workspace = true
+thiserror.workspace = true
+wgpu.workspace = true
 gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 plugin_editor_api.workspace = true
+
+[dev-dependencies]
+engine_subsystems = { workspace = true }
+pollster = "0.4"
 
 [lints]
 workspace = true
