@@ -79,7 +79,14 @@
       "Bash(grep -n \"pub fn\\\\|fn capture\\\\|fn read\\\\|fn save\\\\|MapMode\\\\|copy_texture_to_buffer\\\\|fn render_to_png\\\\|ImageBuffer\" \"C:/Users/redst/.cargo/git/checkouts/helio-505f36e18090c4f2/f7e0a54/crates_other/helio-snapshot/src/lib.rs\" \"C:/Users/redst/.cargo/git/checkouts/helio-505f36e18090c4f2/f7e0a54/crates_other/helio-snapshot/src/renderer.rs\")",
       "Bash(kubectl apply *)",
       "Bash(kubectl rollout *)",
-      "Bash(xargs -I{} basename {} .svg)"
+      "Bash(xargs -I{} basename {} .svg)",
+      "Read(//c//**)",
+      "Read(//c/Users/redst/**)",
+      "Bash(grep -n \"fn determine_flex_base_size\\\\|fn compute_flex_base_size\\\\|flex_basis\\\\|available_space_for_measure\\\\|fn generate_anonymous_flex_items\\\\|content_based_minimum_size\\\\|fn measure_node\" -r /c/Users/redst/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/taffy-0.9.0/src/compute/flexbox.rs | head -80)",
+      "Bash(grep -n \"fn maybe_into_automatic_min_size\" -r /c/Users/redst/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/taffy-0.9.0/src/ )",
+      "Bash(git submodule *)",
+      "Bash(find /c/Users/redst/.cargo/registry/src -maxdepth 1 -iname \"gpui-macros*\" 2>/dev/null)",
+      "Bash(find /c/Users/redst/.cargo/registry/src -maxdepth 2 -iname \"*macro*\" 2>/dev/null | grep -i gpui *)"
     ]
   }
 }
