@@ -32,6 +32,22 @@ pub fn render_tab_bar(
         .filter(|a| a.status != FileSyncStatus::Synced)
         .count();
 
+    let tab_labels: [SharedString; 4] = [
+        "Info".into(),
+        "Presence".into(),
+        if out_of_sync_count > 0 {
+            format!("Files ({})", out_of_sync_count).into()
+        } else {
+            "Files".into()
+        },
+        if !this.chat_messages.is_empty() {
+            format!("Chat ({})", this.chat_messages.len()).into()
+        } else {
+            "Chat".into()
+        },
+    ];
+    let tab_count = tab_labels.len();
+
     TabBar::new("multiplayer-tabs")
         .w_full()
         .bg(cx.theme().secondary)
@@ -41,18 +57,14 @@ pub fn render_tab_bar(
         .on_click(cx.listener(|this, ix: &usize, _window, cx| {
             handlers::on_tab_click(this, ix, cx);
         }))
-        .child(Tab::new("Info"))
-        .child(Tab::new("Presence"))
-        .child(Tab::new(if out_of_sync_count > 0 {
-            format!("Files ({})", out_of_sync_count)
-        } else {
-            "Files".to_string()
-        }))
-        .child(Tab::new(if !this.chat_messages.is_empty() {
-            format!("Chat ({})", this.chat_messages.len())
-        } else {
-            "Chat".to_string()
-        }))
+        .build_tabs(
+            tab_count,
+            tab_labels.iter().map(|l| (Some(l.clone()), false)).collect(),
+            {
+                let labels = tab_labels.clone();
+                move |ix, _, _| Tab::new(labels[ix].clone())
+            },
+        )
 }
 
 pub fn render_active_session(
