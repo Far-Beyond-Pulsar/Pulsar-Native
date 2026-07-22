@@ -171,6 +171,16 @@ pub enum TerrainRuntimeEvent {
     },
 }
 
+/// Generation identity observed atomically with a resident page.
+///
+/// Render and collision consumers use both words to reject delayed work after
+/// either a page edit/eviction or a complete planet replacement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerrainResidentPageGeneration {
+    pub planet_generation: u64,
+    pub page_generation: u64,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerrainRuntimeCounters {
     pub planets: usize,
@@ -1153,6 +1163,40 @@ impl TerrainRuntimeHandle {
             .get(&planet_id)
             .and_then(|planet| planet.core.page(page_key))
             .cloned()
+    }
+
+    /// Clone a page only when both generation words still match the event that
+    /// requested it. This closes the race between draining `PageReady` and a
+    /// newer edit, eviction, or replacement of the same planet id.
+    pub fn page_snapshot_for_generation(
+        &self,
+        planet_id: PlanetId,
+        page_key: PageKey,
+        expected: TerrainResidentPageGeneration,
+    ) -> Option<crate::VoxelPage> {
+        let state = lock(&self.shared.state);
+        let planet = state.planets.get(&planet_id)?;
+        if planet.generation != expected.planet_generation
+            || planet.page_generations.get(&page_key).copied() != Some(expected.page_generation)
+        {
+            return None;
+        }
+        planet.core.page(page_key).cloned()
+    }
+
+    /// Read the generation identity only when the page is currently resident.
+    pub fn resident_page_generation(
+        &self,
+        planet_id: PlanetId,
+        page_key: PageKey,
+    ) -> Option<TerrainResidentPageGeneration> {
+        let state = lock(&self.shared.state);
+        let planet = state.planets.get(&planet_id)?;
+        planet.core.page(page_key)?;
+        Some(TerrainResidentPageGeneration {
+            planet_generation: planet.generation,
+            page_generation: planet.page_generations.get(&page_key).copied()?,
+        })
     }
 
     pub fn resident_page_keys(
