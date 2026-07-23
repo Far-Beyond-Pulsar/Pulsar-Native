@@ -267,13 +267,14 @@ impl ViewportPanel {
                     let up = if keys.contains(&Keycode::E) || keys.contains(&Keycode::Space) {
                         1
                     } else if keys.contains(&Keycode::Q)
-                        || keys.contains(&Keycode::LShift)
-                        || keys.contains(&Keycode::RShift)
+                        || keys.contains(&Keycode::LControl)
+                        || keys.contains(&Keycode::RControl)
                     {
                         -1
                     } else {
                         0
                     };
+                    // Shift is the speed boost modifier (no longer doubles as descend).
                     let boost = keys.contains(&Keycode::LShift) || keys.contains(&Keycode::RShift);
 
                     input_state.set_forward(forward);
@@ -754,6 +755,88 @@ impl ViewportPanel {
             })
             // Right-click release
             .on_mouse_up(gpui::MouseButton::Right, {
+                let last_mouse_x = last_mouse_x.clone();
+                let last_mouse_y = last_mouse_y.clone();
+                let locked_cursor_x = locked_cursor_x.clone();
+                let locked_cursor_y = locked_cursor_y.clone();
+                let mouse_right_captured = mouse_right_captured.clone();
+                let mouse_middle_captured = mouse_middle_captured.clone();
+                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
+                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
+
+                move |_event, window, _cx| {
+                    last_mouse_x.store(0, Ordering::Relaxed);
+                    last_mouse_y.store(0, Ordering::Relaxed);
+                    locked_cursor_x.store(0, Ordering::Relaxed);
+                    locked_cursor_y.store(0, Ordering::Relaxed);
+                    ViewportCursorCapture::Released
+                        .store(&mouse_right_captured, &mouse_middle_captured);
+                    locked_cursor_screen_x.store(0, Ordering::Relaxed);
+                    locked_cursor_screen_y.store(0, Ordering::Relaxed);
+
+                    crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
+                    crate::level_editor::ui::viewport::platform::unlock_cursor();
+                    window.refresh();
+                }
+            })
+            // Middle-click drag to pan the camera along the current view plane
+            .on_mouse_down(gpui::MouseButton::Middle, {
+                let last_mouse_x = last_mouse_x.clone();
+                let last_mouse_y = last_mouse_y.clone();
+                let mouse_right_captured = mouse_right_captured.clone();
+                let mouse_middle_captured = mouse_middle_captured.clone();
+                let locked_cursor_x = locked_cursor_x.clone();
+                let locked_cursor_y = locked_cursor_y.clone();
+                let locked_cursor_screen_x = locked_cursor_screen_x.clone();
+                let locked_cursor_screen_y = locked_cursor_screen_y.clone();
+                let input_state_clone = self.input_state.clone();
+
+                move |event, window, _cx| {
+                    if !crate::level_editor::ui::viewport::platform::prepare_relative_mouse_mode() {
+                        ViewportCursorCapture::Released
+                            .store(&mouse_right_captured, &mouse_middle_captured);
+                        crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
+                        crate::level_editor::ui::viewport::platform::unlock_cursor();
+                        window.refresh();
+                        return;
+                    }
+
+                    let window_x: f32 = event.position.x.into();
+                    let window_y: f32 = event.position.y.into();
+                    let x = (window_x * 1000.0) as i32;
+                    let y = (window_y * 1000.0) as i32;
+
+                    if let Some((screen_x, screen_y)) =
+                        crate::level_editor::ui::viewport::platform::window_to_screen_position(
+                            window, window_x, window_y,
+                        )
+                    {
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
+                        locked_cursor_screen_x.store(screen_x, Ordering::Relaxed);
+                        locked_cursor_screen_y.store(screen_y, Ordering::Relaxed);
+                        crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
+                    } else {
+                        locked_cursor_x.store(x, Ordering::Relaxed);
+                        locked_cursor_y.store(y, Ordering::Relaxed);
+                        crate::level_editor::ui::viewport::platform::lock_cursor_to_window(window);
+                    }
+
+                    last_mouse_x.store(x, Ordering::Relaxed);
+                    last_mouse_y.store(y, Ordering::Relaxed);
+                    input_state_clone.mouse_x.store(x, Ordering::Relaxed);
+                    input_state_clone.mouse_y.store(y, Ordering::Relaxed);
+
+                    // Middle mouse always pans along the current view plane.
+                    ViewportCursorCapture::Pan
+                        .store(&mouse_right_captured, &mouse_middle_captured);
+
+                    crate::level_editor::ui::viewport::platform::begin_relative_mouse_mode();
+                    window.refresh();
+                }
+            })
+            // Middle-click release
+            .on_mouse_up(gpui::MouseButton::Middle, {
                 let last_mouse_x = last_mouse_x.clone();
                 let last_mouse_y = last_mouse_y.clone();
                 let locked_cursor_x = locked_cursor_x.clone();

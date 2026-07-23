@@ -347,6 +347,23 @@ impl HelioRenderer {
         self.cam_pos += right * self.cam_local_velocity.x * dt;
         self.cam_pos += Vec3::Y * self.cam_local_velocity.y * dt;
         self.cam_pos += fwd * self.cam_local_velocity.z * dt;
+
+        // Middle-mouse (or right-click + Shift) view-plane pan: translate the camera
+        // along its screen right/up axes for a 1:1 "grab" feel. Applied directly from
+        // the accumulated pixel delta (not velocity-smoothed, not dt-scaled).
+        if input.pan_delta_x != 0.0 || input.pan_delta_y != 0.0 {
+            const PAN: f32 = 0.01;
+            let sp = self.cam_pitch.sin();
+            let cp = self.cam_pitch.cos();
+            // Full view forward (includes pitch); screen-up is right × forward.
+            let forward_full = Vec3::new(cp * sy, sp, -cp * cy);
+            let screen_up = right.cross(forward_full);
+            let pan_speed = PAN * input.move_speed.max(1.0);
+            // Grab convention: dragging right moves content right (camera goes left);
+            // dragging down moves content down (camera goes up).
+            self.cam_pos += right * (-input.pan_delta_x) * pan_speed;
+            self.cam_pos += screen_up * input.pan_delta_y * pan_speed;
+        }
     }
 
     pub fn is_initialized(&self) -> bool {

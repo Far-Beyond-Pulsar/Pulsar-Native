@@ -234,11 +234,13 @@ where
     let mut main = v_flex()
         .gap_2()
         .w_full()
+        .min_w_0()
         .child(
             h_flex()
                 .gap_3()
                 .items_center()
                 .w_full()
+                .min_w_0()
                 .child(
                     h_flex()
                         .gap_1p5()
@@ -259,6 +261,8 @@ where
                 .child(
                     div()
                         .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
                         .text_xs()
                         .font_family("monospace")
                         .text_color(cx.theme().muted_foreground)
@@ -281,6 +285,8 @@ where
         .child(
             div()
                 .w_full()
+                .min_w_0()
+                .overflow_hidden()
                 .text_sm()
                 .text_color(cx.theme().foreground)
                 .line_height(rems(1.4))
