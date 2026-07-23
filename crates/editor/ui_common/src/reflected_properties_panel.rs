@@ -141,7 +141,6 @@ pub fn render_property_row_runtime<V: 'static>(
                 display_name,
                 prop_name,
                 type_info,
-                current_json: &Value::Null,
                 current_value,
                 write_back,
             };

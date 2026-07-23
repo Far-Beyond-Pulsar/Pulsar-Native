@@ -36,3 +36,4 @@ blueprint_graph_debug.json
 /discovery
 /.opencode
 *.lg
+.env
