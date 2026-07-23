@@ -22,6 +22,7 @@ use std::sync::{Arc, Mutex};
 
 use device_query::{DeviceQuery, DeviceState, Keycode};
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
@@ -36,6 +37,35 @@ use components::performance_overlay::render_performance_overlay;
 use components::viewport_options::render_viewport_options;
 use input_state::InputState;
 use performance::*;
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ViewportCursorCapture {
+    #[default]
+    Released,
+    Rotate,
+    Pan,
+}
+
+impl ViewportCursorCapture {
+    fn load(right: &AtomicBool, middle: &AtomicBool) -> Self {
+        if right.load(Ordering::Acquire) {
+            Self::Rotate
+        } else if middle.load(Ordering::Acquire) {
+            Self::Pan
+        } else {
+            Self::Released
+        }
+    }
+
+    fn store(self, right: &AtomicBool, middle: &AtomicBool) {
+        right.store(matches!(self, Self::Rotate), Ordering::Release);
+        middle.store(matches!(self, Self::Pan), Ordering::Release);
+    }
+
+    fn is_active(self) -> bool {
+        self != Self::Released
+    }
+}
 
 /// Viewport panel with zero-copy GPU rendering and professional camera controls.
 ///
@@ -185,8 +215,10 @@ impl ViewportPanel {
                 let input_start = std::time::Instant::now();
                 std::thread::sleep(std::time::Duration::from_millis(8)); // ~120Hz
 
-                let is_rotating = mouse_right_captured.load(Ordering::Acquire);
-                let is_panning = mouse_middle_captured.load(Ordering::Acquire);
+                let capture =
+                    ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
+                let is_rotating = capture == ViewportCursorCapture::Rotate;
+                let is_panning = capture == ViewportCursorCapture::Pan;
 
                 if !is_rotating && !is_panning {
                     // Not active - clear state
@@ -486,6 +518,8 @@ impl ViewportPanel {
         let locked_cursor_y = self.locked_cursor_y.clone();
         let locked_cursor_screen_x = self.locked_cursor_screen_x.clone();
         let locked_cursor_screen_y = self.locked_cursor_screen_y.clone();
+        let cursor_capture =
+            ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
 
         // For mouse move tracking
         let element_bounds_move = self.element_bounds.clone();
@@ -496,6 +530,11 @@ impl ViewportPanel {
         div()
             .size_full()
             .relative()
+            // Cursor requests are paint state in GPUI. Event handlers update the
+            // capture atomics and refresh the window; paint owns presentation.
+            .when(cursor_capture.is_active(), |viewport| {
+                viewport.cursor(CursorStyle::None)
+            })
             // TRANSPARENT - no background for direct Helio rendering
             .rounded(cx.theme().radius)
             // CRITICAL: Capture element bounds and update Helio camera viewport
@@ -547,9 +586,11 @@ impl ViewportPanel {
                 let mouse_middle_captured = mouse_middle_captured.clone();
                 let state_arc_move = state_arc.clone();
 
-                move |event, window, _cx| {
-                    let is_rotating = mouse_right_captured.load(Ordering::Acquire);
-                    let is_panning = mouse_middle_captured.load(Ordering::Acquire);
+                move |event, _window, _cx| {
+                    let capture =
+                        ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
+                    let is_rotating = capture == ViewportCursorCapture::Rotate;
+                    let is_panning = capture == ViewportCursorCapture::Pan;
 
                     if is_rotating || is_panning {
                         #[cfg(target_os = "windows")]
@@ -566,8 +607,6 @@ impl ViewportPanel {
                             input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                             input_state_clone.mouse_y.store(y, Ordering::Relaxed);
                         }
-
-                        window.set_window_cursor_style(CursorStyle::None);
                     } else {
                         let pos_x: f32 = event.position.x.into();
                         let pos_y: f32 = event.position.y.into();
@@ -667,7 +706,11 @@ impl ViewportPanel {
 
                 move |event, window, _cx| {
                     if !crate::level_editor::ui::viewport::platform::prepare_relative_mouse_mode() {
-                        window.set_window_cursor_style(CursorStyle::Arrow);
+                        ViewportCursorCapture::Released
+                            .store(&mouse_right_captured, &mouse_middle_captured);
+                        crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
+                        crate::level_editor::ui::viewport::platform::unlock_cursor();
+                        window.refresh();
                         return;
                     }
 
@@ -698,14 +741,15 @@ impl ViewportPanel {
                     input_state_clone.mouse_x.store(x, Ordering::Relaxed);
                     input_state_clone.mouse_y.store(y, Ordering::Relaxed);
 
-                    if shift_pressed {
-                        mouse_middle_captured.store(true, Ordering::Release);
+                    let capture = if shift_pressed {
+                        ViewportCursorCapture::Pan
                     } else {
-                        mouse_right_captured.store(true, Ordering::Release);
-                    }
+                        ViewportCursorCapture::Rotate
+                    };
+                    capture.store(&mouse_right_captured, &mouse_middle_captured);
 
                     crate::level_editor::ui::viewport::platform::begin_relative_mouse_mode();
-                    window.set_window_cursor_style(CursorStyle::None);
+                    window.refresh();
                 }
             })
             // Right-click release
@@ -724,26 +768,29 @@ impl ViewportPanel {
                     last_mouse_y.store(0, Ordering::Relaxed);
                     locked_cursor_x.store(0, Ordering::Relaxed);
                     locked_cursor_y.store(0, Ordering::Relaxed);
-                    mouse_right_captured.store(false, Ordering::Release);
-                    mouse_middle_captured.store(false, Ordering::Release);
+                    ViewportCursorCapture::Released
+                        .store(&mouse_right_captured, &mouse_middle_captured);
                     locked_cursor_screen_x.store(0, Ordering::Relaxed);
                     locked_cursor_screen_y.store(0, Ordering::Relaxed);
 
                     crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
-                    window.set_window_cursor_style(CursorStyle::Arrow);
                     crate::level_editor::ui::viewport::platform::unlock_cursor();
+                    window.refresh();
                 }
             })
             // Scroll wheel for camera speed adjustment
             .on_scroll_wheel({
                 let mouse_right_captured = mouse_right_captured.clone();
+                let mouse_middle_captured = mouse_middle_captured.clone();
                 let input_state_scroll = self.input_state.clone();
 
                 move |event: &gpui::ScrollWheelEvent, _phase, _cx| {
                     let scroll_delta: f32 = event.delta.pixel_delta(px(1.0)).y.into();
 
                     // Check if right-click is held (camera rotation mode)
-                    let is_rotating = mouse_right_captured.load(Ordering::Acquire);
+                    let is_rotating =
+                        ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured)
+                            == ViewportCursorCapture::Rotate;
 
                     if is_rotating {
                         // Right-click held: adjust camera move speed
@@ -763,8 +810,8 @@ impl ViewportPanel {
                 move |event: &gpui::MouseDownEvent,
                       window: &mut gpui::Window,
                       _cx: &mut gpui::App| {
-                    if mouse_right_captured.load(Ordering::Acquire)
-                        || mouse_middle_captured.load(Ordering::Acquire)
+                    if ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured)
+                        .is_active()
                     {
                         return;
                     }
@@ -981,5 +1028,39 @@ impl ViewportPanel {
         }
 
         overlays
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ViewportCursorCapture;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn cursor_capture_modes_store_exclusive_flags() {
+        let right = AtomicBool::new(false);
+        let middle = AtomicBool::new(false);
+
+        for mode in [
+            ViewportCursorCapture::Rotate,
+            ViewportCursorCapture::Pan,
+            ViewportCursorCapture::Released,
+        ] {
+            mode.store(&right, &middle);
+            assert_eq!(ViewportCursorCapture::load(&right, &middle), mode);
+            assert_eq!(mode.is_active(), mode != ViewportCursorCapture::Released);
+            assert!(!(right.load(Ordering::Acquire) && middle.load(Ordering::Acquire)));
+        }
+    }
+
+    #[test]
+    fn cursor_capture_load_resolves_legacy_conflict_to_rotation() {
+        let right = AtomicBool::new(true);
+        let middle = AtomicBool::new(true);
+
+        assert_eq!(
+            ViewportCursorCapture::load(&right, &middle),
+            ViewportCursorCapture::Rotate
+        );
     }
 }
