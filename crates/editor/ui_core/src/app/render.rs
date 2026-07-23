@@ -92,6 +92,7 @@ impl PulsarApp {
                             .child(
                                 Button::new("toggle-files")
                                     .ghost()
+                                    .label("Files")
                                     .icon(Icon::new(IconName::Folder).size(px(16.)).text_color(
                                         if drawer_open {
                                             cx.theme().primary
@@ -99,11 +100,11 @@ impl PulsarApp {
                                             cx.theme().muted_foreground
                                         },
                                     ))
-                                    .px_2()
+                                    .px_3()
                                     .py_1()
                                     .rounded(px(4.))
                                     .when(drawer_open, |s| s.bg(cx.theme().primary.opacity(0.15)))
-                                    .tooltip("Toggle Files (Ctrl+B)")
+                                    .tooltip("Toggle Files (Ctrl+Space)")
                                     .on_click(cx.listener(|app, _, window, cx| {
                                         app.toggle_drawer(window, cx);
                                     })),

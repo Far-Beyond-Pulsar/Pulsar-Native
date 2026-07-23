@@ -60,11 +60,10 @@ pub fn init(cx: &mut gpui::App) {
     root::register_window_wrappers(cx);
 
     // Register global keybindings for actions that must work anywhere in the app
-    cx.bind_keys([gpui::KeyBinding::new::<ToggleCommandPalette>(
-        "alt-space",
-        ToggleCommandPalette {},
-        None,
-    )]);
+    cx.bind_keys([
+        gpui::KeyBinding::new::<ToggleCommandPalette>("alt-space", ToggleCommandPalette {}, None),
+        gpui::KeyBinding::new::<ToggleFileManager>("ctrl-space", ToggleFileManager {}, None),
+    ]);
 
     cx.on_action(|_: &Settings, cx| {
         tracing::debug!("[MENU] Settings");

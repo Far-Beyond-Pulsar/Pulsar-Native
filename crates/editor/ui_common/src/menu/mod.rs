@@ -1434,6 +1434,7 @@ impl Render for AppTitleBar {
                             })
                             .small()
                             .ghost()
+                            .tooltip("Toggle light / dark mode")
                             .on_click(cx.listener(Self::change_color_mode)),
                     )
                     .child(self.locale_selector.clone())
@@ -1443,6 +1444,7 @@ impl Render for AppTitleBar {
                             .icon(IconName::Git)
                             .small()
                             .ghost()
+                            .tooltip("Open the Pulsar GitHub repository")
                             .on_click(|_, _, cx| {
                                 cx.open_url("https://github.com/Far-Beyond-Pulsar/Pulsar-Native")
                             }),
@@ -1454,6 +1456,7 @@ impl Render for AppTitleBar {
                                     .small()
                                     .ghost()
                                     .compact()
+                                    .tooltip("Notifications")
                                     .icon(IconName::Bell),
                             ),
                         ),
@@ -1509,6 +1512,7 @@ impl Render for LocaleSelector {
                     .small()
                     .ghost()
                     .icon(IconName::Globe)
+                    .tooltip("Change language")
                     .popup_menu(move |menu, _, _| {
                         // Add all available locales
                         menu.menu_with_check(
@@ -1612,6 +1616,7 @@ impl Render for FontSizeSelector {
                     .small()
                     .ghost()
                     .icon(IconName::Settings2)
+                    .tooltip("Appearance & font settings")
                     .popup_menu(move |this, _, _| {
                         this.scrollable()
                             .max_h(px(480.0))
