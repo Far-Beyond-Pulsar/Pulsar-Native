@@ -31,6 +31,9 @@ gpui-ce.workspace = true
 ui.workspace = true
 ui_common.workspace = true
 plugin_editor_api.workspace = true
+engine_fs.workspace = true
+engine_state.workspace = true
+bytemuck = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 engine_subsystems = { workspace = true }

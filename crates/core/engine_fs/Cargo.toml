@@ -12,7 +12,6 @@ editor = [
     "dep:dashmap",
     "dep:plugin_manager",
     "dep:plugin_editor_api",
-    "dep:serde_json",
     "dep:notify",
     "dep:walkdir",
     "dep:profiling",
@@ -33,7 +32,7 @@ plugin_editor_api = { workspace = true, optional = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
-serde_json = { workspace = true, optional = true }
+serde_json = { workspace = true }
 notify = { workspace = true, optional = true }
 walkdir = { workspace = true, optional = true }
 profiling = { workspace = true, optional = true }

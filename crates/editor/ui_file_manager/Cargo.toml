@@ -17,6 +17,7 @@ ui_types_common.workspace = true
 # Engine
 engine_fs.workspace = true
 engine_state.workspace = true
+pulsar_rendering.workspace = true
 tracing.workspace = true
 
 # Plugin system

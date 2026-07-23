@@ -25,6 +25,7 @@
 // Module declarations
 #[cfg(feature = "editor")]
 pub mod asset_index;
+pub mod import_options;
 #[cfg(feature = "editor")]
 mod engine_fs;
 pub mod events;

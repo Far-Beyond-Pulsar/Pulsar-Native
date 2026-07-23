@@ -28,6 +28,29 @@ impl FileManagerDrawer {
                     self.folder_tree = FolderNode::from_path(p);
                 }
                 self.mark_directory_cache_dirty();
+
+                // Import (bake) any model files that were just brought in
+                // (issues #391 / #409): convert with the stored or default
+                // options and write the `<source>.mesh` sidecar, so components
+                // load the imported result instead of re-converting on load.
+                for p in &s {
+                    if let Some(name) = p.file_name() {
+                        let dest = t.join(name);
+                        let ext = dest.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if pulsar_rendering::mesh_cache::is_importable_model(ext) {
+                            if let Err(e) =
+                                pulsar_rendering::mesh_cache::import_mesh_asset_default(&dest)
+                            {
+                                tracing::warn!(
+                                    "Model import failed for {}: {}",
+                                    dest.display(),
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+
                 self.selected_folder = Some(t);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;
@@ -75,6 +98,29 @@ impl FileManagerDrawer {
                     self.folder_tree = FolderNode::from_path(p);
                 }
                 self.mark_directory_cache_dirty();
+
+                // Import (bake) any model files that were just brought in
+                // (issues #391 / #409): convert with the stored or default
+                // options and write the `<source>.mesh` sidecar, so components
+                // load the imported result instead of re-converting on load.
+                for p in &s {
+                    if let Some(name) = p.file_name() {
+                        let dest = t.join(name);
+                        let ext = dest.extension().and_then(|e| e.to_str()).unwrap_or("");
+                        if pulsar_rendering::mesh_cache::is_importable_model(ext) {
+                            if let Err(e) =
+                                pulsar_rendering::mesh_cache::import_mesh_asset_default(&dest)
+                            {
+                                tracing::warn!(
+                                    "Model import failed for {}: {}",
+                                    dest.display(),
+                                    e
+                                );
+                            }
+                        }
+                    }
+                }
+
                 self.selected_folder = Some(t);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;
