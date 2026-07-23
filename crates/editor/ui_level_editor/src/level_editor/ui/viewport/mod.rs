@@ -26,7 +26,7 @@ use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use helio_viewport::HelioViewport;
 use ui::Sizable;
-use ui::{v_flex, ActiveTheme};
+use ui::{ActiveTheme, v_flex};
 use ui_common::ViewportControls;
 
 use crate::level_editor::state::LevelEditorState;
@@ -211,9 +211,9 @@ impl ViewportPanel {
             let mut was_capturing = false;
 
             loop {
+                std::thread::sleep(std::time::Duration::from_millis(8)); // ~120Hz
                 profiling::profile_scope!("input_poll");
                 let input_start = std::time::Instant::now();
-                std::thread::sleep(std::time::Duration::from_millis(8)); // ~120Hz
 
                 let capture =
                     ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);

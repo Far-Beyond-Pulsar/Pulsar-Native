@@ -228,9 +228,8 @@ impl SceneDatabase {
         self.scene_db.set_name(&id, obj.name);
         self.scene_db.set_visible(&id, obj.visible);
         self.scene_db.set_locked(&id, obj.locked);
-        if let Some(entry) = self.scene_db.get_entry(&id) {
-            entry.meta.write().props = obj.props;
-        }
+        self.scene_db
+            .update_render_data(&id, |meta| meta.props = obj.props);
         self.sync_registered_component_props_to_scene_db(&id);
         true
     }
@@ -715,8 +714,7 @@ impl SceneDatabase {
     fn sync_registered_component_props_to_scene_db(&self, object_id: &str) {
         let components = self.metadata_db.get_components(&object_id.to_string());
 
-        if let Some(entry) = self.scene_db.get_entry(object_id) {
-            let mut meta = entry.meta.write();
+        self.scene_db.update_render_data(object_id, |meta| {
             for class_name in registered_scene_props_classes() {
                 let data = components
                     .iter()
@@ -738,7 +736,7 @@ impl SceneDatabase {
                 })
                 .collect();
             meta.component_instances = Some(Value::Array(instances));
-        }
+        });
     }
 
     fn collect_descendant_ids(scene_db: &SceneDb, id: &str, out: &mut Vec<ObjectId>) {

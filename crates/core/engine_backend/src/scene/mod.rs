@@ -39,8 +39,8 @@ use glam::{Mat4, Vec3};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -206,10 +206,12 @@ impl SceneEntry {
     }
 
     #[inline]
-    pub fn set_position(&self, v: [f32; 3]) {
-        self.position[0].store(v[0].to_bits(), Ordering::Relaxed);
-        self.position[1].store(v[1].to_bits(), Ordering::Relaxed);
-        self.position[2].store(v[2].to_bits(), Ordering::Relaxed);
+    pub fn set_position(&self, v: [f32; 3]) -> bool {
+        let bits = v.map(f32::to_bits);
+        let x = self.position[0].swap(bits[0], Ordering::Relaxed) != bits[0];
+        let y = self.position[1].swap(bits[1], Ordering::Relaxed) != bits[1];
+        let z = self.position[2].swap(bits[2], Ordering::Relaxed) != bits[2];
+        x || y || z
     }
 
     #[inline]
@@ -222,10 +224,12 @@ impl SceneEntry {
     }
 
     #[inline]
-    pub fn set_rotation(&self, v: [f32; 3]) {
-        self.rotation[0].store(v[0].to_bits(), Ordering::Relaxed);
-        self.rotation[1].store(v[1].to_bits(), Ordering::Relaxed);
-        self.rotation[2].store(v[2].to_bits(), Ordering::Relaxed);
+    pub fn set_rotation(&self, v: [f32; 3]) -> bool {
+        let bits = v.map(f32::to_bits);
+        let x = self.rotation[0].swap(bits[0], Ordering::Relaxed) != bits[0];
+        let y = self.rotation[1].swap(bits[1], Ordering::Relaxed) != bits[1];
+        let z = self.rotation[2].swap(bits[2], Ordering::Relaxed) != bits[2];
+        x || y || z
     }
 
     #[inline]
@@ -238,10 +242,12 @@ impl SceneEntry {
     }
 
     #[inline]
-    pub fn set_scale(&self, v: [f32; 3]) {
-        self.scale[0].store(v[0].to_bits(), Ordering::Relaxed);
-        self.scale[1].store(v[1].to_bits(), Ordering::Relaxed);
-        self.scale[2].store(v[2].to_bits(), Ordering::Relaxed);
+    pub fn set_scale(&self, v: [f32; 3]) -> bool {
+        let bits = v.map(f32::to_bits);
+        let x = self.scale[0].swap(bits[0], Ordering::Relaxed) != bits[0];
+        let y = self.scale[1].swap(bits[1], Ordering::Relaxed) != bits[1];
+        let z = self.scale[2].swap(bits[2], Ordering::Relaxed) != bits[2];
+        x || y || z
     }
 
     #[inline]
@@ -250,8 +256,8 @@ impl SceneEntry {
     }
 
     #[inline]
-    pub fn set_visible(&self, v: bool) {
-        self.visible.store(v, Ordering::Relaxed);
+    pub fn set_visible(&self, v: bool) -> bool {
+        self.visible.swap(v, Ordering::Relaxed) != v
     }
 
     #[inline]
@@ -260,8 +266,8 @@ impl SceneEntry {
     }
 
     #[inline]
-    pub fn set_locked(&self, v: bool) {
-        self.locked.store(v, Ordering::Relaxed);
+    pub fn set_locked(&self, v: bool) -> bool {
+        self.locked.swap(v, Ordering::Relaxed) != v
     }
 
     /// Build a world-space Mat4 from the current atomic transform.
@@ -346,6 +352,9 @@ struct SceneDbInner {
     children_map: RwLock<HashMap<String, Vec<ObjectId>>>,
     /// Auto-incrementing id counter.
     next_id: AtomicU64,
+    /// Monotonic generation for data consumed by the renderer. A release bump
+    /// publishes the preceding atomic/cold-data writes to the render thread.
+    render_revision: AtomicU64,
     /// Currently selected object id.
     selected: RwLock<Option<ObjectId>>,
     /// Gizmo state for the level editor
@@ -365,6 +374,7 @@ impl SceneDb {
                 objects: DashMap::new(),
                 children_map: RwLock::new(HashMap::new()),
                 next_id: AtomicU64::new(1),
+                render_revision: AtomicU64::new(1),
                 selected: RwLock::new(None),
                 gizmo_state: RwLock::new(GizmoState::default()),
             }),
@@ -415,6 +425,7 @@ impl SceneDb {
         self.inner
             .objects
             .insert(id.clone(), Arc::new(SceneEntry::new(&snap)));
+        self.bump_render_revision();
         id
     }
 
@@ -446,6 +457,7 @@ impl SceneDb {
             if sel.as_deref() == Some(id) {
                 *sel = None;
             }
+            self.bump_render_revision();
             true
         } else {
             false
@@ -493,6 +505,12 @@ impl SceneDb {
         self.collect_dfs(None)
     }
 
+    /// Current generation of scene data consumed by the renderer.
+    #[inline]
+    pub fn render_revision(&self) -> u64 {
+        self.inner.render_revision.load(Ordering::Acquire)
+    }
+
     /// Depth-first ordered snapshot of all objects (parents before children).
     /// Use this for serialisation so load order is always valid.
     fn collect_dfs(&self, parent_id: Option<&str>) -> Vec<SceneObjectSnapshot> {
@@ -519,7 +537,9 @@ impl SceneDb {
 
     pub fn set_position(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
-            e.set_position(v);
+            if e.set_position(v) {
+                self.bump_render_revision();
+            }
             true
         } else {
             false
@@ -528,7 +548,9 @@ impl SceneDb {
 
     pub fn set_rotation(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
-            e.set_rotation(v);
+            if e.set_rotation(v) {
+                self.bump_render_revision();
+            }
             true
         } else {
             false
@@ -537,7 +559,9 @@ impl SceneDb {
 
     pub fn set_scale(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
-            e.set_scale(v);
+            if e.set_scale(v) {
+                self.bump_render_revision();
+            }
             true
         } else {
             false
@@ -546,7 +570,9 @@ impl SceneDb {
 
     pub fn set_visible(&self, id: &str, v: bool) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
-            e.set_visible(v);
+            if e.set_visible(v) {
+                self.bump_render_revision();
+            }
             true
         } else {
             false
@@ -556,9 +582,13 @@ impl SceneDb {
     /// Update all three transform components at once from a snapshot.
     pub fn apply_transform(&self, id: &str, pos: [f32; 3], rot: [f32; 3], scale: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
-            e.set_position(pos);
-            e.set_rotation(rot);
-            e.set_scale(scale);
+            let position_changed = e.set_position(pos);
+            let rotation_changed = e.set_rotation(rot);
+            let scale_changed = e.set_scale(scale);
+            let changed = position_changed || rotation_changed || scale_changed;
+            if changed {
+                self.bump_render_revision();
+            }
             true
         } else {
             false
@@ -599,6 +629,19 @@ impl SceneDb {
         } else {
             false
         }
+    }
+
+    /// Mutate cold component/property data while publishing the change to the
+    /// renderer. Editor integrations must use this instead of writing `meta`
+    /// directly, otherwise an unchanged render generation could hide the edit.
+    pub fn update_render_data(&self, id: &str, update: impl FnOnce(&mut SceneEntryMeta)) -> bool {
+        let Some(entry) = self.inner.objects.get(id) else {
+            return false;
+        };
+        update(&mut entry.meta.write());
+        drop(entry);
+        self.bump_render_revision();
+        true
     }
 
     /// Reparent an object. Prevents circular references.
@@ -652,6 +695,7 @@ impl SceneDb {
         };
         self.update_subtree_path(id, &new_path);
 
+        self.bump_render_revision();
         true
     }
 
@@ -671,6 +715,7 @@ impl SceneDb {
         self.inner.children_map.write().clear();
         *self.inner.selected.write() = None;
         *self.inner.gizmo_state.write() = GizmoState::default();
+        self.bump_render_revision();
     }
 
     // ── Gizmo API ─────────────────────────────────────────────────────────
@@ -746,10 +791,59 @@ impl SceneDb {
             }
         }
     }
+
+    #[inline]
+    fn bump_render_revision(&self) {
+        self.inner.render_revision.fetch_add(1, Ordering::Release);
+    }
 }
 
 impl Default for SceneDb {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn object() -> SceneObjectSnapshot {
+        SceneObjectSnapshot {
+            id: "object".into(),
+            name: "Object".into(),
+            scene_path: String::new(),
+            object_type: ObjectType::Empty,
+            position: [0.0; 3],
+            rotation: [0.0; 3],
+            scale: [1.0; 3],
+            parent: None,
+            children: Vec::new(),
+            visible: true,
+            locked: false,
+            props: HashMap::new(),
+            component_instances: None,
+        }
+    }
+
+    #[test]
+    fn render_revision_advances_only_when_render_data_changes() {
+        let db = SceneDb::new();
+        let initial = db.render_revision();
+        db.add_object(object(), None);
+        let added = db.render_revision();
+        assert!(added > initial);
+
+        assert!(db.set_position("object", [0.0; 3]));
+        assert_eq!(db.render_revision(), added);
+        assert!(db.set_position("object", [1.0, 0.0, 0.0]));
+        assert!(db.render_revision() > added);
+
+        let moved = db.render_revision();
+        assert!(db.update_render_data("object", |meta| {
+            meta.props
+                .insert("material".into(), serde_json::json!("rock"));
+        }));
+        assert!(db.render_revision() > moved);
     }
 }

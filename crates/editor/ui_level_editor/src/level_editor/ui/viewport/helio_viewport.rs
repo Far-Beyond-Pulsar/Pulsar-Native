@@ -7,13 +7,14 @@
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
-use ui::{notification::Notification, ActiveTheme as _, ContextModal};
+use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 
-use crate::level_editor::commands::{execute_command, SceneCommand};
+use crate::level_editor::commands::{SceneCommand, execute_command};
 use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
 
@@ -24,6 +25,10 @@ pub struct HelioViewport {
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
+    last_spike_report: Instant,
+    slow_frames_since_report: u32,
+    engine_lock_misses_since_report: u32,
+    max_frame_ms_since_report: f64,
 }
 
 impl HelioViewport {
@@ -39,6 +44,10 @@ impl HelioViewport {
             surface: None,
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
+            last_spike_report: Instant::now(),
+            slow_frames_since_report: 0,
+            engine_lock_misses_since_report: 0,
+            max_frame_ms_since_report: 0.0,
         }
     }
 
@@ -209,6 +218,42 @@ impl HelioViewport {
 
         Ok(())
     }
+
+    fn record_frame_diagnostics(
+        &mut self,
+        total_ms: f64,
+        acquire_ms: f64,
+        render_ms: f64,
+        swap_ms: f64,
+        engine_lock_missed: bool,
+    ) {
+        if engine_lock_missed {
+            self.engine_lock_misses_since_report += 1;
+        }
+        if total_ms > 33.3 {
+            self.slow_frames_since_report += 1;
+            self.max_frame_ms_since_report = self.max_frame_ms_since_report.max(total_ms);
+        }
+
+        if (self.slow_frames_since_report > 0 || self.engine_lock_misses_since_report > 0)
+            && self.last_spike_report.elapsed().as_secs_f32() >= 1.0
+        {
+            tracing::warn!(
+                "[VIEWPORT SPIKES] slow={} lock_misses={} max={:.1}ms latest={:.1}ms (acquire {:.1}, render {:.1}, swap {:.1})",
+                self.slow_frames_since_report,
+                self.engine_lock_misses_since_report,
+                self.max_frame_ms_since_report,
+                total_ms,
+                acquire_ms,
+                render_ms,
+                swap_ms
+            );
+            self.last_spike_report = Instant::now();
+            self.slow_frames_since_report = 0;
+            self.engine_lock_misses_since_report = 0;
+            self.max_frame_ms_since_report = 0.0;
+        }
+    }
 }
 
 /// Renders the current Helio scene into an offscreen texture, reads it back
@@ -367,6 +412,7 @@ impl EventEmitter<DismissEvent> for HelioViewport {}
 
 impl Render for HelioViewport {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        profiling::profile_scope!("helio_viewport_frame");
         if self.debug_replace_with_yellow {
             return div()
                 .relative()
@@ -398,35 +444,47 @@ impl Render for HelioViewport {
         // Render into the back buffer, then swap.  If the surface is still
         // resizing, keep the previous display buffer visible and avoid forcing
         // Helio to resize mid-drag.
+        let mut frame_diagnostics = None;
         if let Some(ref surface) = self.surface {
             if !surface.is_resize_pending() {
-                if let Some((view, (w, h))) = surface.back_view_with_size() {
-                    if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                        let t_frame = std::time::Instant::now();
-                        engine.render_frame_to_surface(
-                            surface.device(),
-                            surface.queue(),
-                            &view,
-                            w,
-                            h,
-                            surface.format(),
-                        );
-                        let frame_ms = t_frame.elapsed().as_secs_f64() * 1000.0;
-                        if frame_ms > 16.0 {
-                            tracing::warn!(
-                                "[VIEWPORT] render_frame_to_surface took {:.1}ms",
-                                frame_ms
+                let frame_start = Instant::now();
+                let acquire_start = Instant::now();
+                let back_view = {
+                    profiling::profile_scope!("viewport_surface_acquire");
+                    surface.back_view_with_size()
+                };
+                let acquire_ms = acquire_start.elapsed().as_secs_f64() * 1000.0;
+                if let Some((view, (w, h))) = back_view {
+                    let render_start = Instant::now();
+                    let mut engine_lock_missed = true;
+                    {
+                        profiling::profile_scope!("viewport_engine_render");
+                        if let Ok(mut engine) = self.gpu_engine.try_lock() {
+                            engine_lock_missed = false;
+                            engine.render_frame_to_surface(
+                                surface.device(),
+                                surface.queue(),
+                                &view,
+                                w,
+                                h,
+                                surface.format(),
                             );
-                        }
-                        for err in engine.drain_pending_errors() {
-                            window.push_notification(
-                                Notification::error("Mesh Load Failed").message(err),
-                                cx,
-                            );
+                            for err in engine.drain_pending_errors() {
+                                window.push_notification(
+                                    Notification::error("Mesh Load Failed").message(err),
+                                    cx,
+                                );
+                            }
                         }
                     }
+                    let render_ms = render_start.elapsed().as_secs_f64() * 1000.0;
                     drop(view);
-                    surface.swap_buffers();
+                    let swap_start = Instant::now();
+                    {
+                        profiling::profile_scope!("viewport_surface_swap");
+                        surface.swap_buffers();
+                    }
+                    let swap_ms = swap_start.elapsed().as_secs_f64() * 1000.0;
 
                     // Capture a project thumbnail if a save just requested one.
                     let capture_path = self
@@ -440,8 +498,26 @@ impl Render for HelioViewport {
                             capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);
                         }
                     }
+                    frame_diagnostics = Some((
+                        frame_start.elapsed().as_secs_f64() * 1000.0,
+                        acquire_ms,
+                        render_ms,
+                        swap_ms,
+                        engine_lock_missed,
+                    ));
                 }
             }
+        }
+        if let Some((total_ms, acquire_ms, render_ms, swap_ms, engine_lock_missed)) =
+            frame_diagnostics
+        {
+            self.record_frame_diagnostics(
+                total_ms,
+                acquire_ms,
+                render_ms,
+                swap_ms,
+                engine_lock_missed,
+            );
         }
 
         // Build the viewport element
