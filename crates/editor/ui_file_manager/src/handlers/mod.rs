@@ -12,6 +12,7 @@ pub fn handle_folder_select(
 ) {
     d.selected_folder = Some(path.clone());
     d.selected_items.clear();
+    d.selection_anchor = None;
     if let Some(ref mut t) = d.folder_tree {
         t.toggle_expanded(&path);
     }
@@ -24,16 +25,54 @@ pub fn handle_item_click(
     mods: &Modifiers,
     cx: &mut Context<FileManagerDrawer>,
 ) {
-    if mods.control || mods.platform {
+    let additive = mods.control || mods.platform;
+
+    if mods.shift {
+        // Shift-click: extend the selection to a contiguous range between the
+        // anchor and the clicked item, following the on-screen (filtered/sorted)
+        // order. Without Ctrl held this replaces the selection; with Ctrl it
+        // adds the range. The anchor itself is left unchanged.
+        let items = d.get_filtered_items();
+        let anchor = d.selection_anchor.clone().unwrap_or_else(|| item.path.clone());
+        let anchor_idx = items.iter().position(|i| i.path == anchor);
+        let click_idx = items.iter().position(|i| i.path == item.path);
+
+        if let (Some(a), Some(c)) = (anchor_idx, click_idx) {
+            if !additive {
+                d.selected_items.clear();
+            }
+            let (lo, hi) = if a <= c { (a, c) } else { (c, a) };
+            for it in &items[lo..=hi] {
+                d.selected_items.insert(it.path.clone());
+            }
+        } else {
+            // Anchor no longer visible (e.g. filtered out): fall back to single-select.
+            d.selected_items.clear();
+            d.selected_items.insert(item.path.clone());
+            d.selection_anchor = Some(item.path.clone());
+        }
+    } else if additive {
+        // Ctrl/Cmd-click: toggle this item and make it the new anchor.
         if d.selected_items.contains(&item.path) {
             d.selected_items.remove(&item.path);
         } else {
             d.selected_items.insert(item.path.clone());
         }
+        d.selection_anchor = Some(item.path.clone());
     } else {
+        // Plain click: single-select and set the anchor.
         d.selected_items.clear();
         d.selected_items.insert(item.path.clone());
+        d.selection_anchor = Some(item.path.clone());
     }
+    cx.notify();
+}
+
+/// Select every item currently visible in the active folder (Ctrl/Cmd+A).
+pub fn handle_select_all(d: &mut FileManagerDrawer, cx: &mut Context<FileManagerDrawer>) {
+    let items = d.get_filtered_items();
+    d.selection_anchor = items.first().map(|i| i.path.clone());
+    d.selected_items = items.into_iter().map(|i| i.path).collect();
     cx.notify();
 }
 

@@ -30,6 +30,10 @@ pub struct FileManagerDrawer {
     pub(crate) folder_tree: Option<FolderNode>,
     pub(crate) selected_folder: Option<PathBuf>,
     pub(crate) selected_items: HashSet<PathBuf>,
+    /// Anchor item for Shift-click range selection.
+    pub(crate) selection_anchor: Option<PathBuf>,
+    /// Focus handle so the drawer participates in keyboard dispatch (Ctrl+C/V/X/A).
+    pub(crate) focus_handle: FocusHandle,
     pub(crate) operations: FileOperations,
     pub(crate) fs_metadata: FsMetadataManager,
     pub(crate) drag_state: DragState,
@@ -113,6 +117,8 @@ impl FileManagerDrawer {
             project_path: project_path.clone(),
             selected_folder: project_path.clone(),
             selected_items: HashSet::new(),
+            selection_anchor: None,
+            focus_handle: cx.focus_handle(),
             operations,
             fs_metadata,
             drag_state: DragState::None,
@@ -215,6 +221,7 @@ impl Render for FileManagerDrawer {
 
         div()
             .size_full()
+            .track_focus(&self.focus_handle)
             .key_context("FileManagerDrawer")
             .on_action(cx.listener(|this, _: &RefreshFileManager, _w, cx| {
                 if let Some(ref p) = this.project_path {
@@ -250,6 +257,9 @@ impl Render for FileManagerDrawer {
             .on_action(
                 cx.listener(|this, _: &Paste, _w, cx| crate::handlers::handle_paste(this, cx)),
             )
+            .on_action(cx.listener(|this, _: &SelectAll, _w, cx| {
+                crate::handlers::handle_select_all(this, cx)
+            }))
             .on_action(cx.listener(|this, a: &OpenInFileManager, _w, cx| {
                 crate::handlers::handle_open_in_file_manager(this, a, cx)
             }))
@@ -320,10 +330,11 @@ pub fn render_file_content(
                 .overflow_hidden()
                 .on_mouse_down(
                     gpui::MouseButton::Left,
-                    cx.listener(|d, _e, _w, cx| {
+                    cx.listener(|d, _e, w, cx| {
                         if d.renaming_item.is_some() {
                             d.commit_rename(cx);
                         }
+                        d.focus_handle.clone().focus(w, cx);
                     }),
                 )
                 .on_mouse_move(cx.listener(|d, _: &MouseMoveEvent, _w, cx| {
@@ -643,7 +654,7 @@ pub fn render_grid_item(
         .border_1()
         .when(sel, |e| {
             e.border_color(cx.theme().accent)
-                .bg(cx.theme().accent.opacity(0.1))
+                .bg(cx.theme().secondary)
                 .shadow_md()
         })
         .when(!sel, |e| {
@@ -703,7 +714,7 @@ pub fn render_grid_item(
                 })
                 .on_mouse_down(
                     gpui::MouseButton::Left,
-                    cx.listener(move |d, e: &MouseDownEvent, _w: &mut Window, cx| {
+                    cx.listener(move |d, e: &MouseDownEvent, w: &mut Window, cx| {
                         if ren {
                             cx.stop_propagation();
                             return;
@@ -711,6 +722,7 @@ pub fn render_grid_item(
                         if d.renaming_item.is_some() {
                             d.commit_rename(cx);
                         }
+                        d.focus_handle.clone().focus(w, cx);
                         if e.click_count == 2 {
                             crate::handlers::handle_item_double_click(d, &idc, cx);
                         } else {
@@ -832,8 +844,7 @@ pub fn render_list_item(
         .border_1()
         .cursor_pointer()
         .when(sel, |e| {
-            e.bg(cx.theme().accent.opacity(0.1))
-                .border_color(cx.theme().accent.opacity(0.3))
+            e.bg(cx.theme().secondary)
                 .border_l_2()
                 .border_color(cx.theme().accent)
         })
