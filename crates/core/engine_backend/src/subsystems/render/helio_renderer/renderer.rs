@@ -3,7 +3,7 @@
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::Instant;
 
 use engine_fs::virtual_fs;
@@ -14,8 +14,8 @@ use helio::{
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
-    apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
-    RuntimeComponentOwner, Subsystems,
+    ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
+    apply_runtime_behavior_for_class, scene_id_to_tag,
 };
 use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
@@ -96,6 +96,9 @@ struct HelioInner {
     /// Tracks scene object instances keyed by tag for incremental
     /// update (avoid cascade-free on clear-all-insert-each-frame).
     object_cache: SceneObjectCache,
+    /// Last SceneDb generation fully applied to Helio. Unchanged scenes do not
+    /// need component deserialization, light recreation, or picker rebuilds.
+    last_scene_revision: u64,
 }
 
 impl HelioRenderer {
@@ -154,6 +157,8 @@ impl HelioRenderer {
         height: u32,
         format: wgpu::TextureFormat,
     ) {
+        profiling::profile_scope!("helio_frame");
+        let frame_start = Instant::now();
         let now = Instant::now();
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
@@ -218,6 +223,7 @@ impl HelioRenderer {
                 scene_picker: ScenePicker::new(),
                 mesh_cache: MeshCache::new(),
                 object_cache: SceneObjectCache::new(),
+                last_scene_revision: 0,
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -231,7 +237,10 @@ impl HelioRenderer {
             );
         }
 
-        self.apply_camera_input(dt);
+        {
+            profiling::profile_scope!("helio_camera_input");
+            self.apply_camera_input(dt);
+        }
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
@@ -239,6 +248,7 @@ impl HelioRenderer {
         };
 
         if self.viewport_size != (width, height) {
+            profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
             self.viewport_size = (width, height);
         }
@@ -253,41 +263,60 @@ impl HelioRenderer {
             }
         }
 
-        let t_sync = std::time::Instant::now();
-        Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
-        let sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
-        if sync_ms > 5.0 {
-            tracing::warn!("[SYNC_SCENE] took {:.2}ms — SLOW", sync_ms);
+        let mut sync_ms = 0.0;
+        let scene_revision = self.scene_db.render_revision();
+        if scene_revision != inner.last_scene_revision && !inner.editor_state.is_dragging() {
+            profiling::profile_scope!("helio_scene_sync");
+            let t_sync = Instant::now();
+            Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
+            sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
+            inner.last_scene_revision = scene_revision;
         }
 
-        let t_render = std::time::Instant::now();
-        let (sy, cy) = self.cam_yaw.sin_cos();
-        let (sp, cp) = self.cam_pitch.sin_cos();
-        let fwd = Vec3::new(sy * cp, sp, -cy * cp);
-        let aspect = width as f32 / height.max(1) as f32;
-        let camera = Camera::perspective_look_at(
-            self.cam_pos,
-            self.cam_pos + fwd,
-            Vec3::Y,
-            std::f32::consts::FRAC_PI_4,
-            aspect,
-            0.1,
-            10_000.0,
-        );
+        let t_prepare = Instant::now();
+        let camera = {
+            profiling::profile_scope!("helio_frame_prepare");
+            let (sy, cy) = self.cam_yaw.sin_cos();
+            let (sp, cp) = self.cam_pitch.sin_cos();
+            let fwd = Vec3::new(sy * cp, sp, -cy * cp);
+            let aspect = width as f32 / height.max(1) as f32;
+            let camera = Camera::perspective_look_at(
+                self.cam_pos,
+                self.cam_pos + fwd,
+                Vec3::Y,
+                std::f32::consts::FRAC_PI_4,
+                aspect,
+                0.1,
+                10_000.0,
+            );
 
-        // Mirror Helio editor demo exactly: clear debug geometry first, then draw gizmos.
-        // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
-        // multiple objects are selected and leaving drag trails behind moved objects.
-        inner.renderer.debug_clear();
-        inner.renderer.set_gizmo_camera(&camera, height as f32);
-        inner.editor_state.draw_gizmos(&mut inner.renderer);
+            // Mirror Helio editor demo exactly: clear debug geometry first, then draw gizmos.
+            // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
+            // multiple objects are selected and leaving drag trails behind moved objects.
+            inner.renderer.debug_clear();
+            inner.renderer.set_gizmo_camera(&camera, height as f32);
+            inner.editor_state.draw_gizmos(&mut inner.renderer);
+            camera
+        };
 
+        let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
+        let t_render = Instant::now();
+        {
+            profiling::profile_scope!("helio_render_submit");
+            if let Err(e) = inner.renderer.render(&camera, &view) {
+                tracing::error!("Helio render error: {:?}", e);
+            }
+        }
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
-        if render_ms > 5.0 {
-            tracing::warn!("[HELIO RENDER] gpu render took {:.2}ms — SLOW", render_ms);
-        }
-        if let Err(e) = inner.renderer.render(&camera, &view) {
-            tracing::error!("Helio render error: {:?}", e);
+        let frame_ms = frame_start.elapsed().as_secs_f64() * 1000.0;
+        if frame_ms > 50.0 {
+            tracing::warn!(
+                "[HELIO FRAME] {:.1}ms (sync {:.1}, prepare {:.1}, submit {:.1})",
+                frame_ms,
+                sync_ms,
+                prepare_ms,
+                render_ms
+            );
         }
 
         if let Ok(mut m) = self.metrics.lock() {
@@ -750,7 +779,7 @@ impl HelioRenderer {
             renderer: &'a mut Renderer,
             subsystems: Subsystems,
             error_queue: &'a Arc<Mutex<Vec<String>>>,
-            project_root: PathBuf,
+            project_root: &'a Path,
         }
 
         impl<'a> ComponentRuntimeContext for HelioRuntimeContext<'a> {
@@ -799,6 +828,9 @@ impl HelioRenderer {
             tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
         }
         let mut live_keys = LiveKeySet::new();
+        let project_root = engine_state::get_project_path()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
         for snap in &snapshots {
             if !snap.visible {
@@ -819,14 +851,11 @@ impl HelioRenderer {
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
-            let project_root = engine_state::get_project_path()
-                .map(PathBuf::from)
-                .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
                 subsystems,
                 error_queue,
-                project_root,
+                project_root: &project_root,
             };
 
             for (component_index, class_name, data) in component_instances {
