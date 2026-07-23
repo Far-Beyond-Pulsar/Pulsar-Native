@@ -269,6 +269,7 @@ plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
+ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "cf37ed000fedb9a01424c7e575d1d6ee30db7281" }
