@@ -291,6 +291,7 @@ plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
+ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 # Point at the same unified source as the Pulsar-Reflection patch below so every
