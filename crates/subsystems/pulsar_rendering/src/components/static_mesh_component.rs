@@ -90,78 +90,187 @@ fn deserialize_mesh_asset_path_json(
         })
 }
 
-/// Register `MeshAssetPath` with the reflection system.
+// ── MeshAssetPath property editor ─────────────────────────────────────────────
+
+/// Engine primitives that are always offered, even in an empty project.
+const BUILTIN_MESHES: &[&str] = &[
+    "meshes/primitives/SM_Cube.fbx",
+    "meshes/primitives/SM_Sphere.fbx",
+    "meshes/primitives/SM_Cylinder.fbx",
+    "meshes/primitives/SM_Plane.fbx",
+    "meshes/primitives/SM_Torus.fbx",
+];
+
+/// Property editor for [`MeshAssetPath`] — a searchable mesh-asset browser.
 ///
-/// `structure = String` makes `type_info.is_string()` return `true`, which
-/// enables the property inspector to detect this type and render the
-/// mesh-asset browser UI.
-fn render_mesh_asset_editor(
-    args: &pulsar_reflection::PropertyEditorArgs<'_>,
-    cx: &gpui::App,
-) -> gpui::AnyElement {
-    use gpui::{prelude::*, *};
-    use ui::button::{Button, ButtonVariants};
-    use ui::{ActiveTheme, Sizable, h_flex, popover::Popover};
-
-    let path_str = args.current_json.as_str().unwrap_or("");
-    let display = if path_str.is_empty() {
-        "No mesh selected".to_string()
-    } else {
-        std::path::Path::new(path_str)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or(path_str)
-            .to_string()
-    };
-
-    let picker = args.get_widget::<gpui::Entity<ui_common::asset_picker::MeshAssetPicker>>();
-
-    h_flex()
-        .w_full()
-        .justify_between()
-        .items_center()
-        .gap_2()
-        .py_1()
-        .child(
-            div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child(args.display_name.to_string()),
-        )
-        .child(if let Some(picker_entity) = picker {
-            Popover::<ui_common::asset_picker::MeshAssetPicker>::new(format!(
-                "mesh-asset-picker-{}-{}",
-                args.id_prefix, args.prop_name
-            ))
-            .anchor(gpui::Corner::BottomRight)
-            .trigger(
-                Button::new(format!(
-                    "mesh-asset-picker-btn-{}-{}",
-                    args.id_prefix, args.prop_name
-                ))
-                .label(display)
-                .small()
-                .ghost()
-                .dropdown_caret(true),
-            )
-            .content(move |_window, _cx| picker_entity.clone())
-            .into_any_element()
-        } else {
-            div()
-                .text_sm()
-                .text_color(cx.theme().muted_foreground)
-                .child("No mesh selected")
-                .into_any_element()
-        })
-        .into_any_element()
+/// Owns its [`MeshAssetPicker`](ui_common::asset_picker::MeshAssetPicker) child
+/// entity and the subscription that turns a pick into a write-back.
+pub struct MeshAssetEditor {
+    label: String,
+    id_prefix: String,
+    prop_name: String,
+    picker: gpui::Entity<ui_common::asset_picker::MeshAssetPicker>,
+    path: String,
+    write_back: pulsar_reflection::PropertyWriteBack,
+    _subs: Vec<gpui::Subscription>,
 }
 
+impl MeshAssetEditor {
+    fn new(
+        args: &pulsar_reflection::PropertyEditorArgs<'_>,
+        window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> Self {
+        use gpui::AppContext as _;
+        use ui_common::asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
+
+        let path = args
+            .current_value
+            .downcast_ref::<MeshAssetPath>()
+            .map(|p| p.0.clone())
+            .unwrap_or_default();
+
+        let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
+        let queries = vec![
+            AssetQuery::extension("mesh"),
+            AssetQuery::extension("fbx"),
+            AssetQuery::extension("gltf"),
+            AssetQuery::extension("glb"),
+            AssetQuery::extension("obj"),
+        ];
+
+        let picker = cx.new(|cx| {
+            MeshAssetPicker::new(
+                path.clone(),
+                BUILTIN_MESHES.iter().map(|s| s.to_string()).collect(),
+                project_root,
+                queries,
+                window,
+                cx,
+            )
+        });
+
+        let subs = vec![cx.subscribe_in(
+            &picker,
+            window,
+            |this: &mut Self, picker, _event: &AssetPickedEvent, window, cx| {
+                let selected = picker.read(cx).selected_path().to_string();
+                if this.path == selected {
+                    return;
+                }
+                this.path = selected.clone();
+                (this.write_back)(Box::new(MeshAssetPath(selected)), window, cx);
+                cx.notify();
+            },
+        )];
+
+        Self {
+            label: args.display_name.to_string(),
+            id_prefix: args.id_prefix.to_string(),
+            prop_name: args.prop_name.to_string(),
+            picker,
+            path,
+            write_back: args.write_back.clone(),
+            _subs: subs,
+        }
+    }
+
+    /// Accept a mesh assigned elsewhere — e.g. dropped straight onto the
+    /// viewport, which writes `mesh_asset` without going through this row.
+    fn set_value(&mut self, path: &MeshAssetPath, cx: &mut gpui::Context<Self>) {
+        if self.path == path.0 {
+            return;
+        }
+        self.path = path.0.clone();
+        self.picker.update(cx, |picker, _| {
+            picker.set_selected_path(path.0.clone());
+        });
+        cx.notify();
+    }
+}
+
+impl gpui::Render for MeshAssetEditor {
+    fn render(
+        &mut self,
+        _window: &mut gpui::Window,
+        cx: &mut gpui::Context<Self>,
+    ) -> impl gpui::IntoElement {
+        use gpui::prelude::*;
+        use ui::button::{Button, ButtonVariants as _};
+        use ui::{ActiveTheme, Sizable, h_flex, popover::Popover};
+
+        let display = if self.path.is_empty() {
+            "No mesh selected".to_string()
+        } else {
+            std::path::Path::new(&self.path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&self.path)
+                .to_string()
+        };
+
+        let picker = self.picker.clone();
+
+        h_flex()
+            .w_full()
+            .justify_between()
+            .items_center()
+            .gap_2()
+            .py_1()
+            .child(
+                gpui::div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(self.label.clone()),
+            )
+            .child(
+                Popover::<ui_common::asset_picker::MeshAssetPicker>::new(format!(
+                    "mesh-asset-picker-{}-{}",
+                    self.id_prefix, self.prop_name
+                ))
+                .anchor(gpui::Corner::BottomRight)
+                .trigger(
+                    Button::new(format!(
+                        "mesh-asset-picker-btn-{}-{}",
+                        self.id_prefix, self.prop_name
+                    ))
+                    .label(display)
+                    .small()
+                    .ghost()
+                    .dropdown_caret(true),
+                )
+                .content(move |_window, _cx| picker.clone()),
+            )
+    }
+}
+
+fn mesh_asset_editor(
+    args: &pulsar_reflection::PropertyEditorArgs<'_>,
+    window: &mut gpui::Window,
+    cx: &mut gpui::App,
+) -> pulsar_reflection::BoundPropertyEditor {
+    use gpui::AppContext as _;
+
+    let entity = cx.new(|cx| MeshAssetEditor::new(args, window, cx));
+    pulsar_reflection::BoundPropertyEditor::new(
+        entity,
+        |editor: &mut MeshAssetEditor, value: &MeshAssetPath, _window, cx| {
+            editor.set_value(value, cx)
+        },
+    )
+}
+
+/// Register `MeshAssetPath` with the reflection system.
+///
+/// `structure = String` makes `type_info.is_string()` return `true`, so the
+/// type round-trips through the JSON codec as a plain string; the mesh-browser
+/// UI comes from the `editor` registration above.
 #[pulsar_reflection::pulsar_type(
     primitive,
     structure = String,
     serialize_json_with = serialize_mesh_asset_path_json,
     deserialize_json_with = deserialize_mesh_asset_path_json,
-    editor = render_mesh_asset_editor
+    editor = mesh_asset_editor
 )]
 #[allow(dead_code)]
 type RegisteredMeshAssetPath = MeshAssetPath;

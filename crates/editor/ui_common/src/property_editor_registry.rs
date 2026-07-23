@@ -1,50 +1,52 @@
-use gpui::{AnyElement, App};
+//! Lookup from a property's concrete type to the editor that renders it.
+//!
+//! Editors register themselves with `#[pulsar_type(editor = ...)]`, which
+//! submits a [`UiPropertyEditorHint`](pulsar_reflection::UiPropertyEditorHint)
+//! carrying a type-erased factory pointer.  This registry transmutes those
+//! back to [`PropertyEditorFactory`] once, at first access.
+//!
+//! Nothing here knows what an editor *is* beyond "a fn that builds a
+//! [`BoundPropertyEditor`]" — the widgets, subscriptions and event handling all
+//! live inside the editors themselves.
+
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-pub use pulsar_reflection::PropertyEditorArgs;
-
-pub type PropertyEditorRenderFn = fn(&PropertyEditorArgs<'_>, &App) -> AnyElement;
+pub use pulsar_reflection::{BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory};
 
 pub struct PropertyEditorRegistry {
-    editors: HashMap<TypeId, PropertyEditorRenderFn>,
+    factories: HashMap<TypeId, PropertyEditorFactory>,
 }
 
 impl PropertyEditorRegistry {
     fn new() -> Self {
-        let mut editors = HashMap::new();
+        let mut factories = HashMap::new();
 
         for hint in pulsar_reflection::inventory::iter::<pulsar_reflection::UiPropertyEditorHint> {
-            // SAFETY: every submitted UiPropertyEditorHint carries a function whose
-            // actual signature is PropertyEditorRenderFn.  The erase/transmute pair
-            // is sound as long as that invariant is upheld by all submitters.
-            let f: PropertyEditorRenderFn = unsafe { std::mem::transmute(hint.fn_ptr) };
-            editors.insert(hint.type_id, f);
+            // SAFETY: `erase_property_editor_fn_ptr` constrains its input to
+            // `PropertyEditorFactory`, so every submitted `fn_ptr` has that type.
+            let f: PropertyEditorFactory = unsafe { std::mem::transmute(hint.fn_ptr) };
+            factories.insert(hint.type_id, f);
         }
 
-        tracing::info!(
-            "PropertyEditorRegistry: {} registered editors",
-            editors.len()
-        );
-
-        Self { editors }
+        Self { factories }
     }
 
-    pub fn get(&self, type_id: TypeId) -> Option<PropertyEditorRenderFn> {
-        self.editors.get(&type_id).copied()
+    pub fn get(&self, type_id: TypeId) -> Option<PropertyEditorFactory> {
+        self.factories.get(&type_id).copied()
     }
 
     pub fn has(&self, type_id: TypeId) -> bool {
-        self.editors.contains_key(&type_id)
+        self.factories.contains_key(&type_id)
     }
 
     pub fn len(&self) -> usize {
-        self.editors.len()
+        self.factories.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.editors.is_empty()
+        self.factories.is_empty()
     }
 }
 

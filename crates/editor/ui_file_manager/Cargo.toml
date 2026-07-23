@@ -16,6 +16,9 @@ ui_types_common.workspace = true
 
 # Engine
 engine_fs.workspace = true
+
+# Reflection system
+pulsar_reflection = { workspace = true }
 engine_state.workspace = true
 pulsar_rendering.workspace = true
 tracing.workspace = true

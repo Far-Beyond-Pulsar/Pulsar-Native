@@ -97,18 +97,35 @@ impl FileManagerDrawer {
             }
         }
 
-        // Import model files to native assets (source not copied into the project).
-        for src in &models {
-            match pulsar_rendering::mesh_cache::import_model_to_native_default(src, &t) {
-                Ok(native) => {
-                    any_ok = true;
-                    let n = native.file_name().and_then(|n| n.to_str()).unwrap_or("mesh");
-                    w.push_notification(Notification::success(format!("Imported \"{}\"", n)), cx);
-                }
-                Err(e) => {
-                    let n = src.file_name().and_then(|n| n.to_str()).unwrap_or("model");
-                    tracing::error!("Model import failed for {}: {}", src.display(), e);
-                    w.push_notification(Notification::error(format!("Import failed: {}", n)), cx);
+        // For model files, show the import configurator modal; on confirm it
+        // converts each to a native `.mesh` asset with the chosen options (the
+        // source model is not brought into the project). Falls back to a default
+        // import if the format advertises no options schema.
+        if !models.is_empty() {
+            let ext = models
+                .first()
+                .and_then(|p| p.extension())
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_string();
+            if let Some(schema) = pulsar_rendering::mesh_cache::options_schema(&ext) {
+                let cfg_models = models.clone();
+                let cfg_target = t.clone();
+                let configurator = cx.new(|cx| {
+                    crate::configurator::ImportConfigurator::new(cfg_models, cfg_target, schema, cx)
+                });
+                w.open_modal(cx, move |modal, _w, _cx| {
+                    modal.show_close(true).child(configurator.clone())
+                });
+                any_ok = true;
+            } else {
+                for src in &models {
+                    match pulsar_rendering::mesh_cache::import_model_to_native_default(src, &t) {
+                        Ok(_) => any_ok = true,
+                        Err(e) => {
+                            tracing::error!("Model import failed for {}: {}", src.display(), e)
+                        }
+                    }
                 }
             }
         }

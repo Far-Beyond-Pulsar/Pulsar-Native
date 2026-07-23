@@ -41,7 +41,7 @@ pub mod theme_dropdown;
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 pub use open_window::PulsarWindowExt;
 pub use property_editor_registry::{
-    PropertyEditorArgs, PropertyEditorRenderFn, PROPERTY_EDITOR_REGISTRY,
+    BoundPropertyEditor, PropertyEditorArgs, PropertyEditorFactory, PROPERTY_EDITOR_REGISTRY,
 };
 
 pub use shared_state::SharedState;

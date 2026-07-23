@@ -1,19 +1,25 @@
 //! Shared reflected properties panel system
 //!
-//! This module provides a centralized system for rendering reflected component properties
-//! that is used by both the level editor and blueprint prefab editor.
+//! This module provides a centralized system for rendering reflected component
+//! properties that is used by the level editor, the blueprint prefab editor,
+//! the shader/blueprint node inspectors and the asset import configurator.
+//!
+//! # Division of responsibility
+//!
+//! This layer knows about exactly three things: a property's
+//! [`RuntimeTypeInfo`], its current value as `&dyn Any`, and a write-back
+//! callback.  It has **no** knowledge of widgets — not their types, not their
+//! events, not their lifecycle.  Each editor is a self-contained GPUI entity
+//! that creates its own child entities, registers its own subscriptions and
+//! calls `write_back` itself.  Adding a new property type means registering an
+//! editor with `#[pulsar_type(editor = ...)]`; nothing in this file changes.
 
-use crate::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
 use gpui::{prelude::*, *};
-use pulsar_reflection::{RuntimeTypeInfo, TypeStructure, REGISTRY};
+use pulsar_reflection::{BoundPropertyEditor, RuntimeTypeInfo};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::sync::Arc;
-use ui::button::ButtonVariants as _;
-use ui::color_picker::{ColorPickerEvent, ColorPickerState};
-use ui::input::{InputEvent, InputState, NumberInputEvent, StepAction};
-use ui::popover::Popover;
-use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
 // ============================================================================
 // Type Aliases and Traits
@@ -49,344 +55,45 @@ impl Default for ReflectedPropertiesPanelConfig {
 // Color Utilities
 // ============================================================================
 
-pub fn rgba_to_hsla([r, g, b, a]: [f32; 4]) -> Hsla {
-    let max = r.max(g).max(b);
-    let min = r.min(g).min(b);
-    let l = (max + min) / 2.0;
-    let s = if max == min {
-        0.0
-    } else if l < 0.5 {
-        (max - min) / (max + min)
-    } else {
-        (max - min) / (2.0 - max - min)
-    };
-    let h = if max == min {
-        0.0
-    } else if max == r {
-        ((g - b) / (max - min)).rem_euclid(6.0) / 6.0
-    } else if max == g {
-        ((b - r) / (max - min) + 2.0) / 6.0
-    } else {
-        ((r - g) / (max - min) + 4.0) / 6.0
-    };
-    Hsla { h, s, l, a }
+pub fn rgba_to_hsla(rgba: [f32; 4]) -> Hsla {
+    pulsar_reflection::prims::core::color::rgba_to_hsla(rgba)
 }
 
-pub fn hsla_to_rgba(Hsla { h, s, l, a }: Hsla) -> [f32; 4] {
-    let c = (1.0 - (2.0 * l - 1.0).abs()) * s;
-    let x = c * (1.0 - ((h * 6.0).rem_euclid(2.0) - 1.0).abs());
-    let m = l - c / 2.0;
-    let (r1, g1, b1) = match (h * 6.0) as u32 {
-        0 => (c, x, 0.0),
-        1 => (x, c, 0.0),
-        2 => (0.0, c, x),
-        3 => (0.0, x, c),
-        4 => (x, 0.0, c),
-        _ => (c, 0.0, x),
-    };
-    [r1 + m, g1 + m, b1 + m, a]
-}
-
-pub fn is_color_field_name(prop_name: &str) -> bool {
-    prop_name == "color" || prop_name == "base_color"
-}
-
-/// Extract RGBA from JSON value with fallback
-pub fn json_to_rgba_fallback(json: &Value) -> [f32; 4] {
-    json.as_array()
-        .and_then(|arr| {
-            if arr.len() == 4 {
-                Some([
-                    arr[0].as_f64().unwrap_or(1.0) as f32,
-                    arr[1].as_f64().unwrap_or(1.0) as f32,
-                    arr[2].as_f64().unwrap_or(1.0) as f32,
-                    arr[3].as_f64().unwrap_or(1.0) as f32,
-                ])
-            } else {
-                None
-            }
-        })
-        .unwrap_or([1.0, 1.0, 1.0, 1.0])
+pub fn hsla_to_rgba(hsla: Hsla) -> [f32; 4] {
+    pulsar_reflection::prims::core::color::hsla_to_rgba(hsla)
 }
 
 // ============================================================================
 // Property State Management
 // ============================================================================
 
-/// State manager for per-property widget entities.
+/// Cache of live property-editor instances, keyed by `(class_name, prop_name)`.
 ///
-/// Widget state is keyed by `(class_name, prop_name)` then by the concrete
-/// `TypeId` of the stored entity, so any widget type can be stored without
-/// this struct knowing about it.
+/// Panels own one of these and hand it to [`render_property_row_runtime`].  An
+/// editor is constructed the first time its property is rendered and reused
+/// afterwards, so it keeps focus, caret position and popover state across
+/// re-renders.
+///
+/// Entries are opaque: [`BoundPropertyEditor`] is a renderable handle plus a
+/// type-erased value setter, so this cache never learns what kind of widget it
+/// is holding.
 pub struct PropertyStateManager {
-    /// Type-erased widget state: (class, prop) → TypeId → Arc<dyn Any>
-    states: HashMap<
-        (String, String),
-        HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>>,
-    >,
-    /// ColorPickerState per (class_name, prop_name) for Color-typed properties
-    pub color_pickers: HashMap<(String, String), Entity<ColorPickerState>>,
-    /// Number input state per (class_name, prop_name) for numeric properties
-    pub numeric_inputs: HashMap<(String, String), Entity<InputState>>,
-    /// Mesh asset picker state per (class_name, prop_name) for mesh path fields
-    pub mesh_asset_pickers: HashMap<(String, String), Entity<MeshAssetPicker>>,
+    editors: HashMap<(String, String), BoundPropertyEditor>,
 }
 
 impl PropertyStateManager {
     pub fn new() -> Self {
         Self {
-            states: HashMap::new(),
-            color_pickers: HashMap::new(),
-            numeric_inputs: HashMap::new(),
-            mesh_asset_pickers: HashMap::new(),
+            editors: HashMap::new(),
         }
     }
 
+    /// Drop every cached editor.
+    ///
+    /// Call this when the panel switches to a different object so stale editor
+    /// state cannot leak across selections.
     pub fn clear(&mut self) {
-        self.states.clear();
-        self.color_pickers.clear();
-        self.numeric_inputs.clear();
-        self.mesh_asset_pickers.clear();
-    }
-
-    /// Build the type-erased widget map for one `(class_name, prop_name)` pair,
-    /// populated from whichever typed collections have an entry for that key.
-    /// Render functions call `args.get_widget::<Entity<T>>()` to retrieve their state.
-    pub fn widget_map_for(
-        &self,
-        class_name: &str,
-        prop_name: &str,
-    ) -> HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-        let key = (class_name.to_string(), prop_name.to_string());
-        let mut map: HashMap<std::any::TypeId, std::sync::Arc<dyn std::any::Any + Send + Sync>> =
-            HashMap::new();
-        if let Some(input) = self.numeric_inputs.get(&key) {
-            map.insert(
-                std::any::TypeId::of::<Entity<InputState>>(),
-                std::sync::Arc::new(input.clone()),
-            );
-        }
-        if let Some(picker) = self.color_pickers.get(&key) {
-            map.insert(
-                std::any::TypeId::of::<Entity<ColorPickerState>>(),
-                std::sync::Arc::new(picker.clone()),
-            );
-        }
-        if let Some(picker) = self.mesh_asset_pickers.get(&key) {
-            map.insert(
-                std::any::TypeId::of::<Entity<MeshAssetPicker>>(),
-                std::sync::Arc::new(picker.clone()),
-            );
-        }
-        // Merge any extra type-erased state registered directly.
-        if let Some(extra) = self.states.get(&key) {
-            map.extend(extra.iter().map(|(k, v)| (*k, v.clone())));
-        }
-        map
-    }
-
-    /// Ensure an F32 input exists and is up to date
-    pub fn ensure_f32_input<V: 'static>(
-        &mut self,
-        class_name: &str,
-        prop_name: &str,
-        current: f32,
-        step: f32,
-        on_change: impl Fn(f32) + 'static + Send + Sync,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) -> Entity<InputState> {
-        let key = (class_name.to_string(), prop_name.to_string());
-        if let Some(input) = self.numeric_inputs.get(&key) {
-            return input.clone();
-        }
-
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |state, cx| {
-            state.set_value(&format!("{:.3}", current), window, cx);
-        });
-
-        let on_change = Arc::new(on_change);
-        let on_change_clone = on_change.clone();
-        cx.subscribe_in(
-            &input,
-            window,
-            move |_this, state, ev: &InputEvent, _window, _cx| {
-                if matches!(ev, InputEvent::Change | InputEvent::Blur) {
-                    let text = state.read(_cx).text().to_string();
-                    if let Ok(v) = text.parse::<f32>() {
-                        (on_change)(v);
-                    }
-                }
-            },
-        )
-        .detach();
-
-        cx.subscribe_in(
-            &input,
-            window,
-            move |_this, state, ev: &NumberInputEvent, window, cx| {
-                let NumberInputEvent::Step { action, fine } = ev;
-                state.update(cx, |input, cx| {
-                    let text = input.text().to_string();
-                    if let Ok(mut value) = text.parse::<f32>() {
-                        let step_size = if *fine { step * 0.1 } else { step };
-                        match action {
-                            StepAction::Increment => value += step_size,
-                            StepAction::Decrement => value -= step_size,
-                        }
-                        (on_change_clone)(value);
-                        input.set_value(&format!("{value:.3}"), window, cx);
-                    }
-                });
-            },
-        )
-        .detach();
-
-        self.numeric_inputs.insert(key, input.clone());
-        input
-    }
-
-    /// Ensure an I32 input exists and is up to date
-    pub fn ensure_i32_input<V: 'static>(
-        &mut self,
-        class_name: &str,
-        prop_name: &str,
-        current: i32,
-        on_change: impl Fn(i32) + 'static + Send + Sync,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) -> Entity<InputState> {
-        let key = (class_name.to_string(), prop_name.to_string());
-        if let Some(input) = self.numeric_inputs.get(&key) {
-            return input.clone();
-        }
-
-        let input = cx.new(|cx| InputState::new(window, cx));
-        input.update(cx, |state, cx| {
-            state.set_value(&current.to_string(), window, cx);
-        });
-
-        let on_change = Arc::new(on_change);
-        let on_change_clone = on_change.clone();
-        cx.subscribe_in(
-            &input,
-            window,
-            move |_this, state, ev: &InputEvent, _window, _cx| {
-                if matches!(ev, InputEvent::Change | InputEvent::Blur) {
-                    let text = state.read(_cx).text().to_string();
-                    if let Ok(v) = text.parse::<i32>() {
-                        (on_change)(v);
-                    }
-                }
-            },
-        )
-        .detach();
-
-        cx.subscribe_in(
-            &input,
-            window,
-            move |_this, state, ev: &NumberInputEvent, window, cx| {
-                let NumberInputEvent::Step { action, .. } = ev;
-                state.update(cx, |input, cx| {
-                    let text = input.text().to_string();
-                    if let Ok(mut value) = text.parse::<i32>() {
-                        match action {
-                            StepAction::Increment => value += 1,
-                            StepAction::Decrement => value -= 1,
-                        }
-                        (on_change_clone)(value);
-                        input.set_value(value.to_string(), window, cx);
-                    }
-                });
-            },
-        )
-        .detach();
-
-        self.numeric_inputs.insert(key, input.clone());
-        input
-    }
-
-    /// Ensure a mesh asset picker exists
-    pub fn ensure_mesh_asset_picker<V: 'static>(
-        &mut self,
-        class_name: &str,
-        prop_name: &str,
-        current: &str,
-        on_change: impl Fn(String) + 'static + Send + Sync,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) -> Entity<MeshAssetPicker> {
-        let key = (class_name.to_string(), prop_name.to_string());
-        if let Some(picker) = self.mesh_asset_pickers.get(&key) {
-            return picker.clone();
-        }
-
-        let builtins = vec![
-            "meshes/primitives/SM_Cube.fbx".to_string(),
-            "meshes/primitives/SM_Sphere.fbx".to_string(),
-            "meshes/primitives/SM_Cylinder.fbx".to_string(),
-            "meshes/primitives/SM_Plane.fbx".to_string(),
-        ];
-
-        let project_root = engine_state::get_project_path().map(std::path::PathBuf::from);
-        let queries = vec![AssetQuery::extension("fbx")];
-        let picker = cx.new(|cx| {
-            MeshAssetPicker::new(
-                current.to_string(),
-                builtins,
-                project_root,
-                queries,
-                window,
-                cx,
-            )
-        });
-
-        let on_change = Arc::new(on_change);
-        cx.subscribe(
-            &picker,
-            move |_this, picker, _event: &AssetPickedEvent, cx| {
-                let selected = picker.read(cx).selected_path().to_string();
-                (on_change)(selected);
-            },
-        )
-        .detach();
-
-        self.mesh_asset_pickers.insert(key, picker.clone());
-        picker
-    }
-
-    /// Ensure a color picker exists
-    pub fn ensure_color_picker<V: 'static>(
-        &mut self,
-        class_name: &str,
-        prop_name: &str,
-        rgba: [f32; 4],
-        on_change: impl Fn([f32; 4]) + 'static + Send + Sync,
-        window: &mut Window,
-        cx: &mut Context<V>,
-    ) -> Entity<ColorPickerState> {
-        let key = (class_name.to_string(), prop_name.to_string());
-        if let Some(picker) = self.color_pickers.get(&key) {
-            return picker.clone();
-        }
-
-        let state = cx.new(|cx| {
-            let mut s = ColorPickerState::new(window, cx);
-            s.set_value(rgba_to_hsla(rgba), window, cx);
-            s
-        });
-
-        let on_change = Arc::new(on_change);
-        cx.subscribe_in(&state, window, move |_this, _picker, ev, _w, _cx| {
-            if let ColorPickerEvent::Change(Some(hsla)) = ev {
-                (on_change)(hsla_to_rgba(*hsla));
-            }
-        })
-        .detach();
-
-        self.color_pickers.insert(key, state.clone());
-        state
+        self.editors.clear();
     }
 }
 
@@ -397,177 +104,56 @@ impl Default for PropertyStateManager {
 }
 
 // ============================================================================
-// Runtime-Type-Aware Property Rendering (New Architecture)
+// Runtime-Type-Aware Property Rendering
 // ============================================================================
 
-/// Render a property row using RuntimeTypeInfo directly, without PropertyType/PropertyValue bridge
+/// Render one property row.
+///
+/// Looks up the editor registered for `type_info`, constructing it on first use
+/// and reusing the cached instance afterwards, then pushes the current value
+/// into it before rendering.  Returns a placeholder when the property's type
+/// has no registered editor.
 pub fn render_property_row_runtime<V: 'static>(
+    state: &mut PropertyStateManager,
     id_prefix: &str,
     class_name: &str,
     display_name: &str,
     prop_name: &str,
     type_info: &'static RuntimeTypeInfo,
-    current_json: &Value,
-    widgets: std::collections::HashMap<
-        std::any::TypeId,
-        std::sync::Arc<dyn std::any::Any + Send + Sync>,
-    >,
-    on_bool_toggle: Arc<dyn Fn(bool, &mut Window, &mut App) + Send + Sync>,
-    on_enum_select: Arc<dyn Fn(usize, &mut Window, &mut App) + Send + Sync>,
-    cx: &Context<V>,
+    current_value: &dyn Any,
+    write_back: Arc<dyn Fn(Box<dyn Any + Send>, &mut Window, &mut App) + Send + Sync>,
+    window: &mut Window,
+    cx: &mut Context<V>,
 ) -> AnyElement {
     use crate::property_editor_registry::{PropertyEditorArgs, PROPERTY_EDITOR_REGISTRY};
 
-    if let Some(render_fn) = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id) {
-        let args = PropertyEditorArgs {
-            id_prefix,
-            class_name,
-            display_name,
-            prop_name,
-            type_info,
-            current_json,
-            widgets,
-            on_bool_toggle,
-            on_enum_select,
-        };
-        return render_fn(&args, cx);
-    }
+    let Some(factory) = PROPERTY_EDITOR_REGISTRY.get(type_info.type_id) else {
+        return div().text_sm().child("(nyi)").into_any_element();
+    };
 
-    // ── 2. Structural fallback for types with no registered editor ────────────
-    //
-    // Handles Enum (dropdown), String (plain text), Struct/Wrapper (read-only
-    // label).  Primitives that reach here have no registered editor — show an
-    // informative placeholder instead of crashing.
-    match &type_info.structure {
-        TypeStructure::Primitive | TypeStructure::String => {
-            // A registered editor should have caught every known primitive/string.
-            // If we land here it means a new type was added without a prim_editor
-            // file — surface that clearly.
-            h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(format!("(no editor: {})", type_info.type_name)),
-                )
-                .into_any_element()
+    let key = (class_name.to_string(), prop_name.to_string());
+    let editor = match state.editors.get(&key) {
+        Some(editor) => editor.clone(),
+        None => {
+            let args = PropertyEditorArgs {
+                id_prefix,
+                class_name,
+                display_name,
+                prop_name,
+                type_info,
+                current_json: &Value::Null,
+                current_value,
+                write_back,
+            };
+            let editor = factory(&args, window, cx);
+            state.editors.insert(key, editor.clone());
+            editor
         }
+    };
 
-        TypeStructure::Enum { variants } => {
-            let current_ix = current_json.as_u64().unwrap_or(0) as usize;
-            let selected_ix = current_ix.min(variants.len().saturating_sub(1));
-            let label = variants
-                .get(selected_ix)
-                .map(|v| (*v).to_string())
-                .unwrap_or_else(|| "Select".to_string());
-            let options = variants
-                .iter()
-                .map(|v| (*v).to_string())
-                .collect::<Vec<_>>();
+    // Push the latest value in so edits made elsewhere (undo, a viewport drag,
+    // another panel) reach the editor. Editors no-op when it is unchanged.
+    (editor.set_value)(current_value, window, cx);
 
-            h_flex()
-                .w_full()
-                .justify_between()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(display_name.to_string()),
-                )
-                .child(
-                    ui::button::Button::new(format!("enum-{id_prefix}-{class_name}-{prop_name}"))
-                        .label(label)
-                        .xsmall()
-                        .ghost()
-                        .dropdown_caret(true)
-                        .dropdown_menu_with_anchor(
-                            Corner::BottomRight,
-                            move |menu, _window, _cx| {
-                                let mut menu = menu;
-                                for (ix, option) in options.iter().enumerate() {
-                                    let on_enum_select = on_enum_select.clone();
-                                    menu = menu.item(
-                                        ui::menu::PopupMenuItem::new(option.clone())
-                                            .checked(ix == selected_ix)
-                                            .on_click(move |_event, window, cx| {
-                                                (on_enum_select)(ix, window, cx);
-                                            }),
-                                    );
-                                }
-                                menu
-                            },
-                        ),
-                )
-                .into_any_element()
-        }
-
-        TypeStructure::Wrapper { .. } => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("wrapper<{}>", type_info.base_name())),
-            )
-            .into_any_element(),
-
-        TypeStructure::Struct { .. } => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(format!("struct {}", type_info.base_name())),
-            )
-            .into_any_element(),
-
-        TypeStructure::Wildcard => h_flex()
-            .w_full()
-            .justify_between()
-            .items_center()
-            .gap_2()
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child(display_name.to_string()),
-            )
-            .child(
-                div()
-                    .text_sm()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("(any type)"),
-            )
-            .into_any_element(),
-    }
+    editor.view.into_any_element()
 }

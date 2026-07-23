@@ -163,6 +163,16 @@ impl MeshAssetPicker {
         &self.selected_path
     }
 
+    /// Point the picker at a path chosen elsewhere, without emitting
+    /// [`AssetPickedEvent`].
+    ///
+    /// Used when the owning editor learns the value changed externally (a mesh
+    /// dropped into the viewport, an undo) and needs the picker's highlight to
+    /// follow along.
+    pub fn set_selected_path(&mut self, path: impl Into<String>) {
+        self.selected_path = path.into();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Public accessors
     // ─────────────────────────────────────────────────────────────────────────

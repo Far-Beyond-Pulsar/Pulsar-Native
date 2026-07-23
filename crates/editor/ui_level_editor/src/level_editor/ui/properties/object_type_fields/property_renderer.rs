@@ -3,14 +3,15 @@
 //! For each [`ComponentInstance`] attached to the selected object, this module:
 //!   1. Creates instances via the reflection registry to read property metadata.
 //!   2. Reads current values from the scene database.
-//!   3. Ensures the appropriate widget state (numeric input, colour picker, asset picker).
-//!   4. Delegates row rendering to [`ui_common::render_property_row_runtime`].
-//!   5. Groups rows into collapsible category sections via [`category_section`].
+//!   3. Delegates row rendering to [`ui_common::render_property_row_runtime`],
+//!      which picks the editor registered for each property's type.
+//!   4. Groups rows into collapsible category sections via [`category_section`].
 
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
-use pulsar_reflection::{TypeStructure, REGISTRY, RUNTIME_TYPE_REGISTRY};
+use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
 use serde_json::Value;
+use std::any::Any;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
 
@@ -62,36 +63,6 @@ impl ObjectTypeFieldsSection {
                     return None;
                 }
 
-                // ── Build callbacks (shared across all props for this component) ──
-
-                let db_bool = self.scene_db.clone();
-                let oid_bool = self.object_id.clone();
-                let cls_bool = class_name.to_string();
-                let on_bool_toggle = Arc::new(
-                    move |prop_name: &str, checked: bool, _w: &mut Window, _cx: &mut App| {
-                        db_bool.update_component_property(
-                            &oid_bool,
-                            &cls_bool,
-                            prop_name,
-                            Value::from(checked),
-                        );
-                    },
-                );
-
-                let db_enum = self.scene_db.clone();
-                let oid_enum = self.object_id.clone();
-                let cls_enum = class_name.to_string();
-                let on_enum_select = Arc::new(
-                    move |prop_name: &str, ix: usize, _w: &mut Window, _cx: &mut App| {
-                        db_enum.update_component_property(
-                            &oid_enum,
-                            &cls_enum,
-                            prop_name,
-                            Value::from(ix as u64),
-                        );
-                    },
-                );
-
                 // ── Per-property widget state + row rendering ──────────────────
 
                 let mut row_data: Vec<(
@@ -102,158 +73,50 @@ impl ObjectTypeFieldsSection {
                     Option<usize>,
                 )> = Vec::new();
 
+                let scene_db_for_props = self.scene_db.clone();
+                let object_id_for_props = self.object_id.clone();
+
                 for prop in &properties {
                     let default_any = (prop.getter)(instance.as_ref());
-                    let default_json = RUNTIME_TYPE_REGISTRY
-                        .serialize_json_for_any(default_any.as_ref())
-                        .unwrap_or(serde_json::json!(null));
                     let current_json =
-                        self.read_property_json(class_name, prop.name, &default_json);
+                        self.read_property_json(class_name, prop.name, &Value::Null);
+                    let current_any: Box<dyn Any> = if current_json.is_null() {
+                        default_any
+                    } else {
+                        RUNTIME_TYPE_REGISTRY
+                            .deserialize_json_for_type(prop.type_info, current_json.clone())
+                            .unwrap_or_else(|_| default_any)
+                    };
 
-                    // Numeric inputs
-                    match &prop.type_info.structure {
-                        TypeStructure::Primitive if prop.type_info.base_name() == "f32" => {
-                            let v = current_json.as_f64().unwrap_or(0.0) as f32;
-                            let cls = class_name.to_string();
-                            let pn = prop.name.to_string();
-                            let db = self.scene_db.clone();
-                            let oid = self.object_id.clone();
-                            self.property_state.ensure_f32_input(
-                                class_name,
-                                prop.name,
-                                v,
-                                1.0,
-                                move |new_val| {
-                                    db.update_component_property(
-                                        &oid,
-                                        &cls,
-                                        &pn,
-                                        Value::from(new_val),
-                                    );
-                                },
-                                window,
-                                cx,
-                            );
-                        }
-                        TypeStructure::Primitive if prop.type_info.base_name() == "i32" => {
-                            let v = current_json.as_i64().unwrap_or(0) as i32;
-                            let cls = class_name.to_string();
-                            let pn = prop.name.to_string();
-                            let db = self.scene_db.clone();
-                            let oid = self.object_id.clone();
-                            self.property_state.ensure_i32_input(
-                                class_name,
-                                prop.name,
-                                v,
-                                move |new_val| {
-                                    db.update_component_property(
-                                        &oid,
-                                        &cls,
-                                        &pn,
-                                        Value::from(new_val),
-                                    );
-                                },
-                                window,
-                                cx,
-                            );
-                        }
-                        _ => {}
-                    }
-
-                    // Mesh asset picker (by type name or conventional field name)
-                    if prop.type_info.type_name == "MeshAssetPath"
-                        || (prop.type_info.is_string() && prop.name == "mesh_asset")
-                    {
-                        let v = current_json.as_str().unwrap_or("");
+                    // ── Write-back closure for the runtime renderer ──────────
+                    let write_back = {
+                        let db = scene_db_for_props.clone();
+                        let oid = object_id_for_props.clone();
                         let cls = class_name.to_string();
                         let pn = prop.name.to_string();
-                        let db = self.scene_db.clone();
-                        let oid = self.object_id.clone();
-                        self.property_state.ensure_mesh_asset_picker(
-                            class_name,
-                            prop.name,
-                            v,
-                            move |new_val| {
-                                db.update_component_property(
-                                    &oid,
-                                    &cls,
-                                    &pn,
-                                    Value::String(new_val),
-                                );
+                        Arc::new(
+                            move |new_val: Box<dyn Any + Send>,
+                                  _window: &mut Window,
+                                  _cx: &mut App| {
+                                if let Ok(json) =
+                                    RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref())
+                                {
+                                    db.update_component_property(&oid, &cls, &pn, json);
+                                }
                             },
-                            window,
-                            cx,
-                        );
-                    }
-
-                    // Colour picker (`[f32; 4]` primitive or colour-named field)
-                    let is_color =
-                        matches!(
-                            &prop.type_info.structure,
-                            TypeStructure::Primitive if prop.type_info.base_name() == "[f32; 4]"
-                        ) || ui_common::reflected_properties_panel::is_color_field_name(prop.name);
-
-                    if is_color {
-                        let rgba = current_json
-                            .as_array()
-                            .and_then(|arr| {
-                                (arr.len() == 4).then(|| {
-                                    [
-                                        arr[0].as_f64().unwrap_or(1.0) as f32,
-                                        arr[1].as_f64().unwrap_or(1.0) as f32,
-                                        arr[2].as_f64().unwrap_or(1.0) as f32,
-                                        arr[3].as_f64().unwrap_or(1.0) as f32,
-                                    ]
-                                })
-                            })
-                            .unwrap_or([1.0, 1.0, 1.0, 1.0]);
-                        let cls = class_name.to_string();
-                        let pn = prop.name.to_string();
-                        let db = self.scene_db.clone();
-                        let oid = self.object_id.clone();
-                        self.property_state.ensure_color_picker(
-                            class_name,
-                            prop.name,
-                            rgba,
-                            move |rgba| {
-                                db.update_component_property(
-                                    &oid,
-                                    &cls,
-                                    &pn,
-                                    serde_json::json!(rgba),
-                                );
-                            },
-                            window,
-                            cx,
-                        );
-                    }
-
-                    // Render the row using the shared runtime renderer
-                    let widgets = self.property_state.widget_map_for(class_name, prop.name);
-
-                    let prop_bool = prop.name.to_string();
-                    let on_bool = on_bool_toggle.clone();
-                    let bool_cb =
-                        Arc::new(move |checked: bool, window: &mut Window, cx: &mut App| {
-                            (on_bool)(&prop_bool, checked, window, cx);
-                        });
-
-                    let prop_enum = prop.name.to_string();
-                    let on_enum = on_enum_select.clone();
-                    let enum_cb = Arc::new(move |ix: usize, window: &mut Window, cx: &mut App| {
-                        (on_enum)(&prop_enum, ix, window, cx);
-                    });
+                        )
+                    };
 
                     let row = ui_common::render_property_row_runtime(
+                        &mut self.property_state,
                         "level",
                         class_name,
                         &prop.display_name,
                         prop.name,
                         prop.type_info,
-                        &current_json,
-                        widgets,
-                        bool_cb,
-                        enum_cb,
+                        current_any.as_ref(),
+                        write_back,
+                        window,
                         cx,
                     );
 
