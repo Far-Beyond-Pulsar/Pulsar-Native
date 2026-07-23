@@ -133,16 +133,12 @@ pub fn resolve_asset_path(project_root: &Path, asset: &str) -> PathBuf {
 /// cached yet.  The `path` should already be resolved to an absolute path
 /// (use [`resolve_asset_path`] first if needed).
 pub fn load_mesh_upload(path: &Path) -> Option<MeshUpload> {
-    // Prefer the baked import sidecar if present: it was produced at copy time
-    // with the user's chosen import options, so we load it directly instead of
-    // re-converting the source (issues #391 / #409).
-    let sidecar = crate::mesh_cache::sidecar_path(path);
-    if sidecar.exists() {
-        if let Ok(bytes) = std::fs::read(&sidecar) {
-            if let Some(mesh) = crate::mesh_cache::decode(&bytes) {
-                return Some(mesh);
-            }
-        }
+    // Engine-native baked mesh asset (`.mesh`), produced at import time from the
+    // source model. Load it directly — no conversion or options (issues #391/#409).
+    if path.extension().and_then(|e| e.to_str()) == Some("mesh") {
+        return std::fs::read(path)
+            .ok()
+            .and_then(|bytes| crate::mesh_cache::decode(&bytes));
     }
 
     let cfg = helio_asset_compat::LoadConfig {

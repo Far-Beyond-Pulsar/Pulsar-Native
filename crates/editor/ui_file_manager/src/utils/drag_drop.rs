@@ -28,29 +28,6 @@ impl FileManagerDrawer {
                     self.folder_tree = FolderNode::from_path(p);
                 }
                 self.mark_directory_cache_dirty();
-
-                // Import (bake) any model files that were just brought in
-                // (issues #391 / #409): convert with the stored or default
-                // options and write the `<source>.mesh` sidecar, so components
-                // load the imported result instead of re-converting on load.
-                for p in &s {
-                    if let Some(name) = p.file_name() {
-                        let dest = t.join(name);
-                        let ext = dest.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if pulsar_rendering::mesh_cache::is_importable_model(ext) {
-                            if let Err(e) =
-                                pulsar_rendering::mesh_cache::import_mesh_asset_default(&dest)
-                            {
-                                tracing::warn!(
-                                    "Model import failed for {}: {}",
-                                    dest.display(),
-                                    e
-                                );
-                            }
-                        }
-                    }
-                }
-
                 self.selected_folder = Some(t);
                 self.hovered_drop_folder = None;
                 self.show_drop_hint = false;
@@ -84,61 +61,68 @@ impl FileManagerDrawer {
         if s.is_empty() {
             return;
         }
-        let r = match self.operations.move_items(&s, &t) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                tracing::warn!("External move failed: {}, fallback copy", e);
-                FileOperations::copy_items(&s, &t)
-            }
-        };
-        match r {
-            Ok(_) => {
-                self.selected_items.clear();
-                if let Some(ref p) = self.project_path {
-                    self.folder_tree = FolderNode::from_path(p);
-                }
-                self.mark_directory_cache_dirty();
+        // Model files are converted to engine-native `.mesh` assets in the target
+        // folder — the source model itself is NOT brought into the project. Other
+        // files (textures, etc.) are copied/moved in as-is.
+        let (models, others): (Vec<PathBuf>, Vec<PathBuf>) = s.iter().cloned().partition(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(pulsar_rendering::mesh_cache::is_importable_model)
+                .unwrap_or(false)
+        });
 
-                // Import (bake) any model files that were just brought in
-                // (issues #391 / #409): convert with the stored or default
-                // options and write the `<source>.mesh` sidecar, so components
-                // load the imported result instead of re-converting on load.
-                for p in &s {
-                    if let Some(name) = p.file_name() {
-                        let dest = t.join(name);
-                        let ext = dest.extension().and_then(|e| e.to_str()).unwrap_or("");
-                        if pulsar_rendering::mesh_cache::is_importable_model(ext) {
-                            if let Err(e) =
-                                pulsar_rendering::mesh_cache::import_mesh_asset_default(&dest)
-                            {
-                                tracing::warn!(
-                                    "Model import failed for {}: {}",
-                                    dest.display(),
-                                    e
-                                );
-                            }
-                        }
+        let mut any_ok = false;
+
+        // Bring non-model files in unchanged.
+        if !others.is_empty() {
+            let r = match self.operations.move_items(&others, &t) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    tracing::warn!("External move failed: {}, fallback copy", e);
+                    FileOperations::copy_items(&others, &t)
+                }
+            };
+            match r {
+                Ok(_) => {
+                    any_ok = true;
+                    for p in &others {
+                        let n = p.file_name().and_then(|n| n.to_str()).unwrap_or("file");
+                        w.push_notification(
+                            Notification::success(format!("Imported \"{}\"", n)),
+                            cx,
+                        );
                     }
                 }
-
-                self.selected_folder = Some(t);
-                self.hovered_drop_folder = None;
-                self.show_drop_hint = false;
-                for p in &s {
-                    let n = p
-                        .file_name()
-                        .and_then(|n| n.to_str())
-                        .unwrap_or("file")
-                        .to_string();
-                    w.push_notification(Notification::success(format!("Imported \"{}\"", n)), cx);
-                }
-            }
-            Err(e) => {
-                tracing::error!("Failed to import: {}", e);
-                self.hovered_drop_folder = None;
-                self.show_drop_hint = false;
+                Err(e) => tracing::error!("Failed to import files: {}", e),
             }
         }
+
+        // Import model files to native assets (source not copied into the project).
+        for src in &models {
+            match pulsar_rendering::mesh_cache::import_model_to_native_default(src, &t) {
+                Ok(native) => {
+                    any_ok = true;
+                    let n = native.file_name().and_then(|n| n.to_str()).unwrap_or("mesh");
+                    w.push_notification(Notification::success(format!("Imported \"{}\"", n)), cx);
+                }
+                Err(e) => {
+                    let n = src.file_name().and_then(|n| n.to_str()).unwrap_or("model");
+                    tracing::error!("Model import failed for {}: {}", src.display(), e);
+                    w.push_notification(Notification::error(format!("Import failed: {}", n)), cx);
+                }
+            }
+        }
+
+        if any_ok {
+            self.selected_items.clear();
+            if let Some(ref p) = self.project_path {
+                self.folder_tree = FolderNode::from_path(p);
+            }
+            self.mark_directory_cache_dirty();
+            self.selected_folder = Some(t);
+        }
+        self.hovered_drop_folder = None;
+        self.show_drop_hint = false;
         cx.notify();
     }
 
