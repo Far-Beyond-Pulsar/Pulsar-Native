@@ -15,6 +15,9 @@
 /// ```
 pub const PULSAR_STD_LIB_BYTES: &[u8] = include_bytes!(env!("PULSAR_STD_LIB_PATH"));
 
+#[cfg(test)]
+mod build_cache;
+
 /// Return the expected SHA-256 digest of the embedded `pulsar_std` library.
 ///
 /// This is computed lazily from the embeded bytes and cached for the
