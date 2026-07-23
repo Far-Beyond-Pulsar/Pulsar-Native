@@ -244,6 +244,9 @@ impl ViewportPanel {
                     continue;
                 }
 
+                // Detect the transition into capture so we can discard the first
+                // (stale) mouse delta and avoid a jump on the first pan/rotate frame.
+                let just_activated = !was_capturing;
                 was_capturing = true;
 
                 // Poll keyboard
@@ -304,23 +307,28 @@ impl ViewportPanel {
                                 let dy = point.y - locked_screen_y;
 
                                 if dx != 0 || dy != 0 {
-                                    // Accumulate deltas so multiple input samples between render frames
-                                    // are preserved instead of being overwritten.
-                                    if let Some(cam) = &camera_input {
-                                        if let Ok(mut input) = cam.lock() {
-                                            if is_rotating {
-                                                input.accumulate_look_delta(dx as f32, dy as f32);
-                                            } else if is_panning {
-                                                input.accumulate_pan_delta(dx as f32, dy as f32);
+                                    // On the first captured frame, discard the delta
+                                    // (`just_activated`) to avoid a stale jump, but still
+                                    // reset the cursor so the next delta is relative.
+                                    if !just_activated {
+                                        // Accumulate deltas so multiple input samples between render frames
+                                        // are preserved instead of being overwritten.
+                                        if let Some(cam) = &camera_input {
+                                            if let Ok(mut input) = cam.lock() {
+                                                if is_rotating {
+                                                    input.accumulate_look_delta(dx as f32, dy as f32);
+                                                } else if is_panning {
+                                                    input.accumulate_pan_delta(dx as f32, dy as f32);
+                                                }
                                             }
                                         }
-                                    }
 
-                                    // Also update atomics for UI feedback (optional)
-                                    if is_rotating {
-                                        input_state.set_mouse_delta(dx as f32, dy as f32);
-                                    } else if is_panning {
-                                        input_state.set_pan_delta(dx as f32, dy as f32);
+                                        // Also update atomics for UI feedback (optional)
+                                        if is_rotating {
+                                            input_state.set_mouse_delta(dx as f32, dy as f32);
+                                        } else if is_panning {
+                                            input_state.set_pan_delta(dx as f32, dy as f32);
+                                        }
                                     }
 
                                     // Reset cursor to locked position
@@ -332,9 +340,12 @@ impl ViewportPanel {
 
                     #[cfg(target_os = "macos")]
                     {
+                        // Always drain the accumulated delta. On the first frame of a
+                        // capture we discard it (`just_activated`) so movement that piled
+                        // up before the drag doesn't snap the camera on the first frame.
                         let (dx, dy) = platform::take_mouse_delta();
 
-                        if dx != 0.0 || dy != 0.0 {
+                        if !just_activated && (dx != 0.0 || dy != 0.0) {
                             if let Some(cam) = &camera_input {
                                 if let Ok(mut input) = cam.lock() {
                                     if is_rotating {
