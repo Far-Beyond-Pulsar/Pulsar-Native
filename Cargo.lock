@@ -2938,6 +2938,7 @@ dependencies = [
  "anyhow",
  "ash",
  "async-tungstenite",
+ "bitflags 2.13.1",
  "bytemuck",
  "crossbeam-channel",
  "dashmap",

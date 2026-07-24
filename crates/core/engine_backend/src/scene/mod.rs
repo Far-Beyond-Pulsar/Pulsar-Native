@@ -34,13 +34,14 @@ pub use metadata::{
 };
 pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
 
+use bitflags::bitflags;
 use dashmap::DashMap;
 use glam::{Mat4, Vec3};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, Ordering};
 
 // ─── Public types ────────────────────────────────────────────────────────────
 
@@ -73,6 +74,33 @@ pub enum MeshType {
     Cylinder,
     Plane,
     Custom,
+}
+
+bitflags! {
+    pub struct ObjectDirtyFlags: u8 {
+        const TRANSFORM = 1;
+        const PROPS = 2;
+        const HIERARCHY = 4;
+        const COMPONENTS = 8;
+        const VISIBILITY = 16;
+        const NAME = 32;
+    }
+}
+
+/// A single object update within a SceneDbDelta.
+pub struct ObjectUpdate {
+    pub id: String,
+    pub transform: Option<Mat4>,
+    pub visible: Option<bool>,
+    pub name: Option<String>,
+}
+
+/// Delta snapshot of changes since the last drain.
+pub struct SceneDbDelta {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub updated: Vec<ObjectUpdate>,
+    pub revision: u64,
 }
 
 /// Field type information for UI generation
@@ -145,6 +173,10 @@ pub struct SceneEntry {
     visible: AtomicBool,
     locked: AtomicBool,
 
+    // Dirty tracking for delta sync
+    dirty_flags: AtomicU8,
+    dirty_gen: AtomicU64,
+
     // Cold data — hierarchy + name + components; rarely changes
     pub meta: RwLock<SceneEntryMeta>,
 }
@@ -184,6 +216,8 @@ impl SceneEntry {
             ],
             visible: AtomicBool::new(snap.visible),
             locked: AtomicBool::new(snap.locked),
+            dirty_flags: AtomicU8::new(ObjectDirtyFlags::all().bits()),
+            dirty_gen: AtomicU64::new(0),
             meta: RwLock::new(SceneEntryMeta {
                 name: snap.name.clone(),
                 parent: snap.parent.clone(),
@@ -307,6 +341,17 @@ impl SceneEntry {
             component_instances: meta.component_instances.clone(),
         }
     }
+
+    pub fn mark_dirty(&self, flags: ObjectDirtyFlags) {
+        self.dirty_flags
+            .fetch_or(flags.bits(), Ordering::Relaxed);
+        self.dirty_gen.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn take_dirty_flags(&self) -> ObjectDirtyFlags {
+        let bits = self.dirty_flags.swap(0, Ordering::Relaxed);
+        ObjectDirtyFlags::from_bits_truncate(bits)
+    }
 }
 
 // ─── SceneDb ─────────────────────────────────────────────────────────────────
@@ -355,6 +400,10 @@ struct SceneDbInner {
     /// Monotonic generation for data consumed by the renderer. A release bump
     /// publishes the preceding atomic/cold-data writes to the render thread.
     render_revision: AtomicU64,
+    /// Global dirty generation counter — bumped every time any object is marked dirty.
+    dirty_gen: AtomicU64,
+    /// Set of ids removed since the last drain.
+    removed_since_drain: RwLock<Vec<String>>,
     /// Currently selected object id.
     selected: RwLock<Option<ObjectId>>,
     /// Gizmo state for the level editor
@@ -375,6 +424,8 @@ impl SceneDb {
                 children_map: RwLock::new(HashMap::new()),
                 next_id: AtomicU64::new(1),
                 render_revision: AtomicU64::new(1),
+                dirty_gen: AtomicU64::new(0),
+                removed_since_drain: RwLock::new(Vec::new()),
                 selected: RwLock::new(None),
                 gizmo_state: RwLock::new(GizmoState::default()),
             }),
@@ -436,6 +487,7 @@ impl SceneDb {
 
         if let Some((_, entry)) = self.inner.objects.remove(id) {
             let parent = entry.meta.read().parent.clone();
+            self.inner.removed_since_drain.write().push(id.to_string());
 
             // Remove id from its parent's list and drop id's own children list.
             {
@@ -741,6 +793,44 @@ impl SceneDb {
     pub fn set_gizmo_scale(&self, scale: f32) {
         let mut state = self.inner.gizmo_state.write();
         state.scale_factor = scale;
+    }
+
+    // ── Dirty tracking (delta sync) ───────────────────────────────────────
+
+    pub fn mark_dirty(&self, id: &str, flags: ObjectDirtyFlags) {
+        if let Some(entry) = self.inner.objects.get(id) {
+            entry.mark_dirty(flags);
+            self.inner.dirty_gen.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    pub fn take_dirty_flags(&self, id: &str) -> ObjectDirtyFlags {
+        self.inner
+            .objects
+            .get(id)
+            .map(|e| e.take_dirty_flags())
+            .unwrap_or(ObjectDirtyFlags::empty())
+    }
+
+    pub fn drain_dirty(&self) -> Vec<(String, ObjectDirtyFlags)> {
+        let mut dirty = Vec::new();
+        for entry in self.inner.objects.iter() {
+            let flags = entry.take_dirty_flags();
+            if !flags.is_empty() {
+                dirty.push((entry.id.clone(), flags));
+            }
+        }
+        dirty
+    }
+
+    /// Dequeue the list of ids that were removed since the last call.
+    pub fn take_removed_ids(&self) -> Vec<String> {
+        std::mem::take(&mut *self.inner.removed_since_drain.write())
+    }
+
+    /// Current dirty generation — increases every time an object is dirtied.
+    pub fn dirty_gen(&self) -> u64 {
+        self.inner.dirty_gen.load(Ordering::Relaxed)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
