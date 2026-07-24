@@ -75,14 +75,7 @@ impl Render for AssetPropertiesPanel {
         drop(ed);
 
         if is_3d {
-            return div()
-                .size_full()
-                .bg(cx.theme().sidebar)
-                .p_3()
-                .child(v_flex().gap_3()
-                    .child(info_field(cx, "File", &file_name))
-                    .child(info_field(cx, "Type", "3D Model")))
-                .into_any_element();
+            return render_3d_table(cx, &file_name, &ew);
         }
 
         div()
@@ -196,6 +189,72 @@ fn info_field(cx: &App, label: &str, value: &str) -> impl IntoElement {
     v_flex().gap_1()
         .child(div().text_xs().text_color(muted).child(label.to_string()))
         .child(div().text_sm().child(value.to_string()))
+}
+
+fn render_3d_table(cx: &mut App, file_name: &str, ew: &Entity<AssetViewerPanel>) -> AnyElement {
+    let stats = ew.read(cx).scene_stats.clone();
+    let props = stats.meshes.clone();
+
+    let cell_w = px(56.0);
+    let hdr = |t: &str| div().w(cell_w).child(t.to_string());
+    let cel = |t: &str| div().w(cell_w).child(t.to_string());
+
+    div()
+        .size_full()
+        .overflow_y_scroll()
+        .bg(cx.theme().sidebar)
+        .p_3()
+        .child(v_flex().gap_4()
+            .child(section(cx, "File", v_flex().gap_1()
+                .child(div().text_sm().child(file_name.to_string()))
+            ))
+            .child(section(cx, "Scene", v_flex().gap_1()
+                .child(stat_row(cx, "Meshes", &stats.mesh_count.to_string()))
+                .child(stat_row(cx, "Vertices", &stats.total_vertices.to_string()))
+                .child(stat_row(cx, "Triangles", &(stats.total_indices / 3).to_string()))
+                .child(stat_row(cx, "Materials", &stats.material_count.to_string()))
+                .when(!stats.generator.is_empty(), |el| el.child(stat_row(cx, "Generator", &stats.generator)))
+            ))
+            .child(section(cx, "Resources", v_flex().gap_1()
+                .child(stat_row(cx, "Textures", &stats.texture_count.to_string()))
+                .child(stat_row(cx, "Images", &stats.image_count.to_string()))
+                .child(stat_row(cx, "Lights", &stats.light_count.to_string()))
+                .child(stat_row(cx, "Cameras", &stats.camera_count.to_string()))
+            ))
+            .child(section(cx, "Animation", v_flex().gap_1()
+                .child(stat_row(cx, "Clips", &stats.animation_count.to_string()))
+                .child(stat_row(cx, "Skins", &stats.skin_count.to_string()))
+                .child(stat_row(cx, "Joints", &stats.total_joints.to_string()))
+                .child(stat_row(cx, "Morph targets", &stats.morph_target_count.to_string()))
+            ))
+            .when(!props.is_empty(), |el| el.child(
+                section(cx, "Meshes", v_flex().gap_1()
+                    .child(h_flex().gap_1().py_1().text_xs().text_color(cx.theme().muted_foreground)
+                        .child(hdr("Name")).child(hdr("Verts")).child(hdr("Tris"))
+                        .child(hdr("N")).child(hdr("T")).child(hdr("UV")).child(hdr("C"))
+                        .child(hdr("Mat")))
+                    .child(v_flex().children(props.iter().map(|mp| {
+                        h_flex().gap_1().py_px().text_xs()
+                            .child(cel(&mp.name))
+                            .child(cel(&mp.vertex_count.to_string()))
+                            .child(cel(&mp.triangle_count.to_string()))
+                            .child(cel(if mp.has_normals { "Y" } else { "—" }))
+                            .child(cel(if mp.has_tangents { "T" } else { "—" }))
+                            .child(cel(if mp.has_uvs { "Y" } else { "—" }))
+                            .child(cel(if mp.has_vertex_colors { "C" } else { "—" }))
+                            .child(cel(if mp.material_name.is_empty() { "—" } else { &mp.material_name }))
+                            .into_any_element()
+                    })))
+                )
+            ))
+        )
+        .into_any_element()
+}
+
+fn stat_row(cx: &App, label: &str, value: &str) -> impl IntoElement {
+    h_flex().justify_between()
+        .child(div().text_sm().child(label.to_string()))
+        .child(div().text_sm().text_color(cx.theme().muted_foreground).child(value.to_string()))
 }
 
 fn ghost_btn(label: &str) -> Button {

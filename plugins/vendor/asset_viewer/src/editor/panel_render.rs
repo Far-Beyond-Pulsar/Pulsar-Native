@@ -6,7 +6,7 @@ use ui::{h_flex, v_flex, ActiveTheme};
 use solid_rs::registry::Registry;
 use solid_fbx::FbxLoader;
 
-use super::panel::AssetViewerPanel;
+use super::panel::{AssetViewerPanel, MeshProps, SceneStats};
 
 static MESH_VERTEX_SRC: &str = r#"
 struct Uniforms {
@@ -595,6 +595,66 @@ impl AssetViewerPanel {
             verts.push(mv.ny);
             verts.push(mv.nz);
         }
+
+        // Build per-mesh properties and scene stats
+        let mut total_verts: u32 = 0;
+        let mut total_indices_scene: u32 = 0;
+        let mut morph_total = 0;
+
+        self.mesh_props = solid_scene.meshes.iter().map(|mesh| {
+            let prim_indices: u32 = mesh.primitives.iter()
+                .filter(|p| p.topology == solid_rs::geometry::Topology::TriangleList)
+                .map(|p| p.indices.len() as u32)
+                .sum();
+            let mat_name = mesh.primitives.first()
+                .and_then(|p| p.material_index)
+                .and_then(|mi| solid_scene.materials.get(mi))
+                .map(|m| m.name.clone())
+                .unwrap_or_default();
+            let bb = mesh.bounds.as_ref().map(|b| ([b.min.x, b.min.y, b.min.z], [b.max.x, b.max.y, b.max.z]))
+                .unwrap_or(([0.0; 3], [0.0; 3]));
+            morph_total += mesh.morph_targets.len();
+
+            total_verts += mesh.vertices.len() as u32;
+            total_indices_scene += prim_indices;
+
+            MeshProps {
+                name: mesh.name.clone(),
+                vertex_count: mesh.vertices.len() as u32,
+                index_count: prim_indices,
+                triangle_count: prim_indices / 3,
+                primitive_count: mesh.primitives.len(),
+                morph_count: mesh.morph_targets.len(),
+                has_normals: mesh.vertices.iter().any(|v| v.normal.is_some()),
+                has_tangents: mesh.vertices.iter().any(|v| v.tangent.is_some()),
+                has_uvs: mesh.vertices.iter().any(|v| v.uvs[0].is_some()),
+                has_vertex_colors: mesh.vertices.iter().any(|v| v.colors.iter().any(|c| c.is_some())),
+                has_skin: mesh.vertices.iter().any(|v| v.skin_weights.is_some()),
+                material_name: mat_name,
+                bounds_min: bb.0,
+                bounds_max: bb.1,
+            }
+        }).collect();
+
+        self.scene_stats = SceneStats {
+            name: solid_scene.name.clone(),
+            generator: solid_scene.metadata.generator.clone().unwrap_or_default(),
+            mesh_count: solid_scene.meshes.len(),
+            total_vertices: total_verts,
+            total_indices: total_indices_scene,
+            material_count: solid_scene.materials.len(),
+            texture_count: solid_scene.textures.len(),
+            image_count: solid_scene.images.len(),
+            light_count: solid_scene.lights.len(),
+            camera_count: solid_scene.cameras.len(),
+            animation_count: solid_scene.animations.len(),
+            skin_count: solid_scene.skins.len(),
+            morph_target_count: morph_total,
+            has_skin: solid_scene.skins.len() > 0,
+            has_animations: solid_scene.animations.len() > 0,
+            total_joints: solid_scene.skins.iter().map(|s| s.joints.len()).sum(),
+            meshes: self.mesh_props.clone(),
+        };
 
         if verts.is_empty() || indices.is_empty() {
             log::error!("FBX {:?} has no renderable triangles", path);

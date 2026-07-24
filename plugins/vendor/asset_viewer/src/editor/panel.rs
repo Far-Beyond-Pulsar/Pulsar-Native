@@ -1,6 +1,45 @@
 use gpui::*;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Default)]
+pub struct SceneStats {
+    pub name: String,
+    pub generator: String,
+    pub mesh_count: usize,
+    pub total_vertices: u32,
+    pub total_indices: u32,
+    pub material_count: usize,
+    pub texture_count: usize,
+    pub image_count: usize,
+    pub light_count: usize,
+    pub camera_count: usize,
+    pub animation_count: usize,
+    pub skin_count: usize,
+    pub morph_target_count: usize,
+    pub has_skin: bool,
+    pub has_animations: bool,
+    pub total_joints: usize,
+    pub meshes: Vec<MeshProps>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MeshProps {
+    pub name: String,
+    pub vertex_count: u32,
+    pub index_count: u32,
+    pub triangle_count: u32,
+    pub primitive_count: usize,
+    pub morph_count: usize,
+    pub has_normals: bool,
+    pub has_tangents: bool,
+    pub has_uvs: bool,
+    pub has_vertex_colors: bool,
+    pub has_skin: bool,
+    pub material_name: String,
+    pub bounds_min: [f32; 3],
+    pub bounds_max: [f32; 3],
+}
+
 pub struct AssetViewerPanel {
     pub focus_handle: FocusHandle,
     pub current_path: Option<PathBuf>,
@@ -29,6 +68,8 @@ pub struct AssetViewerPanel {
     pub mesh_vertex_buffer: Option<wgpu::Buffer>,
     pub mesh_index_buffer: Option<wgpu::Buffer>,
     pub mesh_index_count: u32,
+    pub mesh_props: Vec<MeshProps>,
+    pub scene_stats: SceneStats,
     pub mesh_pipeline: Option<wgpu::RenderPipeline>,
     pub mesh_bind_group: Option<wgpu::BindGroup>,
     pub mesh_uniform_buffer: Option<wgpu::Buffer>,
@@ -311,6 +352,8 @@ impl AssetViewerPanel {
             mesh_vertex_buffer: None,
             mesh_index_buffer: None,
             mesh_index_count: 0,
+            mesh_props: Vec::new(),
+            scene_stats: SceneStats::default(),
             mesh_pipeline: None,
             mesh_bind_group: None,
             mesh_uniform_buffer: None,
