@@ -61,6 +61,10 @@ pub struct LevelEditorPanel {
     // that happen outside normal GPUI action handlers.
     last_observed_scene_revision: u64,
 
+    // Play In Editor (issue #243): the Game tab is opened when the game starts
+    // and removed on stop. `game_panel` is the live tab entity, if open.
+    game_panel: Option<Entity<crate::level_editor::ui::viewport::game_viewport::GameViewport>>,
+
     // Keeps the polling task alive for the lifetime of the panel.
     _scene_revision_poller: gpui::Task<()>,
 }
@@ -292,13 +296,28 @@ impl LevelEditorPanel {
         let poll_state = Arc::clone(&shared_state);
         let poller = cx.spawn(async move |this, cx| {
             let mut last_seen: u64 = 0;
+            // Also re-render on Play-In-Editor state changes (set by the build
+            // thread / GameViewport) so `sync_game_tab` opens/closes the Game tab.
+            let mut last_pie = (false, false, false, false);
             loop {
                 cx.background_executor()
                     .timer(std::time::Duration::from_millis(50))
                     .await;
-                let current = poll_state.read().scene.revision;
-                if current != last_seen {
+                let (current, pie) = {
+                    let s = poll_state.read();
+                    (
+                        s.scene.revision,
+                        (
+                            s.play.pie.building,
+                            s.play.pie.active,
+                            s.play.pie.pending_start.is_some(),
+                            s.play.pie.last_error.is_some(),
+                        ),
+                    )
+                };
+                if current != last_seen || pie != last_pie {
                     last_seen = current;
+                    last_pie = pie;
                     cx.update(|cx| {
                         this.update(cx, |panel, cx| {
                             panel.notify_sub_panels(cx);
@@ -321,6 +340,7 @@ impl LevelEditorPanel {
             hierarchy_panel_entity: None,
             properties_panel_entity: None,
             last_observed_scene_revision: 0,
+            game_panel: None,
             _scene_revision_poller: poller,
         }
     }
@@ -438,21 +458,12 @@ impl LevelEditorPanel {
                     cx,
                 );
 
-                // Game tab (Play In Editor, issue #243): runs the embedded game
-                // alongside the editor Viewport. Self-manages off `play.pie` state.
-                let game_panel = cx.new(|cx| {
-                    use crate::level_editor::ui::viewport::game_viewport::GameViewport;
-                    GameViewport::new(shared_state.clone(), cx)
-                });
-
-                // Set center and right dock only (no left dock, matching DAW approach)
+                // Set center and right dock only (no left dock, matching DAW approach).
+                // The Game tab (Play In Editor, issue #243) is added dynamically
+                // when the game starts and removed on stop — see `sync_game_tab`.
                 let center_tabs = DockItem::tabs(
-                    vec![
-                        std::sync::Arc::new(viewport_panel)
-                            as std::sync::Arc<dyn ui::dock::PanelView>,
-                        std::sync::Arc::new(game_panel)
-                            as std::sync::Arc<dyn ui::dock::PanelView>,
-                    ],
+                    vec![std::sync::Arc::new(viewport_panel)
+                        as std::sync::Arc<dyn ui::dock::PanelView>],
                     Some(0),
                     &dock_area,
                     window,
@@ -469,6 +480,58 @@ impl LevelEditorPanel {
         self.hierarchy_panel_entity = Some(hierarchy_handle);
         self.properties_panel_entity = Some(properties_handle);
         self.workspace = Some(workspace);
+    }
+
+    /// Open the Play-In-Editor Game tab when the game starts (build finished /
+    /// running) — `add_panel` auto-activates it, so it autofocuses — and remove
+    /// it on stop. Also surfaces build errors, since the tab may not exist when a
+    /// build fails.
+    fn sync_game_tab(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        use crate::level_editor::ui::viewport::game_viewport::GameViewport;
+
+        let (should_open, error) = {
+            let mut st = self.shared_state.write();
+            // Open once the build hands off a game to run (or it is already
+            // running); close when neither is true.
+            let should_open = st.play.pie.active || st.play.pie.pending_start.is_some();
+            let error = st.play.pie.last_error.take();
+            (should_open, error)
+        };
+
+        if let Some(err) = error {
+            window.push_notification(
+                Notification::error("Play In Editor build failed").message(err),
+                cx,
+            );
+        }
+
+        let Some(workspace) = self.workspace.clone() else {
+            return;
+        };
+
+        if should_open && self.game_panel.is_none() {
+            let shared = self.shared_state.clone();
+            let game_panel = cx.new(|cx| GameViewport::new(shared, cx));
+            self.game_panel = Some(game_panel.clone());
+            let panel_view: std::sync::Arc<dyn ui::dock::PanelView> = std::sync::Arc::new(game_panel);
+            workspace.update(cx, |ws, cx| {
+                let dock_area = ws.dock_area().clone();
+                dock_area.update(cx, |da, cx| {
+                    da.add_panel_to_center(panel_view, window, cx);
+                });
+            });
+        } else if !should_open {
+            if let Some(game_panel) = self.game_panel.take() {
+                let panel_view: std::sync::Arc<dyn ui::dock::PanelView> =
+                    std::sync::Arc::new(game_panel);
+                workspace.update(cx, |ws, cx| {
+                    let dock_area = ws.dock_area().clone();
+                    dock_area.update(cx, |da, cx| {
+                        da.items().remove_panel(panel_view, window, cx);
+                    });
+                });
+            }
+        }
     }
 
     pub fn toggle_rendering(&mut self) {
@@ -1209,6 +1272,9 @@ impl Render for LevelEditorPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Initialize workspace on first render
         self.initialize_workspace(window, cx);
+
+        // Open/close the Play-In-Editor Game tab as the game starts/stops.
+        self.sync_game_tab(window, cx);
 
         // Apply external scene mutations (e.g. AI tool calls) to panel UI.
         let current_revision = self.shared_state.read().scene.revision;

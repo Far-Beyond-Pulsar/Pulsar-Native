@@ -32,7 +32,6 @@ pub struct GameViewport {
     captured: bool,
     /// Track transitions for one-shot notifications.
     was_active: bool,
-    building_notified: bool,
 }
 
 impl GameViewport {
@@ -49,7 +48,6 @@ impl GameViewport {
             last_frame: Instant::now(),
             captured: false,
             was_active: false,
-            building_notified: false,
         }
     }
 
@@ -91,7 +89,7 @@ impl GameViewport {
         }
     }
 
-    fn on_key_up(&mut self, event: &KeyUpEvent, _window: &mut Window, _cx: &mut Context<Self>) {
+    fn on_key_up(&mut self, event: &KeyUpEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if self.captured {
             self.forward(InputEvent {
                 kind: input_kind::KEY,
@@ -101,6 +99,7 @@ impl GameViewport {
                 pressed: 0,
                 delta: 0.0,
             });
+            cx.stop_propagation();
         }
     }
 
@@ -110,7 +109,9 @@ impl GameViewport {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Click captures input and focuses the tab for keyboard events.
+        // Click captures input and focuses the panel for keyboard events. While
+        // captured, all mouse/keyboard events are swallowed (stop_propagation)
+        // and forwarded to the game so the editor does not also react.
         self.captured = true;
         self.focus_handle.focus(window, cx);
         self.forward(InputEvent {
@@ -121,6 +122,7 @@ impl GameViewport {
             pressed: 1,
             delta: 0.0,
         });
+        cx.stop_propagation();
         cx.notify();
     }
 
@@ -128,7 +130,7 @@ impl GameViewport {
         &mut self,
         _event: &MouseMoveEvent,
         _window: &mut Window,
-        _cx: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) {
         if !self.captured {
             return;
@@ -143,14 +145,10 @@ impl GameViewport {
             pressed: 0,
             delta: 0.0,
         });
+        cx.stop_propagation();
     }
 
-    fn on_scroll(
-        &mut self,
-        event: &ScrollWheelEvent,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) {
+    fn on_scroll(&mut self, event: &ScrollWheelEvent, _window: &mut Window, cx: &mut Context<Self>) {
         if !self.captured {
             return;
         }
@@ -166,6 +164,7 @@ impl GameViewport {
             pressed: 0,
             delta,
         });
+        cx.stop_propagation();
     }
 
     /// Load a pending game, honour a stop request, tick + blit the active game.
@@ -232,35 +231,15 @@ impl GameViewport {
         }
     }
 
-    /// Surface build/run status as notifications (the build runs on a background
-    /// thread and only communicates through `shared_state`).
+    /// Notify once when the game becomes active. Build progress + failures are
+    /// surfaced by the level-editor panel (which always exists); this panel only
+    /// exists while a game is starting/running.
     fn poll_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let (building, error, active) = {
-            let mut st = self.shared_state.write();
-            let error = st.play.pie.last_error.take();
-            (st.play.pie.building, error, st.play.pie.active)
-        };
-        if building && !self.building_notified {
-            self.building_notified = true;
-            window.push_notification(
-                Notification::info("Play In Editor").message(
-                    "Building game… first build compiles the engine — this can take a few minutes",
-                ),
-                cx,
-            );
-        }
-        if !building {
-            self.building_notified = false;
-        }
-        if let Some(err) = error {
-            window.push_notification(
-                Notification::error("Play In Editor build failed").message(err),
-                cx,
-            );
-        }
+        let active = self.shared_state.read().play.pie.active;
         if active && !self.was_active {
             window.push_notification(
-                Notification::success("Play In Editor").message("Game running — click the Game tab to play"),
+                Notification::success("Play In Editor")
+                    .message("Game running — click to control, Esc to release"),
                 cx,
             );
         }

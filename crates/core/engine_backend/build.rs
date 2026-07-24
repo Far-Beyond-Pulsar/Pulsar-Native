@@ -103,8 +103,23 @@ fn build_game_manifest_deps(
          # exact crate versions this engine uses — required for Play-In-Editor's\n\
          # shared-wgpu ABI. Absolute paths point at the engine checkout.\n",
     );
+    // Game-only reflection unification. `pulsar_scenedb` (SceneDB) pins an older
+    // `pulsar_reflection` rev than the workspace, so a graph that uses BOTH
+    // `pulsar_scenedb` and `pulsar_reflection` (a generated game's class code
+    // does) gets two incompatible copies → E0308. The editor tolerates two copies
+    // and CANNOT be unified this way (it would change `pulsar_rendering`'s derive
+    // resolution), so this is applied to generated games only, never the
+    // workspace. `refl_spec` forces every reflection reference to one rev via the
+    // double-slash URL alias (a distinct source string to cargo, same repo to
+    // git — CI-safe, no local path).
+    let refl_spec = reflection_alias_spec(dependencies);
+
     out.push_str("[dependencies]\n");
     for dep in GAME_DEPENDENCIES {
+        if *dep == "pulsar_reflection" {
+            out.push_str(&format!("{dep} = {refl_spec}\n"));
+            continue;
+        }
         let value = dependencies
             .get(*dep)
             .unwrap_or_else(|| panic!("workspace dependency `{dep}` is required by generated games but missing from [workspace.dependencies]"));
@@ -116,20 +131,65 @@ fn build_game_manifest_deps(
         out.push_str(&format!("{dep} = {}\n", format_toml_inline(&value)));
     }
 
+    let mut patched_reflection_source = false;
     if let Some(patch) = manifest.get("patch").and_then(toml::Value::as_table) {
         for (source_url, table) in patch {
             let Some(entries) = table.as_table() else {
                 continue;
             };
+            if source_url.contains("Pulsar-Reflection") {
+                patched_reflection_source = true;
+            }
             out.push_str(&format!("\n[patch.\"{source_url}\"]\n"));
             for (crate_name, spec) in entries {
+                // Force any reflection patch entry to the single aliased rev so it
+                // does not split from the [patch.Pulsar-Reflection] one below.
+                if crate_name == "pulsar_reflection" || crate_name == "pulsar_reflection_derive" {
+                    out.push_str(&format!("{crate_name} = {refl_spec}\n"));
+                    continue;
+                }
                 let rewritten = rewrite_paths(spec, workspace_root);
                 out.push_str(&format!("{crate_name} = {}\n", format_toml_inline(&rewritten)));
             }
         }
     }
 
+    // Redirect the Pulsar-Reflection source itself (used by pulsar_scenedb's older
+    // rev) to the aliased rev, unifying it with everything else.
+    if !patched_reflection_source {
+        out.push_str("\n[patch.\"https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection\"]\n");
+        out.push_str(&format!("pulsar_reflection = {refl_spec}\n"));
+        out.push_str(&format!("pulsar_reflection_derive = {refl_spec}\n"));
+    }
+
     out
+}
+
+/// The `{ git = "<aliased>", rev = "<rev>" }` spec every reflection reference in a
+/// generated game is pinned to. Derived from the workspace `pulsar_reflection`
+/// dep so it tracks the engine's pin. The URL gets a doubled slash before the
+/// repo name so cargo sees it as a source distinct from the one being patched
+/// (patches must point to a different source) while git resolves the same repo.
+fn reflection_alias_spec(dependencies: &toml::Table) -> String {
+    let dep = dependencies
+        .get("pulsar_reflection")
+        .expect("[workspace.dependencies] must define pulsar_reflection");
+    let git = dep
+        .get("git")
+        .and_then(toml::Value::as_str)
+        .expect("workspace pulsar_reflection must be a git dependency");
+    let rev = dep
+        .get("rev")
+        .and_then(toml::Value::as_str)
+        .expect("workspace pulsar_reflection must pin an explicit rev");
+    // Double the slash before the repo name: `.../Far-Beyond-Pulsar/Pulsar-
+    // Reflection` -> `.../Far-Beyond-Pulsar//Pulsar-Reflection`.
+    let aliased = git.replacen(
+        "Far-Beyond-Pulsar/Pulsar-Reflection",
+        "Far-Beyond-Pulsar//Pulsar-Reflection",
+        1,
+    );
+    format!("{{ git = \"{aliased}\", rev = \"{rev}\" }}")
 }
 
 /// Extra cargo features a generated game requires beyond what the workspace
