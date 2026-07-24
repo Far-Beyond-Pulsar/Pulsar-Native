@@ -8298,7 +8298,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tracing",
- "tracing-subscriber",
  "wgsl_std",
 ]
 
@@ -13899,7 +13898,6 @@ dependencies = [
  "linkme",
  "serde",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
