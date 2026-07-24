@@ -42,11 +42,108 @@ jobs:
             libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
             clang libclang-dev
 
-      - name: Install bindgen (required by aws-lc-sys)
-        run: cargo install bindgen-cli --locked
-
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
+
+      - name: Validate workspace dependency modes
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --format-version 1 | ConvertFrom-Json -AsHashtable
+
+          function Get-ResolvedPackage([string] $name, [string] $version = "") {
+            $packages = @($metadata["packages"] | Where-Object {
+              $_["name"] -eq $name -and (!$version -or $_["version"] -eq $version)
+            })
+            if ($packages.Count -ne 1) {
+              throw "Expected exactly one resolved $name $version package; found $($packages.Count)"
+            }
+
+            $packageId = $packages[0]["id"]
+            $nodes = @($metadata["resolve"]["nodes"] | Where-Object { $_["id"] -eq $packageId })
+            if ($nodes.Count -ne 1) {
+              throw "Expected exactly one resolve node for $name $version; found $($nodes.Count)"
+            }
+            return $nodes[0]
+          }
+
+          # Pulsar installs Ring explicitly for its Rustls users. A
+          # default-enabled reqwest edge silently adds AWS-LC to every
+          # workspace test binary (native-tls remains intentional for rustup).
+          $reqwest = Get-ResolvedPackage "reqwest" "0.13.4"
+          $forbiddenTlsFeatures = @(
+            "default",
+            "default-tls",
+            "rustls",
+            "__rustls-aws-lc-rs"
+          )
+          $enabledForbiddenTlsFeatures = @(
+            $forbiddenTlsFeatures | Where-Object { $reqwest["features"] -contains $_ }
+          )
+          if ($enabledForbiddenTlsFeatures.Count -ne 0) {
+            throw "reqwest 0.13.4 violates the Ring/no-provider policy: $($enabledForbiddenTlsFeatures -join ', ')"
+          }
+          $awsLcPackages = @($metadata["packages"] | Where-Object {
+            $_["name"] -in @("aws-lc-rs", "aws-lc-sys")
+          })
+          if ($awsLcPackages.Count -ne 0) {
+            throw "AWS-LC unexpectedly resolved into the workspace; use the explicit provider policy"
+          }
+
+          # Static built-ins use Rust APIs directly. They must not emit the
+          # process-global dynamic loader ABI shared by every plugin.
+          foreach ($plugin in @(
+            "blueprint_editor_plugin",
+            "script_editor_plugin",
+            "asset_viewer_plugin"
+          )) {
+            $node = Get-ResolvedPackage $plugin
+            if ($node["features"] -notcontains "builtin") {
+              throw "$plugin is statically embedded without its builtin feature"
+            }
+          }
+
+          # Pulsar owns the built-in library integrations, while external plugin
+          # repositories own their standalone applications. Letting Cargo
+          # auto-enroll those repositories as workspace members makes their
+          # identically named examples race for target/*/examples/standalone.
+          $workspaceMemberIds = @($metadata["workspace_members"])
+          $vendorWorkspaceMembers = @(
+            $metadata["packages"] | Where-Object {
+              $workspaceMemberIds -contains $_["id"] -and
+              (($_["manifest_path"] -replace "\\", "/") -match "/plugins/vendor/")
+            } | ForEach-Object { $_["name"] } | Sort-Object
+          )
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin")
+          $workspaceMemberDifference = @(
+            Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
+          )
+          if ($workspaceMemberDifference.Count -ne 0) {
+            throw "External plugin apps leaked into the Pulsar workspace: $($vendorWorkspaceMembers -join ', ')"
+          }
+
+          $uiCorePackages = @($metadata["packages"] | Where-Object {
+            $_["name"] -eq "ui_core"
+          })
+          if ($uiCorePackages.Count -ne 1) {
+            throw "Expected exactly one ui_core package; found $($uiCorePackages.Count)"
+          }
+          $uiCoreDependencies = @(
+            $uiCorePackages[0]["dependencies"] | ForEach-Object { $_["name"] }
+          )
+          $expectedBuiltins = @(
+            "asset_viewer_plugin",
+            "blueprint_editor_plugin",
+            "editor_table_plugin",
+            "plugin_matter",
+            "script_editor_plugin",
+            "shader_editor_plugin"
+          )
+          $missingBuiltins = @(
+            $expectedBuiltins | Where-Object { $uiCoreDependencies -notcontains $_ }
+          )
+          if ($missingBuiltins.Count -ne 0) {
+            throw "ui_core lost built-in plugin integrations: $($missingBuiltins -join ', ')"
+          }
 
       - name: Resolve Pulsar's pinned SceneDB source
         shell: pwsh
