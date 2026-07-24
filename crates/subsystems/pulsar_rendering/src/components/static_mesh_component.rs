@@ -12,7 +12,16 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::asset_component::AssetComponentRegistration;
 use crate::subsystems::{MeshCache, SceneObjectCache, load_mesh_upload, resolve_asset_path};
+
+pulsar_reflection::inventory::submit! {
+    AssetComponentRegistration {
+        asset_kind: plugin_editor_api::AssetKind::Mesh,
+        class_name: "StaticMeshComponent",
+        data_field: "mesh_asset",
+    }
+}
 // Mat4/Quat/Vec3 used to build the transform passed to sync_mesh_object.
 
 // ── MeshAssetPath ─────────────────────────────────────────────────────────────

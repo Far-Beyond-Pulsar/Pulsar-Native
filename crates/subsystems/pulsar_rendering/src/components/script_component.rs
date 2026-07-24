@@ -1,6 +1,15 @@
 //! Script component — attaches a blueprint actor script to a scene object.
 
+use crate::asset_component::AssetComponentRegistration;
 use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
+
+pulsar_reflection::inventory::submit! {
+    AssetComponentRegistration {
+        asset_kind: plugin_editor_api::AssetKind::Blueprint,
+        class_name: "ScriptComponent",
+        data_field: "script_asset",
+    }
+}
 use pulsar_events::{ScriptRegistration, script_registry};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, ReflectError,

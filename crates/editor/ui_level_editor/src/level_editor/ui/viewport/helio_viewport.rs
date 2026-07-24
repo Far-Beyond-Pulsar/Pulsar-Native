@@ -17,6 +17,8 @@ use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 use crate::level_editor::commands::{SceneCommand, execute_command};
 use crate::level_editor::scene_database::{MeshType, ObjectType, SceneObjectData, Transform};
 use crate::level_editor::state::LevelEditorState;
+use pulsar_rendering::asset_component::component_class_for_asset;
+use pulsar_reflection::REGISTRY;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
 pub struct HelioViewport {
@@ -136,19 +138,21 @@ impl HelioViewport {
                 );
 
                 if let Some(id) = add_result.affected_ids.first() {
-                    // Add the StaticMeshComponent via the proper API so it is
-                    // registered in metadata_db and syncs correctly with the renderer.
-                    state.scene.database.add_component(
-                        id,
-                        "StaticMeshComponent".to_string(),
-                        serde_json::json!({ "mesh_asset": asset_path }),
-                    );
-                    let _ = execute_command(
-                        &mut state,
-                        SceneCommand::SelectObject {
-                            id: Some(id.clone()),
-                        },
-                    );
+                    if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
+                        if REGISTRY.has_class(class_name) {
+                            state.scene.database.add_component(
+                                id,
+                                class_name.to_string(),
+                                serde_json::json!({ data_field: asset_path }),
+                            );
+                            let _ = execute_command(
+                                &mut state,
+                                SceneCommand::SelectObject {
+                                    id: Some(id.clone()),
+                                },
+                            );
+                        }
+                    }
                 }
             }
             AssetKind::Blueprint => {
@@ -196,19 +200,21 @@ impl HelioViewport {
                 );
 
                 if let Some(id) = add_result.affected_ids.first() {
-                    // Add the ScriptComponent via the proper API so it is
-                    // registered in metadata_db and syncs correctly with the renderer.
-                    state.scene.database.add_component(
-                        id,
-                        "ScriptComponent".to_string(),
-                        serde_json::json!({ "script_asset": script_path }),
-                    );
-                    let _ = execute_command(
-                        &mut state,
-                        SceneCommand::SelectObject {
-                            id: Some(id.clone()),
-                        },
-                    );
+                    if let Some((class_name, data_field)) = component_class_for_asset(&kind) {
+                        if REGISTRY.has_class(class_name) {
+                            state.scene.database.add_component(
+                                id,
+                                class_name.to_string(),
+                                serde_json::json!({ data_field: script_path }),
+                            );
+                            let _ = execute_command(
+                                &mut state,
+                                SceneCommand::SelectObject {
+                                    id: Some(id.clone()),
+                                },
+                            );
+                        }
+                    }
                 }
             }
             _ => {

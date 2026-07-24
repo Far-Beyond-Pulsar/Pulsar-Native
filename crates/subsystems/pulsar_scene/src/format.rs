@@ -14,6 +14,7 @@
 //! - `position`, `rotation`, `scale` are top-level fields on each object
 
 use engine_fs::virtual_fs;
+use pulsar_reflection::apply_scene_props_for_class;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -399,7 +400,27 @@ impl SceneObject {
             .unwrap_or(default)
     }
 
-    // ── Mesh asset path ───────────────────────────────────────────────────────
+    // ── Reflection projection ────────────────────────────────────────────────
+
+    /// Return a copy of `props` with all component-instance data projected into
+    /// it via registered [`ScenePropsProjector`] implementations.
+    ///
+    /// This replaces manual field-name lookups into component data (e.g.
+    /// `data.get("mesh_asset")`) with the canonical reflection-based path so
+    /// that altering a component's field name only requires updating its
+    /// projector, not this scene-format module.
+    pub fn projected_props(&self) -> HashMap<String, Value> {
+        let mut props = self.props.clone();
+        if let Some(instances) = self.component_instances() {
+            for inst in instances {
+                if let Some(class_name) = inst.get("class_name").and_then(|v| v.as_str()) {
+                    let component_data = inst.get("data");
+                    apply_scene_props_for_class(class_name, &mut props, component_data);
+                }
+            }
+        }
+        props
+    }
 
     /// Helper: return the first component entry matching `class_name` from
     /// the dedicated `component_instances` field, falling back to the legacy
@@ -416,28 +437,17 @@ impl SceneObject {
     }
 
     /// Return the `mesh_asset` path from this object's props or its
-    /// `StaticMeshComponent` entry in component instances, if any.
+    /// component instances, projected through the reflection system.
     ///
-    /// This is the authoritative mesh path set by the editor — prefer it over
-    /// `object_type` when deciding what geometry to render.
-    pub fn mesh_asset(&self) -> Option<&str> {
-        // Flat prop (v2.x editor writes it here directly).
-        if let Some(s) = self.props.get("mesh_asset").and_then(|v| v.as_str()) {
-            if !s.is_empty() && s != "None" {
-                return Some(s);
-            }
-        }
-        // Fall back to StaticMeshComponent data.
-        self.component_instances()
-            .and_then(|arr| {
-                arr.iter().find(|inst| {
-                    inst.get("class_name").and_then(|v| v.as_str()) == Some("StaticMeshComponent")
-                })
-            })
-            .and_then(|inst| inst.get("data"))
-            .and_then(|data| data.get("mesh_asset"))
+    /// This uses [`ScenePropsProjector`] registrations instead of hardcoded
+    /// field-name lookups into component data.
+    pub fn mesh_asset(&self) -> Option<String> {
+        let props = self.projected_props();
+        props
+            .get("mesh_asset")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty() && *s != "None")
+            .map(String::from)
     }
 
     // ── Material accessors ────────────────────────────────────────────────────
@@ -460,13 +470,12 @@ impl SceneObject {
 
     // ── Light accessors ───────────────────────────────────────────────────────
     //
-    // In the v2.x editor format light properties live directly in `props` (color,
-    // intensity, range).  If they are missing there, fall back to the first
-    // `LightComponent` entry inside `__component_instances`.
+    // Uses projected props so that LightComponent data is reflected through
+    // the registered projector instead of manual field extraction.
 
     pub fn light_color(&self) -> [f32; 3] {
-        // Direct prop first (may be 3 or 4 floats; we only want RGB).
-        if let Some(v) = self.props.get("color") {
+        let props = self.projected_props();
+        if let Some(v) = props.get("color") {
             if let Some(a) = v.as_array() {
                 if a.len() >= 3 {
                     return [
@@ -477,69 +486,41 @@ impl SceneObject {
                 }
             }
         }
-        // Fall back to __component_instances[LightComponent].data.color
-        self.light_component_prop_arr3("color", [1.0, 1.0, 1.0])
+        [1.0, 1.0, 1.0]
     }
 
     pub fn light_intensity(&self) -> f32 {
-        if let Some(v) = self.props.get("intensity").and_then(|v| v.as_f64()) {
+        let props = self.projected_props();
+        if let Some(v) = props.get("intensity").and_then(|v| v.as_f64()) {
             return v as f32;
         }
-        self.light_component_prop_f32("intensity", 1.0)
+        1.0
     }
 
     pub fn light_range(&self) -> f32 {
-        if let Some(v) = self.props.get("range").and_then(|v| v.as_f64()) {
+        let props = self.projected_props();
+        if let Some(v) = props.get("range").and_then(|v| v.as_f64()) {
             return v as f32;
         }
-        self.light_component_prop_f32("range", 10.0)
+        10.0
     }
 
     pub fn light_inner_angle(&self) -> f32 {
-        self.prop_f32("inner_angle", 30.0)
+        let props = self.projected_props();
+        Self::prop_f32_from(&props, "inner_angle", 30.0)
     }
     pub fn light_outer_angle(&self) -> f32 {
-        self.prop_f32("outer_angle", 45.0)
+        let props = self.projected_props();
+        Self::prop_f32_from(&props, "outer_angle", 45.0)
     }
 
-    // ── Component-instance helpers ────────────────────────────────────────────
+    // ── Static helpers (no &self) ─────────────────────────────────────────────
 
-    fn light_component_data(&self) -> Option<&Value> {
-        let instances = self.component_instances()?;
-        for inst in instances {
-            let class = inst.get("class_name")?.as_str()?;
-            if class == "LightComponent" {
-                return inst.get("data");
-            }
-        }
-        None
-    }
-
-    fn light_component_prop_f32(&self, key: &str, default: f32) -> f32 {
-        self.light_component_data()
-            .and_then(|d| d.get(key))
+    fn prop_f32_from(props: &HashMap<String, Value>, key: &str, default: f32) -> f32 {
+        props
+            .get(key)
             .and_then(|v| v.as_f64())
             .map(|v| v as f32)
             .unwrap_or(default)
-    }
-
-    fn light_component_prop_arr3(&self, key: &str, default: [f32; 3]) -> [f32; 3] {
-        let data = match self.light_component_data() {
-            Some(d) => d,
-            None => return default,
-        };
-        let arr = match data.get(key).and_then(|v| v.as_array()) {
-            Some(a) => a,
-            None => return default,
-        };
-        if arr.len() >= 3 {
-            [
-                arr[0].as_f64().unwrap_or(1.0) as f32,
-                arr[1].as_f64().unwrap_or(1.0) as f32,
-                arr[2].as_f64().unwrap_or(1.0) as f32,
-            ]
-        } else {
-            default
-        }
     }
 }
