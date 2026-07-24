@@ -20,8 +20,15 @@ use window_manager::{apply_window_wrapper, PulsarWindow, WindowManager, WindowRe
 /// ```
 pub trait PulsarWindowExt: PulsarWindow {
     /// Open this window through the [`WindowManager`], wrapped in [`Root`] for theming.
+    /// If a window with the same `window_name()` already exists, it is focused instead.
     fn open(params: Self::Params, cx: &mut App) {
         let request = Self::window_request(&params);
+
+        // Dedup: focus existing window if one is already open
+        if WindowManager::update_global(cx, |wm, cx| wm.focus_window_by_request(&request, cx)) {
+            return;
+        }
+
         let profile = Self::window_profile(&params);
         let mut options = Self::window_options(&params);
         // Center windowed windows on the primary display

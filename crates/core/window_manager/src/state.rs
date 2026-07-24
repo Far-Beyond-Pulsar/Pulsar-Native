@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use gpui::AnyWindowHandle;
 use std::sync::Arc;
 use ui_types_common::window_types::{WindowId, WindowRequest};
 
@@ -13,6 +14,7 @@ pub struct WindowInfo {
     pub window_type: WindowRequest,
     pub parent_window: Option<WindowId>,
     pub created_at: std::time::Instant,
+    pub handle: AnyWindowHandle,
 }
 
 impl WindowState {
@@ -27,6 +29,7 @@ impl WindowState {
         window_id: WindowId,
         window_type: WindowRequest,
         parent: Option<WindowId>,
+        handle: AnyWindowHandle,
     ) {
         self.windows.insert(
             window_id,
@@ -35,6 +38,7 @@ impl WindowState {
                 window_type,
                 parent_window: parent,
                 created_at: std::time::Instant::now(),
+                handle,
             },
         );
     }
@@ -51,6 +55,26 @@ impl WindowState {
         self.windows
             .get(&window_id)
             .map(|entry| entry.value().clone())
+    }
+
+    /// Find a window by its request, matching `Custom` variants by `type_name`.
+    pub fn find_by_request(&self, request: &WindowRequest) -> Option<WindowInfo> {
+        let type_name = match request {
+            WindowRequest::Custom { type_name } => type_name,
+            other => {
+                return self
+                    .windows
+                    .iter()
+                    .find(|entry| {
+                        std::mem::discriminant(&entry.window_type)
+                            == std::mem::discriminant(other)
+                    })
+                    .map(|entry| entry.value().clone());
+            }
+        };
+        self.windows.iter().find(|entry| {
+            matches!(&entry.window_type, WindowRequest::Custom { type_name: n } if n == type_name)
+        }).map(|entry| entry.value().clone())
     }
 
     pub fn window_count(&self) -> usize {

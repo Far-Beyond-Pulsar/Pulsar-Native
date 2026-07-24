@@ -98,7 +98,8 @@ impl WindowManager {
 
         let handle: AnyWindowHandle = handle.into();
 
-        self.state.register_window(window_id, wtype.clone(), None);
+        self.state
+            .register_window(window_id, wtype.clone(), None, handle);
         let result = WindowCommandResult::Created { window_id };
         self.telemetry.record_command_result(&result);
         let mut after = HookContext::from_result(&result);
@@ -232,6 +233,19 @@ impl WindowManager {
 
     pub fn window_exists(&self, window_id: WindowId) -> bool {
         self.state.window_exists(window_id)
+    }
+
+    /// Focus an existing window matching the given request, if one is open.
+    /// Returns `true` if a matching window was found and focused.
+    pub fn focus_window_by_request(&self, request: &WindowRequest, cx: &mut App) -> bool {
+        if let Some(info) = self.state.find_by_request(request) {
+            let _ = info.handle.update(cx, |_, window, _| {
+                window.activate_window();
+            });
+            true
+        } else {
+            false
+        }
     }
 }
 
