@@ -680,6 +680,8 @@ impl Render for PulsarApp {
             .on_action(cx.listener(Self::on_open_file))
             .on_action(cx.listener(Self::on_open_asset))
             .on_action(cx.listener(Self::on_activate_open_editor))
+            .on_action(cx.listener(Self::on_go_back))
+            .on_action(cx.listener(Self::on_go_forward))
             .on_action(cx.listener(|_, _: &ui::OpenSettings, _, cx| {
                 use gpui::UpdateGlobal as _;
                 window_manager::WindowRegistry::update_global(cx, |reg, cx| {

@@ -3,8 +3,10 @@ use std::rc::Rc;
 use gpui::{
     div, prelude::FluentBuilder as _, px, App, AppContext as _, Context, DismissEvent, Entity,
     FocusHandle, Focusable, Hsla, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Render, SharedString, StatefulInteractiveElement, Styled as _, Window,
+    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
+    Styled as _, Window,
 };
+use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{
     h_flex,
     input::{InputState, TextInput},
@@ -17,6 +19,8 @@ use ui::{
 pub struct ThemePicker {
     focus_handle: FocusHandle,
     search_input: Entity<InputState>,
+    scroll_handle: ScrollHandle,
+    scroll_state: ScrollbarState,
 }
 
 impl ThemePicker {
@@ -25,6 +29,8 @@ impl ThemePicker {
         Self {
             focus_handle: cx.focus_handle(),
             search_input,
+            scroll_handle: ScrollHandle::new(),
+            scroll_state: ScrollbarState::default(),
         }
     }
 }
@@ -159,9 +165,15 @@ impl Render for ThemePicker {
             .child(
                 div()
                     .id("theme-picker-list")
-                    .max_h(px(400.))
-                    .overflow_y_scroll()
-                    .py_1()
+                    .relative()
+                    .overflow_hidden()
+                    .child(
+                        div()
+                            .id("theme-picker-scroll")
+                            .max_h(px(400.))
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .py_1()
                     // Empty state
                     .when(is_empty, |el| {
                         el.child(
@@ -240,7 +252,19 @@ impl Render for ThemePicker {
                             .when(is_active, |el| {
                                 el.child(Icon::new(IconName::Check).size(px(14.)).text_color(fg))
                             })
-                    })),
+                    })))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_0()
+                            .left_0()
+                            .right_0()
+                            .bottom_0()
+                            .child(Scrollbar::vertical(
+                                &self.scroll_state,
+                                &self.scroll_handle,
+                            )),
+                    ),
             )
     }
 }

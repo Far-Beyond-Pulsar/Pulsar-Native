@@ -463,6 +463,7 @@ impl TableDelegate for LogTableDelegate {
 
         match col_ix {
             0 => div()
+                .id(format!("log-cell-{}-{}", row_ix, 0))
                 .w_full()
                 .px_2()
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -482,6 +483,7 @@ impl TableDelegate for LogTableDelegate {
                 let level_color = row.level.color(&theme);
                 let store = self.store.clone();
                 div()
+                    .id(format!("log-cell-{}-{}", row_ix, 1))
                     .w_full()
                     .px_2()
                     .on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -514,6 +516,7 @@ impl TableDelegate for LogTableDelegate {
                 let level_color = row.level.color(&theme);
                 let store = self.store.clone();
                 div()
+                    .id(format!("log-cell-{}-{}", row_ix, col_ix))
                     .w_full()
                     .px_2()
                     .py_1()

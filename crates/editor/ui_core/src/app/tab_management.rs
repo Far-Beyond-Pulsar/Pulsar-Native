@@ -153,6 +153,8 @@ impl PulsarApp {
     pub fn open_path(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
         tracing::debug!("Opening path: {:?}", path);
 
+        self.state.push_navigation(path.clone());
+
         if self.activate_open_editor_by_path(&path, window, cx) {
             tracing::debug!("Activated existing editor for: {:?}", path);
             self.refresh_open_editor_snapshot(cx);

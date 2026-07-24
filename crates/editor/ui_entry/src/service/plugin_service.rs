@@ -251,16 +251,18 @@ impl PluginService {
         ));
         std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
         logs.push(format!("Cloning {}\u{2026}", repo_url));
-        let mut clone = Command::new("git");
-        clone.args(["clone", "--depth", "1"]);
-        if let Some(t) = tag {
-            clone.args(["--branch", t]);
-        }
-        clone.args([repo_url, tmp.to_str().unwrap()]);
-        let out = clone.output().map_err(|e| format!("git clone: {e}"))?;
-        logs.push(String::from_utf8_lossy(&out.stderr).into_owned());
-        if !out.status.success() {
-            return Err(format!("git clone failed:\n{}", logs.join("\n")));
+        {
+            let mut fo = git2::FetchOptions::new();
+            fo.download_tags(git2::AutotagOption::None);
+            let mut builder = git2::build::RepoBuilder::new();
+            builder.fetch_options(fo);
+            if let Some(t) = tag {
+                builder.branch(t);
+            }
+            match builder.clone(repo_url, &tmp) {
+                Ok(_) => logs.push("Clone succeeded".into()),
+                Err(e) => return Err(format!("git clone failed: {e}")),
+            }
         }
         logs.push("Building with cargo\u{2026}".to_string());
         let build = Command::new("cargo")

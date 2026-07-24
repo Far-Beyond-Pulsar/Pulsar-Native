@@ -1,6 +1,7 @@
 //! Application state structure
 
 use gpui::{Entity, FocusHandle, Task};
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use ui::dock::{DockArea, PanelView, TabPanel};
@@ -82,4 +83,39 @@ pub struct AppState {
 
     // Multiuser status refresh listener
     pub multiuser_refresh_task: Option<Task<()>>,
+
+    // Navigation history
+    pub navigation_history: VecDeque<PathBuf>,
+    pub navigation_history_index: usize,
+}
+
+impl AppState {
+    pub fn push_navigation(&mut self, path: PathBuf) {
+        self.navigation_history
+            .truncate(self.navigation_history_index);
+        self.navigation_history.push_back(path);
+        self.navigation_history_index = self.navigation_history.len();
+    }
+
+    pub fn go_back(&mut self) -> Option<PathBuf> {
+        if self.navigation_history_index > 0 {
+            self.navigation_history_index -= 1;
+            self.navigation_history
+                .get(self.navigation_history_index)
+                .cloned()
+        } else {
+            None
+        }
+    }
+
+    pub fn go_forward(&mut self) -> Option<PathBuf> {
+        if self.navigation_history_index + 1 < self.navigation_history.len() {
+            self.navigation_history_index += 1;
+            self.navigation_history
+                .get(self.navigation_history_index)
+                .cloned()
+        } else {
+            None
+        }
+    }
 }

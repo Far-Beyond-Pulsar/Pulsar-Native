@@ -138,10 +138,26 @@ pub fn render_disk_info_tab(
                         .ghost()
                         .tooltip("Run git garbage collection to reduce repository size")
                         .on_click(cx.listener(move |_, _, _, _cx| {
-                            let _ = std::process::Command::new("git")
+                            match std::process::Command::new("git")
                                 .args(["gc", "--prune=now"])
                                 .current_dir(&project_path)
-                                .output();
+                                .output()
+                            {
+                                Ok(out) if out.status.success() => {
+                                    tracing::info!("Git GC completed successfully");
+                                }
+                                Ok(out) => {
+                                    let stderr = String::from_utf8_lossy(&out.stderr);
+                                    tracing::error!("Git GC failed: {}", stderr);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Git executable not found ({}). \
+                                         Install git CLI or use a git2-based tool.",
+                                        e
+                                    );
+                                }
+                            }
                         })),
                 ),
         )

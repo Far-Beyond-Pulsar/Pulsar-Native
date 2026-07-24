@@ -13,6 +13,7 @@ use ui_problems::ProblemsDrawer;
 // use ui_script_editor::{ScriptEditorPanel, TextEditorEvent};
 // use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
+use plugin_manager;
 use futures::FutureExt;
 use smol::Timer;
 use std::path::PathBuf;
@@ -747,6 +748,25 @@ pub fn on_popout_file_manager(
             move |window, cx| {
                 let new_drawer =
                     cx.new(|cx| FileManagerDrawer::new_in_window(project_path.clone(), window, cx));
+
+                // Propagate registered file types from plugin manager
+                let file_types: Vec<plugin_editor_api::FileTypeDefinition> =
+                    if let Some(pm_lock) = plugin_manager::global() {
+                        pm_lock
+                            .read()
+                            .file_type_registry()
+                            .get_all_file_types()
+                            .into_iter()
+                            .cloned()
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                new_drawer.update(cx, |d, cx| {
+                    d.update_file_types(file_types);
+                    cx.notify();
+                });
+
                 let file_manager_window =
                     cx.new(|cx| ui_file_manager::FileManagerWindow::new(new_drawer, window, cx));
                 cx.new(|cx| Root::new(file_manager_window.into(), window, cx))

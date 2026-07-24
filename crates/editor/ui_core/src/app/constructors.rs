@@ -3,7 +3,7 @@
 use engine_backend::services::RustAnalyzerManager;
 use gpui::{AppContext, Context, Entity, Window};
 use plugin_manager::PluginManager;
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::VecDeque, path::PathBuf, sync::Arc};
 use ui::dock::DockItem;
 use ui::ContextModal;
 use ui_entry::EntryScreen;
@@ -435,6 +435,8 @@ impl PulsarApp {
                 // active_type_picker_editor: None, // Migrated to plugins
                 focus_handle: cx.focus_handle(),
                 popped_out_panels: Vec::new(),
+                navigation_history: VecDeque::new(),
+                navigation_history_index: 0,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
             },
         };

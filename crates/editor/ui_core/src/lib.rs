@@ -55,7 +55,7 @@ pub use ui::OpenSettings;
 /// actions to registry name lookups.
 pub fn init(cx: &mut gpui::App) {
     use gpui::UpdateGlobal as _;
-    use ui_common::menu::{AboutApp, Preferences, Settings, ShowDocumentation};
+    use ui_common::menu::{AboutApp, GoBack, GoForward, Preferences, Settings, ShowDocumentation};
 
     root::register_window_wrappers(cx);
 
@@ -69,6 +69,8 @@ pub fn init(cx: &mut gpui::App) {
     cx.bind_keys([
         toggle_palette,
         gpui::KeyBinding::new::<ToggleFileManager>("ctrl-space", ToggleFileManager {}, None),
+        gpui::KeyBinding::new::<GoBack>("alt-left", GoBack {}, None),
+        gpui::KeyBinding::new::<GoForward>("alt-right", GoForward {}, None),
     ]);
 
     // File-browser shortcuts (Ctrl/Cmd + C/X/V/A), scoped to the file manager focus.
