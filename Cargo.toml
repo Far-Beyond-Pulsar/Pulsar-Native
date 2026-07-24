@@ -272,11 +272,11 @@ engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
-# Point at the same local checkout as the Pulsar-Reflection patch below so every
+# Point at the same unified source as the Pulsar-Reflection patch below so every
 # `pulsar_reflection` reference (whichever repo/rev it came from) collapses to a
-# single copy. Patches do not chain, so this must be the path, not a git rev.
-pulsar_reflection = { path = "../Pulsar-Reflection/crates/pulsar_reflection" }
-pulsar_reflection_derive = { path = "../Pulsar-Reflection/crates/pulsar_reflection_derive" }
+# single copy. Uses the double-slash URL alias (see that patch for why).
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }
@@ -304,10 +304,16 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # TWO incompatible `pulsar_reflection`/`EngineClass` types in the graph. The
 # editor tolerates it (it never crosses the two), but a generated game's class
 # code does (it uses `pulsar_scenedb` components *and* `pulsar_reflection`
-# directly), so it fails to compile. Redirecting the whole Pulsar-Reflection
-# source to one local checkout collapses both revs to a single copy. 9b887f1 is a
-# strict descendant of cf37ed0 (fix-only commits), so SceneDB still builds.
-# Durable fix: bump SceneDB's pulsar_reflection pin to match and cascade the rev.
+# directly), so it fails to compile. Pinning the whole Pulsar-Reflection source
+# to one rev collapses both to a single copy. 9b887f1 is a strict descendant of
+# cf37ed0 (fix-only commits), so SceneDB still builds.
+#
+# The patch target URL and the replacement URL must be *different* source strings
+# or cargo rejects "points to the same source". The extra slash in
+# `Far-Beyond-Pulsar//Pulsar-Reflection` is a distinct string to cargo but the
+# same repo to git — so this stays a normal git rev (CI-safe), not a local path.
+# Durable fix: bump SceneDB's pulsar_reflection pin to match and cascade the rev,
+# then delete these patches.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
-pulsar_reflection = { path = "../Pulsar-Reflection/crates/pulsar_reflection" }
-pulsar_reflection_derive = { path = "../Pulsar-Reflection/crates/pulsar_reflection_derive" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
