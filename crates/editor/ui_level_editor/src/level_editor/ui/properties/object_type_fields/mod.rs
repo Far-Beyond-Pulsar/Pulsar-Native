@@ -210,16 +210,19 @@ impl Render for ObjectTypeFieldsSection {
             .content(move |_window, _cx| list.clone())
             .into_any_element();
 
+        // Fetched once and shared by every consumer below — `get_components`
+        // deep-clones each component's JSON, so one call per frame is the budget.
+        let attached = self.scene_db.get_components(&self.object_id);
+
         let component_hierarchy =
             ComponentHierarchyPanel::new(self.object_id.clone(), self.scene_db.clone());
         let state = self.state_arc.read();
         let component_panel = component_hierarchy
-            .render(&state, self.state_arc.clone(), add_popover, cx)
+            .render(&attached, &state, self.state_arc.clone(), add_popover, cx)
             .into_any_element();
         drop(state);
 
         // ── Diagnostic banner (no components / registry mismatch) ──────────
-        let attached = self.scene_db.get_components(&self.object_id);
         let diag_card = self.render_diag_card(&attached, cx);
 
         // ── Per-component property cards ───────────────────────────────────

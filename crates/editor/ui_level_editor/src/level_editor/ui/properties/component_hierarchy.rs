@@ -248,8 +248,14 @@ impl ComponentHierarchyPanel {
             .collect()
     }
 
+    /// Render the component tree.
+    ///
+    /// `components` is supplied by the caller rather than re-read from the
+    /// scene database: `get_components` deep-clones every component's JSON, and
+    /// the properties panel has already paid for that once this frame.
     pub fn render<V>(
         &self,
+        components: &[ComponentInstance],
         state: &LevelEditorState,
         state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
         add_button: AnyElement,
@@ -258,8 +264,7 @@ impl ComponentHierarchyPanel {
     where
         V: 'static + Render,
     {
-        let components = self.scene_db.get_components(&self.object_id);
-        let items = self.build_items(&components, None, &state_arc);
+        let items = self.build_items(components, None, &state_arc);
 
         // Get root-level components (those without parents)
         let root_ids: Vec<usize> = components

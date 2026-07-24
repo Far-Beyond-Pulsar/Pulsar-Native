@@ -10,7 +10,6 @@
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
 use pulsar_reflection::{REGISTRY, RUNTIME_TYPE_REGISTRY};
-use serde_json::Value;
 use std::any::Any;
 use std::sync::Arc;
 use ui::{h_flex, v_flex, ActiveTheme, Icon, IconName, Sizable};
@@ -19,22 +18,6 @@ use super::category_section::group_rows_by_category;
 use super::ObjectTypeFieldsSection;
 
 impl ObjectTypeFieldsSection {
-    /// Reads a property value for `class_name::property_name` from the scene
-    /// database, falling back to `default_json` if no value is stored yet.
-    pub(super) fn read_property_json(
-        &self,
-        class_name: &str,
-        property_name: &str,
-        default_json: &Value,
-    ) -> Value {
-        let components = self.scene_db.get_components(&self.object_id);
-        components
-            .iter()
-            .find(|c| c.class_name == class_name)
-            .and_then(|c| c.data.get(property_name).cloned())
-            .unwrap_or_else(|| default_json.clone())
-    }
-
     /// Builds a property-card element for every attached component that has at
     /// least one reflected property present in the registry.
     ///
@@ -77,16 +60,19 @@ impl ObjectTypeFieldsSection {
                 let object_id_for_props = self.object_id.clone();
 
                 for prop in &properties {
-                    let default_any = (prop.getter)(instance.as_ref());
-                    let current_json =
-                        self.read_property_json(class_name, prop.name, &Value::Null);
-                    let current_any: Box<dyn Any> = if current_json.is_null() {
-                        default_any
-                    } else {
-                        RUNTIME_TYPE_REGISTRY
-                            .deserialize_json_for_type(prop.type_info, current_json.clone())
-                            .unwrap_or_else(|_| default_any)
-                    };
+                    // Read straight from this component instance. Re-querying the
+                    // scene database here would deep-clone every component's JSON
+                    // once per property, per frame — and would also resolve to the
+                    // first component of the class rather than this one.
+                    let current_json = component.data.get(prop.name);
+                    let current_any: Box<dyn Any> = current_json
+                        .filter(|json| !json.is_null())
+                        .and_then(|json| {
+                            RUNTIME_TYPE_REGISTRY
+                                .deserialize_json_for_type(prop.type_info, json.clone())
+                                .ok()
+                        })
+                        .unwrap_or_else(|| (prop.getter)(instance.as_ref()));
 
                     // ── Write-back closure for the runtime renderer ──────────
                     let write_back = {
