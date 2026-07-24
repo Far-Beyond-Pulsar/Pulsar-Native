@@ -62,7 +62,7 @@ impl window_manager::PulsarWindow for SettingsWindow {
     }
 
     fn window_options(_: &()) -> gpui::WindowOptions {
-        window_manager::default_window_options(1000.0, 700.0) // Wider for sidebar layout
+        window_manager::default_window_options(1200.0, 700.0) // Wider for sidebar layout
     }
 
     fn build(_: (), window: &mut gpui::Window, cx: &mut gpui::App) -> gpui::Entity<Self> {

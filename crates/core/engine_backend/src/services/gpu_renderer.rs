@@ -227,6 +227,13 @@ impl GpuRenderer {
         }
     }
 
+    /// Request TAA history reset on the next rendered frame.
+    pub fn reset_taa(&mut self) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.reset_taa();
+        }
+    }
+
     /// Send a fire-and-forget command to the renderer thread (e.g. ToggleFeature).
     pub fn send_renderer_command(
         &self,

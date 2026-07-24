@@ -21,6 +21,7 @@ use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{ObjectType, SceneObjectSnapshot};
+use helio_pass_taa::TaaPass;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
 
@@ -77,6 +78,9 @@ pub struct HelioRenderer {
     cam_local_velocity: Vec3,
     viewport_size: (u32, u32),
 
+    // ── TAA reset ──
+    pub reset_taa_next_frame: bool,
+
     // ── Metrics ──
     pub metrics: Arc<Mutex<RenderMetrics>>,
     pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
@@ -111,6 +115,7 @@ impl HelioRenderer {
             command_receiver,
             pending_gizmo_mode: Arc::new(Mutex::new(None)),
             pending_deselect: Arc::new(AtomicBool::new(false)),
+            reset_taa_next_frame: false,
             inner: None,
             pending_errors: Arc::new(Mutex::new(Vec::new())),
             cam_pos: Vec3::new(8.0, 6.0, 12.0),
@@ -298,6 +303,35 @@ impl HelioRenderer {
             inner.editor_state.draw_gizmos(&mut inner.renderer);
             camera
         };
+
+        if self.reset_taa_next_frame {
+            self.reset_taa_next_frame = false;
+            let device = inner.device.clone();
+            let queue = inner.queue.clone();
+            if let Some(taa) = inner.renderer.find_pass_mut::<TaaPass>() {
+                let mut encoder =
+                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("TAA History Clear"),
+                    });
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Clear TAA History"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &taa.history_view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                queue.submit(std::iter::once(encoder.finish()));
+            }
+        }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         let t_render = Instant::now();
@@ -523,6 +557,11 @@ impl HelioRenderer {
             inner.editor_state.deselect();
             tracing::info!("[HELIO] Deselected");
         }
+    }
+
+    /// Request TAA history reset on the next rendered frame.
+    pub fn reset_taa(&mut self) {
+        self.reset_taa_next_frame = true;
     }
 
     /// Atomically select an object by SceneDb ID in both SceneDb and Helio EditorState.

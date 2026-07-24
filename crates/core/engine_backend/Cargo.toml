@@ -52,6 +52,7 @@ flume = { workspace = true }
 
 # Helio rendering (wgpu-based)
 helio.workspace = true
+helio-pass-taa.workspace = true
 helio-asset-compat = { workspace = true }
 helio-default-graphs = { workspace = true }
 glam.workspace = true

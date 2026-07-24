@@ -1262,6 +1262,12 @@ impl Panel for LevelEditorPanel {
     fn tab_unsaved(&self, _cx: &App) -> bool {
         self.shared_state.read().scene.has_unsaved_changes
     }
+
+    fn set_active(&mut self, active: bool, _window: &mut Window, cx: &mut App) {
+        if active {
+            self.viewport.update(cx, |v, _| v.mark_tab_activated());
+        }
+    }
 }
 
 ui_common::panel_boilerplate!(LevelEditorPanel);

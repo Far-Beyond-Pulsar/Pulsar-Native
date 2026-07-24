@@ -2930,6 +2930,7 @@ dependencies = [
  "helio 0.18.0",
  "helio-asset-compat",
  "helio-default-graphs",
+ "helio-pass-taa 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Helio?rev=04a38328c6d1329272072ade89d07098737df6b8)",
  "libloading 0.9.0",
  "lsp-types",
  "parking_lot",

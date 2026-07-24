@@ -322,15 +322,23 @@ impl Render for GameViewport {
             .child(
                 div()
                     .absolute()
-                    .top_2()
-                    .left_2()
-                    .px_2()
-                    .py_1()
-                    .rounded(px(4.0))
-                    .bg(gpui::rgba(0x000000a0))
-                    .text_color(cx.theme().foreground)
-                    .text_sm()
-                    .child(status),
+                    .top_0()
+                    .left_0()
+                    .right(px(12.0))
+                    .bottom(px(12.0))
+                    .child(
+                        div()
+                            .absolute()
+                            .top_2()
+                            .left_2()
+                            .px_2()
+                            .py_1()
+                            .rounded(px(4.0))
+                            .bg(gpui::rgba(0x000000a0))
+                            .text_color(cx.theme().foreground)
+                            .text_sm()
+                            .child(status),
+                    ),
             )
     }
 }

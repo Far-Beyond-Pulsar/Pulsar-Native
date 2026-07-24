@@ -27,6 +27,7 @@ pub struct HelioViewport {
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
+    tab_activated: bool,
     last_spike_report: Instant,
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
@@ -46,11 +47,18 @@ impl HelioViewport {
             surface: None,
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
+            tab_activated: true,
             last_spike_report: Instant::now(),
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
             max_frame_ms_since_report: 0.0,
         }
+    }
+
+    /// Mark the viewport as having been activated (e.g. tab switch).
+    /// The next render will reset TAA history to prevent ghosting.
+    pub fn mark_tab_activated(&mut self) {
+        self.tab_activated = true;
     }
 
     /// Handle an asset being dropped on the viewport
@@ -470,6 +478,10 @@ impl Render for HelioViewport {
                         profiling::profile_scope!("viewport_engine_render");
                         if let Ok(mut engine) = self.gpu_engine.try_lock() {
                             engine_lock_missed = false;
+                            if self.tab_activated {
+                                self.tab_activated = false;
+                                engine.reset_taa();
+                            }
                             engine.render_frame_to_surface(
                                 surface.device(),
                                 surface.queue(),

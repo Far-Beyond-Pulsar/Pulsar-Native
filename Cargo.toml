@@ -132,6 +132,7 @@ helio-asset-compat    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", re
 helio-default-graphs  = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "04a38328c6d1329272072ade89d07098737df6b8" }
 helio-planet-voxel-core = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "04a38328c6d1329272072ade89d07098737df6b8" }
 helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "04a38328c6d1329272072ade89d07098737df6b8" }
+helio-pass-taa = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "04a38328c6d1329272072ade89d07098737df6b8" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------
@@ -222,6 +223,8 @@ similar = "3"
 quinn = "0.11"
 rusqlite = { version = "0.32", features = ["bundled"] }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
+
+
 
 ###################################
 # Clippy Lints
