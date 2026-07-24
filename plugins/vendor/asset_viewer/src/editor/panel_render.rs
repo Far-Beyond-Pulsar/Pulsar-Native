@@ -788,13 +788,9 @@ impl AssetViewerPanel {
         let vp_aspect = vp_w as f32 / vp_h as f32;
 
         let (half_w, half_h) = if img_aspect > vp_aspect {
-            let hw = self.zoom;
-            let hh = hw / img_aspect;
-            (hw, hh)
+            (self.zoom, self.zoom * vp_aspect / img_aspect)
         } else {
-            let hh = self.zoom;
-            let hw = hh * img_aspect;
-            (hw, hh)
+            (self.zoom * img_aspect / vp_aspect, self.zoom)
         };
 
         let (px, py) = (self.pan_x, self.pan_y);
@@ -993,9 +989,9 @@ impl AssetViewerPanel {
                 let img_aspect = img_w as f32 / img_h as f32;
                 let vp_aspect = vp_w as f32 / vp_h as f32;
                 let (half_w, half_h) = if img_aspect > vp_aspect {
-                    (panel.zoom, panel.zoom / img_aspect)
+                    (panel.zoom, panel.zoom * vp_aspect / img_aspect)
                 } else {
-                    (panel.zoom * img_aspect, panel.zoom)
+                    (panel.zoom * img_aspect / vp_aspect, panel.zoom)
                 };
 
                 let dx = (event.position.x - last.x).to_f64() as f32;
@@ -1032,7 +1028,42 @@ impl AssetViewerPanel {
                     ScrollDelta::Lines(l) => l.y * 20.0,
                 };
                 let factor = (1.0 - delta_y * 0.002).clamp(0.5, 1.5);
-                panel.zoom = (panel.zoom * factor).clamp(0.01, 100.0);
+                let old_zoom = panel.zoom;
+                let new_zoom = (old_zoom * factor).clamp(0.01, 100.0);
+
+                let Some((img_w, img_h, _)) = panel.image_data else {
+                    panel.zoom = new_zoom;
+                    cx.notify();
+                    return;
+                };
+                let (vp_w, vp_h) = panel
+                    .surface_handle
+                    .as_ref()
+                    .map(|s| s.size())
+                    .unwrap_or((1, 1));
+                if vp_w > 0 && vp_h > 0 && img_w > 0 && img_h > 0 {
+                    let img_aspect = img_w as f32 / img_h as f32;
+                    let vp_aspect = vp_w as f32 / vp_h as f32;
+                    let (old_hw, old_hh) = if img_aspect > vp_aspect {
+                        (old_zoom, old_zoom * vp_aspect / img_aspect)
+                    } else {
+                        (old_zoom * img_aspect / vp_aspect, old_zoom)
+                    };
+                    let mx = (event.position.x.to_f64() as f32 / vp_w as f32) * 2.0 - 1.0;
+                    let my = -((event.position.y.to_f64() as f32 / vp_h as f32) * 2.0 - 1.0);
+                    let img_x = panel.pan_x + mx * old_hw;
+                    let img_y = panel.pan_y + my * old_hh;
+                    panel.zoom = new_zoom;
+                    let (new_hw, new_hh) = if img_aspect > vp_aspect {
+                        (new_zoom, new_zoom * vp_aspect / img_aspect)
+                    } else {
+                        (new_zoom * img_aspect / vp_aspect, new_zoom)
+                    };
+                    panel.pan_x = img_x - mx * new_hw;
+                    panel.pan_y = img_y - my * new_hh;
+                } else {
+                    panel.zoom = new_zoom;
+                }
                 cx.notify();
             });
         }
