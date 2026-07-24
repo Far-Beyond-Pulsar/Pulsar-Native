@@ -72,7 +72,7 @@ window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
-pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "6cd7e615c3697f0561831ba1a8d9270e5332fd4f" }
+pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
@@ -184,7 +184,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "6cd7e615c3697f0561831ba1a8d9270e5332fd4f" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
@@ -271,7 +271,7 @@ engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "6cd7e615c3697f0561831ba1a8d9270e5332fd4f" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }
