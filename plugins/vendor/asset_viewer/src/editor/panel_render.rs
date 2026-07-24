@@ -1,7 +1,7 @@
 use gpui::prelude::*;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
-use ui::h_flex;
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use solid_rs::registry::Registry;
 use solid_fbx::FbxLoader;
@@ -93,7 +93,7 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 "#;
 
 impl AssetViewerPanel {
-    fn rebuild_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+    pub(crate) fn rebuild_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
         if !self.needs_rebuild {
             return;
         }
@@ -999,7 +999,7 @@ impl AssetViewerPanel {
         surface.swap_buffers();
     }
 
-    fn render_content(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
+    pub(crate) fn render_content(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
         if self.needs_rebuild {
             return;
         }
@@ -1025,10 +1025,14 @@ impl Panel for AssetViewerPanel {
 
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         let name = self
-            .current_path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
+            .tab_title
+            .as_deref()
+            .or_else(|| {
+                self.current_path
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .and_then(|n| n.to_str())
+            })
             .unwrap_or("Asset Viewer")
             .to_string();
         h_flex()
@@ -1048,6 +1052,8 @@ impl Panel for AssetViewerPanel {
     fn inner_padding(&self, _cx: &App) -> bool {
         false
     }
+
+    fn set_active(&mut self, _active: bool, _window: &mut Window, _cx: &mut App) {}
 }
 
 impl Focusable for AssetViewerPanel {
@@ -1059,7 +1065,7 @@ impl Focusable for AssetViewerPanel {
 impl EventEmitter<PanelEvent> for AssetViewerPanel {}
 
 impl AssetViewerPanel {
-    fn on_orbit_mouse_down(
+    pub fn on_orbit_mouse_down(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1072,7 +1078,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_orbit_mouse_move(
+    pub fn on_orbit_mouse_move(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1094,7 +1100,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_orbit_mouse_up(
+    pub fn on_orbit_mouse_up(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1107,7 +1113,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_pan_mouse_down(
+    pub fn on_pan_mouse_down(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1120,7 +1126,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_pan_mouse_move(
+    pub fn on_pan_mouse_move(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1140,7 +1146,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_pan_mouse_up(
+    pub fn on_pan_mouse_up(
         cx: &mut Context<Self>,
     ) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1153,7 +1159,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_image_scroll(
+    pub fn on_image_scroll(
         cx: &mut Context<Self>,
     ) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1190,7 +1196,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_orbit_scroll(
+    pub fn on_orbit_scroll(
         cx: &mut Context<Self>,
     ) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1207,7 +1213,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_key_down(
+    pub fn on_key_down(
         cx: &mut Context<Self>,
     ) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1227,7 +1233,7 @@ impl AssetViewerPanel {
         }
     }
 
-    fn on_key_up(
+    pub fn on_key_up(
         cx: &mut Context<Self>,
     ) -> impl Fn(&KeyUpEvent, &mut Window, &mut App) {
         let entity = cx.entity().clone();
@@ -1250,67 +1256,27 @@ impl AssetViewerPanel {
 
 impl Render for AssetViewerPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        if self.needs_rebuild {
-            self.rebuild_surface(window, cx);
+        if self.workspace.is_none() {
+            self.initialize_workspace(window, cx);
         }
 
-        self.render_content(window, cx);
-
-        if self.is_3d {
-            div()
-                .size_full()
-                .min_h(px(200.0))
-                .bg(gpui::rgb(0x1a1a1a))
-                .track_focus(&self.focus_handle)
-                .on_mouse_down(MouseButton::Right, Self::on_orbit_mouse_down(cx))
-                .on_mouse_move(Self::on_orbit_mouse_move(cx))
-                .on_mouse_up(MouseButton::Right, Self::on_orbit_mouse_up(cx))
-                .on_mouse_up_out(MouseButton::Right, Self::on_orbit_mouse_up(cx))
-                .on_scroll_wheel(Self::on_orbit_scroll(cx))
-                .on_key_down(Self::on_key_down(cx))
-                .on_key_up(Self::on_key_up(cx))
-                .child(self.surface_element())
-        } else {
-            let entity = cx.entity().clone();
-            div()
-                .size_full()
-                .relative()
-                .bg(gpui::rgb(0x1a1a1a))
-                .on_mouse_down(MouseButton::Right, Self::on_pan_mouse_down(cx))
-                .on_mouse_move(Self::on_pan_mouse_move(cx))
-                .on_mouse_up(MouseButton::Right, Self::on_pan_mouse_up(cx))
-                .on_mouse_up_out(MouseButton::Right, Self::on_pan_mouse_up(cx))
-                .on_scroll_wheel(Self::on_image_scroll(cx))
-                .child(self.surface_element())
-                .child(
-                    div()
-                        .absolute()
-                        .top(px(8.0))
-                        .right(px(8.0))
-                        .flex()
-                        .gap_2()
-                        .child(
-                            div()
-                                .px_2()
-                                .py_1()
-                                .bg(gpui::rgb(0x444444))
-                                .rounded(px(4.0))
-                                .cursor_pointer()
-                                .child("Save")
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    move |_event, _window, cx| {
-                                        entity.update(cx, |panel, cx| {
-                                            if let Err(e) = panel.save_image() {
-                                                log::error!("Save failed: {}", e);
-                                            }
-                                            cx.notify();
-                                        });
-                                    },
-                                ),
-                        ),
-                )
-        }
+        v_flex()
+            .size_full()
+            .bg(cx.theme().background)
+            .child(div().flex_1().min_h_0().map(|el| {
+                if let Some(workspace) = &self.workspace {
+                    el.child(workspace.clone())
+                } else {
+                    el.child(
+                        div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child("Initializing..."),
+                    )
+                }
+            }))
     }
 }
 

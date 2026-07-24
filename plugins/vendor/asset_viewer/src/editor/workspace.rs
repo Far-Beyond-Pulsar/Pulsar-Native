@@ -1,160 +1,161 @@
 use gpui::*;
-use std::path::PathBuf;
 use std::sync::Arc;
-use ui::dock::{DockItem, Panel, PanelEvent, PanelView};
+use ui::dock::{DockChannel, DockItem, PanelEvent};
 use ui::workspace::Workspace;
+use ui::button::ButtonVariants as _;
+use ui::{h_flex, v_flex, ActiveTheme};
 
 use super::panel::AssetViewerPanel;
-use super::workspace_panels::ImagePropertiesPanel;
+use super::workspace_panels::AssetPropertiesPanel;
 
-pub struct ImageViewerWorkspace {
-    pub workspace: Entity<Workspace>,
-    pub viewer: Entity<AssetViewerPanel>,
-    pub properties: Entity<ImagePropertiesPanel>,
-    pub focus_handle: FocusHandle,
-}
+impl AssetViewerPanel {
+    pub fn initialize_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.workspace.is_some() {
+            return;
+        }
 
-impl ImageViewerWorkspace {
-    pub fn new(
-        file_path: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
-        let viewer =
-            cx.new(|cx| AssetViewerPanel::new(file_path, window, cx));
-        let properties = cx.new(|cx| ImagePropertiesPanel::new(viewer.downgrade(), cx));
+        let ew = cx.entity().downgrade();
 
-        let focus_handle = cx.focus_handle();
+        let workspace = cx.new(|cx| {
+            Workspace::new_with_channel(
+                "asset-viewer-workspace",
+                DockChannel(1),
+                window,
+                cx,
+            )
+        });
 
-        let workspace_entity = cx.new(|cx| {
-            let mut ws = Workspace::new("image-viewer-workspace", window, cx);
-            let dock_area_weak = ws.dock_area().downgrade();
+        workspace.update(cx, |workspace, cx| {
+            let dock_area_weak = workspace.dock_area().downgrade();
+
+            let viewport =
+                cx.new(|cx| ViewportPanel::new(ew.clone(), window, cx));
+            let properties =
+                cx.new(|cx| AssetPropertiesPanel::new(ew, cx));
 
             let center = DockItem::tabs(
-                vec![Arc::new(viewer.clone()) as Arc<dyn PanelView>],
-                None,
+                vec![Arc::new(viewport) as Arc<dyn ui::dock::PanelView>],
+                Some(0),
                 &dock_area_weak,
                 window,
                 cx,
             );
 
             let right = DockItem::tabs(
-                vec![Arc::new(properties.clone()) as Arc<dyn PanelView>],
-                None,
+                vec![Arc::new(properties) as Arc<dyn ui::dock::PanelView>],
+                Some(0),
                 &dock_area_weak,
                 window,
                 cx,
             );
 
-            ws.initialize(center, None, Some(right), None, window, cx);
-            ws
+            workspace.initialize(center, None, Some(right), None, window, cx);
         });
 
+        self.workspace = Some(workspace);
+    }
+}
+
+pub struct ViewportPanel {
+    editor: WeakEntity<AssetViewerPanel>,
+    focus_handle: FocusHandle,
+}
+
+impl ViewportPanel {
+    pub fn new(editor: WeakEntity<AssetViewerPanel>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
         Self {
-            workspace: workspace_entity,
-            viewer,
-            properties,
-            focus_handle,
+            editor,
+            focus_handle: cx.focus_handle(),
         }
     }
 }
 
-impl EventEmitter<PanelEvent> for ImageViewerWorkspace {}
+impl EventEmitter<PanelEvent> for ViewportPanel {}
 
-impl Render for ImageViewerWorkspace {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap_2()
-                    .px_4()
-                    .py_1()
-                    .bg(gpui::rgb(0x222222))
-                    .child(
-                        div()
-                            .px_3()
-                            .py_1()
-                            .bg(gpui::rgb(0x555555))
-                            .rounded(px(4.0))
-                            .cursor_pointer()
-                            .child("Save")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                {
-                                    let viewer = self.viewer.clone();
-                                    move |_event, _window, cx| {
-                                        viewer.update(cx, |panel, cx| {
-                                            if let Err(e) = panel.save_image() {
-                                                log::error!("Save failed: {}", e);
-                                            }
-                                            cx.notify();
-                                        });
-                                    }
-                                },
-                            ),
-                    )
-                    .child(
-                        div()
-                            .px_3()
-                            .py_1()
-                            .bg(gpui::rgb(0x555555))
-                            .rounded(px(4.0))
-                            .cursor_pointer()
-                            .child("Zoom to Fit")
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                {
-                                    let viewer = self.viewer.clone();
-                                    move |_event, window, cx| {
-                                        viewer.update(cx, |panel, cx| {
-                                            panel.zoom_to_fit(window, cx);
-                                        });
-                                    }
-                                },
-                            ),
-                    ),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .overflow_hidden()
-                    .child(self.workspace.clone()),
-            )
-    }
-}
-
-impl Focusable for ImageViewerWorkspace {
+impl Focusable for ViewportPanel {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
 
-impl Panel for ImageViewerWorkspace {
+impl Render for ViewportPanel {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if let Some(editor) = self.editor.upgrade() {
+            editor.update(cx, |editor, cx| {
+                if editor.needs_rebuild {
+                    editor.rebuild_surface(window, cx);
+                }
+                editor.render_content(window, cx);
+
+                let surface_elem: gpui::AnyElement =
+                    if let Some(surface) = &editor.surface_handle {
+                        gpui::wgpu_surface(surface.clone())
+                            .defer_resize_until_mouse_up(true)
+                            .size_full()
+                            .into_any_element()
+                    } else {
+                        div()
+                            .size_full()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .text_color(gpui::rgb(0x888888))
+                            .child("Loading...")
+                            .into_any_element()
+                    };
+
+                if editor.is_3d {
+                    div()
+                        .size_full()
+                        .min_h(px(200.0))
+                        .bg(gpui::rgb(0x1a1a1a))
+                        .track_focus(&editor.focus_handle)
+                        .on_mouse_down(gpui::MouseButton::Right, AssetViewerPanel::on_orbit_mouse_down(cx))
+                        .on_mouse_move(AssetViewerPanel::on_orbit_mouse_move(cx))
+                        .on_mouse_up(gpui::MouseButton::Right, AssetViewerPanel::on_orbit_mouse_up(cx))
+                        .on_mouse_up_out(gpui::MouseButton::Right, AssetViewerPanel::on_orbit_mouse_up(cx))
+                        .on_scroll_wheel(AssetViewerPanel::on_orbit_scroll(cx))
+                        .on_key_down(AssetViewerPanel::on_key_down(cx))
+                        .on_key_up(AssetViewerPanel::on_key_up(cx))
+                        .child(surface_elem)
+                        .into_any_element()
+                } else {
+                    div()
+                        .size_full()
+                        .bg(gpui::rgb(0x1a1a1a))
+                        .track_focus(&editor.focus_handle)
+                        .on_mouse_down(gpui::MouseButton::Right, AssetViewerPanel::on_pan_mouse_down(cx))
+                        .on_mouse_move(AssetViewerPanel::on_pan_mouse_move(cx))
+                        .on_mouse_up(gpui::MouseButton::Right, AssetViewerPanel::on_pan_mouse_up(cx))
+                        .on_mouse_up_out(gpui::MouseButton::Right, AssetViewerPanel::on_pan_mouse_up(cx))
+                        .on_scroll_wheel(AssetViewerPanel::on_image_scroll(cx))
+                        .child(surface_elem)
+                        .into_any_element()
+                }
+            })
+        } else {
+            div()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child("Editor not available")
+                .into_any_element()
+        }
+    }
+}
+
+impl ui::dock::Panel for ViewportPanel {
     fn panel_name(&self) -> &'static str {
-        "Asset Viewer"
+        "asset-viewer-viewport"
     }
 
-    fn panel_file_path(&self, cx: &App) -> Option<PathBuf> {
-        self.viewer.read(cx).current_path.clone()
-    }
-
-    fn title(&self, _window: &Window, cx: &App) -> AnyElement {
-        let name = self
-            .viewer
-            .read(cx)
-            .current_path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .unwrap_or("Asset Viewer")
-            .to_string();
-        div().text_sm().child(name).into_any_element()
+    fn title(&self, _window: &Window, _cx: &App) -> gpui::AnyElement {
+        h_flex()
+            .gap_2()
+            .items_center()
+            .child(div().text_sm().child("Viewport"))
+            .into_any_element()
     }
 
     fn dump(&self, _cx: &App) -> ui::dock::PanelState {
@@ -162,5 +163,13 @@ impl Panel for ImageViewerWorkspace {
             panel_name: self.panel_name().to_string(),
             ..Default::default()
         }
+    }
+
+    fn closable(&self, _cx: &App) -> bool {
+        false
+    }
+
+    fn inner_padding(&self, _cx: &App) -> bool {
+        false
     }
 }

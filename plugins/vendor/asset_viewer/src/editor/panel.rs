@@ -8,6 +8,9 @@ pub struct AssetViewerPanel {
     pub image_data: Option<(u32, u32, Vec<u8>)>,
     pub modified: bool,
     pub save_path: Option<PathBuf>,
+    pub tab_title: Option<String>,
+    pub workspace: Option<Entity<ui::workspace::Workspace>>,
+    pub subscriptions: Vec<Subscription>,
 
     pub device: Option<wgpu::Device>,
     pub queue: Option<wgpu::Queue>,
@@ -49,7 +52,7 @@ pub struct AssetViewerPanel {
     pub last_drag_pos: Option<Point<Pixels>>,
     pub orbit_target: [f32; 3],
     pub move_speed: f32,
-    pub keys: [bool; 6],  // W,A,S,D,Space,Ctrl
+    pub keys: [bool; 6],
     pub needs_rebuild: bool,
 
     pub pan_x: f32,
@@ -84,11 +87,7 @@ impl AssetViewerPanel {
         cx.notify();
     }
 
-    pub fn new(
-        file_path: PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let ext = file_path
             .extension()
             .and_then(|e| e.to_str())
@@ -113,13 +112,21 @@ impl AssetViewerPanel {
             None
         };
 
+        let tab_title = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|s| s.to_string());
+
         Self {
             focus_handle: cx.focus_handle(),
             current_path: Some(file_path.clone()),
             is_3d,
             image_data,
             modified: false,
-            save_path: Some(file_path.clone()),
+            save_path: Some(file_path),
+            tab_title,
+            workspace: None,
+            subscriptions: Vec::new(),
             device: None,
             queue: None,
             surface_config: None,
@@ -143,7 +150,6 @@ impl AssetViewerPanel {
             quad_texture: None,
             quad_sampler: None,
             quad_vertex_buffer: None,
-
             checker_pipeline: None,
             checker_bind_group_layout: None,
             checker_bind_group: None,

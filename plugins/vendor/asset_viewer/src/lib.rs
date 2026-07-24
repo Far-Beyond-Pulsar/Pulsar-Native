@@ -103,7 +103,7 @@ impl AssetViewerPlugin {
         log::info!("Creating asset viewer for {:?}", file_path);
 
         let panel = cx.new(|cx| {
-            editor::workspace::ImageViewerWorkspace::new(file_path.clone(), window, cx)
+            editor::panel::AssetViewerPanel::new(file_path.clone(), window, cx)
         });
 
         let panel_arc: Arc<dyn PanelView> = Arc::new(panel.clone());
