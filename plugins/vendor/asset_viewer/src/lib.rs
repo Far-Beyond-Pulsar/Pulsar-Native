@@ -125,4 +125,7 @@ impl AssetViewerPlugin {
     }
 }
 
+// Static built-ins are instantiated through the Rust API and must not emit the
+// process-global dynamic loader symbols shared by every plugin.
+#[cfg(not(feature = "builtin"))]
 export_plugin!(AssetViewerPlugin);
