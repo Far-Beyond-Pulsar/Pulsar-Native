@@ -141,15 +141,8 @@ impl ImportConfigurator {
         let write_back = Arc::new(move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
             if let Ok(mut v) = vs.lock() {
                 v.insert(k.clone(), new_val);
-                // Drop the guard before re-locking below.
-                drop(v);
-            }
-            if let Ok(g) = vs.lock() {
-                if let Some(stored) = g.get(&k) {
-                    if let Ok(json) =
-                        RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref())
-                    {
-                        drop(g);
+                if let Some(stored) = v.get(&k) {
+                    if let Ok(json) = RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref()) {
                         if let Ok(mut j) = fj.lock() {
                             j.insert(k.clone(), json);
                         }
@@ -210,8 +203,8 @@ impl Render for ImportConfigurator {
 
         v_flex()
             .track_focus(&self.focus_handle)
-            .gap_4()
-            .w(px(480.))
+            .size_full()
+            .overflow_hidden()
             .p_4()
             .child(
                 v_flex()
@@ -232,9 +225,11 @@ impl Render for ImportConfigurator {
             )
             .child(
                 v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .py_2()
                     .gap_2()
                     .overflow_y_scroll()
-                    .max_h(px(400.))
                     .children({
                         let fields = std::mem::take(&mut self.fields);
                         let result: Vec<_> = fields
