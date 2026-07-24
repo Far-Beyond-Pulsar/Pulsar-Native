@@ -133,7 +133,6 @@ impl AssetViewerPanel {
             }
         }
         self.image_data = Some((h, w, out));
-        self.zoom_to_fit_after_edit();
         self.edit_apply();
     }
 
@@ -148,7 +147,6 @@ impl AssetViewerPanel {
             }
         }
         self.image_data = Some((h, w, out));
-        self.zoom_to_fit_after_edit();
         self.edit_apply();
     }
 
@@ -240,7 +238,6 @@ impl AssetViewerPanel {
         let img = image::RgbaImage::from_raw(w, h, pixels.clone()).unwrap();
         let resized = image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Lanczos3);
         self.image_data = Some((new_w, new_h, resized.into_raw()));
-        self.zoom_to_fit_after_edit();
         self.edit_apply();
     }
 
