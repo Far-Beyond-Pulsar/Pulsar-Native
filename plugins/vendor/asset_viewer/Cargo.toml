@@ -23,3 +23,7 @@ tracing = { workspace = true }
 image = { workspace = true }
 bytemuck = { workspace = true }
 parking_lot = { workspace = true }
+glam = { workspace = true }
+
+solid-rs =  { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6" }
+solid-fbx = { git = "https://github.com/Far-Beyond-Pulsar/Solid3D", rev = "b9eb501f0d3b735d407c7b566a9de8ef2ab9ebf6" }

@@ -3,26 +3,41 @@ use gpui::*;
 use ui::dock::{Panel, PanelEvent};
 use ui::h_flex;
 
+use solid_rs::registry::Registry;
+use solid_fbx::FbxLoader;
+
 use super::panel::AssetViewerPanel;
 
-static WIRE_VERTEX_SRC: &str = r#"
+static MESH_VERTEX_SRC: &str = r#"
 struct Uniforms {
     view_proj: mat4x4<f32>,
 };
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
+struct VertexInput {
+    @location(0) position: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+};
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
+    @location(0) world_normal: vec3<f32>,
 };
 @vertex
-fn vs_main(@location(0) position: vec3<f32>) -> VertexOutput {
+fn vs_main(input: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-    out.position = uniforms.view_proj * vec4(position, 1.0);
+    out.position = uniforms.view_proj * vec4(input.position, 1.0);
+    out.world_normal = input.normal;
     return out;
 }
+
 @fragment
-fn fs_main() -> @location(0) vec4<f32> {
-    return vec4(0.0, 0.74, 0.83, 1.0);
+fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
+    let n = normalize(world_normal);
+    let light_dir = normalize(vec3(0.5, 1.0, 0.8));
+    let diffuse = max(dot(n, light_dir), 0.0);
+    let ambient = 0.3;
+    let intensity = ambient + diffuse * 0.7;
+    return vec4(vec3(intensity * 0.74, intensity * 0.83, intensity), 1.0);
 }
 "#;
 
@@ -86,29 +101,46 @@ impl AssetViewerPanel {
         self.surface_config = Some(config.clone());
         self.surface_handle = Some(surface);
 
-        self.setup_wireframe_pipeline(&device, &config);
-        self.setup_quad_pipeline(&device, &queue, &config);
-        self.upload_wireframe_mesh(&device, &queue);
-        self.upload_image_texture(&device, &queue);
+        if self.is_3d {
+            let depth = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("depth buffer"),
+                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Depth32Float,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let dv = depth.create_view(&wgpu::TextureViewDescriptor::default());
+            self.depth_texture = Some(depth);
+            self.depth_view = Some(dv);
+
+            self.setup_mesh_pipeline(&device, &config);
+            self.load_and_upload_mesh(&device, &queue);
+        } else {
+            self.setup_quad_pipeline(&device, &queue, &config);
+            self.upload_image_texture(&device, &queue);
+        }
 
         self.needs_rebuild = false;
     }
 
-    fn setup_wireframe_pipeline(
+    fn setup_mesh_pipeline(
         &mut self,
         device: &wgpu::Device,
         config: &wgpu::SurfaceConfiguration,
     ) {
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("wire uniform buffer"),
+            label: Some("mesh uniform buffer"),
             size: 64,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.wire_uniform_buffer = Some(uniform_buffer);
+        self.mesh_uniform_buffer = Some(uniform_buffer);
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("wire bind group layout"),
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("mesh bind group layout"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX,
@@ -120,45 +152,51 @@ impl AssetViewerPanel {
                 count: None,
             }],
         });
-        self.bind_group_layout = Some(bind_group_layout);
 
-        let uniform_buffer_ref = self.wire_uniform_buffer.as_ref().unwrap();
+        let uniform_buf = self.mesh_uniform_buffer.as_ref().unwrap();
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("wire bind group"),
-            layout: self.bind_group_layout.as_ref().unwrap(),
+            label: Some("mesh bind group"),
+            layout: &bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: uniform_buffer_ref.as_entire_binding(),
+                resource: uniform_buf.as_entire_binding(),
             }],
         });
-        self.wire_bind_group = Some(bind_group);
+        self.mesh_bind_group = Some(bind_group);
 
         let vs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("wire vertex"),
-            source: wgpu::ShaderSource::Wgsl(WIRE_VERTEX_SRC.into()),
+            label: Some("mesh vertex"),
+            source: wgpu::ShaderSource::Wgsl(MESH_VERTEX_SRC.into()),
         });
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("wire pipeline layout"),
-            bind_group_layouts: &[Some(self.bind_group_layout.as_ref().unwrap())],
+            label: Some("mesh pipeline layout"),
+            bind_group_layouts: &[Some(&bgl)],
             immediate_size: 0,
         });
 
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("wire pipeline"),
+            label: Some("mesh pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &vs_module,
                 entry_point: Some("vs_main"),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: 12,
+                    array_stride: 24,
                     step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[wgpu::VertexAttribute {
-                        format: wgpu::VertexFormat::Float32x3,
-                        offset: 0,
-                        shader_location: 0,
-                    }],
+                    attributes: &[
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 0,
+                            shader_location: 0,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x3,
+                            offset: 12,
+                            shader_location: 1,
+                        },
+                    ],
                 })],
             },
             fragment: Some(wgpu::FragmentState {
@@ -172,10 +210,10 @@ impl AssetViewerPanel {
                 })],
             }),
             primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::LineList,
+                topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
+                cull_mode: Some(wgpu::Face::Back),
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
@@ -185,7 +223,7 @@ impl AssetViewerPanel {
             multiview_mask: None,
             cache: None,
         });
-        self.wire_pipeline = Some(pipeline);
+        self.mesh_pipeline = Some(pipeline);
     }
 
     fn setup_quad_pipeline(
@@ -206,19 +244,14 @@ impl AssetViewerPanel {
         });
         self.quad_sampler = Some(sampler);
 
-        let vertices: [[f32; 4]; 4] = [
-            [-1.0, -1.0, 0.0, 1.0],
-            [1.0, -1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0, 0.0],
-            [-1.0, 1.0, 0.0, 0.0],
-        ];
+        let dummy: [[f32; 4]; 6] = [[0.0; 4]; 6];
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("quad vertex buffer"),
-            size: std::mem::size_of_val(&vertices) as u64,
+            size: std::mem::size_of_val(&dummy) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&vertices));
+        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&dummy));
         self.quad_vertex_buffer = Some(vb);
 
         let vs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -230,7 +263,7 @@ impl AssetViewerPanel {
             source: wgpu::ShaderSource::Wgsl(QUAD_FRAGMENT_SRC.into()),
         });
 
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("quad bind group layout"),
             entries: &[
                 wgpu::BindGroupLayoutEntry {
@@ -251,7 +284,7 @@ impl AssetViewerPanel {
                 },
             ],
         });
-        self.quad_bind_group_layout = Some(bind_group_layout);
+        self.quad_bind_group_layout = Some(bgl);
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("quad pipeline layout"),
@@ -310,30 +343,78 @@ impl AssetViewerPanel {
         self.quad_pipeline = Some(pipeline);
     }
 
-    fn upload_wireframe_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
-        let edges: [[f32; 3]; 24] = [
-            [-1.0, -1.0, -1.0], [1.0, -1.0, -1.0],
-            [1.0, -1.0, -1.0], [1.0, -1.0, 1.0],
-            [1.0, -1.0, 1.0], [-1.0, -1.0, 1.0],
-            [-1.0, -1.0, 1.0], [-1.0, -1.0, -1.0],
-            [-1.0, 1.0, -1.0], [1.0, 1.0, -1.0],
-            [1.0, 1.0, -1.0], [1.0, 1.0, 1.0],
-            [1.0, 1.0, 1.0], [-1.0, 1.0, 1.0],
-            [-1.0, 1.0, 1.0], [-1.0, 1.0, -1.0],
-            [-1.0, -1.0, -1.0], [-1.0, 1.0, -1.0],
-            [1.0, -1.0, -1.0], [1.0, 1.0, -1.0],
-            [1.0, -1.0, 1.0], [1.0, 1.0, 1.0],
-            [-1.0, -1.0, 1.0], [-1.0, 1.0, 1.0],
-        ];
+    fn load_and_upload_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let Some(ref path) = self.current_path else { return };
+
+        let mut registry = solid_rs::registry::Registry::new();
+        registry.register_loader(solid_fbx::FbxLoader);
+
+        let solid_scene = match registry.load_file(path) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("Failed to load FBX {:?}: {}", path, e);
+                return;
+            }
+        };
+
+        let mut verts: Vec<f32> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+
+        for mesh in &solid_scene.meshes {
+            for prim in &mesh.primitives {
+                if prim.topology != solid_rs::geometry::Topology::TriangleList {
+                    continue;
+                }
+                let base = (verts.len() / 6) as u32;
+                for v in &mesh.vertices {
+                    verts.push(v.position.x);
+                    verts.push(v.position.y);
+                    verts.push(v.position.z);
+                    let (nx, ny, nz) = match v.normal {
+                        Some(n) => (n.x, n.y, n.z),
+                        None => (0.0, 1.0, 0.0),
+                    };
+                    verts.push(nx);
+                    verts.push(ny);
+                    verts.push(nz);
+                }
+                for i in &prim.indices {
+                    indices.push(base + i);
+                }
+            }
+        }
+
+        if verts.is_empty() || indices.is_empty() {
+            log::error!("FBX {:?} has no renderable triangles", path);
+            return;
+        }
+
         let vb = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("wire vertex buffer"),
-            size: std::mem::size_of_val(&edges) as u64,
+            label: Some("mesh vertex buffer"),
+            size: (verts.len() * 4) as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&edges));
-        self.wire_vertex_buffer = Some(vb);
-        self.wire_index_count = 24;
+        queue.write_buffer(&vb, 0, bytemuck::cast_slice(&verts));
+
+        let ib = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mesh index buffer"),
+            size: (indices.len() * 4) as u64,
+            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&ib, 0, bytemuck::cast_slice(&indices));
+
+        self.mesh_vertex_buffer = Some(vb);
+        self.mesh_index_buffer = Some(ib);
+        self.mesh_index_count = indices.len() as u32;
+
+        log::info!(
+            "Loaded FBX {:?}: {} verts, {} indices",
+            path,
+            verts.len() / 6,
+            indices.len()
+        );
     }
 
     fn upload_image_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
@@ -452,7 +533,7 @@ impl AssetViewerPanel {
         ]
     }
 
-    fn render_wireframe(&mut self) {
+    fn render_mesh(&mut self) {
         let Some(device) = &self.device else { return };
         let Some(queue) = &self.queue else { return };
         let Some(surface) = &self.surface_handle else { return };
@@ -460,6 +541,11 @@ impl AssetViewerPanel {
         if height == 0 {
             return;
         }
+        let Some(vb) = &self.mesh_vertex_buffer else { return };
+        let Some(ib) = &self.mesh_index_buffer else { return };
+        if self.mesh_index_count == 0 { return; }
+        let Some(pipeline) = &self.mesh_pipeline else { return };
+        let Some(bg) = &self.mesh_bind_group else { return };
 
         let view = match surface.back_buffer_view() {
             Some(v) => v,
@@ -479,17 +565,18 @@ impl AssetViewerPanel {
             }
         }
 
-        if let Some(buf) = &self.wire_uniform_buffer {
+        if let Some(buf) = &self.mesh_uniform_buffer {
             queue.write_buffer(buf, 0, bytemuck::bytes_of(&view_proj));
         }
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("wire encoder"),
+            label: Some("mesh encoder"),
         });
 
+        let depth_view = self.depth_view.as_ref();
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("wire pass"),
+                label: Some("mesh pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     depth_slice: None,
@@ -504,21 +591,23 @@ impl AssetViewerPanel {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: depth_view.map(|dv| wgpu::RenderPassDepthStencilAttachment {
+                    view: dv,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if let (Some(pipeline), Some(bg), Some(vb)) = (
-                &self.wire_pipeline,
-                &self.wire_bind_group,
-                &self.wire_vertex_buffer,
-            ) {
-                rpass.set_pipeline(pipeline);
-                rpass.set_bind_group(0, bg, &[]);
-                rpass.set_vertex_buffer(0, vb.slice(..));
-                rpass.draw(0..self.wire_index_count, 0..1);
-            }
+            rpass.set_pipeline(pipeline);
+            rpass.set_bind_group(0, bg, &[]);
+            rpass.set_vertex_buffer(0, vb.slice(..));
+            rpass.set_index_buffer(ib.slice(..), wgpu::IndexFormat::Uint32);
+            rpass.draw_indexed(0..self.mesh_index_count, 0, 0..1);
         }
 
         queue.submit(Some(encoder.finish()));
@@ -532,6 +621,38 @@ impl AssetViewerPanel {
         let Some(pipeline) = &self.quad_pipeline else { return };
         let Some(bg) = &self.quad_bind_group else { return };
         let Some(vb) = &self.quad_vertex_buffer else { return };
+        let Some((img_w, img_h, _)) = self.image_data else { return };
+
+        let (vp_w, vp_h) = surface.size();
+        if vp_w == 0 || vp_h == 0 || img_w == 0 || img_h == 0 {
+            return;
+        }
+
+        let img_aspect = img_w as f32 / img_h as f32;
+        let vp_aspect = vp_w as f32 / vp_h as f32;
+
+        let (half_w, half_h) = if img_aspect > vp_aspect {
+            let hw = self.zoom;
+            let hh = hw / img_aspect;
+            (hw, hh)
+        } else {
+            let hh = self.zoom;
+            let hw = hh * img_aspect;
+            (hw, hh)
+        };
+
+        let (px, py) = (self.pan_x, self.pan_y);
+
+        let verts: [[f32; 4]; 6] = [
+            [-half_w + px, -half_h + py, 0.0, 1.0],
+            [ half_w + px, -half_h + py, 1.0, 1.0],
+            [ half_w + px,  half_h + py, 1.0, 0.0],
+            [-half_w + px, -half_h + py, 0.0, 1.0],
+            [ half_w + px,  half_h + py, 1.0, 0.0],
+            [-half_w + px,  half_h + py, 0.0, 0.0],
+        ];
+
+        queue.write_buffer(vb, 0, bytemuck::cast_slice(&verts));
 
         let view = match surface.back_buffer_view() {
             Some(v) => v,
@@ -567,7 +688,7 @@ impl AssetViewerPanel {
             rpass.set_pipeline(pipeline);
             rpass.set_bind_group(0, bg, &[]);
             rpass.set_vertex_buffer(0, vb.slice(..));
-            rpass.draw(0..4, 0..1);
+            rpass.draw(0..6, 0..1);
         }
 
         queue.submit(Some(encoder.finish()));
@@ -582,7 +703,7 @@ impl AssetViewerPanel {
             return;
         }
         if self.is_3d {
-            self.render_wireframe();
+            self.render_mesh();
         } else {
             self.render_quad();
         }
@@ -682,6 +803,85 @@ impl AssetViewerPanel {
         }
     }
 
+    fn on_pan_mouse_down(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                panel.panning = true;
+                panel.last_pan_pos = Some(event.position);
+                cx.notify();
+            });
+        }
+    }
+
+    fn on_pan_mouse_move(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                if !panel.panning {
+                    return;
+                }
+                let Some(last) = panel.last_pan_pos else { return };
+                let Some((img_w, img_h, _)) = panel.image_data else { return };
+                let (vp_w, vp_h) = panel
+                    .surface_handle
+                    .as_ref()
+                    .map(|s| s.size())
+                    .unwrap_or((1, 1));
+                if vp_w == 0 || vp_h == 0 || img_w == 0 || img_h == 0 { return; }
+
+                let img_aspect = img_w as f32 / img_h as f32;
+                let vp_aspect = vp_w as f32 / vp_h as f32;
+                let (half_w, half_h) = if img_aspect > vp_aspect {
+                    (panel.zoom, panel.zoom / img_aspect)
+                } else {
+                    (panel.zoom * img_aspect, panel.zoom)
+                };
+
+                let dx = (event.position.x - last.x).to_f64() as f32;
+                let dy = (event.position.y - last.y).to_f64() as f32;
+                panel.pan_x += dx * (2.0 * half_w / vp_w as f32);
+                panel.pan_y -= dy * (2.0 * half_h / vp_h as f32);
+                panel.last_pan_pos = Some(event.position);
+                cx.notify();
+            });
+        }
+    }
+
+    fn on_pan_mouse_up(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |_event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                panel.panning = false;
+                panel.last_pan_pos = None;
+                cx.notify();
+            });
+        }
+    }
+
+    fn on_image_scroll(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                let delta_y = match event.delta {
+                    ScrollDelta::Pixels(p) => p.y.to_f64() as f32,
+                    ScrollDelta::Lines(l) => l.y * 20.0,
+                };
+                let factor = (1.0 - delta_y * 0.002).clamp(0.5, 1.5);
+                panel.zoom = (panel.zoom * factor).clamp(0.01, 100.0);
+                cx.notify();
+            });
+        }
+    }
+
     fn on_orbit_scroll(
         cx: &mut Context<Self>,
     ) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
@@ -723,6 +923,11 @@ impl Render for AssetViewerPanel {
             div()
                 .size_full()
                 .bg(gpui::rgb(0x1a1a1a))
+                .on_mouse_down(MouseButton::Right, Self::on_pan_mouse_down(cx))
+                .on_mouse_move(Self::on_pan_mouse_move(cx))
+                .on_mouse_up(MouseButton::Right, Self::on_pan_mouse_up(cx))
+                .on_mouse_up_out(MouseButton::Right, Self::on_pan_mouse_up(cx))
+                .on_scroll_wheel(Self::on_image_scroll(cx))
                 .child(self.surface_element())
         }
     }

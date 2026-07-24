@@ -516,6 +516,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "glam 0.33.2",
  "gpui-ce",
  "image",
  "log",
@@ -523,6 +524,8 @@ dependencies = [
  "plugin_editor_api",
  "serde",
  "serde_json",
+ "solid-fbx",
+ "solid-rs",
  "tracing",
  "ui",
  "ui_common",

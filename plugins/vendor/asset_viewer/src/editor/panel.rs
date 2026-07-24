@@ -11,13 +11,22 @@ pub struct AssetViewerPanel {
     pub queue: Option<wgpu::Queue>,
     pub surface_config: Option<wgpu::SurfaceConfiguration>,
     pub surface_handle: Option<gpui::WgpuSurfaceHandle>,
-    pub bind_group_layout: Option<wgpu::BindGroupLayout>,
 
+    pub wire_vertex_buffer: Option<wgpu::Buffer>,
+    pub wire_index_count: u32,
     pub wire_pipeline: Option<wgpu::RenderPipeline>,
     pub wire_bind_group: Option<wgpu::BindGroup>,
     pub wire_uniform_buffer: Option<wgpu::Buffer>,
-    pub wire_vertex_buffer: Option<wgpu::Buffer>,
-    pub wire_index_count: u32,
+
+    pub depth_texture: Option<wgpu::Texture>,
+    pub depth_view: Option<wgpu::TextureView>,
+
+    pub mesh_vertex_buffer: Option<wgpu::Buffer>,
+    pub mesh_index_buffer: Option<wgpu::Buffer>,
+    pub mesh_index_count: u32,
+    pub mesh_pipeline: Option<wgpu::RenderPipeline>,
+    pub mesh_bind_group: Option<wgpu::BindGroup>,
+    pub mesh_uniform_buffer: Option<wgpu::Buffer>,
 
     pub quad_pipeline: Option<wgpu::RenderPipeline>,
     pub quad_bind_group_layout: Option<wgpu::BindGroupLayout>,
@@ -32,6 +41,12 @@ pub struct AssetViewerPanel {
     pub orbiting: bool,
     pub last_drag_pos: Option<Point<Pixels>>,
     pub needs_rebuild: bool,
+
+    pub pan_x: f32,
+    pub pan_y: f32,
+    pub zoom: f32,
+    pub panning: bool,
+    pub last_pan_pos: Option<Point<Pixels>>,
 }
 
 impl AssetViewerPanel {
@@ -73,12 +88,19 @@ impl AssetViewerPanel {
             queue: None,
             surface_config: None,
             surface_handle: None,
-            bind_group_layout: None,
+            wire_vertex_buffer: None,
+            wire_index_count: 0,
             wire_pipeline: None,
             wire_bind_group: None,
             wire_uniform_buffer: None,
-            wire_vertex_buffer: None,
-            wire_index_count: 0,
+            depth_texture: None,
+            depth_view: None,
+            mesh_vertex_buffer: None,
+            mesh_index_buffer: None,
+            mesh_index_count: 0,
+            mesh_pipeline: None,
+            mesh_bind_group: None,
+            mesh_uniform_buffer: None,
             quad_pipeline: None,
             quad_bind_group_layout: None,
             quad_bind_group: None,
@@ -91,6 +113,11 @@ impl AssetViewerPanel {
             orbiting: false,
             last_drag_pos: None,
             needs_rebuild: true,
+            pan_x: 0.0,
+            pan_y: 0.0,
+            zoom: 1.0,
+            panning: false,
+            last_pan_pos: None,
         }
     }
 }
