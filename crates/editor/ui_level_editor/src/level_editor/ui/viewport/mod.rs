@@ -1017,9 +1017,15 @@ impl ViewportPanel {
     where
         V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
     {
+        // Pad the overlay container by the scrollbar width (12px) so overlays
+        // don't sit underneath the scrollbar track.
+        let scrollbar_width = px(12.0);
         let mut overlays = div()
             .absolute()
-            .inset_0()
+            .top_0()
+            .left_0()
+            .right(scrollbar_width)
+            .bottom(scrollbar_width)
             // Top-left: Viewport options
             .child(
                 div()
