@@ -63,11 +63,14 @@ impl GpuRenderer {
         width: u32,
         height: u32,
         format: wgpu::TextureFormat,
-    ) {
-        if let Some(ref mut r) = self.helio_renderer {
-            r.render_frame(device, queue, view, width, height, format);
-        }
+    ) -> Option<wgpu::SubmissionIndex> {
+        let result = if let Some(ref mut r) = self.helio_renderer {
+            r.render_frame(device, queue, view, width, height, format)
+        } else {
+            None
+        };
         self.frame_count += 1;
+        result
     }
 
     pub fn get_fps(&self) -> f32 {

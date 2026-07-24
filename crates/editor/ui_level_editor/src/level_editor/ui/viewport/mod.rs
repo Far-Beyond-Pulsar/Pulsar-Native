@@ -723,7 +723,6 @@ impl ViewportPanel {
                             .store(&mouse_right_captured, &mouse_middle_captured);
                         crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
                         crate::level_editor::ui::viewport::platform::unlock_cursor();
-                        window.refresh();
                         return;
                     }
 
@@ -762,7 +761,6 @@ impl ViewportPanel {
                     capture.store(&mouse_right_captured, &mouse_middle_captured);
 
                     crate::level_editor::ui::viewport::platform::begin_relative_mouse_mode();
-                    window.refresh();
                 }
             })
             // Right-click release
@@ -795,7 +793,6 @@ impl ViewportPanel {
                             restore_x, restore_y,
                         );
                     }
-                    window.refresh();
                 }
             })
             // Middle-click drag to pan the camera along the current view plane
@@ -816,7 +813,6 @@ impl ViewportPanel {
                             .store(&mouse_right_captured, &mouse_middle_captured);
                         crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
                         crate::level_editor::ui::viewport::platform::unlock_cursor();
-                        window.refresh();
                         return;
                     }
 
@@ -851,7 +847,6 @@ impl ViewportPanel {
                         .store(&mouse_right_captured, &mouse_middle_captured);
 
                     crate::level_editor::ui::viewport::platform::begin_relative_mouse_mode();
-                    window.refresh();
                 }
             })
             // Middle-click release
@@ -884,7 +879,6 @@ impl ViewportPanel {
                             restore_x, restore_y,
                         );
                     }
-                    window.refresh();
                 }
             })
             // Scroll wheel for camera speed adjustment

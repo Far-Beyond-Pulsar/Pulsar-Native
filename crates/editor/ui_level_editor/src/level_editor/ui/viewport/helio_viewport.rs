@@ -6,8 +6,9 @@
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
@@ -21,13 +22,20 @@ use pulsar_rendering::asset_component::component_class_for_asset;
 use pulsar_reflection::REGISTRY;
 
 /// A GPUI component that drives the Helio renderer into a `WgpuSurfaceHandle`.
+///
+/// Rendering runs on a dedicated background thread so the UI thread is never
+/// blocked by GPU work. The background thread owns a clone of the `GpuRenderer`
+/// and the `WgpuSurfaceHandle`; it loops at ~60 FPS calling
+/// `render_frame_to_surface()` + `present_synced()`.
 pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
     surface: Option<WgpuSurfaceHandle>,
     focus_handle: FocusHandle,
     debug_replace_with_yellow: bool,
-    tab_activated: bool,
+    tab_activated: Arc<AtomicBool>,
+    render_thread_stop: Arc<AtomicBool>,
+    render_thread_handle: Option<std::thread::JoinHandle<()>>,
     last_spike_report: Instant,
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
@@ -47,7 +55,9 @@ impl HelioViewport {
             surface: None,
             focus_handle: cx.focus_handle(),
             debug_replace_with_yellow,
-            tab_activated: true,
+            tab_activated: Arc::new(AtomicBool::new(true)),
+            render_thread_stop: Arc::new(AtomicBool::new(false)),
+            render_thread_handle: None,
             last_spike_report: Instant::now(),
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
@@ -58,7 +68,7 @@ impl HelioViewport {
     /// Mark the viewport as having been activated (e.g. tab switch).
     /// The next render will reset TAA history to prevent ghosting.
     pub fn mark_tab_activated(&mut self) {
-        self.tab_activated = true;
+        self.tab_activated.store(true, Ordering::Release);
     }
 
     /// Handle an asset being dropped on the viewport
@@ -233,6 +243,67 @@ impl HelioViewport {
         Ok(())
     }
 
+    /// Start a dedicated background thread that continuously renders the Helio
+    /// scene into the given `WgpuSurfaceHandle` and presents each frame.
+    fn start_render_thread(&mut self, surface: WgpuSurfaceHandle) {
+        if self.render_thread_handle.is_some() {
+            return;
+        }
+
+        let engine = self.gpu_engine.clone();
+        let stop = self.render_thread_stop.clone();
+        let tab_activated = self.tab_activated.clone();
+
+        let handle = std::thread::Builder::new()
+            .name("Helio Render".into())
+            .spawn(move || {
+                profiling::set_thread_name("Helio Render");
+                let mut first_frame = true;
+
+                loop {
+                    if stop.load(Ordering::Acquire) {
+                        break;
+                    }
+
+                    if !first_frame {
+                        std::thread::sleep(Duration::from_millis(16));
+                    }
+                    first_frame = false;
+
+                    let Some((view, (width, height))) = surface.back_view_with_size() else {
+                        continue;
+                    };
+
+                    let device = surface.device();
+                    let queue = surface.queue();
+                    let format = surface.format();
+
+                    let submission_index = match engine.lock() {
+                        Ok(mut engine) => {
+                            if tab_activated.swap(false, Ordering::AcqRel) {
+                                engine.reset_taa();
+                            }
+                            engine.render_frame_to_surface(
+                                device, queue, &view, width, height, format,
+                            )
+                        }
+                        Err(_) => None,
+                    };
+
+                    drop(view);
+
+                    if let Some(idx) = submission_index {
+                        surface.present_synced(idx);
+                    }
+                }
+            });
+
+        match handle {
+            Ok(h) => self.render_thread_handle = Some(h),
+            Err(e) => tracing::error!("Failed to spawn Helio render thread: {:?}", e),
+        }
+    }
+
     fn record_frame_diagnostics(
         &mut self,
         total_ms: f64,
@@ -270,6 +341,12 @@ impl HelioViewport {
     }
 }
 
+impl Drop for HelioViewport {
+    fn drop(&mut self) {
+        self.render_thread_stop.store(true, Ordering::Release);
+    }
+}
+
 /// Renders the current Helio scene into an offscreen texture, reads it back
 /// from the GPU, and writes it to `out_path` as a PNG. Used to capture
 /// project thumbnails on scene save.
@@ -300,7 +377,7 @@ fn capture_viewport_thumbnail(
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-    engine.render_frame_to_surface(device, queue, &view, width, height, format);
+    let _ = engine.render_frame_to_surface(device, queue, &view, width, height, format);
 
     let bytes_per_row = align_up(width * 4, 256);
     let staging = device.create_buffer(&wgpu::BufferDescriptor {
@@ -437,16 +514,14 @@ impl Render for HelioViewport {
                 .into_any_element();
         }
 
-        // Keep rendering continuously for real-time 3D viewport updates.
-        window.request_animation_frame();
-
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-        // Lazy surface creation (once).
+        // Lazy surface creation (once) + start the background render thread.
         if self.surface.is_none() {
             match window.create_wgpu_surface(1600, 900, format) {
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
+                    self.start_render_thread(s.clone());
                     self.surface = Some(s);
                 }
                 None => {
@@ -455,90 +530,29 @@ impl Render for HelioViewport {
             }
         }
 
-        // Render into the back buffer, then swap.  If the surface is still
-        // resizing, keep the previous display buffer visible and avoid forcing
-        // Helio to resize mid-drag.
-        let mut frame_diagnostics = None;
-        // Own the surface handle (cheap `Clone`) so the PiE path can take `&mut
-        // self` without conflicting with a borrow of `self.surface`.
-        let surface_handle = self.surface.clone();
-        if let Some(surface) = surface_handle {
-            if !surface.is_resize_pending() {
-                let frame_start = Instant::now();
-                let acquire_start = Instant::now();
-                let back_view = {
-                    profiling::profile_scope!("viewport_surface_acquire");
-                    surface.back_view_with_size()
-                };
-                let acquire_ms = acquire_start.elapsed().as_secs_f64() * 1000.0;
-                if let Some((view, (w, h))) = back_view {
-                    let render_start = Instant::now();
-                    let mut engine_lock_missed = true;
-                    {
-                        profiling::profile_scope!("viewport_engine_render");
-                        if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                            engine_lock_missed = false;
-                            if self.tab_activated {
-                                self.tab_activated = false;
-                                engine.reset_taa();
-                            }
-                            engine.render_frame_to_surface(
-                                surface.device(),
-                                surface.queue(),
-                                &view,
-                                w,
-                                h,
-                                surface.format(),
-                            );
-                            for err in engine.drain_pending_errors() {
-                                window.push_notification(
-                                    Notification::error("Mesh Load Failed").message(err),
-                                    cx,
-                                );
-                            }
-                        }
-                    }
-                    let render_ms = render_start.elapsed().as_secs_f64() * 1000.0;
-                    drop(view);
-                    let swap_start = Instant::now();
-                    {
-                        profiling::profile_scope!("viewport_surface_swap");
-                        surface.swap_buffers();
-                    }
-                    let swap_ms = swap_start.elapsed().as_secs_f64() * 1000.0;
-
-                    // Capture a project thumbnail if a save just requested one.
-                    let capture_path = self
-                        .shared_state
-                        .write()
-                        .build
-                        .pending_thumbnail_capture
-                        .take();
-                    if let Some(path) = capture_path {
-                        if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                            capture_viewport_thumbnail(&mut engine, &surface, w, h, format, &path);
-                        }
-                    }
-                    frame_diagnostics = Some((
-                        frame_start.elapsed().as_secs_f64() * 1000.0,
-                        acquire_ms,
-                        render_ms,
-                        swap_ms,
-                        engine_lock_missed,
-                    ));
-                }
+        // Drain pending mesh-load errors (non-blocking).
+        if let Ok(engine) = self.gpu_engine.try_lock() {
+            for err in engine.drain_pending_errors() {
+                window.push_notification(
+                    Notification::error("Mesh Load Failed").message(err),
+                    cx,
+                );
             }
         }
-        if let Some((total_ms, acquire_ms, render_ms, swap_ms, engine_lock_missed)) =
-            frame_diagnostics
-        {
-            self.record_frame_diagnostics(
-                total_ms,
-                acquire_ms,
-                render_ms,
-                swap_ms,
-                engine_lock_missed,
-            );
+
+        // Capture a project thumbnail if a save just requested one.
+        // This must happen synchronously since it reads back GPU data.
+        let capture_path = self.shared_state.write().build.pending_thumbnail_capture.take();
+        if let Some(path) = capture_path {
+            if let Some(ref surface) = self.surface {
+                if let Some((view, (w, h))) = surface.back_view_with_size() {
+                    if let Ok(mut engine) = self.gpu_engine.try_lock() {
+                        capture_viewport_thumbnail(
+                            &mut engine, surface, w, h, format, &path,
+                        );
+                    }
+                }
+            }
         }
 
         // Build the viewport element
