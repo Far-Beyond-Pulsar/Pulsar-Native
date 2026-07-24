@@ -10,14 +10,20 @@ pub mod scene;
 pub mod services;
 pub mod subsystems;
 
-pub use services::{GpuRenderer, RustAnalyzerManager};
+#[cfg(feature = "render")]
+pub use services::GpuRenderer;
+#[cfg(feature = "editor-ui")]
+pub use services::RustAnalyzerManager;
 use std::sync::{Arc, OnceLock};
 pub use subsystems::framework::{Subsystem, SubsystemContext, SubsystemError, SubsystemRegistry};
+#[cfg(feature = "physics")]
 pub use subsystems::physics::PhysicsEngine;
+#[cfg(feature = "render")]
 pub use subsystems::render::{Framebuffer as RenderFramebuffer, WgpuRenderer};
 pub use subsystems::world::World;
 
 // Re-export Helio types for UI integration
+#[cfg(feature = "render")]
 pub use helio::GizmoMode;
 
 // Re-export reflection system for convenience
@@ -144,6 +150,7 @@ impl EngineBackend {
     }
 
     /// Get the physics query service for raycasting
+    #[cfg(feature = "physics")]
     pub fn get_physics_query_service(&self) -> Option<Arc<crate::services::PhysicsQueryService>> {
         use engine_subsystems::SubsystemId;
 
