@@ -41,6 +41,10 @@ pub struct HelioViewport {
     pie_blit: Option<PieBlit>,
     /// Timestamp of the previous PiE frame, for the game's delta time.
     pie_last_frame: Instant,
+    /// Whether an embedded game was active last frame, to notify on transitions.
+    pie_was_active: bool,
+    /// Whether we've shown the "building…" notice for the current build.
+    pie_building_notified: bool,
 }
 
 impl HelioViewport {
@@ -63,7 +67,47 @@ impl HelioViewport {
             pie_host: None,
             pie_blit: None,
             pie_last_frame: Instant::now(),
+            pie_was_active: false,
+            pie_building_notified: false,
         }
+    }
+
+    /// Surface Play-In-Editor build/run status as notifications (the build runs
+    /// on a background thread and only communicates through `shared_state`).
+    /// Called each frame from `render`, which has `window`/`cx` in scope.
+    fn poll_pie_status(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let (building, error, active) = {
+            let mut st = self.shared_state.write();
+            let error = st.play.pie.last_error.take();
+            (st.play.pie.building, error, st.play.pie.active)
+        };
+
+        if building && !self.pie_building_notified {
+            self.pie_building_notified = true;
+            window.push_notification(
+                Notification::info("Play In Editor")
+                    .message("Building game… (first build compiles the engine — this can take a few minutes)"),
+                cx,
+            );
+        }
+        if !building {
+            self.pie_building_notified = false;
+        }
+
+        if let Some(err) = error {
+            window.push_notification(
+                Notification::error("Play In Editor build failed").message(err),
+                cx,
+            );
+        }
+
+        if active && !self.pie_was_active {
+            window.push_notification(
+                Notification::success("Play In Editor").message("Game running in viewport"),
+                cx,
+            );
+        }
+        self.pie_was_active = active;
     }
 
     /// Drive Play In Editor for one frame (issue #243).
@@ -550,6 +594,9 @@ impl Render for HelioViewport {
                 }
             }
         }
+
+        // Surface Play-In-Editor build/run status (background thread → UI).
+        self.poll_pie_status(window, cx);
 
         // Render into the back buffer, then swap.  If the surface is still
         // resizing, keep the previous display buffer visible and avoid forcing

@@ -19,8 +19,8 @@ use winit::{
 };
 
 use helio::{
-    required_wgpu_features, required_wgpu_limits, Camera, DebugDrawState, Renderer,
-    RendererConfig, Scene,
+    required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
+    DebugDrawState, Renderer, RendererConfig, Scene,
 };
 
 use crate::freecam::FreeCam;
@@ -284,6 +284,10 @@ impl GpuContext {
             label: Some("Pulsar GPU Device"),
             required_features: required_wgpu_features(adapter.features()),
             required_limits: required_wgpu_limits(adapter.limits()),
+            // wgpu gates EXPERIMENTAL_* features (Helio requests EXPERIMENTAL_RAY_QUERY
+            // when the adapter supports it) behind a second acknowledgement token.
+            // Without it, device creation fails with ExperimentalFeaturesNotEnabled.
+            experimental_features: required_experimental_features(adapter.features()),
             ..Default::default()
         }))
         .expect("Failed to create GPU device");

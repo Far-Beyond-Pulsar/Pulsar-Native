@@ -29,8 +29,14 @@ impl PlaybackControls {
                     Button::new("play")
                         .icon(IconName::Play)
                         .tooltip(t!("LevelEditor.Toolbar.StartSimulation"))
-                        .on_click(move |_, _, _| {
-                            state_clone.write().scene.enter_play_mode();
+                        .on_click(move |_, window, cx| {
+                            // Play In Editor: enter play mode AND build+embed the
+                            // game (issue #243). Shared with the `PlayScene` action.
+                            crate::level_editor::ui::panel::begin_pie(
+                                state_clone.clone(),
+                                window,
+                                cx,
+                            );
                         })
                         .into_any_element()
                 } else {
@@ -63,7 +69,7 @@ impl PlaybackControls {
                     .icon(IconName::Square)
                     .tooltip(t!("LevelEditor.Toolbar.StopSimulation"))
                     .on_click(move |_, _, _| {
-                        state_clone.write().scene.exit_play_mode();
+                        crate::level_editor::ui::panel::end_pie(state_clone.clone());
                     });
                 if disabled {
                     btn.opacity(0.5).into_any_element()

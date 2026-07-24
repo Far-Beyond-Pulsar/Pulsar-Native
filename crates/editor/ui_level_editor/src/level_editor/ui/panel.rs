@@ -904,96 +904,15 @@ impl LevelEditorPanel {
     }
 
     fn on_play_scene(&mut self, _: &PlayScene, window: &mut Window, cx: &mut Context<Self>) {
-        // Enter play mode (saves scene snapshot)
-        self.shared_state.write().scene.enter_play_mode();
-
-        // Disable gizmos in play mode
+        begin_pie(self.shared_state.clone(), window, cx);
         self.sync_gizmo_to_helio();
-
-        // Play In Editor (issue #243): build the project as a cdylib and hand it
-        // to the viewport to embed. Without an open project we fall back to plain
-        // play mode (snapshot only, no running game).
-        match engine_state::get_project_path().map(std::path::PathBuf::from) {
-            Some(root) => self.start_pie_build(root, window, cx),
-            None => window.push_notification(
-                Notification::warning("No project open — playing scene snapshot only."),
-                cx,
-            ),
-        }
-
         cx.notify();
     }
 
     fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
-        // Ask the viewport to tear down the embedded game, then exit play mode.
-        {
-            let mut st = self.shared_state.write();
-            st.play.pie.stop_requested = true;
-            st.play.pie.pending_start = None;
-            st.play.pie.building = false;
-        }
-
-        // Exit play mode (restores scene from snapshot)
-        self.shared_state.write().scene.exit_play_mode();
-
-        // Re-enable gizmos in edit mode
+        end_pie(self.shared_state.clone());
         self.sync_gizmo_to_helio();
-
         cx.notify();
-    }
-
-    /// Write the current scene to a temp `.level`, then build the project as a
-    /// `cdylib` on a background thread. On success the viewport loads it.
-    fn start_pie_build(
-        &mut self,
-        root: std::path::PathBuf,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Reflect unsaved edits: write the live SceneDb to a temp level file.
-        let scene_path = root.join("target").join("pie").join("play.level");
-        if let Err(e) = self
-            .shared_state
-            .read()
-            .scene
-            .database
-            .save_to_file(&scene_path)
-        {
-            window.push_notification(
-                Notification::error("Play In Editor").message(format!("Failed to write scene: {e}")),
-                cx,
-            );
-            return;
-        }
-
-        {
-            let mut st = self.shared_state.write();
-            st.play.pie.building = true;
-            st.play.pie.stop_requested = false;
-            st.play.pie.last_error = None;
-            st.play.pie.pending_start = None;
-        }
-
-        window.push_notification(
-            Notification::info("Play In Editor").message("Building game…"),
-            cx,
-        );
-
-        let shared = self.shared_state.clone();
-        let _ = std::thread::Builder::new()
-            .name("pie-build".into())
-            .spawn(move || {
-                let result = build_pie_dylib(&root, &scene_path);
-                let mut st = shared.write();
-                st.play.pie.building = false;
-                match result {
-                    Ok(req) => st.play.pie.pending_start = Some(req),
-                    Err(e) => {
-                        tracing::error!("PiE build failed: {e}");
-                        st.play.pie.last_error = Some(e);
-                    }
-                }
-            });
     }
 
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
@@ -1444,6 +1363,83 @@ impl Render for LevelEditorPanel {
 }
 
 // ── Play In Editor build helpers (issue #243) ───────────────────────────────
+
+/// Enter play mode and kick off the Play-In-Editor build.
+///
+/// Free function (not a panel method) so BOTH the `PlayScene` action handler and
+/// the toolbar "Start Simulation" button (`playback_controls`) can share one
+/// code path — they previously diverged, and only the action handler had PiE.
+pub(crate) fn begin_pie(
+    shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
+    window: &mut Window,
+    cx: &mut App,
+) {
+    // Snapshot the scene (also flips to play mode).
+    shared_state.write().scene.enter_play_mode();
+
+    let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
+        window.push_notification(
+            Notification::error("Play In Editor").message(
+                "No project is open, so the game can't be built. Open a project first; \
+                 playing the scene snapshot only.",
+            ),
+            cx,
+        );
+        return;
+    };
+
+    tracing::info!(project = %root.display(), "PiE: starting build for Play");
+
+    // Reflect unsaved edits: write the live SceneDb to a temp level file.
+    let scene_path = root.join("target").join("pie").join("play.level");
+    if let Err(e) = shared_state.read().scene.database.save_to_file(&scene_path) {
+        window.push_notification(
+            Notification::error("Play In Editor").message(format!("Failed to write scene: {e}")),
+            cx,
+        );
+        return;
+    }
+
+    {
+        let mut st = shared_state.write();
+        st.play.pie.building = true;
+        st.play.pie.stop_requested = false;
+        st.play.pie.last_error = None;
+        st.play.pie.pending_start = None;
+    }
+
+    window.push_notification(
+        Notification::info("Play In Editor").message("Building game…"),
+        cx,
+    );
+
+    let shared = shared_state.clone();
+    let _ = std::thread::Builder::new()
+        .name("pie-build".into())
+        .spawn(move || {
+            let result = build_pie_dylib(&root, &scene_path);
+            let mut st = shared.write();
+            st.play.pie.building = false;
+            match result {
+                Ok(req) => st.play.pie.pending_start = Some(req),
+                Err(e) => {
+                    tracing::error!("PiE build failed: {e}");
+                    st.play.pie.last_error = Some(e);
+                }
+            }
+        });
+}
+
+/// Ask the viewport to tear down the embedded game, then exit play mode.
+pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) {
+    {
+        let mut st = shared_state.write();
+        st.play.pie.stop_requested = true;
+        st.play.pie.pending_start = None;
+        st.play.pie.building = false;
+    }
+    shared_state.write().scene.exit_play_mode();
+}
 
 /// Regenerate the project scaffolding and build it as a `cdylib`, returning what
 /// the viewport needs to load the embedded game. Runs on a background thread.
