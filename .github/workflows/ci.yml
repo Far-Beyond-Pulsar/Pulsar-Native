@@ -48,8 +48,25 @@ jobs:
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
+      - name: Resolve Pulsar's pinned SceneDB source
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --format-version 1 | ConvertFrom-Json -AsHashtable
+          $packages = @($metadata["packages"] | Where-Object { $_["name"] -eq "pulsar_scenedb" })
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one pulsar_scenedb package in locked Cargo metadata; found $($packages.Count)"
+          }
+
+          $manifest = $packages[0]["manifest_path"] -replace "\\", "/"
+          $directory = (Split-Path -Parent $packages[0]["manifest_path"]) -replace "\\", "/"
+          $targetDirectory = (Join-Path $env:GITHUB_WORKSPACE "target") -replace "\\", "/"
+          "SCENEDB_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCENEDB_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCENEDB_TARGET_DIR=$targetDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: SceneDB graphics-free core guard (CONTRACTS C0)
-        run: cargo check -p pulsar_scenedb --no-default-features
+        shell: bash
+        run: cargo check --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --no-default-features
 
       - name: SceneDB no-Helio edge guard (CONTRACTS C0)
         shell: bash
@@ -57,11 +74,11 @@ jobs:
           set -e
           # Capture first so a cargo-tree failure fails the step (grep on a
           # pipeline sees empty input and would silently pass — fail-open).
-          tree="$(cargo tree -p pulsar_scenedb -e normal)"
+          tree="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb -e normal)"
           if grep -qi helio <<< "$tree"; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
           # Feature-blind gap (M3-a final review F1): a gpu-feature-gated Helio
           # edge would evade the featureless tree above — check it too.
-          tree_gpu="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          tree_gpu="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb --features gpu -e normal)"
           if grep -qi helio <<< "$tree_gpu"; then echo "C0 violation: pulsar_scenedb (--features gpu) depends on Helio"; exit 1; fi
 
       - name: SceneDB no-GPUI/fork-wgpu edge guard (M3-a T2)
@@ -73,7 +90,7 @@ jobs:
           # workspace's git-forked wgpu transitively (gpui-ce's lib is named
           # `gpui`). SceneDB is on upstream wgpu 30 and must never carry
           # either edge. Tree captured first: fail-closed if cargo tree errors.
-          tree="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          tree="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb --features gpu -e normal)"
           if grep -iE "gpui|wgpui" <<< "$tree"; then
             echo "M3-a T2 violation: pulsar_scenedb (--features gpu) depends on gpui/wgpui"
             exit 1
@@ -87,10 +104,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Normalize to forward slashes: on Windows runners GITHUB_WORKSPACE
-          # uses backslashes, which TOML basic strings would otherwise parse
-          # as escape sequences.
-          workspace_fwd="$(printf '%s' "${GITHUB_WORKSPACE}" | tr '\\' '/')"
           scratch="${RUNNER_TEMP}/scenedb-resolve-check"
           rm -rf "$scratch"
           mkdir -p "$scratch/src"
@@ -102,7 +115,7 @@ jobs:
           edition = "2021"
 
           [dependencies]
-          pulsar_scenedb = { path = "${workspace_fwd}/crates/core/pulsar_scenedb", features = ["gpu"] }
+          pulsar_scenedb = { path = "${SCENEDB_DIR}", features = ["gpu"] }
 
           [workspace]
           EOF
@@ -110,15 +123,18 @@ jobs:
           cargo metadata --format-version 1 > /dev/null
 
       - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
-        run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
+        shell: bash
+        run: cargo test --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --test gpu_layout
 
       - name: SceneDB gpu-gated lib tests (Test 11 et al., no adapter needed)
-        run: cargo test -p pulsar_scenedb --features gpu --lib
+        shell: bash
+        run: cargo test --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --lib
 
       # Compile-only: benches are the one gpu-gated target the test matrix
       # never builds (M3-a T1 review caught an unmigrated bench this way).
       - name: SceneDB gpu-gated benches compile guard
-        run: cargo check -p pulsar_scenedb --features gpu --benches
+        shell: bash
+        run: cargo check --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --benches
 
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
