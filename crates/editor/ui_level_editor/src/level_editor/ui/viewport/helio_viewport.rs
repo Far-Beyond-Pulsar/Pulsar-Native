@@ -26,7 +26,12 @@ use pulsar_reflection::REGISTRY;
 /// Rendering runs on a dedicated background thread so the UI thread is never
 /// blocked by GPU work. The background thread owns a clone of the `GpuRenderer`
 /// and the `WgpuSurfaceHandle`; it loops at ~60 FPS calling
-/// `render_frame_to_surface()` + `present_synced()`.
+/// `render_frame_to_surface()` + `present_synced_silent()`.
+///
+/// Presentation is deliberately split across the two threads:
+/// - the render thread only publishes finished frames into the triple buffer;
+/// - the UI thread keeps the GPUI draw cycle alive via `request_animation_frame()`,
+///   and the compositor promotes `ready` -> `display` only when a new frame exists.
 pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -293,7 +298,14 @@ impl HelioViewport {
                     drop(view);
 
                     if let Some(idx) = submission_index {
-                        surface.present_synced(idx);
+                        // Silent present: publish the frame for the compositor but do
+                        // NOT request a window redraw from this thread. The GPUI draw
+                        // cycle is kept alive by `request_animation_frame()` in
+                        // `render()`; driving repaints from here instead would fire a
+                        // winit `RedrawRequested` per frame, and each one that misses
+                        // the fast-blit path forces a full `window.refresh()` of the
+                        // entire editor UI.
+                        surface.present_synced_silent(idx);
                     }
                 }
             });
@@ -557,19 +569,25 @@ impl Render for HelioViewport {
 
         // Build the viewport element
         let viewport_element = if let Some(ref surface) = self.surface {
+            // Keep the GPUI draw cycle running so the compositor keeps promoting
+            // frames produced by the render thread, and so `WgpuSurface::prepaint`
+            // keeps observing the element's bounds (which is what resizes the
+            // surface when the viewport panel changes size).
+            window.request_animation_frame();
+
             wgpu_surface(surface.clone())
                 .defer_resize_until_mouse_up(true)
                 .absolute()
                 .inset_0()
                 .into_any_element()
         } else {
+            // Surface not created yet: render nothing rather than a placeholder.
+            // This lasts a single frame, so any overlay just reads as a flash.
             div()
                 .relative()
                 .track_focus(&self.focus_handle)
                 .id("helio_viewport")
                 .size_full()
-                .bg(rgb(0xff0000))
-                .child("Waiting for WgpuSurface...")
                 .into_any_element()
         };
 

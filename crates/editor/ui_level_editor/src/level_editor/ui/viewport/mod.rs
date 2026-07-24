@@ -988,7 +988,6 @@ impl ViewportPanel {
                 ui_fps,
                 helio_fps,
                 render_fps,
-                renderer_ready,
                 fps_data,
                 tps_data,
                 frame_time_data,
@@ -1011,7 +1010,6 @@ impl ViewportPanel {
         ui_fps: f64,
         _helio_fps: f64,
         render_fps: f64,
-        renderer_ready: bool,
         fps_data: Vec<FpsDataPoint>,
         tps_data: Vec<TpsDataPoint>,
         frame_time_data: Vec<FrameTimeDataPoint>,
@@ -1102,38 +1100,6 @@ impl ViewportPanel {
             overlays = overlays.child(overlay_div.max_w(px(400.0)).child(
                 render_gpu_pipeline_overlay(state, state_arc.clone(), gpu_engine, cx),
             ));
-        }
-
-        // Initialization overlay - show when renderer is still warming up (< 10 FPS)
-        if render_fps < 10.0 {
-            overlays = overlays.child(
-                div()
-                    .absolute()
-                    .inset_0()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .bg(cx.theme().background.opacity(0.9))
-                    .child(
-                        v_flex()
-                            .gap_3()
-                            .items_center()
-                            .child(ui::spinner::Spinner::new().with_size(ui::Size::Large))
-                            .child(div().text_lg().text_color(cx.theme().foreground).child(
-                                if renderer_ready {
-                                    "Initializing 3D Renderer..."
-                                } else {
-                                    "Waiting for 3D Renderer to initialize..."
-                                },
-                            ))
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(format!("FPS: {:.1}", render_fps)),
-                            ),
-                    ),
-            );
         }
 
         overlays
