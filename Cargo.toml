@@ -7,6 +7,19 @@ members = [
     "plugins/vendor/asset_viewer",
 ]
 
+# External plugin repositories are linked into `ui_core` as libraries, but own
+# their standalone applications and repository-level validation independently.
+# Without an explicit boundary Cargo auto-enrolls these path dependencies as
+# workspace members and `cargo test --all` races their identically named
+# `standalone` examples into the same output file.
+exclude = [
+    "plugins/vendor/blueprint_editor",
+    "plugins/vendor/code_editor",
+    "plugins/vendor/matter_editor",
+    "plugins/vendor/shader_editor",
+    "plugins/vendor/table_editor",
+]
+
 default-members = ["crates/core/engine"]
 resolver = "2"
 
