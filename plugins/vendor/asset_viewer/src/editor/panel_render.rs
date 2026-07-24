@@ -41,6 +41,33 @@ fn fs_main(@location(0) world_normal: vec3<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+static CHECKER_VERTEX_SRC: &str = r#"
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+    let ix = i32(vi);
+    let x = f32(ix & 1) * 2.0 - 1.0;
+    let y = f32(ix >> 1) * 2.0 - 1.0;
+    return vec4<f32>(x, -y, 0.0, 1.0);
+}
+"#;
+
+static CHECKER_FRAGMENT_SRC: &str = r#"
+struct Uniforms {
+    viewport_size: vec2<f32>,
+};
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@fragment
+fn fs_main(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
+    let cell = 8.0;
+    let cx = floor(coord.x / cell);
+    let cy = floor(coord.y / cell);
+    let c = (cx + cy) % 2.0;
+    let gray = mix(0.15, 0.25, c);
+    return vec4(gray, gray, gray, 1.0);
+}
+"#;
+
 static QUAD_VERTEX_SRC: &str = r#"
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
@@ -102,6 +129,15 @@ impl AssetViewerPanel {
         self.surface_config = Some(config.clone());
         self.surface_handle = Some(surface_handle);
 
+        if !self.is_3d {
+            if let Some((img_w, img_h, _)) = self.image_data {
+                let fit = (width as f32 / img_w as f32).min(height as f32 / img_h as f32);
+                self.zoom = 1.0;
+                self.pan_x = ((width as f32 - img_w as f32 * fit) * 0.5).max(0.0);
+                self.pan_y = ((height as f32 - img_h as f32 * fit) * 0.5).max(0.0);
+            }
+        }
+
         if self.is_3d {
             let (sw, sh) = self.surface_handle.as_ref().unwrap().size();
             let depth = device.create_texture(&wgpu::TextureDescriptor {
@@ -122,6 +158,7 @@ impl AssetViewerPanel {
             self.load_and_upload_mesh(&device, &queue);
         } else {
             self.setup_quad_pipeline(&device, &queue, &config);
+            self.setup_checker_pipeline(&device, &config);
             self.upload_image_texture(&device, &queue);
         }
 
@@ -330,7 +367,7 @@ impl AssetViewerPanel {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),
@@ -349,6 +386,97 @@ impl AssetViewerPanel {
             cache: None,
         });
         self.quad_pipeline = Some(pipeline);
+    }
+
+    fn setup_checker_pipeline(
+        &mut self,
+        device: &wgpu::Device,
+        config: &wgpu::SurfaceConfiguration,
+    ) {
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("checker uniform buffer"),
+            size: 8,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        self.checker_uniform_buffer = Some(uniform_buffer);
+
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("checker bind group layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let uniform_buf = self.checker_uniform_buffer.as_ref().unwrap();
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("checker bind group"),
+            layout: &bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buf.as_entire_binding(),
+            }],
+        });
+        self.checker_bind_group = Some(bind_group);
+
+        let vs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("checker vertex"),
+            source: wgpu::ShaderSource::Wgsl(CHECKER_VERTEX_SRC.into()),
+        });
+        let fs_module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("checker fragment"),
+            source: wgpu::ShaderSource::Wgsl(CHECKER_FRAGMENT_SRC.into()),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("checker pipeline layout"),
+            bind_group_layouts: &[Some(&bgl)],
+            immediate_size: 0,
+        });
+
+        self.checker_bind_group_layout = Some(bgl);
+
+        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("checker pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &vs_module,
+                entry_point: Some("vs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &fs_module,
+                entry_point: Some("fs_main"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        self.checker_pipeline = Some(pipeline);
     }
 
     fn load_and_upload_mesh(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
@@ -784,24 +912,32 @@ impl AssetViewerPanel {
             return;
         }
 
-        let img_aspect = img_w as f32 / img_h as f32;
-        let vp_aspect = vp_w as f32 / vp_h as f32;
+        let iw = img_w as f32;
+        let ih = img_h as f32;
+        let vw = vp_w as f32;
+        let vh = vp_h as f32;
 
-        let (half_w, half_h) = if img_aspect > vp_aspect {
-            (self.zoom, self.zoom * vp_aspect / img_aspect)
-        } else {
-            (self.zoom * img_aspect / vp_aspect, self.zoom)
-        };
+        let fit = (vw / iw).min(vh / ih);
+        let dw = iw * fit * self.zoom;  // displayed width in screen pixels
+        let dh = ih * fit * self.zoom;  // displayed height in screen pixels
 
-        let (px, py) = (self.pan_x, self.pan_y);
+        // Quad corners in screen pixel space
+        let l = self.pan_x;
+        let t = self.pan_y;
+        let r = self.pan_x + dw;
+        let b = self.pan_y + dh;
+
+        // Screen pixel → NDC
+        let sx = |x: f32| (x / vw) * 2.0 - 1.0;
+        let sy = |y: f32| -((y / vh) * 2.0 - 1.0);
 
         let verts: [[f32; 4]; 6] = [
-            [-half_w + px, -half_h + py, 0.0, 1.0],
-            [ half_w + px, -half_h + py, 1.0, 1.0],
-            [ half_w + px,  half_h + py, 1.0, 0.0],
-            [-half_w + px, -half_h + py, 0.0, 1.0],
-            [ half_w + px,  half_h + py, 1.0, 0.0],
-            [-half_w + px,  half_h + py, 0.0, 0.0],
+            [sx(l), sy(b), 0.0, 1.0],  // bottom-left
+            [sx(r), sy(b), 1.0, 1.0],  // bottom-right
+            [sx(r), sy(t), 1.0, 0.0],  // top-right
+            [sx(l), sy(b), 0.0, 1.0],  // bottom-left
+            [sx(r), sy(t), 1.0, 0.0],  // top-right
+            [sx(l), sy(t), 0.0, 0.0],  // top-left
         ];
 
         queue.write_buffer(vb, 0, bytemuck::cast_slice(&verts));
@@ -815,6 +951,9 @@ impl AssetViewerPanel {
             label: Some("quad encoder"),
         });
 
+        let checker_pipeline = self.checker_pipeline.as_ref();
+        let checker_bg = self.checker_bind_group.as_ref();
+
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("quad pass"),
@@ -824,10 +963,10 @@ impl AssetViewerPanel {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.1,
-                            b: 0.1,
-                            a: 1.0,
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 0.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -837,6 +976,19 @@ impl AssetViewerPanel {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+
+            // Draw checkerboard background first
+            if let (Some(cp), Some(cbg)) = (checker_pipeline, checker_bg) {
+                if let Some(buf) = &self.checker_uniform_buffer {
+                    let viewport_size: [f32; 2] = [vp_w as f32, vp_h as f32];
+                    queue.write_buffer(buf, 0, bytemuck::bytes_of(&viewport_size));
+                }
+                rpass.set_pipeline(cp);
+                rpass.set_bind_group(0, cbg, &[]);
+                rpass.draw(0..4, 0..1);
+            }
+
+            // Draw image quad on top with alpha blending
             rpass.set_pipeline(pipeline);
             rpass.set_bind_group(0, bg, &[]);
             rpass.set_vertex_buffer(0, vb.slice(..));
@@ -978,26 +1130,10 @@ impl AssetViewerPanel {
                     return;
                 }
                 let Some(last) = panel.last_pan_pos else { return };
-                let Some((img_w, img_h, _)) = panel.image_data else { return };
-                let (vp_w, vp_h) = panel
-                    .surface_handle
-                    .as_ref()
-                    .map(|s| s.size())
-                    .unwrap_or((1, 1));
-                if vp_w == 0 || vp_h == 0 || img_w == 0 || img_h == 0 { return; }
-
-                let img_aspect = img_w as f32 / img_h as f32;
-                let vp_aspect = vp_w as f32 / vp_h as f32;
-                let (half_w, half_h) = if img_aspect > vp_aspect {
-                    (panel.zoom, panel.zoom * vp_aspect / img_aspect)
-                } else {
-                    (panel.zoom * img_aspect / vp_aspect, panel.zoom)
-                };
-
                 let dx = (event.position.x - last.x).to_f64() as f32;
                 let dy = (event.position.y - last.y).to_f64() as f32;
-                panel.pan_x += dx * (2.0 * half_w / vp_w as f32);
-                panel.pan_y -= dy * (2.0 * half_h / vp_h as f32);
+                panel.pan_x += dx;
+                panel.pan_y += dy;
                 panel.last_pan_pos = Some(event.position);
                 cx.notify();
             });
@@ -1042,28 +1178,13 @@ impl AssetViewerPanel {
                     .map(|s| s.size())
                     .unwrap_or((1, 1));
                 if vp_w > 0 && vp_h > 0 && img_w > 0 && img_h > 0 {
-                    let img_aspect = img_w as f32 / img_h as f32;
-                    let vp_aspect = vp_w as f32 / vp_h as f32;
-                    let (old_hw, old_hh) = if img_aspect > vp_aspect {
-                        (old_zoom, old_zoom * vp_aspect / img_aspect)
-                    } else {
-                        (old_zoom * img_aspect / vp_aspect, old_zoom)
-                    };
-                    let mx = (event.position.x.to_f64() as f32 / vp_w as f32) * 2.0 - 1.0;
-                    let my = -((event.position.y.to_f64() as f32 / vp_h as f32) * 2.0 - 1.0);
-                    let img_x = panel.pan_x + mx * old_hw;
-                    let img_y = panel.pan_y + my * old_hh;
-                    panel.zoom = new_zoom;
-                    let (new_hw, new_hh) = if img_aspect > vp_aspect {
-                        (new_zoom, new_zoom * vp_aspect / img_aspect)
-                    } else {
-                        (new_zoom * img_aspect / vp_aspect, new_zoom)
-                    };
-                    panel.pan_x = img_x - mx * new_hw;
-                    panel.pan_y = img_y - my * new_hh;
-                } else {
-                    panel.zoom = new_zoom;
+                    let mx = event.position.x.to_f64() as f32;
+                    let my = event.position.y.to_f64() as f32;
+                    let ratio = new_zoom / old_zoom;
+                    panel.pan_x = mx + (panel.pan_x - mx) * ratio;
+                    panel.pan_y = my + (panel.pan_y - my) * ratio;
                 }
+                panel.zoom = new_zoom;
                 cx.notify();
             });
         }
@@ -1150,8 +1271,10 @@ impl Render for AssetViewerPanel {
                 .on_key_up(Self::on_key_up(cx))
                 .child(self.surface_element())
         } else {
+            let entity = cx.entity().clone();
             div()
                 .size_full()
+                .relative()
                 .bg(gpui::rgb(0x1a1a1a))
                 .on_mouse_down(MouseButton::Right, Self::on_pan_mouse_down(cx))
                 .on_mouse_move(Self::on_pan_mouse_move(cx))
@@ -1159,6 +1282,34 @@ impl Render for AssetViewerPanel {
                 .on_mouse_up_out(MouseButton::Right, Self::on_pan_mouse_up(cx))
                 .on_scroll_wheel(Self::on_image_scroll(cx))
                 .child(self.surface_element())
+                .child(
+                    div()
+                        .absolute()
+                        .top(px(8.0))
+                        .right(px(8.0))
+                        .flex()
+                        .gap_2()
+                        .child(
+                            div()
+                                .px_2()
+                                .py_1()
+                                .bg(gpui::rgb(0x444444))
+                                .rounded(px(4.0))
+                                .cursor_pointer()
+                                .child("Save")
+                                .on_mouse_down(
+                                    MouseButton::Left,
+                                    move |_event, _window, cx| {
+                                        entity.update(cx, |panel, cx| {
+                                            if let Err(e) = panel.save_image() {
+                                                log::error!("Save failed: {}", e);
+                                            }
+                                            cx.notify();
+                                        });
+                                    },
+                                ),
+                        ),
+                )
         }
     }
 }
