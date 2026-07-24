@@ -161,7 +161,7 @@ impl HelioRenderer {
         width: u32,
         height: u32,
         format: wgpu::TextureFormat,
-    ) {
+    ) -> Option<wgpu::SubmissionIndex> {
         profiling::profile_scope!("helio_frame");
         let frame_start = Instant::now();
         let now = Instant::now();
@@ -249,7 +249,7 @@ impl HelioRenderer {
 
         let inner = match self.inner.as_mut() {
             Some(i) => i,
-            None => return,
+            None => return None,
         };
 
         if self.viewport_size != (width, height) {
@@ -335,11 +335,13 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         let t_render = Instant::now();
+        let mut submission_index: Option<wgpu::SubmissionIndex> = None;
         {
             profiling::profile_scope!("helio_render_submit");
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);
             }
+            submission_index = Some(inner.queue.submit(std::iter::empty::<wgpu::CommandBuffer>()));
         }
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         let frame_ms = frame_start.elapsed().as_secs_f64() * 1000.0;
@@ -358,6 +360,8 @@ impl HelioRenderer {
             m.frame_time_ms = dt * 1000.0;
             m.frames_rendered = self.frame_count;
         }
+
+        submission_index
     }
 
     fn apply_camera_input(&mut self, dt: f32) {
