@@ -28,6 +28,7 @@ rapier3d.workspace = true
 tracing = { workspace = true }
 thiserror = { workspace = true }
 dashmap = { workspace = true }
+bitflags = "2"
 
 # Reflection system
 pulsar_reflection.workspace = true

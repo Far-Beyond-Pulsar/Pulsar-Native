@@ -20,7 +20,9 @@ use pulsar_reflection::{
 use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
-use crate::scene::{ObjectType, SceneObjectSnapshot};
+use crate::scene::{
+    ObjectDirtyFlags, ObjectType, ObjectUpdate, SceneDbDelta, SceneObjectSnapshot,
+};
 use helio_pass_taa::TaaPass;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
@@ -103,6 +105,9 @@ struct HelioInner {
     /// Last SceneDb generation fully applied to Helio. Unchanged scenes do not
     /// need component deserialization, light recreation, or picker rebuilds.
     last_scene_revision: u64,
+    /// Set of scene-object IDs that have been synced to Helio.
+    /// Used by `sync_scene_delta` to distinguish additions from updates.
+    known_ids: HashSet<String>,
 }
 
 impl HelioRenderer {
@@ -229,6 +234,7 @@ impl HelioRenderer {
                 mesh_cache: MeshCache::new(),
                 object_cache: SceneObjectCache::new(),
                 last_scene_revision: 0,
+                known_ids: HashSet::new(),
             };
             self.populate_initial_scene(&mut inner);
             self.inner = Some(inner);
@@ -954,6 +960,56 @@ impl HelioRenderer {
         let picker_ms = t_picker.elapsed().as_secs_f64() * 1000.0;
         if picker_ms > 2.0 {
             tracing::warn!("[SYNC_SCENE] picker rebuild took {:.2}ms", picker_ms);
+        }
+
+        // Debug: after full sync, the delta should be empty (no new dirtiness).
+        // This validates that the delta path would produce the same state as the full sync.
+        debug_assert!(
+            scene_db.drain_dirty().is_empty(),
+            "[SYNC_SCENE] drain_dirty should be empty after full sync"
+        );
+    }
+
+    fn sync_scene_delta(
+        scene_db: &crate::scene::SceneDb,
+        inner: &mut HelioInner,
+    ) -> SceneDbDelta {
+        let revision = scene_db.dirty_gen();
+        let dirty = scene_db.drain_dirty();
+        let removed = scene_db.take_removed_ids();
+
+        let mut added = Vec::new();
+        let mut updated = Vec::new();
+
+        for (id, flags) in dirty {
+            if inner.known_ids.contains(&id) {
+                if let Some(snap) = scene_db.get_object(&id) {
+                    updated.push(ObjectUpdate {
+                        id,
+                        transform: Some(build_transform_parts(
+                            snap.position, snap.rotation, snap.scale,
+                        )),
+                        visible: Some(snap.visible),
+                        name: None,
+                    });
+                }
+            } else {
+                added.push(id);
+            }
+        }
+
+        for id in &removed {
+            inner.known_ids.remove(id);
+        }
+        for id in &added {
+            inner.known_ids.insert(id.clone());
+        }
+
+        SceneDbDelta {
+            added,
+            removed,
+            updated,
+            revision,
         }
     }
 }
