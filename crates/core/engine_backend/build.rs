@@ -108,8 +108,12 @@ fn build_game_manifest_deps(
         let value = dependencies
             .get(*dep)
             .unwrap_or_else(|| panic!("workspace dependency `{dep}` is required by generated games but missing from [workspace.dependencies]"));
-        let rewritten = rewrite_paths(value, workspace_root);
-        out.push_str(&format!("{dep} = {}\n", format_toml_inline(&rewritten)));
+        // The workspace may enable fewer features than the generated code needs
+        // (e.g. it pins `tracing-subscriber` with no features, but the generated
+        // `main.rs` calls `.with_env_filter`). Ensure the extras the templates
+        // rely on without dropping the workspace's version pin.
+        let value = with_features(rewrite_paths(value, workspace_root), required_extra_features(dep));
+        out.push_str(&format!("{dep} = {}\n", format_toml_inline(&value)));
     }
 
     if let Some(patch) = manifest.get("patch").and_then(toml::Value::as_table) {
@@ -126,6 +130,55 @@ fn build_game_manifest_deps(
     }
 
     out
+}
+
+/// Extra cargo features a generated game requires beyond what the workspace
+/// enables for a given crate. Keyed by the game-manifest dependency name.
+fn required_extra_features(dep: &str) -> &'static [&'static str] {
+    match dep {
+        // The generated `main.rs` uses `fmt().with_env_filter(...)`.
+        "tracing-subscriber" => &["fmt", "env-filter"],
+        // The generated class code derives serde traits.
+        "serde" => &["derive"],
+        _ => &[],
+    }
+}
+
+/// Ensure `value` (a dependency spec) enables `extra` features, converting a bare
+/// version string into a table when needed and merging without duplicates. Git/
+/// path table specs pass through when `extra` is empty.
+fn with_features(value: toml::Value, extra: &[&str]) -> toml::Value {
+    if extra.is_empty() {
+        return value;
+    }
+    let mut table = match value {
+        toml::Value::String(version) => {
+            let mut t = toml::value::Table::new();
+            t.insert("version".to_string(), toml::Value::String(version));
+            t
+        }
+        toml::Value::Table(t) => t,
+        other => return other,
+    };
+    let mut features: Vec<String> = table
+        .get("features")
+        .and_then(toml::Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default();
+    for feature in extra {
+        if !features.iter().any(|f| f == feature) {
+            features.push((*feature).to_string());
+        }
+    }
+    table.insert(
+        "features".to_string(),
+        toml::Value::Array(features.into_iter().map(toml::Value::String).collect()),
+    );
+    toml::Value::Table(table)
 }
 
 /// Recursively rewrite any `path = "<relative>"` entry to an absolute path under
