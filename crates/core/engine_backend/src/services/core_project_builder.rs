@@ -10,6 +10,19 @@ use engine_state::{register_default_settings, ProjectSettings};
 /// so their direct Helio values remain compatible with Pulsar's public API.
 pub const HELIO_GIT_REVISION: &str = env!("PULSAR_HELIO_GIT_REVISION");
 
+/// The generated game's `[dependencies]` + `[patch."…"]` blocks, baked from this
+/// engine build's own workspace manifest by `engine_backend/build.rs`.
+///
+/// Emitting these verbatim makes every generated project resolve the *exact*
+/// crate versions and sources this engine uses — path deps point at the engine
+/// checkout, git deps carry their pinned revs, and the full `[patch]` table
+/// unifies the Pulsar ecosystem to single local copies. This is what keeps a
+/// Play-In-Editor game ABI-compatible with the editor it loads into (shared
+/// `wgpu` device across the dylib boundary) and fixes the version skew that a
+/// bare `git = "…Pulsar-Native"` dependency otherwise produces.
+const GAME_MANIFEST_DEPS: &str =
+    include_str!(concat!(env!("OUT_DIR"), "/game_manifest_deps.toml"));
+
 fn settings_string(
     settings: Option<&ProjectSettings>,
     owner: &str,
@@ -134,26 +147,17 @@ fn ensure_core_cargo_toml(project_root: &Path) -> Result<(), String> {
     // Play-In-Editor (issue #243). `rlib` is kept so anything that wants to link
     // the project as a normal Rust lib still can. `src/lib.rs` (generated below)
     // exports the `pulsar_pie_*` C-ABI symbols the editor loads.
+    //
+    // The `[dependencies]` + `[patch]` blocks come from `GAME_MANIFEST_DEPS`,
+    // baked from the engine's own workspace at build time so the game resolves
+    // the exact same crate versions/sources as the editor.
     let cargo_content = format!(
-        "{}\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n[dependencies]\n\
-pulsar_game = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
-pulsar_std = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
-pulsar_pie_abi = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
-engine_class_derive = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
-pulsar_reflection = {{ git = \"https://github.com/Far-Beyond-Pulsar/Pulsar-Native\" }}\n\
-serde = {{ version = \"1.0\", features = [\"derive\"] }}\n\
-serde_json = \"1.0\"\n\
-tracing = \"0.1\"\n\
-tracing-subscriber = {{ version = \"0.3\", features = [\"fmt\", \"env-filter\"] }}\n\
-helio = {{ git = \"https://github.com/Far-Beyond-Pulsar/Helio\", rev = \"{helio_rev}\" }}\n\
-winit = \"0.30\"\n\n\
-[profile.dev]\n\
-opt-level = {}\n\
-debug = {}\n",
-        package_lines.join("\n"),
-        profile_opt,
-        profile_debug,
-        helio_rev = HELIO_GIT_REVISION,
+        "{package}\n\n[lib]\ncrate-type = [\"cdylib\", \"rlib\"]\n\n\
+{deps}\n[profile.dev]\nopt-level = {opt}\ndebug = {debug}\n",
+        package = package_lines.join("\n"),
+        deps = GAME_MANIFEST_DEPS,
+        opt = profile_opt,
+        debug = profile_debug,
     );
 
     virtual_fs::write_file(&cargo_toml_path, cargo_content.as_bytes())
