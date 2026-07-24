@@ -96,15 +96,17 @@ impl AssetViewerPanel {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
+        let surface_handle = surface.clone();
         self.device = Some(device.clone());
         self.queue = Some(queue.clone());
         self.surface_config = Some(config.clone());
-        self.surface_handle = Some(surface);
+        self.surface_handle = Some(surface_handle);
 
         if self.is_3d {
+            let (sw, sh) = self.surface_handle.as_ref().unwrap().size();
             let depth = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth buffer"),
-                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                size: wgpu::Extent3d { width: sw.max(1), height: sh.max(1), depth_or_array_layers: 1 },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -212,13 +214,19 @@ impl AssetViewerPanel {
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
+                front_face: wgpu::FrontFace::Cw,
                 cull_mode: Some(wgpu::Face::Back),
                 unclipped_depth: false,
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,
@@ -357,31 +365,112 @@ impl AssetViewerPanel {
             }
         };
 
-        let mut verts: Vec<f32> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
+        // Walk the node DAG to get the world-space transform for each mesh.
+        let mut mesh_world = Vec::<(usize, [f32; 16])>::new();
+        {
+            let mut stack: Vec<(solid_rs::scene::NodeId, [f32; 16])> = solid_scene
+                .roots
+                .iter()
+                .map(|&id| (id, glam::Mat4::IDENTITY.to_cols_array()))
+                .collect();
+            while let Some((node_id, parent_cols)) = stack.pop() {
+                let Some(node) = solid_scene.node(node_id) else { continue };
+                let node_mat = node.transform.to_matrix().to_cols_array();
+                let mut prod = [0.0f32; 16];
+                for col in 0..4 {
+                    for row in 0..4 {
+                        let mut sum = 0.0;
+                        for k in 0..4 {
+                            sum += node_mat[k * 4 + col] * parent_cols[row * 4 + k];
+                        }
+                        prod[row * 4 + col] = sum;
+                    }
+                }
+                if let Some(mesh_idx) = node.mesh {
+                    mesh_world.push((mesh_idx, prod));
+                }
+                for &child_id in &node.children {
+                    stack.push((child_id, prod));
+                }
+            }
+        }
 
-        for mesh in &solid_scene.meshes {
+        // First pass: collect all transformed vertices + compute bounding box
+        struct MeshVert { px: f32, py: f32, pz: f32, nx: f32, ny: f32, nz: f32 }
+        let mut all_verts: Vec<MeshVert> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let mut bbox_min = [f32::MAX; 3];
+        let mut bbox_max = [f32::MIN; 3];
+
+        for (mesh_idx, mesh) in solid_scene.meshes.iter().enumerate() {
+            let world_mat = mesh_world
+                .iter()
+                .find(|(idx, _)| *idx == mesh_idx)
+                .map(|(_, m)| *m)
+                .unwrap_or(glam::Mat4::IDENTITY.to_cols_array());
+
+            let rot: [[f32; 3]; 3] = [
+                [world_mat[0], world_mat[4], world_mat[8]],
+                [world_mat[1], world_mat[5], world_mat[9]],
+                [world_mat[2], world_mat[6], world_mat[10]],
+            ];
+
+            let base = all_verts.len() as u32;
+            for v in &mesh.vertices {
+                let px = v.position.x * rot[0][0] + v.position.y * rot[0][1] + v.position.z * rot[0][2] + world_mat[12];
+                let py = v.position.x * rot[1][0] + v.position.y * rot[1][1] + v.position.z * rot[1][2] + world_mat[13];
+                let pz = v.position.x * rot[2][0] + v.position.y * rot[2][1] + v.position.z * rot[2][2] + world_mat[14];
+                let (nx, ny, nz) = match v.normal {
+                    Some(n) => (
+                        n.x * rot[0][0] + n.y * rot[0][1] + n.z * rot[0][2],
+                        n.x * rot[1][0] + n.y * rot[1][1] + n.z * rot[1][2],
+                        n.x * rot[2][0] + n.y * rot[2][1] + n.z * rot[2][2],
+                    ),
+                    None => (0.0, 1.0, 0.0),
+                };
+                bbox_min[0] = bbox_min[0].min(px);
+                bbox_min[1] = bbox_min[1].min(py);
+                bbox_min[2] = bbox_min[2].min(pz);
+                bbox_max[0] = bbox_max[0].max(px);
+                bbox_max[1] = bbox_max[1].max(py);
+                bbox_max[2] = bbox_max[2].max(pz);
+                all_verts.push(MeshVert { px, py, pz, nx, ny, nz });
+            }
+
             for prim in &mesh.primitives {
                 if prim.topology != solid_rs::geometry::Topology::TriangleList {
                     continue;
-                }
-                let base = (verts.len() / 6) as u32;
-                for v in &mesh.vertices {
-                    verts.push(v.position.x);
-                    verts.push(v.position.y);
-                    verts.push(v.position.z);
-                    let (nx, ny, nz) = match v.normal {
-                        Some(n) => (n.x, n.y, n.z),
-                        None => (0.0, 1.0, 0.0),
-                    };
-                    verts.push(nx);
-                    verts.push(ny);
-                    verts.push(nz);
                 }
                 for i in &prim.indices {
                     indices.push(base + i);
                 }
             }
+        }
+
+        // Compute center and scale to normalize mesh to unit size
+        let center = [
+            (bbox_min[0] + bbox_max[0]) * 0.5,
+            (bbox_min[1] + bbox_max[1]) * 0.5,
+            (bbox_min[2] + bbox_max[2]) * 0.5,
+        ];
+        let extent = [
+            bbox_max[0] - bbox_min[0],
+            bbox_max[1] - bbox_min[1],
+            bbox_max[2] - bbox_min[2],
+        ];
+        let max_extent = extent[0].max(extent[1]).max(extent[2]).max(1e-6);
+
+        let scale = 1.0 / max_extent;
+        self.orbit_target = [0.0, 0.0, 0.0];
+        self.distance = 2.0;
+        let mut verts: Vec<f32> = Vec::with_capacity(all_verts.len() * 6);
+        for mv in &all_verts {
+            verts.push((mv.px - center[0]) * scale);
+            verts.push((mv.py - center[1]) * scale);
+            verts.push((mv.pz - center[2]) * scale);
+            verts.push(mv.nx);
+            verts.push(mv.ny);
+            verts.push(mv.nz);
         }
 
         if verts.is_empty() || indices.is_empty() {
@@ -480,15 +569,59 @@ impl AssetViewerPanel {
         }
     }
 
+    fn update_camera(&mut self, dt: f32) {
+        let (yaw_s, yaw_c) = (self.yaw.sin(), self.yaw.cos());
+        let (pitch_s, pitch_c) = (self.pitch.sin(), self.pitch.cos());
+        let fwd = [-pitch_c * yaw_s, -pitch_s, -pitch_c * yaw_c];
+        let world_up = [0.0, 1.0, 0.0];
+        let r = [
+            world_up[1] * fwd[2] - world_up[2] * fwd[1],
+            world_up[2] * fwd[0] - world_up[0] * fwd[2],
+            world_up[0] * fwd[1] - world_up[1] * fwd[0],
+        ];
+        let rl = (r[0] * r[0] + r[1] * r[1] + r[2] * r[2]).sqrt();
+        let right = [r[0] / rl, r[1] / rl, r[2] / rl];
+
+        let speed = self.move_speed * dt;
+        let k = &self.keys;
+        if k[0] { // W - forward
+            self.orbit_target[0] += fwd[0] * speed;
+            self.orbit_target[1] += fwd[1] * speed;
+            self.orbit_target[2] += fwd[2] * speed;
+        }
+        if k[2] { // S - backward
+            self.orbit_target[0] -= fwd[0] * speed;
+            self.orbit_target[1] -= fwd[1] * speed;
+            self.orbit_target[2] -= fwd[2] * speed;
+        }
+        if k[1] { // A - left
+            self.orbit_target[0] -= right[0] * speed;
+            self.orbit_target[1] -= right[1] * speed;
+            self.orbit_target[2] -= right[2] * speed;
+        }
+        if k[3] { // D - right
+            self.orbit_target[0] += right[0] * speed;
+            self.orbit_target[1] += right[1] * speed;
+            self.orbit_target[2] += right[2] * speed;
+        }
+        if k[4] { // Space - up
+            self.orbit_target[1] += speed;
+        }
+        if k[5] { // Ctrl - down
+            self.orbit_target[1] -= speed;
+        }
+    }
+
     fn view_matrix(&self) -> [[f32; 4]; 4] {
         let (yaw_s, yaw_c) = (self.yaw.sin(), self.yaw.cos());
         let (pitch_s, pitch_c) = (self.pitch.sin(), self.pitch.cos());
         let eye = [
-            self.distance * pitch_c * yaw_s,
-            self.distance * pitch_s,
-            self.distance * pitch_c * yaw_c,
+            self.orbit_target[0] + self.distance * pitch_c * yaw_s,
+            self.orbit_target[1] + self.distance * pitch_s,
+            self.orbit_target[2] + self.distance * pitch_c * yaw_c,
         ];
-        let forward = [-eye[0], -eye[1], -eye[2]];
+        let target = self.orbit_target;
+        let forward = [target[0] - eye[0], target[1] - eye[1], target[2] - eye[2]];
         let fwd_len =
             (forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]).sqrt();
         let fwd = [forward[0] / fwd_len, forward[1] / fwd_len, forward[2] / fwd_len];
@@ -534,6 +667,7 @@ impl AssetViewerPanel {
     }
 
     fn render_mesh(&mut self) {
+        self.update_camera(1.0 / 60.0);
         let Some(device) = &self.device else { return };
         let Some(queue) = &self.queue else { return };
         let Some(surface) = &self.surface_handle else { return };
@@ -573,6 +707,28 @@ impl AssetViewerPanel {
             label: Some("mesh encoder"),
         });
 
+        let (cw, ch) = surface.size();
+        let needs_depth = match &self.depth_texture {
+            Some(t) => t.size().width != cw || t.size().height != ch,
+            None => true,
+        };
+        if needs_depth {
+            if let Some(device) = &self.device {
+                let depth = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("depth buffer"),
+                    size: wgpu::Extent3d { width: cw.max(1), height: ch.max(1), depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Depth32Float,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                });
+                let dv = depth.create_view(&wgpu::TextureViewDescriptor::default());
+                self.depth_texture = Some(depth);
+                self.depth_view = Some(dv);
+            }
+        }
         let depth_view = self.depth_view.as_ref();
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -898,6 +1054,46 @@ impl AssetViewerPanel {
             });
         }
     }
+
+    fn on_key_down(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&KeyDownEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                match event.keystroke.key.as_str() {
+                    "w" | "W" => panel.keys[0] = true,
+                    "a" | "A" => panel.keys[1] = true,
+                    "s" | "S" => panel.keys[2] = true,
+                    "d" | "D" => panel.keys[3] = true,
+                    " " => panel.keys[4] = true,
+                    "control" => panel.keys[5] = true,
+                    _ => {}
+                }
+                cx.notify();
+            });
+        }
+    }
+
+    fn on_key_up(
+        cx: &mut Context<Self>,
+    ) -> impl Fn(&KeyUpEvent, &mut Window, &mut App) {
+        let entity = cx.entity().clone();
+        move |event, _window, cx| {
+            entity.update(cx, |panel, cx| {
+                match event.keystroke.key.as_str() {
+                    "w" | "W" => panel.keys[0] = false,
+                    "a" | "A" => panel.keys[1] = false,
+                    "s" | "S" => panel.keys[2] = false,
+                    "d" | "D" => panel.keys[3] = false,
+                    " " => panel.keys[4] = false,
+                    "control" => panel.keys[5] = false,
+                    _ => {}
+                }
+                cx.notify();
+            });
+        }
+    }
 }
 
 impl Render for AssetViewerPanel {
@@ -913,11 +1109,14 @@ impl Render for AssetViewerPanel {
                 .size_full()
                 .min_h(px(200.0))
                 .bg(gpui::rgb(0x1a1a1a))
+                .track_focus(&self.focus_handle)
                 .on_mouse_down(MouseButton::Right, Self::on_orbit_mouse_down(cx))
                 .on_mouse_move(Self::on_orbit_mouse_move(cx))
                 .on_mouse_up(MouseButton::Right, Self::on_orbit_mouse_up(cx))
                 .on_mouse_up_out(MouseButton::Right, Self::on_orbit_mouse_up(cx))
                 .on_scroll_wheel(Self::on_orbit_scroll(cx))
+                .on_key_down(Self::on_key_down(cx))
+                .on_key_up(Self::on_key_up(cx))
                 .child(self.surface_element())
         } else {
             div()
