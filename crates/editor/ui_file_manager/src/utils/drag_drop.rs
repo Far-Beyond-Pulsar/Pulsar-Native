@@ -101,6 +101,12 @@ impl FileManagerDrawer {
         // converts each to a native `.mesh` asset with the chosen options (the
         // source model is not brought into the project). Falls back to a default
         // import if the format advertises no options schema.
+        //
+        // NOTE: The modal MUST be opened asynchronously (on the next frame)
+        // rather than synchronously during the drop handler. Opening a modal
+        // re-enters the event loop, which on macOS prevents the
+        // `performDragOperation` callback from returning and releasing the
+        // `NSDraggingSession`. This would silently break all subsequent drops.
         if !models.is_empty() {
             let ext = models
                 .first()
@@ -111,11 +117,15 @@ impl FileManagerDrawer {
             if let Some(schema) = pulsar_rendering::mesh_cache::options_schema(&ext) {
                 let cfg_models = models.clone();
                 let cfg_target = t.clone();
-                let configurator = cx.new(|cx| {
-                    crate::configurator::ImportConfigurator::new(cfg_models, cfg_target, schema, cx)
-                });
-                w.open_modal(cx, move |modal, _w, _cx| {
-                    modal.show_close(true).child(configurator.clone())
+                cx.on_next_frame(w, move |_this, window, cx| {
+                    let configurator = cx.new(|cx| {
+                        crate::configurator::ImportConfigurator::new(
+                            cfg_models, cfg_target, schema, cx,
+                        )
+                    });
+                    window.open_modal(cx, move |modal, _w, _cx| {
+                        modal.show_close(true).child(configurator.clone())
+                    });
                 });
                 any_ok = true;
             } else {
