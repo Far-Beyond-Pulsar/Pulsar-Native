@@ -52,7 +52,7 @@ pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
 
 [target.'cfg(windows)'.dependencies]
-windows = { workspace = true }
+windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation-sys = { workspace = true }
