@@ -6,11 +6,11 @@ use graphy::{
 };
 use pbgc::compile_graph_to_bytecode;
 use pulsar_bp_executor::BpExecutor;
-use pulsar_std_bundle::extract_to_tempfile;
+use pulsar_std_bundle::{expected_sha256, extract_to_tempfile};
 
 fn exec() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().unwrap();
-    let e = BpExecutor::load(&tmp.path).unwrap();
+    let e = BpExecutor::load(&tmp.path, Some(expected_sha256())).unwrap();
     (e, tmp)
 }
 
@@ -35,7 +35,7 @@ fn begin() -> NodeInstance {
     let mut n = NodeInstance::new("begin", "begin_play", Position::default());
     n.outputs.push(PinInstance::new(
         "be",
-        Pin::new("be", "Body", DataType::Execution, PinType::Output),
+        Pin::new("be", "Body", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -47,7 +47,7 @@ fn add_node(id: &str, a: i64, b: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -56,7 +56,7 @@ fn add_node(id: &str, a: i64, b: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -65,7 +65,7 @@ fn add_node(id: &str, a: i64, b: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -83,7 +83,7 @@ fn array_new_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Output,
         ),
     ));
@@ -97,7 +97,7 @@ fn array_push_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -106,7 +106,7 @@ fn array_push_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -115,7 +115,7 @@ fn array_push_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_itm"),
             "item",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -124,7 +124,7 @@ fn array_push_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_eo"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -133,7 +133,7 @@ fn array_push_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Output,
         ),
     ));
@@ -148,7 +148,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -157,7 +157,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -166,7 +166,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_itm"),
             "item",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -175,7 +175,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_eo"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -184,7 +184,7 @@ fn array_push_vec_item_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Output,
         ),
     ));
@@ -198,7 +198,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -207,7 +207,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -216,7 +216,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_eo"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -225,7 +225,7 @@ fn array_clear_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Output,
         ),
     ));
@@ -239,7 +239,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -248,7 +248,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -257,7 +257,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_idx"),
             "index",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -266,7 +266,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_val"),
             "value",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -275,7 +275,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_eo"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -284,7 +284,7 @@ fn array_set_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Output,
         ),
     ));
@@ -298,7 +298,7 @@ fn array_length_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -307,7 +307,7 @@ fn array_length_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -321,7 +321,7 @@ fn array_is_empty_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_arr"),
             "array",
-            DataType::Typed(graphy::TypeInfo::new("Vec")),
+            DataType::typed("Vec"),
             PinType::Input,
         ),
     ));
@@ -330,7 +330,7 @@ fn array_is_empty_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Output,
         ),
     ));
@@ -344,7 +344,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -353,7 +353,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "actual",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -362,7 +362,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_x"),
             "expected",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -371,7 +371,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -387,7 +387,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -396,7 +396,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_c"),
             "condition",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Input,
         ),
     ));
@@ -405,7 +405,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -419,7 +419,7 @@ fn assert_false(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -428,7 +428,7 @@ fn assert_false(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_c"),
             "condition",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Input,
         ),
     ));
@@ -437,7 +437,7 @@ fn assert_false(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
