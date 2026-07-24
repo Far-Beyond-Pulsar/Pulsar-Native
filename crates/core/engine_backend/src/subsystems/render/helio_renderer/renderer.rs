@@ -8,9 +8,9 @@ use std::time::Instant;
 
 use engine_fs::virtual_fs;
 use helio::{
-    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupMask, LightId, MaterialId,
-    MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer, RendererConfig, Scene,
-    SceneActor, SceneActorId, ScenePicker, SkyActor,
+    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask, LightId,
+    MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer,
+    RendererConfig, Scene, SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
@@ -756,6 +756,11 @@ impl HelioRenderer {
         ));
         tracing::info!("[HELIO SCENE] Added sky");
 
+        // The HIDDEN group is always hidden — objects toggled invisible in the
+        // editor are assigned to this group so they don't render visually while
+        // remaining in the scene for gizmo rendering and selection.
+        inner.renderer.scene_mut().hide_group(GroupId::new(8));
+
         // Lights and meshes are driven exclusively through SceneDb via sync_scene()
         // so that the hierarchy panel and the renderer always show the same state.
         tracing::info!(
@@ -832,11 +837,10 @@ impl HelioRenderer {
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
+        // Process all snapshots through the component system regardless of
+        // visibility so objects exist in the Helio scene for gizmo rendering
+        // and selection picking.
         for snap in &snapshots {
-            if !snap.visible {
-                continue;
-            }
-
             let owner = RuntimeComponentOwner {
                 scene_object_id: snap.id.as_str(),
                 position: snap.position,
@@ -880,6 +884,20 @@ impl HelioRenderer {
         for scene_id in stale_ids {
             if let Some((obj_id, _)) = inner.object_cache.remove(&scene_id) {
                 let _ = inner.renderer.scene_mut().remove_object(obj_id);
+            }
+        }
+
+        // Apply editor visibility: hidden objects remain in the Helio scene
+        // (for gizmo rendering and selection picking) but are assigned to the
+        // HIDDEN group so they don't render visually.
+        for snap in &snapshots {
+            if let Some((obj_id, _)) = inner.object_cache.get(&snap.id) {
+                let groups = if snap.visible {
+                    GroupMask::NONE
+                } else {
+                    GroupMask::from(GroupId::new(8))
+                };
+                let _ = inner.renderer.scene_mut().set_object_groups(obj_id, groups);
             }
         }
 
