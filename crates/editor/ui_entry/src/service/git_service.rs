@@ -15,6 +15,9 @@ impl GitService {
         let progress_inner = progress.clone();
         callbacks.transfer_progress(move |stats| {
             let mut p = progress_inner.lock();
+            if p.cancelled {
+                return false;
+            }
             p.current = stats.received_objects();
             p.total = stats.total_objects();
             p.message = format!(
@@ -25,11 +28,26 @@ impl GitService {
             );
             true
         });
+        callbacks.credentials(move |_url, username_from_url, allowed_types| {
+            git2::Cred::default().or_else(|_| {
+                if allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT) {
+                    git2::Cred::ssh_key_from_agent(username_from_url.unwrap_or("git"))
+                } else if allowed_types.contains(git2::CredentialType::DEFAULT) {
+                    git2::Cred::default()
+                } else {
+                    Err(git2::Error::from_str("No authentication method available"))
+                }
+            })
+        });
         let mut fetch_opts = git2::FetchOptions::new();
         fetch_opts.remote_callbacks(callbacks);
         let mut builder = git2::build::RepoBuilder::new();
         builder.fetch_options(fetch_opts);
-        builder.clone(&repo_url, &target_path)
+        let result = builder.clone(&repo_url, &target_path);
+        if let Err(ref e) = result {
+            progress.lock().error = Some(format!("Clone failed: {}", e));
+        }
+        result
     }
 
     pub fn setup_template_remotes(

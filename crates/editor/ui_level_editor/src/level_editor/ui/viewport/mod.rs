@@ -777,6 +777,8 @@ impl ViewportPanel {
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
 
                 move |_event, window, _cx| {
+                    let restore_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                    let restore_y = locked_cursor_screen_y.load(Ordering::Relaxed);
                     last_mouse_x.store(0, Ordering::Relaxed);
                     last_mouse_y.store(0, Ordering::Relaxed);
                     locked_cursor_x.store(0, Ordering::Relaxed);
@@ -788,6 +790,11 @@ impl ViewportPanel {
 
                     crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
                     crate::level_editor::ui::viewport::platform::unlock_cursor();
+                    if restore_x > 0 && restore_y > 0 {
+                        crate::level_editor::ui::viewport::platform::set_cursor_position(
+                            restore_x, restore_y,
+                        );
+                    }
                     window.refresh();
                 }
             })
@@ -859,6 +866,8 @@ impl ViewportPanel {
                 let locked_cursor_screen_y = locked_cursor_screen_y.clone();
 
                 move |_event, window, _cx| {
+                    let restore_x = locked_cursor_screen_x.load(Ordering::Relaxed);
+                    let restore_y = locked_cursor_screen_y.load(Ordering::Relaxed);
                     last_mouse_x.store(0, Ordering::Relaxed);
                     last_mouse_y.store(0, Ordering::Relaxed);
                     locked_cursor_x.store(0, Ordering::Relaxed);
@@ -870,6 +879,11 @@ impl ViewportPanel {
 
                     crate::level_editor::ui::viewport::platform::end_relative_mouse_mode();
                     crate::level_editor::ui::viewport::platform::unlock_cursor();
+                    if restore_x > 0 && restore_y > 0 {
+                        crate::level_editor::ui::viewport::platform::set_cursor_position(
+                            restore_x, restore_y,
+                        );
+                    }
                     window.refresh();
                 }
             })

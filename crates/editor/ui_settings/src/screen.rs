@@ -12,7 +12,7 @@ use ui::{
     button::{Button, ButtonVariants as _},
     h_flex,
     setting::{SettingField, SettingGroup, SettingItem, SettingPage, Settings},
-    v_flex, ActiveTheme, Icon, IconName, Sizable, Theme, ThemeMode,
+    v_flex, ActiveTheme, ColorBlindMode, Icon, IconName, Sizable, Theme, ThemeMode,
 };
 
 use crate::utils::config;
@@ -72,6 +72,42 @@ impl ModernSettingsScreen {
                         ),
                     )
                     .description("Switch between light and dark themes."),
+                    SettingItem::new(
+                        "Color-Blind Mode",
+                        SettingField::dropdown(
+                            vec![
+                                ("none".into(), "None".into()),
+                                ("protanopia".into(), "Protanopia (red-blind)".into()),
+                                ("deuteranopia".into(), "Deuteranopia (green-blind)".into()),
+                                ("tritanopia".into(), "Tritanopia (blue-blind)".into()),
+                                ("achromatopsia".into(), "Achromatopsia (monochrome)".into()),
+                            ],
+                            |cx: &App| {
+                                (match cx.theme().color_blind_mode {
+                                    ColorBlindMode::None => "none",
+                                    ColorBlindMode::Protanopia => "protanopia",
+                                    ColorBlindMode::Deuteranopia => "deuteranopia",
+                                    ColorBlindMode::Tritanopia => "tritanopia",
+                                    ColorBlindMode::Achromatopsia => "achromatopsia",
+                                })
+                                .into()
+                            },
+                            |val: SharedString, cx: &mut App| {
+                                let mode = match val.as_str() {
+                                    "protanopia" => ColorBlindMode::Protanopia,
+                                    "deuteranopia" => ColorBlindMode::Deuteranopia,
+                                    "tritanopia" => ColorBlindMode::Tritanopia,
+                                    "achromatopsia" => ColorBlindMode::Achromatopsia,
+                                    _ => ColorBlindMode::None,
+                                };
+                                Theme::global_mut(cx).color_blind_mode = mode;
+                                let current_mode = Theme::global(cx).mode;
+                                Theme::change(current_mode, None, cx);
+                            },
+                        )
+                        .default_value("none"),
+                    )
+                    .description("Adjust UI colors for color vision deficiency (protanopia, deuteranopia, tritanopia)."),
                     SettingItem::new(
                         "Group Variant",
                         SettingField::dropdown(

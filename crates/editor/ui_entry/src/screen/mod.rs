@@ -174,6 +174,7 @@ impl EntryScreen {
         }
         let entity = self.entity.clone().unwrap();
         let recent_projects_path = self.state.recent_projects_path.clone();
+        self.state.clone_error = None;
         cx.spawn(async move |_handle, cx| {
             if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
                 let parent = folder.path().to_path_buf();
@@ -184,12 +185,23 @@ impl EntryScreen {
                         .last()
                         .unwrap_or("repo"),
                 );
+                if target.exists() {
+                    let err = format!("Directory already exists: {}", target.display());
+                    cx.update(|cx| {
+                        entity.update(cx, |this, cx| {
+                            this.state.clone_error = Some(err);
+                            cx.notify();
+                        });
+                    });
+                    return;
+                }
                 let progress = Arc::new(Mutex::new(CloneProgress {
                     current: 0,
                     total: 0,
                     message: "Starting clone...".to_string(),
                     completed: false,
                     error: None,
+                    cancelled: false,
                 }));
                 let p = progress.clone();
                 let url = repo_url.clone();
@@ -198,11 +210,24 @@ impl EntryScreen {
                     .background_executor()
                     .spawn(async move { GitService::clone_repository(url, t, p) })
                     .await;
-                let show_upstream =
-                    ProjectService::is_git_repo(&target) && !GitService::has_origin_remote(&target);
+                let has_error = progress.lock().error.is_some();
+                if has_error {
+                    let err = progress.lock().error.clone().unwrap_or_default();
+                    cx.update(|cx| {
+                        entity.update(cx, |this, cx| {
+                            this.state.clone_progress = None;
+                            this.state.clone_error = Some(err);
+                            cx.notify();
+                        });
+                    });
+                    return;
+                }
+                let show_upstream = ProjectService::is_git_repo(&target)
+                    && !GitService::has_origin_remote(&target);
                 cx.update(|cx| {
                     entity.update(cx, |this, cx| {
                         this.state.clone_progress = None;
+                        this.state.clone_error = None;
                         this.state.input.new_project_path = Some(target.clone());
                         if show_upstream {
                             let n = target

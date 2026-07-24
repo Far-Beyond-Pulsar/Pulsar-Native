@@ -328,6 +328,7 @@ pub struct AppState {
     pub ui: UiState,
     pub input: InputValues,
     pub clone_progress: Option<SharedCloneProgress>,
+    pub clone_error: Option<String>,
 
     pub git_fetch_statuses: Arc<Mutex<HashMap<String, GitFetchStatus>>>,
     pub is_fetching_updates: bool,
@@ -417,6 +418,7 @@ impl AppState {
             ui: UiState::new(),
             input: InputValues::new(),
             clone_progress: None,
+            clone_error: None,
             git_fetch_statuses: Arc::new(Mutex::new(HashMap::new())),
             is_fetching_updates: false,
             cloud_servers,

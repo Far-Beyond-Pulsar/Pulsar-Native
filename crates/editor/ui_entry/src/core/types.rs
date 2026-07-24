@@ -140,6 +140,7 @@ pub struct CloneProgress {
     pub message: String,
     pub completed: bool,
     pub error: Option<String>,
+    pub cancelled: bool,
 }
 
 pub type SharedCloneProgress = Arc<Mutex<CloneProgress>>;

@@ -394,6 +394,41 @@ impl BuiltinEditorProvider for ScriptEditorBuiltinProvider {
 // Shader Editor — built-in provider (no DLL boundary)
 // ---------------------------------------------------------------------------
 
+/// Wraps the asset_viewer_plugin crate as a built-in editor provider.
+/// Opens `.fbx` and `.png` files in the FBX/PNG Asset Viewer.
+pub struct AssetViewerBuiltinProvider;
+
+impl BuiltinEditorProvider for AssetViewerBuiltinProvider {
+    fn provider_id(&self) -> &str {
+        "com.pulsar.asset-viewer"
+    }
+
+    fn file_types(&self) -> Vec<FileTypeDefinition> {
+        asset_viewer_plugin::AssetViewerPlugin::default().file_types()
+    }
+
+    fn editors(&self) -> Vec<EditorMetadata> {
+        asset_viewer_plugin::AssetViewerPlugin::default().editors()
+    }
+
+    fn can_handle(&self, editor_id: &EditorId) -> bool {
+        editor_id.as_str() == "asset-viewer"
+    }
+
+    fn create_editor(
+        &self,
+        file_path: PathBuf,
+        _editor_context: &EditorContext,
+        window: &mut Window,
+        cx: &mut App,
+    ) -> Result<Arc<dyn PanelView>, PluginError> {
+        let panel = cx.new(|cx| {
+            asset_viewer_plugin::AssetViewerPanel::new(file_path.clone(), window, cx)
+        });
+        Ok(Arc::new(panel))
+    }
+}
+
 /// Wraps the shader_editor_plugin crate as a built-in editor provider.
 /// Opens `.material` files in the visual Shader Graph Editor.
 pub struct ShaderEditorBuiltinProvider;
@@ -669,6 +704,9 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
 
     // Table editor (opens .db, .sqlite, .sqlite3 SQLite database files)
     registry.register_provider(Arc::new(TableEditorBuiltinProvider));
+
+    // Asset viewer (opens .fbx, .png files)
+    registry.register_provider(Arc::new(AssetViewerBuiltinProvider));
 
     tracing::info!("Built-in editor registration complete");
 }

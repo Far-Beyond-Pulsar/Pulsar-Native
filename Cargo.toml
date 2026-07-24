@@ -4,6 +4,7 @@ members = [
     "crates/editor/*",
     "crates/subsystems/*",
     "crates/agent-providers/*",
+    "plugins/vendor/asset_viewer",
 ]
 
 default-members = ["crates/core/engine"]

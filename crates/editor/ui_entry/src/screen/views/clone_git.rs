@@ -15,11 +15,21 @@ pub fn render_clone_git(
     let theme = cx.theme();
     let repo_url_input = screen.inputs().git_repo_url.clone();
     let is_cloning = screen.state.clone_progress.is_some();
+    let error = screen.state.clone_error.clone();
+
+    let progress_width = screen.state.clone_progress.as_ref().map(|p| {
+        let p = p.lock();
+        if p.total > 0 {
+            p.current as f32 / p.total as f32
+        } else {
+            0.0
+        }
+    });
 
     v_flex()
         .flex_1()
         .h_full()
-                .overflow_hidden()
+        .overflow_hidden()
         .px_8()
         .pt_6()
         .gap_6()
@@ -54,9 +64,7 @@ pub fn render_clone_git(
                                 .text_color(theme.foreground)
                                 .child("Repository URL"),
                         )
-                        .child(
-                            ui::input::Input::new(&repo_url_input).w_full(),
-                        ),
+                        .child(ui::input::Input::new(&repo_url_input).w_full()),
                 )
                 .child(
                     v_flex()
@@ -81,6 +89,42 @@ pub fn render_clone_git(
                                 .child("https://github.com/user/repo.git\ngit@github.com:user/repo.git\nhttps://gitlab.com/user/repo.git"),
                         ),
                 )
+                .when_some(error.clone(), |this, err| {
+                    this.child(
+                        v_flex()
+                            .gap_2()
+                            .p_3()
+                            .rounded_lg()
+                            .bg(theme.danger.opacity(0.1))
+                            .border_1()
+                            .border_color(theme.danger.opacity(0.3))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(
+                                        Icon::new(IconName::WarningTriangle)
+                                            .size(px(16.))
+                                            .text_color(theme.danger),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_sm()
+                                            .text_color(theme.danger)
+                                            .child(err),
+                                    ),
+                            )
+                            .child(
+                                Button::new("dismiss-error-btn")
+                                    .label("Dismiss")
+                                    .ghost()
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.state.clone_error = None;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                })
                 .child(
                     v_flex()
                         .gap_3()
@@ -93,8 +137,7 @@ pub fn render_clone_git(
                                             .gap_2()
                                             .items_center()
                                             .child(
-                                                Icon::new(IconName::Download)
-                                                    .size(px(16.)),
+                                                Icon::new(IconName::Download).size(px(16.)),
                                             )
                                             .child(
                                                 div()
@@ -114,8 +157,18 @@ pub fn render_clone_git(
                                                     .h_full()
                                                     .rounded_full()
                                                     .bg(theme.accent)
-                                                    .w(relative(0.3)),
+                                                    .w(relative(progress_width.unwrap_or(0.0))),
                                             ),
+                                    )
+                                    .child(
+                                        Button::new("cancel-clone-btn")
+                                            .label("Cancel")
+                                            .ghost()
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                if let Some(ref p) = this.state.clone_progress {
+                                                    p.lock().cancelled = true;
+                                                }
+                                            })),
                                     ),
                             )
                         })
