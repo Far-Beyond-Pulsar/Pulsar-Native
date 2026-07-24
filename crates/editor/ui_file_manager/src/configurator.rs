@@ -21,8 +21,16 @@ use ui::{
 };
 use ui_common::reflected_properties_panel::PropertyStateManager;
 use ui_common::render_property_row_runtime;
+use window_manager::{PulsarWindow, default_window_options};
 
 use pulsar_rendering::mesh_cache::{self, ImportField};
+
+/// Parameters for opening the import configurator as its own window.
+pub struct ImportConfiguratorParams {
+    pub sources: Vec<PathBuf>,
+    pub target: PathBuf,
+    pub schema: mesh_cache::OptionsSchema,
+}
 
 pub struct ImportConfigurator {
     sources: Vec<PathBuf>,
@@ -85,8 +93,7 @@ impl ImportConfigurator {
             }
         }
         drop(values);
-        window.close_modal(cx);
-        cx.emit(DismissEvent);
+        window.remove_window();
     }
 
     fn render_field(&mut self, field: &ImportField, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -166,7 +173,25 @@ impl ImportConfigurator {
     }
 }
 
-impl EventEmitter<DismissEvent> for ImportConfigurator {}
+impl PulsarWindow for ImportConfigurator {
+    type Params = ImportConfiguratorParams;
+
+    fn window_name() -> &'static str {
+        "ImportConfigurator"
+    }
+
+    fn window_options(_: &Self::Params) -> gpui::WindowOptions {
+        default_window_options(600.0, 520.0)
+    }
+
+    fn build(
+        params: Self::Params,
+        _window: &mut gpui::Window,
+        cx: &mut gpui::App,
+    ) -> gpui::Entity<Self> {
+        cx.new(|cx| ImportConfigurator::new(params.sources, params.target, params.schema, cx))
+    }
+}
 
 impl Focusable for ImportConfigurator {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
@@ -228,9 +253,8 @@ impl Render for ImportConfigurator {
                     .pt_3()
                     .child(
                         Button::new("cfg-cancel").label("Cancel").outline().on_click(
-                            cx.listener(|_this, _, w, cx| {
-                                w.close_modal(cx);
-                                cx.emit(DismissEvent);
+                            cx.listener(|_this, _, w, _cx| {
+                                w.remove_window();
                             }),
                         ),
                     )

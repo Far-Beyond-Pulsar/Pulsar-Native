@@ -115,18 +115,13 @@ impl FileManagerDrawer {
                 .unwrap_or("")
                 .to_string();
             if let Some(schema) = pulsar_rendering::mesh_cache::options_schema(&ext) {
-                let cfg_models = models.clone();
-                let cfg_target = t.clone();
-                cx.on_next_frame(w, move |_this, window, cx| {
-                    let configurator = cx.new(|cx| {
-                        crate::configurator::ImportConfigurator::new(
-                            cfg_models, cfg_target, schema, cx,
-                        )
-                    });
-                    window.open_modal(cx, move |modal, _w, _cx| {
-                        modal.show_close(true).child(configurator.clone())
-                    });
-                });
+                use ui_common::PulsarWindowExt as _;
+                let params = crate::configurator::ImportConfiguratorParams {
+                    sources: models.clone(),
+                    target: t.clone(),
+                    schema,
+                };
+                crate::configurator::ImportConfigurator::open(params, cx);
                 any_ok = true;
             } else {
                 for src in &models {
