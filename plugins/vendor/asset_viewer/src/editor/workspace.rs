@@ -82,9 +82,6 @@ impl Render for ViewportPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(editor) = self.editor.upgrade() {
             editor.update(cx, |editor, cx| {
-                if editor.needs_rebuild {
-                    editor.rebuild_surface(window, cx);
-                }
                 editor.render_content(window, cx);
 
                 let surface_elem: gpui::AnyElement =

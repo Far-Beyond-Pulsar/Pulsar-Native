@@ -60,6 +60,9 @@ pub struct AssetViewerPanel {
     pub zoom: f32,
     pub panning: bool,
     pub last_pan_pos: Option<Point<Pixels>>,
+
+    pub undo_stack: Vec<(u32, u32, Vec<u8>)>,
+    pub redo_stack: Vec<(u32, u32, Vec<u8>)>,
 }
 
 impl AssetViewerPanel {
@@ -85,6 +88,176 @@ impl AssetViewerPanel {
         self.pan_x = ((vw as f32 - img_w as f32 * fit) * 0.5).max(0.0);
         self.pan_y = ((vh as f32 - img_h as f32 * fit) * 0.5).max(0.0);
         cx.notify();
+    }
+
+    pub fn commit_edit(&mut self) {
+        if let Some(d) = self.image_data.as_ref() {
+            self.undo_stack.push(d.clone());
+            self.redo_stack.clear();
+            self.modified = true;
+        }
+    }
+
+    fn edit_apply(&mut self) {
+        self.reupload_texture();
+    }
+
+    pub fn undo(&mut self) {
+        let Some(d) = self.undo_stack.pop() else { return };
+        if let Some(current) = self.image_data.take() {
+            self.redo_stack.push(current);
+        }
+        self.image_data = Some(d);
+        self.modified = true;
+        self.edit_apply();
+    }
+
+    pub fn redo(&mut self) {
+        let Some(d) = self.redo_stack.pop() else { return };
+        if let Some(current) = self.image_data.take() {
+            self.undo_stack.push(current);
+        }
+        self.image_data = Some(d);
+        self.modified = true;
+        self.edit_apply();
+    }
+
+    pub fn rotate_ccw(&mut self) {
+        self.commit_edit();
+        let Some((w, h, ref pixels)) = self.image_data else { return };
+        let mut out = Vec::with_capacity(pixels.len());
+        for x in (0..w).rev() {
+            for y in 0..h {
+                let i = ((y * w + x) * 4) as usize;
+                out.extend_from_slice(&pixels[i..i + 4]);
+            }
+        }
+        self.image_data = Some((h, w, out));
+        self.zoom_to_fit_after_edit();
+        self.edit_apply();
+    }
+
+    pub fn rotate_90(&mut self) {
+        self.commit_edit();
+        let Some((w, h, ref pixels)) = self.image_data else { return };
+        let mut out = Vec::with_capacity(pixels.len());
+        for x in 0..w {
+            for y in (0..h).rev() {
+                let i = ((y * w + x) * 4) as usize;
+                out.extend_from_slice(&pixels[i..i + 4]);
+            }
+        }
+        self.image_data = Some((h, w, out));
+        self.zoom_to_fit_after_edit();
+        self.edit_apply();
+    }
+
+    pub fn flip_h(&mut self) {
+        self.commit_edit();
+        let Some((w, h, ref pixels)) = self.image_data else { return };
+        let mut out = pixels.clone();
+        for y in 0..h {
+            for x in 0..w / 2 {
+                let a = ((y * w + x) * 4) as usize;
+                let b = ((y * w + (w - 1 - x)) * 4) as usize;
+                for c in 0..4 {
+                    out.swap(a + c, b + c);
+                }
+            }
+        }
+        self.image_data = Some((w, h, out));
+        self.edit_apply();
+    }
+
+    pub fn flip_v(&mut self) {
+        self.commit_edit();
+        let Some((w, h, ref pixels)) = self.image_data else { return };
+        let mut out = pixels.clone();
+        for y in 0..h / 2 {
+            for x in 0..w {
+                let a = ((y * w + x) * 4) as usize;
+                let b = (((h - 1 - y) * w + x) * 4) as usize;
+                for c in 0..4 {
+                    out.swap(a + c, b + c);
+                }
+            }
+        }
+        self.image_data = Some((w, h, out));
+        self.edit_apply();
+    }
+
+    pub fn grayscale(&mut self) {
+        self.commit_edit();
+        let Some((_w, _h, ref mut pixels)) = self.image_data else { return };
+        for pixel in pixels.chunks_exact_mut(4) {
+            let l = (pixel[0] as f32 * 0.299 + pixel[1] as f32 * 0.587 + pixel[2] as f32 * 0.114) as u8;
+            pixel[0] = l;
+            pixel[1] = l;
+            pixel[2] = l;
+        }
+        self.edit_apply();
+    }
+
+    pub fn invert(&mut self) {
+        self.commit_edit();
+        let Some((_w, _h, ref mut pixels)) = self.image_data else { return };
+        for pixel in pixels.chunks_exact_mut(4) {
+            pixel[0] = 255 - pixel[0];
+            pixel[1] = 255 - pixel[1];
+            pixel[2] = 255 - pixel[2];
+        }
+        self.edit_apply();
+    }
+
+    pub fn adjust_brightness(&mut self, delta: i16) {
+        self.commit_edit();
+        let Some((_w, _h, ref mut pixels)) = self.image_data else { return };
+        for pixel in pixels.chunks_exact_mut(4) {
+            for c in 0..3 {
+                let v = pixel[c] as i16 + delta;
+                pixel[c] = v.clamp(0, 255) as u8;
+            }
+        }
+        self.edit_apply();
+    }
+
+    pub fn adjust_contrast(&mut self, factor: f32) {
+        self.commit_edit();
+        let Some((_w, _h, ref mut pixels)) = self.image_data else { return };
+        for pixel in pixels.chunks_exact_mut(4) {
+            for c in 0..3 {
+                let v = ((pixel[c] as f32 - 128.0) * factor + 128.0).clamp(0.0, 255.0) as u8;
+                pixel[c] = v;
+            }
+        }
+        self.edit_apply();
+    }
+
+    pub fn resize(&mut self, new_w: u32, new_h: u32) {
+        self.commit_edit();
+        let Some((w, h, ref pixels)) = self.image_data else { return };
+        if w == new_w && h == new_h { return; }
+        let img = image::RgbaImage::from_raw(w, h, pixels.clone()).unwrap();
+        let resized = image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Lanczos3);
+        self.image_data = Some((new_w, new_h, resized.into_raw()));
+        self.zoom_to_fit_after_edit();
+        self.edit_apply();
+    }
+
+    fn zoom_to_fit_after_edit(&mut self) {
+        if let (Some((w, h, _)), Some(surface)) = (&self.image_data, &self.surface_handle) {
+            let (vw, vh) = surface.size();
+            if vw > 0 && vh > 0 {
+                let fit = (vw as f32 / *w as f32).min(vh as f32 / *h as f32);
+                let prev_fit = (vw as f32 / (*w as f32 / self.zoom)).min(vh as f32 / (*h as f32 / self.zoom));
+                let zoom_ratio = if prev_fit > 0.0 { fit / prev_fit } else { 1.0 };
+                self.zoom = (self.zoom * zoom_ratio).clamp(0.01, 100.0);
+                let dw = *w as f32 * fit * self.zoom;
+                let dh = *h as f32 * fit * self.zoom;
+                self.pan_x = ((vw as f32 - dw) * 0.5).max(0.0);
+                self.pan_y = ((vh as f32 - dh) * 0.5).max(0.0);
+            }
+        }
     }
 
     pub fn new(file_path: PathBuf, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -168,6 +341,8 @@ impl AssetViewerPanel {
             zoom: 1.0,
             panning: false,
             last_pan_pos: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 }

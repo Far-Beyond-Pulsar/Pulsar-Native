@@ -1,7 +1,8 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use ui::button::{Button, ButtonVariants as _};
 use ui::dock::{Panel, PanelEvent};
-use ui::{h_flex, v_flex, ActiveTheme};
+use ui::{h_flex, v_flex, ActiveTheme, Disableable};
 
 use super::panel::AssetViewerPanel;
 
@@ -61,95 +62,148 @@ impl Render for AssetPropertiesPanel {
         };
 
         let ew = editor_entity.clone();
-        let ew2 = editor_entity.clone();
+        let ed = editor_entity.read(cx);
+        let file_name = ed.current_path.as_ref()
+            .and_then(|p| p.file_name()).and_then(|n| n.to_str()).map(|s| s.to_string())
+            .unwrap_or_else(|| "Unknown".to_string());
+        let is_3d = ed.is_3d;
+        let dims = ed.image_data.as_ref()
+            .map(|(w, h, _)| format!("{} x {}", w, h))
+            .unwrap_or_default();
+        let has_undo = !ed.undo_stack.is_empty();
+        let has_redo = !ed.redo_stack.is_empty();
+        drop(ed);
 
-        editor_entity.update(cx, |editor, cx| {
-            let file_name = editor
-                .current_path
-                .as_ref()
-                .and_then(|p| p.file_name())
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-                .to_string();
-
-            let dims = if let Some((w, h, _)) = editor.image_data {
-                format!("{} x {}", w, h)
-            } else if editor.is_3d {
-                "3D Model".to_string()
-            } else {
-                "No image".to_string()
-            };
-
-            let zoom_text = format!("Zoom: {:.0}%", editor.zoom * 100.0);
-
-            div()
+        if is_3d {
+            return div()
                 .size_full()
                 .bg(cx.theme().sidebar)
                 .p_3()
-                .child(
-                    v_flex()
-                        .gap_3()
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("File"),
-                                )
-                                .child(div().text_sm().child(file_name)),
-                        )
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Dimensions"),
-                                )
-                                .child(div().text_sm().child(dims)),
-                        )
-                        .child(
-                            v_flex()
-                                .gap_1()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("View"),
-                                )
-                                .child(div().text_sm().child(zoom_text)),
-                        )
-                        .child(
-                            v_flex()
-                                .gap_2()
-                                .child(
-                                    Button::new("zoom-to-fit")
-                                        .label("Reset Zoom")
-                                        .ghost()
-                                        .on_click(cx.listener(move |_this, _ev, window, cx| {
-                                            ew.update(cx, |e, cx| {
-                                                e.zoom_to_fit(window, cx);
-                                            });
-                                        })),
-                                )
-                                .child(
-                                    Button::new("save-image")
-                                        .label("Save")
-                                        .primary()
-                                        .on_click(cx.listener(move |_this, _ev, _window, cx| {
-                                            ew2.update(cx, |e, _cx| {
-                                                if let Err(err) = e.save_image() {
-                                                    log::error!("Save failed: {}", err);
-                                                }
-                                            });
-                                        })),
-                                ),
-                        ),
-                )
-                .into_any_element()
-        })
+                .child(v_flex().gap_3()
+                    .child(info_field(cx, "File", &file_name))
+                    .child(info_field(cx, "Type", "3D Model")))
+                .into_any_element();
+        }
+
+        div()
+            .size_full()
+            .overflow_y_scroll()
+            .bg(cx.theme().sidebar)
+            .p_3()
+            .child(v_flex().gap_4()
+                .child(section(cx, "File", div().text_sm().child(file_name)))
+                .child(section(cx, "Info", div().text_sm().child(dims)))
+                .child(section(cx, "History", h_flex().gap_2()
+                    .child(ghost_btn("Undo").when(!has_undo, |b| b.disabled(true))
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.undo()); }
+                        }))
+                    .child(ghost_btn("Redo").when(!has_redo, |b| b.disabled(true))
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.redo()); }
+                        }))
+                    .child(primary_btn("Save")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| {
+                                ew.clone().update(cx, |e, _cx| {
+                                    if let Err(err) = e.save_image() { log::error!("Save: {}", err); }
+                                });
+                            }
+                        }))
+                ))
+                .child(section(cx, "Transform", h_flex().gap_2()
+                    .child(ghost_btn("Rot CW")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.rotate_90()); }
+                        }))
+                    .child(ghost_btn("Rot CCW")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.rotate_ccw()); }
+                        }))
+                    .child(ghost_btn("Flip H")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.flip_h()); }
+                        }))
+                    .child(ghost_btn("Flip V")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.flip_v()); }
+                        }))
+                ))
+                .child(section(cx, "Adjust", v_flex().gap_2()
+                    .child(ghost_btn("Grayscale")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.grayscale()); }
+                        }))
+                    .child(ghost_btn("Invert Colors")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.invert()); }
+                        }))
+                    .child(h_flex().gap_2()
+                        .child(ghost_btn("Bright +")
+                            .on_mouse_down(MouseButton::Left, {
+                                let ew = ew.clone();
+                                move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_brightness(20)); }
+                            }))
+                        .child(ghost_btn("Bright -")
+                            .on_mouse_down(MouseButton::Left, {
+                                let ew = ew.clone();
+                                move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_brightness(-20)); }
+                            }))
+                    )
+                    .child(h_flex().gap_2()
+                        .child(ghost_btn("Contrast +")
+                            .on_mouse_down(MouseButton::Left, {
+                                let ew = ew.clone();
+                                move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_contrast(1.3)); }
+                            }))
+                        .child(ghost_btn("Contrast -")
+                            .on_mouse_down(MouseButton::Left, {
+                                let ew = ew.clone();
+                                move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_contrast(0.7)); }
+                            }))
+                    )
+                ))
+                .child(section(cx, "View",
+                    ghost_btn("Reset Zoom")
+                        .on_mouse_down(MouseButton::Left, {
+                            let ew = ew.clone();
+                            move |_ev, window, cx| { ew.clone().update(cx, |e, cx| e.zoom_to_fit(window, cx)); }
+                        })
+                ))
+            )
+            .into_any_element()
     }
+}
+
+fn section<C: IntoElement>(cx: &App, title: &str, content: C) -> impl IntoElement {
+    let muted = cx.theme().muted_foreground;
+    v_flex().gap_2()
+        .child(div().text_xs().text_color(muted).child(title.to_string()))
+        .child(content)
+}
+
+fn info_field(cx: &App, label: &str, value: &str) -> impl IntoElement {
+    let muted = cx.theme().muted_foreground;
+    v_flex().gap_1()
+        .child(div().text_xs().text_color(muted).child(label.to_string()))
+        .child(div().text_sm().child(value.to_string()))
+}
+
+fn ghost_btn(label: &str) -> Button {
+    let s = label.to_string();
+    Button::new(s.clone()).label(s).ghost()
+}
+
+fn primary_btn(label: &str) -> Button {
+    let s = label.to_string();
+    Button::new(s.clone()).label(s).primary()
 }

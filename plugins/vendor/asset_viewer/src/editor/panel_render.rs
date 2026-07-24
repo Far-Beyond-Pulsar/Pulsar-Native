@@ -93,8 +93,8 @@ fn fs_main(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 "#;
 
 impl AssetViewerPanel {
-    pub(crate) fn rebuild_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
-        if !self.needs_rebuild {
+    pub(crate) fn init_surface(&mut self, window: &mut Window, _cx: &mut Context<Self>) {
+        if self.surface_handle.is_some() {
             return;
         }
 
@@ -123,11 +123,10 @@ impl AssetViewerPanel {
             color_space: wgpu::SurfaceColorSpace::Auto,
         };
 
-        let surface_handle = surface.clone();
         self.device = Some(device.clone());
         self.queue = Some(queue.clone());
         self.surface_config = Some(config.clone());
-        self.surface_handle = Some(surface_handle);
+        self.surface_handle = Some(surface);
 
         if !self.is_3d {
             if let Some((img_w, img_h, _)) = self.image_data {
@@ -136,9 +135,10 @@ impl AssetViewerPanel {
                 self.pan_x = ((width as f32 - img_w as f32 * fit) * 0.5).max(0.0);
                 self.pan_y = ((height as f32 - img_h as f32 * fit) * 0.5).max(0.0);
             }
-        }
-
-        if self.is_3d {
+            self.setup_quad_pipeline(&device, &queue, &config);
+            self.setup_checker_pipeline(&device, &config);
+            self.upload_image_texture(&device, &queue);
+        } else {
             let (sw, sh) = self.surface_handle.as_ref().unwrap().size();
             let depth = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("depth buffer"),
@@ -156,12 +156,7 @@ impl AssetViewerPanel {
 
             self.setup_mesh_pipeline(&device, &config);
             self.load_and_upload_mesh(&device, &queue);
-        } else {
-            self.setup_quad_pipeline(&device, &queue, &config);
-            self.setup_checker_pipeline(&device, &config);
-            self.upload_image_texture(&device, &queue);
         }
-
         self.needs_rebuild = false;
     }
 
@@ -632,6 +627,60 @@ impl AssetViewerPanel {
             verts.len() / 6,
             indices.len()
         );
+    }
+
+    pub fn reupload_texture(&mut self) {
+        let Some(device) = &self.device else { return };
+        let Some(queue) = &self.queue else { return };
+        let Some((width, height, ref pixels)) = self.image_data.clone() else { return };
+        let Some(bgl) = self.quad_bind_group_layout.as_ref() else { return };
+        let Some(sampler) = self.quad_sampler.as_ref() else { return };
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("image texture"),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * 4),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        );
+        self.quad_texture = Some(texture);
+        if let (Some(tex), Some(sampler)) = (self.quad_texture.as_ref(), self.quad_sampler.as_ref()) {
+            let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("quad bind group"),
+                layout: bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::Sampler(sampler),
+                    },
+                ],
+            });
+            self.quad_bind_group = Some(bind_group);
+        }
+        self.needs_rebuild = false;
     }
 
     fn upload_image_texture(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
@@ -1256,6 +1305,10 @@ impl AssetViewerPanel {
 
 impl Render for AssetViewerPanel {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.surface_handle.is_none() {
+            self.init_surface(window, cx);
+        }
+
         if self.workspace.is_none() {
             self.initialize_workspace(window, cx);
         }
