@@ -22,6 +22,8 @@ pulsar_scenedb = { workspace = true }
 # Engine
 engine_state.workspace = true
 engine_backend.workspace = true
+# Play-In-Editor input ABI (game tab forwards InputEvent to the embedded game)
+pulsar_pie_abi.workspace = true
 # M3-alpha Task 2 (audit follow-up): `prims-gpui` is required here —
 # `level_editor/ui/properties/object_type_fields/property_renderer.rs`
 # constructs `pulsar_reflection::PropertyEditorArgs`'s GPUI-typed

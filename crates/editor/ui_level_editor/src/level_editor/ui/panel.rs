@@ -438,10 +438,21 @@ impl LevelEditorPanel {
                     cx,
                 );
 
+                // Game tab (Play In Editor, issue #243): runs the embedded game
+                // alongside the editor Viewport. Self-manages off `play.pie` state.
+                let game_panel = cx.new(|cx| {
+                    use crate::level_editor::ui::viewport::game_viewport::GameViewport;
+                    GameViewport::new(shared_state.clone(), cx)
+                });
+
                 // Set center and right dock only (no left dock, matching DAW approach)
                 let center_tabs = DockItem::tabs(
-                    vec![std::sync::Arc::new(viewport_panel)
-                        as std::sync::Arc<dyn ui::dock::PanelView>],
+                    vec![
+                        std::sync::Arc::new(viewport_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                        std::sync::Arc::new(game_panel)
+                            as std::sync::Arc<dyn ui::dock::PanelView>,
+                    ],
                     Some(0),
                     &dock_area,
                     window,

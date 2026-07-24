@@ -9,6 +9,7 @@
 //! The viewport has been refactored into focused, reusable components for maintainability.
 
 pub mod components;
+pub mod game_viewport;
 pub mod helio_viewport;
 pub mod input_state;
 pub mod performance;

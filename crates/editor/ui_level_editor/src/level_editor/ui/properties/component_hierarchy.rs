@@ -284,6 +284,7 @@ impl ComponentHierarchyPanel {
         let scene_db_for_root_drop = self.scene_db.clone();
         let state_arc_for_expand = state_arc.clone();
         let state_arc_for_nest = state_arc.clone();
+        let notify_entity = cx.entity().downgrade();
 
         let config = HierarchyConfig {
             items,
@@ -331,7 +332,8 @@ impl ComponentHierarchyPanel {
             }),
             on_toggle_expand: Arc::new({
                 let object_id = self.object_id.clone();
-                move |idx: &usize, _window, _cx| {
+                let entity = notify_entity.clone();
+                move |idx: &usize, _window, cx| {
                     let mut state = state_arc.write();
                     let key = (object_id.clone(), *idx);
                     if state.hierarchy.expanded_components.contains(&key) {
@@ -339,19 +341,21 @@ impl ComponentHierarchyPanel {
                     } else {
                         state.hierarchy.expanded_components.insert(key);
                     }
+                    drop(state);
+                    if let Some(e) = entity.upgrade() {
+                        cx.notify(e.entity_id());
+                    }
                 }
             }),
-            on_select: Arc::new(|_idx: &usize, _window, _cx| {
-                // Component selection could be implemented here
-            }),
+            on_select: Arc::new(|_: &usize, _window, _cx| {}),
             on_drop: Arc::new({
                 let object_id = self.object_id.clone();
+                let entity = notify_entity.clone();
                 move |payload: ComponentDragPayload,
                       target_idx: &usize,
                       modifiers: &Modifiers,
                       _window,
-                      _cx| {
-                    // Only allow operations within the same object
+                      cx| {
                     if payload.object_id != object_id {
                         return;
                     }
@@ -360,25 +364,24 @@ impl ComponentHierarchyPanel {
                     let to_idx = *target_idx;
 
                     if from_idx == to_idx {
-                        return; // Can't drop onto self
+                        return;
                     }
 
-                    // Check modifier keys to determine operation
                     if modifiers.shift {
-                        // Remove parent - un-nest to root level
                         scene_db.set_component_parent(&object_id, from_idx, None);
                     } else if modifiers.alt {
-                        // Reorder at same level
                         scene_db.reorder_component(&object_id, from_idx, to_idx);
                     } else {
-                        // Default: nest the dragged component under the drop target
                         scene_db.set_component_parent(&object_id, from_idx, Some(to_idx));
-                        // Auto-expand the parent to show the new child
                         state_arc_for_nest
                             .write()
                             .hierarchy
                             .expanded_components
                             .insert((object_id.clone(), to_idx));
+                    }
+
+                    if let Some(e) = entity.upgrade() {
+                        cx.notify(e.entity_id());
                     }
                 }
             }),
