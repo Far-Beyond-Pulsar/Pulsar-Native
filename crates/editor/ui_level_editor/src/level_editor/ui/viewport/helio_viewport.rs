@@ -280,9 +280,12 @@ impl HelioViewport {
                     // swapchain and requires an idle queue) cannot race our submit.
                     // This is a read guard: other surfaces' render threads hold
                     // theirs concurrently, so frame pacing stays independent.
+                    let _frame = gpui::render_stats::scope("helio: FRAME TOTAL");
+                    gpui::render_stats::count("helio frames rendered");
                     let submit_guard = surface.submit_guard();
 
                     let Some((view, (width, height))) = surface.back_view_with_size() else {
+                        gpui::render_stats::count("helio: no back buffer (skipped)");
                         continue;
                     };
 
@@ -290,16 +293,28 @@ impl HelioViewport {
                     let queue = surface.queue();
                     let format = surface.format();
 
-                    let submission_index = match engine.lock() {
-                        Ok(mut engine) => {
-                            if tab_activated.swap(false, Ordering::AcqRel) {
-                                engine.reset_taa();
+                    let submission_index = {
+                        let lock_start = Instant::now();
+                        let locked = engine.lock();
+                        gpui::render_stats::record(
+                            "helio: wait for engine lock",
+                            lock_start.elapsed(),
+                        );
+
+                        match locked {
+                            Ok(mut engine) => {
+                                if tab_activated.swap(false, Ordering::AcqRel) {
+                                    engine.reset_taa();
+                                }
+                                let _t = gpui::render_stats::scope(
+                                    "helio: render_frame_to_surface",
+                                );
+                                engine.render_frame_to_surface(
+                                    device, queue, &view, width, height, format,
+                                )
                             }
-                            engine.render_frame_to_surface(
-                                device, queue, &view, width, height, format,
-                            )
+                            Err(_) => None,
                         }
-                        Err(_) => None,
                     };
 
                     drop(view);
