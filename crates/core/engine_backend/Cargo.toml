@@ -5,9 +5,6 @@ description = "A modern high-performance game engine backend written in Rust"
 publish = false
 version = "0.1.34"
 
-[profile.dev.package."*"]
-opt-level = 3
-
 [dev-dependencies]
 tempfile = { workspace = true }
 
@@ -24,7 +21,7 @@ pebble = { package = "PebbleVault", version = "0.7.0" }
 serde = { workspace = true, features = ["derive"] }
 uuid = { workspace = true, features = ["v4"] }
 tokio = { workspace = true, features = ["full"] }
-rapier3d.workspace = true
+rapier3d = { workspace = true, optional = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 dashmap = { workspace = true }
@@ -44,38 +41,47 @@ engine_fs.workspace = true
 profiling = { workspace = true }
 
 # UI dependencies needed for services
-gpui-ce.workspace = true
-ui.workspace = true
-pulsar_lsp.workspace = true
-lsp-types.workspace = true
-ropey.workspace = true
-flume = { workspace = true }
+gpui-ce = { workspace = true, optional = true }
+ui = { workspace = true, optional = true }
+pulsar_lsp = { workspace = true, optional = true }
+lsp-types = { workspace = true, optional = true }
+ropey = { workspace = true, optional = true }
+flume = { workspace = true, optional = true }
 
 # Helio rendering (wgpu-based)
-helio.workspace = true
-helio-pass-taa.workspace = true
-helio-asset-compat = { workspace = true }
-helio-default-graphs = { workspace = true }
+helio = { workspace = true, optional = true }
+helio-pass-taa = { workspace = true, optional = true }
+helio-asset-compat = { workspace = true, optional = true }
+helio-default-graphs = { workspace = true, optional = true }
 glam.workspace = true
-bytemuck = "1.14"
+bytemuck = { version = "1.14", optional = true }
 
-wgpu.workspace = true
+wgpu = { workspace = true, optional = true }
 # Play-In-Editor embedding: load a game project cdylib and drive it (issue #243)
-pulsar_pie_abi.workspace = true
-libloading = { workspace = true }
-crossbeam-channel = { workspace = true }
-futures = { workspace = true }
+pulsar_pie_abi = { workspace = true, optional = true }
+libloading = { workspace = true, optional = true }
+crossbeam-channel = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }
 # horizon = { git = "https://github.com/Far-Beyond-Dev/Horizon", rev = "b11774f548d50e183b9a452369cda6877fc0abe4" }
 serde_json = { workspace = true }
-reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"], optional = true }
 
 # Networking dependencies
-async-tungstenite = { version = "0.34", features = ["tokio-runtime"] }
-git2 = { workspace = true }
-sha2 = { workspace = true }
-walkdir = { workspace = true }
+async-tungstenite = { version = "0.34", features = ["tokio-runtime"], optional = true }
+git2 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+walkdir = { workspace = true, optional = true }
+
+[features]
+default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
+render     = ["dep:helio", "dep:helio-pass-taa", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:wgpu", "dep:bytemuck"]
+editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
+pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
+networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
+vcs        = ["dep:git2", "dep:sha2", "dep:walkdir"]
+physics    = ["dep:rapier3d"]
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_Foundation"] }
