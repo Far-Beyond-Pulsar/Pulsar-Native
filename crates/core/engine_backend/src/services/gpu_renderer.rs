@@ -12,6 +12,7 @@ use std::time::Instant;
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
     scene_db: Option<Arc<SceneDb>>,
+    #[cfg(feature = "physics")]
     _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
 
@@ -19,6 +20,7 @@ impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
         Self {
             scene_db: None,
+            #[cfg(feature = "physics")]
             _physics_query: None,
         }
     }
@@ -28,6 +30,7 @@ impl GpuRendererBuilder {
         self
     }
 
+    #[cfg(feature = "physics")]
     pub fn physics(mut self, pq: Arc<crate::services::PhysicsQueryService>) -> Self {
         self._physics_query = Some(pq);
         self

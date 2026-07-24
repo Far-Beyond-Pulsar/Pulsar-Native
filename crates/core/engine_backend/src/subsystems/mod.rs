@@ -28,7 +28,10 @@
 // Subsystem framework
 pub mod framework;
 pub mod game_network;
+#[cfg(any(feature = "networking", feature = "vcs"))]
 pub mod networking;
+#[cfg(feature = "physics")]
 pub mod physics;
+#[cfg(feature = "render")]
 pub mod render;
 pub mod world;
