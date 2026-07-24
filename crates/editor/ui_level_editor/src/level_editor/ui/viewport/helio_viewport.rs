@@ -275,6 +275,13 @@ impl HelioViewport {
                     }
                     first_frame = false;
 
+                    // Permission to submit on the shared device. Held across
+                    // render + present so a window resize (which reconfigures the
+                    // swapchain and requires an idle queue) cannot race our submit.
+                    // This is a read guard: other surfaces' render threads hold
+                    // theirs concurrently, so frame pacing stays independent.
+                    let submit_guard = surface.submit_guard();
+
                     let Some((view, (width, height))) = surface.back_view_with_size() else {
                         continue;
                     };
@@ -307,6 +314,8 @@ impl HelioViewport {
                         // entire editor UI.
                         surface.present_synced_silent(idx);
                     }
+
+                    drop(submit_guard);
                 }
             });
 
