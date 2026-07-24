@@ -20,6 +20,7 @@ const HELIO_DEPENDENCIES: [&str; 5] = [
 /// `git = "…Pulsar-Native"` (no rev) otherwise causes.
 const GAME_DEPENDENCIES: &[&str] = &[
     "pulsar_game",
+    "pulsar_scenedb",
     "pulsar_std",
     "pulsar_pie_abi",
     "engine_class_derive",

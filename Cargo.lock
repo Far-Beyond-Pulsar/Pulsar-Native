@@ -1140,7 +1140,7 @@ dependencies = [
  "pbgc",
  "plugin_editor_api",
  "pulsar_bp_executor",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_std",
  "pulsar_std_bundle",
  "schemars",
@@ -2937,7 +2937,7 @@ dependencies = [
  "pulsar_events",
  "pulsar_lsp",
  "pulsar_pie_abi",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scene",
  "rapier3d",
@@ -2965,7 +2965,7 @@ name = "engine_class_derive"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "quote",
  "syn 2.0.119",
@@ -2987,7 +2987,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar-multiplayer-core",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "serde",
  "serde_json",
  "tempfile",
@@ -8442,7 +8442,7 @@ version = "0.1.0"
 dependencies = [
  "engine_subsystems",
  "gpui-ce",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -9171,7 +9171,7 @@ dependencies = [
  "pulsar_bp_executor",
  "pulsar_core",
  "pulsar_pie_abi",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_scene",
  "pulsar_scenedb",
  "pulsar_settings",
@@ -9227,7 +9227,7 @@ name = "pulsar_physics"
 version = "0.1.0"
 dependencies = [
  "engine_class_derive",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "serde",
  "serde_json",
@@ -9241,14 +9241,13 @@ version = "0.1.0"
 [[package]]
 name = "pulsar_reflection"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446#9b887f1ed327b5e3e2b6ba9066679469520cb446"
 dependencies = [
  "dashmap",
  "glam 0.33.2",
  "gpui-ce",
  "inventory",
  "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection_derive",
  "serde",
  "serde_json",
  "tracing",
@@ -9257,36 +9256,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "pulsar_reflection"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281#cf37ed000fedb9a01424c7e575d1d6ee30db7281"
-dependencies = [
- "dashmap",
- "glam 0.33.2",
- "inventory",
- "once_cell",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
- "serde",
- "serde_json",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "pulsar_reflection_derive"
 version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446#9b887f1ed327b5e3e2b6ba9066679469520cb446"
-dependencies = [
- "owo-colors",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "pulsar_reflection_derive"
-version = "0.1.0"
-source = "git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281#cf37ed000fedb9a01424c7e575d1d6ee30db7281"
 dependencies = [
  "owo-colors",
  "proc-macro2",
@@ -9312,7 +9283,7 @@ dependencies = [
  "plugin_editor_api",
  "pollster 0.4.0",
  "pulsar_events",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_scenedb",
  "pulsar_terrain",
  "serde",
@@ -9333,7 +9304,7 @@ dependencies = [
  "helio 0.18.0",
  "helio-asset-compat",
  "pulsar_events",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "serde",
  "serde_json",
@@ -9347,7 +9318,7 @@ source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=cf37ed000fedb9a01424c7e575d1d6ee30db7281)",
+ "pulsar_reflection",
  "serde_json",
  "tracing",
 ]
@@ -9366,8 +9337,8 @@ dependencies = [
  "engine_fs",
  "linkme",
  "pulsar_macros",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
- "pulsar_reflection_derive 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
+ "pulsar_reflection_derive",
  "rand 0.10.2",
  "rlua",
  "serde",
@@ -11108,7 +11079,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "psgc",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "schemars",
  "serde",
  "serde_json",
@@ -13399,7 +13370,7 @@ dependencies = [
  "parking_lot",
  "plugin_editor_api",
  "pulsar_auth",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "reqwest 0.13.4",
  "rust-i18n",
  "rust-i18n-macro",
@@ -13441,7 +13412,7 @@ dependencies = [
  "plugin_manager",
  "plugin_matter",
  "pulsar_physics",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "rfd",
  "rust-i18n",
  "schemars",
@@ -13557,7 +13528,7 @@ dependencies = [
  "gpui-ce",
  "image",
  "plugin_editor_api",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "rust-i18n",
  "schemars",
@@ -13669,7 +13640,7 @@ dependencies = [
  "plugin_manager",
  "profiling 0.1.0",
  "pulsar_physics",
- "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
+ "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scenedb",
  "raw-window-handle",
