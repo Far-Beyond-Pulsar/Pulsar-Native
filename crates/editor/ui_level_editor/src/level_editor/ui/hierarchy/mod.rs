@@ -480,7 +480,7 @@ impl HierarchyPanel {
             ),
         };
 
-        HierarchicalTreeView::new(config).render(cx)
+        cx.new(|cx| HierarchicalTreeView::new(config, cx)).into_any_element()
     }
 
     pub fn get_icon_for_object_type(object_type: ObjectType) -> IconName {
