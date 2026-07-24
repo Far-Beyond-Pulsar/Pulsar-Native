@@ -14,13 +14,15 @@ use graphy::{
 };
 use pbgc::{compile_graph, compile_graph_to_bytecode, BpProgram};
 use pulsar_bp_executor::BpExecutor;
-use pulsar_std_bundle::{extract_to_tempfile, PULSAR_STD_LIB_BYTES, PULSAR_STD_LIB_EXT};
+use pulsar_std_bundle::{
+    expected_sha256, extract_to_tempfile, PULSAR_STD_LIB_BYTES, PULSAR_STD_LIB_EXT,
+};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().expect("extract native lib");
-    let exec = BpExecutor::load(&tmp.path).expect("load native lib");
+    let exec = BpExecutor::load(&tmp.path, Some(expected_sha256())).expect("load native lib");
     (exec, tmp)
 }
 
@@ -53,7 +55,7 @@ fn begin(pin: &str) -> NodeInstance {
     let mut n = NodeInstance::new("begin", "begin_play", Position { x: 0.0, y: 0.0 });
     n.outputs.push(PinInstance::new(
         pin,
-        Pin::new(pin, "Body", DataType::Execution, PinType::Output),
+        Pin::new(pin, "Body", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -64,7 +66,7 @@ fn add_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -73,7 +75,7 @@ fn add_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -82,7 +84,7 @@ fn add_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -101,7 +103,7 @@ fn gt_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -110,7 +112,7 @@ fn gt_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -119,7 +121,7 @@ fn gt_node(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Output,
         ),
     ));
@@ -138,7 +140,7 @@ fn branch_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -147,7 +149,7 @@ fn branch_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_c"),
             "condition",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Input,
         ),
     ));
@@ -156,7 +158,7 @@ fn branch_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_t"),
             "True",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -165,7 +167,7 @@ fn branch_node(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_f"),
             "False",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -178,7 +180,7 @@ fn assert_eq_int_node(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -187,7 +189,7 @@ fn assert_eq_int_node(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "actual",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -196,7 +198,7 @@ fn assert_eq_int_node(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_x"),
             "expected",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -205,7 +207,7 @@ fn assert_eq_int_node(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -279,7 +281,7 @@ fn test_embedded_lib_is_non_empty() {
 fn test_lib_extracts_to_temp_and_loads() {
     let tmp = extract_to_tempfile().expect("extract");
     assert!(tmp.path.exists(), "temp file must exist");
-    let exec = BpExecutor::load(&tmp.path).expect("load");
+    let exec = BpExecutor::load(&tmp.path, Some(expected_sha256())).expect("load");
     // Prepare a trivial program to confirm the lib is functional
     let mut prog = BpProgram::new("test");
     prog.arena_size = 24;
@@ -359,12 +361,12 @@ fn test_multiple_event_nodes_produce_separate_programs() {
     let mut bp = NodeInstance::new("bp", "begin_play", Position { x: 0.0, y: 0.0 });
     bp.outputs.push(PinInstance::new(
         "bp_e",
-        Pin::new("bp_e", "Body", DataType::Execution, PinType::Output),
+        Pin::new("bp_e", "Body", DataType::Exec, PinType::Output),
     ));
     let mut main_ev = NodeInstance::new("main_ev", "main", Position { x: 200.0, y: 0.0 });
     main_ev.outputs.push(PinInstance::new(
         "main_e",
-        Pin::new("main_e", "Body", DataType::Execution, PinType::Output),
+        Pin::new("main_e", "Body", DataType::Exec, PinType::Output),
     ));
     g.add_node(bp);
     g.add_node(main_ev);

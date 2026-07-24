@@ -15,15 +15,15 @@ use graphy::{
     Connection, ConnectionType, DataType, GraphDescription, NodeInstance, Pin, PinInstance,
     PinType, Position,
 };
-use pbgc::{compile_graph_to_bytecode, BpProgram};
+use pbgc::compile_graph_to_bytecode;
 use pulsar_bp_executor::BpExecutor;
-use pulsar_std_bundle::extract_to_tempfile;
+use pulsar_std_bundle::{expected_sha256, extract_to_tempfile};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn executor() -> (BpExecutor, pulsar_std_bundle::TempLib) {
     let tmp = extract_to_tempfile().expect("extract dylib");
-    let exec = BpExecutor::load(&tmp.path).expect("load dylib");
+    let exec = BpExecutor::load(&tmp.path, Some(expected_sha256())).expect("load dylib");
     (exec, tmp)
 }
 
@@ -46,7 +46,7 @@ fn begin(pin: &str) -> NodeInstance {
     let mut n = NodeInstance::new("begin", "begin_play", Position { x: 0.0, y: 0.0 });
     n.outputs.push(PinInstance::new(
         pin,
-        Pin::new(pin, "Body", DataType::Execution, PinType::Output),
+        Pin::new(pin, "Body", DataType::Exec, PinType::Output),
     ));
     n
 }
@@ -58,7 +58,7 @@ fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -67,7 +67,7 @@ fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -76,7 +76,7 @@ fn add_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -96,7 +96,7 @@ fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -105,7 +105,7 @@ fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -114,7 +114,7 @@ fn mul_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -134,7 +134,7 @@ fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -143,7 +143,7 @@ fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -152,7 +152,7 @@ fn sub_i64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Output,
         ),
     ));
@@ -172,7 +172,7 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -181,7 +181,7 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -190,7 +190,7 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
         Pin::new(
             &format!("{id}_t"),
             "t",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -199,7 +199,7 @@ fn lerp_f64(id: &str, a: Option<f64>, b: Option<f64>, t: Option<f64>) -> NodeIns
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Output,
         ),
     ));
@@ -222,7 +222,7 @@ fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "a",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -231,7 +231,7 @@ fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_b"),
             "b",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -240,7 +240,7 @@ fn gt_f64(id: &str, a: Option<f64>, b: Option<f64>) -> NodeInstance {
         Pin::new(
             &format!("{id}_r"),
             "result",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Output,
         ),
     ));
@@ -260,7 +260,7 @@ fn branch(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -269,7 +269,7 @@ fn branch(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_c"),
             "condition",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Input,
         ),
     ));
@@ -278,7 +278,7 @@ fn branch(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_t"),
             "True",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -287,7 +287,7 @@ fn branch(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_f"),
             "False",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -301,7 +301,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -310,7 +310,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "actual",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -319,7 +319,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_x"),
             "expected",
-            DataType::Typed(graphy::TypeInfo::new("i64")),
+            DataType::typed("i64"),
             PinType::Input,
         ),
     ));
@@ -328,7 +328,7 @@ fn assert_eq_int(id: &str, expected: i64) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -344,7 +344,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -353,7 +353,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         Pin::new(
             &format!("{id}_a"),
             "actual",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -362,7 +362,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         Pin::new(
             &format!("{id}_x"),
             "expected",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -371,7 +371,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         Pin::new(
             &format!("{id}_ep"),
             "epsilon",
-            DataType::Typed(graphy::TypeInfo::new("f64")),
+            DataType::typed("f64"),
             PinType::Input,
         ),
     ));
@@ -380,7 +380,7 @@ fn assert_eq_float(id: &str, expected: f64, epsilon: f64) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
@@ -398,7 +398,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_e"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Input,
         ),
     ));
@@ -407,7 +407,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_c"),
             "condition",
-            DataType::Typed(graphy::TypeInfo::new("bool")),
+            DataType::typed("bool"),
             PinType::Input,
         ),
     ));
@@ -416,7 +416,7 @@ fn assert_true(id: &str) -> NodeInstance {
         Pin::new(
             &format!("{id}_o"),
             "exec",
-            DataType::Execution,
+            DataType::Exec,
             PinType::Output,
         ),
     ));
