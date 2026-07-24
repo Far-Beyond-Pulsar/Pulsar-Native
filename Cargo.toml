@@ -269,6 +269,9 @@ files.extend-exclude = ["**/fixtures/*"]
 gpui-ce = { path = "crates/ui/wgpui" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Native"]
+gpui-ce          = { path = "crates/ui/wgpui" }
+ui               = { path = "crates/ui/wgpui-component/crates/ui" }
+ui-macros        = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 pulsar_std        = { path = "crates/core/pulsar_std" }
 plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }
