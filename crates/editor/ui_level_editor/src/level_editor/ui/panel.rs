@@ -1520,13 +1520,42 @@ pub(crate) fn end_pie(shared_state: Arc<parking_lot::RwLock<LevelEditorState>>) 
 
 /// Regenerate the project scaffolding and build it as a `cdylib`, returning what
 /// the viewport needs to load the embedded game. Runs on a background thread.
+///
+/// Fastpath: if a release library already exists and no `.rs`/`.toml` under the
+/// project is newer than it, skip regeneration + `cargo build` entirely and reuse
+/// the last-built artifact — pressing Play with no source changes is instant.
 fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, String> {
-    // Ensure src/lib.rs + the `[lib] cdylib` manifest are up to date.
+    // PiE uses the release library (faster at runtime, and matches the artifact
+    // `cargo build --release` / `cargo run --release` produce).
+    let release = true;
+
+    // Fastpath — reuse the existing artifact when nothing changed. Needs the
+    // crate name, which needs a manifest; if it's missing we fall through to a
+    // full build that generates it.
+    if let Ok(crate_name) = read_crate_name(root) {
+        let dylib_path =
+            engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
+        if dylib_path.exists() && !any_source_newer(root, &dylib_path) {
+            tracing::info!(
+                lib = %dylib_path.display(),
+                "PiE fastpath: no .rs/.toml changes since last build — reusing artifact"
+            );
+            return Ok(PieStartRequest {
+                dylib_path,
+                project_root: root.to_path_buf(),
+                scene_path: scene_path.to_path_buf(),
+            });
+        }
+    }
+
+    // Slow path — regenerate scaffolding (src/lib.rs + the cdylib manifest) and
+    // build.
     engine_backend::services::ensure_core_bootstrap(root)?;
 
     let output = std::process::Command::new("cargo")
         .arg("build")
         .arg("--lib")
+        .arg("--release")
         .current_dir(root)
         .output()
         .map_err(|e| format!("Failed to spawn cargo: {e}"))?;
@@ -1535,11 +1564,11 @@ fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, St
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Keep the message bounded — the full log is on stderr/tracing.
         let tail: String = stderr.lines().rev().take(20).collect::<Vec<_>>().join("\n");
-        return Err(format!("cargo build --lib failed:\n{tail}"));
+        return Err(format!("cargo build --lib --release failed:\n{tail}"));
     }
 
     let crate_name = read_crate_name(root)?;
-    let dylib_path = engine_backend::services::PieHost::output_dylib_path(root, &crate_name, false);
+    let dylib_path = engine_backend::services::PieHost::output_dylib_path(root, &crate_name, release);
     if !dylib_path.exists() {
         return Err(format!(
             "Build succeeded but library not found at {}",
@@ -1552,6 +1581,47 @@ fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, St
         project_root: root.to_path_buf(),
         scene_path: scene_path.to_path_buf(),
     })
+}
+
+/// Whether any `.rs` or `.toml` file under `root` is newer than `artifact`.
+/// Skips `target/` and `.git/`. A missing/unreadable artifact counts as "newer"
+/// so the caller rebuilds.
+fn any_source_newer(root: &Path, artifact: &Path) -> bool {
+    let Ok(artifact_mtime) = std::fs::metadata(artifact).and_then(|m| m.modified()) else {
+        return true;
+    };
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                let name = entry.file_name();
+                if name == "target" || name == ".git" {
+                    continue;
+                }
+                stack.push(entry.path());
+            } else if file_type.is_file() {
+                let path = entry.path();
+                let is_source = path
+                    .extension()
+                    .map(|e| e == "rs" || e == "toml")
+                    .unwrap_or(false);
+                if is_source {
+                    if let Ok(mtime) = entry.metadata().and_then(|m| m.modified()) {
+                        if mtime > artifact_mtime {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    false
 }
 
 /// Read the `[package] name` from the project's `Cargo.toml`.
