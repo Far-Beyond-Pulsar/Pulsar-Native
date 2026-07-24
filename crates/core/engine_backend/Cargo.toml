@@ -58,6 +58,9 @@ glam.workspace = true
 bytemuck = "1.14"
 
 wgpu.workspace = true
+# Play-In-Editor embedding: load a game project cdylib and drive it (issue #243)
+pulsar_pie_abi.workspace = true
+libloading = { workspace = true }
 crossbeam-channel = { workspace = true }
 futures = { workspace = true }
 parking_lot = { workspace = true }

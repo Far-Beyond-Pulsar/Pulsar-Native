@@ -2930,11 +2930,13 @@ dependencies = [
  "helio 0.18.0",
  "helio-asset-compat",
  "helio-default-graphs",
+ "libloading 0.9.0",
  "lsp-types",
  "parking_lot",
  "profiling 0.1.0",
  "pulsar_events",
  "pulsar_lsp",
+ "pulsar_pie_abi",
  "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
  "pulsar_rendering",
  "pulsar_scene",
@@ -9168,6 +9170,7 @@ dependencies = [
  "profiling 0.1.0",
  "pulsar_bp_executor",
  "pulsar_core",
+ "pulsar_pie_abi",
  "pulsar_reflection 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection?rev=9b887f1ed327b5e3e2b6ba9066679469520cb446)",
  "pulsar_scene",
  "pulsar_scenedb",
@@ -9230,6 +9233,10 @@ dependencies = [
  "serde_json",
  "tracing",
 ]
+
+[[package]]
+name = "pulsar_pie_abi"
+version = "0.1.0"
 
 [[package]]
 name = "pulsar_reflection"

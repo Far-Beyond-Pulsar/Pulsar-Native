@@ -25,6 +25,9 @@ pub mod freecam;
 pub mod window;
 pub mod windowed_app;
 
+// Play In Editor — host-driven embedding (issue #243)
+pub mod embed;
+
 // Legacy tick loop (uses extracted primitives)
 pub mod tick;
 

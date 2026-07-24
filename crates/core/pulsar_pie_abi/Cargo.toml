@@ -1,0 +1,19 @@
+# Generated/maintained as part of Pulsar-Native.
+#
+# `pulsar_pie_abi` is the shared C-ABI contract between the editor host and an
+# embedded game dynamic library (Play In Editor / PiE, issue #243). It is
+# intentionally dependency-free (`#![no_std]`, only `core::ffi`) so that its
+# `#[repr(C)]` layout is identical no matter which side — the editor workspace
+# or a generated game project — compiles it.
+[package]
+name = "pulsar_pie_abi"
+version = "0.1.0"
+edition = "2021"
+license.workspace = true
+repository.workspace = true
+description = "Shared C-ABI contract for Pulsar Play-In-Editor embedded game libraries."
+
+[lints]
+workspace = true
+
+[dependencies]

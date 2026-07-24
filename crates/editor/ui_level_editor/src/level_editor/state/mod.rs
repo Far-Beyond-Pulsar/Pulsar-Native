@@ -36,7 +36,7 @@ pub use build::BuildDomain;
 pub use editor::EditorDomain;
 pub use hierarchy::HierarchyDomain;
 pub use overlays::OverlayDomain;
-pub use play::PlayDomain;
+pub use play::{PieControl, PieStartRequest, PlayDomain};
 pub use scene::SceneDomain;
 
 use std::path::PathBuf;

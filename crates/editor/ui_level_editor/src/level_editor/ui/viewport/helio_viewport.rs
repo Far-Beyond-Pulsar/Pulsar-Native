@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use engine_backend::services::gpu_renderer::GpuRenderer;
+use engine_backend::services::{PieBlit, PieHost};
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
 use ui::{ActiveTheme as _, ContextModal, notification::Notification};
@@ -31,6 +32,15 @@ pub struct HelioViewport {
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
     max_frame_ms_since_report: f64,
+
+    // ── Play In Editor (issue #243) ─────────────────────────────────────────
+    /// The embedded game, when playing. `!Send`, so it lives here on the
+    /// main-thread viewport rather than in the shared state.
+    pie_host: Option<PieHost>,
+    /// Blit pipeline that samples the game's offscreen texture into the surface.
+    pie_blit: Option<PieBlit>,
+    /// Timestamp of the previous PiE frame, for the game's delta time.
+    pie_last_frame: Instant,
 }
 
 impl HelioViewport {
@@ -50,7 +60,101 @@ impl HelioViewport {
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
             max_frame_ms_since_report: 0.0,
+            pie_host: None,
+            pie_blit: None,
+            pie_last_frame: Instant::now(),
         }
+    }
+
+    /// Drive Play In Editor for one frame (issue #243).
+    ///
+    /// Honours a pending stop, loads a freshly-built game, and — when a game is
+    /// active — advances it, drains scene deltas, and blits its offscreen texture
+    /// into the surface back buffer. Returns `true` when it rendered this frame,
+    /// so the caller skips the editor Helio pass.
+    fn pie_frame(
+        &mut self,
+        surface: &WgpuSurfaceHandle,
+        view: &wgpu::TextureView,
+        w: u32,
+        h: u32,
+    ) -> bool {
+        // Take cross-thread signals set by the toolbar Play/Stop handlers.
+        let (stop, pending) = {
+            let mut st = self.shared_state.write();
+            let stop = std::mem::take(&mut st.play.pie.stop_requested);
+            let pending = st.play.pie.pending_start.take();
+            (stop, pending)
+        };
+
+        if stop {
+            if let Some(mut host) = self.pie_host.take() {
+                host.stop();
+            }
+            self.shared_state.write().play.pie.active = false;
+            return false;
+        }
+
+        // Load a game whose background build just finished.
+        if let Some(req) = pending {
+            let loaded = unsafe {
+                PieHost::load(
+                    &req.dylib_path,
+                    surface.device(),
+                    surface.queue(),
+                    surface.format(),
+                    w,
+                    h,
+                    &req.project_root,
+                    Some(&req.scene_path),
+                )
+            };
+            match loaded {
+                Ok(host) => {
+                    self.pie_host = Some(host);
+                    self.pie_last_frame = Instant::now();
+                    let mut st = self.shared_state.write();
+                    st.play.pie.active = true;
+                    st.play.pie.last_error = None;
+                }
+                Err(e) => {
+                    tracing::error!("PiE load failed: {e}");
+                    self.shared_state.write().play.pie.last_error = Some(e);
+                }
+            }
+        }
+
+        // Nothing embedded → let the editor render normally.
+        if self.pie_host.is_none() {
+            return false;
+        }
+
+        // Keep the game's target sized to the surface.
+        if let Some(host) = self.pie_host.as_mut() {
+            host.resize(w, h);
+            let now = Instant::now();
+            let dt = now
+                .duration_since(self.pie_last_frame)
+                .as_secs_f32()
+                .min(0.1);
+            self.pie_last_frame = now;
+            host.tick(dt);
+        }
+
+        // Rebuild the blit pipeline if the surface format changed.
+        let format = surface.format();
+        if self.pie_blit.as_ref().map(|b| b.format) != Some(format) {
+            self.pie_blit = Some(PieBlit::new(surface.device(), format));
+        }
+
+        // Blit the game's offscreen texture into the back buffer.
+        if let (Some(blit), Some(host)) = (self.pie_blit.as_ref(), self.pie_host.as_ref()) {
+            if let Some(tex) = unsafe { host.out_texture() } {
+                blit.blit(surface.device(), surface.queue(), tex, view);
+            }
+        }
+
+        true
     }
 
     /// Handle an asset being dropped on the viewport
@@ -451,7 +555,10 @@ impl Render for HelioViewport {
         // resizing, keep the previous display buffer visible and avoid forcing
         // Helio to resize mid-drag.
         let mut frame_diagnostics = None;
-        if let Some(ref surface) = self.surface {
+        // Own the surface handle (cheap `Clone`) so the PiE path can take `&mut
+        // self` without conflicting with a borrow of `self.surface`.
+        let surface_handle = self.surface.clone();
+        if let Some(surface) = surface_handle {
             if !surface.is_resize_pending() {
                 let frame_start = Instant::now();
                 let acquire_start = Instant::now();
@@ -462,8 +569,13 @@ impl Render for HelioViewport {
                 let acquire_ms = acquire_start.elapsed().as_secs_f64() * 1000.0;
                 if let Some((view, (w, h))) = back_view {
                     let render_start = Instant::now();
-                    let mut engine_lock_missed = true;
-                    {
+                    let mut engine_lock_missed = false;
+                    // Play In Editor: if a game is embedded, it renders this
+                    // frame (into the same back buffer) and we skip the editor
+                    // Helio pass entirely.
+                    let pie_handled = self.pie_frame(&surface, &view, w, h);
+                    if !pie_handled {
+                        engine_lock_missed = true;
                         profiling::profile_scope!("viewport_engine_render");
                         if let Ok(mut engine) = self.gpu_engine.try_lock() {
                             engine_lock_missed = false;
@@ -501,7 +613,7 @@ impl Render for HelioViewport {
                         .take();
                     if let Some(path) = capture_path {
                         if let Ok(mut engine) = self.gpu_engine.try_lock() {
-                            capture_viewport_thumbnail(&mut engine, surface, w, h, format, &path);
+                            capture_viewport_thumbnail(&mut engine, &surface, w, h, format, &path);
                         }
                     }
                     frame_diagnostics = Some((

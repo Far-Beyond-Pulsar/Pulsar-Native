@@ -71,6 +71,7 @@ pulsar_lsp                         = { path = "crates/core/pulsar_lsp" }
 window_manager                     = { path = "crates/core/window_manager" }
 pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
+pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
 pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "9b887f1ed327b5e3e2b6ba9066679469520cb446" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }

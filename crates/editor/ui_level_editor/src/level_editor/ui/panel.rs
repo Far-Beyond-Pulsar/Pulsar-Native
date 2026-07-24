@@ -12,10 +12,14 @@ use super::viewport::helio_viewport::HelioViewport;
 use engine_backend::services::gpu_renderer::{GpuRenderer, GpuRendererBuilder};
 use engine_fs::virtual_fs;
 use std::cell::RefCell;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use ui::settings::EngineSettings;
+use ui::{notification::Notification, ContextModal as _};
 use ui_common::StatusBar;
+
+use crate::level_editor::state::PieStartRequest;
 
 use super::actions::*;
 use super::{toolbar, ToolbarPanel, ViewportPanel};
@@ -899,17 +903,36 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
-    fn on_play_scene(&mut self, _: &PlayScene, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_play_scene(&mut self, _: &PlayScene, window: &mut Window, cx: &mut Context<Self>) {
         // Enter play mode (saves scene snapshot)
         self.shared_state.write().scene.enter_play_mode();
 
         // Disable gizmos in play mode
         self.sync_gizmo_to_helio();
 
+        // Play In Editor (issue #243): build the project as a cdylib and hand it
+        // to the viewport to embed. Without an open project we fall back to plain
+        // play mode (snapshot only, no running game).
+        match engine_state::get_project_path().map(std::path::PathBuf::from) {
+            Some(root) => self.start_pie_build(root, window, cx),
+            None => window.push_notification(
+                Notification::warning("No project open — playing scene snapshot only."),
+                cx,
+            ),
+        }
+
         cx.notify();
     }
 
     fn on_stop_scene(&mut self, _: &StopScene, _: &mut Window, cx: &mut Context<Self>) {
+        // Ask the viewport to tear down the embedded game, then exit play mode.
+        {
+            let mut st = self.shared_state.write();
+            st.play.pie.stop_requested = true;
+            st.play.pie.pending_start = None;
+            st.play.pie.building = false;
+        }
+
         // Exit play mode (restores scene from snapshot)
         self.shared_state.write().scene.exit_play_mode();
 
@@ -917,6 +940,60 @@ impl LevelEditorPanel {
         self.sync_gizmo_to_helio();
 
         cx.notify();
+    }
+
+    /// Write the current scene to a temp `.level`, then build the project as a
+    /// `cdylib` on a background thread. On success the viewport loads it.
+    fn start_pie_build(
+        &mut self,
+        root: std::path::PathBuf,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // Reflect unsaved edits: write the live SceneDb to a temp level file.
+        let scene_path = root.join("target").join("pie").join("play.level");
+        if let Err(e) = self
+            .shared_state
+            .read()
+            .scene
+            .database
+            .save_to_file(&scene_path)
+        {
+            window.push_notification(
+                Notification::error("Play In Editor").message(format!("Failed to write scene: {e}")),
+                cx,
+            );
+            return;
+        }
+
+        {
+            let mut st = self.shared_state.write();
+            st.play.pie.building = true;
+            st.play.pie.stop_requested = false;
+            st.play.pie.last_error = None;
+            st.play.pie.pending_start = None;
+        }
+
+        window.push_notification(
+            Notification::info("Play In Editor").message("Building game…"),
+            cx,
+        );
+
+        let shared = self.shared_state.clone();
+        let _ = std::thread::Builder::new()
+            .name("pie-build".into())
+            .spawn(move || {
+                let result = build_pie_dylib(&root, &scene_path);
+                let mut st = shared.write();
+                st.play.pie.building = false;
+                match result {
+                    Ok(req) => st.play.pie.pending_start = Some(req),
+                    Err(e) => {
+                        tracing::error!("PiE build failed: {e}");
+                        st.play.pie.last_error = Some(e);
+                    }
+                }
+            });
     }
 
     fn on_perspective_view(&mut self, _: &PerspectiveView, _: &mut Window, cx: &mut Context<Self>) {
@@ -1364,4 +1441,61 @@ impl Render for LevelEditorPanel {
                 self.render_status_bar(cx),
             )
     }
+}
+
+// ── Play In Editor build helpers (issue #243) ───────────────────────────────
+
+/// Regenerate the project scaffolding and build it as a `cdylib`, returning what
+/// the viewport needs to load the embedded game. Runs on a background thread.
+fn build_pie_dylib(root: &Path, scene_path: &Path) -> Result<PieStartRequest, String> {
+    // Ensure src/lib.rs + the `[lib] cdylib` manifest are up to date.
+    engine_backend::services::ensure_core_bootstrap(root)?;
+
+    let output = std::process::Command::new("cargo")
+        .arg("build")
+        .arg("--lib")
+        .current_dir(root)
+        .output()
+        .map_err(|e| format!("Failed to spawn cargo: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // Keep the message bounded — the full log is on stderr/tracing.
+        let tail: String = stderr.lines().rev().take(20).collect::<Vec<_>>().join("\n");
+        return Err(format!("cargo build --lib failed:\n{tail}"));
+    }
+
+    let crate_name = read_crate_name(root)?;
+    let dylib_path = engine_backend::services::PieHost::output_dylib_path(root, &crate_name, false);
+    if !dylib_path.exists() {
+        return Err(format!(
+            "Build succeeded but library not found at {}",
+            dylib_path.display()
+        ));
+    }
+
+    Ok(PieStartRequest {
+        dylib_path,
+        project_root: root.to_path_buf(),
+        scene_path: scene_path.to_path_buf(),
+    })
+}
+
+/// Read the `[package] name` from the project's `Cargo.toml`.
+fn read_crate_name(root: &Path) -> Result<String, String> {
+    let toml = std::fs::read_to_string(root.join("Cargo.toml"))
+        .map_err(|e| format!("Failed to read Cargo.toml: {e}"))?;
+    for line in toml.lines() {
+        let line = line.trim();
+        if let Some(rest) = line.strip_prefix("name") {
+            let rest = rest.trim_start();
+            if let Some(value) = rest.strip_prefix('=') {
+                let name = value.trim().trim_matches('"').trim();
+                if !name.is_empty() {
+                    return Ok(name.to_string());
+                }
+            }
+        }
+    }
+    Err("Could not find package name in Cargo.toml".to_string())
 }

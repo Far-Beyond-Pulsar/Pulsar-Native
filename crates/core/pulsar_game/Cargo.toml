@@ -9,6 +9,9 @@ description = "Pulsar game runtime: archetypal ECS, tick loop, async task pool, 
 pulsar_core  = { workspace = true }
 pulsar_scenedb   = { workspace = true }
 
+# Play-In-Editor embedding ABI (host <-> embedded game dylib)
+pulsar_pie_abi = { workspace = true }
+
 # Profiling + logging
 profiling   = { workspace = true }
 tracing     = { workspace = true }
