@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use pulsar_reflection::{RUNTIME_TYPE_REGISTRY, Reflectable};
+use serde_json::Value as JsonValue;
 use ui::notification::Notification;
 use ui::{
     button::{Button, ButtonVariants as _},
@@ -27,6 +29,12 @@ pub struct ImportConfigurator {
     target: PathBuf,
     fields: Vec<ImportField>,
     values_shared: Arc<Mutex<HashMap<String, Box<dyn Any + Send>>>>,
+    /// Caches the current value of each field as JSON so that
+    /// `render_field` can produce a `&dyn Any` that reflects the
+    /// user's edits (via JSON deserialisation) rather than always
+    /// passing the default — which would reset every editor each
+    /// frame.
+    field_json: Arc<Mutex<HashMap<String, JsonValue>>>,
     property_state: PropertyStateManager,
     focus_handle: FocusHandle,
 }
@@ -39,12 +47,14 @@ impl ImportConfigurator {
         cx: &mut Context<Self>,
     ) -> Self {
         let values_shared = Arc::new(Mutex::new(HashMap::new()));
+        let field_json = Arc::new(Mutex::new(HashMap::new()));
 
         Self {
             sources,
             target,
             fields: schema.fields,
             values_shared,
+            field_json,
             property_state: PropertyStateManager::new(),
             focus_handle: cx.focus_handle(),
         }
@@ -80,13 +90,64 @@ impl ImportConfigurator {
     }
 
     fn render_field(&mut self, field: &ImportField, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let current_value: &dyn Any = field.default.as_ref();
         let vs = self.values_shared.clone();
+        let fj = self.field_json.clone();
         let k = field.key.clone();
+        let type_info = field.type_info;
+
+        // Use the user-edited value (cached as JSON) when available, falling
+        // back to the schema default.  Without this the editor's set_value
+        // receives the default on every render, overwriting user edits.
+        let current_value: Box<dyn Any> = fj
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(&k).cloned())
+            .and_then(|json| {
+                RUNTIME_TYPE_REGISTRY
+                    .deserialize_json_for_type(type_info, json)
+                    .ok()
+            })
+            .unwrap_or_else(|| {
+                // Clone the default through the JSON codec (the default is
+                // Box<dyn Any + Send> and we need an un-send box for the
+                // &dyn Any reference; the simplest path is round-trip through
+                // the runtime registry).
+                RUNTIME_TYPE_REGISTRY
+                    .serialize_json_for_any(field.default.as_ref())
+                    .ok()
+                    .and_then(|json| {
+                        RUNTIME_TYPE_REGISTRY
+                            .deserialize_json_for_type(type_info, json)
+                            .ok()
+                    })
+                    .unwrap_or_else(|| {
+                        // The default MUST be a registered reflectable type.
+                        // If we ever hit this something is deeply wrong.
+                        tracing::error!(
+                            "import field {} default not reflectable",
+                            field.key
+                        );
+                        Box::new(())
+                    })
+            });
 
         let write_back = Arc::new(move |new_val: Box<dyn Any + Send>, _window: &mut Window, _cx: &mut App| {
             if let Ok(mut v) = vs.lock() {
                 v.insert(k.clone(), new_val);
+                // Drop the guard before re-locking below.
+                drop(v);
+            }
+            if let Ok(g) = vs.lock() {
+                if let Some(stored) = g.get(&k) {
+                    if let Ok(json) =
+                        RUNTIME_TYPE_REGISTRY.serialize_json_for_any(stored.as_ref())
+                    {
+                        drop(g);
+                        if let Ok(mut j) = fj.lock() {
+                            j.insert(k.clone(), json);
+                        }
+                    }
+                }
             }
         });
 
@@ -97,7 +158,7 @@ impl ImportConfigurator {
             &field.label,
             &field.key,
             field.type_info,
-            current_value,
+            current_value.as_ref(),
             write_back,
             window,
             cx,
@@ -124,36 +185,47 @@ impl Render for ImportConfigurator {
 
         v_flex()
             .track_focus(&self.focus_handle)
-            .gap_3()
-            .w(px(460.))
-            .p_2()
+            .gap_4()
+            .w(px(480.))
+            .p_4()
             .child(
-                div()
-                    .text_lg()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(cx.theme().foreground)
-                    .child(heading),
+                v_flex()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_lg()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(cx.theme().foreground)
+                            .child(heading),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .child("Set import options — the model is converted to an engine-native mesh asset."),
+                    ),
             )
             .child(
-                div()
-                    .text_xs()
-                    .text_color(cx.theme().muted_foreground)
-                    .child("Set import options — the model is converted to an engine-native mesh asset."),
-            )
-            .children(
-                {
-                    let fields = std::mem::take(&mut self.fields);
-                    let result: Vec<_> = fields.iter().map(|f| self.render_field(f, window, cx)).collect();
-                    self.fields = fields;
-                    result
-                },
+                v_flex()
+                    .gap_2()
+                    .overflow_y_scroll()
+                    .max_h(px(400.))
+                    .children({
+                        let fields = std::mem::take(&mut self.fields);
+                        let result: Vec<_> = fields
+                            .iter()
+                            .map(|f| self.render_field(f, window, cx))
+                            .collect();
+                        self.fields = fields;
+                        result
+                    }),
             )
             .child(
                 h_flex()
                     .w_full()
                     .justify_end()
                     .gap_2()
-                    .pt_2()
+                    .pt_3()
                     .child(
                         Button::new("cfg-cancel").label("Cancel").outline().on_click(
                             cx.listener(|_this, _, w, cx| {
