@@ -33,8 +33,9 @@ socket2 = "0.6"
 ed25519-dalek = { version = "3.0", features = ["rand_core"] }
 rand = { workspace = true }
 
-# JWT
-jsonwebtoken = "10.0"
+# JWT. Keep the workspace on the pure-Rust provider; enabling neither provider
+# panics on first token operation, while AWS-LC violates Pulsar's TLS policy.
+jsonwebtoken = { version = "10.0", default-features = false, features = ["rust_crypto"] }
 
 # Async trait support
 async-trait = "0.1"
