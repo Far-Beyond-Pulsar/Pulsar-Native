@@ -42,14 +42,139 @@ jobs:
             libxkbcommon-x11-0 libxkbcommon-x11-dev libasound2-dev \
             clang libclang-dev
 
-      - name: Install bindgen (required by aws-lc-sys)
-        run: cargo install bindgen-cli --locked
-
       - name: cargo check
         run: cargo check --workspace --exclude pulsar_docs --all-targets
 
+      - name: Validate workspace dependency modes
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --format-version 1 | ConvertFrom-Json -AsHashtable
+
+          function Get-ResolvedPackage([string] $name, [string] $version = "") {
+            $packages = @($metadata["packages"] | Where-Object {
+              $_["name"] -eq $name -and (!$version -or $_["version"] -eq $version)
+            })
+            if ($packages.Count -ne 1) {
+              throw "Expected exactly one resolved $name $version package; found $($packages.Count)"
+            }
+
+            $packageId = $packages[0]["id"]
+            $nodes = @($metadata["resolve"]["nodes"] | Where-Object { $_["id"] -eq $packageId })
+            if ($nodes.Count -ne 1) {
+              throw "Expected exactly one resolve node for $name $version; found $($nodes.Count)"
+            }
+            return $nodes[0]
+          }
+
+          # Pulsar installs Ring explicitly for its Rustls users. A
+          # default-enabled reqwest edge silently adds AWS-LC to every
+          # workspace test binary (native-tls remains intentional for rustup).
+          $reqwest = Get-ResolvedPackage "reqwest" "0.13.4"
+          $forbiddenTlsFeatures = @(
+            "default",
+            "default-tls",
+            "rustls",
+            "__rustls-aws-lc-rs"
+          )
+          $enabledForbiddenTlsFeatures = @(
+            $forbiddenTlsFeatures | Where-Object { $reqwest["features"] -contains $_ }
+          )
+          if ($enabledForbiddenTlsFeatures.Count -ne 0) {
+            throw "reqwest 0.13.4 violates the Ring/no-provider policy: $($enabledForbiddenTlsFeatures -join ', ')"
+          }
+          $awsLcPackages = @($metadata["packages"] | Where-Object {
+            $_["name"] -in @("aws-lc-rs", "aws-lc-sys")
+          })
+          if ($awsLcPackages.Count -ne 0) {
+            throw "AWS-LC unexpectedly resolved into the workspace; use the explicit provider policy"
+          }
+
+          # jsonwebtoken 10 panics on first use when neither backend is
+          # selected. Relay JWTs use the pure-Rust provider so the provider is
+          # deterministic without reintroducing AWS-LC.
+          $jsonwebtoken = Get-ResolvedPackage "jsonwebtoken" "10.4.0"
+          if ($jsonwebtoken["features"] -notcontains "rust_crypto") {
+            throw "jsonwebtoken 10.4.0 has no RustCrypto provider"
+          }
+          if ($jsonwebtoken["features"] -contains "aws_lc_rs") {
+            throw "jsonwebtoken 10.4.0 unexpectedly enables AWS-LC"
+          }
+
+          # Static built-ins use Rust APIs directly. They must not emit the
+          # process-global dynamic loader ABI shared by every plugin.
+          foreach ($plugin in @(
+            "blueprint_editor_plugin",
+            "script_editor_plugin",
+            "asset_viewer_plugin"
+          )) {
+            $node = Get-ResolvedPackage $plugin
+            if ($node["features"] -notcontains "builtin") {
+              throw "$plugin is statically embedded without its builtin feature"
+            }
+          }
+
+          # Pulsar owns the built-in library integrations, while external plugin
+          # repositories own their standalone applications. Letting Cargo
+          # auto-enroll those repositories as workspace members makes their
+          # identically named examples race for target/*/examples/standalone.
+          $workspaceMemberIds = @($metadata["workspace_members"])
+          $vendorWorkspaceMembers = @(
+            $metadata["packages"] | Where-Object {
+              $workspaceMemberIds -contains $_["id"] -and
+              (($_["manifest_path"] -replace "\\", "/") -match "/plugins/vendor/")
+            } | ForEach-Object { $_["name"] } | Sort-Object
+          )
+          $expectedVendorWorkspaceMembers = @("asset_viewer_plugin")
+          $workspaceMemberDifference = @(
+            Compare-Object $expectedVendorWorkspaceMembers $vendorWorkspaceMembers
+          )
+          if ($workspaceMemberDifference.Count -ne 0) {
+            throw "External plugin apps leaked into the Pulsar workspace: $($vendorWorkspaceMembers -join ', ')"
+          }
+
+          $uiCorePackages = @($metadata["packages"] | Where-Object {
+            $_["name"] -eq "ui_core"
+          })
+          if ($uiCorePackages.Count -ne 1) {
+            throw "Expected exactly one ui_core package; found $($uiCorePackages.Count)"
+          }
+          $uiCoreDependencies = @(
+            $uiCorePackages[0]["dependencies"] | ForEach-Object { $_["name"] }
+          )
+          $expectedBuiltins = @(
+            "asset_viewer_plugin",
+            "blueprint_editor_plugin",
+            "editor_table_plugin",
+            "plugin_matter",
+            "script_editor_plugin",
+            "shader_editor_plugin"
+          )
+          $missingBuiltins = @(
+            $expectedBuiltins | Where-Object { $uiCoreDependencies -notcontains $_ }
+          )
+          if ($missingBuiltins.Count -ne 0) {
+            throw "ui_core lost built-in plugin integrations: $($missingBuiltins -join ', ')"
+          }
+
+      - name: Resolve Pulsar's pinned SceneDB source
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --locked --format-version 1 | ConvertFrom-Json -AsHashtable
+          $packages = @($metadata["packages"] | Where-Object { $_["name"] -eq "pulsar_scenedb" })
+          if ($packages.Count -ne 1) {
+            throw "Expected exactly one pulsar_scenedb package in locked Cargo metadata; found $($packages.Count)"
+          }
+
+          $manifest = $packages[0]["manifest_path"] -replace "\\", "/"
+          $directory = (Split-Path -Parent $packages[0]["manifest_path"]) -replace "\\", "/"
+          $targetDirectory = (Join-Path $env:GITHUB_WORKSPACE "target") -replace "\\", "/"
+          "SCENEDB_MANIFEST=$manifest" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCENEDB_DIR=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCENEDB_TARGET_DIR=$targetDirectory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: SceneDB graphics-free core guard (CONTRACTS C0)
-        run: cargo check -p pulsar_scenedb --no-default-features
+        shell: bash
+        run: cargo check --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --no-default-features
 
       - name: SceneDB no-Helio edge guard (CONTRACTS C0)
         shell: bash
@@ -57,11 +182,11 @@ jobs:
           set -e
           # Capture first so a cargo-tree failure fails the step (grep on a
           # pipeline sees empty input and would silently pass — fail-open).
-          tree="$(cargo tree -p pulsar_scenedb -e normal)"
+          tree="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb -e normal)"
           if grep -qi helio <<< "$tree"; then echo "C0 violation: pulsar_scenedb depends on Helio"; exit 1; fi
           # Feature-blind gap (M3-a final review F1): a gpu-feature-gated Helio
           # edge would evade the featureless tree above — check it too.
-          tree_gpu="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          tree_gpu="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb --features gpu -e normal)"
           if grep -qi helio <<< "$tree_gpu"; then echo "C0 violation: pulsar_scenedb (--features gpu) depends on Helio"; exit 1; fi
 
       - name: SceneDB no-GPUI/fork-wgpu edge guard (M3-a T2)
@@ -73,7 +198,7 @@ jobs:
           # workspace's git-forked wgpu transitively (gpui-ce's lib is named
           # `gpui`). SceneDB is on upstream wgpu 30 and must never carry
           # either edge. Tree captured first: fail-closed if cargo tree errors.
-          tree="$(cargo tree -p pulsar_scenedb --features gpu -e normal)"
+          tree="$(cargo tree --manifest-path "$SCENEDB_MANIFEST" -p pulsar_scenedb --features gpu -e normal)"
           if grep -iE "gpui|wgpui" <<< "$tree"; then
             echo "M3-a T2 violation: pulsar_scenedb (--features gpu) depends on gpui/wgpui"
             exit 1
@@ -87,10 +212,6 @@ jobs:
         shell: bash
         run: |
           set -e
-          # Normalize to forward slashes: on Windows runners GITHUB_WORKSPACE
-          # uses backslashes, which TOML basic strings would otherwise parse
-          # as escape sequences.
-          workspace_fwd="$(printf '%s' "${GITHUB_WORKSPACE}" | tr '\\' '/')"
           scratch="${RUNNER_TEMP}/scenedb-resolve-check"
           rm -rf "$scratch"
           mkdir -p "$scratch/src"
@@ -102,7 +223,7 @@ jobs:
           edition = "2021"
 
           [dependencies]
-          pulsar_scenedb = { path = "${workspace_fwd}/crates/core/pulsar_scenedb", features = ["gpu"] }
+          pulsar_scenedb = { path = "${SCENEDB_DIR}", features = ["gpu"] }
 
           [workspace]
           EOF
@@ -110,18 +231,21 @@ jobs:
           cargo metadata --format-version 1 > /dev/null
 
       - name: SceneDB Test 3 byte-layout gate (CONTRACTS C5)
-        run: cargo test -p pulsar_scenedb --features gpu --test gpu_layout
+        shell: bash
+        run: cargo test --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --test gpu_layout
 
       - name: SceneDB gpu-gated lib tests (Test 11 et al., no adapter needed)
-        run: cargo test -p pulsar_scenedb --features gpu --lib
+        shell: bash
+        run: cargo test --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --lib
 
       # Compile-only: benches are the one gpu-gated target the test matrix
       # never builds (M3-a T1 review caught an unmigrated bench this way).
       - name: SceneDB gpu-gated benches compile guard
-        run: cargo check -p pulsar_scenedb --features gpu --benches
+        shell: bash
+        run: cargo check --manifest-path "$SCENEDB_MANIFEST" --target-dir "$SCENEDB_TARGET_DIR" -p pulsar_scenedb --features gpu --benches
 
       - name: Install nextest
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run tests
-        run: cargo nextest run --all
+        run: cargo nextest run --all --no-fail-fast
