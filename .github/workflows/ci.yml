@@ -89,6 +89,17 @@ jobs:
             throw "AWS-LC unexpectedly resolved into the workspace; use the explicit provider policy"
           }
 
+          # jsonwebtoken 10 panics on first use when neither backend is
+          # selected. Relay JWTs use the pure-Rust provider so the provider is
+          # deterministic without reintroducing AWS-LC.
+          $jsonwebtoken = Get-ResolvedPackage "jsonwebtoken" "10.4.0"
+          if ($jsonwebtoken["features"] -notcontains "rust_crypto") {
+            throw "jsonwebtoken 10.4.0 has no RustCrypto provider"
+          }
+          if ($jsonwebtoken["features"] -contains "aws_lc_rs") {
+            throw "jsonwebtoken 10.4.0 unexpectedly enables AWS-LC"
+          }
+
           # Static built-ins use Rust APIs directly. They must not emit the
           # process-global dynamic loader ABI shared by every plugin.
           foreach ($plugin in @(
