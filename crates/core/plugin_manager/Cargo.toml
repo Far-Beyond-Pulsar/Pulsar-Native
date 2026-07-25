@@ -25,6 +25,7 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 env_logger = "=0.11.11"
+plugin_loader_fixture = { path = "tests/fixtures/plugin_loader_fixture" }
 
 [lints]
 workspace = true

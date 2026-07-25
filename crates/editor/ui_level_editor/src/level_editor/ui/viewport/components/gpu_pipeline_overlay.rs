@@ -1,4 +1,4 @@
-//! GPU pipeline statistics overlay component.
+//! Render pipeline timing overlay component.
 
 use std::sync::{Arc, Mutex};
 
@@ -7,36 +7,52 @@ use gpui::*;
 use ui::{h_flex, v_flex, ActiveTheme, StyledExt};
 
 use crate::level_editor::state::LevelEditorState;
-use engine_backend::subsystems::render::helio_renderer::DiagnosticMetric;
+use engine_backend::subsystems::render::helio_renderer::{
+    DiagnosticMetric, GpuProfilerAvailability,
+};
 
-/// Color palette for pipeline passes
 const PASS_COLORS: &[(f32, f32, f32)] = &[
-    (0.4, 0.7, 1.0), // Light blue
-    (1.0, 0.6, 0.4), // Orange
-    (0.6, 1.0, 0.6), // Light green
-    (1.0, 0.8, 0.4), // Yellow
-    (0.8, 0.6, 1.0), // Purple
-    (1.0, 0.6, 0.8), // Pink
-    (0.6, 0.9, 1.0), // Cyan
-    (1.0, 0.9, 0.6), // Light yellow
+    (0.4, 0.7, 1.0),
+    (1.0, 0.6, 0.4),
+    (0.6, 1.0, 0.6),
+    (1.0, 0.8, 0.4),
+    (0.8, 0.6, 1.0),
+    (1.0, 0.6, 0.8),
+    (0.6, 0.9, 1.0),
+    (1.0, 0.9, 0.6),
 ];
 
-/// Render the GPU pipeline overlay with fixed-width columns.
+fn time_label(time_ms: Option<f32>) -> String {
+    time_ms
+        .map(|time| format!("{time:.2}ms"))
+        .unwrap_or_else(|| "—".to_owned())
+}
+
+fn timing_color(time_ms: Option<f32>, success: Hsla, warning: Hsla, danger: Hsla) -> Hsla {
+    match time_ms {
+        Some(time) if time < 8.0 => success,
+        Some(time) if time < 16.0 => warning,
+        Some(_) => danger,
+        None => warning,
+    }
+}
+
+/// Render the latest non-blocking Helio pass timings.
 pub fn render_gpu_pipeline_overlay<V>(
-    state: &LevelEditorState,
-    state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
+    _state: &LevelEditorState,
+    _state_arc: Arc<parking_lot::RwLock<LevelEditorState>>,
     gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
     cx: &mut Context<V>,
 ) -> impl IntoElement
 where
     V: 'static + EventEmitter<ui::dock::PanelEvent> + Render,
 {
-    // Get GPU profiler data
-    let gpu_data = if let Ok(engine) = gpu_engine.lock() {
-        engine.get_gpu_profiler_data()
-    } else {
-        None
-    };
+    // Cloning is deliberately conditional on the overlay being visible. The
+    // render thread itself updates a reusable cache without allocating.
+    let profiler_data = gpu_engine
+        .try_lock()
+        .ok()
+        .and_then(|engine| engine.get_gpu_profiler_data());
 
     let (background, border, foreground, muted, success, warning, danger) = {
         let theme = cx.theme();
@@ -54,48 +70,59 @@ where
     v_flex()
         .gap_2()
         .p_3()
-        .w(px(340.0))
+        .w(px(410.0))
         .bg(background.opacity(0.95))
         .rounded_lg()
         .border_1()
         .border_color(border)
         .shadow_lg()
         .child(
-            // Header
-            div()
-                .text_sm()
-                .font_weight(FontWeight::SEMIBOLD)
-                .text_color(foreground)
-                .child("GPU Pipeline"),
+            h_flex()
+                .w_full()
+                .justify_between()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .text_color(foreground)
+                        .child("Render Pipeline"),
+                )
+                .when_some(profiler_data.as_ref(), |header, data| {
+                    let (label, color) = match data.availability {
+                        GpuProfilerAvailability::Disabled => ("GPU disabled", muted),
+                        GpuProfilerAvailability::Unsupported => ("GPU unsupported", warning),
+                        GpuProfilerAvailability::Pending => ("GPU pending", warning),
+                        GpuProfilerAvailability::Available => ("GPU available", success),
+                        GpuProfilerAvailability::Backpressured => ("GPU backpressured", danger),
+                    };
+                    header.child(div().text_xs().text_color(color).child(label))
+                }),
         )
         .child(div().w_full().h(px(1.0)).bg(border))
         .map(|this| {
-            if let Some(ref data) = gpu_data {
-                // Calculate passes and percentages
+            if let Some(ref data) = profiler_data {
                 let mut render_passes: Vec<&DiagnosticMetric> = data
                     .render_metrics
                     .iter()
-                    .filter(|metric| metric.is_gpu && metric.value_ms > 0.0)
+                    .filter(|metric| metric.cpu_ms.is_some() || metric.gpu_ms.is_some())
                     .collect();
-
                 render_passes.sort_by(|a, b| {
-                    b.value_ms
-                        .partial_cmp(&a.value_ms)
-                        .unwrap_or(std::cmp::Ordering::Equal)
+                    let a_time = a.gpu_ms.or(a.cpu_ms).unwrap_or_default();
+                    let b_time = b.gpu_ms.or(b.cpu_ms).unwrap_or_default();
+                    b_time.total_cmp(&a_time)
                 });
 
                 this.child(
                     v_flex()
                         .gap_1()
                         .child(
-                            // Column headers
                             h_flex()
                                 .w_full()
                                 .items_center()
                                 .child(div().w(px(16.0)).flex_none())
                                 .child(
                                     div()
-                                        .w(px(180.0))
+                                        .w(px(210.0))
                                         .flex_none()
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
@@ -104,27 +131,26 @@ where
                                 )
                                 .child(
                                     div()
-                                        .w(px(60.0))
+                                        .w(px(65.0))
                                         .flex_none()
                                         .text_right()
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(muted)
-                                        .child("Time"),
+                                        .child("CPU"),
                                 )
                                 .child(
                                     div()
-                                        .w(px(50.0))
+                                        .w(px(65.0))
                                         .flex_none()
                                         .text_right()
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(muted)
-                                        .child("%"),
+                                        .child("GPU"),
                                 ),
                         )
                         .child(
-                            // Scrollable pass list
                             div()
                                 .id("gpu-pass-list")
                                 .w_full()
@@ -132,147 +158,111 @@ where
                                 .scrollable(gpui::Axis::Vertical)
                                 .occlude()
                                 .child(v_flex().gap_0p5().children(
-                                    render_passes.iter().enumerate().map(|(i, metric)| {
-                                        let color_idx = i % PASS_COLORS.len();
-                                        let (r, g, b) = PASS_COLORS[color_idx];
-                                        let color = hsla(r, g, b, 1.0);
-                                        let percent = metric.percentage;
-
+                                    render_passes.iter().enumerate().map(|(index, metric)| {
+                                        let (r, g, b) = PASS_COLORS[index % PASS_COLORS.len()];
                                         h_flex()
                                             .w_full()
                                             .items_center()
                                             .child(
-                                                // Color indicator
                                                 div().w(px(16.0)).flex_none().child(
                                                     div()
                                                         .w(px(8.0))
                                                         .h(px(8.0))
                                                         .rounded(px(2.0))
-                                                        .bg(color),
+                                                        .bg(hsla(r, g, b, 1.0)),
                                                 ),
                                             )
                                             .child(
-                                                // Pass name
                                                 div()
-                                                    .w(px(180.0))
+                                                    .w(px(210.0))
                                                     .flex_none()
                                                     .overflow_hidden()
                                                     .text_xs()
                                                     .text_color(muted)
                                                     .line_height(relative(1.0))
                                                     .whitespace_nowrap()
-                                                    .child(metric.name.clone()),
+                                                    .child(metric.name),
                                             )
                                             .child(
-                                                // Time
                                                 div()
-                                                    .w(px(60.0))
+                                                    .w(px(65.0))
                                                     .flex_none()
                                                     .text_right()
                                                     .text_xs()
                                                     .text_color(foreground)
-                                                    .child(format!("{:.2}ms", metric.value_ms)),
+                                                    .child(time_label(metric.cpu_ms)),
                                             )
                                             .child(
-                                                // Percentage
                                                 div()
-                                                    .w(px(50.0))
+                                                    .w(px(65.0))
                                                     .flex_none()
                                                     .text_right()
                                                     .text_xs()
-                                                    .text_color(muted)
-                                                    .child(format!("{:.1}%", percent)),
+                                                    .text_color(foreground)
+                                                    .child(time_label(metric.gpu_ms)),
                                             )
                                     }),
                                 )),
                         )
                         .child(div().w_full().h(px(1.0)).bg(border).mt_1())
                         .child(
-                            // Total GPU row
                             h_flex()
                                 .w_full()
                                 .items_center()
                                 .child(div().w(px(16.0)).flex_none())
                                 .child(
                                     div()
-                                        .w(px(180.0))
+                                        .w(px(210.0))
                                         .flex_none()
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
                                         .text_color(foreground)
-                                        .child("Total GPU"),
+                                        .child("Pass totals"),
                                 )
                                 .child(
                                     div()
-                                        .w(px(60.0))
+                                        .w(px(65.0))
                                         .flex_none()
                                         .text_right()
                                         .text_xs()
                                         .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color(if data.total_gpu_ms < 8.0 {
-                                            success
-                                        } else if data.total_gpu_ms < 16.0 {
-                                            warning
-                                        } else {
-                                            danger
-                                        })
-                                        .child(format!("{:.2}ms", data.total_gpu_ms)),
+                                        .text_color(timing_color(
+                                            data.total_cpu_ms,
+                                            success,
+                                            warning,
+                                            danger,
+                                        ))
+                                        .child(time_label(data.total_cpu_ms)),
                                 )
                                 .child(
                                     div()
-                                        .w(px(50.0))
+                                        .w(px(65.0))
                                         .flex_none()
                                         .text_right()
                                         .text_xs()
-                                        .text_color(muted)
-                                        .child("100.0%"),
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(timing_color(
+                                            data.total_gpu_ms,
+                                            success,
+                                            warning,
+                                            danger,
+                                        ))
+                                        .child(time_label(data.total_gpu_ms)),
                                 ),
                         )
                         .child(
-                            // Frame time / FPS row
-                            h_flex()
-                                .w_full()
-                                .items_center()
-                                .child(div().w(px(16.0)).flex_none())
-                                .child(
-                                    div()
-                                        .w(px(180.0))
-                                        .flex_none()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child("Frame Time"),
-                                )
-                                .child(
-                                    div()
-                                        .w(px(60.0))
-                                        .flex_none()
-                                        .text_right()
-                                        .text_xs()
-                                        .text_color(foreground)
-                                        .child(format!("{:.2}ms", data.total_gpu_ms)),
-                                )
-                                .child(
-                                    div()
-                                        .w(px(50.0))
-                                        .flex_none()
-                                        .text_right()
-                                        .text_xs()
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .text_color({
-                                            let fps = 1000.0 / data.total_gpu_ms.max(0.1);
-                                            if fps > 60.0 {
-                                                success
-                                            } else if fps > 30.0 {
-                                                warning
-                                            } else {
-                                                danger
-                                            }
-                                        })
-                                        .child(format!(
-                                            "{:.0} FPS",
-                                            1000.0 / data.total_gpu_ms.max(0.1)
-                                        )),
-                                ),
+                            div().text_xs().text_color(muted).child(format!(
+                                "CPU frame {} · GPU frame {} · lag {} · drops {} · overflows {}",
+                                data.frame_count,
+                                data.gpu_frame_count
+                                    .map(|frame| frame.to_string())
+                                    .unwrap_or_else(|| "—".to_owned()),
+                                data.gpu_lag_frames
+                                    .map(|lag| lag.to_string())
+                                    .unwrap_or_else(|| "—".to_owned()),
+                                data.readback_drops,
+                                data.query_overflows
+                            )),
                         ),
                 )
             } else {
@@ -280,7 +270,7 @@ where
                     div()
                         .text_xs()
                         .text_color(muted)
-                        .child("No GPU data available"),
+                        .child("Renderer busy; keeping the previous frame responsive"),
                 )
             }
         })

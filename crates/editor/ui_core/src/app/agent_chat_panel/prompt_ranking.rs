@@ -215,13 +215,12 @@ pub(crate) fn compact_messages(
         .position(|b| b.messages.iter().any(|m| m.role == ChatRole::User));
     for index in 0..dialog_block_count {
         let is_mandatory = index == last_index || Some(index) == first_user_block;
-        let priority = {
-            let block = &dialog_blocks[index];
-            block_priority(block, index, dialog_block_count)
-        };
         let block = &mut dialog_blocks[index];
         block.is_mandatory = is_mandatory;
-        block.priority = priority;
+        // Mandatory status is part of the ranking score. Set it before
+        // computing priority so the original user goal receives the same
+        // protection as the latest request.
+        block.priority = block_priority(block, index, dialog_block_count);
     }
 
     let mandatory_block = dialog_blocks.pop().unwrap();
@@ -291,14 +290,32 @@ mod tests {
     }
 
     #[test]
-    fn keeps_recent_turns_and_prefers_tool_heavy_context() {
+    fn protects_goals_and_prefers_tool_heavy_context() {
         let messages = vec![
             msg(ChatRole::System, "system prompt"),
-            msg(ChatRole::User, "old user question"),
-            msg(ChatRole::Assistant, "old answer"),
+            msg(
+                ChatRole::User,
+                &format!("ORIGINAL_GOAL: {}", "g".repeat(350)),
+            ),
+            msg(
+                ChatRole::Assistant,
+                &format!("ORIGINAL_RESPONSE: {}", "r".repeat(150)),
+            ),
+            msg(
+                ChatRole::User,
+                &format!("ORDINARY_MIDDLE_TURN: {}", "m".repeat(100)),
+            ),
+            msg(
+                ChatRole::Assistant,
+                &format!("ORDINARY_MIDDLE_RESPONSE: {}", "n".repeat(800)),
+            ),
+            msg(
+                ChatRole::AgentEvent,
+                &format!("Subagent result: {}", "s".repeat(350)),
+            ),
             ChatMessage {
                 role: ChatRole::Assistant,
-                content: "spawned a subagent".to_string(),
+                content: "tool-backed agent synthesis".to_string(),
                 tool_call_id: None,
                 tool_calls: vec![tool_call()],
             },
@@ -308,21 +325,34 @@ mod tests {
                 tool_call_id: Some("call-1".to_string()),
                 tool_calls: vec![],
             },
-            msg(ChatRole::Assistant, "subagent result summarized here"),
-            msg(ChatRole::User, "current request that must stay"),
-            msg(ChatRole::Assistant, "current answer"),
+            msg(ChatRole::Assistant, "tool result incorporated"),
+            msg(
+                ChatRole::User,
+                &format!("CURRENT_REQUEST: {}", "c".repeat(150)),
+            ),
+            msg(
+                ChatRole::Assistant,
+                &format!("CURRENT_RESPONSE: {}", "a".repeat(100)),
+            ),
         ];
 
-        let (compacted, dropped) = compact_messages(messages, 160, 40);
-        assert!(dropped.is_some());
+        let (compacted, dropped) = compact_messages(messages, 2_200, 200);
+        let dropped = dropped.expect("the ordinary middle turn should exceed the budget");
+
         assert!(compacted
             .iter()
-            .any(|m| m.content.contains("current request")));
+            .any(|message| message.content.contains("ORIGINAL_GOAL")));
         assert!(compacted
             .iter()
-            .any(|m| m.content.contains("subagent result")));
+            .any(|message| message.content.contains("CURRENT_REQUEST")));
+        assert!(compacted
+            .iter()
+            .any(|message| message.content.contains("Subagent result")));
         assert!(!compacted
             .iter()
-            .any(|m| m.content.contains("old user question")));
+            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
+        assert!(dropped
+            .iter()
+            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
     }
 }

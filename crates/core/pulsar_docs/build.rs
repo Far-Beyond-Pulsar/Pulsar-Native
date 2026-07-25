@@ -6,89 +6,74 @@
 #[path = "build/doc_generator/mod.rs"]
 mod doc_generator;
 
+use std::env;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() {
-    tracing::trace!("cargo:warning=[pulsar_docs] Build script started");
+    println!("cargo:rerun-if-env-changed=AUTO_GENERATE_DOCS");
 
-    let workspace_root = Path::new("../..");
-    let doc_dir = workspace_root.join("target/doc");
-
-    tracing::trace!(
-        "cargo:warning=[pulsar_docs] Workspace root: {:?}",
-        workspace_root
-    );
-    tracing::trace!("cargo:warning=[pulsar_docs] Doc directory: {:?}", doc_dir);
-
-    // Check if AUTO_GENERATE_DOCS is disabled
-    let auto_generate =
-        std::env::var("AUTO_GENERATE_DOCS").unwrap_or_else(|_| "true".to_string()) == "true";
-    tracing::trace!(
-        "cargo:warning=[pulsar_docs] AUTO_GENERATE_DOCS = {}",
-        auto_generate
-    );
-
-    // Ensure the doc directory exists (critical for rust-embed)
-    if !doc_dir.exists() {
-        tracing::trace!("cargo:warning=[pulsar_docs] Creating doc directory");
-        if let Err(e) = fs::create_dir_all(&doc_dir) {
-            tracing::trace!(
-                "cargo:warning=[pulsar_docs] Warning: Could not create doc directory: {}",
-                e
-            );
-        }
+    if let Err(error) = generate_docs() {
+        panic!("[pulsar_docs] {error}");
     }
+}
 
+fn generate_docs() -> Result<(), String> {
+    let manifest_dir = env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| "Cargo did not provide CARGO_MANIFEST_DIR".to_string())?;
+    let workspace_root = find_workspace_root(&manifest_dir)?;
+    let doc_dir = workspace_root.join("target").join("doc");
+
+    fs::create_dir_all(&doc_dir).map_err(|error| {
+        format!(
+            "could not create documentation directory {}: {error}",
+            doc_dir.display()
+        )
+    })?;
+
+    let auto_generate = env::var("AUTO_GENERATE_DOCS")
+        .map(|value| value.eq_ignore_ascii_case("true"))
+        .unwrap_or(true);
     if !auto_generate {
-        tracing::trace!("cargo:warning=[pulsar_docs] Skipping automatic doc generation");
-        tracing::trace!("cargo:warning=[pulsar_docs] Build script completed");
-        return;
+        println!("cargo:warning=[pulsar_docs] automatic documentation generation is disabled");
+        return Ok(());
     }
 
-    // Check if docs already exist with content
-    let has_json_files = doc_dir.exists()
-        && std::fs::read_dir(&doc_dir)
-            .ok()
-            .and_then(|entries| {
-                entries
-                    .filter_map(Result::ok)
-                    .any(|e| e.path().extension().and_then(|s| s.to_str()) == Some("json"))
-                    .then_some(())
-            })
-            .is_some();
-
-    if has_json_files {
-        tracing::trace!(
-            "cargo:warning=[pulsar_docs] Documentation already exists, skipping generation"
-        );
-        tracing::trace!(
-            "cargo:warning=[pulsar_docs] To regenerate docs, delete target/doc and rebuild"
-        );
-        tracing::trace!("cargo:warning=[pulsar_docs] Build script completed successfully");
-        return;
+    let count = doc_generator::generate_workspace_docs(&workspace_root, &doc_dir)
+        .map_err(|error| format!("workspace documentation generation failed: {error}"))?;
+    if count == 0 {
+        return Err(format!(
+            "workspace documentation generation produced no crates in {}",
+            doc_dir.display()
+        ));
     }
 
-    // Generate documentation
-    tracing::trace!("cargo:warning=[pulsar_docs] Generating workspace documentation...");
+    println!("cargo:warning=[pulsar_docs] generated documentation for {count} crates");
+    Ok(())
+}
 
-    match doc_generator::generate_workspace_docs(workspace_root, &doc_dir) {
-        Ok(count) => {
-            tracing::trace!(
-                "cargo:warning=[pulsar_docs] ✓ Successfully generated docs for {} crates",
-                count
-            );
-        }
-        Err(e) => {
-            tracing::trace!(
-                "cargo:warning=[pulsar_docs] ✗ Failed to generate docs: {}",
-                e
-            );
-            tracing::trace!(
-                "cargo:warning=[pulsar_docs] Documentation will be unavailable in the UI"
-            );
+fn find_workspace_root(manifest_dir: &Path) -> Result<PathBuf, String> {
+    for candidate in manifest_dir.ancestors() {
+        let manifest_path = candidate.join("Cargo.toml");
+        let Ok(contents) = fs::read_to_string(&manifest_path) else {
+            continue;
+        };
+        let Ok(manifest) = toml::from_str::<toml::Value>(&contents) else {
+            continue;
+        };
+        if manifest.get("workspace").is_some() {
+            return candidate.canonicalize().map_err(|error| {
+                format!(
+                    "could not canonicalize workspace root {}: {error}",
+                    candidate.display()
+                )
+            });
         }
     }
 
-    tracing::trace!("cargo:warning=[pulsar_docs] Build script completed successfully");
+    Err(format!(
+        "could not find a Cargo workspace above {}",
+        manifest_dir.display()
+    ))
 }

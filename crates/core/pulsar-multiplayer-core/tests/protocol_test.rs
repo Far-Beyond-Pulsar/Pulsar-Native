@@ -448,18 +448,19 @@ fn test_session_mode_equality() {
 
 #[test]
 fn test_file_change_kind() {
-    assert_eq!(
-        serde_json::to_value(&FileChangeKind::Created).unwrap(),
-        json!("Created")
-    );
-    assert_eq!(
-        serde_json::to_value(&FileChangeKind::Modified).unwrap(),
-        json!("Modified")
-    );
-    assert_eq!(
-        serde_json::to_value(&FileChangeKind::Deleted).unwrap(),
-        json!("Deleted")
-    );
+    let cases = [
+        (FileChangeKind::Created, "created"),
+        (FileChangeKind::Modified, "modified"),
+        (FileChangeKind::Deleted, "deleted"),
+    ];
+
+    for (kind, wire_value) in cases {
+        assert_eq!(serde_json::to_value(kind).unwrap(), json!(wire_value));
+        assert_eq!(
+            serde_json::from_value::<FileChangeKind>(json!(wire_value)).unwrap(),
+            kind
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

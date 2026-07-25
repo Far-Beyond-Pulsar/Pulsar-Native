@@ -3,7 +3,10 @@
 pub mod core;
 pub mod renderer;
 
-pub use core::{CameraInput, DiagnosticMetric, GpuProfilerData, RenderMetrics};
+pub use core::{
+    CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
+    RenderSpikeLogConfig,
+};
 pub use renderer::{EditorCameraState, HelioRenderer, RendererCommand};
 
 pub const RENDER_WIDTH: u32 = 1600;

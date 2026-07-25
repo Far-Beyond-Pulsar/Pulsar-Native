@@ -5,7 +5,9 @@
 //! WgpuSurface is available.
 
 use crate::scene::SceneDb;
-use crate::subsystems::render::{EditorCameraState, HelioRenderer, RenderMetrics};
+use crate::subsystems::render::{
+    EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
+};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -111,6 +113,18 @@ impl GpuRenderer {
         self.helio_renderer
             .as_ref()
             .map(|r| r.get_gpu_profiler_data())
+    }
+
+    pub fn set_spike_log_config(&mut self, config: RenderSpikeLogConfig) {
+        if let Some(renderer) = self.helio_renderer.as_mut() {
+            renderer.set_spike_log_config(config);
+        }
+    }
+
+    pub fn spike_log_config(&self) -> Option<RenderSpikeLogConfig> {
+        self.helio_renderer
+            .as_ref()
+            .map(HelioRenderer::spike_log_config)
     }
 
     pub fn get_frame_count(&self) -> u64 {
@@ -253,3 +267,25 @@ impl GpuRenderer {
 
 unsafe impl Send for GpuRenderer {}
 unsafe impl Sync for GpuRenderer {}
+
+#[cfg(test)]
+mod tests {
+    use super::GpuRendererBuilder;
+    use crate::subsystems::render::RenderSpikeLogConfig;
+    use std::time::Duration;
+
+    #[test]
+    fn spike_log_config_is_available_through_the_public_renderer_service() {
+        let mut renderer = GpuRendererBuilder::new(1, 1).build();
+        let config = RenderSpikeLogConfig {
+            enabled: true,
+            cpu_threshold_ms: 18.0,
+            gpu_threshold_ms: 12.0,
+            min_interval: Duration::from_millis(125),
+        };
+
+        renderer.set_spike_log_config(config);
+
+        assert_eq!(renderer.spike_log_config(), Some(config));
+    }
+}

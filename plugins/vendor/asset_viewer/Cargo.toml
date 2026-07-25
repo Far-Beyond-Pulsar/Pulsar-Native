@@ -7,6 +7,11 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 name = "asset_viewer_plugin"
 
+[features]
+# Pulsar statically links this crate when it is used as a built-in editor.
+# Dynamic plugin builds keep the loader ABI exports by default.
+builtin = []
+
 [dependencies]
 gpui-ce = { workspace = true }
 ui      = { workspace = true }

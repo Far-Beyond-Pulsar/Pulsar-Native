@@ -1,6 +1,7 @@
 //! Core data types for the Helio renderer
 
 use glam::Vec3;
+use std::time::Duration;
 
 /// Rendering metrics
 #[derive(Debug, Clone, Default)]
@@ -17,21 +18,102 @@ pub struct RenderMetrics {
 /// Represents a single diagnostic metric for GPU profiling
 #[derive(Debug, Clone)]
 pub struct DiagnosticMetric {
-    pub name: String,
-    pub path: String,
-    pub value_ms: f32,
-    pub percentage: f32,
-    pub is_gpu: bool,
+    pub name: &'static str,
+    pub cpu_ms: Option<f32>,
+    pub gpu_ms: Option<f32>,
+}
+
+/// Availability of asynchronous GPU timestamp data.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum GpuProfilerAvailability {
+    Disabled,
+    Unsupported,
+    #[default]
+    Pending,
+    Available,
+    Backpressured,
 }
 
 /// GPU Pipeline profiling data
 #[derive(Debug, Clone, Default)]
 pub struct GpuProfilerData {
-    pub total_frame_ms: f32,
-    pub fps: f32,
     pub frame_count: u64,
-    pub total_gpu_ms: f32,
+    pub gpu_frame_count: Option<u64>,
+    pub gpu_lag_frames: Option<u64>,
+    pub availability: GpuProfilerAvailability,
+    pub total_cpu_ms: Option<f32>,
+    pub total_gpu_ms: Option<f32>,
+    pub readback_drops: u64,
+    pub query_overflows: u64,
     pub render_metrics: Vec<DiagnosticMetric>,
+}
+
+/// Runtime policy for lightweight frame-spike warning logs.
+///
+/// This remains separate from WGPUI's opt-in deep capture profiler: callers
+/// can tune cheap continuous diagnostics without enabling full frame capture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderSpikeLogConfig {
+    pub enabled: bool,
+    pub cpu_threshold_ms: f32,
+    pub gpu_threshold_ms: f32,
+    pub min_interval: Duration,
+}
+
+impl Default for RenderSpikeLogConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cpu_threshold_ms: 50.0,
+            gpu_threshold_ms: 50.0,
+            min_interval: Duration::from_secs(1),
+        }
+    }
+}
+
+impl GpuProfilerData {
+    /// Refresh this reusable host-side cache from Helio's read-only snapshot.
+    ///
+    /// The pass vector keeps its capacity between frames and pass names are
+    /// static, so steady-state collection does not allocate or poll the GPU.
+    pub fn update_from_snapshot(&mut self, snapshot: &helio::RenderTimingSnapshot) {
+        self.frame_count = snapshot.cpu_frame_index;
+        self.gpu_frame_count = snapshot.gpu_frame_index;
+        self.gpu_lag_frames = snapshot.gpu_lag_frames;
+        self.availability = match snapshot.gpu_availability {
+            helio::GpuTimingAvailability::Disabled => GpuProfilerAvailability::Disabled,
+            helio::GpuTimingAvailability::Unsupported => GpuProfilerAvailability::Unsupported,
+            helio::GpuTimingAvailability::Pending => GpuProfilerAvailability::Pending,
+            helio::GpuTimingAvailability::Available => GpuProfilerAvailability::Available,
+            helio::GpuTimingAvailability::Backpressured => GpuProfilerAvailability::Backpressured,
+        };
+        self.total_cpu_ms = snapshot.total_cpu_ms;
+        self.total_gpu_ms = snapshot.total_gpu_ms;
+        self.readback_drops = snapshot.readback_drops;
+        self.query_overflows = snapshot.query_overflows;
+
+        self.render_metrics.clear();
+        self.render_metrics
+            .extend(snapshot.passes.iter().map(|pass| DiagnosticMetric {
+                name: pass.name,
+                cpu_ms: pass.cpu_ms,
+                gpu_ms: pass.gpu_ms,
+            }));
+    }
+
+    pub fn slowest_cpu_pass(&self) -> Option<(&'static str, f32)> {
+        self.render_metrics
+            .iter()
+            .filter_map(|metric| metric.cpu_ms.map(|time| (metric.name, time)))
+            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+    }
+
+    pub fn slowest_gpu_pass(&self) -> Option<(&'static str, f32)> {
+        self.render_metrics
+            .iter()
+            .filter_map(|metric| metric.gpu_ms.map(|time| (metric.name, time)))
+            .max_by(|(_, a), (_, b)| a.total_cmp(b))
+    }
 }
 
 /// Camera controller input state
@@ -103,5 +185,107 @@ impl CameraInput {
     pub fn accumulate_pan_delta(&mut self, dx: f32, dy: f32) {
         self.pan_delta_x += dx;
         self.pan_delta_y += dy;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GpuProfilerAvailability, GpuProfilerData, RenderSpikeLogConfig};
+    use std::time::Duration;
+
+    #[test]
+    fn spike_log_defaults_are_runtime_configurable() {
+        let defaults = RenderSpikeLogConfig::default();
+        assert!(defaults.enabled);
+        assert_eq!(defaults.cpu_threshold_ms, 50.0);
+        assert_eq!(defaults.gpu_threshold_ms, 50.0);
+        assert_eq!(defaults.min_interval, Duration::from_secs(1));
+
+        let granular = RenderSpikeLogConfig {
+            cpu_threshold_ms: 20.0,
+            gpu_threshold_ms: 12.0,
+            min_interval: Duration::from_millis(100),
+            ..defaults
+        };
+        assert_eq!(granular.cpu_threshold_ms, 20.0);
+        assert_eq!(granular.gpu_threshold_ms, 12.0);
+        assert_eq!(granular.min_interval, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn timing_snapshot_bridge_preserves_pass_order_and_unavailable_gpu_state() {
+        let snapshot = helio::RenderTimingSnapshot {
+            generation: 4,
+            cpu_frame_index: 18,
+            gpu_frame_index: None,
+            gpu_lag_frames: None,
+            gpu_availability: helio::GpuTimingAvailability::Unsupported,
+            total_cpu_ms: Some(7.0),
+            total_gpu_ms: None,
+            readback_drops: 0,
+            query_overflows: 1,
+            passes: vec![
+                helio::RenderPassTiming {
+                    name: "Prepare",
+                    cpu_ms: Some(2.0),
+                    gpu_ms: None,
+                },
+                helio::RenderPassTiming {
+                    name: "Draw",
+                    cpu_ms: Some(5.0),
+                    gpu_ms: None,
+                },
+            ],
+        };
+
+        let mut data = GpuProfilerData::default();
+        data.update_from_snapshot(&snapshot);
+
+        assert_eq!(data.availability, GpuProfilerAvailability::Unsupported);
+        assert_eq!(data.query_overflows, 1);
+        assert_eq!(
+            data.render_metrics
+                .iter()
+                .map(|metric| metric.name)
+                .collect::<Vec<_>>(),
+            ["Prepare", "Draw"]
+        );
+        assert_eq!(data.slowest_cpu_pass(), Some(("Draw", 5.0)));
+        assert_eq!(data.slowest_gpu_pass(), None);
+    }
+
+    #[test]
+    fn timing_snapshot_bridge_attributes_delayed_gpu_spike() {
+        let snapshot = helio::RenderTimingSnapshot {
+            generation: 7,
+            cpu_frame_index: 21,
+            gpu_frame_index: Some(19),
+            gpu_lag_frames: Some(2),
+            gpu_availability: helio::GpuTimingAvailability::Available,
+            total_cpu_ms: Some(1.0),
+            total_gpu_ms: Some(44.0),
+            readback_drops: 2,
+            query_overflows: 0,
+            passes: vec![
+                helio::RenderPassTiming {
+                    name: "FastPass",
+                    cpu_ms: Some(0.5),
+                    gpu_ms: Some(4.0),
+                },
+                helio::RenderPassTiming {
+                    name: "ForcedSlowPass",
+                    cpu_ms: Some(0.5),
+                    gpu_ms: Some(40.0),
+                },
+            ],
+        };
+
+        let mut data = GpuProfilerData::default();
+        data.update_from_snapshot(&snapshot);
+
+        assert_eq!(data.gpu_frame_count, Some(19));
+        assert_eq!(data.gpu_lag_frames, Some(2));
+        assert_eq!(data.readback_drops, 2);
+        assert_eq!(data.slowest_gpu_pass(), Some(("ForcedSlowPass", 40.0)));
     }
 }
