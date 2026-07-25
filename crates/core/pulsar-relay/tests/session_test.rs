@@ -22,7 +22,9 @@ mod tests {
             .create_session("host-1".into(), serde_json::json!({"name": "test"}))
             .unwrap();
         assert_eq!(session.host_id, "host-1");
-        assert!(session.participants.is_empty());
+        assert_eq!(session.participants.len(), 1);
+        assert_eq!(session.participants[0].peer_id, "host-1");
+        assert_eq!(session.participants[0].role, Role::Host);
     }
 
     #[tokio::test]
@@ -37,11 +39,18 @@ mod tests {
         let joined = store
             .join_session(&sid, "peer-1".into(), Role::Editor)
             .unwrap();
-        assert_eq!(joined.participants.len(), 1);
-        assert_eq!(joined.participants[0].peer_id, "peer-1");
+        assert_eq!(joined.participants.len(), 2);
+        assert_eq!(joined.participants[0].peer_id, "host-1");
+        assert_eq!(joined.participants[0].role, Role::Host);
+        assert_eq!(joined.participants[1].peer_id, "peer-1");
+        assert_eq!(joined.participants[1].role, Role::Editor);
 
         let session = store.get_session(&sid).unwrap();
-        assert_eq!(session.participants.len(), 1);
+        assert_eq!(session.participants.len(), 2);
+        assert_eq!(session.participants[0].peer_id, "host-1");
+        assert_eq!(session.participants[0].role, Role::Host);
+        assert_eq!(session.participants[1].peer_id, "peer-1");
+        assert_eq!(session.participants[1].role, Role::Editor);
     }
 
     #[tokio::test]
