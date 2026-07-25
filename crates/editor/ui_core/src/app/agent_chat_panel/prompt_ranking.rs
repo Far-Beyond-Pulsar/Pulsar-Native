@@ -215,13 +215,12 @@ pub(crate) fn compact_messages(
         .position(|b| b.messages.iter().any(|m| m.role == ChatRole::User));
     for index in 0..dialog_block_count {
         let is_mandatory = index == last_index || Some(index) == first_user_block;
-        let priority = {
-            let block = &dialog_blocks[index];
-            block_priority(block, index, dialog_block_count)
-        };
         let block = &mut dialog_blocks[index];
         block.is_mandatory = is_mandatory;
-        block.priority = priority;
+        // Mandatory status is part of the ranking score. Set it before
+        // computing priority so the original user goal receives the same
+        // protection as the latest request.
+        block.priority = block_priority(block, index, dialog_block_count);
     }
 
     let mandatory_block = dialog_blocks.pop().unwrap();
@@ -340,30 +339,20 @@ mod tests {
         let (compacted, dropped) = compact_messages(messages, 2_200, 200);
         let dropped = dropped.expect("the ordinary middle turn should exceed the budget");
 
-        assert!(
-            compacted
-                .iter()
-                .any(|message| message.content.contains("ORIGINAL_GOAL"))
-        );
-        assert!(
-            compacted
-                .iter()
-                .any(|message| message.content.contains("CURRENT_REQUEST"))
-        );
-        assert!(
-            compacted
-                .iter()
-                .any(|message| message.content.contains("Subagent result"))
-        );
-        assert!(
-            !compacted
-                .iter()
-                .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN"))
-        );
-        assert!(
-            dropped
-                .iter()
-                .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN"))
-        );
+        assert!(compacted
+            .iter()
+            .any(|message| message.content.contains("ORIGINAL_GOAL")));
+        assert!(compacted
+            .iter()
+            .any(|message| message.content.contains("CURRENT_REQUEST")));
+        assert!(compacted
+            .iter()
+            .any(|message| message.content.contains("Subagent result")));
+        assert!(!compacted
+            .iter()
+            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
+        assert!(dropped
+            .iter()
+            .any(|message| message.content.contains("ORDINARY_MIDDLE_TURN")));
     }
 }
