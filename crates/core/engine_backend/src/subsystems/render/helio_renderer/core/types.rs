@@ -1,6 +1,7 @@
 //! Core data types for the Helio renderer
 
 use glam::Vec3;
+use std::time::Duration;
 
 /// Rendering metrics
 #[derive(Debug, Clone, Default)]
@@ -45,6 +46,29 @@ pub struct GpuProfilerData {
     pub readback_drops: u64,
     pub query_overflows: u64,
     pub render_metrics: Vec<DiagnosticMetric>,
+}
+
+/// Runtime policy for lightweight frame-spike warning logs.
+///
+/// This remains separate from WGPUI's opt-in deep capture profiler: callers
+/// can tune cheap continuous diagnostics without enabling full frame capture.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderSpikeLogConfig {
+    pub enabled: bool,
+    pub cpu_threshold_ms: f32,
+    pub gpu_threshold_ms: f32,
+    pub min_interval: Duration,
+}
+
+impl Default for RenderSpikeLogConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            cpu_threshold_ms: 50.0,
+            gpu_threshold_ms: 50.0,
+            min_interval: Duration::from_secs(1),
+        }
+    }
 }
 
 impl GpuProfilerData {
@@ -166,7 +190,27 @@ impl CameraInput {
 
 #[cfg(test)]
 mod tests {
-    use super::{GpuProfilerAvailability, GpuProfilerData};
+    use super::{GpuProfilerAvailability, GpuProfilerData, RenderSpikeLogConfig};
+    use std::time::Duration;
+
+    #[test]
+    fn spike_log_defaults_are_runtime_configurable() {
+        let defaults = RenderSpikeLogConfig::default();
+        assert!(defaults.enabled);
+        assert_eq!(defaults.cpu_threshold_ms, 50.0);
+        assert_eq!(defaults.gpu_threshold_ms, 50.0);
+        assert_eq!(defaults.min_interval, Duration::from_secs(1));
+
+        let granular = RenderSpikeLogConfig {
+            cpu_threshold_ms: 20.0,
+            gpu_threshold_ms: 12.0,
+            min_interval: Duration::from_millis(100),
+            ..defaults
+        };
+        assert_eq!(granular.cpu_threshold_ms, 20.0);
+        assert_eq!(granular.gpu_threshold_ms, 12.0);
+        assert_eq!(granular.min_interval, Duration::from_millis(100));
+    }
 
     #[test]
     fn timing_snapshot_bridge_preserves_pass_order_and_unavailable_gpu_state() {

@@ -4,7 +4,7 @@ use glam::{EulerRot, Mat4, Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use engine_fs::virtual_fs;
 use helio::{
@@ -25,10 +25,7 @@ use crate::scene::{
 };
 use helio_pass_taa::TaaPass;
 
-use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
-
-const FRAME_SPIKE_THRESHOLD_MS: f32 = 50.0;
-const SPIKE_WARNING_INTERVAL: Duration = Duration::from_secs(1);
+use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
 // ── Legacy types (unused but referenced by UI code) ──────────────────────────
 
@@ -91,6 +88,7 @@ pub struct HelioRenderer {
     pub gpu_profiler: GpuProfilerData,
     last_frame: Instant,
     frame_count: u64,
+    spike_log_config: RenderSpikeLogConfig,
     last_spike_warning: Option<Instant>,
     last_reported_gpu_frame: Option<u64>,
 }
@@ -137,6 +135,7 @@ impl HelioRenderer {
             gpu_profiler: GpuProfilerData::default(),
             last_frame: Instant::now(),
             frame_count: 0,
+            spike_log_config: RenderSpikeLogConfig::default(),
             last_spike_warning: None,
             last_reported_gpu_frame: None,
         }
@@ -162,6 +161,17 @@ impl HelioRenderer {
             input.up = 0.0;
             input.clear_transient_deltas();
         }
+    }
+
+    /// Configure cheap frame-spike warning cadence independently from deep
+    /// WGPUI capture. Disabling this affects only warning logs.
+    pub fn set_spike_log_config(&mut self, config: RenderSpikeLogConfig) {
+        self.spike_log_config = config;
+        self.last_spike_warning = None;
+    }
+
+    pub fn spike_log_config(&self) -> RenderSpikeLogConfig {
+        self.spike_log_config
     }
 
     /// Called each GPUI frame from the viewport.
@@ -367,11 +377,12 @@ impl HelioRenderer {
             && self
                 .gpu_profiler
                 .total_gpu_ms
-                .is_some_and(|time| time > FRAME_SPIKE_THRESHOLD_MS);
-        let cpu_spike = frame_ms > FRAME_SPIKE_THRESHOLD_MS;
-        let warning_due = self
-            .last_spike_warning
-            .is_none_or(|last| last.elapsed() >= SPIKE_WARNING_INTERVAL);
+                .is_some_and(|time| time > self.spike_log_config.gpu_threshold_ms);
+        let cpu_spike = frame_ms > self.spike_log_config.cpu_threshold_ms;
+        let warning_due = self.spike_log_config.enabled
+            && self
+                .last_spike_warning
+                .is_none_or(|last| last.elapsed() >= self.spike_log_config.min_interval);
 
         if warning_due && (cpu_spike || gpu_spike) {
             let (cpu_pass, cpu_pass_ms) = self

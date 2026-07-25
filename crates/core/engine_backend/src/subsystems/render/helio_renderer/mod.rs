@@ -5,6 +5,7 @@ pub mod renderer;
 
 pub use core::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
+    RenderSpikeLogConfig,
 };
 pub use renderer::{EditorCameraState, HelioRenderer, RendererCommand};
 

@@ -5,4 +5,5 @@ pub mod types;
 
 pub use types::{
     CameraInput, DiagnosticMetric, GpuProfilerAvailability, GpuProfilerData, RenderMetrics,
+    RenderSpikeLogConfig,
 };
