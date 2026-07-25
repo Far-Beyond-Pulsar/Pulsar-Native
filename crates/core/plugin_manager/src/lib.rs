@@ -178,7 +178,7 @@ mod registry;
 pub mod tool_bridge;
 
 pub use builtin::{BuiltinEditorProvider, BuiltinEditorRegistry, EditorContext};
-pub use permanent_library::{IntegrityError, PermanentLibrary};
+pub use permanent_library::{IntegrityError, PermanentLibrary, PermanentLibraryLoadError};
 pub use registry::{EditorRegistry, FileTypeRegistry};
 pub use tool_bridge::PluginToolBridge;
 

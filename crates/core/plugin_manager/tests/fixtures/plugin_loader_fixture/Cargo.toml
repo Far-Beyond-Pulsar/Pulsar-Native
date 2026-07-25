@@ -1,0 +1,13 @@
+[package]
+name = "plugin_loader_fixture"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+test = false
+doctest = false
+
+[dependencies]
+plugin_editor_api = { path = "../../../../plugin_editor_api" }

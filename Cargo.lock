@@ -7842,6 +7842,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "plugin_loader_fixture"
+version = "0.1.0"
+dependencies = [
+ "plugin_editor_api",
+]
+
+[[package]]
 name = "plugin_manager"
 version = "0.1.0"
 dependencies = [
@@ -7852,6 +7859,7 @@ dependencies = [
  "once_cell",
  "parking_lot",
  "plugin_editor_api",
+ "plugin_loader_fixture",
  "serde_json",
  "sha2 0.11.0",
  "tracing",

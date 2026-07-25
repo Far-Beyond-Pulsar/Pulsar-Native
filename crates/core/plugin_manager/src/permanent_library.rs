@@ -52,6 +52,52 @@ use std::io::{BufReader, Read};
 use std::mem::ManuallyDrop;
 use std::path::{Path, PathBuf};
 
+/// Error returned while opening, hashing, or loading a permanent library.
+///
+/// Keeping these stages distinct preserves the actionable operating-system
+/// error instead of reporting an unrelated `libloading::Error` variant for
+/// missing or unreadable files.
+#[derive(Debug)]
+pub enum PermanentLibraryLoadError {
+    Open {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Hash {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Load {
+        path: PathBuf,
+        source: libloading::Error,
+    },
+}
+
+impl std::fmt::Display for PermanentLibraryLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open { path, source } => {
+                write!(f, "failed to open library '{}': {source}", path.display())
+            }
+            Self::Hash { path, source } => {
+                write!(f, "failed to hash library '{}': {source}", path.display())
+            }
+            Self::Load { path, source } => {
+                write!(f, "failed to load library '{}': {source}", path.display())
+            }
+        }
+    }
+}
+
+impl std::error::Error for PermanentLibraryLoadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Open { source, .. } | Self::Hash { source, .. } => Some(source),
+            Self::Load { source, .. } => Some(source),
+        }
+    }
+}
+
 // ── Safe DLL search path (Windows) ─────────────────────────────────────────────
 //
 // On Windows, LoadLibraryW searches the current working directory and PATH for
@@ -175,7 +221,7 @@ impl PermanentLibrary {
     /// let lib = PermanentLibrary::new("plugins/example.dll")?;
     /// // Library is now loaded and will stay loaded until process exits
     /// ```
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, libloading::Error> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, PermanentLibraryLoadError> {
         #[cfg(target_os = "windows")]
         set_safe_dll_search_path();
 
@@ -189,15 +235,17 @@ impl PermanentLibrary {
         // the kernel guarantees we load the same bytes we hashed.  On other
         // platforms we fall back to the path (which is still better than
         // hashing then loading from the path with no locking at all).
-        let file = std::fs::File::open(path).map_err(|e| {
-            tracing::warn!("Failed to open library '{}': {}", path.display(), e);
-            libloading::Error::IncompatibleSize
+        let file = std::fs::File::open(path).map_err(|source| PermanentLibraryLoadError::Open {
+            path: path.to_path_buf(),
+            source,
         })?;
 
         // Hash from the open file handle.
-        let sha256 = Self::compute_file_hash_from_handle(&file).map_err(|e| {
-            tracing::warn!("Failed to hash library '{}': {}", path.display(), e);
-            libloading::Error::IncompatibleSize
+        let sha256 = Self::compute_file_hash_from_handle(&file).map_err(|source| {
+            PermanentLibraryLoadError::Hash {
+                path: path.to_path_buf(),
+                source,
+            }
         })?;
 
         // Drop the file handle on Windows before loading (LoadLibraryW needs
@@ -222,7 +270,12 @@ impl PermanentLibrary {
         #[cfg(target_os = "linux")]
         let load_path: &std::path::Path = &fd_path;
 
-        let library = unsafe { Library::new(load_path)? };
+        let library = unsafe { Library::new(load_path) }.map_err(|source| {
+            PermanentLibraryLoadError::Load {
+                path: path.to_path_buf(),
+                source,
+            }
+        })?;
 
         tracing::info!(
             "Loaded permanent library: {:?} (sha256={:02x?}, will never unload)",

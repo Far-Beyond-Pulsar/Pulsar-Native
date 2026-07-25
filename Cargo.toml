@@ -13,6 +13,7 @@ members = [
 # workspace members and `cargo test --all` races their identically named
 # `standalone` examples into the same output file.
 exclude = [
+    "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
     "plugins/vendor/blueprint_editor",
     "plugins/vendor/code_editor",
     "plugins/vendor/matter_editor",
