@@ -237,4 +237,4 @@ jobs:
         run: cargo nextest --version || cargo install cargo-nextest --locked
 
       - name: Run tests
-        run: cargo nextest run --all
+        run: cargo nextest run --all --no-fail-fast
