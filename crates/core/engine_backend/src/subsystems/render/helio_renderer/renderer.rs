@@ -3,8 +3,8 @@
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, mpsc};
-use std::time::Instant;
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use engine_fs::virtual_fs;
 use helio::{
@@ -14,8 +14,8 @@ use helio::{
 };
 use pulsar_events::script_registry;
 use pulsar_reflection::{
-    ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
-    apply_runtime_behavior_for_class, scene_id_to_tag,
+    apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
+    RuntimeComponentOwner, Subsystems,
 };
 use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
@@ -26,6 +26,9 @@ use crate::scene::{
 use helio_pass_taa::TaaPass;
 
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics};
+
+const FRAME_SPIKE_THRESHOLD_MS: f32 = 50.0;
+const SPIKE_WARNING_INTERVAL: Duration = Duration::from_secs(1);
 
 // ── Legacy types (unused but referenced by UI code) ──────────────────────────
 
@@ -85,9 +88,11 @@ pub struct HelioRenderer {
 
     // ── Metrics ──
     pub metrics: Arc<Mutex<RenderMetrics>>,
-    pub gpu_profiler: Arc<Mutex<GpuProfilerData>>,
+    pub gpu_profiler: GpuProfilerData,
     last_frame: Instant,
     frame_count: u64,
+    last_spike_warning: Option<Instant>,
+    last_reported_gpu_frame: Option<u64>,
 }
 
 struct HelioInner {
@@ -129,9 +134,11 @@ impl HelioRenderer {
             cam_local_velocity: Vec3::ZERO,
             viewport_size: (0, 0),
             metrics: Arc::new(Mutex::new(RenderMetrics::default())),
-            gpu_profiler: Arc::new(Mutex::new(GpuProfilerData::default())),
+            gpu_profiler: GpuProfilerData::default(),
             last_frame: Instant::now(),
             frame_count: 0,
+            last_spike_warning: None,
+            last_reported_gpu_frame: None,
         }
     }
 
@@ -341,24 +348,62 @@ impl HelioRenderer {
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
         let t_render = Instant::now();
-        let mut submission_index: Option<wgpu::SubmissionIndex> = None;
-        {
+        let submission_index = {
             profiling::profile_scope!("helio_render_submit");
             if let Err(e) = inner.renderer.render(&camera, &view) {
                 tracing::error!("Helio render error: {:?}", e);
             }
-            submission_index = Some(inner.queue.submit(std::iter::empty::<wgpu::CommandBuffer>()));
-        }
+            Some(inner.queue.submit(std::iter::empty::<wgpu::CommandBuffer>()))
+        };
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
-        let frame_ms = frame_start.elapsed().as_secs_f64() * 1000.0;
-        if frame_ms > 50.0 {
+        let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
+
+        self.gpu_profiler
+            .update_from_snapshot(inner.renderer.timing_snapshot());
+
+        let gpu_frame = self.gpu_profiler.gpu_frame_count;
+        let new_gpu_result = gpu_frame.is_some() && gpu_frame != self.last_reported_gpu_frame;
+        let gpu_spike = new_gpu_result
+            && self
+                .gpu_profiler
+                .total_gpu_ms
+                .is_some_and(|time| time > FRAME_SPIKE_THRESHOLD_MS);
+        let cpu_spike = frame_ms > FRAME_SPIKE_THRESHOLD_MS;
+        let warning_due = self
+            .last_spike_warning
+            .is_none_or(|last| last.elapsed() >= SPIKE_WARNING_INTERVAL);
+
+        if warning_due && (cpu_spike || gpu_spike) {
+            let (cpu_pass, cpu_pass_ms) = self
+                .gpu_profiler
+                .slowest_cpu_pass()
+                .unwrap_or(("unavailable", 0.0));
+            let (gpu_pass, gpu_pass_ms) = self
+                .gpu_profiler
+                .slowest_gpu_pass()
+                .unwrap_or(("pending", 0.0));
             tracing::warn!(
-                "[HELIO FRAME] {:.1}ms (sync {:.1}, prepare {:.1}, submit {:.1})",
+                "[HELIO FRAME SPIKE] frame={:.1}ms (sync {:.1}, prepare {:.1}, submit {:.1}); \
+                 slowest CPU pass={} {:.1}ms; GPU frame={:?} total={:?}ms lag={:?} \
+                 slowest pass={} {:.1}ms drops={} overflows={}",
                 frame_ms,
                 sync_ms,
                 prepare_ms,
-                render_ms
+                render_ms,
+                cpu_pass,
+                cpu_pass_ms,
+                gpu_frame,
+                self.gpu_profiler.total_gpu_ms,
+                self.gpu_profiler.gpu_lag_frames,
+                gpu_pass,
+                gpu_pass_ms,
+                self.gpu_profiler.readback_drops,
+                self.gpu_profiler.query_overflows
             );
+            self.last_spike_warning = Some(Instant::now());
+        }
+        if new_gpu_result {
+            self.last_reported_gpu_frame = gpu_frame;
         }
 
         if let Ok(mut m) = self.metrics.lock() {
@@ -448,10 +493,7 @@ impl HelioRenderer {
     }
 
     pub fn get_gpu_profiler_data(&self) -> GpuProfilerData {
-        self.gpu_profiler
-            .lock()
-            .map(|m| m.clone())
-            .unwrap_or_default()
+        self.gpu_profiler.clone()
     }
 
     // ── Editor Integration ───────────────────────────────────────────────────
