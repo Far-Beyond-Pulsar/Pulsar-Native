@@ -2938,7 +2938,7 @@ dependencies = [
  "engine_subsystems",
  "flume",
  "futures",
- "git2",
+ "git2 0.21.0",
  "glam 0.33.2",
  "gpui-ce",
  "helio",
@@ -3946,6 +3946,19 @@ dependencies = [
 
 [[package]]
 name = "git2"
+version = "0.20.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b88256088d75a56f8ecfa070513a775dd9107f6530ef14919dac831af9cfe2b"
+dependencies = [
+ "bitflags 2.13.1",
+ "libc",
+ "libgit2-sys",
+ "log",
+ "url",
+]
+
+[[package]]
+name = "git2"
 version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ddddbf932745a6be37109b6112d3ee09696106f848449069d3a57bba937ab82e"
@@ -4100,6 +4113,8 @@ dependencies = [
  "anyhow",
  "arboard",
  "async-task",
+ "backtrace",
+ "bincode",
  "bytemuck",
  "circular-buffer",
  "core-video",
@@ -4269,12 +4284,15 @@ dependencies = [
  "dunce",
  "futures",
  "futures-lite 1.13.0",
+ "git2 0.20.4",
  "globset",
  "gpui_collections",
+ "gpui_util_macros",
  "itertools 0.14.0",
  "libc",
  "log",
  "nix 0.29.0",
+ "rand 0.9.5",
  "regex",
  "rust-embed",
  "schemars",
@@ -12801,9 +12819,11 @@ dependencies = [
  "aho-corasick",
  "anyhow",
  "base64",
+ "bytemuck",
  "chrono",
  "directories 5.0.1",
  "enum-iterator",
+ "env_logger",
  "gpui-ce",
  "gpui_sum_tree",
  "html5ever 0.39.0",
@@ -12872,6 +12892,7 @@ dependencies = [
  "ui-macros",
  "unicode-segmentation",
  "uuid",
+ "wgpu",
  "windows 0.62.2",
 ]
 
@@ -13010,7 +13031,7 @@ dependencies = [
  "engine_fs",
  "engine_state",
  "friends_engine",
- "git2",
+ "git2 0.21.0",
  "gpui-ce",
  "image",
  "open",
@@ -13139,7 +13160,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "engine_state",
- "git2",
+ "git2 0.21.0",
  "gpui-ce",
  "image",
  "inventory",
