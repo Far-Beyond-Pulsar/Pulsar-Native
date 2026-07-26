@@ -14,6 +14,10 @@ members = [
 # `standalone` examples into the same output file.
 exclude = [
     "crates/core/plugin_manager/tests/fixtures/plugin_loader_fixture",
+    # WGPUI is an independently versioned repository. Pulsar consumes it as a
+    # path dependency, but its standalone examples/dev dependencies must remain
+    # owned and resolved by WGPUI rather than polluting Pulsar's workspace graph.
+    "crates/ui/wgpui",
     "plugins/vendor/blueprint_editor",
     "plugins/vendor/code_editor",
     "plugins/vendor/matter_editor",
@@ -291,6 +295,7 @@ plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
+ui_types_common   = { path = "crates/editor/ui_types_common" }
 pulsar_std_bundle = { path = "crates/core/pulsar_std_bundle" }
 pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 # Point at the same unified source as the Pulsar-Reflection patch below so every
