@@ -23,8 +23,6 @@ use pulsar_scene::{build_transform_parts, component_instances_from_props};
 use crate::scene::{
     ObjectDirtyFlags, ObjectType, ObjectUpdate, SceneDbDelta, SceneObjectSnapshot,
 };
-use helio_pass_taa::TaaPass;
-
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
 // ── Legacy types (unused but referenced by UI code) ──────────────────────────
@@ -329,31 +327,8 @@ impl HelioRenderer {
 
         if self.reset_taa_next_frame {
             self.reset_taa_next_frame = false;
-            let device = inner.device.clone();
-            let queue = inner.queue.clone();
-            if let Some(taa) = inner.renderer.find_pass_mut::<TaaPass>() {
-                let mut encoder =
-                    device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("TAA History Clear"),
-                    });
-                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Clear TAA History"),
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &taa.history_view,
-                        resolve_target: None,
-                        depth_slice: None,
-                        ops: wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    multiview_mask: None,
-                });
-                queue.submit(std::iter::once(encoder.finish()));
-            }
+            // TSR history is reset by recreating the graph via GraphRebuilder
+            // (handled externally on camera cuts).
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;

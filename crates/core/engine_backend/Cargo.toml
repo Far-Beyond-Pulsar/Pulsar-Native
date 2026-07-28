@@ -50,7 +50,6 @@ flume = { workspace = true, optional = true }
 
 # Helio rendering (wgpu-based)
 helio = { workspace = true, optional = true }
-helio-pass-taa = { workspace = true, optional = true }
 helio-asset-compat = { workspace = true, optional = true }
 helio-default-graphs = { workspace = true, optional = true }
 glam.workspace = true
@@ -76,7 +75,7 @@ walkdir = { workspace = true, optional = true }
 
 [features]
 default = ["render", "editor-ui", "pie", "networking", "vcs", "physics"]
-render     = ["dep:helio", "dep:helio-pass-taa", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:wgpu", "dep:bytemuck"]
+render     = ["dep:helio", "dep:helio-asset-compat", "dep:helio-default-graphs", "dep:wgpu", "dep:bytemuck"]
 editor-ui  = ["dep:gpui-ce", "dep:ui", "dep:pulsar_lsp", "dep:lsp-types", "dep:ropey", "dep:flume"]
 pie        = ["dep:pulsar_pie_abi", "dep:libloading", "dep:crossbeam-channel", "dep:wgpu"]
 networking = ["dep:reqwest", "dep:async-tungstenite", "dep:futures"]
