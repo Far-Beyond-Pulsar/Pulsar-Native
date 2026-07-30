@@ -13021,6 +13021,7 @@ dependencies = [
  "engine_state",
  "gpui-ce",
  "image",
+ "open",
  "parking_lot",
  "plugin_editor_api",
  "pulsar_auth",

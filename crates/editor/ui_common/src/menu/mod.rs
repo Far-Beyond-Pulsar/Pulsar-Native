@@ -1304,6 +1304,63 @@ impl AppTitleBar {
                         ProfileDropdownEvent::MultiplayerSessionsRequested => {
                             cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
                         }
+                        ProfileDropdownEvent::SignInRequested => {
+                            let Some(client_id) = pulsar_auth::github_client_id_from_env() else {
+                                return;
+                            };
+                            let pd = this.profile_dropdown.clone();
+                            let cid = client_id.clone();
+                            cx.spawn(async move |_, cx| {
+                                let c_id = cid.clone();
+                                let flow = cx
+                                    .background_executor()
+                                    .spawn(async move { pulsar_auth::start_device_flow(&c_id) })
+                                    .await;
+                                let flow = match flow {
+                                    Ok(f) => f,
+                                    Err(_) => return,
+                                };
+                                let uri = flow.verification_uri.clone();
+                                let _ = open::that(&uri);
+                                let c_id2 = cid.to_string();
+                                let flow_clone = flow.clone();
+                                let token = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        pulsar_auth::wait_for_device_flow_token(
+                                            &c_id2, &flow_clone,
+                                        )
+                                    })
+                                    .await;
+                                let token = match token {
+                                    Ok(t) => t,
+                                    Err(_) => return,
+                                };
+                                let token_fetch = token.clone();
+                                let profile = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        pulsar_auth::fetch_profile(&token_fetch)
+                                    })
+                                    .await;
+                                let profile = match profile {
+                                    Ok(p) => p,
+                                    Err(_) => return,
+                                };
+                                let _ = pulsar_auth::store_access_token(&token);
+                                let _ = pulsar_auth::save_cached_profile(&profile);
+                                if let Some(ec) = engine_state::EngineContext::global() {
+                                    ec.set_auth_profile(profile);
+                                }
+                                let _ = cx.update(|cx| {
+                                    pd.update(cx, |d, cx| {
+                                        d.ensure_avatar_loaded(cx);
+                                        cx.notify();
+                                    })
+                                });
+                            })
+                            .detach();
+                        }
                         _ => {}
                     }
                     cx.notify();

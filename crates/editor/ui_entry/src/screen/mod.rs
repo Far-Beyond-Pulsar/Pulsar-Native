@@ -10,6 +10,7 @@ use parking_lot::Mutex;
 use crate::core::events::*;
 use crate::core::state::*;
 use crate::core::types::*;
+use ui_common::ProfileDropdownEvent;
 use crate::screen::views::project_settings::ProjectSettingsTab;
 use crate::service::auth_service::AuthService;
 use crate::service::cloud_service::CloudService;
@@ -54,6 +55,18 @@ impl EntryScreen {
         }
 
         inputs.subscribe_all(self_entity.clone(), cx);
+
+        let profile_dropdown = state.auth.profile_dropdown.clone();
+        cx.subscribe(
+            &profile_dropdown,
+            |this, _, event: &ProfileDropdownEvent, cx| {
+                if matches!(event, ProfileDropdownEvent::SignInRequested) {
+                    this.begin_github_sign_in(cx);
+                }
+                cx.notify();
+            },
+        )
+        .detach();
 
         let mut this = Self {
             state,
