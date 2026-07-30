@@ -31,6 +31,20 @@ impl EntryScreen {
         let inputs = InputEntities::new(window, cx);
         let self_entity = cx.entity().clone();
 
+        cx.subscribe_in(
+            &state.auth.profile_dropdown,
+            window,
+            |_this, _, event: &ui_common::ProfileDropdownEvent, window, cx| {
+                if matches!(
+                    event,
+                    ui_common::ProfileDropdownEvent::ConfigureGitAuthorRequested
+                ) {
+                    ui_git_manager::open_git_identity_modal(window, cx);
+                }
+            },
+        )
+        .detach();
+
         let status = DependencyService::check();
         state.dependency_status = Some(status);
 
