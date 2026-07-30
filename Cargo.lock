@@ -8763,6 +8763,7 @@ dependencies = [
  "futures",
  "gpui-ce",
  "profiling 0.1.0",
+ "pulsar_auth",
  "pulsar_std",
  "rfd",
  "rust-embed",

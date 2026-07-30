@@ -21,6 +21,7 @@ file-association-manager = { git = "https://github.com/Far-Beyond-Pulsar/file-as
 # Engine crates
 engine_backend.workspace = true
 engine_state.workspace = true
+pulsar_auth.workspace = true
 # Profiling - instrumentation-based
 profiling = { workspace = true }
 
