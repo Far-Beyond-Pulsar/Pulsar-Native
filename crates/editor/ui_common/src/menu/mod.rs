@@ -1301,7 +1301,7 @@ impl AppTitleBar {
             ),
             cx.subscribe(
                 &profile_dropdown,
-                |_this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
+                |this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
                     match event {
                         ProfileDropdownEvent::MultiplayerSessionsRequested => {
                             cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
@@ -1362,6 +1362,7 @@ impl AppTitleBar {
                                 });
                             })
                             .detach();
+                        }
                         ProfileDropdownEvent::ConfigureGitAuthorRequested => {
                             cx.emit(AppTitleBarEvent::ConfigureGitAuthorRequested);
                         }
