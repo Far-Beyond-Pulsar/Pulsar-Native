@@ -1256,6 +1256,8 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
 pub enum AppTitleBarEvent {
     /// User wants to open the multiplayer sessions / friends panel.
     MultiplayerSessionsRequested,
+    /// User wants to edit the global Git author identity.
+    ConfigureGitAuthorRequested,
 }
 
 pub struct AppTitleBar {
@@ -1299,10 +1301,13 @@ impl AppTitleBar {
             ),
             cx.subscribe(
                 &profile_dropdown,
-                |this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
+                |_this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
                     match event {
                         ProfileDropdownEvent::MultiplayerSessionsRequested => {
                             cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
+                        }
+                        ProfileDropdownEvent::ConfigureGitAuthorRequested => {
+                            cx.emit(AppTitleBarEvent::ConfigureGitAuthorRequested);
                         }
                         _ => {}
                     }

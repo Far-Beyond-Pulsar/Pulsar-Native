@@ -21,6 +21,8 @@ image = { workspace = true, features = ["png", "jpeg"] }
 smallvec = { workspace = true }
 smol = { workspace = true }
 
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

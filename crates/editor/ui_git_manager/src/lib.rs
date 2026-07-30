@@ -3,6 +3,7 @@
 //! A GitHub Desktop-like Git manager built with GPUI and the UI crate
 
 mod avatar_loader;
+mod git_identity;
 mod git_operations;
 mod models;
 mod views;
@@ -20,6 +21,7 @@ use ui::{
     v_flex,
 };
 
+pub use git_identity::open_git_identity_modal;
 pub use git_operations::*;
 pub use models::*;
 
