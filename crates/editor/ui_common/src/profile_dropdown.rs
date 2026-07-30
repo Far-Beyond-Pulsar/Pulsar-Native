@@ -18,6 +18,8 @@ pub enum ProfileDropdownEvent {
     SignedOut,
     /// User clicked "Multiplayer Sessions" — parent should open the friends/invite UI.
     MultiplayerSessionsRequested,
+    /// User clicked "Configure Git Author" — parent should open the Git identity UI.
+    ConfigureGitAuthorRequested,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -314,8 +316,8 @@ impl ProfileDropdown {
                         "Configure Git Author",
                         false,
                         cx.listener(|this, _: &ClickEvent, _, cx| {
-                            // TODO: open git identity settings panel
                             this.is_open = false;
+                            cx.emit(ProfileDropdownEvent::ConfigureGitAuthorRequested);
                             cx.notify();
                         }),
                     )),

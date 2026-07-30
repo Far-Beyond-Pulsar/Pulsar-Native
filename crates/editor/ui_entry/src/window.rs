@@ -1,6 +1,7 @@
 use crate::screen::EntryScreen;
 use crate::{FabSearchRequested, GitManagerRequested, ProjectSelected, SettingsRequested};
 use gpui::*;
+use ui::Root;
 
 pub struct EntryWindow {
     screen: Entity<EntryScreen>,
@@ -58,7 +59,11 @@ impl EventEmitter<SettingsRequested> for EntryWindow {}
 impl EventEmitter<FabSearchRequested> for EntryWindow {}
 
 impl Render for EntryWindow {
-    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        self.screen.clone().into_any_element()
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(self.screen.clone())
+            .children(Root::render_modal_layer(window, cx))
+            .children(Root::render_notification_layer(window, cx))
     }
 }
