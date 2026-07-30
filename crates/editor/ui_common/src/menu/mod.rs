@@ -1306,7 +1306,6 @@ impl AppTitleBar {
                         ProfileDropdownEvent::MultiplayerSessionsRequested => {
                             cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
                         }
-<<<<<<< HEAD
                         ProfileDropdownEvent::SignInRequested => {
                             let Some(client_id) = pulsar_auth::github_client_id_from_env() else {
                                 return;
@@ -1363,8 +1362,6 @@ impl AppTitleBar {
                                 });
                             })
                             .detach();
-=======
->>>>>>> 686c9e1f0 (configure global Git author identity)
                         ProfileDropdownEvent::ConfigureGitAuthorRequested => {
                             cx.emit(AppTitleBarEvent::ConfigureGitAuthorRequested);
                         }
