@@ -141,6 +141,8 @@ pub struct TerrainVisiblePage {
     pub page_key: PageKey,
     pub planet_generation: u64,
     pub page_generation: u64,
+    /// Faces owned by this coarse page that border render-relevant leaves
+    /// exactly one LOD finer.
     pub transition_mask: u8,
 }
 
@@ -557,23 +559,34 @@ mod tests {
 
     #[test]
     fn transition_masks_cover_all_faces_and_signed_boundaries() {
-        for face in TerrainTransitionFace::ALL {
-            let axis = face.axis();
-            let mut fine_xyz = [-3, -3, -3];
-            fine_xyz[axis] = if face.is_positive() { -3 } else { -2 };
-            let fine = PageKey::new(0, fine_xyz);
-            let mut coarse_xyz = fine_xyz.map(|coordinate| coordinate.div_euclid(2));
-            coarse_xyz[axis] += if face.is_positive() { 1 } else { -1 };
-            let coarse = PageKey::new(1, coarse_xyz);
-            let plan = TerrainStreamingPlan::for_test(
-                PlanetId([1; 16]),
-                vec![
-                    PageDemand::for_test(fine, TerrainRequestClass::Visible),
-                    PageDemand::for_test(coarse, TerrainRequestClass::Visible),
-                ],
-            );
-            assert_eq!(plan.transition_masks().get(&fine), Some(&face.bit()));
-            assert_eq!(plan.transition_masks().get(&coarse), Some(&0));
+        for coarse_face in TerrainTransitionFace::ALL {
+            let axis = coarse_face.axis();
+            let coarse = PageKey::new(1, [-3, -3, -3]);
+            let tangential = match axis {
+                0 => [1, 2],
+                1 => [0, 2],
+                2 => [0, 1],
+                _ => unreachable!(),
+            };
+            for quadrant in 0..4 {
+                let mut fine_xyz = coarse.page_xyz.map(|coordinate| coordinate * 2);
+                fine_xyz[axis] += if coarse_face.is_positive() { 2 } else { -1 };
+                fine_xyz[tangential[0]] += (quadrant & 1) as i64;
+                fine_xyz[tangential[1]] += ((quadrant >> 1) & 1) as i64;
+                let fine = PageKey::new(0, fine_xyz);
+                let plan = TerrainStreamingPlan::for_test(
+                    PlanetId([1; 16]),
+                    vec![
+                        PageDemand::for_test(fine, TerrainRequestClass::Visible),
+                        PageDemand::for_test(coarse, TerrainRequestClass::Visible),
+                    ],
+                );
+                assert_eq!(plan.transition_masks().get(&fine), Some(&0));
+                assert_eq!(
+                    plan.transition_masks().get(&coarse),
+                    Some(&coarse_face.bit())
+                );
+            }
         }
         assert_eq!(
             TerrainTransitionFace::ALL
