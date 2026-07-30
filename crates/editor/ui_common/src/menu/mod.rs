@@ -1271,6 +1271,9 @@ pub struct AppTitleBar {
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
     profile_dropdown: Entity<crate::profile_dropdown::ProfileDropdown>,
     _subscriptions: Vec<Subscription>,
+    auth_device_code: Option<String>,
+    auth_device_verification_url: Option<String>,
+    auth_device_notified: bool,
 }
 
 impl gpui::EventEmitter<AppTitleBarEvent> for AppTitleBar {}
@@ -1311,6 +1314,7 @@ impl AppTitleBar {
                                 return;
                             };
                             let pd = this.profile_dropdown.clone();
+                            let handle = cx.entity().clone();
                             let cid = client_id.clone();
                             cx.spawn(async move |_, cx| {
                                 let c_id = cid.clone();
@@ -1322,8 +1326,17 @@ impl AppTitleBar {
                                     Ok(f) => f,
                                     Err(_) => return,
                                 };
+                                let user_code = flow.user_code.clone();
                                 let uri = flow.verification_uri.clone();
                                 let _ = open::that(&uri);
+                                let _ = cx.update(|cx| {
+                                    handle.update(cx, |this, cx| {
+                                        this.auth_device_code = Some(user_code);
+                                        this.auth_device_verification_url = Some(uri.clone());
+                                        this.auth_device_notified = false;
+                                        cx.notify();
+                                    });
+                                });
                                 let c_id2 = cid.to_string();
                                 let flow_clone = flow.clone();
                                 let token = cx
@@ -1358,7 +1371,12 @@ impl AppTitleBar {
                                     pd.update(cx, |d, cx| {
                                         d.ensure_avatar_loaded(cx);
                                         cx.notify();
-                                    })
+                                    });
+                                    handle.update(cx, |this, cx| {
+                                        this.auth_device_code = None;
+                                        this.auth_device_verification_url = None;
+                                        cx.notify();
+                                    });
                                 });
                             })
                             .detach();
@@ -1384,6 +1402,9 @@ impl AppTitleBar {
             child: Rc::new(|_, _| div().into_any_element()),
             profile_dropdown,
             _subscriptions: subscriptions,
+            auth_device_code: None,
+            auth_device_verification_url: None,
+            auth_device_notified: false,
         }
     }
 
@@ -1425,6 +1446,94 @@ impl Render for AppTitleBar {
         }
 
         let notifications_count = window.notifications(cx).len();
+
+        if self.auth_device_code.is_none() && self.auth_device_notified {
+            self.auth_device_notified = false;
+            window.close_modal(cx);
+        }
+
+        if let Some(ref code) = self.auth_device_code {
+            if !self.auth_device_notified {
+                self.auth_device_notified = true;
+                let code = code.clone();
+                let url = self.auth_device_verification_url.clone();
+                let handle = cx.entity().clone();
+                window.open_modal(cx, move |modal, _, cx| {
+                    let code_c = code.clone();
+                    let url_c = url.clone();
+                    modal
+                        .width(px(460.))
+                        .title("GitHub Device Code")
+                        .show_close(true)
+                        .overlay_closable(true)
+                        .on_close(|_, _, _| {})
+                        .child(
+                            v_flex()
+                                .w_full()
+                                .gap_4()
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Enter this code in the browser window GitHub opened."),
+                                )
+                                .child(
+                                    div()
+                                        .w_full()
+                                        .py_3()
+                                        .rounded_lg()
+                                        .bg(cx.theme().accent.opacity(0.12))
+                                        .border_1()
+                                        .border_color(cx.theme().accent.opacity(0.35))
+                                        .text_center()
+                                        .text_2xl()
+                                        .font_weight(gpui::FontWeight::BOLD)
+                                        .text_color(cx.theme().foreground)
+                                        .child(code.clone()),
+                                )
+                                .child(
+                                    h_flex()
+                                        .w_full()
+                                        .gap_2()
+                                        .justify_end()
+                                        .child(
+                                            Button::new("device-code-copy")
+                                                .primary()
+                                                .icon(IconName::Copy)
+                                                .label("Copy")
+                                                .on_click(move |_, _, cx| {
+                                                    cx.write_to_clipboard(
+                                                        gpui::ClipboardItem::new_string(
+                                                            code_c.clone(),
+                                                        ),
+                                                    );
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new("device-code-open")
+                                                .ghost()
+                                                .icon(IconName::ExternalLink)
+                                                .label("Open")
+                                                .on_click(move |_, _, cx| {
+                                                    if let Some(ref u) = url_c {
+                                                        cx.open_url(u);
+                                                    }
+                                                }),
+                                        )
+                                        .child(
+                                            Button::new("device-code-close")
+                                                .ghost()
+                                                .icon(IconName::X)
+                                                .label("Close")
+                                                .on_click(|_, window, cx| {
+                                                    window.close_modal(cx);
+                                                }),
+                                        ),
+                                ),
+                        )
+                });
+            }
+        }
 
         let dev_popover = cx.new(DevPopover::new);
 
