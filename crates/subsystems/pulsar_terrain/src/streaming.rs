@@ -319,9 +319,10 @@ impl TerrainStreamingPlan {
 
     /// Six-face transition masks for the complete deterministic leaf set.
     ///
-    /// Bit order is `-X,+X,-Y,+Y,-Z,+Z`. A bit is set on the fine page when
-    /// its covering face neighbor is exactly one LOD coarser. Coarse pages do
-    /// not mark faces adjacent to finer leaves.
+    /// Bit order is `-X,+X,-Y,+Y,-Z,+Z`. A bit is set on the coarse page when
+    /// at least one render-relevant leaf exactly one LOD finer touches that
+    /// face. Helio's Transvoxel extractor owns the transition mesh on this
+    /// coarse page and samples the adjacent finer field over the complete face.
     pub fn transition_masks(&self) -> BTreeMap<PageKey, u8> {
         let leaves = self
             .demands
@@ -334,9 +335,9 @@ impl TerrainStreamingPlan {
             .map(|leaf| {
                 let mut mask = 0_u8;
                 for (face, (axis, direction)) in faces().into_iter().enumerate() {
-                    if covering_face_neighbor(leaf, axis, direction, &leaves)
-                        .is_some_and(|neighbor| neighbor.lod == leaf.lod.saturating_add(1))
-                    {
+                    if finer_face_neighbors(leaf, axis, direction).is_some_and(|neighbors| {
+                        neighbors.iter().any(|neighbor| leaves.contains(neighbor))
+                    }) {
                         mask |= 1 << face;
                     }
                 }
@@ -946,6 +947,35 @@ fn covering_face_neighbor(
             return None;
         }
     }
+}
+
+fn finer_face_neighbors(coarse: PageKey, axis: usize, direction: i64) -> Option<[PageKey; 4]> {
+    let lod = coarse.lod.checked_sub(1)?;
+    let mut base = [0_i64; 3];
+    for coordinate in 0..3 {
+        base[coordinate] = coarse.page_xyz[coordinate].checked_mul(2)?;
+    }
+    let face_coordinate = if direction < 0 {
+        base[axis].checked_sub(1)?
+    } else {
+        base[axis].checked_add(2)?
+    };
+    let tangential = match axis {
+        0 => [1, 2],
+        1 => [0, 2],
+        2 => [0, 1],
+        _ => return None,
+    };
+    let mut neighbors = [PageKey::default(); 4];
+    for (quadrant, neighbor) in neighbors.iter_mut().enumerate() {
+        let mut page_xyz = base;
+        page_xyz[axis] = face_coordinate;
+        page_xyz[tangential[0]] = page_xyz[tangential[0]].checked_add((quadrant & 1) as i64)?;
+        page_xyz[tangential[1]] =
+            page_xyz[tangential[1]].checked_add(((quadrant >> 1) & 1) as i64)?;
+        *neighbor = PageKey::new(lod, page_xyz);
+    }
+    Some(neighbors)
 }
 
 trait PageKeySet {
