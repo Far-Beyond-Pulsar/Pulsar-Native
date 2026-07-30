@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use gpui::*;
 use parking_lot::Mutex;
+use ui::ContextModal;
 
 use crate::core::events::*;
 use crate::core::state::*;
@@ -492,7 +493,6 @@ impl EntryScreen {
         self.state.auth.message = Some("Starting GitHub sign-in\u{2026}".to_string());
         self.state.auth.device_code = None;
         self.state.auth.device_verification_url = None;
-        self.state.ui.auth_device_modal_visible = false;
         cx.notify();
         let entity = self.entity.clone().unwrap();
         cx.spawn(async move |_handle, cx| {
@@ -518,7 +518,6 @@ impl EntryScreen {
                 entity.update(cx, |this, cx| {
                     this.state.auth.device_code = Some(flow.user_code.clone());
                     this.state.auth.device_verification_url = Some(flow.verification_uri.clone());
-                    this.state.ui.auth_device_modal_visible = true;
                     this.state.auth.loading = false;
                     cx.notify();
                 })
@@ -533,7 +532,6 @@ impl EntryScreen {
                 cx.update(|cx| {
                     entity.update(cx, |this, cx| {
                         this.state.auth.loading = false;
-                        this.state.ui.auth_device_modal_visible = false;
                         this.state.auth.device_code = None;
                         this.state.auth.device_verification_url = None;
                         this.state.auth.message =
@@ -552,12 +550,11 @@ impl EntryScreen {
                 Ok(p) => p,
                 Err(e) => {
                     cx.update(|cx| {
-                        entity.update(cx, |this, cx| {
-                            this.state.auth.loading = false;
-                            this.state.ui.auth_device_modal_visible = false;
-                            this.state.auth.message = Some(format!("Failed to fetch profile: {e}"));
-                            cx.notify();
-                        })
+                    entity.update(cx, |this, cx| {
+                        this.state.auth.loading = false;
+                        this.state.auth.message = Some(format!("Failed to fetch profile: {e}"));
+                        cx.notify();
+                    })
                     });
                     return;
                 }
@@ -570,7 +567,6 @@ impl EntryScreen {
             cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     this.state.auth.loading = false;
-                    this.state.ui.auth_device_modal_visible = false;
                     this.state.auth.device_code = None;
                     this.state.auth.device_verification_url = None;
                     this.state.auth.message = None;
@@ -596,7 +592,6 @@ impl EntryScreen {
         self.state.auth.message = None;
         self.state.auth.device_code = None;
         self.state.auth.device_verification_url = None;
-        self.state.ui.auth_device_modal_visible = false;
         cx.notify();
     }
 
@@ -1154,16 +1149,21 @@ impl EntryScreen {
 
 impl Render for EntryScreen {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let content = crate::screen::layout::render_layout(self, window, cx);
-        if self.state.ui.auth_device_modal_visible {
-            div()
-                .size_full()
-                .child(content)
-                .child(views::render_auth_modal(self, cx))
-                .into_any_element()
-        } else {
-            content.into_any_element()
+        if self.state.auth.device_code.is_none() && self.state.ui.auth_device_modal_shown {
+            self.state.ui.auth_device_modal_shown = false;
+            window.close_modal(cx);
         }
+        if let Some(ref code) = self.state.auth.device_code {
+            if !self.state.ui.auth_device_modal_shown {
+                self.state.ui.auth_device_modal_shown = true;
+                let url = self.state.auth.device_verification_url
+                    .as_deref()
+                    .unwrap_or("https://github.com/login/device")
+                    .to_string();
+                ui_auth::modal::open_device_code_modal(code, &url, window, cx);
+            }
+        }
+        crate::screen::layout::render_layout(self, window, cx)
     }
 }
 

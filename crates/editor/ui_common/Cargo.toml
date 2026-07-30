@@ -22,6 +22,7 @@ smallvec.workspace = true
 smol = { workspace = true }
 engine_state.workspace = true
 pulsar_auth.workspace = true
+ui_auth.workspace = true
 open.workspace = true
 engine_fs.workspace = true
 plugin_editor_api.workspace = true

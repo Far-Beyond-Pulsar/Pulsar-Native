@@ -1455,83 +1455,11 @@ impl Render for AppTitleBar {
         if let Some(ref code) = self.auth_device_code {
             if !self.auth_device_notified {
                 self.auth_device_notified = true;
-                let code = code.clone();
-                let url = self.auth_device_verification_url.clone();
-                let handle = cx.entity().clone();
-                window.open_modal(cx, move |modal, _, cx| {
-                    let code_c = code.clone();
-                    let url_c = url.clone();
-                    modal
-                        .width(px(460.))
-                        .title("GitHub Device Code")
-                        .show_close(true)
-                        .overlay_closable(true)
-                        .on_close(|_, _, _| {})
-                        .child(
-                            v_flex()
-                                .w_full()
-                                .gap_4()
-                                .child(
-                                    div()
-                                        .text_sm()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Enter this code in the browser window GitHub opened."),
-                                )
-                                .child(
-                                    div()
-                                        .w_full()
-                                        .py_3()
-                                        .rounded_lg()
-                                        .bg(cx.theme().accent.opacity(0.12))
-                                        .border_1()
-                                        .border_color(cx.theme().accent.opacity(0.35))
-                                        .text_center()
-                                        .text_2xl()
-                                        .font_weight(gpui::FontWeight::BOLD)
-                                        .text_color(cx.theme().foreground)
-                                        .child(code.clone()),
-                                )
-                                .child(
-                                    h_flex()
-                                        .w_full()
-                                        .gap_2()
-                                        .justify_end()
-                                        .child(
-                                            Button::new("device-code-copy")
-                                                .primary()
-                                                .icon(IconName::Copy)
-                                                .label("Copy")
-                                                .on_click(move |_, _, cx| {
-                                                    cx.write_to_clipboard(
-                                                        gpui::ClipboardItem::new_string(
-                                                            code_c.clone(),
-                                                        ),
-                                                    );
-                                                }),
-                                        )
-                                        .child(
-                                            Button::new("device-code-open")
-                                                .ghost()
-                                                .icon(IconName::ExternalLink)
-                                                .label("Open")
-                                                .on_click(move |_, _, cx| {
-                                                    if let Some(ref u) = url_c {
-                                                        cx.open_url(u);
-                                                    }
-                                                }),
-                                        )
-                                        .child(
-                                            Button::new("device-code-close")
-                                                .ghost()
-                                                .icon(IconName::X)
-                                                .label("Close")
-                                                .on_click(|_, window, cx| {
-                                                    window.close_modal(cx);
-                                                }),
-                                        ),
-                                ),
-                        )
-                });
+                let url = self.auth_device_verification_url
+                    .as_deref()
+                    .unwrap_or("https://github.com/login/device")
+                    .to_string();
+                ui_auth::modal::open_device_code_modal(code, &url, window, cx);
             }
         }
 

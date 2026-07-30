@@ -139,6 +139,7 @@ ui_git_manager        = { path = "crates/editor/ui_git_manager" }
 ui_fab_search         = { path = "crates/editor/ui_fab_search" }
 ui_multiuser_status   = { path = "crates/editor/ui_multiuser_status" }
 ui_friends            = { path = "crates/editor/ui_friends" }
+ui_auth               = { path = "crates/editor/ui_auth" }
 friends_engine        = { path = "crates/core/friends_engine" }
 
 # ---------- Plugin System ----------
@@ -292,6 +293,7 @@ ui-macros        = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 pulsar_std        = { path = "crates/core/pulsar_std" }
 plugin_editor_api = { path = "crates/core/plugin_editor_api" }
 ui_common         = { path = "crates/editor/ui_common" }
+ui_auth           = { path = "crates/editor/ui_auth" }
 engine_backend    = { path = "crates/core/engine_backend" }
 engine_state      = { path = "crates/core/engine_state" }
 ui_types_common   = { path = "crates/editor/ui_types_common" }

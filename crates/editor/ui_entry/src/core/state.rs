@@ -24,8 +24,7 @@ pub struct UiState {
     pub onboarding_tab: OnboardingTab,
     pub show_git_upstream_prompt: Option<(PathBuf, String)>,
     pub project_settings: Option<crate::screen::views::project_settings::ProjectSettings>,
-    pub auth_device_modal_visible: bool,
-    pub auth_device_copy_notice: Option<String>,
+    pub auth_device_modal_shown: bool,
     pub show_add_server: bool,
     pub show_create_project: bool,
 }
@@ -40,8 +39,7 @@ impl UiState {
             onboarding_tab: OnboardingTab::default(),
             show_git_upstream_prompt: None,
             project_settings: None,
-            auth_device_modal_visible: false,
-            auth_device_copy_notice: None,
+            auth_device_modal_shown: false,
             show_add_server: false,
             show_create_project: false,
         }
