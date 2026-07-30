@@ -227,7 +227,7 @@ impl HelioRenderer {
                 format,
                 width,
                 height,
-                1.0,
+                config.render_scale,
                 config,
                 scene,
                 graph,
