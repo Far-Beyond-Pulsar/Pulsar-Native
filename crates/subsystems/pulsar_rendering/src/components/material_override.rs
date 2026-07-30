@@ -1,7 +1,6 @@
 //! Material override component for customizing object appearance
 
 use engine_class_derive::engine_class;
-use serde::{Deserialize, Serialize};
 
 /// Material override component for per-object material customization
 ///

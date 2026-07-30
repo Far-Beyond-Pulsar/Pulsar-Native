@@ -1,11 +1,11 @@
 use engine_state::{
     EngineContext, MultiuserParticipant, MultiuserStatus, RelayConnectionMode,
 };
-use gpui::{AnyElement, App, Hsla, IntoElement, ParentElement, Styled, div, prelude::FluentBuilder, px};
+use gpui::{AnyElement, App, IntoElement, ParentElement, Styled, div, px};
 use ui::{ActiveTheme as _, Icon, IconName, StyledExt as _, h_flex};
 
 use crate::components::avatar_chip::avatar_chip_with_image;
-use crate::utils::{idle_state, participant_avatar_url, participant_label, text_color_for_status};
+use crate::utils::{idle_state, text_color_for_status};
 
 pub fn render_status_bar_indicator(cx: &App) -> AnyElement {
     let (icon, color, label, detail, participants) = if let Some(engine) = EngineContext::global() {
