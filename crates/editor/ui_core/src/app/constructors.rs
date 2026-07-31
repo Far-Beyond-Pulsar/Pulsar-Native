@@ -396,6 +396,18 @@ impl PulsarApp {
             }
         });
 
+        let git_auto_fetch_task = if create_level_editor {
+            project_path.as_ref().map(|project_path| {
+                ui_git_manager::start_auto_fetch_task(
+                    project_path.clone(),
+                    window.window_handle(),
+                    cx,
+                )
+            })
+        } else {
+            None
+        };
+
         let mut app = Self {
             state: crate::app::state::AppState {
                 dock_area,
@@ -438,6 +450,7 @@ impl PulsarApp {
                 navigation_history: VecDeque::new(),
                 navigation_history_index: 0,
                 multiuser_refresh_task: Some(multiuser_refresh_task),
+                git_auto_fetch_task,
             },
         };
 

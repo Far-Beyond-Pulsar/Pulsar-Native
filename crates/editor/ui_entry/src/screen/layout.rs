@@ -34,10 +34,6 @@ pub fn render_layout(
 
     let view = screen.state.ui.view;
 
-    if view == EntryScreenView::Recent && !screen.state.is_fetching_updates {
-        screen.start_git_fetch_all(cx);
-    }
-
     v_flex()
         .size_full()
         .bg(cx.theme().background)

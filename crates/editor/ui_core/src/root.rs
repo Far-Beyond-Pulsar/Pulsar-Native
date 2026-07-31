@@ -54,8 +54,8 @@ impl EditorWindowShell {
                     this.show_multiplayer = !this.show_multiplayer;
                     cx.notify();
                 }
-                AppTitleBarEvent::ConfigureGitAuthorRequested => {
-                    ui_git_manager::open_git_identity_modal(window, cx);
+                AppTitleBarEvent::GitSettingsRequested => {
+                    ui_git_manager::open_git_settings_modal(window, cx);
                 }
             },
         )];

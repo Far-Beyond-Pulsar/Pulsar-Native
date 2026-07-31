@@ -263,7 +263,8 @@ pub fn render_toolbar(git_manager: &GitManager, cx: &mut Context<GitManager>) ->
         .child(sync_row);
 
     // ── Auth credential prompt ────────────────────────────────────────────────
-    if let Some(pending_op) = git_manager.pending_auth_op {
+    if let Some(pending_auth) = git_manager.pending_auth.as_ref() {
+        let pending_op = pending_auth.op;
         toolbar = toolbar.child(
             v_flex()
                 .w_full()

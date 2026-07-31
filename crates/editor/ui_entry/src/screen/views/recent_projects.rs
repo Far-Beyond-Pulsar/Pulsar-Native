@@ -2,8 +2,8 @@ use gpui::prelude::*;
 use gpui::*;
 use std::path::PathBuf;
 use ui::{
-    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _, Icon, IconName,
-    StyledExt,
+    button::Button, button::ButtonVariants as _, h_flex, v_flex, ActiveTheme as _,
+    Disableable as _, Icon, IconName, StyledExt,
 };
 
 use crate::core::types::{EntryScreenView, GitFetchStatus};
@@ -57,6 +57,7 @@ pub fn render_recent_projects(
                         .icon(IconName::Refresh)
                         .compact()
                         .ghost()
+                        .disabled(screen.state.is_fetching_updates)
                         .tooltip("Check for git updates")
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.start_git_fetch_all(cx);
@@ -138,15 +139,17 @@ fn render_project_card(
     let normalized = normalize_project_path(&path);
     let timestamp = project.last_opened.as_deref().unwrap_or("").to_string();
     let formatted_time = format_timestamp(&timestamp);
-    let is_git = project.is_git;
-
-    let fetch_status = {
+    let (fetch_status, has_discovered_git_status) = {
         let statuses = screen.state.git_fetch_statuses.lock();
-        statuses
-            .get(&path)
-            .cloned()
-            .unwrap_or(GitFetchStatus::NotStarted)
+        (
+            statuses
+                .get(&path)
+                .cloned()
+                .unwrap_or(GitFetchStatus::NotStarted),
+            statuses.contains_key(&path),
+        )
     };
+    let show_git_status = project.is_git || has_discovered_git_status;
 
     let thumbnail = screen
         .state
@@ -279,7 +282,7 @@ fn render_project_card(
                                 .text_color(theme.muted_foreground.opacity(0.7))
                                 .child(formatted_time),
                         )
-                        .when(is_git, |this| {
+                        .when(show_git_status, |this| {
                             this.child(
                                 h_flex()
                                     .flex_1()

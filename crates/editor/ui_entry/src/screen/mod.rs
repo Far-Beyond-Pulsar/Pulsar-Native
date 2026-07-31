@@ -1,6 +1,7 @@
 pub mod views;
 
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -11,7 +12,6 @@ use ui::ContextModal;
 use crate::core::events::*;
 use crate::core::state::*;
 use crate::core::types::*;
-use ui_common::ProfileDropdownEvent;
 use crate::screen::views::project_settings::ProjectSettingsTab;
 use crate::service::auth_service::AuthService;
 use crate::service::cloud_service::CloudService;
@@ -20,11 +20,75 @@ use crate::service::git_service::GitService;
 use crate::service::plugin_service::PluginService;
 use crate::service::project_service::ProjectService;
 use crate::service::thumbnail_service::ThumbnailService;
+use ui_common::ProfileDropdownEvent;
+
+fn git_fetch_status(
+    result: Result<ui_git_manager::AutoFetchOutcome, git2::Error>,
+) -> Option<GitFetchStatus> {
+    match result {
+        Ok(ui_git_manager::AutoFetchOutcome::Busy) => None,
+        Ok(ui_git_manager::AutoFetchOutcome::Fetched(snapshot))
+            if snapshot.upstream_oid.is_none() =>
+        {
+            Some(GitFetchStatus::NotStarted)
+        }
+        Ok(ui_git_manager::AutoFetchOutcome::Fetched(snapshot)) if snapshot.behind == 0 => {
+            Some(GitFetchStatus::UpToDate)
+        }
+        Ok(ui_git_manager::AutoFetchOutcome::Fetched(snapshot)) => {
+            Some(GitFetchStatus::UpdatesAvailable(snapshot.behind))
+        }
+        Err(error) => Some(GitFetchStatus::Error(error.to_string())),
+    }
+}
+
+fn current_git_status_generation(
+    generations: &HashMap<PathBuf, u64>,
+    repository_key: &Path,
+) -> u64 {
+    generations.get(repository_key).copied().unwrap_or_default()
+}
+
+fn next_git_status_generation(
+    generations: &mut HashMap<PathBuf, u64>,
+    repository_key: &Path,
+) -> u64 {
+    let generation = current_git_status_generation(generations, repository_key).wrapping_add(1);
+    generations.insert(repository_key.to_path_buf(), generation);
+    generation
+}
+
+fn apply_git_status_if_current(
+    statuses: &mut HashMap<String, GitFetchStatus>,
+    generations: &HashMap<PathBuf, u64>,
+    status_key: String,
+    repository_key: &Path,
+    expected_generation: u64,
+    status: Option<GitFetchStatus>,
+) -> bool {
+    let Some(status) = status else {
+        return false;
+    };
+    if current_git_status_generation(generations, repository_key) != expected_generation {
+        return false;
+    }
+
+    statuses.insert(status_key, status);
+    true
+}
+
+fn git_fetch_paths(
+    projects: &[crate::service::project_service::RecentProject],
+) -> Vec<(String, PathBuf)> {
+    projects
+        .iter()
+        .map(|project| (project.path.clone(), PathBuf::from(&project.path)))
+        .collect()
+}
 
 pub struct EntryScreen {
     pub state: AppState,
     pub inputs: InputEntities,
-    pub entity: Option<Entity<EntryScreen>>,
 }
 
 impl EntryScreen {
@@ -37,11 +101,8 @@ impl EntryScreen {
             &state.auth.profile_dropdown,
             window,
             |_this, _, event: &ui_common::ProfileDropdownEvent, window, cx| {
-                if matches!(
-                    event,
-                    ui_common::ProfileDropdownEvent::ConfigureGitAuthorRequested
-                ) {
-                    ui_git_manager::open_git_identity_modal(window, cx);
+                if matches!(event, ui_common::ProfileDropdownEvent::GitSettingsRequested) {
+                    ui_git_manager::open_git_settings_modal(window, cx);
                 }
             },
         )
@@ -69,7 +130,7 @@ impl EntryScreen {
             }
         }
 
-        inputs.subscribe_all(self_entity.clone(), cx);
+        inputs.subscribe_all(self_entity.downgrade(), cx);
 
         let profile_dropdown = state.auth.profile_dropdown.clone();
         cx.subscribe(
@@ -83,11 +144,8 @@ impl EntryScreen {
         )
         .detach();
 
-        let mut this = Self {
-            state,
-            inputs,
-            entity: Some(self_entity),
-        };
+        let mut this = Self { state, inputs };
+        this.state.git_auto_fetch_task = Some(Self::start_git_auto_fetch_task(cx));
         this.load_thumbnails(cx);
         if this.state.ui.show_onboarding {
             this.refresh_plugin_registry(cx);
@@ -100,71 +158,214 @@ impl EntryScreen {
     }
 
     pub(crate) fn check_dependencies_async(&mut self, cx: &mut Context<Self>) {
-        let entity = self.entity.clone().unwrap();
         // TODO: async spawn
-        let status = DependencyService::check();
-        entity.update(cx, |this, cx| {
-            this.state.dependency_status = Some(status);
-            cx.notify();
-        });
+        self.state.dependency_status = Some(DependencyService::check());
+        cx.notify();
     }
 
-    pub(crate) fn start_git_fetch_all(&self, cx: &mut Context<Self>) {
-        let paths: Vec<(String, PathBuf)> = self
-            .state
-            .recent_projects
-            .projects
-            .iter()
-            .filter(|p| p.is_git)
-            .map(|p| (p.name.clone(), PathBuf::from(&p.path)))
-            .collect();
-        let statuses = self.state.git_fetch_statuses.clone();
-        for (name, path) in paths {
-            let s = statuses.clone();
-            std::thread::spawn(move || {
-                let _ = s.lock().insert(name.clone(), GitFetchStatus::Fetching);
-                match GitService::check_for_updates(&path) {
-                    Ok(0) => {
-                        let _ = s.lock().insert(name, GitFetchStatus::UpToDate);
-                    }
-                    Ok(n) => {
-                        let _ = s.lock().insert(name, GitFetchStatus::UpdatesAvailable(n));
-                    }
-                    Err(e) => {
-                        let _ = s.lock().insert(name, GitFetchStatus::Error(e.to_string()));
-                    }
-                }
-            });
-        }
-    }
+    fn start_git_auto_fetch_task(cx: &mut Context<Self>) -> Task<()> {
+        cx.spawn(async move |this, cx| {
+            let settings_watcher = ui_git_manager::AutoFetchSettingsWatcher::new();
 
-    pub(crate) fn pull_project_updates(&self, path: PathBuf, _cx: &mut Context<Self>) {
-        let statuses = self.state.git_fetch_statuses.clone();
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_default();
-        std::thread::spawn(move || {
-            let _ = statuses
-                .lock()
-                .insert(name.clone(), GitFetchStatus::Fetching);
-            match GitService::pull_updates(&path) {
-                Ok(()) => {
-                    let _ = statuses.lock().insert(name, GitFetchStatus::UpToDate);
+            loop {
+                let scheduled_settings = ui_git_manager::read_auto_fetch_settings();
+                if settings_watcher
+                    .wait(
+                        cx.background_executor()
+                            .timer(std::time::Duration::from_secs(
+                                scheduled_settings.interval_minutes * 60,
+                            )),
+                    )
+                    .await
+                    == ui_git_manager::AutoFetchWaitOutcome::SettingsChanged
+                {
+                    continue;
                 }
-                Err(e) => {
-                    let _ = statuses
-                        .lock()
-                        .insert(name, GitFetchStatus::Error(e.to_string()));
+
+                if this.upgrade().is_none() {
+                    break;
+                }
+
+                let current_settings = ui_git_manager::read_auto_fetch_settings();
+                if current_settings != scheduled_settings || !current_settings.enabled {
+                    continue;
+                }
+
+                if this
+                    .update(cx, |screen, cx| screen.start_git_fetch_all(cx))
+                    .is_err()
+                {
+                    break;
                 }
             }
+        })
+    }
+
+    pub(crate) fn start_git_fetch_all(&mut self, cx: &mut Context<Self>) {
+        if self.state.is_fetching_updates {
+            return;
+        }
+
+        let paths = git_fetch_paths(&self.state.recent_projects.projects);
+
+        if paths.is_empty() {
+            return;
+        }
+
+        self.state.is_fetching_updates = true;
+        cx.notify();
+
+        let task = cx.spawn(async move |this, cx| {
+            for (status_key, path) in paths {
+                if this.upgrade().is_none() {
+                    return;
+                }
+
+                let discovery_path = path.clone();
+                let repository_key = match cx
+                    .background_executor()
+                    .spawn(
+                        async move { ui_git_manager::canonical_repository_path(&discovery_path) },
+                    )
+                    .await
+                {
+                    Ok(repository_key) => repository_key,
+                    Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                        if this
+                            .update(cx, |screen, cx| {
+                                if screen
+                                    .state
+                                    .git_fetch_statuses
+                                    .lock()
+                                    .remove(&status_key)
+                                    .is_some()
+                                {
+                                    cx.notify();
+                                }
+                            })
+                            .is_err()
+                        {
+                            return;
+                        }
+                        continue;
+                    }
+                    Err(error) => {
+                        if this
+                            .update(cx, |screen, cx| {
+                                screen
+                                    .state
+                                    .git_fetch_statuses
+                                    .lock()
+                                    .insert(status_key, GitFetchStatus::Error(error.to_string()));
+                                cx.notify();
+                            })
+                            .is_err()
+                        {
+                            return;
+                        }
+                        continue;
+                    }
+                };
+                let expected_generation = match this.update(cx, |screen, _| {
+                    current_git_status_generation(
+                        &screen.state.git_repository_generations,
+                        &repository_key,
+                    )
+                }) {
+                    Ok(generation) => generation,
+                    Err(_) => return,
+                };
+                let result = cx
+                    .background_executor()
+                    .spawn(async move { ui_git_manager::fetch_tracking_snapshot(&path) })
+                    .await;
+                let status = git_fetch_status(result);
+
+                if this
+                    .update(cx, |screen, cx| {
+                        let updated = apply_git_status_if_current(
+                            &mut screen.state.git_fetch_statuses.lock(),
+                            &screen.state.git_repository_generations,
+                            status_key,
+                            &repository_key,
+                            expected_generation,
+                            status,
+                        );
+                        if updated {
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    return;
+                }
+            }
+
+            let _ = this.update(cx, |screen, cx| {
+                screen.state.is_fetching_updates = false;
+                cx.notify();
+            });
         });
+        self.state.git_fetch_task = Some(task);
+    }
+
+    pub(crate) fn pull_project_updates(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        let status_key = path.to_string_lossy().to_string();
+        let repository_key = match ui_git_manager::canonical_repository_path(&path) {
+            Ok(repository_key) => repository_key,
+            Err(error) if error.code() == git2::ErrorCode::NotFound => {
+                self.state.git_fetch_statuses.lock().remove(&status_key);
+                cx.notify();
+                return;
+            }
+            Err(error) => {
+                self.state
+                    .git_fetch_statuses
+                    .lock()
+                    .insert(status_key, GitFetchStatus::Error(error.to_string()));
+                cx.notify();
+                return;
+            }
+        };
+        let generation =
+            next_git_status_generation(&mut self.state.git_repository_generations, &repository_key);
+        self.state
+            .git_fetch_statuses
+            .lock()
+            .insert(status_key.clone(), GitFetchStatus::Fetching);
+        cx.notify();
+
+        cx.spawn(async move |this, cx| {
+            let status = cx
+                .background_executor()
+                .spawn(async move {
+                    match ui_git_manager::pull_from_remote(&path, None) {
+                        Ok(()) => GitFetchStatus::UpToDate,
+                        Err(error) => GitFetchStatus::Error(error.to_string()),
+                    }
+                })
+                .await;
+
+            let _ = this.update(cx, |screen, cx| {
+                let updated = apply_git_status_if_current(
+                    &mut screen.state.git_fetch_statuses.lock(),
+                    &screen.state.git_repository_generations,
+                    status_key,
+                    &repository_key,
+                    generation,
+                    Some(status),
+                );
+                if updated {
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
     }
 
     pub(crate) fn open_folder_dialog(&self, cx: &mut Context<Self>) {
-        let entity = self.entity.clone().unwrap();
         let recent_projects_path = self.state.recent_projects_path.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
                 let path = folder.path().to_path_buf();
                 if !ProjectService::validate_project(&path) {
@@ -182,8 +383,8 @@ impl EntryScreen {
                     last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
                     is_git,
                 };
-                cx.update(|cx| {
-                    entity.update(cx, |this, cx| {
+                let _ = cx.update(|cx| {
+                    let _ = entity.update(cx, |this, cx| {
                         this.state.recent_projects.add_or_update(project);
                         this.state.recent_projects.save(&recent_projects_path);
                         cx.emit(ProjectSelected { path });
@@ -200,10 +401,9 @@ impl EntryScreen {
         if repo_url.is_empty() {
             return;
         }
-        let entity = self.entity.clone().unwrap();
         let recent_projects_path = self.state.recent_projects_path.clone();
         self.state.clone_error = None;
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
                 let parent = folder.path().to_path_buf();
                 let target = parent.join(
@@ -215,8 +415,8 @@ impl EntryScreen {
                 );
                 if target.exists() {
                     let err = format!("Directory already exists: {}", target.display());
-                    cx.update(|cx| {
-                        entity.update(cx, |this, cx| {
+                    let _ = cx.update(|cx| {
+                        let _ = entity.update(cx, |this, cx| {
                             this.state.clone_error = Some(err);
                             cx.notify();
                         });
@@ -241,8 +441,8 @@ impl EntryScreen {
                 let has_error = progress.lock().error.is_some();
                 if has_error {
                     let err = progress.lock().error.clone().unwrap_or_default();
-                    cx.update(|cx| {
-                        entity.update(cx, |this, cx| {
+                    let _ = cx.update(|cx| {
+                        let _ = entity.update(cx, |this, cx| {
                             this.state.clone_progress = None;
                             this.state.clone_error = Some(err);
                             cx.notify();
@@ -252,8 +452,8 @@ impl EntryScreen {
                 }
                 let show_upstream = ProjectService::is_git_repo(&target)
                     && !GitService::has_origin_remote(&target);
-                cx.update(|cx| {
-                    entity.update(cx, |this, cx| {
+                let _ = cx.update(|cx| {
+                    let _ = entity.update(cx, |this, cx| {
                         this.state.clone_progress = None;
                         this.state.clone_error = None;
                         this.state.input.new_project_path = Some(target.clone());
@@ -300,9 +500,8 @@ impl EntryScreen {
             None => return,
         };
         let url = self.state.input.git_upstream_url_text.clone();
-        let entity = self.entity.clone().unwrap();
         let recent_projects_path = self.state.recent_projects_path.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             if !url.is_empty() {
                 let p = path.clone();
                 let u = url.clone();
@@ -311,8 +510,8 @@ impl EntryScreen {
                     .spawn(async move { GitService::add_user_upstream(&p, &u) })
                     .await;
             }
-            cx.update(|cx| {
-                entity.update(cx, |this, cx| {
+            let _ = cx.update(|cx| {
+                let _ = entity.update(cx, |this, cx| {
                     let ps = path.to_string_lossy().to_string();
                     let n = path
                         .file_name()
@@ -423,11 +622,10 @@ impl EntryScreen {
     }
 
     pub(crate) fn browse_project_location(&self, cx: &mut Context<Self>) {
-        let entity = self.entity.clone().unwrap();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             if let Some(folder) = rfd::AsyncFileDialog::new().pick_folder().await {
-                cx.update(|cx| {
-                    entity.update(cx, |this, cx| {
+                let _ = cx.update(|cx| {
+                    let _ = entity.update(cx, |this, cx| {
                         this.state.input.new_project_path = Some(folder.path().to_path_buf());
                         cx.notify();
                     });
@@ -449,11 +647,10 @@ impl EntryScreen {
             .clone()
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
         let project_path = base_path.join(&name);
-        let entity = self.entity.clone().unwrap();
         let recent_projects_path = self.state.recent_projects_path.clone();
         let n = name.clone();
         let pp = project_path.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let _ = cx
                 .background_executor()
                 .spawn(async move {
@@ -470,8 +667,8 @@ impl EntryScreen {
                 last_opened: Some(chrono::Local::now().format("%Y-%m-%d %H:%M").to_string()),
                 is_git: true,
             };
-            cx.update(|cx| {
-                entity.update(cx, |this, cx| {
+            let _ = cx.update(|cx| {
+                let _ = entity.update(cx, |this, cx| {
                     this.state.recent_projects.add_or_update(project);
                     this.state.recent_projects.save(&recent_projects_path);
                     cx.emit(ProjectSelected { path: project_path });
@@ -494,15 +691,14 @@ impl EntryScreen {
         self.state.auth.device_code = None;
         self.state.auth.device_verification_url = None;
         cx.notify();
-        let entity = self.entity.clone().unwrap();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let c_id = client_id.clone();
             let flow = cx
                 .background_executor()
                 .spawn(async move { pulsar_auth::start_device_flow(&c_id) })
                 .await;
             let Ok(flow) = flow else {
-                cx.update(|cx| {
+                let _ = cx.update(|cx| {
                     entity.update(cx, |this, cx| {
                         this.state.auth.loading = false;
                         this.state.auth.message =
@@ -514,7 +710,7 @@ impl EntryScreen {
             };
             let uri = flow.verification_uri.clone();
             let _ = open::that(&uri);
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     this.state.auth.device_code = Some(flow.user_code.clone());
                     this.state.auth.device_verification_url = Some(flow.verification_uri.clone());
@@ -529,7 +725,7 @@ impl EntryScreen {
                 .spawn(async move { pulsar_auth::wait_for_device_flow_token(&c_id2, &flow_clone) })
                 .await;
             let Ok(token) = token else {
-                cx.update(|cx| {
+                let _ = cx.update(|cx| {
                     entity.update(cx, |this, cx| {
                         this.state.auth.loading = false;
                         this.state.auth.device_code = None;
@@ -549,12 +745,12 @@ impl EntryScreen {
             let profile = match profile {
                 Ok(p) => p,
                 Err(e) => {
-                    cx.update(|cx| {
-                    entity.update(cx, |this, cx| {
-                        this.state.auth.loading = false;
-                        this.state.auth.message = Some(format!("Failed to fetch profile: {e}"));
-                        cx.notify();
-                    })
+                    let _ = cx.update(|cx| {
+                        entity.update(cx, |this, cx| {
+                            this.state.auth.loading = false;
+                            this.state.auth.message = Some(format!("Failed to fetch profile: {e}"));
+                            cx.notify();
+                        })
                     });
                     return;
                 }
@@ -564,7 +760,7 @@ impl EntryScreen {
             if let Some(ec) = engine_state::EngineContext::global() {
                 ec.set_auth_profile(profile.clone());
             }
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     this.state.auth.loading = false;
                     this.state.auth.device_code = None;
@@ -625,9 +821,8 @@ impl EntryScreen {
         self.state.add_server_logging_in = true;
         self.state.add_server_error = None;
         cx.notify();
-        let entity = self.entity.clone().unwrap();
         let normalized_url = normalize_url(&url_text);
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let nu = normalized_url.clone();
             let em = email.clone();
             let pw = password.clone();
@@ -635,7 +830,7 @@ impl EntryScreen {
                 .background_executor()
                 .spawn(async move { CloudService::login(&nu, &em, &pw) })
                 .await;
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     this.state.add_server_logging_in = false;
                     if let Some((token, username)) = result {
@@ -671,15 +866,14 @@ impl EntryScreen {
             return;
         }
         let server = self.state.cloud_servers[index].clone();
-        let entity = self.entity.clone().unwrap();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let result = cx
                 .background_executor()
                 .spawn(
                     async move { CloudService::fetch_server_info(&server.url, &server.auth_token) },
                 )
                 .await;
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     if index < this.state.cloud_servers.len() {
                         this.state.cloud_servers[index].status = result
@@ -826,10 +1020,9 @@ impl EntryScreen {
         }
         self.state.registry_refresh_in_progress = true;
         cx.notify();
-        let entity = self.entity.clone().unwrap();
         let registries = self.state.plugin_registries.clone();
         let registries_path = self.state.registries_path.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let regs = registries.clone();
             let rp = registries_path.clone();
             let _ = cx
@@ -851,7 +1044,7 @@ impl EntryScreen {
                     list
                 })
                 .await;
-            cx.update(|cx| {
+            let _ = cx.update(|cx| {
                 entity.update(cx, |this, cx| {
                     this.state.registry_plugins = plugins;
                     this.state.registry_refresh_in_progress = false;
@@ -872,15 +1065,14 @@ impl EntryScreen {
         }
         self.state.plugin_install_phase = Some(PluginInstallPhase::FetchingMetadata);
         cx.notify();
-        let entity = self.entity.clone().unwrap();
         let plugins_path = self.state.plugins_path.clone();
         let pname = plugin.name.clone();
         let purl = plugin.repo_url.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let (owner, repo) = match PluginService::parse_github_owner_repo(&purl) {
                 Some(pair) => pair,
                 None => {
-                    cx.update(|cx| {
+                    let _ = cx.update(|cx| {
                         entity.update(cx, |this, cx| {
                             this.state.plugin_install_phase =
                                 Some(PluginInstallPhase::Error("Invalid repo URL".to_string()));
@@ -898,7 +1090,7 @@ impl EntryScreen {
                 .ok()
                 .flatten();
             let Some((tag, binary_url_opt)) = release else {
-                cx.update(|cx| {
+                let _ = cx.update(|cx| {
                     entity.update(cx, |this, cx| {
                         this.state.plugin_install_phase =
                             Some(PluginInstallPhase::Error("No releases found".to_string()));
@@ -928,7 +1120,7 @@ impl EntryScreen {
                             install_method: PluginInstallMethod::BinaryDownload,
                             library_path: lib_path,
                         };
-                        cx.update(|cx| {
+                        let _ = cx.update(|cx| {
                             entity.update(cx, |this, cx| {
                                 this.state.plugin_install_phase =
                                     Some(PluginInstallPhase::Complete(installed.clone()));
@@ -939,7 +1131,7 @@ impl EntryScreen {
                         });
                     }
                     _ => {
-                        cx.update(|cx| {
+                        let _ = cx.update(|cx| {
                             entity.update(cx, |this, cx| {
                                 this.state.plugin_install_phase =
                                     Some(PluginInstallPhase::Error("Download failed".to_string()));
@@ -970,7 +1162,7 @@ impl EntryScreen {
                             install_method: PluginInstallMethod::BuiltFromSource,
                             library_path: lib_path,
                         };
-                        cx.update(|cx| {
+                        let _ = cx.update(|cx| {
                             entity.update(cx, |this, cx| {
                                 this.state.plugin_install_phase =
                                     Some(PluginInstallPhase::Complete(installed.clone()));
@@ -981,7 +1173,7 @@ impl EntryScreen {
                         });
                     }
                     _ => {
-                        cx.update(|cx| {
+                        let _ = cx.update(|cx| {
                             entity.update(cx, |this, cx| {
                                 this.state.plugin_install_phase =
                                     Some(PluginInstallPhase::Error("Build failed".to_string()));
@@ -1012,7 +1204,6 @@ impl EntryScreen {
 
     pub(crate) fn start_dependency_setup(&mut self, cx: &mut Context<Self>) {
         self.state.ui.show_dependency_setup = true;
-        let entity = self.entity.clone().unwrap();
         let progress = Arc::new(std::sync::Mutex::new(InstallProgress {
             logs: Vec::new(),
             progress: 0.0,
@@ -1025,7 +1216,7 @@ impl EntryScreen {
         });
         cx.notify();
         let p = progress.clone();
-        cx.spawn(async move |_handle, cx| {
+        cx.spawn(async move |entity, cx| {
             let pp = p.clone();
             let result = cx
                 .background_executor()
@@ -1038,7 +1229,7 @@ impl EntryScreen {
                     prog.progress = 1.0;
                     let prog2 = prog.clone();
                     let status = DependencyService::check();
-                    cx.update(|cx| {
+                    let _ = cx.update(|cx| {
                         entity.update(cx, |this, cx| {
                             this.state.install_progress = Some(prog2);
                             this.state.dependency_status = Some(status);
@@ -1049,7 +1240,7 @@ impl EntryScreen {
                 _ => {
                     let prog = p.lock().unwrap();
                     let prog2 = prog.clone();
-                    cx.update(|cx| {
+                    let _ = cx.update(|cx| {
                         entity.update(cx, |this, cx| {
                             this.state.install_progress = Some(prog2);
                             cx.notify();
@@ -1083,7 +1274,6 @@ impl EntryScreen {
     }
 
     pub(crate) fn load_thumbnails(&mut self, cx: &mut Context<Self>) {
-        let entity = self.entity.clone().unwrap();
         if self.state.project_thumbnail_inflight == 0
             && !self.state.project_thumbnail_queue.is_empty()
         {
@@ -1091,13 +1281,12 @@ impl EntryScreen {
             let path_store = path.clone();
             self.state.project_thumbnail_inflight += 1;
             cx.notify();
-            let entity_proj = entity.clone();
-            cx.spawn(async move |_handle, cx| {
+            cx.spawn(async move |entity_proj, cx| {
                 let result = cx
                     .background_executor()
                     .spawn(async move { ThumbnailService::load_project_thumbnail(&path) })
                     .await;
-                cx.update(|cx| {
+                let _ = cx.update(|cx| {
                     entity_proj.update(cx, |this, cx| {
                         this.state.project_thumbnails.insert(path_store, result);
                         this.state.project_thumbnail_inflight -= 1;
@@ -1115,13 +1304,12 @@ impl EntryScreen {
             let name = template.name.clone();
             self.state.template_thumbnail_inflight += 1;
             cx.notify();
-            let entity_tmpl = entity.clone();
-            cx.spawn(async move |_handle, cx| {
+            cx.spawn(async move |entity_tmpl, cx| {
                 let result = cx
                     .background_executor()
                     .spawn(async move { ThumbnailService::load_template_thumbnail(&template) })
                     .await;
-                cx.update(|cx| {
+                let _ = cx.update(|cx| {
                     entity_tmpl.update(cx, |this, cx| {
                         this.state.template_thumbnails.insert(name, result);
                         this.state.template_thumbnail_inflight -= 1;
@@ -1193,5 +1381,177 @@ fn normalize_url(raw: &str) -> String {
         raw.to_string()
     } else {
         format!("http://{}", raw)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::HashMap, fs, path::PathBuf};
+
+    use super::{
+        apply_git_status_if_current, git_fetch_paths, git_fetch_status, next_git_status_generation,
+        GitFetchStatus,
+    };
+    use crate::service::project_service::{ProjectService, RecentProject};
+
+    fn tracking_snapshot(behind: usize) -> ui_git_manager::TrackingSnapshot {
+        ui_git_manager::TrackingSnapshot {
+            branch: "main".to_string(),
+            upstream_oid: Some("0123456789abcdef".to_string()),
+            behind,
+        }
+    }
+
+    #[test]
+    fn git_fetch_result_maps_to_card_status() {
+        let mut untracked = tracking_snapshot(0);
+        untracked.upstream_oid = None;
+        assert!(matches!(
+            git_fetch_status(Ok(ui_git_manager::AutoFetchOutcome::Fetched(untracked))),
+            Some(GitFetchStatus::NotStarted)
+        ));
+        assert!(matches!(
+            git_fetch_status(Ok(ui_git_manager::AutoFetchOutcome::Fetched(
+                tracking_snapshot(0)
+            ))),
+            Some(GitFetchStatus::UpToDate)
+        ));
+        assert!(matches!(
+            git_fetch_status(Ok(ui_git_manager::AutoFetchOutcome::Fetched(
+                tracking_snapshot(3)
+            ))),
+            Some(GitFetchStatus::UpdatesAvailable(3))
+        ));
+        assert!(git_fetch_status(Ok(ui_git_manager::AutoFetchOutcome::Busy)).is_none());
+        assert!(matches!(
+            git_fetch_status(Err(git2::Error::from_str("network unavailable"))),
+            Some(GitFetchStatus::Error(message)) if message == "network unavailable"
+        ));
+    }
+
+    #[test]
+    fn stale_git_status_result_does_not_replace_newer_operation() {
+        let key = "C:/projects/game";
+        let repository_key = PathBuf::from("C:/projects/game/.git");
+        let mut statuses = HashMap::from([(key.to_string(), GitFetchStatus::Fetching)]);
+        let mut generations = HashMap::new();
+        let stale_generation = next_git_status_generation(&mut generations, &repository_key);
+        let current_generation = next_git_status_generation(&mut generations, &repository_key);
+
+        assert!(!apply_git_status_if_current(
+            &mut statuses,
+            &generations,
+            key.to_string(),
+            &repository_key,
+            stale_generation,
+            Some(GitFetchStatus::UpdatesAvailable(2)),
+        ));
+        assert!(matches!(statuses.get(key), Some(GitFetchStatus::Fetching)));
+
+        assert!(apply_git_status_if_current(
+            &mut statuses,
+            &generations,
+            key.to_string(),
+            &repository_key,
+            current_generation,
+            Some(GitFetchStatus::UpToDate),
+        ));
+        assert!(matches!(statuses.get(key), Some(GitFetchStatus::UpToDate)));
+    }
+
+    #[test]
+    fn busy_git_fetch_leaves_current_status_unchanged() {
+        let key = "C:/projects/game";
+        let repository_key = PathBuf::from("C:/projects/game/.git");
+        let mut statuses = HashMap::from([(key.to_string(), GitFetchStatus::UpdatesAvailable(1))]);
+        let generations = HashMap::new();
+
+        assert!(!apply_git_status_if_current(
+            &mut statuses,
+            &generations,
+            key.to_string(),
+            &repository_key,
+            0,
+            None,
+        ));
+        assert!(matches!(
+            statuses.get(key),
+            Some(GitFetchStatus::UpdatesAvailable(1))
+        ));
+    }
+
+    #[test]
+    fn bulk_fetch_discovers_parent_repository_despite_stale_non_git_flag() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        git2::Repository::init(temp.path()).expect("initialize parent repository");
+        let project_path = temp.path().join("nested-project");
+        fs::create_dir(&project_path).expect("create nested project directory");
+        let project_path_string = project_path.to_string_lossy().into_owned();
+        let projects = [RecentProject {
+            name: "nested-project".to_string(),
+            path: project_path_string.clone(),
+            last_opened: None,
+            is_git: false,
+        }];
+
+        let paths = git_fetch_paths(&projects);
+
+        assert_eq!(paths, vec![(project_path_string, project_path.clone())]);
+        assert!(ProjectService::is_git_repo(&project_path));
+        assert_eq!(
+            ui_git_manager::canonical_repository_path(&project_path)
+                .expect("discover repository from project subdirectory"),
+            ui_git_manager::canonical_repository_path(temp.path())
+                .expect("resolve parent repository identity"),
+        );
+    }
+
+    #[test]
+    fn repository_aliases_share_generation_but_keep_separate_status_keys() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        git2::Repository::init(temp.path()).expect("initialize repository");
+        let nested_path = temp.path().join("nested-project");
+        fs::create_dir(&nested_path).expect("create nested project directory");
+        let root_repository_key = ui_git_manager::canonical_repository_path(temp.path())
+            .expect("resolve root repository identity");
+        let nested_repository_key = ui_git_manager::canonical_repository_path(&nested_path)
+            .expect("resolve nested repository identity");
+        let root_status_key = temp.path().to_string_lossy().into_owned();
+        let nested_status_key = nested_path.to_string_lossy().into_owned();
+        let mut statuses = HashMap::from([
+            (root_status_key.clone(), GitFetchStatus::Fetching),
+            (nested_status_key.clone(), GitFetchStatus::Fetching),
+        ]);
+        let mut generations = HashMap::new();
+
+        assert_eq!(root_repository_key, nested_repository_key);
+        let stale_generation = next_git_status_generation(&mut generations, &root_repository_key);
+        let current_generation =
+            next_git_status_generation(&mut generations, &nested_repository_key);
+
+        assert!(!apply_git_status_if_current(
+            &mut statuses,
+            &generations,
+            root_status_key.clone(),
+            &root_repository_key,
+            stale_generation,
+            Some(GitFetchStatus::UpdatesAvailable(2)),
+        ));
+        assert!(apply_git_status_if_current(
+            &mut statuses,
+            &generations,
+            nested_status_key.clone(),
+            &nested_repository_key,
+            current_generation,
+            Some(GitFetchStatus::UpToDate),
+        ));
+        assert!(matches!(
+            statuses.get(&root_status_key),
+            Some(GitFetchStatus::Fetching)
+        ));
+        assert!(matches!(
+            statuses.get(&nested_status_key),
+            Some(GitFetchStatus::UpToDate)
+        ));
     }
 }

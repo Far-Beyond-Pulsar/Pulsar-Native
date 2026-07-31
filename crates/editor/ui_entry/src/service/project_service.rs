@@ -45,7 +45,7 @@ pub struct ProjectService;
 
 impl ProjectService {
     pub fn is_git_repo(path: &Path) -> bool {
-        path.join(".git").exists()
+        !path.as_os_str().is_empty() && git2::Repository::discover(path).is_ok()
     }
 
     pub fn init_repository(path: &Path) -> Result<git2::Repository, git2::Error> {
