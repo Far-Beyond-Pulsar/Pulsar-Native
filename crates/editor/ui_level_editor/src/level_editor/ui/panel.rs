@@ -500,7 +500,8 @@ impl LevelEditorPanel {
 
         if let Some(err) = error {
             window.push_notification(
-                Notification::error("Play In Editor build failed").message(err),
+                Notification::error(t!("Notification.Title.PlayInEditorBuildFailed").to_string())
+                    .message(err),
                 cx,
             );
         }
@@ -1462,10 +1463,8 @@ pub(crate) fn begin_pie(
 
     let Some(root) = engine_state::get_project_path().map(std::path::PathBuf::from) else {
         window.push_notification(
-            Notification::error("Play In Editor").message(
-                "No project is open, so the game can't be built. Open a project first; \
-                 playing the scene snapshot only.",
-            ),
+            Notification::error(t!("Notification.Title.PlayInEditor").to_string())
+                .message(t!("Notification.Message.NoProjectOpenForPlay").to_string()),
             cx,
         );
         return;
@@ -1477,7 +1476,13 @@ pub(crate) fn begin_pie(
     let scene_path = root.join("target").join("pie").join("play.level");
     if let Err(e) = shared_state.read().scene.database.save_to_file(&scene_path) {
         window.push_notification(
-            Notification::error("Play In Editor").message(format!("Failed to write scene: {e}")),
+            Notification::error(t!("Notification.Title.PlayInEditor").to_string()).message(
+                t!(
+                    "Notification.Message.FailedToWriteScene",
+                    error => e.to_string()
+                )
+                .to_string(),
+            ),
             cx,
         );
         return;
@@ -1492,7 +1497,8 @@ pub(crate) fn begin_pie(
     }
 
     window.push_notification(
-        Notification::info("Play In Editor").message("Building game…"),
+        Notification::info(t!("Notification.Title.PlayInEditor").to_string())
+            .message(t!("Notification.Message.BuildingGame").to_string()),
         cx,
     );
 

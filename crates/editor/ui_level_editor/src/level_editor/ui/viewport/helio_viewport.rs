@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use engine_backend::services::gpu_renderer::GpuRenderer;
 use gpui::*;
 use plugin_editor_api::{AssetKind, AssetPayload};
+use rust_i18n::t;
 use ui::{ActiveTheme as _, ContextModal, notification::Notification};
 
 use crate::level_editor::commands::{SceneCommand, execute_command};
@@ -90,7 +91,8 @@ impl HelioViewport {
         tracing::info!("Asset dropped on viewport: {} ({:?})", name, kind);
 
         window.push_notification(
-            Notification::info("Adding to Scene").message(format!("Placing {}...", name)),
+            Notification::info(t!("Notification.Title.AddingToScene").to_string())
+                .message(t!("Notification.Message.Placing", name => &name).to_string()),
             cx,
         );
 
@@ -98,15 +100,23 @@ impl HelioViewport {
         match result {
             Ok(()) => {
                 window.push_notification(
-                    Notification::success("Added to Scene").message(format!("Placed {}", name)),
+                    Notification::success(t!("Notification.Title.AddedToScene").to_string())
+                        .message(t!("Notification.Message.Placed", name => &name).to_string()),
                     cx,
                 );
             }
             Err(e) => {
                 tracing::error!("Failed to place {}: {}", name, e);
                 window.push_notification(
-                    Notification::error("Placement Failed")
-                        .message(format!("Failed to place {}: {}", name, e)),
+                    Notification::error(t!("Notification.Title.PlacementFailed").to_string())
+                        .message(
+                            t!(
+                                "Notification.Message.FailedToPlace",
+                                name => &name,
+                                error => e.to_string()
+                            )
+                            .to_string(),
+                        ),
                     cx,
                 );
             }
@@ -570,7 +580,8 @@ impl Render for HelioViewport {
         if let Ok(engine) = self.gpu_engine.try_lock() {
             for err in engine.drain_pending_errors() {
                 window.push_notification(
-                    Notification::error("Mesh Load Failed").message(err),
+                    Notification::error(t!("Notification.Title.MeshLoadFailed").to_string())
+                        .message(err),
                     cx,
                 );
             }

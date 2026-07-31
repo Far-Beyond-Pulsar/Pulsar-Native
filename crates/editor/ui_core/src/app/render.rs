@@ -636,8 +636,13 @@ impl Render for PulsarApp {
                     .and_then(|n| n.to_str())
                     .unwrap_or("Project");
                 window.push_notification(
-                    Notification::info("Project Loaded")
-                        .message(format!("Welcome to {}", project_name)),
+                    Notification::info(t!("Notification.Title.ProjectLoaded").to_string()).message(
+                        t!(
+                            "Notification.Message.WelcomeToProject",
+                            project => project_name
+                        )
+                        .to_string(),
+                    ),
                     cx,
                 );
             }
