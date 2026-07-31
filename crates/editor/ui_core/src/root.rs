@@ -5,6 +5,7 @@ use gpui::{
     anchored, deferred, div, point, prelude::*, px, rgba, AnyView, Context, Entity, IntoElement,
     Render, SharedString, Subscription, Window,
 };
+use rust_i18n::t;
 use std::path::PathBuf;
 use ui::{
     notification::Notification, v_flex, ActiveTheme as _, ContextModal as _, Icon, IconName, Root,
@@ -116,8 +117,8 @@ impl Render for PulsarRoot {
             .on_action(cx.listener(
                 |_: &mut PulsarRoot, _: &DevSaveAsDefaultLevel, window, cx| {
                     window.push_notification(
-                        Notification::info("Dev")
-                            .message("Use \"Save as Default\" in the level editor toolbar."),
+                        Notification::info(t!("Notification.Title.Dev").to_string())
+                            .message(t!("Notification.Message.UseSaveAsDefault").to_string()),
                         cx,
                     );
                 },
@@ -138,8 +139,13 @@ impl Render for PulsarRoot {
                         #[cfg(target_os = "linux")]
                         let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
                         window.push_notification(
-                            Notification::info("Dev")
-                                .message(format!("Opening {}", path.display())),
+                            Notification::info(t!("Notification.Title.Dev").to_string()).message(
+                                t!(
+                                    "Notification.Message.Opening",
+                                    path => path.display().to_string()
+                                )
+                                .to_string(),
+                            ),
                             cx,
                         );
                     }
@@ -160,13 +166,19 @@ impl Render for PulsarRoot {
                             )
                         })
                         .unwrap_or_else(|| "Engine context unavailable".into());
-                    window.push_notification(Notification::info("Build Info").message(info), cx);
+                    window.push_notification(
+                        Notification::info(t!("Notification.Title.BuildInfo").to_string())
+                            .message(info),
+                        cx,
+                    );
                 }),
             )
             .on_action(
                 cx.listener(|_: &mut PulsarRoot, _: &DevReloadAssets, window, cx| {
                     window.push_notification(
-                        Notification::info("Dev").message("Asset reload not yet implemented."),
+                        Notification::info(t!("Notification.Title.Dev").to_string()).message(
+                            t!("Notification.Message.AssetReloadNotImplemented").to_string(),
+                        ),
                         cx,
                     );
                 }),
@@ -174,8 +186,9 @@ impl Render for PulsarRoot {
             .on_action(cx.listener(
                 |_: &mut PulsarRoot, _: &DevInspectEngineState, window, cx| {
                     window.push_notification(
-                        Notification::info("Dev")
-                            .message("Engine state inspector not yet implemented."),
+                        Notification::info(t!("Notification.Title.Dev").to_string()).message(
+                            t!("Notification.Message.EngineInspectorNotImplemented").to_string(),
+                        ),
                         cx,
                     );
                 },

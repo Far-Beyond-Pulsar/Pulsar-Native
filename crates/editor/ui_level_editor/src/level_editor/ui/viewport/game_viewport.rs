@@ -17,6 +17,7 @@ use std::time::Instant;
 use engine_backend::services::{PieBlit, PieHost};
 use gpui::*;
 use pulsar_pie_abi::{input_kind, InputEvent};
+use rust_i18n::t;
 use ui::{ActiveTheme as _, ContextModal as _, notification::Notification};
 
 use crate::level_editor::state::LevelEditorState;
@@ -238,8 +239,8 @@ impl GameViewport {
         let active = self.shared_state.read().play.pie.active;
         if active && !self.was_active {
             window.push_notification(
-                Notification::success("Play In Editor")
-                    .message("Game running — click to control, Esc to release"),
+                Notification::success(t!("Notification.Title.PlayInEditor").to_string())
+                    .message(t!("Notification.Message.GameRunning").to_string()),
                 cx,
             );
         }

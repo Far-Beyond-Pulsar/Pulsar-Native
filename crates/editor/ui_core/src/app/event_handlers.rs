@@ -14,6 +14,7 @@ use ui_problems::ProblemsDrawer;
 // use ui_alias_editor::ShowTypePickerRequest;
 use engine_backend::services::{AnalyzerEvent, AnalyzerStatus, RustAnalyzerManager};
 use plugin_manager;
+use rust_i18n::t;
 use futures::FutureExt;
 use smol::Timer;
 use std::path::PathBuf;
@@ -62,8 +63,10 @@ pub fn on_analyzer_event(
                     app.state.analyzer_detail_message = "Code intelligence active".to_string();
                     app.state.analyzer_progress = 1.0;
                     window.push_notification(
-                        ui::notification::Notification::success("Rust Analyzer Ready")
-                            .message("Code intelligence is now available"),
+                        ui::notification::Notification::success(
+                            t!("Notification.Title.RustAnalyzerReady").to_string(),
+                        )
+                        .message(t!("Notification.Message.CodeIntelligenceAvailable").to_string()),
                         cx,
                     );
                 }
@@ -72,8 +75,10 @@ pub fn on_analyzer_event(
                     app.state.analyzer_detail_message = e.to_string();
                     app.state.analyzer_progress = 0.0;
                     window.push_notification(
-                        ui::notification::Notification::error("Analyzer Error")
-                            .message(e.to_string()),
+                        ui::notification::Notification::error(
+                            t!("Notification.Title.AnalyzerError").to_string(),
+                        )
+                        .message(e.to_string()),
                         cx,
                     );
                 }
@@ -96,8 +101,10 @@ pub fn on_analyzer_event(
             app.state.analyzer_detail_message = "Code intelligence active".to_string();
             app.state.analyzer_progress = 1.0;
             window.push_notification(
-                ui::notification::Notification::success("Code Intelligence Ready")
-                    .message("Rust Analyzer indexing complete"),
+                ui::notification::Notification::success(
+                    t!("Notification.Title.CodeIntelligenceReady").to_string(),
+                )
+                .message(t!("Notification.Message.RustAnalyzerIndexingComplete").to_string()),
                 cx,
             );
             cx.notify();
@@ -107,7 +114,10 @@ pub fn on_analyzer_event(
             app.state.analyzer_detail_message = e.to_string();
             app.state.analyzer_progress = 0.0;
             window.push_notification(
-                ui::notification::Notification::error("Analyzer Error").message(e.to_string()),
+                ui::notification::Notification::error(
+                    t!("Notification.Title.AnalyzerError").to_string(),
+                )
+                .message(e.to_string()),
                 cx,
             );
             cx.notify();
