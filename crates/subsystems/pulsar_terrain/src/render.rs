@@ -659,7 +659,18 @@ mod tests {
         while !session.has_committed_plan(&plan) {
             session.reconcile(&runtime, &plan, tick).unwrap();
             runtime.pump(64);
-            events.extend(runtime.drain_events(128));
+            // Backpressure diagnostics are consumed per frame in production
+            // and are intentionally timing-dependent under the parallel test
+            // runner. Retain only renderer-facing events for this later
+            // ordering/parity assertion.
+            events.extend(runtime.drain_events(128).into_iter().filter(|event| {
+                matches!(
+                    event,
+                    TerrainRuntimeEvent::PageReady { .. }
+                        | TerrainRuntimeEvent::EvictPage { .. }
+                        | TerrainRuntimeEvent::EvictPlanet { .. }
+                )
+            }));
             tick += 1;
             assert!(Instant::now() < deadline, "timed out committing plan");
             thread::yield_now();
@@ -899,12 +910,19 @@ mod tests {
         let delta = publisher.translate_events(&runtime, &events).unwrap();
         assert_eq!(delta.counters.stale_page_ready, 1);
         assert_eq!(delta.counters.upload_pages, 1);
+        assert_eq!(delta.counters.page_evictions, 1);
         assert!(matches!(
             delta.commands.as_slice(),
-            [TerrainRenderCommand::Upload(TerrainPageUpload {
-                page_generation: 2,
-                ..
-            })]
+            [
+                TerrainRenderCommand::EvictPage(TerrainPageEvict {
+                    page_generation: 1,
+                    ..
+                }),
+                TerrainRenderCommand::Upload(TerrainPageUpload {
+                    page_generation: 2,
+                    ..
+                })
+            ]
         ));
         subsystem.shutdown().unwrap();
     }

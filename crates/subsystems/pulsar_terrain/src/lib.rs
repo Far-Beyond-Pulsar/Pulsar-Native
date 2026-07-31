@@ -9,6 +9,7 @@ mod core;
 mod edit;
 mod generator;
 mod hierarchy;
+mod mutation;
 mod page;
 mod planet;
 mod render;
@@ -26,6 +27,9 @@ pub use core::{
 pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
 pub use generator::{DeterministicGenerator, FixedSphereGenerator};
 pub use hierarchy::{HierarchyError, SparseBrickTree};
+pub use mutation::{
+    TerrainOverrideError, TerrainOverrideLog, TerrainOverrideOp, TerrainOverrideTarget,
+};
 pub use page::{
     PageCodecError, VoxelPage, CELL_COUNT, MICROBRICKS_PER_AXIS, MICROBRICK_COUNT, MICROBRICK_EDGE,
     PAGE_EDGE,

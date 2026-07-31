@@ -88,19 +88,32 @@ The 32-bit cell word is deliberately aligned for Rust, storage buffers, atomics/
 
 The base planet is a deterministic fixed-point function returning density and material. It may call authored data sources, but identical inputs must return identical values independent of view LOD.
 
-Every terrain mutation is an ordered operation:
+Fine edits and high-level uniform overrides share one authoritative sequence
+and stable-ID domain:
 
 ```text
-EditOp {
+TerrainMutation {
     sequence,
-    shape,
-    mode: Union | Subtract | Replace | Paint,
-    material,
-    planet_space_bounds,
+    stable_id,
+    payload:
+        Edit { shape, mode: Union | Subtract | Replace | Paint, material }
+      | UniformOverride { target: Root | AlignedRegion, state: Air | Solid | Procedural }
 }
 ```
 
-Small edits materialize affected LOD0 pages. Large edits attach high in the hierarchy and are evaluated lazily by descendants. Background compaction folds operation tails into versioned pages and collapses newly uniform subtrees. The edit kernel uses deterministic integer/fixed-point math so persistence, multiplayer, CPU generation, and GPU previews cannot silently disagree.
+Small edits materialize affected LOD0 pages. Large edits attach high in the
+hierarchy and are evaluated lazily by descendants. A page build merges the
+spatially relevant fine-edit and override tails by sequence. A full-page
+uniform override discards every earlier mutation for that page, so root
+deletion is constant-time in canonical state and cannot be undone by eviction
+or regeneration; refinement starts at that reset instead of replaying the
+discarded prefix. Mutations outside a page and its halo neither rebuild its
+resident cache nor reject an otherwise current in-flight build. Later fine
+edits can intentionally materialize terrain again.
+Background compaction folds operation tails into versioned pages and collapses
+newly uniform subtrees. The edit kernel uses deterministic integer/fixed-point
+math so persistence, multiplayer, CPU generation, and GPU previews cannot
+silently disagree.
 
 ## Coordinates and large-world behavior
 
@@ -292,6 +305,11 @@ Reference traces must include ground walking, supersonic surface flight, ground-
 - Implement 2:1 LOD requests from 10 cm near field through orbital scale.
 - Add predictive scheduling, cancellation, and ground/orbit/teleport traces.
 - Gate: precision, no cracks, bounded residency, and frame-time targets pass.
+
+Current boundary: canonical real-radius addressing and bounded mixed-LOD
+streaming have passed on a flat tangent validation patch. The full spherical
+shell, visible curvature, orbital globe, and continuous travel around the
+planet have not passed yet and remain part of this milestone.
 
 ### Milestone 5: destruction and persistence
 

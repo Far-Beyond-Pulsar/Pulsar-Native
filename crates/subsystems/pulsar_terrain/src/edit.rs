@@ -186,6 +186,14 @@ impl EditIndex {
         }
     }
 
+    pub(crate) fn from_log(root_lod: u8, log: &EditLog) -> Self {
+        let mut index = Self::new(root_lod);
+        for (operation_index, operation) in log.operations().iter().copied().enumerate() {
+            index.insert(operation_index, operation);
+        }
+        index
+    }
+
     pub(crate) fn insert(&mut self, operation_index: usize, operation: EditOp) {
         match operation.shape.covering_attachment(self.root_lod) {
             EditAttachment::Root => self.root.push(operation_index),
@@ -206,25 +214,31 @@ impl EditIndex {
         key: PageKey,
         after_sequence: u64,
     ) -> Vec<EditOp> {
-        let mut indices = self.root.clone();
+        let mut indices = Vec::new();
+        Self::extend_after(log, &self.root, after_sequence, &mut indices);
         let mut ancestor = Some(key);
         while let Some(key) = ancestor.filter(|key| key.lod < self.root_lod) {
             if let Some(attached) = self.regions.get(&key) {
-                indices.extend_from_slice(attached);
+                Self::extend_after(log, attached, after_sequence, &mut indices);
             }
             ancestor = key.parent();
         }
-        self.collect_descendant_indices(key, &mut indices);
+        self.collect_descendant_indices(log, key, after_sequence, &mut indices);
         indices.sort_unstable();
         indices.dedup();
         indices
             .into_iter()
             .filter_map(|index| log.operations().get(index).copied())
-            .filter(|operation| operation.sequence > after_sequence)
             .collect()
     }
 
-    fn collect_descendant_indices(&self, parent: PageKey, indices: &mut Vec<usize>) {
+    fn collect_descendant_indices(
+        &self,
+        log: &EditLog,
+        parent: PageKey,
+        after_sequence: u64,
+        indices: &mut Vec<usize>,
+    ) {
         let Some(child_lod) = parent.lod.checked_sub(1) else {
             return;
         };
@@ -252,12 +266,26 @@ impl EditIndex {
                         continue;
                     }
                     if let Some(attached) = self.regions.get(&child) {
-                        indices.extend_from_slice(attached);
+                        Self::extend_after(log, attached, after_sequence, indices);
                     }
-                    self.collect_descendant_indices(child, indices);
+                    self.collect_descendant_indices(log, child, after_sequence, indices);
                 }
             }
         }
+    }
+
+    fn extend_after(
+        log: &EditLog,
+        attached: &[usize],
+        after_sequence: u64,
+        indices: &mut Vec<usize>,
+    ) {
+        let first = attached.partition_point(|index| {
+            log.operations()
+                .get(*index)
+                .is_some_and(|operation| operation.sequence <= after_sequence)
+        });
+        indices.extend_from_slice(&attached[first..]);
     }
 
     pub(crate) fn region_count(&self) -> usize {
@@ -299,6 +327,7 @@ pub enum EditError {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EditLog {
     operations: Vec<EditOp>,
+    ids: BTreeMap<[u8; 16], usize>,
 }
 
 impl EditLog {
@@ -315,11 +344,7 @@ impl EditLog {
     }
 
     pub fn push(&mut self, operation: EditOp) -> Result<(), EditError> {
-        if let Some(existing) = self
-            .operations
-            .iter()
-            .find(|existing| existing.stable_id == operation.stable_id)
-        {
+        if let Some(existing) = self.operation_with_id(operation.stable_id) {
             return if *existing == operation {
                 Ok(())
             } else {
@@ -334,12 +359,19 @@ impl EditLog {
                 });
             }
         }
+        self.ids.insert(operation.stable_id, self.operations.len());
         self.operations.push(operation);
         Ok(())
     }
 
     pub fn operations(&self) -> &[EditOp] {
         &self.operations
+    }
+
+    pub(crate) fn operation_with_id(&self, stable_id: [u8; 16]) -> Option<&EditOp> {
+        self.ids
+            .get(&stable_id)
+            .and_then(|index| self.operations.get(*index))
     }
 
     pub fn latest_sequence(&self) -> u64 {
