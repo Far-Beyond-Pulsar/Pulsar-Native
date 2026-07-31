@@ -24,8 +24,8 @@ pub fn render_save_bar(cx: &mut Context<ModernSettingsScreen>) -> impl IntoEleme
                 .small()
                 .icon(IconName::Check)
                 .label("Save")
-                .on_click(cx.listener(|screen, _, _window, cx| {
-                    crate::handlers::save_pending_changes(screen, cx);
+                .on_click(cx.listener(|screen, _, window, cx| {
+                    crate::handlers::save_pending_changes(screen, window, cx);
                 })),
         )
 }

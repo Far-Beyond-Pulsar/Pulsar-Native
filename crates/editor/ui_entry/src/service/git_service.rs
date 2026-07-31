@@ -77,24 +77,6 @@ impl GitService {
         }
     }
 
-    pub fn check_for_updates(path: &Path) -> Result<usize, git2::Error> {
-        let repo = git2::Repository::open(path)?;
-        let mut remote = repo.find_remote("origin")?;
-        remote.fetch(&["refs/heads/*:refs/remotes/origin/*"], None, None)?;
-        let head = repo.head()?;
-        let branch = head.shorthand().unwrap_or("main");
-        let local_oid = head
-            .target()
-            .ok_or_else(|| git2::Error::from_str("No commit on HEAD"))?;
-        let remote_branch = format!("refs/remotes/origin/{}", branch);
-        let remote_ref = repo.find_reference(&remote_branch)?;
-        let remote_oid = remote_ref
-            .target()
-            .ok_or_else(|| git2::Error::from_str("No remote commit"))?;
-        let (_ahead, behind) = repo.graph_ahead_behind(local_oid, remote_oid)?;
-        Ok(behind)
-    }
-
     pub fn pull_updates(path: &Path) -> Result<(), git2::Error> {
         let repo = git2::Repository::open(path)?;
         let mut remote = repo.find_remote("origin")?;
