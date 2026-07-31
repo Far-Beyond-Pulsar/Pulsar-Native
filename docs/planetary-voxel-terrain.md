@@ -208,10 +208,10 @@ Create `crates/subsystems/pulsar_terrain` as the authoritative runtime crate. It
 Keep `PlanetDefinition` and the authoritative runtime in `pulsar_terrain`.
 House the reflected `PlanetTerrainComponent` and its Helio projection in
 `pulsar_rendering::components`, matching Pulsar's component-owned runtime
-projection pattern. Do not repurpose the current editor-only `TerrainComponent`
-or `ProceduralTerrainComponent` during the prototype. Their runtime methods are
-empty today, and retaining them avoids a scene-format migration while the new
-contract is validated.
+projection pattern. `PlanetTerrainComponent` is the sole terrain component
+contract for this path. Do not add legacy component or snapshot migration
+layers; update project content to the current contract. The superseded
+editor-only terrain component and its no-op runtime have been removed.
 
 `pulsar_rendering` consumes immutable render deltas/page uploads from `pulsar_terrain`; it does not own terrain state. `engine_backend` registers the terrain subsystem through the existing subsystem/plugin injection path. The level editor provides inspectors and debug views for the runtime component.
 
@@ -322,7 +322,7 @@ planet have not passed yet and remain part of this milestone.
 - Register `PlanetTerrainComponent` and terrain subsystem.
 - Bridge render deltas into the new Helio pass.
 - Add editor diagnostics for page state, LOD, queue latency, memory, and edit bounds.
-- Gate: standalone generated game does not link editor crates; legacy terrain components/scenes remain loadable.
+- Gate: standalone generated game does not link editor crates; all terrain components, scenes, and snapshots use the current canonical format.
 
 ### Milestone 7: physics and detached bodies
 

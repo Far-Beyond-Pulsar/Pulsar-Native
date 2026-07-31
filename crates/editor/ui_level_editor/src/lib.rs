@@ -15,7 +15,6 @@ use gpui::AppContext;
 
 pub mod ai_sessions;
 pub mod ai_tools;
-mod components;
 mod level_editor;
 
 // Re-export main types

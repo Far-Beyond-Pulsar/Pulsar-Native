@@ -2,10 +2,8 @@ use crate::{ContentHash, EditLog, PageId, PageKey, PlanetId, SparseBrickTree, Te
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-const SNAPSHOT_MAGIC_V1: &[u8; 8] = b"PTSNAP01";
-const SNAPSHOT_MAGIC_V2: &[u8; 8] = b"PTSNAP02";
-const SNAPSHOT_V1_HEADER_BYTES: usize = 80;
-const SNAPSHOT_V2_HEADER_BYTES: usize = 88;
+const SNAPSHOT_MAGIC: &[u8; 8] = b"PTSNAP02";
+const SNAPSHOT_HEADER_BYTES: usize = 88;
 const PAGE_RECORD_BYTES: usize = 72;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,13 +38,13 @@ impl TerrainSnapshot {
         let edits = self.edit_tail.encode();
         let overrides = self.override_tail.encode();
         let mut output = Vec::with_capacity(
-            SNAPSHOT_V2_HEADER_BYTES
+            SNAPSHOT_HEADER_BYTES
                 + hierarchy.len()
                 + edits.len()
                 + overrides.len()
                 + compacted_pages.len() * PAGE_RECORD_BYTES,
         );
-        output.extend_from_slice(SNAPSHOT_MAGIC_V2);
+        output.extend_from_slice(SNAPSHOT_MAGIC);
         output.extend_from_slice(&self.planet_id.0);
         output.extend_from_slice(&self.generator_hash.0);
         output.extend_from_slice(&(hierarchy.len() as u64).to_le_bytes());
@@ -70,57 +68,10 @@ impl TerrainSnapshot {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, SnapshotCodecError> {
-        match bytes.get(..8) {
-            Some(magic) if magic == SNAPSHOT_MAGIC_V1 => Self::decode_v1(bytes),
-            Some(magic) if magic == SNAPSHOT_MAGIC_V2 => Self::decode_v2(bytes),
-            _ => Err(SnapshotCodecError::Codec),
-        }
-    }
-
-    fn decode_v1(bytes: &[u8]) -> Result<Self, SnapshotCodecError> {
-        if bytes.len() < SNAPSHOT_V1_HEADER_BYTES || bytes.get(76..80) != Some(&[0; 4]) {
+        if bytes.get(..8) != Some(SNAPSHOT_MAGIC) {
             return Err(SnapshotCodecError::Codec);
         }
-        let planet_id = PlanetId(read_array(bytes, 8)?);
-        let generator_hash = ContentHash(read_array(bytes, 24)?);
-        let hierarchy_len = read_u64(bytes, 56)? as usize;
-        let edits_len = read_u64(bytes, 64)? as usize;
-        let page_count = read_u32(bytes, 72)? as usize;
-        let hierarchy_end = SNAPSHOT_V1_HEADER_BYTES
-            .checked_add(hierarchy_len)
-            .ok_or(SnapshotCodecError::Codec)?;
-        let edits_end = hierarchy_end
-            .checked_add(edits_len)
-            .ok_or(SnapshotCodecError::Codec)?;
-        let expected_end = edits_end
-            .checked_add(
-                page_count
-                    .checked_mul(PAGE_RECORD_BYTES)
-                    .ok_or(SnapshotCodecError::Codec)?,
-            )
-            .ok_or(SnapshotCodecError::Codec)?;
-        if expected_end != bytes.len() {
-            return Err(SnapshotCodecError::Codec);
-        }
-        let hierarchy = SparseBrickTree::decode(&bytes[SNAPSHOT_V1_HEADER_BYTES..hierarchy_end])
-            .map_err(|_| SnapshotCodecError::Codec)?;
-        let edit_tail = EditLog::decode(&bytes[hierarchy_end..edits_end])
-            .map_err(|_| SnapshotCodecError::Codec)?;
-        let compacted_pages = decode_page_records(bytes, edits_end, page_count)?;
-        let snapshot = Self {
-            planet_id,
-            generator_hash,
-            hierarchy,
-            edit_tail,
-            override_tail: TerrainOverrideLog::default(),
-            compacted_pages,
-        };
-        validate_mutation_order(&snapshot.edit_tail, &snapshot.override_tail)?;
-        Ok(snapshot)
-    }
-
-    fn decode_v2(bytes: &[u8]) -> Result<Self, SnapshotCodecError> {
-        if bytes.len() < SNAPSHOT_V2_HEADER_BYTES || bytes.get(84..88) != Some(&[0; 4]) {
+        if bytes.len() < SNAPSHOT_HEADER_BYTES || bytes.get(84..88) != Some(&[0; 4]) {
             return Err(SnapshotCodecError::Codec);
         }
         let planet_id = PlanetId(read_array(bytes, 8)?);
@@ -129,7 +80,7 @@ impl TerrainSnapshot {
         let edits_len = read_u64(bytes, 64)? as usize;
         let overrides_len = read_u64(bytes, 72)? as usize;
         let page_count = read_u32(bytes, 80)? as usize;
-        let hierarchy_end = SNAPSHOT_V2_HEADER_BYTES
+        let hierarchy_end = SNAPSHOT_HEADER_BYTES
             .checked_add(hierarchy_len)
             .ok_or(SnapshotCodecError::Codec)?;
         let edits_end = hierarchy_end
@@ -148,7 +99,7 @@ impl TerrainSnapshot {
         if expected_end != bytes.len() {
             return Err(SnapshotCodecError::Codec);
         }
-        let hierarchy = SparseBrickTree::decode(&bytes[SNAPSHOT_V2_HEADER_BYTES..hierarchy_end])
+        let hierarchy = SparseBrickTree::decode(&bytes[SNAPSHOT_HEADER_BYTES..hierarchy_end])
             .map_err(|_| SnapshotCodecError::Codec)?;
         let edit_tail = EditLog::decode(&bytes[hierarchy_end..edits_end])
             .map_err(|_| SnapshotCodecError::Codec)?;
@@ -351,28 +302,11 @@ mod tests {
     }
 
     #[test]
-    fn legacy_v1_snapshot_decodes_with_an_empty_override_tail() {
-        let generator_hash = ContentHash::of(b"legacy-generator");
-        let hierarchy =
-            SparseBrickTree::centered(12, NodeState::Procedural(generator_hash)).unwrap();
-        let hierarchy_bytes = hierarchy.encode();
-        let edits = EditLog::default();
-        let edit_bytes = edits.encode();
-        let mut legacy = Vec::new();
-        legacy.extend_from_slice(SNAPSHOT_MAGIC_V1);
-        legacy.extend_from_slice(&[3; 16]);
-        legacy.extend_from_slice(&generator_hash.0);
-        legacy.extend_from_slice(&(hierarchy_bytes.len() as u64).to_le_bytes());
-        legacy.extend_from_slice(&(edit_bytes.len() as u64).to_le_bytes());
-        legacy.extend_from_slice(&0_u32.to_le_bytes());
-        legacy.extend_from_slice(&[0; 4]);
-        legacy.extend_from_slice(&hierarchy_bytes);
-        legacy.extend_from_slice(&edit_bytes);
-
-        let decoded = TerrainSnapshot::decode(&legacy).unwrap();
-        assert_eq!(decoded.planet_id, PlanetId([3; 16]));
-        assert_eq!(decoded.generator_hash, generator_hash);
-        assert!(decoded.override_tail.operations().is_empty());
-        assert_eq!(&decoded.encode().unwrap()[..8], SNAPSHOT_MAGIC_V2);
+    fn obsolete_snapshot_versions_are_rejected() {
+        let obsolete = b"PTSNAP01";
+        assert_eq!(
+            TerrainSnapshot::decode(obsolete),
+            Err(SnapshotCodecError::Codec)
+        );
     }
 }

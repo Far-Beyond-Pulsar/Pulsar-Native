@@ -30,7 +30,6 @@ pulsar_pie_abi.workspace = true
 # `on_bool_toggle`/`on_enum_select` fields directly. `gpui-ce`/`ui` are
 # already unconditional deps of this crate above.
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
-engine_class_derive = { workspace = true }
 pulsar_rendering.workspace = true
 pulsar_physics.workspace = true
 engine_fs.workspace = true
