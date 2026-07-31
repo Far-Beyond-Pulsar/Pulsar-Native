@@ -2,9 +2,14 @@
 //!
 //! A GitHub Desktop-like Git manager built with GPUI and the UI crate
 
+mod auto_fetch;
 mod avatar_loader;
+mod components;
+mod git_hooks;
 mod git_operations;
+mod handlers;
 mod models;
+mod utils;
 mod views;
 
 use gpui::ClipboardItem;
@@ -20,7 +25,16 @@ use ui::{
     v_flex,
 };
 
+pub use auto_fetch::{
+    AutoFetchOutcome, AutoFetchSettings, AutoFetchSettingsWatcher, AutoFetchWaitOutcome,
+    TrackingSnapshot, canonical_repository_path, fetch_tracking_snapshot, read_auto_fetch_settings,
+    start_auto_fetch_task,
+};
+pub use git_hooks::{
+    GitHookSyncReport, GitHookSyncSkipReason, GitHookSyncStatus, sync_configured_project_hooks,
+};
 pub use git_operations::*;
+pub use handlers::open_git_settings_modal;
 pub use models::*;
 
 use views::AlignedRow;
@@ -89,6 +103,20 @@ impl PendingAuthOp {
             PendingAuthOp::Pull => "Pull",
         }
     }
+
+    fn kind(self) -> git_operations::RemoteOperationKind {
+        match self {
+            PendingAuthOp::Fetch => git_operations::RemoteOperationKind::Fetch,
+            PendingAuthOp::Push => git_operations::RemoteOperationKind::Push,
+            PendingAuthOp::Pull => git_operations::RemoteOperationKind::Pull,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PendingAuth {
+    pub(crate) op: PendingAuthOp,
+    pub(crate) context: git_operations::RemoteOperationContext,
 }
 
 /// A flattened row in the changes virtual list.
@@ -148,13 +176,11 @@ pub struct GitManager {
     commit_file_expanded: HashSet<usize>,
     /// Last error from a background git operation (push/pull/fetch/switch)
     pub(crate) op_error: Option<String>,
-    /// When set, the toolbar shows a credential prompt and retries this op on submit
-    pub(crate) pending_auth_op: Option<PendingAuthOp>,
+    /// When set, the toolbar shows a credential prompt bound to the failed operation target.
+    pub(crate) pending_auth: Option<PendingAuth>,
+    pub(crate) remote_operation_generation: u64,
     pub(crate) auth_username_input: Entity<InputState>,
     pub(crate) auth_password_input: Entity<InputState>,
-    /// Credentials cached in process memory after a successful auth — reused automatically.
-    /// Never written to disk by us; cleared when the window closes.
-    stored_creds: Option<(String, String)>,
     current_view: GitView,
     pub(crate) diff_view_mode: DiffViewMode,
     focus_handle: FocusHandle,
@@ -215,17 +241,14 @@ impl GitManager {
             input
         });
 
-        // Load initial git state + stored credentials from OS keychain
+        // Load initial git state. Credentials are resolved for a fixed remote
+        // only after a remote-operation guard has been acquired.
         let path = project_path.clone();
         cx.spawn(async move |this, cx| {
             let load_path = path.clone();
-            let (state_result, stored_creds) = cx
+            let state_result = cx
                 .background_executor()
-                .spawn(async move {
-                    let state = load_repository_state(&load_path);
-                    let creds = load_git_credentials(&load_path);
-                    (state, creds)
-                })
+                .spawn(async move { load_repository_state(&load_path) })
                 .await;
             cx.update(|cx| {
                 this.update(cx, |git_manager, cx| {
@@ -242,7 +265,6 @@ impl GitManager {
                             ));
                         }
                     }
-                    git_manager.stored_creds = stored_creds;
                     git_manager.rebuild_changes_rows();
                     cx.notify();
                 });
@@ -282,10 +304,10 @@ impl GitManager {
             commit_file_diff_error: None,
             commit_file_expanded: HashSet::new(),
             op_error: None,
-            pending_auth_op: None,
+            pending_auth: None,
+            remote_operation_generation: 0,
             auth_username_input,
             auth_password_input,
-            stored_creds: None,
             current_view: GitView::Changes,
             diff_view_mode: DiffViewMode::Unified,
             focus_handle: cx.focus_handle(),
@@ -647,31 +669,35 @@ impl GitManager {
     }
 
     fn fetch(&mut self, cx: &mut Context<Self>) {
-        self.run_remote_op(PendingAuthOp::Fetch, None, cx);
+        self.run_remote_op(PendingAuthOp::Fetch, None, None, cx);
     }
 
     fn push(&mut self, cx: &mut Context<Self>) {
-        self.run_remote_op(PendingAuthOp::Push, None, cx);
+        self.run_remote_op(PendingAuthOp::Push, None, None, cx);
     }
 
     fn pull(&mut self, cx: &mut Context<Self>) {
-        self.run_remote_op(PendingAuthOp::Pull, None, cx);
+        self.run_remote_op(PendingAuthOp::Pull, None, None, cx);
     }
 
     pub fn retry_with_auth(&mut self, cx: &mut Context<Self>) {
-        let op = match self.pending_auth_op {
-            Some(op) => op,
+        let pending_auth = match self.pending_auth.take() {
+            Some(pending_auth) => pending_auth,
             None => return,
         };
         let username = self.auth_username_input.read(cx).text().to_string();
         let password = self.auth_password_input.read(cx).text().to_string();
-        self.pending_auth_op = None;
         self.op_error = None;
-        self.run_remote_op(op, Some((username, password)), cx);
+        self.run_remote_op(
+            pending_auth.op,
+            Some((username, password)),
+            Some(pending_auth.context),
+            cx,
+        );
     }
 
     pub fn cancel_auth(&mut self, cx: &mut Context<Self>) {
-        self.pending_auth_op = None;
+        self.pending_auth = None;
         self.op_error = None;
         cx.notify();
     }
@@ -680,55 +706,44 @@ impl GitManager {
         &mut self,
         op: PendingAuthOp,
         explicit_creds: Option<(String, String)>,
+        expected_context: Option<git_operations::RemoteOperationContext>,
         cx: &mut Context<Self>,
     ) {
         let path = self.project_path.clone();
+        self.remote_operation_generation = self.remote_operation_generation.wrapping_add(1);
+        let generation = self.remote_operation_generation;
+        self.pending_auth = None;
         self.op_error = None;
-        let cached_creds = self.stored_creds.clone();
-        let _explicit_was_provided = explicit_creds.is_some();
         cx.spawn(async move |this, cx| {
-            let path_clone = path.clone();
-            let result = cx
+            let attempt = cx
                 .background_executor()
                 .spawn(async move {
-                    // Priority: explicit (retry) → in-memory cache → OS keychain
-                    let creds = explicit_creds
-                        .or(cached_creds)
-                        .or_else(|| load_git_credentials(&path));
-                    let creds_used = creds.clone();
-                    let res = match op {
-                        PendingAuthOp::Fetch => fetch_from_remote(&path, creds),
-                        PendingAuthOp::Push => push_to_remote(&path, creds),
-                        PendingAuthOp::Pull => pull_from_remote(&path, creds),
-                    };
-                    (res, creds_used)
+                    git_operations::execute_remote_operation(
+                        &path,
+                        op.kind(),
+                        explicit_creds,
+                        expected_context,
+                    )
                 })
                 .await;
-            let (result, creds_used) = result;
-            // On success with any creds: persist to keychain and update memory cache
-            if result.is_ok() {
-                if let Some((ref user, ref pass)) = creds_used {
-                    store_git_credentials(&path_clone, user, pass);
-                }
-            }
-            // Single update — set stored_creds and handle errors together
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
-                    match &result {
-                        Ok(_) => {
-                            // Cache creds in memory on success
-                            if let Some(c) = creds_used {
-                                gm.stored_creds = Some(c);
+                    if gm.remote_operation_generation != generation {
+                        return;
+                    }
+
+                    match attempt.result {
+                        Ok(()) => {}
+                        Err(error) if is_auth_error(&error) => {
+                            if let Some(context) = attempt.context {
+                                gm.pending_auth = Some(PendingAuth { op, context });
+                                gm.op_error = Some("Authentication required".to_string());
+                            } else {
+                                gm.op_error = Some(format!("{} failed: {}", op.label(), error));
                             }
                         }
-                        Err(e) if is_auth_error(e) => {
-                            // Stale creds failed — clear them and prompt
-                            gm.stored_creds = None;
-                            gm.pending_auth_op = Some(op);
-                            gm.op_error = Some("Authentication required".to_string());
-                        }
-                        Err(e) => {
-                            gm.op_error = Some(format!("{} failed: {}", op.label(), e));
+                        Err(error) => {
+                            gm.op_error = Some(format!("{} failed: {}", op.label(), error));
                         }
                     }
                     gm.refresh_state(cx);
@@ -740,6 +755,9 @@ impl GitManager {
 
     fn switch_branch(&mut self, branch_name: String, cx: &mut Context<Self>) {
         let path = self.project_path.clone();
+        self.remote_operation_generation = self.remote_operation_generation.wrapping_add(1);
+        let generation = self.remote_operation_generation;
+        self.pending_auth = None;
         self.op_error = None;
         cx.spawn(async move |this, cx| {
             let result = cx
@@ -748,6 +766,9 @@ impl GitManager {
                 .await;
             cx.update(|cx| {
                 this.update(cx, |gm, cx| {
+                    if gm.remote_operation_generation != generation {
+                        return;
+                    }
                     if let Err(e) = &result {
                         gm.op_error = Some(format!("Switch failed: {}", e));
                     }

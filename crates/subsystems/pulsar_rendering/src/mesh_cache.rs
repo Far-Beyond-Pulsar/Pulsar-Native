@@ -75,6 +75,7 @@ pub struct OptionsSchema {
 // ---------------------------------------------------------------------------
 
 /// Leak a value into a `&'static` reference (tiny allocation, modal lifetime).
+#[allow(dead_code)]
 fn leak_static<T: 'static>(val: T) -> &'static T {
     Box::leak(Box::new(val))
 }
@@ -95,7 +96,7 @@ fn build_enum_type_info(label: &str, choices: &[String]) -> &'static RuntimeType
     }))
 }
 
-fn convert_default(kind: &helio_asset_compat::OptionKind, dv: &helio_asset_compat::OptionValue) -> Box<dyn Any + Send> {
+fn convert_default(_kind: &helio_asset_compat::OptionKind, dv: &helio_asset_compat::OptionValue) -> Box<dyn Any + Send> {
     use helio_asset_compat::OptionValue as OV;
     match dv {
         OV::Bool(b) => Box::new(*b),

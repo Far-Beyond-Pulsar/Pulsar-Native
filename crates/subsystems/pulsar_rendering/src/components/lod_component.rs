@@ -2,7 +2,6 @@
 
 use engine_class_derive::engine_class;
 use pulsar_reflection::{ReflectError, ReflectResult, pulsar_type};
-use serde::{Deserialize, Serialize};
 
 /// LOD component for managing mesh detail based on distance
 ///

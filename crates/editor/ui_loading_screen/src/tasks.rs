@@ -38,6 +38,7 @@ pub(crate) const TASKS: &[(&str, TaskFn)] = &[
     ("Warming scene cache", task_warm_scene),
     ("Loading engine settings", task_load_settings),
     ("Checking language server", task_check_lsp),
+    ("Synchronizing Git hooks", task_sync_git_hooks),
     ("Finalizing workspace", task_finalize),
 ];
 
@@ -240,6 +241,52 @@ fn task_check_lsp(_project: &Path) -> TaskResult {
         } else {
             "not in PATH".to_string()
         }),
+    }
+}
+
+fn task_sync_git_hooks(project: &Path) -> TaskResult {
+    let t = Instant::now();
+    let detail = match ui_git_manager::sync_configured_project_hooks(project) {
+        Ok(report) => {
+            let ui_git_manager::GitHookSyncReport {
+                status,
+                created,
+                preserved,
+            } = report;
+            match status {
+                ui_git_manager::GitHookSyncStatus::Synced => {
+                    if created.is_empty() && preserved.is_empty() {
+                        "no hooks configured".to_string()
+                    } else {
+                        format!("{} installed, {} preserved", created.len(), preserved.len())
+                    }
+                }
+                ui_git_manager::GitHookSyncStatus::Skipped(reason) => match reason {
+                    ui_git_manager::GitHookSyncSkipReason::RemoteProvider { label } => {
+                        format!("skipped: {label} provider")
+                    }
+                    ui_git_manager::GitHookSyncSkipReason::MissingGitDirectory => {
+                        "skipped: no Git repository".to_string()
+                    }
+                    ui_git_manager::GitHookSyncSkipReason::CustomHooksPath { path } => {
+                        format!("skipped: custom hooks path {}", path.display())
+                    }
+                },
+            }
+        }
+        Err(error) => {
+            tracing::warn!(
+                project = %project.display(),
+                error = %error,
+                "Failed to synchronize configured Git hooks; continuing startup"
+            );
+            "skipped: hook sync failed".to_string()
+        }
+    };
+
+    TaskResult {
+        elapsed: t.elapsed(),
+        detail: Some(detail),
     }
 }
 

@@ -5,7 +5,7 @@
 //! disk *or* a remote `pulsar-studio` server.
 
 use anyhow::Result;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 // ── Data types ─────────────────────────────────────────────────────────────────
 
@@ -57,8 +57,35 @@ pub trait FsProvider: Send + Sync + 'static {
     /// Overwrite (or create) a file with `content`.
     fn write_file(&self, path: &Path, content: &[u8]) -> Result<()>;
 
+    /// Atomically replace `path` with `content`.
+    ///
+    /// Providers that cannot guarantee same-filesystem atomic replacement must
+    /// reject this operation instead of falling back to a partial write.
+    fn write_file_atomically(&self, path: &Path, _content: &[u8]) -> Result<()> {
+        anyhow::bail!(
+            "Filesystem provider '{}' does not support atomic writes at '{}'",
+            self.label(),
+            path.display()
+        )
+    }
+
     /// Create `path` with `content`, failing if it already exists.
     fn create_file(&self, path: &Path, content: &[u8]) -> Result<()>;
+
+    /// Create an executable file, failing if it already exists.
+    ///
+    /// The destination must not become executable until the complete content
+    /// has been written successfully.
+    ///
+    /// Providers that cannot preserve executable permissions must reject this
+    /// operation instead of silently creating a non-executable file.
+    fn create_executable_file(&self, path: &Path, _content: &[u8]) -> Result<()> {
+        anyhow::bail!(
+            "Filesystem provider '{}' does not support executable files at '{}'",
+            self.label(),
+            path.display()
+        )
+    }
 
     /// Delete a file, or recursively remove a directory.
     fn delete_path(&self, path: &Path) -> Result<()>;
@@ -82,6 +109,27 @@ pub trait FsProvider: Send + Sync + 'static {
     /// Return basic metadata about `path`.
     fn metadata(&self, path: &Path) -> Result<FsMetadata>;
 
+    /// Resolve `path` to its canonical absolute form.
+    fn canonicalize(&self, path: &Path) -> Result<PathBuf> {
+        anyhow::bail!(
+            "Filesystem provider '{}' does not support canonical paths for '{}'",
+            self.label(),
+            path.display()
+        )
+    }
+
+    /// Inspect `path` without following it and report filesystem redirections.
+    ///
+    /// Local implementations treat symbolic links and Windows reparse points,
+    /// including junctions, as redirections.
+    fn is_symlink(&self, path: &Path) -> Result<bool> {
+        anyhow::bail!(
+            "Filesystem provider '{}' does not support link inspection for '{}'",
+            self.label(),
+            path.display()
+        )
+    }
+
     // ── Full-project manifest ─────────────────────────────────────────────────
 
     /// Return a flat list of every file and directory under `path`.
@@ -98,6 +146,14 @@ pub trait FsProvider: Send + Sync + 'static {
 
     /// Whether this provider serves a remote filesystem.
     fn is_remote(&self) -> bool {
+        false
+    }
+
+    /// Whether this provider permits locally configured executable content.
+    ///
+    /// This is a security-sensitive capability and therefore defaults to
+    /// denied. Only providers that represent the local machine should opt in.
+    fn permits_local_executable_writes(&self) -> bool {
         false
     }
 

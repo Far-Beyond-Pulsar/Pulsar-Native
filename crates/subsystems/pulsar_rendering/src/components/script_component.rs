@@ -196,12 +196,11 @@ fn script_asset_editor(
 /// type round-trips through the JSON codec as a plain string; the blueprint
 /// open-button UI comes from the `editor` registration above.
 #[pulsar_reflection::pulsar_type(
-    primitive,
-    structure = String,
     serialize_json_with = serialize_script_asset_path_json,
     deserialize_json_with = deserialize_script_asset_path_json,
     editor = script_asset_editor
 )]
+#[allow(dead_code)]
 type RegisteredScriptAssetPath = ScriptAssetPath;
 
 // ── ScriptComponent ───────────────────────────────────────────────────────────

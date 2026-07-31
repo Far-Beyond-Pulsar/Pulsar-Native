@@ -6,11 +6,17 @@ mod screen;
 mod tasks;
 
 use gpui::AppContext;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 pub use preload::{take_preloaded_files, PreloadedFileEntry};
 pub use screen::LoadingScreen;
+
+fn prepare_project_filesystem(path: &Path) {
+    if !engine_fs::is_cloud_path(path) {
+        engine_fs::virtual_fs::reset_to_local();
+    }
+}
 
 impl window_manager::PulsarWindow for LoadingScreen {
     type Params = (PathBuf, Arc<dyn Fn(PathBuf, &mut gpui::App) + Send + Sync>);
@@ -58,6 +64,39 @@ impl window_manager::PulsarWindow for LoadingScreen {
         cx: &mut gpui::App,
     ) -> gpui::Entity<Self> {
         let (path, on_complete) = params;
+        prepare_project_filesystem(&path);
         cx.new(|cx| LoadingScreen::new_with_on_complete(path, on_complete, window, cx))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use engine_fs::{RemoteConfig, RemoteFsProvider};
+
+    struct ProviderGuard(Arc<dyn engine_fs::FsProvider>);
+
+    impl Drop for ProviderGuard {
+        fn drop(&mut self) {
+            engine_fs::virtual_fs::set_provider(self.0.clone());
+        }
+    }
+
+    #[test]
+    fn local_project_restores_local_provider_after_cloud_project() {
+        let _guard = ProviderGuard(engine_fs::virtual_fs::provider());
+        let remote = RemoteFsProvider::new(RemoteConfig {
+            server_url: "http://127.0.0.1".to_string(),
+            workspace_id: "workspace".to_string(),
+            environment_id: "environment".to_string(),
+            auth_token: None,
+        });
+        engine_fs::virtual_fs::set_provider(Arc::new(remote));
+
+        prepare_project_filesystem(Path::new("cloud+pulsar://127.0.0.1/workspace/environment"));
+        assert!(engine_fs::virtual_fs::is_remote());
+
+        prepare_project_filesystem(Path::new(env!("CARGO_MANIFEST_DIR")));
+        assert!(!engine_fs::virtual_fs::is_remote());
     }
 }

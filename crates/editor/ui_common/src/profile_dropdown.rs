@@ -18,6 +18,8 @@ pub enum ProfileDropdownEvent {
     SignedOut,
     /// User clicked "Multiplayer Sessions" — parent should open the friends/invite UI.
     MultiplayerSessionsRequested,
+    /// User clicked "Git Settings"; the parent should open the global Git settings UI.
+    GitSettingsRequested,
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -308,14 +310,14 @@ impl ProfileDropdown {
                 v_flex()
                     .p_2()
                     .gap_0p5()
-                    .child(section_label("GIT IDENTITY", muted))
+                    .child(section_label("GIT", muted))
                     .child(menu_row(
                         IconName::GitCommit,
-                        "Configure Git Author",
+                        "Git Settings",
                         false,
                         cx.listener(|this, _: &ClickEvent, _, cx| {
-                            // TODO: open git identity settings panel
                             this.is_open = false;
+                            cx.emit(ProfileDropdownEvent::GitSettingsRequested);
                             cx.notify();
                         }),
                     )),
@@ -404,10 +406,26 @@ impl ProfileDropdown {
                             .text_color(muted)
                             .child("Sign in to unlock:"),
                     )
-                    .child(benefit_row("Git version control & author identity"))
                     .child(benefit_row("Multiplayer real-time sessions"))
                     .child(benefit_row("Cloud project sync"))
                     .child(benefit_row("FAB asset marketplace")),
+            )
+            .child(div().w_full().h(px(1.)).bg(border))
+            // ── Git settings ──────────────────────────────────────
+            .child(
+                v_flex()
+                    .gap_0p5()
+                    .child(section_label("GIT", muted))
+                    .child(menu_row(
+                        IconName::GitCommit,
+                        "Git Settings",
+                        false,
+                        cx.listener(|this, _: &ClickEvent, _, cx| {
+                            this.is_open = false;
+                            cx.emit(ProfileDropdownEvent::GitSettingsRequested);
+                            cx.notify();
+                        }),
+                    )),
             )
             .child(div().w_full().h(px(1.)).bg(border))
             // ── Sign In button ────────────────────────────────────

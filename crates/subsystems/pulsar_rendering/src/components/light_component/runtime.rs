@@ -1,8 +1,8 @@
 use engine_class_derive::register_runtime_behavior;
 use helio::{GpuLight, LightType as HelioLightType, Renderer, SceneActor};
 use pulsar_reflection::{
-    ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner, get_subsystem,
-    scene_id_to_tag,
+    get_subsystem, scene_id_to_tag, ComponentRuntimeBehavior, ComponentRuntimeContext,
+    RuntimeComponentOwner,
 };
 use serde_json::Value;
 
@@ -54,12 +54,7 @@ impl ComponentRuntimeBehavior for LightComponent {
             light_type: helio_type as u32,
             inner_angle: light.attenuation.inner_cone_angle.to_radians(),
             _pad: 0,
-            god_rays_enabled: 0,
-            god_rays_density: 0.0,
-            god_rays_weight: 0.0,
-            god_rays_decay: 0.0,
-            god_rays_exposure: 0.0,
-            _pad2: [0; 3],
+            ..Default::default()
         };
 
         let tag = scene_id_to_tag(owner.scene_object_id);

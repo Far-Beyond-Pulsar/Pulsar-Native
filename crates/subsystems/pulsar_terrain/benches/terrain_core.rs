@@ -3,7 +3,7 @@ use pulsar_terrain::{
     PlanetDefinition, PlanetId, PlanetPosition, PlanetView, SparseBrickTree, TerrainCore,
     TerrainStreamingConfig, TerrainStreamingPlanner,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn main() {
     const TOUCHES: i64 = 10_000;
@@ -77,9 +77,41 @@ fn main() {
     let coarse_time = coarse_started.elapsed();
     let coarse_work = coarse_core.work_counters();
 
+    const DELETE_EDIT_PREFIX: u64 = 10_000;
+    let mut delete_core = TerrainCore::new(
+        PlanetId([4; 16]),
+        24,
+        FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 63_710_000,
+            material: 1,
+        },
+    )
+    .unwrap();
+    for sequence in 1..=DELETE_EDIT_PREFIX {
+        let mut stable_id = [0_u8; 16];
+        stable_id[..8].copy_from_slice(&sequence.to_le_bytes());
+        stable_id[8..].copy_from_slice(b"rootperf");
+        delete_core
+            .append_edit(EditOp {
+                sequence,
+                stable_id,
+                shape: EditShape::Sphere {
+                    center_cell: [0; 3],
+                    radius_cells: u32::MAX,
+                },
+                mode: EditMode::Subtract,
+                material: 0,
+            })
+            .unwrap();
+    }
     let delete_started = Instant::now();
-    core.set_root(NodeState::Air).unwrap();
+    delete_core.set_root(NodeState::Air).unwrap();
     let delete_time = delete_started.elapsed();
+    assert!(
+        delete_time < Duration::from_millis(10),
+        "root delete exceeded the 10 ms acceptance gate: {delete_time:?}"
+    );
 
     let edit_amplification = [1_u32, 10, 100, 1_000].map(|radius_cells| {
         EditShape::Sphere {
@@ -161,7 +193,7 @@ fn main() {
     // A billion logical cells are represented by the root without allocation.
     let logical_dense_bytes = 1_000_000_000_u64 * 4;
     println!(
-        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_plan_p95_ms={:.3} orbit_plan_limits={:?} ground_plan_pages={} ground_plan_nodes={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
+        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_plan_p95_ms={:.3} orbit_plan_limits={:?} ground_plan_pages={} ground_plan_nodes={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
         sparse.node_count(),
         sparse_time.as_secs_f64() * 1_000.0,
         dense.len(),

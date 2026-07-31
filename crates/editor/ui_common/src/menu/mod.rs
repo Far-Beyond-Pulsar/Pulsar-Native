@@ -1256,6 +1256,8 @@ pub fn init_app_menus(title: impl Into<SharedString>, cx: &mut App) {
 pub enum AppTitleBarEvent {
     /// User wants to open the multiplayer sessions / friends panel.
     MultiplayerSessionsRequested,
+    /// User wants to edit the global Git settings.
+    GitSettingsRequested,
 }
 
 pub struct AppTitleBar {
@@ -1269,6 +1271,9 @@ pub struct AppTitleBar {
     child: Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>,
     profile_dropdown: Entity<crate::profile_dropdown::ProfileDropdown>,
     _subscriptions: Vec<Subscription>,
+    auth_device_code: Option<String>,
+    auth_device_verification_url: Option<String>,
+    auth_device_notified: bool,
 }
 
 impl gpui::EventEmitter<AppTitleBarEvent> for AppTitleBar {}
@@ -1304,6 +1309,81 @@ impl AppTitleBar {
                         ProfileDropdownEvent::MultiplayerSessionsRequested => {
                             cx.emit(AppTitleBarEvent::MultiplayerSessionsRequested);
                         }
+                        ProfileDropdownEvent::SignInRequested => {
+                            let Some(client_id) = pulsar_auth::github_client_id_from_env() else {
+                                return;
+                            };
+                            let pd = this.profile_dropdown.clone();
+                            let handle = cx.entity().clone();
+                            let cid = client_id.clone();
+                            cx.spawn(async move |_, cx| {
+                                let c_id = cid.clone();
+                                let flow = cx
+                                    .background_executor()
+                                    .spawn(async move { pulsar_auth::start_device_flow(&c_id) })
+                                    .await;
+                                let flow = match flow {
+                                    Ok(f) => f,
+                                    Err(_) => return,
+                                };
+                                let user_code = flow.user_code.clone();
+                                let uri = flow.verification_uri.clone();
+                                let _ = open::that(&uri);
+                                let _ = cx.update(|cx| {
+                                    handle.update(cx, |this, cx| {
+                                        this.auth_device_code = Some(user_code);
+                                        this.auth_device_verification_url = Some(uri.clone());
+                                        this.auth_device_notified = false;
+                                        cx.notify();
+                                    });
+                                });
+                                let c_id2 = cid.to_string();
+                                let flow_clone = flow.clone();
+                                let token = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        pulsar_auth::wait_for_device_flow_token(
+                                            &c_id2, &flow_clone,
+                                        )
+                                    })
+                                    .await;
+                                let token = match token {
+                                    Ok(t) => t,
+                                    Err(_) => return,
+                                };
+                                let token_fetch = token.clone();
+                                let profile = cx
+                                    .background_executor()
+                                    .spawn(async move {
+                                        pulsar_auth::fetch_profile(&token_fetch)
+                                    })
+                                    .await;
+                                let profile = match profile {
+                                    Ok(p) => p,
+                                    Err(_) => return,
+                                };
+                                let _ = pulsar_auth::store_access_token(&token);
+                                let _ = pulsar_auth::save_cached_profile(&profile);
+                                if let Some(ec) = engine_state::EngineContext::global() {
+                                    ec.set_auth_profile(profile);
+                                }
+                                let _ = cx.update(|cx| {
+                                    pd.update(cx, |d, cx| {
+                                        d.ensure_avatar_loaded(cx);
+                                        cx.notify();
+                                    });
+                                    handle.update(cx, |this, cx| {
+                                        this.auth_device_code = None;
+                                        this.auth_device_verification_url = None;
+                                        cx.notify();
+                                    });
+                                });
+                            })
+                            .detach();
+                        }
+                        ProfileDropdownEvent::GitSettingsRequested => {
+                            cx.emit(AppTitleBarEvent::GitSettingsRequested);
+                        }
                         _ => {}
                     }
                     cx.notify();
@@ -1322,6 +1402,9 @@ impl AppTitleBar {
             child: Rc::new(|_, _| div().into_any_element()),
             profile_dropdown,
             _subscriptions: subscriptions,
+            auth_device_code: None,
+            auth_device_verification_url: None,
+            auth_device_notified: false,
         }
     }
 
@@ -1363,6 +1446,22 @@ impl Render for AppTitleBar {
         }
 
         let notifications_count = window.notifications(cx).len();
+
+        if self.auth_device_code.is_none() && self.auth_device_notified {
+            self.auth_device_notified = false;
+            window.close_modal(cx);
+        }
+
+        if let Some(ref code) = self.auth_device_code {
+            if !self.auth_device_notified {
+                self.auth_device_notified = true;
+                let url = self.auth_device_verification_url
+                    .as_deref()
+                    .unwrap_or("https://github.com/login/device")
+                    .to_string();
+                ui_auth::modal::open_device_code_modal(code, &url, window, cx);
+            }
+        }
 
         let dev_popover = cx.new(DevPopover::new);
 

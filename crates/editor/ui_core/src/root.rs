@@ -46,12 +46,16 @@ impl EditorWindowShell {
         let title_bar = cx.new(|cx| AppTitleBar::new(title, window, cx));
         let friends_popover = cx.new(|cx| ui_friends::FriendsPopover::new(window, cx));
 
-        let subscriptions = vec![cx.subscribe(
+        let subscriptions = vec![cx.subscribe_in(
             &title_bar,
-            |this, _, event: &AppTitleBarEvent, cx| match event {
+            window,
+            |this, _, event: &AppTitleBarEvent, window, cx| match event {
                 AppTitleBarEvent::MultiplayerSessionsRequested => {
                     this.show_multiplayer = !this.show_multiplayer;
                     cx.notify();
+                }
+                AppTitleBarEvent::GitSettingsRequested => {
+                    ui_git_manager::open_git_settings_modal(window, cx);
                 }
             },
         )];

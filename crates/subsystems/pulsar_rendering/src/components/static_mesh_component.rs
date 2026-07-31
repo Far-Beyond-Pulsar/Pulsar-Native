@@ -275,8 +275,6 @@ fn mesh_asset_editor(
 /// type round-trips through the JSON codec as a plain string; the mesh-browser
 /// UI comes from the `editor` registration above.
 #[pulsar_reflection::pulsar_type(
-    primitive,
-    structure = String,
     serialize_json_with = serialize_mesh_asset_path_json,
     deserialize_json_with = deserialize_mesh_asset_path_json,
     editor = mesh_asset_editor
@@ -340,7 +338,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
 
     fn sync_component(
         owner: &RuntimeComponentOwner,
-        component_index: usize,
+        _component_index: usize,
         component_data: &Value,
         context: &mut dyn ComponentRuntimeContext,
     ) {

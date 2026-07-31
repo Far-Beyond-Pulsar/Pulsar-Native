@@ -1,18 +1,39 @@
 //! Git operations using git2
 
-use crate::models::*;
-use git2::{BranchType, Repository, StatusOptions};
-use std::path::Path;
+use crate::{auto_fetch::RemoteOperationGuard, models::*};
+use engine_fs::{FsProvider as _, LocalFsProvider};
+use git2::{BranchType, ErrorCode, Oid, Repository, StatusOptions, build::CheckoutBuilder};
+use std::path::{Path, PathBuf};
 
-fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
-    Repository::discover(path)
-        .or_else(|_| Repository::open(path))
-        .or_else(|_| {
-            std::env::current_dir()
-                .ok()
-                .and_then(|cwd| Repository::discover(cwd).ok())
-                .ok_or_else(|| git2::Error::from_str("No git repository found"))
-        })
+pub(crate) fn open_repo(path: &Path) -> Result<Repository, git2::Error> {
+    if path.as_os_str().is_empty() {
+        return Err(git2::Error::from_str("repository path is empty"));
+    }
+
+    Repository::discover(path).or_else(|_| Repository::open(path))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RemoteOperationKind {
+    Fetch,
+    Push,
+    Pull,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RemoteOperationContext {
+    repository_path: PathBuf,
+    head_reference: Option<String>,
+    head_oid: Option<Oid>,
+    branch_merge: Option<String>,
+    remote_name: String,
+    remote_url: String,
+    fetch_refspecs: Option<Vec<Vec<u8>>>,
+}
+
+pub(crate) struct RemoteOperationAttempt {
+    pub(crate) result: Result<(), git2::Error>,
+    pub(crate) context: Option<RemoteOperationContext>,
 }
 
 /// Load the complete repository state (blocking — run on background executor)
@@ -374,7 +395,8 @@ pub fn unstage_all_files(repo_path: &Path) -> Result<(), git2::Error> {
 
 /// Commit staged changes (blocking — run on background executor)
 pub fn commit_staged_changes(repo_path: &Path, message: &str) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
+    let _guard = RemoteOperationGuard::acquire(repo_path)?;
+    let repo = open_repo(repo_path)?;
     let mut index = repo.index()?;
     let tree_id = index.write_tree()?;
     let tree = repo.find_tree(tree_id)?;
@@ -428,33 +450,8 @@ pub fn is_auth_error(e: &git2::Error) -> bool {
         || e.class() == git2::ErrorClass::Http
 }
 
-/// Derive a stable keyring service name from the remote URL (host only, no path).
-/// Returns the remote URL for the repo — used as both the keyring service key and lookup key.
-fn remote_url_for_keyring(repo_path: &Path) -> Option<String> {
-    let repo = Repository::open(repo_path).ok()?;
-    let remote_name = find_remote_name(&repo).ok()?;
-    repo.find_remote(&remote_name)
-        .ok()?
-        .url()
-        .ok()
-        .map(|u| u.to_string())
-}
-
-/// Save credentials to the OS keychain, keyed by the remote URL.
-/// The secret value encodes both username and password as "username\npassword".
-pub fn store_git_credentials(repo_path: &Path, username: &str, password: &str) {
-    if let Some(url) = remote_url_for_keyring(repo_path) {
-        if let Ok(entry) = keyring::Entry::new("pulsar-git", &url) {
-            let _ = entry.set_password(&format!("{}\n{}", username, password));
-        }
-    }
-}
-
-/// Load credentials from the OS keychain, keyed by the remote URL.
-/// Returns `(username, password)` or `None`.
-pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
-    let url = remote_url_for_keyring(repo_path)?;
-    let entry = keyring::Entry::new("pulsar-git", &url).ok()?;
+fn load_git_credentials(remote_url: &str) -> Option<(String, String)> {
+    let entry = keyring::Entry::new("pulsar-git", remote_url).ok()?;
     let secret = entry.get_password().ok()?;
     let mut parts = secret.splitn(2, '\n');
     let username = parts.next()?.to_string();
@@ -462,104 +459,482 @@ pub fn load_git_credentials(repo_path: &Path) -> Option<(String, String)> {
     Some((username, password))
 }
 
-/// Build remote callbacks that try SSH-agent → credential_helper → explicit creds.
-fn make_callbacks(creds: Option<(String, String)>) -> git2::RemoteCallbacks<'static> {
+fn store_git_credentials(remote_url: &str, username: &str, password: &str) {
+    let Ok(entry) = keyring::Entry::new("pulsar-git", remote_url) else {
+        return;
+    };
+
+    if let Err(error) = entry.set_password(&format!("{username}\n{password}")) {
+        tracing::warn!(%error, "Failed to store Git credentials");
+    }
+}
+
+fn remote_operation_url(
+    remote: &git2::Remote<'_>,
+    use_push_url: bool,
+) -> Result<String, git2::Error> {
+    let url = if use_push_url {
+        match remote.pushurl()? {
+            Some(url) => url,
+            None => remote.url()?,
+        }
+    } else {
+        remote.url()?
+    };
+
+    Ok(url.to_owned())
+}
+
+fn remote_operation_context(
+    repo_path: &Path,
+    repo: &Repository,
+    kind: RemoteOperationKind,
+) -> Result<RemoteOperationContext, git2::Error> {
+    let (head_reference, head_oid, branch_name) = match repo.head() {
+        Ok(head) => {
+            let branch_name = if head.is_branch() {
+                Some(head.shorthand()?.to_owned())
+            } else {
+                None
+            };
+            (Some(head.name()?.to_owned()), head.target(), branch_name)
+        }
+        Err(error) if matches!(error.code(), ErrorCode::NotFound | ErrorCode::UnbornBranch) => {
+            (None, None, None)
+        }
+        Err(error) => return Err(error),
+    };
+    let branch_merge = branch_name.as_deref().and_then(|branch_name| {
+        repo.config()
+            .and_then(|config| config.get_string(&format!("branch.{branch_name}.merge")))
+            .ok()
+    });
+    let remote_name = find_remote_name(repo)?;
+    let remote = repo.find_remote(&remote_name)?;
+    let remote_url = remote_operation_url(&remote, kind == RemoteOperationKind::Push)?;
+    let fetch_refspecs = if matches!(kind, RemoteOperationKind::Fetch | RemoteOperationKind::Pull) {
+        Some(
+            remote
+                .fetch_refspecs()?
+                .iter_bytes()
+                .map(ToOwned::to_owned)
+                .collect(),
+        )
+    } else {
+        None
+    };
+    let common_dir = repo.commondir();
+    let repository_path = LocalFsProvider::new()
+        .canonicalize(common_dir)
+        .map_err(|error| {
+            git2::Error::from_str(&format!(
+                "failed to canonicalize repository path {} for {}: {error}",
+                common_dir.display(),
+                repo_path.display()
+            ))
+        })?;
+
+    Ok(RemoteOperationContext {
+        repository_path,
+        head_reference,
+        head_oid,
+        branch_merge,
+        remote_name,
+        remote_url,
+        fetch_refspecs,
+    })
+}
+
+fn ensure_remote_operation_context(
+    expected: &RemoteOperationContext,
+    current: &RemoteOperationContext,
+) -> Result<(), git2::Error> {
+    if expected == current {
+        Ok(())
+    } else {
+        Err(git2::Error::from_str(
+            "Git operation target changed; start the operation again",
+        ))
+    }
+}
+
+fn context_remote<'repo>(
+    repo: &'repo Repository,
+    context: &RemoteOperationContext,
+    use_push_url: bool,
+) -> Result<git2::Remote<'repo>, git2::Error> {
+    let remote = repo.find_remote(&context.remote_name)?;
+    let current_url = remote_operation_url(&remote, use_push_url)?;
+    if current_url != context.remote_url {
+        return Err(git2::Error::from_str(
+            "Git operation target changed; start the operation again",
+        ));
+    }
+
+    Ok(remote)
+}
+
+fn same_credential_scope(configured_url: &str, requested_url: &str) -> bool {
+    if configured_url == requested_url {
+        return true;
+    }
+
+    let Ok(configured) = reqwest::Url::parse(configured_url) else {
+        return false;
+    };
+    let Ok(requested) = reqwest::Url::parse(requested_url) else {
+        return false;
+    };
+
+    configured.scheme().eq_ignore_ascii_case(requested.scheme())
+        && configured
+            .host_str()
+            .zip(requested.host_str())
+            .is_some_and(|(left, right)| left.eq_ignore_ascii_case(right))
+        && configured.port_or_known_default() == requested.port_or_known_default()
+}
+
+fn load_stored_credentials(remote_url: &str) -> Option<(String, String)> {
+    let parsed = reqwest::Url::parse(remote_url).ok()?;
+    parsed.host_str()?;
+    load_git_credentials(remote_url)
+}
+
+/// Build remote callbacks using credentials scoped to the selected remote URL.
+fn make_callbacks(
+    creds: Option<(String, String)>,
+    credential_url: String,
+) -> git2::RemoteCallbacks<'static> {
     let mut callbacks = git2::RemoteCallbacks::new();
     callbacks.credentials(move |url, username, allowed_types| {
-        // Explicit credentials take priority (retry after auth failure)
         if let Some((ref user, ref pass)) = creds {
-            return git2::Cred::userpass_plaintext(user, pass);
+            if same_credential_scope(&credential_url, url)
+                && allowed_types.contains(git2::CredentialType::USER_PASS_PLAINTEXT)
+            {
+                return git2::Cred::userpass_plaintext(user, pass);
+            }
         }
-        // SSH key from agent
+
         if allowed_types.contains(git2::CredentialType::SSH_KEY) {
-            if let Ok(c) = git2::Cred::ssh_key_from_agent(username.unwrap_or("git")) {
-                return Ok(c);
+            if let Ok(credential) = git2::Cred::ssh_key_from_agent(username.unwrap_or("git")) {
+                return Ok(credential);
             }
         }
-        // Fall back to libgit2's default credential handling when supported.
+
         if allowed_types.contains(git2::CredentialType::DEFAULT) {
-            if let Ok(c) = git2::Cred::default() {
-                return Ok(c);
+            if let Ok(credential) = git2::Cred::default() {
+                return Ok(credential);
             }
         }
+
         Err(git2::Error::from_str("No credentials available"))
     });
     callbacks
+}
+
+fn fetch_remote(
+    repo: &Repository,
+    context: &RemoteOperationContext,
+    explicit_creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
+    let mut remote = context_remote(repo, context, false)?;
+    let credentials = explicit_creds
+        .clone()
+        .or_else(|| load_stored_credentials(&context.remote_url));
+    let mut opts = git2::FetchOptions::new();
+    opts.remote_callbacks(make_callbacks(credentials, context.remote_url.clone()));
+    remote.fetch(&[] as &[&str], Some(&mut opts), None)?;
+
+    if let Some((username, password)) = explicit_creds {
+        store_git_credentials(&context.remote_url, &username, &password);
+    }
+
+    Ok(())
+}
+
+fn push_remote(
+    repo: &Repository,
+    context: &RemoteOperationContext,
+    explicit_creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
+    let refname = context
+        .head_reference
+        .as_deref()
+        .ok_or_else(|| git2::Error::from_str("cannot push an unborn branch"))?;
+    let branch_name = refname
+        .strip_prefix("refs/heads/")
+        .ok_or_else(|| git2::Error::from_str("cannot push a detached HEAD"))?;
+    let mut remote = context_remote(repo, context, true)?;
+    let credentials = explicit_creds
+        .clone()
+        .or_else(|| load_stored_credentials(&context.remote_url));
+    let mut opts = git2::PushOptions::new();
+    opts.remote_callbacks(make_callbacks(credentials, context.remote_url.clone()));
+    remote.push(
+        &[format!("{refname}:refs/heads/{branch_name}")],
+        Some(&mut opts),
+    )?;
+
+    if let Some((username, password)) = explicit_creds {
+        store_git_credentials(&context.remote_url, &username, &password);
+    }
+
+    Ok(())
+}
+
+fn rollback_pull_worktree(
+    repo: &Repository,
+    local_oid: Oid,
+    checked_out_oid: Oid,
+    refname: &str,
+    update_error: git2::Error,
+) -> git2::Error {
+    let rollback_result = (|| {
+        let original = repo.find_commit(local_oid)?;
+        let checked_out = repo.find_commit(checked_out_oid)?;
+        let original_tree = original.tree()?;
+        let checked_out_tree = checked_out.tree()?;
+        let diff = repo.diff_tree_to_tree(Some(&original_tree), Some(&checked_out_tree), None)?;
+        if diff.deltas().len() == 0 {
+            return Ok(());
+        }
+        let mut rollback = CheckoutBuilder::new();
+        rollback.force().disable_pathspec_match(true);
+        for delta in diff.deltas() {
+            if let Some(path) = delta.old_file().path() {
+                rollback.path(path);
+            }
+            if let Some(path) = delta.new_file().path() {
+                rollback.path(path);
+            }
+        }
+        repo.checkout_tree(original.as_object(), Some(&mut rollback))
+    })();
+
+    match rollback_result {
+        Ok(()) => update_error,
+        Err(rollback_error) => git2::Error::from_str(&format!(
+            "fast-forward reference update failed ({update_error}); restoring the working tree for {refname} also failed: {rollback_error}"
+        )),
+    }
+}
+
+fn finish_pull_transaction(
+    repo: &Repository,
+    local_oid: Oid,
+    upstream_oid: Oid,
+    refname: &str,
+    commit_result: Result<(), git2::Error>,
+) -> Result<(), git2::Error> {
+    let Err(commit_error) = commit_result else {
+        return Ok(());
+    };
+
+    match repo.refname_to_id(refname) {
+        Ok(current_oid) if current_oid == local_oid => Err(rollback_pull_worktree(
+            repo,
+            local_oid,
+            upstream_oid,
+            refname,
+            commit_error,
+        )),
+        Ok(current_oid) if current_oid == upstream_oid => Err(git2::Error::from_str(&format!(
+            "fast-forward transaction reported an error after updating {refname} to {upstream_oid}; the reference and working tree remain at the updated commit: {commit_error}"
+        ))),
+        Ok(current_oid) => Err(git2::Error::from_str(&format!(
+            "fast-forward transaction failed ({commit_error}), but {refname} now points to unexpected commit {current_oid}; the working tree was not rolled back"
+        ))),
+        Err(inspect_error) => Err(git2::Error::from_str(&format!(
+            "fast-forward transaction failed ({commit_error}), and the state of {refname} could not be determined: {inspect_error}"
+        ))),
+    }
+}
+
+fn pull_remote<F>(
+    repo_path: &Path,
+    repo: &Repository,
+    context: &RemoteOperationContext,
+    explicit_creds: Option<(String, String)>,
+    after_fetch: F,
+) -> Result<(), git2::Error>
+where
+    F: FnOnce(&Repository) -> Result<(), git2::Error>,
+{
+    let refname = context
+        .head_reference
+        .as_deref()
+        .and_then(|name| name.strip_prefix("refs/heads/").map(|_| name))
+        .ok_or_else(|| git2::Error::from_str("cannot pull into a detached or unborn HEAD"))?;
+    let branch_name = refname
+        .strip_prefix("refs/heads/")
+        .expect("branch reference prefix was checked");
+    let local_oid = context
+        .head_oid
+        .ok_or_else(|| git2::Error::from_str("current branch has no target"))?;
+
+    fetch_remote(repo, context, explicit_creds)?;
+    after_fetch(repo)?;
+
+    let mut transaction = repo.transaction()?;
+    transaction.lock_ref("HEAD")?;
+    transaction.lock_ref(refname)?;
+
+    let upstream = repo
+        .find_branch(branch_name, BranchType::Local)?
+        .upstream()?;
+    let upstream_oid = upstream
+        .get()
+        .target()
+        .ok_or_else(|| git2::Error::from_str("upstream branch has no target"))?;
+    let current_context = remote_operation_context(repo_path, repo, RemoteOperationKind::Pull)?;
+    ensure_remote_operation_context(context, &current_context)?;
+    let (ahead, behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
+
+    if behind == 0 {
+        return Ok(());
+    }
+    if ahead > 0 {
+        return Err(git2::Error::from_str(
+            "Merge required; pull only supports fast-forward updates",
+        ));
+    }
+
+    let target = repo.find_commit(upstream_oid)?;
+    let mut preflight = CheckoutBuilder::new();
+    preflight.dry_run();
+    repo.checkout_tree(target.as_object(), Some(&mut preflight))?;
+
+    let mut checkout = CheckoutBuilder::new();
+    checkout.safe();
+    repo.checkout_tree(target.as_object(), Some(&mut checkout))?;
+
+    if let Err(update_error) =
+        transaction.set_target(refname, upstream_oid, None, "pull: fast-forward")
+    {
+        drop(transaction);
+        return Err(rollback_pull_worktree(
+            repo,
+            local_oid,
+            upstream_oid,
+            refname,
+            update_error,
+        ));
+    }
+    let commit_result = transaction.commit();
+    finish_pull_transaction(repo, local_oid, upstream_oid, refname, commit_result)
+}
+
+fn remote_operation_attempt_error(error: git2::Error) -> RemoteOperationAttempt {
+    RemoteOperationAttempt {
+        result: Err(error),
+        context: None,
+    }
+}
+
+fn execute_remote_operation_unlocked(
+    repo_path: &Path,
+    kind: RemoteOperationKind,
+    explicit_creds: Option<(String, String)>,
+    expected_context: Option<RemoteOperationContext>,
+) -> RemoteOperationAttempt {
+    let repo = match open_repo(repo_path) {
+        Ok(repo) => repo,
+        Err(error) => return remote_operation_attempt_error(error),
+    };
+    let context = match remote_operation_context(repo_path, &repo, kind) {
+        Ok(context) => context,
+        Err(error) => return remote_operation_attempt_error(error),
+    };
+    if let Some(expected_context) = expected_context.as_ref() {
+        if let Err(error) = ensure_remote_operation_context(expected_context, &context) {
+            return RemoteOperationAttempt {
+                result: Err(error),
+                context: Some(context),
+            };
+        }
+    }
+
+    let result = match kind {
+        RemoteOperationKind::Fetch => fetch_remote(&repo, &context, explicit_creds),
+        RemoteOperationKind::Push => push_remote(&repo, &context, explicit_creds),
+        RemoteOperationKind::Pull => {
+            pull_remote(repo_path, &repo, &context, explicit_creds, |_| Ok(()))
+        }
+    };
+
+    RemoteOperationAttempt {
+        result,
+        context: Some(context),
+    }
+}
+
+pub(crate) fn execute_remote_operation(
+    repo_path: &Path,
+    kind: RemoteOperationKind,
+    explicit_creds: Option<(String, String)>,
+    expected_context: Option<RemoteOperationContext>,
+) -> RemoteOperationAttempt {
+    let _guard = match RemoteOperationGuard::acquire(repo_path) {
+        Ok(guard) => guard,
+        Err(error) => return remote_operation_attempt_error(error),
+    };
+    execute_remote_operation_unlocked(repo_path, kind, explicit_creds, expected_context)
 }
 
 /// Fetch from remote without merging (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
 pub fn fetch_from_remote(
     repo_path: &Path,
-    creds: Option<(String, String)>,
+    explicit_creds: Option<(String, String)>,
 ) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
-    let remote_name = find_remote_name(&repo)?;
-    let mut remote = repo.find_remote(&remote_name)?;
-    let refspec = format!("+refs/heads/*:refs/remotes/{}/*", remote_name);
-    let mut opts = git2::FetchOptions::new();
-    opts.remote_callbacks(make_callbacks(creds));
-    remote.fetch(&[refspec.as_str()], Some(&mut opts), None)?;
-    Ok(())
+    execute_remote_operation(repo_path, RemoteOperationKind::Fetch, explicit_creds, None).result
+}
+
+pub(crate) fn fetch_from_remote_unlocked(
+    repo_path: &Path,
+    explicit_creds: Option<(String, String)>,
+) -> Result<(), git2::Error> {
+    execute_remote_operation_unlocked(repo_path, RemoteOperationKind::Fetch, explicit_creds, None)
+        .result
 }
 
 /// Push to remote (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
 pub fn push_to_remote(
     repo_path: &Path,
-    creds: Option<(String, String)>,
+    explicit_creds: Option<(String, String)>,
 ) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
-    let remote_name = find_remote_name(&repo)?;
-    let mut remote = repo.find_remote(&remote_name)?;
-    let head = repo.head()?;
-    let branch_name = head.shorthand().unwrap_or("HEAD");
-    let mut opts = git2::PushOptions::new();
-    opts.remote_callbacks(make_callbacks(creds));
-    remote.push(
-        &[format!(
-            "refs/heads/{}:refs/heads/{}",
-            branch_name, branch_name
-        )],
-        Some(&mut opts),
-    )?;
-    Ok(())
+    execute_remote_operation(repo_path, RemoteOperationKind::Push, explicit_creds, None).result
 }
 
 /// Pull from remote (blocking — run on background executor).
 /// Pass `creds` to retry after an auth failure.
 pub fn pull_from_remote(
     repo_path: &Path,
-    creds: Option<(String, String)>,
+    explicit_creds: Option<(String, String)>,
 ) -> Result<(), git2::Error> {
-    let repo = Repository::open(repo_path)?;
-    let remote_name = find_remote_name(&repo)?;
-    let mut remote = repo.find_remote(&remote_name)?;
-    let mut opts = git2::FetchOptions::new();
-    opts.remote_callbacks(make_callbacks(creds));
-    remote.fetch(&["HEAD"], Some(&mut opts), None)?;
+    execute_remote_operation(repo_path, RemoteOperationKind::Pull, explicit_creds, None).result
+}
 
-    let fetch_head = repo.find_reference("FETCH_HEAD")?;
-    let fetch_commit = repo.reference_to_annotated_commit(&fetch_head)?;
-    let analysis = repo.merge_analysis(&[&fetch_commit])?;
-
-    if analysis.0.is_up_to_date() {
-        Ok(())
-    } else if analysis.0.is_fast_forward() {
-        let refname = format!("refs/heads/{}", repo.head()?.shorthand().unwrap_or("HEAD"));
-        let mut reference = repo.find_reference(&refname)?;
-        reference.set_target(fetch_commit.id(), "Fast-forward")?;
-        repo.set_head(&refname)?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))?;
-        Ok(())
-    } else {
-        Err(git2::Error::from_str("Merge required"))
-    }
+#[cfg(test)]
+pub(crate) fn pull_from_remote_with_after_fetch<F>(
+    repo_path: &Path,
+    explicit_creds: Option<(String, String)>,
+    after_fetch: F,
+) -> Result<(), git2::Error>
+where
+    F: FnOnce(&Repository) -> Result<(), git2::Error>,
+{
+    let _guard = RemoteOperationGuard::acquire(repo_path)?;
+    let repo = open_repo(repo_path)?;
+    let context = remote_operation_context(repo_path, &repo, RemoteOperationKind::Pull)?;
+    pull_remote(repo_path, &repo, &context, explicit_creds, after_fetch)
 }
 
 /// Switch to a different branch, carrying uncommitted changes via auto-stash (blocking — run on background executor)
 pub fn switch_branch(repo_path: &Path, branch_name: &str) -> Result<(), git2::Error> {
-    let mut repo = Repository::open(repo_path)?;
+    let _guard = RemoteOperationGuard::acquire(repo_path)?;
+    let mut repo = open_repo(repo_path)?;
 
     // Auto-stash any dirty working tree so we can carry changes across branches
     let has_changes = {
@@ -935,7 +1310,11 @@ fn diff_lines(old_text: &str, new_text: &str) -> DiffResult {
         }
     }
 
-    DiffResult { segments, old_lines, new_lines }
+    DiffResult {
+        segments,
+        old_lines,
+        new_lines,
+    }
 }
 
 /// Load old blob content for a file from HEAD (empty string for new files).
@@ -993,4 +1372,260 @@ pub fn load_file_diff_at_commit(
         .ok_or_else(|| "File not found or binary in commit".to_string())?;
     let old_text = load_blob_from_parent(&repo, &commit, file_path);
     Ok(diff_lines(&old_text, &new_text))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use git2::{RepositoryInitOptions, Signature};
+
+    fn init_repository(path: &Path) -> Repository {
+        let mut options = RepositoryInitOptions::new();
+        options.initial_head("main");
+        let repo = Repository::init_opts(path, &options).expect("initialize repository");
+        std::fs::write(path.join("tracked.txt"), "initial\n").expect("write tracked file");
+        let mut index = repo.index().expect("open index");
+        index
+            .add_path(Path::new("tracked.txt"))
+            .expect("add tracked file");
+        index.write().expect("write index");
+        let tree_oid = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_oid).expect("find tree");
+        let signature =
+            Signature::now("Pulsar Test", "pulsar@example.com").expect("create signature");
+        repo.commit(Some("HEAD"), &signature, &signature, "initial", &tree, &[])
+            .expect("create initial commit");
+        drop(tree);
+        repo
+    }
+
+    fn commit_file(repo: &Repository, contents: &str, message: &str) -> Oid {
+        std::fs::write(
+            repo.workdir()
+                .expect("repository should have a worktree")
+                .join("tracked.txt"),
+            contents,
+        )
+        .expect("write tracked file");
+        let mut index = repo.index().expect("open index");
+        index
+            .add_path(Path::new("tracked.txt"))
+            .expect("add tracked file");
+        index.write().expect("write index");
+        let tree_oid = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_oid).expect("find tree");
+        let parent = repo
+            .head()
+            .expect("load HEAD")
+            .peel_to_commit()
+            .expect("load HEAD commit");
+        let signature =
+            Signature::now("Pulsar Test", "pulsar@example.com").expect("create signature");
+        repo.commit(
+            Some("HEAD"),
+            &signature,
+            &signature,
+            message,
+            &tree,
+            &[&parent],
+        )
+        .expect("create commit")
+    }
+
+    fn prepare_pending_fast_forward(repo: &Repository) -> (Oid, Oid) {
+        let local_oid = repo
+            .head()
+            .expect("load HEAD")
+            .target()
+            .expect("HEAD target");
+        let upstream_oid = commit_file(repo, "upstream\n", "upstream");
+        let local = repo
+            .find_object(local_oid, None)
+            .expect("find original commit");
+        repo.reset(&local, git2::ResetType::Hard, None)
+            .expect("restore original branch state");
+        drop(local);
+
+        let upstream = repo
+            .find_commit(upstream_oid)
+            .expect("find upstream commit");
+        let mut checkout = CheckoutBuilder::new();
+        checkout.safe();
+        repo.checkout_tree(upstream.as_object(), Some(&mut checkout))
+            .expect("prepare fast-forward worktree");
+
+        (local_oid, upstream_oid)
+    }
+
+    #[test]
+    fn credential_retry_rejects_a_changed_branch_and_remote() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let repo = init_repository(temp.path());
+        repo.remote("origin", "invalid://old.example/repository")
+            .expect("create original remote");
+        repo.remote("other", "invalid://new.example/repository")
+            .expect("create other remote");
+
+        let head = repo
+            .head()
+            .expect("load HEAD")
+            .peel_to_commit()
+            .expect("load HEAD commit");
+        repo.branch("other", &head, false)
+            .expect("create other branch");
+        drop(head);
+        let mut config = repo.config().expect("open config");
+        config
+            .set_str("branch.main.remote", "origin")
+            .expect("configure main remote");
+        config
+            .set_str("branch.main.merge", "refs/heads/main")
+            .expect("configure main merge target");
+        config
+            .set_str("branch.other.remote", "other")
+            .expect("configure other remote");
+        config
+            .set_str("branch.other.merge", "refs/heads/other")
+            .expect("configure other merge target");
+        drop(config);
+
+        let expected = remote_operation_context(temp.path(), &repo, RemoteOperationKind::Fetch)
+            .expect("capture failed operation target");
+        repo.set_head("refs/heads/other")
+            .expect("switch to other branch");
+
+        let attempt = execute_remote_operation(
+            temp.path(),
+            RemoteOperationKind::Fetch,
+            Some(("alice".to_string(), "secret".to_string())),
+            Some(expected),
+        );
+        let error = attempt
+            .result
+            .expect_err("retry must reject the changed operation target");
+
+        assert!(error.message().contains("operation target changed"));
+        assert_eq!(
+            attempt.context.expect("capture current target").remote_url,
+            "invalid://new.example/repository"
+        );
+    }
+
+    #[test]
+    fn credential_retry_rejects_changed_fetch_refspecs_for_fetch_and_pull() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let repo = init_repository(temp.path());
+        repo.remote("origin", "invalid://example.test/repository")
+            .expect("create remote");
+        let mut config = repo.config().expect("open config");
+        config
+            .set_str("branch.main.remote", "origin")
+            .expect("configure branch remote");
+        config
+            .set_str("branch.main.merge", "refs/heads/main")
+            .expect("configure branch merge target");
+        drop(config);
+
+        let original_refspec = "+refs/heads/main:refs/remotes/origin/main";
+        let changed_refspec = "+refs/heads/release:refs/remotes/origin/release";
+        for kind in [RemoteOperationKind::Fetch, RemoteOperationKind::Pull] {
+            repo.config()
+                .expect("open config")
+                .set_str("remote.origin.fetch", original_refspec)
+                .expect("configure original fetch refspec");
+            let expected = remote_operation_context(temp.path(), &repo, kind)
+                .expect("capture failed operation target");
+            repo.config()
+                .expect("open config")
+                .set_str("remote.origin.fetch", changed_refspec)
+                .expect("change fetch refspec");
+
+            let attempt = execute_remote_operation(
+                temp.path(),
+                kind,
+                Some(("alice".to_string(), "secret".to_string())),
+                Some(expected),
+            );
+            let error = attempt
+                .result
+                .expect_err("retry must reject changed fetch refspecs before network use");
+
+            assert!(error.message().contains("operation target changed"));
+            assert_eq!(
+                attempt
+                    .context
+                    .expect("capture current target")
+                    .fetch_refspecs,
+                Some(vec![changed_refspec.as_bytes().to_vec()])
+            );
+        }
+    }
+
+    #[test]
+    fn pull_commit_error_restores_old_worktree_when_reference_was_not_updated() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let repo = init_repository(temp.path());
+        let (local_oid, upstream_oid) = prepare_pending_fast_forward(&repo);
+
+        let error = finish_pull_transaction(
+            &repo,
+            local_oid,
+            upstream_oid,
+            "refs/heads/main",
+            Err(git2::Error::from_str(
+                "simulated transaction commit failure",
+            )),
+        )
+        .expect_err("simulated transaction failure must be reported");
+
+        assert!(
+            error
+                .message()
+                .contains("simulated transaction commit failure")
+        );
+        assert_eq!(repo.head().expect("load HEAD").target(), Some(local_oid));
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("tracked.txt"))
+                .expect("read tracked file")
+                .trim_end(),
+            "initial"
+        );
+    }
+
+    #[test]
+    fn pull_commit_error_keeps_new_worktree_when_reference_was_updated() {
+        let temp = tempfile::tempdir().expect("create temp directory");
+        let repo = init_repository(temp.path());
+        let (local_oid, upstream_oid) = prepare_pending_fast_forward(&repo);
+        drop(
+            repo.reference_matching(
+                "refs/heads/main",
+                upstream_oid,
+                true,
+                local_oid,
+                "test: simulate partially committed transaction",
+            )
+            .expect("advance branch reference"),
+        );
+
+        let error = finish_pull_transaction(
+            &repo,
+            local_oid,
+            upstream_oid,
+            "refs/heads/main",
+            Err(git2::Error::from_str(
+                "simulated transaction commit failure",
+            )),
+        )
+        .expect_err("simulated transaction failure must be reported");
+
+        assert!(error.message().contains("after updating"));
+        assert_eq!(repo.head().expect("load HEAD").target(), Some(upstream_oid));
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("tracked.txt"))
+                .expect("read tracked file")
+                .trim_end(),
+            "upstream"
+        );
+    }
 }

@@ -10,7 +10,9 @@ ui_common.workspace = true
 window_manager.workspace = true
 engine_backend.workspace = true
 engine_state.workspace = true
+engine_fs.workspace = true
 ui_file_manager.workspace = true
+ui_git_manager.workspace = true
 directories.workspace = true
 tracing.workspace = true
 chrono = { workspace = true }
@@ -18,6 +20,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 image.workspace = true
 smallvec.workspace = true
+
+[dev-dependencies]
+engine_fs = { workspace = true, features = ["remote"] }
 
 [lints]
 workspace = true

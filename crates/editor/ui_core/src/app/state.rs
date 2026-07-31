@@ -84,6 +84,9 @@ pub struct AppState {
     // Multiuser status refresh listener
     pub multiuser_refresh_task: Option<Task<()>>,
 
+    // Git auto-fetch listener for the primary project window
+    pub git_auto_fetch_task: Option<Task<()>>,
+
     // Navigation history
     pub navigation_history: VecDeque<PathBuf>,
     pub navigation_history_index: usize,
