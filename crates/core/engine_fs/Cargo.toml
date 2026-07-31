@@ -51,6 +51,7 @@ pulsar-multiplayer-core = { path = "../pulsar-multiplayer-core", optional = true
 tempfile = { workspace = true }
 async-trait = "=0.1.91"
 tokio = { workspace = true, features = ["rt", "macros"] }
+toml = { workspace = true }
 
 [lints]
 workspace = true
