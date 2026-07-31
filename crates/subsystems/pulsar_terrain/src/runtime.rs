@@ -1,12 +1,12 @@
 use crate::{
     CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
     PageBuildPreparation, PageBuildRequest, PageBuildResult, PageKey, PlanetDefinition, PlanetId,
-    TerrainCore, TerrainCoreError, CELL_COUNT,
+    TerrainCore, TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget, CELL_COUNT,
 };
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use thiserror::Error;
@@ -259,6 +259,8 @@ pub enum TerrainRuntimeError {
     ResidentByteBudget { capacity: usize },
     #[error("terrain generation counter overflowed")]
     GenerationOverflow,
+    #[error("terrain override region {0:?} cannot be represented in canonical cell bounds")]
+    InvalidOverrideRegion(PageKey),
     #[error(transparent)]
     Core(#[from] TerrainCoreError),
 }
@@ -767,31 +769,217 @@ impl TerrainRuntimeHandle {
         planet_id: PlanetId,
         operation: EditOp,
     ) -> Result<(), TerrainRuntimeError> {
+        let bounds = operation.shape.bounds();
+        self.apply_mutation(planet_id, Some(bounds), false, move |core| {
+            core.append_edit(operation)
+        })
+    }
+
+    pub fn append_override(
+        &self,
+        planet_id: PlanetId,
+        operation: TerrainOverrideOp,
+    ) -> Result<(), TerrainRuntimeError> {
+        let target = operation.target;
+        self.apply_override(planet_id, target, move |core| {
+            core.append_override(operation)
+        })
+    }
+
+    pub fn set_root(
+        &self,
+        planet_id: PlanetId,
+        state: crate::NodeState,
+    ) -> Result<(), TerrainRuntimeError> {
+        self.apply_override(planet_id, TerrainOverrideTarget::Root, move |core| {
+            core.set_root(state)
+        })
+    }
+
+    pub fn set_region(
+        &self,
+        planet_id: PlanetId,
+        key: PageKey,
+        state: crate::NodeState,
+    ) -> Result<(), TerrainRuntimeError> {
+        self.apply_override(planet_id, TerrainOverrideTarget::Region(key), move |core| {
+            core.set_region(key, state)
+        })
+    }
+
+    fn apply_override<F>(
+        &self,
+        planet_id: PlanetId,
+        target: TerrainOverrideTarget,
+        publish: F,
+    ) -> Result<(), TerrainRuntimeError>
+    where
+        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+    {
+        let bounds = match target {
+            TerrainOverrideTarget::Root => None,
+            TerrainOverrideTarget::Region(key) => {
+                let min = key
+                    .lod0_cell_min()
+                    .ok_or(TerrainRuntimeError::InvalidOverrideRegion(key))?;
+                let span = key
+                    .lod0_cell_span()
+                    .ok_or(TerrainRuntimeError::InvalidOverrideRegion(key))?;
+                Some((min, min.map(|axis| axis.saturating_add(span))))
+            }
+        };
+        self.apply_mutation(
+            planet_id,
+            bounds,
+            matches!(target, TerrainOverrideTarget::Root),
+            publish,
+        )
+    }
+
+    fn apply_mutation<F>(
+        &self,
+        planet_id: PlanetId,
+        bounds: Option<([i64; 3], [i64; 3])>,
+        force_whole_planet_retirement: bool,
+        publish: F,
+    ) -> Result<(), TerrainRuntimeError>
+    where
+        F: FnOnce(&mut TerrainCore<FixedSphereGenerator>) -> Result<(), TerrainCoreError>,
+    {
         let mut state = lock(&self.shared.state);
         if !state.running {
             return Err(TerrainRuntimeError::NotRunning);
         }
         let planet = state
             .planets
-            .get_mut(&planet_id)
+            .get(&planet_id)
             .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
-        planet.core.append_edit(operation)?;
-        let bounds = operation.shape.bounds();
-        let mut affected = Vec::new();
-        for (key, generation) in &mut planet.page_generations {
-            if page_intersects(*key, bounds) {
-                *generation = generation
+        let retired_planet_generation = planet.generation;
+        let affected = planet
+            .page_generations
+            .iter()
+            .filter_map(|(key, generation)| {
+                bounds
+                    .is_none_or(|bounds| page_intersects_with_halo(*key, bounds))
+                    .then_some((*key, *generation, planet.core.page(*key).is_some()))
+            })
+            .collect::<Vec<_>>();
+        let resident_event_count = affected.iter().filter(|(_, _, resident)| *resident).count();
+        let available_events = self
+            .shared
+            .config
+            .event_capacity
+            .saturating_sub(state.events.len());
+        let retire_whole_planet =
+            force_whole_planet_retirement || resident_event_count > available_events;
+        let required_events = if retire_whole_planet {
+            1
+        } else {
+            resident_event_count
+        };
+        if required_events > available_events {
+            record_backpressure(
+                &mut state,
+                &self.shared.config,
+                Some(planet_id),
+                None,
+                TerrainBackpressure::EventQueue,
+            );
+            return Err(TerrainRuntimeError::EventBackpressure {
+                capacity: self.shared.config.event_capacity,
+            });
+        }
+
+        let next_planet_generation = if retire_whole_planet {
+            let generation = state.next_planet_generation;
+            generation
+                .checked_add(1)
+                .ok_or(TerrainRuntimeError::GenerationOverflow)?;
+            Some(generation)
+        } else {
+            for (_, generation, _) in &affected {
+                generation
                     .checked_add(1)
                     .ok_or(TerrainRuntimeError::GenerationOverflow)?;
-                affected.push(*key);
             }
+            None
+        };
+
+        publish(
+            &mut state
+                .planets
+                .get_mut(&planet_id)
+                .expect("planet remains registered while state is locked")
+                .core,
+        )?;
+
+        let affected_keys = affected
+            .iter()
+            .map(|(key, _, _)| *key)
+            .collect::<BTreeSet<_>>();
+        let cancelled = self.shared.queue.cancel_where(|job| {
+            job.identity.planet_id == planet_id
+                && (retire_whole_planet || affected_keys.contains(&job.identity.page_key))
+        });
+        for job in cancelled {
+            state.cancel_active(job.identity);
         }
-        if !affected.is_empty() {
-            let cancelled = self.shared.queue.cancel_where(|job| {
-                job.identity.planet_id == planet_id && affected.contains(&job.identity.page_key)
-            });
-            for job in cancelled {
-                state.cancel_active(job.identity);
+
+        if let Some(next_generation) = next_planet_generation {
+            state.next_planet_generation = next_generation
+                .checked_add(1)
+                .ok_or(TerrainRuntimeError::GenerationOverflow)?;
+            let planet = state
+                .planets
+                .get_mut(&planet_id)
+                .expect("planet remains registered while state is locked");
+            planet.generation = next_generation;
+            planet.page_generations.clear();
+            planet.core.evict_all_resident_pages();
+            let pushed = state.push_event(
+                TerrainRuntimeEvent::EvictPlanet {
+                    planet_id,
+                    retired_generation: retired_planet_generation,
+                },
+                self.shared.config.event_capacity,
+            );
+            debug_assert!(
+                pushed,
+                "event capacity was checked before planet-wide mutation retirement"
+            );
+        } else {
+            let planet = state
+                .planets
+                .get_mut(&planet_id)
+                .expect("planet remains registered while state is locked");
+            for (key, generation, resident) in &affected {
+                planet.page_generations.insert(
+                    *key,
+                    generation
+                        .checked_add(1)
+                        .expect("generation overflow was checked before publication"),
+                );
+                if *resident {
+                    planet.core.evict_resident_page(*key);
+                }
+            }
+            for (key, generation, resident) in affected {
+                if !resident {
+                    continue;
+                }
+                let pushed = state.push_event(
+                    TerrainRuntimeEvent::EvictPage {
+                        planet_id,
+                        page_key: key,
+                        planet_generation: retired_planet_generation,
+                        retired_page_generation: generation,
+                    },
+                    self.shared.config.event_capacity,
+                );
+                debug_assert!(
+                    pushed,
+                    "event capacity was checked before page mutation retirement"
+                );
             }
         }
         state.refresh_resident_counters();
@@ -1451,6 +1639,17 @@ fn page_intersects(key: PageKey, bounds: ([i64; 3], [i64; 3])) -> bool {
     (0..3).all(|axis| min[axis] < bounds.1[axis] && min[axis].saturating_add(span) > bounds.0[axis])
 }
 
+fn page_intersects_with_halo(key: PageKey, bounds: ([i64; 3], [i64; 3])) -> bool {
+    let Some(halo) = 1_i64.checked_shl(u32::from(key.lod)) else {
+        return true;
+    };
+    let expanded = (
+        bounds.0.map(|axis| axis.saturating_sub(halo)),
+        bounds.1.map(|axis| axis.saturating_add(halo)),
+    );
+    page_intersects(key, expanded)
+}
+
 fn record_backpressure(
     state: &mut RuntimeState,
     config: &TerrainRuntimeConfig,
@@ -1478,7 +1677,7 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditMode, EditShape};
+    use crate::{EditMode, EditShape, NodeState};
     use std::time::{Duration, Instant};
 
     fn config(worker_count: usize) -> TerrainRuntimeConfig {
@@ -1681,6 +1880,164 @@ mod tests {
             TerrainRuntimeEvent::StaleRejected { page_key, .. } if *page_key == key
         )));
         assert!(handle.page_snapshot(id, key).is_none());
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn root_override_retires_planet_visibility_before_rebuild() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let id = planet(5).planet_id;
+        handle.upsert_planet(planet(5)).unwrap();
+        let key = PageKey::new(0, [0; 3]);
+        handle
+            .request_page(id, key, TerrainRequestClass::Visible, 1)
+            .unwrap();
+        let first_generation = wait_for_events(&handle, 1)
+            .into_iter()
+            .find_map(|event| match event {
+                TerrainRuntimeEvent::PageReady {
+                    planet_generation,
+                    page_key,
+                    ..
+                } if page_key == key => Some(planet_generation),
+                _ => None,
+            })
+            .expect("initial page must publish");
+        assert!(handle.page_snapshot(id, key).is_some());
+
+        handle.set_root(id, NodeState::Air).unwrap();
+        assert!(matches!(
+            handle.drain_events(1).as_slice(),
+            [TerrainRuntimeEvent::EvictPlanet {
+                planet_id,
+                retired_generation,
+            }] if *planet_id == id && *retired_generation == first_generation
+        ));
+        assert!(
+            handle.page_snapshot(id, key).is_none(),
+            "old resident bytes must not be observable at the new generation"
+        );
+
+        let outcome = handle
+            .request_page(id, key, TerrainRequestClass::EditResponse, 2)
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            TerrainRequestOutcome::Queued {
+                planet_generation,
+                page_generation: 1,
+            } if planet_generation > first_generation
+        ));
+        let rebuilt = wait_for_events(&handle, 1)
+            .into_iter()
+            .find_map(|event| match event {
+                TerrainRuntimeEvent::PageReady {
+                    page_key, record, ..
+                } if page_key == key => Some(record),
+                _ => None,
+            })
+            .expect("deleted page must republish");
+        assert_eq!(
+            handle.page_snapshot(id, key).unwrap().constant_cell(),
+            Some(crate::CellWord::AIR)
+        );
+        assert_eq!(
+            handle.page_snapshot(id, key).unwrap().page_id(),
+            rebuilt.page_id
+        );
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn region_override_invalidates_intersection_and_neighbor_halo_only() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let id = planet(6).planet_id;
+        handle.upsert_planet(planet(6)).unwrap();
+        let inside = PageKey::new(0, [-1, 0, 0]);
+        let halo_neighbor = PageKey::new(0, [0, 0, 0]);
+        let outside = PageKey::new(0, [1, 0, 0]);
+        for key in [inside, halo_neighbor, outside] {
+            handle
+                .request_page(id, key, TerrainRequestClass::Visible, 1)
+                .unwrap();
+        }
+        wait_for_events(&handle, 3);
+        assert!(handle.page_snapshot(id, inside).is_some());
+        assert!(handle.page_snapshot(id, halo_neighbor).is_some());
+        assert!(handle.page_snapshot(id, outside).is_some());
+
+        handle
+            .set_region(id, PageKey::new(1, [-1, 0, 0]), NodeState::Air)
+            .unwrap();
+        let evicted = handle
+            .drain_events(2)
+            .into_iter()
+            .filter_map(|event| match event {
+                TerrainRuntimeEvent::EvictPage { page_key, .. } => Some(page_key),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(evicted, BTreeSet::from([inside, halo_neighbor]));
+        assert!(handle.page_snapshot(id, inside).is_none());
+        assert!(handle.page_snapshot(id, halo_neighbor).is_none());
+        assert!(handle.page_snapshot(id, outside).is_some());
+
+        handle
+            .request_page(id, inside, TerrainRequestClass::EditResponse, 2)
+            .unwrap();
+        wait_for_events(&handle, 1);
+        assert_eq!(
+            handle.page_snapshot(id, inside).unwrap().constant_cell(),
+            Some(crate::CellWord::AIR)
+        );
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn fine_edit_invalidates_intersection_and_neighbor_halo_only() {
+        let mut subsystem = start(1);
+        let handle = subsystem.runtime_handle();
+        let id = planet(7).planet_id;
+        handle.upsert_planet(planet(7)).unwrap();
+        let halo_neighbor = PageKey::new(0, [-1, 0, 0]);
+        let inside = PageKey::new(0, [0, 0, 0]);
+        let outside = PageKey::new(0, [1, 0, 0]);
+        for key in [halo_neighbor, inside, outside] {
+            handle
+                .request_page(id, key, TerrainRequestClass::Visible, 1)
+                .unwrap();
+        }
+        wait_for_events(&handle, 3);
+
+        handle
+            .append_edit(
+                id,
+                EditOp {
+                    sequence: 1,
+                    stable_id: [7; 16],
+                    shape: EditShape::Sphere {
+                        center_cell: [0, 16, 16],
+                        radius_cells: 0,
+                    },
+                    mode: EditMode::Subtract,
+                    material: 0,
+                },
+            )
+            .unwrap();
+        let evicted = handle
+            .drain_events(2)
+            .into_iter()
+            .filter_map(|event| match event {
+                TerrainRuntimeEvent::EvictPage { page_key, .. } => Some(page_key),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+        assert_eq!(evicted, BTreeSet::from([halo_neighbor, inside]));
+        assert!(handle.page_snapshot(id, halo_neighbor).is_none());
+        assert!(handle.page_snapshot(id, inside).is_none());
+        assert!(handle.page_snapshot(id, outside).is_some());
         subsystem.shutdown().unwrap();
     }
 

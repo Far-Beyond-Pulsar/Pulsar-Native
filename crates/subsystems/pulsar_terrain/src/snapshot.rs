@@ -1,7 +1,9 @@
-use crate::{ContentHash, EditLog, PageId, PageKey, PlanetId, SparseBrickTree};
+use crate::{ContentHash, EditLog, PageId, PageKey, PlanetId, SparseBrickTree, TerrainOverrideLog};
+use std::collections::BTreeSet;
 use thiserror::Error;
 
-const SNAPSHOT_MAGIC: &[u8; 8] = b"PTSNAP01";
+const SNAPSHOT_MAGIC: &[u8; 8] = b"PTSNAP02";
+const SNAPSHOT_HEADER_BYTES: usize = 88;
 const PAGE_RECORD_BYTES: usize = 72;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -17,6 +19,7 @@ pub struct TerrainSnapshot {
     pub generator_hash: ContentHash,
     pub hierarchy: SparseBrickTree,
     pub edit_tail: EditLog,
+    pub override_tail: TerrainOverrideLog,
     pub compacted_pages: Vec<CompactedPageRecord>,
 }
 
@@ -30,20 +33,28 @@ impl TerrainSnapshot {
         {
             return Err(SnapshotCodecError::DuplicatePageKey);
         }
+        validate_mutation_order(&self.edit_tail, &self.override_tail)?;
         let hierarchy = self.hierarchy.encode();
         let edits = self.edit_tail.encode();
+        let overrides = self.override_tail.encode();
         let mut output = Vec::with_capacity(
-            80 + hierarchy.len() + edits.len() + compacted_pages.len() * PAGE_RECORD_BYTES,
+            SNAPSHOT_HEADER_BYTES
+                + hierarchy.len()
+                + edits.len()
+                + overrides.len()
+                + compacted_pages.len() * PAGE_RECORD_BYTES,
         );
         output.extend_from_slice(SNAPSHOT_MAGIC);
         output.extend_from_slice(&self.planet_id.0);
         output.extend_from_slice(&self.generator_hash.0);
         output.extend_from_slice(&(hierarchy.len() as u64).to_le_bytes());
         output.extend_from_slice(&(edits.len() as u64).to_le_bytes());
+        output.extend_from_slice(&(overrides.len() as u64).to_le_bytes());
         output.extend_from_slice(&(compacted_pages.len() as u32).to_le_bytes());
         output.extend_from_slice(&[0; 4]);
         output.extend_from_slice(&hierarchy);
         output.extend_from_slice(&edits);
+        output.extend_from_slice(&overrides);
         for record in compacted_pages {
             output.push(record.key.lod);
             output.extend_from_slice(&[0; 7]);
@@ -57,24 +68,28 @@ impl TerrainSnapshot {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<Self, SnapshotCodecError> {
-        if bytes.len() < 80
-            || bytes.get(..8) != Some(SNAPSHOT_MAGIC)
-            || bytes.get(76..80) != Some(&[0; 4])
-        {
+        if bytes.get(..8) != Some(SNAPSHOT_MAGIC) {
+            return Err(SnapshotCodecError::Codec);
+        }
+        if bytes.len() < SNAPSHOT_HEADER_BYTES || bytes.get(84..88) != Some(&[0; 4]) {
             return Err(SnapshotCodecError::Codec);
         }
         let planet_id = PlanetId(read_array(bytes, 8)?);
         let generator_hash = ContentHash(read_array(bytes, 24)?);
         let hierarchy_len = read_u64(bytes, 56)? as usize;
         let edits_len = read_u64(bytes, 64)? as usize;
-        let page_count = read_u32(bytes, 72)? as usize;
-        let hierarchy_end = 80_usize
+        let overrides_len = read_u64(bytes, 72)? as usize;
+        let page_count = read_u32(bytes, 80)? as usize;
+        let hierarchy_end = SNAPSHOT_HEADER_BYTES
             .checked_add(hierarchy_len)
             .ok_or(SnapshotCodecError::Codec)?;
         let edits_end = hierarchy_end
             .checked_add(edits_len)
             .ok_or(SnapshotCodecError::Codec)?;
-        let expected_end = edits_end
+        let overrides_end = edits_end
+            .checked_add(overrides_len)
+            .ok_or(SnapshotCodecError::Codec)?;
+        let expected_end = overrides_end
             .checked_add(
                 page_count
                     .checked_mul(PAGE_RECORD_BYTES)
@@ -84,40 +99,20 @@ impl TerrainSnapshot {
         if expected_end != bytes.len() {
             return Err(SnapshotCodecError::Codec);
         }
-        let hierarchy = SparseBrickTree::decode(&bytes[80..hierarchy_end])
+        let hierarchy = SparseBrickTree::decode(&bytes[SNAPSHOT_HEADER_BYTES..hierarchy_end])
             .map_err(|_| SnapshotCodecError::Codec)?;
         let edit_tail = EditLog::decode(&bytes[hierarchy_end..edits_end])
             .map_err(|_| SnapshotCodecError::Codec)?;
-        let mut compacted_pages = Vec::with_capacity(page_count);
-        let mut cursor = edits_end;
-        for _ in 0..page_count {
-            let lod = bytes[cursor];
-            if bytes.get(cursor + 1..cursor + 8) != Some(&[0; 7]) {
-                return Err(SnapshotCodecError::Codec);
-            }
-            let page_xyz = [
-                read_i64(bytes, cursor + 8)?,
-                read_i64(bytes, cursor + 16)?,
-                read_i64(bytes, cursor + 24)?,
-            ];
-            compacted_pages.push(CompactedPageRecord {
-                key: PageKey::new(lod, page_xyz),
-                page_id: ContentHash(read_array(bytes, cursor + 32)?),
-                compacted_through_sequence: read_u64(bytes, cursor + 64)?,
-            });
-            cursor += PAGE_RECORD_BYTES;
-        }
-        if compacted_pages
-            .windows(2)
-            .any(|pair| pair[0].key >= pair[1].key)
-        {
-            return Err(SnapshotCodecError::DuplicatePageKey);
-        }
+        let override_tail = TerrainOverrideLog::decode(&bytes[edits_end..overrides_end])
+            .map_err(|_| SnapshotCodecError::Codec)?;
+        let compacted_pages = decode_page_records(bytes, overrides_end, page_count)?;
+        validate_mutation_order(&edit_tail, &override_tail)?;
         Ok(Self {
             planet_id,
             generator_hash,
             hierarchy,
             edit_tail,
+            override_tail,
             compacted_pages,
         })
     }
@@ -125,6 +120,63 @@ impl TerrainSnapshot {
     pub fn content_hash(&self) -> Result<ContentHash, SnapshotCodecError> {
         Ok(ContentHash::of(&self.encode()?))
     }
+}
+
+fn decode_page_records(
+    bytes: &[u8],
+    mut cursor: usize,
+    page_count: usize,
+) -> Result<Vec<CompactedPageRecord>, SnapshotCodecError> {
+    let mut compacted_pages = Vec::with_capacity(page_count);
+    for _ in 0..page_count {
+        let lod = *bytes.get(cursor).ok_or(SnapshotCodecError::Codec)?;
+        if bytes.get(cursor + 1..cursor + 8) != Some(&[0; 7]) {
+            return Err(SnapshotCodecError::Codec);
+        }
+        let page_xyz = [
+            read_i64(bytes, cursor + 8)?,
+            read_i64(bytes, cursor + 16)?,
+            read_i64(bytes, cursor + 24)?,
+        ];
+        compacted_pages.push(CompactedPageRecord {
+            key: PageKey::new(lod, page_xyz),
+            page_id: ContentHash(read_array(bytes, cursor + 32)?),
+            compacted_through_sequence: read_u64(bytes, cursor + 64)?,
+        });
+        cursor += PAGE_RECORD_BYTES;
+    }
+    if compacted_pages
+        .windows(2)
+        .any(|pair| pair[0].key >= pair[1].key)
+    {
+        return Err(SnapshotCodecError::DuplicatePageKey);
+    }
+    Ok(compacted_pages)
+}
+
+fn validate_mutation_order(
+    edits: &EditLog,
+    overrides: &TerrainOverrideLog,
+) -> Result<(), SnapshotCodecError> {
+    let mut order = Vec::with_capacity(edits.operations().len() + overrides.operations().len());
+    let mut ids = BTreeSet::new();
+    for operation in edits.operations() {
+        order.push(operation.sequence);
+        if !ids.insert(operation.stable_id) {
+            return Err(SnapshotCodecError::MutationOrder);
+        }
+    }
+    for operation in overrides.operations() {
+        order.push(operation.sequence);
+        if !ids.insert(operation.stable_id) {
+            return Err(SnapshotCodecError::MutationOrder);
+        }
+    }
+    order.sort_unstable();
+    if order.first() == Some(&0) || order.windows(2).any(|pair| pair[0] >= pair[1]) {
+        return Err(SnapshotCodecError::MutationOrder);
+    }
+    Ok(())
 }
 
 fn read_array<const N: usize>(bytes: &[u8], offset: usize) -> Result<[u8; N], SnapshotCodecError> {
@@ -153,12 +205,14 @@ pub enum SnapshotCodecError {
     Codec,
     #[error("terrain snapshot contains duplicate or unsorted page keys")]
     DuplicatePageKey,
+    #[error("terrain snapshot contains duplicate or invalid global mutation ordering")]
+    MutationOrder,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{EditMode, EditOp, EditShape, NodeState};
+    use crate::{EditMode, EditOp, EditShape, NodeState, TerrainOverrideOp, TerrainOverrideTarget};
 
     #[test]
     fn snapshot_round_trip_is_canonical_across_page_insertion_order() {
@@ -195,6 +249,7 @@ mod tests {
             generator_hash,
             hierarchy,
             edit_tail: edits,
+            override_tail: TerrainOverrideLog::default(),
             compacted_pages: pages,
         };
         let decoded = TerrainSnapshot::decode(&snapshot.encode().unwrap()).unwrap();
@@ -203,5 +258,55 @@ mod tests {
             snapshot.content_hash().unwrap()
         );
         assert_eq!(decoded.compacted_pages[0].key.page_xyz, [-2, 7, 1]);
+    }
+
+    #[test]
+    fn snapshot_preserves_global_edit_override_order() {
+        let generator_hash = ContentHash::of(b"generator");
+        let hierarchy =
+            SparseBrickTree::centered(16, NodeState::Procedural(generator_hash)).unwrap();
+        let mut edits = EditLog::default();
+        edits
+            .push(EditOp {
+                sequence: 1,
+                stable_id: [1; 16],
+                shape: EditShape::Sphere {
+                    center_cell: [0; 3],
+                    radius_cells: 2,
+                },
+                mode: EditMode::Union,
+                material: 4,
+            })
+            .unwrap();
+        let mut overrides = TerrainOverrideLog::default();
+        overrides
+            .push(TerrainOverrideOp {
+                sequence: 2,
+                stable_id: [2; 16],
+                target: TerrainOverrideTarget::Root,
+                state: NodeState::Air,
+            })
+            .unwrap();
+        let snapshot = TerrainSnapshot {
+            planet_id: PlanetId([9; 16]),
+            generator_hash,
+            hierarchy,
+            edit_tail: edits,
+            override_tail: overrides,
+            compacted_pages: Vec::new(),
+        };
+        assert_eq!(
+            TerrainSnapshot::decode(&snapshot.encode().unwrap()).unwrap(),
+            snapshot
+        );
+    }
+
+    #[test]
+    fn obsolete_snapshot_versions_are_rejected() {
+        let obsolete = b"PTSNAP01";
+        assert_eq!(
+            TerrainSnapshot::decode(obsolete),
+            Err(SnapshotCodecError::Codec)
+        );
     }
 }

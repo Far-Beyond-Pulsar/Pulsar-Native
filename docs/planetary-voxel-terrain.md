@@ -88,19 +88,32 @@ The 32-bit cell word is deliberately aligned for Rust, storage buffers, atomics/
 
 The base planet is a deterministic fixed-point function returning density and material. It may call authored data sources, but identical inputs must return identical values independent of view LOD.
 
-Every terrain mutation is an ordered operation:
+Fine edits and high-level uniform overrides share one authoritative sequence
+and stable-ID domain:
 
 ```text
-EditOp {
+TerrainMutation {
     sequence,
-    shape,
-    mode: Union | Subtract | Replace | Paint,
-    material,
-    planet_space_bounds,
+    stable_id,
+    payload:
+        Edit { shape, mode: Union | Subtract | Replace | Paint, material }
+      | UniformOverride { target: Root | AlignedRegion, state: Air | Solid | Procedural }
 }
 ```
 
-Small edits materialize affected LOD0 pages. Large edits attach high in the hierarchy and are evaluated lazily by descendants. Background compaction folds operation tails into versioned pages and collapses newly uniform subtrees. The edit kernel uses deterministic integer/fixed-point math so persistence, multiplayer, CPU generation, and GPU previews cannot silently disagree.
+Small edits materialize affected LOD0 pages. Large edits attach high in the
+hierarchy and are evaluated lazily by descendants. A page build merges the
+spatially relevant fine-edit and override tails by sequence. A full-page
+uniform override discards every earlier mutation for that page, so root
+deletion is constant-time in canonical state and cannot be undone by eviction
+or regeneration; refinement starts at that reset instead of replaying the
+discarded prefix. Mutations outside a page and its halo neither rebuild its
+resident cache nor reject an otherwise current in-flight build. Later fine
+edits can intentionally materialize terrain again.
+Background compaction folds operation tails into versioned pages and collapses
+newly uniform subtrees. The edit kernel uses deterministic integer/fixed-point
+math so persistence, multiplayer, CPU generation, and GPU previews cannot
+silently disagree.
 
 ## Coordinates and large-world behavior
 
@@ -195,10 +208,10 @@ Create `crates/subsystems/pulsar_terrain` as the authoritative runtime crate. It
 Keep `PlanetDefinition` and the authoritative runtime in `pulsar_terrain`.
 House the reflected `PlanetTerrainComponent` and its Helio projection in
 `pulsar_rendering::components`, matching Pulsar's component-owned runtime
-projection pattern. Do not repurpose the current editor-only `TerrainComponent`
-or `ProceduralTerrainComponent` during the prototype. Their runtime methods are
-empty today, and retaining them avoids a scene-format migration while the new
-contract is validated.
+projection pattern. `PlanetTerrainComponent` is the sole terrain component
+contract for this path. Do not add legacy component or snapshot migration
+layers; update project content to the current contract. The superseded
+editor-only terrain component and its no-op runtime have been removed.
 
 `pulsar_rendering` consumes immutable render deltas/page uploads from `pulsar_terrain`; it does not own terrain state. `engine_backend` registers the terrain subsystem through the existing subsystem/plugin injection path. The level editor provides inspectors and debug views for the runtime component.
 
@@ -293,6 +306,11 @@ Reference traces must include ground walking, supersonic surface flight, ground-
 - Add predictive scheduling, cancellation, and ground/orbit/teleport traces.
 - Gate: precision, no cracks, bounded residency, and frame-time targets pass.
 
+Current boundary: canonical real-radius addressing and bounded mixed-LOD
+streaming have passed on a flat tangent validation patch. The full spherical
+shell, visible curvature, orbital globe, and continuous travel around the
+planet have not passed yet and remain part of this milestone.
+
 ### Milestone 5: destruction and persistence
 
 - Apply deterministic edits, dirty propagation, coarse rebuilds, background compaction, and atomic saves.
@@ -304,7 +322,7 @@ Reference traces must include ground walking, supersonic surface flight, ground-
 - Register `PlanetTerrainComponent` and terrain subsystem.
 - Bridge render deltas into the new Helio pass.
 - Add editor diagnostics for page state, LOD, queue latency, memory, and edit bounds.
-- Gate: standalone generated game does not link editor crates; legacy terrain components/scenes remain loadable.
+- Gate: standalone generated game does not link editor crates; all terrain components, scenes, and snapshots use the current canonical format.
 
 ### Milestone 7: physics and detached bodies
 

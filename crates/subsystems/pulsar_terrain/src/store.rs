@@ -1,4 +1,4 @@
-use crate::{ContentHash, PageCodecError, PageId, VoxelPage};
+use crate::{ContentHash, PageCodecError, PageId, SnapshotCodecError, TerrainSnapshot, VoxelPage};
 use engine_fs::virtual_fs;
 use std::path::PathBuf;
 use thiserror::Error;
@@ -43,6 +43,13 @@ impl TerrainStore {
             hash,
             bytes: snapshot.to_vec(),
         })
+    }
+
+    pub fn save_snapshot(
+        &self,
+        snapshot: &TerrainSnapshot,
+    ) -> Result<SnapshotRecord, TerrainStoreError> {
+        self.save(&snapshot.encode()?)
     }
 
     pub fn store_page(&self, page: &VoxelPage) -> Result<PageId, TerrainStoreError> {
@@ -96,6 +103,17 @@ impl TerrainStore {
             }));
         }
         Ok(None)
+    }
+
+    pub fn load_latest_snapshot(
+        &self,
+    ) -> Result<Option<(SnapshotRecord, TerrainSnapshot)>, TerrainStoreError> {
+        self.load_latest()?
+            .map(|record| {
+                let snapshot = TerrainSnapshot::decode(&record.bytes)?;
+                Ok((record, snapshot))
+            })
+            .transpose()
     }
 
     fn latest_generation(&self) -> Result<Option<u64>, TerrainStoreError> {
@@ -161,11 +179,14 @@ pub enum TerrainStoreError {
     ObjectHash,
     #[error("stored terrain page is invalid: {0}")]
     Page(#[source] PageCodecError),
+    #[error("stored terrain snapshot is invalid: {0}")]
+    Snapshot(#[from] SnapshotCodecError),
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{FixedSphereGenerator, NodeState, PageKey, PlanetId, TerrainCore};
 
     #[test]
     fn interrupted_publish_keeps_the_previous_valid_root() {
@@ -209,5 +230,34 @@ mod tests {
             store.load_page(page_id),
             Err(TerrainStoreError::ObjectHash)
         ));
+    }
+
+    #[test]
+    fn typed_snapshot_store_preserves_authoritative_root_delete() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 7,
+        };
+        let key = PageKey::new(0, [0; 3]);
+        let mut core = TerrainCore::new(PlanetId([7; 16]), 12, generator).unwrap();
+        core.compact_page(key).unwrap();
+        core.set_root(NodeState::Air).unwrap();
+        let expected_page = core.compact_page(key).unwrap();
+        let expected_snapshot = core.snapshot();
+        let saved = store.save_snapshot(&expected_snapshot).unwrap();
+        let (loaded_record, loaded_snapshot) = store.load_latest_snapshot().unwrap().unwrap();
+        assert_eq!(loaded_record, saved);
+        assert_eq!(loaded_snapshot, expected_snapshot);
+
+        let mut restored = TerrainCore::from_snapshot(loaded_snapshot, generator).unwrap();
+        assert_eq!(restored.compact_page(key).unwrap(), expected_page);
+        assert_eq!(
+            restored.page(key).unwrap().constant_cell(),
+            Some(crate::CellWord::AIR)
+        );
     }
 }

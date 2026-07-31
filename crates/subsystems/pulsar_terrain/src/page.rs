@@ -1,3 +1,4 @@
+use crate::mutation::TerrainMutation;
 use crate::{CellWord, ContentHash, DeterministicGenerator, EditLog, EditOp, PageId, PageKey};
 use std::sync::Arc;
 use thiserror::Error;
@@ -95,6 +96,36 @@ impl VoxelPage {
         Self::from_cells(cells)
     }
 
+    pub(crate) fn generate_with_mutations<G: DeterministicGenerator>(
+        key: PageKey,
+        generator: &G,
+        mutations: &[TerrainMutation],
+    ) -> Result<Self, PageCodecError> {
+        if key.lod > 57 {
+            return Err(PageCodecError::UnsupportedLod(key.lod));
+        }
+        let origin = key
+            .lod0_cell_min()
+            .ok_or(PageCodecError::CoordinateOverflow)?;
+        let scale = 1_i64
+            .checked_shl(u32::from(key.lod))
+            .ok_or(PageCodecError::CoordinateOverflow)?;
+        let mut cells = Vec::with_capacity(CELL_COUNT);
+        for z in 0..PAGE_EDGE as i64 {
+            for y in 0..PAGE_EDGE as i64 {
+                for x in 0..PAGE_EDGE as i64 {
+                    let coordinate = sample_coordinate(origin, scale, [x, y, z])?;
+                    let mut cell = generator.sample_cell(coordinate);
+                    for mutation in mutations {
+                        cell = mutation.apply(coordinate, cell, generator);
+                    }
+                    cells.push(cell);
+                }
+            }
+        }
+        Self::from_cells(cells)
+    }
+
     /// Fold only the supplied ordered edit tail into an already materialized
     /// LOD0 page. The procedural source and older edit prefix are not replayed.
     pub fn apply_edit_tail(
@@ -124,6 +155,37 @@ impl VoxelPage {
                         }) {
                             cell = operation.apply(coordinate, cell);
                         }
+                    }
+                    cells.push(cell);
+                }
+            }
+        }
+        Self::from_cells(cells)
+    }
+
+    pub(crate) fn apply_mutation_tail<G: DeterministicGenerator>(
+        &self,
+        key: PageKey,
+        generator: &G,
+        mutations: &[TerrainMutation],
+    ) -> Result<Self, PageCodecError> {
+        if key.lod > 57 {
+            return Err(PageCodecError::UnsupportedLod(key.lod));
+        }
+        let origin = key
+            .lod0_cell_min()
+            .ok_or(PageCodecError::CoordinateOverflow)?;
+        let scale = 1_i64
+            .checked_shl(u32::from(key.lod))
+            .ok_or(PageCodecError::CoordinateOverflow)?;
+        let mut cells = Vec::with_capacity(CELL_COUNT);
+        for z in 0..PAGE_EDGE as i64 {
+            for y in 0..PAGE_EDGE as i64 {
+                for x in 0..PAGE_EDGE as i64 {
+                    let coordinate = sample_coordinate(origin, scale, [x, y, z])?;
+                    let mut cell = self.get([x as usize, y as usize, z as usize]).unwrap();
+                    for mutation in mutations {
+                        cell = mutation.apply(coordinate, cell, generator);
                     }
                     cells.push(cell);
                 }
