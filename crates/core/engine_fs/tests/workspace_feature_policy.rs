@@ -120,7 +120,9 @@ fn workspace_engine_fs_callers_declare_their_minimum_surface() {
         ("ui_common".to_owned(), features(&["editor"])),
         ("ui_entry".to_owned(), features(&["remote"])),
         ("ui_file_manager".to_owned(), features(&["editor"])),
+        ("ui_git_manager".to_owned(), features(&[])),
         ("ui_level_editor".to_owned(), features(&[])),
+        ("ui_loading_screen".to_owned(), features(&[])),
         ("ui_multiplayer".to_owned(), features(&[])),
         ("ui_type_debugger".to_owned(), features(&["editor"])),
     ]);
