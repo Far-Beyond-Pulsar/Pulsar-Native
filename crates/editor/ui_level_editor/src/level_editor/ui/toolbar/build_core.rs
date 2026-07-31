@@ -22,6 +22,7 @@ use std::time::Duration;
 
 use gpui::prelude::FluentBuilder as _;
 use gpui::*;
+use rust_i18n::t;
 use ui::button::{Button, ButtonVariants as _, DropdownButton};
 use ui::notification::Notification;
 use ui::{h_flex, ContextModal as _, Disableable as _, IconName, Sizable as _};
@@ -197,7 +198,7 @@ fn trigger_build(
 ) {
     let Some(root) = project_root() else {
         window.push_notification(
-            Notification::warning("No project open — open a project first."),
+            Notification::warning(t!("Notification.Message.NoProjectOpen").to_string()),
             cx,
         );
         return;
@@ -277,15 +278,15 @@ fn run_scratch(
     });
 
     let title = match inner_mode {
-        BuildMode::Check => "Check (Scratch)",
-        BuildMode::BuildAndRun => "Build + Run (Scratch)",
-        _ => "Build (Scratch)",
+        BuildMode::Check => t!("Notification.Title.CheckScratch").to_string(),
+        BuildMode::BuildAndRun => t!("Notification.Title.BuildRunScratch").to_string(),
+        _ => t!("Notification.Title.BuildScratch").to_string(),
     };
 
     window.push_notification(
-        Notification::info("Cleaning build artifacts…")
+        Notification::info(t!("Notification.Message.CleaningBuildArtifacts").to_string())
             .id::<BuildCoreNotification>()
-            .title(title)
+            .title(title.clone())
             .progress(0.0)
             .autohide(false),
         cx,
@@ -300,11 +301,13 @@ fn run_scratch(
                 Ok(Ok(())) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
                         window.push_notification(
-                            Notification::success("Build succeeded.")
-                                .id::<BuildCoreNotification>()
-                                .title(title)
-                                .progress(1.0)
-                                .autohide_delay(Duration::from_secs(3)),
+                            Notification::success(
+                                t!("Notification.Message.BuildSucceeded").to_string(),
+                            )
+                            .id::<BuildCoreNotification>()
+                            .title(title.clone())
+                            .progress(1.0)
+                            .autohide_delay(Duration::from_secs(3)),
                             cx,
                         );
                     });
@@ -327,7 +330,7 @@ fn run_scratch(
                         window.push_notification(
                             Notification::error(msg)
                                 .id::<BuildCoreNotification>()
-                                .title(title),
+                                .title(title.clone()),
                             cx,
                         );
                     });
@@ -385,9 +388,9 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
     });
 
     window.push_notification(
-        Notification::info("Starting check…")
+        Notification::info(t!("Notification.Message.StartingCheck").to_string())
             .id::<BuildCoreNotification>()
-            .title("Check")
+            .title(t!("Notification.Title.Check").to_string())
             .progress(0.0)
             .autohide(false),
         cx,
@@ -402,17 +405,19 @@ fn run_check(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                 Ok(result) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| match result {
                         Ok(()) => window.push_notification(
-                            Notification::success("Check passed.")
-                                .id::<BuildCoreNotification>()
-                                .title("Check")
-                                .progress(1.0)
-                                .autohide_delay(Duration::from_secs(3)),
+                            Notification::success(
+                                t!("Notification.Message.CheckPassed").to_string(),
+                            )
+                            .id::<BuildCoreNotification>()
+                            .title(t!("Notification.Title.Check").to_string())
+                            .progress(1.0)
+                            .autohide_delay(Duration::from_secs(3)),
                             cx,
                         ),
                         Err(msg) => window.push_notification(
                             Notification::error(msg)
                                 .id::<BuildCoreNotification>()
-                                .title("Check"),
+                                .title(t!("Notification.Title.Check").to_string()),
                             cx,
                         ),
                     });
@@ -470,9 +475,9 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
     });
 
     window.push_notification(
-        Notification::info("Updating dependencies…")
+        Notification::info(t!("Notification.Message.UpdatingDependencies").to_string())
             .id::<BuildCoreNotification>()
-            .title("Update")
+            .title(t!("Notification.Title.Update").to_string())
             .progress(0.0)
             .autohide(false),
         cx,
@@ -487,17 +492,19 @@ fn run_update(project_root: PathBuf, window: &mut Window, cx: &mut App) {
                 Ok(result) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| match result {
                         Ok(()) => window.push_notification(
-                            Notification::success("Dependencies updated.")
-                                .id::<BuildCoreNotification>()
-                                .title("Update")
-                                .progress(1.0)
-                                .autohide_delay(Duration::from_secs(3)),
+                            Notification::success(
+                                t!("Notification.Message.DependenciesUpdated").to_string(),
+                            )
+                            .id::<BuildCoreNotification>()
+                            .title(t!("Notification.Title.Update").to_string())
+                            .progress(1.0)
+                            .autohide_delay(Duration::from_secs(3)),
                             cx,
                         ),
                         Err(msg) => window.push_notification(
                             Notification::error(msg)
                                 .id::<BuildCoreNotification>()
-                                .title("Update"),
+                                .title(t!("Notification.Title.Update").to_string()),
                             cx,
                         ),
                     });
@@ -557,7 +564,7 @@ fn run_update_build_and_run(
     let status_for_ui = Arc::clone(&status_cell);
     let (result_tx, result_rx) = smol::channel::bounded::<Result<(), String>>(1);
 
-    let title = "Update + Build + Run";
+    let title = t!("Notification.Title.UpdateBuildRun").to_string();
     let project_root_thread = project_root.clone();
     std::thread::spawn(move || {
         let result = (|| -> Result<(), String> {
@@ -578,9 +585,9 @@ fn run_update_build_and_run(
     });
 
     window.push_notification(
-        Notification::info("Updating dependencies…")
+        Notification::info(t!("Notification.Message.UpdatingDependencies").to_string())
             .id::<BuildCoreNotification>()
-            .title(title)
+            .title(title.clone())
             .progress(0.0)
             .autohide(false),
         cx,
@@ -595,11 +602,13 @@ fn run_update_build_and_run(
                 Ok(Ok(())) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
                         window.push_notification(
-                            Notification::success("Build succeeded.")
-                                .id::<BuildCoreNotification>()
-                                .title(title)
-                                .progress(1.0)
-                                .autohide_delay(Duration::from_secs(3)),
+                            Notification::success(
+                                t!("Notification.Message.BuildSucceeded").to_string(),
+                            )
+                            .id::<BuildCoreNotification>()
+                            .title(title.clone())
+                            .progress(1.0)
+                            .autohide_delay(Duration::from_secs(3)),
                             cx,
                         );
                     });
@@ -618,7 +627,7 @@ fn run_update_build_and_run(
                         window.push_notification(
                             Notification::error(msg)
                                 .id::<BuildCoreNotification>()
-                                .title(title),
+                                .title(title.clone()),
                             cx,
                         );
                     });
@@ -682,15 +691,15 @@ fn run_build_pipeline(
     });
 
     let title = if mode == BuildMode::BuildAndRun {
-        "Build + Run"
+        t!("Notification.Title.BuildRun").to_string()
     } else {
-        "Build Core"
+        t!("Notification.Title.BuildCore").to_string()
     };
 
     window.push_notification(
-        Notification::info("Starting build…")
+        Notification::info(t!("Notification.Message.StartingBuild").to_string())
             .id::<BuildCoreNotification>()
-            .title(title)
+            .title(title.clone())
             .progress(0.0)
             .autohide(false),
         cx,
@@ -707,11 +716,13 @@ fn run_build_pipeline(
                 Ok(Ok(())) => {
                     let _ = async_app.update_window(window_handle, |_, window, cx| {
                         window.push_notification(
-                            Notification::success("Build succeeded.")
-                                .id::<BuildCoreNotification>()
-                                .title(title)
-                                .progress(1.0)
-                                .autohide_delay(Duration::from_secs(3)),
+                            Notification::success(
+                                t!("Notification.Message.BuildSucceeded").to_string(),
+                            )
+                            .id::<BuildCoreNotification>()
+                            .title(title.clone())
+                            .progress(1.0)
+                            .autohide_delay(Duration::from_secs(3)),
                             cx,
                         );
                     });
@@ -735,7 +746,7 @@ fn run_build_pipeline(
                         window.push_notification(
                             Notification::error(msg)
                                 .id::<BuildCoreNotification>()
-                                .title(title),
+                                .title(title.clone()),
                             cx,
                         );
                     });
@@ -797,7 +808,14 @@ async fn launch_and_monitor(
         Err(e) => {
             let _ = async_app.update_window(window_handle, |_, window, cx| {
                 window.push_notification(
-                    Notification::error(format!("Failed to launch game: {e}")).title("Build + Run"),
+                    Notification::error(
+                        t!(
+                            "Notification.Message.FailedToLaunchGame",
+                            error => e.to_string()
+                        )
+                        .to_string(),
+                    )
+                    .title(t!("Notification.Title.BuildRun").to_string()),
                     cx,
                 );
             });
@@ -888,7 +906,11 @@ async fn launch_and_monitor(
                             None => format!("Game crashed:\n{tail}"),
                         }
                     };
-                    window.push_notification(Notification::error(msg).title("Build + Run"), cx);
+                    window.push_notification(
+                        Notification::error(msg)
+                            .title(t!("Notification.Title.BuildRun").to_string()),
+                        cx,
+                    );
                 } else {
                     tracing::info!("[BUILD+RUN] game process exited cleanly");
                 }

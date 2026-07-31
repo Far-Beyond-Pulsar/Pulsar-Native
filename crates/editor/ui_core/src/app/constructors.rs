@@ -3,6 +3,7 @@
 use engine_backend::services::RustAnalyzerManager;
 use gpui::{AppContext, Context, Entity, Window};
 use plugin_manager::PluginManager;
+use rust_i18n::t;
 use std::{collections::VecDeque, path::PathBuf, sync::Arc};
 use ui::dock::DockItem;
 use ui::ContextModal;
@@ -581,8 +582,10 @@ impl PulsarApp {
                     "Project",
                     |window, cx| {
                         window.push_notification(
-                            ui::notification::Notification::info("Build")
-                                .message("Building project..."),
+                            ui::notification::Notification::info(
+                                t!("Notification.Title.Build").to_string(),
+                            )
+                            .message(t!("Notification.Message.BuildingProject").to_string()),
                             cx,
                         );
                     },
@@ -596,8 +599,10 @@ impl PulsarApp {
                     "Project",
                     |window, cx| {
                         window.push_notification(
-                            ui::notification::Notification::info("Run")
-                                .message("Running project..."),
+                            ui::notification::Notification::info(
+                                t!("Notification.Title.Run").to_string(),
+                            )
+                            .message(t!("Notification.Message.RunningProject").to_string()),
                             cx,
                         );
                     },

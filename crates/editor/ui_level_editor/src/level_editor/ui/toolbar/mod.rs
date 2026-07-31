@@ -217,8 +217,12 @@ impl ToolbarPanel {
 
                 let Some(path) = target_path else {
                     window.push_notification(
-                        ui::notification::Notification::error("Save as Default Level")
-                            .message("Cannot determine workspace root — is this a source build?"),
+                        ui::notification::Notification::error(
+                            t!("Notification.Title.SaveAsDefaultLevel").to_string(),
+                        )
+                        .message(
+                            t!("Notification.Message.CannotDetermineWorkspaceRoot").to_string(),
+                        ),
                         cx,
                     );
                     return;
@@ -227,8 +231,16 @@ impl ToolbarPanel {
                 if let Some(parent) = path.parent() {
                     if let Err(e) = engine_fs::virtual_fs::create_dir_all(parent) {
                         window.push_notification(
-                            ui::notification::Notification::error("Save as Default Level")
-                                .message(format!("Could not create assets directory: {e}")),
+                            ui::notification::Notification::error(
+                                t!("Notification.Title.SaveAsDefaultLevel").to_string(),
+                            )
+                            .message(
+                                t!(
+                                    "Notification.Message.CouldNotCreateAssetsDirectory",
+                                    error => e.to_string()
+                                )
+                                .to_string(),
+                            ),
                             cx,
                         );
                         return;
@@ -258,15 +270,31 @@ impl ToolbarPanel {
                     Ok(_) => {
                         tracing::info!("Default level saved to {:?}", path);
                         window.push_notification(
-                            ui::notification::Notification::success("Save as Default Level")
-                                .message(format!("Saved to {}", path.display())),
+                            ui::notification::Notification::success(
+                                t!("Notification.Title.SaveAsDefaultLevel").to_string(),
+                            )
+                            .message(
+                                t!(
+                                    "Notification.Message.SavedTo",
+                                    path => path.display().to_string()
+                                )
+                                .to_string(),
+                            ),
                             cx,
                         );
                     }
                     Err(e) => {
                         window.push_notification(
-                            ui::notification::Notification::error("Save as Default Level")
-                                .message(format!("Save failed: {e}")),
+                            ui::notification::Notification::error(
+                                t!("Notification.Title.SaveAsDefaultLevel").to_string(),
+                            )
+                            .message(
+                                t!(
+                                    "Notification.Message.SaveFailed",
+                                    error => e.to_string()
+                                )
+                                .to_string(),
+                            ),
                             cx,
                         );
                     }
