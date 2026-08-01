@@ -417,7 +417,7 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
                 }
             };
             let mat = GpuMaterial {
-                base_color: [0.6, 0.6, 0.65, 1.0],
+                base_color: [0.22, 0.15, 0.08, 1.0],
                 emissive: [0.0, 0.0, 0.0, 0.0],
                 roughness_metallic: [0.7, 0.0, 1.5, 0.5],
                 tex_base_color: GpuMaterial::NO_TEXTURE,
