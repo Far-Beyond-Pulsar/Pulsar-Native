@@ -12,6 +12,7 @@ mod hierarchy;
 mod mutation;
 mod page;
 mod planet;
+mod planning;
 mod refinement;
 mod render;
 mod runtime;
@@ -35,6 +36,10 @@ pub use page::{
     PAGE_EDGE,
 };
 pub use planet::PlanetDefinition;
+pub use planning::{
+    TerrainPlanningConfig, TerrainPlanningCounters, TerrainPlanningError, TerrainPlanningHandle,
+    TerrainPlanningResult, TerrainPlanningTicket,
+};
 pub use refinement::{
     TerrainIncrementalResidencySession, TerrainRefinementConfig, TerrainRefinementCounters,
     TerrainRefinementError, TerrainRefinementFrontier, TerrainRefinementReport,

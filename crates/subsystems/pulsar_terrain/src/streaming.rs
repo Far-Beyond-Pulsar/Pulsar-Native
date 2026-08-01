@@ -119,6 +119,31 @@ impl PlanetView {
     pub const fn velocity_mps(self) -> [f64; 3] {
         self.velocity_mps
     }
+
+    pub(crate) fn within_hysteresis(
+        self,
+        other: Self,
+        position_m: f64,
+        direction_radians: f64,
+        velocity_mps: f64,
+    ) -> bool {
+        if self.vertical_fov_radians != other.vertical_fov_radians
+            || self.viewport_px != other.viewport_px
+            || self.near_m != other.near_m
+            || self.far_m != other.far_m
+        {
+            return false;
+        }
+        let Ok(position_delta) = self.camera.relative_meters(other.camera) else {
+            return false;
+        };
+        let velocity_delta =
+            std::array::from_fn(|axis| self.velocity_mps[axis] - other.velocity_mps[axis]);
+        squared_length(position_delta) <= position_m * position_m
+            && squared_length(velocity_delta) <= velocity_mps * velocity_mps
+            && direction_angle(self.forward, other.forward) <= direction_radians
+            && direction_angle(self.up, other.up) <= direction_radians
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1175,6 +1200,14 @@ fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
         .zip(right)
         .map(|(left, right)| left * right)
         .sum()
+}
+
+fn squared_length(vector: [f64; 3]) -> f64 {
+    dot(vector, vector)
+}
+
+fn direction_angle(left: [f64; 3], right: [f64; 3]) -> f64 {
+    dot(left, right).clamp(-1.0, 1.0).acos()
 }
 
 fn add(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {

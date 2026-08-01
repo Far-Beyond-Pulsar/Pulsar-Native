@@ -1,3 +1,6 @@
+use crate::planning::{
+    TerrainPlanningCapture, TerrainPlanningHandle, TerrainPlanningIdentity, TerrainPlanningService,
+};
 use crate::{
     CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
     PageBuildPreparation, PageBuildRequest, PageBuildResult, PageKey, PlanetDefinition, PlanetId,
@@ -1461,6 +1464,58 @@ impl TerrainRuntimeHandle {
             .map(|planet| planet.generation)
     }
 
+    pub(crate) fn planning_identity(
+        &self,
+        planet_id: PlanetId,
+    ) -> Result<TerrainPlanningIdentity, TerrainRuntimeError> {
+        let state = lock(&self.shared.state);
+        if !state.running {
+            return Err(TerrainRuntimeError::NotRunning);
+        }
+        let planet = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        Ok(TerrainPlanningIdentity {
+            planet_generation: planet.generation,
+            terrain_sequence: planet.core.latest_sequence(),
+        })
+    }
+
+    pub(crate) fn planning_capture(
+        &self,
+        planet_id: PlanetId,
+        expected_planet_generation: u64,
+    ) -> Option<TerrainPlanningCapture> {
+        let state = lock(&self.shared.state);
+        if !state.running {
+            return None;
+        }
+        let planet = state.planets.get(&planet_id)?;
+        if planet.generation != expected_planet_generation {
+            return None;
+        }
+        Some(TerrainPlanningCapture {
+            definition: planet.definition.clone(),
+            terrain_sequence: planet.core.latest_sequence(),
+            snapshot: planet.core.snapshot(),
+        })
+    }
+
+    pub(crate) fn planning_is_current(
+        &self,
+        planet_id: PlanetId,
+        planet_generation: u64,
+        terrain_sequence: u64,
+    ) -> bool {
+        let state = lock(&self.shared.state);
+        state.running
+            && state.planets.get(&planet_id).is_some_and(|planet| {
+                planet.generation == planet_generation
+                    && planet.core.latest_sequence() == terrain_sequence
+            })
+    }
+
     /// Read the generation identity only when the page is currently resident.
     pub fn resident_page_generation(
         &self,
@@ -1616,6 +1671,7 @@ impl TerrainRuntimeHandle {
 
 pub struct TerrainSubsystem {
     handle: TerrainRuntimeHandle,
+    planning: TerrainPlanningService,
     workers: Vec<JoinHandle<()>>,
 }
 
@@ -1623,14 +1679,22 @@ impl TerrainSubsystem {
     pub fn new(config: TerrainRuntimeConfig) -> Result<Self, TerrainRuntimeError> {
         config.validate()?;
         let shared = Arc::new(RuntimeShared::new(config));
+        let handle = TerrainRuntimeHandle { shared };
+        let planning =
+            TerrainPlanningService::new(handle.clone(), handle.shared.config.max_planets);
         Ok(Self {
-            handle: TerrainRuntimeHandle { shared },
+            handle,
+            planning,
             workers: Vec::new(),
         })
     }
 
     pub fn runtime_handle(&self) -> TerrainRuntimeHandle {
         self.handle.clone()
+    }
+
+    pub fn planning_handle(&self) -> TerrainPlanningHandle {
+        self.planning.handle()
     }
 
     fn initialize(&mut self) -> Result<(), TerrainRuntimeError> {
@@ -1642,20 +1706,32 @@ impl TerrainSubsystem {
             state.ever_initialized = true;
             state.running = true;
         }
+        if self.planning.initialize().is_err() {
+            lock(&self.handle.shared.state).running = false;
+            return Err(TerrainRuntimeError::InvalidConfig(
+                "failed to spawn terrain planning worker",
+            ));
+        }
         for worker_index in 0..self.handle.shared.config.worker_count {
             let shared = self.handle.shared.clone();
             let handle = thread::Builder::new()
                 .name(format!("Pulsar-Terrain-{worker_index}"))
-                .spawn(move || worker_loop(shared))
-                .map_err(|_| {
-                    TerrainRuntimeError::InvalidConfig("failed to spawn terrain worker")
-                })?;
-            self.workers.push(handle);
+                .spawn(move || worker_loop(shared));
+            match handle {
+                Ok(handle) => self.workers.push(handle),
+                Err(_) => {
+                    self.shutdown_internal();
+                    return Err(TerrainRuntimeError::InvalidConfig(
+                        "failed to spawn terrain worker",
+                    ));
+                }
+            }
         }
         Ok(())
     }
 
     fn shutdown_internal(&mut self) {
+        self.planning.shutdown();
         {
             let mut state = lock(&self.handle.shared.state);
             if !state.running {
