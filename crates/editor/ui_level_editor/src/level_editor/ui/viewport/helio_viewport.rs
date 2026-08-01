@@ -284,7 +284,7 @@ impl HelioViewport {
 
     /// Start a dedicated background thread that continuously renders the Helio
     /// scene into the given `WgpuSurfaceHandle` and presents each frame.
-    fn start_render_thread(&mut self, surface: WgpuSurfaceHandle) {
+    fn start_render_thread(&mut self, surface: WgpuSurfaceHandle, refresh_hz: Option<f64>) {
         if self.render_thread_handle.is_some() {
             return;
         }
@@ -299,34 +299,49 @@ impl HelioViewport {
             .spawn(move || {
                 profiling::set_thread_name("Helio Render");
 
-                let frame_budget = viewport_frame_budget();
-                let mut next_deadline = Instant::now();
+                // Start at the display's refresh rate and drop from there only
+                // if the renderer can't keep up. The old `sleep(16ms)` ran *in
+                // addition to* the render, so the real period was 16ms + render
+                // time: a scene taking 6ms to draw capped out around 45 FPS
+                // with the GPU idle most of the frame, and on a 144 Hz display
+                // it was leaving more than half the refresh rate on the table.
+                let mut pacer = FramePacer::new(refresh_hz);
+                tracing::info!(
+                    "[VIEWPORT PACER] starting at {:.0} Hz{}",
+                    pacer.target_hz,
+                    if refresh_hz.is_some() {
+                        " (display refresh)"
+                    } else {
+                        " (no refresh rate reported, using fallback)"
+                    }
+                );
 
                 loop {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
 
-                    // Pace to a deadline rather than sleeping a fixed amount.
-                    // The old `sleep(16ms)` ran *in addition to* the render, so
-                    // the real period was 16ms + render time — a scene taking
-                    // 6ms to draw capped out around 45 FPS with the GPU idle
-                    // most of the frame. Anchoring the next deadline to the
-                    // previous one keeps the average rate on target and lets a
-                    // frame that overshoots (Windows' timer granularity is
-                    // coarse) be absorbed by a shorter sleep on the next.
-                    if let Some(budget) = frame_budget {
-                        let now = Instant::now();
-                        if next_deadline > now {
-                            std::thread::sleep(next_deadline - now);
-                        }
-                        next_deadline += budget;
-                        // If we've fallen more than a full frame behind, resync
-                        // instead of trying to catch up with a burst.
-                        let now = Instant::now();
-                        if next_deadline < now {
-                            next_deadline = now + budget;
-                        }
+                    pacer.wait_for_next_frame();
+
+                    // Backpressure: don't produce a frame the compositor hasn't
+                    // asked for yet.
+                    //
+                    // The triple buffer holds exactly one `ready` frame. Publishing
+                    // a second before the first is composited recycles the
+                    // unconsumed buffer as the next render target — those pixels
+                    // are thrown away, so rendering faster than the compositor
+                    // consumes can never raise the displayed frame rate. What it
+                    // does do is keep issuing GPU submissions and per-frame
+                    // allocations that nothing retires at the same rate, which is
+                    // what makes an uncapped render thread climb in memory until
+                    // the process stalls.
+                    //
+                    // Waiting here instead makes the producer self-pace to the
+                    // consumer's actual rate. The wait is bounded: the fast-blit
+                    // presentation path never advances the composited generation,
+                    // so an unbounded wait there would stall the viewport for good.
+                    if !wait_for_frame_consumed(&surface, &stop, CONSUMER_WAIT_TIMEOUT) {
+                        continue;
                     }
 
                     // Permission to submit on the shared device. Held across
@@ -472,29 +487,297 @@ impl HelioViewport {
     }
 }
 
-/// How long one Helio render-thread frame should take, or `None` to run
-/// uncapped.
+/// How long to wait for the compositor to consume the previously published
+/// frame before rendering anyway.
 ///
-/// Set `PULSAR_VIEWPORT_FPS` to change the target; `0` means uncapped.
+/// Long enough that a normal 60 Hz consumer is never rushed, short enough that
+/// the viewport keeps updating if the composited generation stops advancing
+/// (the fast-blit path, a stalled UI thread, a hidden tab).
+const CONSUMER_WAIT_TIMEOUT: Duration = Duration::from_millis(100);
+
+/// Block until the compositor has promoted the last published frame, `stop` is
+/// signalled, or `timeout` elapses.
 ///
-/// Note that raising this alone will not raise the frame rate you *see*. The
-/// editor window's swapchain defaults to `wgpu::PresentMode::Fifo` (vsync), so
-/// the compositor promotes at most one Helio frame per display refresh and any
-/// extra frames are overwritten in the triple buffer's ready slot. To actually
-/// present above the refresh rate, also set `GPUI_PRESENT_MODE=mailbox` (or
-/// `GPUI_DISABLE_VSYNC=1` for `Immediate`) — see `WgpuRenderer::new`.
-fn viewport_frame_budget() -> Option<Duration> {
-    const DEFAULT_FPS: u32 = 60;
+/// Returns `true` if the caller should go on to render this iteration, `false`
+/// if it should re-check the stop flag and start over.
+fn wait_for_frame_consumed(
+    surface: &WgpuSurfaceHandle,
+    stop: &Arc<AtomicBool>,
+    timeout: Duration,
+) -> bool {
+    if !surface.has_unconsumed_frame() {
+        return true;
+    }
 
-    let fps = std::env::var("PULSAR_VIEWPORT_FPS")
-        .ok()
-        .and_then(|v| v.trim().parse::<u32>().ok())
-        .unwrap_or(DEFAULT_FPS);
+    let deadline = Instant::now() + timeout;
+    while surface.has_unconsumed_frame() {
+        if stop.load(Ordering::Acquire) {
+            return false;
+        }
+        if Instant::now() >= deadline {
+            // Consumer isn't advancing. Render anyway rather than freeze the
+            // viewport; the frame may be discarded, but at display rates the
+            // waste is bounded by this timeout.
+            gpui::render_stats::count("helio: consumer wait timed out");
+            return true;
+        }
+        // Park briefly rather than spin: this thread has nothing to do until
+        // the compositor runs, and busy-waiting would burn a core to no end.
+        std::thread::sleep(Duration::from_micros(500));
+    }
 
-    if fps == 0 {
-        None
-    } else {
-        Some(Duration::from_secs_f64(1.0 / fps as f64))
+    true
+}
+
+/// Fallback target when the platform doesn't report a refresh rate.
+const FALLBACK_REFRESH_HZ: f64 = 60.0;
+
+/// Never pace slower than this, however badly frames are missing. Below it the
+/// viewport stops feeling interactive and dropping further doesn't help.
+const MIN_TARGET_HZ: f64 = 20.0;
+
+/// Adaptive frame pacer for the Helio render thread.
+///
+/// Starts at the display's refresh rate — presenting faster cannot show more
+/// frames, since the compositor promotes at most one Helio frame per refresh
+/// and surplus frames are overwritten in the triple buffer's `ready` slot — and
+/// backs off when the renderer can't sustain it, recovering when it can.
+///
+/// Backing off is not cosmetic. A thread that keeps aiming at a rate it cannot
+/// hit spends every frame late, never sleeps, and turns into the unbounded
+/// producer that `wait_for_frame_consumed` exists to prevent. Dropping the
+/// target restores the idle gap between frames.
+struct FramePacer {
+    /// The rate we'd like to hit — the display refresh, unless overridden.
+    ceiling_hz: f64,
+    /// The rate we're currently aiming at, `<= ceiling_hz`.
+    target_hz: f64,
+    /// When the next frame is due.
+    next_deadline: Instant,
+    /// Consecutive frames that overran their budget.
+    late_streak: u32,
+    /// Consecutive frames that met their deadline.
+    on_time_streak: u32,
+}
+
+impl FramePacer {
+    /// Frames in a row that must overrun before dropping the target.
+    const LATE_STREAK_TO_DROP: u32 = 8;
+    /// Frames in a row that must meet their deadline before raising it again.
+    const ON_TIME_STREAK_TO_RAISE: u32 = 120;
+    /// Multiplier applied on each drop / recovery step. Recovery is deliberately
+    /// gentler than the drop so the rate doesn't oscillate.
+    const DROP_FACTOR: f64 = 0.8;
+    const RAISE_FACTOR: f64 = 1.1;
+
+    fn new(refresh_hz: Option<f64>) -> Self {
+        // `PULSAR_VIEWPORT_FPS` overrides the ceiling; `0` disables pacing and
+        // lets `wait_for_frame_consumed` be the only thing governing the rate.
+        let override_hz = std::env::var("PULSAR_VIEWPORT_FPS")
+            .ok()
+            .and_then(|v| v.trim().parse::<f64>().ok())
+            .filter(|v| *v >= 0.0);
+
+        Self::with_ceiling(match override_hz {
+            Some(hz) => hz,
+            None => refresh_hz.unwrap_or(FALLBACK_REFRESH_HZ),
+        })
+    }
+
+    /// Build a pacer aiming at `ceiling_hz`, ignoring the environment. Split out
+    /// from [`new`](Self::new) so the adaptation logic is testable without an
+    /// ambient `PULSAR_VIEWPORT_FPS` changing the outcome.
+    fn with_ceiling(ceiling_hz: f64) -> Self {
+        Self {
+            ceiling_hz,
+            target_hz: ceiling_hz,
+            next_deadline: Instant::now(),
+            late_streak: 0,
+            on_time_streak: 0,
+        }
+    }
+
+    fn budget(&self) -> Option<Duration> {
+        if self.target_hz <= 0.0 {
+            None
+        } else {
+            Some(Duration::from_secs_f64(1.0 / self.target_hz))
+        }
+    }
+
+    /// Sleep until this frame is due. Returns immediately when uncapped or when
+    /// the deadline has already passed.
+    fn wait_for_next_frame(&mut self) {
+        let Some(budget) = self.budget() else {
+            return;
+        };
+
+        let now = Instant::now();
+        if self.next_deadline > now {
+            // Anchoring to the previous deadline (rather than sleeping a fixed
+            // amount after the render) keeps the average rate on target and
+            // absorbs overshoot from Windows' coarse timer granularity on the
+            // following frame.
+            std::thread::sleep(self.next_deadline - now);
+            self.on_time_streak = self.on_time_streak.saturating_add(1);
+            self.late_streak = 0;
+        } else {
+            // Missed the deadline: the previous frame ran long.
+            self.late_streak = self.late_streak.saturating_add(1);
+            self.on_time_streak = 0;
+        }
+
+        self.next_deadline += budget;
+        let now = Instant::now();
+        if self.next_deadline < now {
+            // More than a frame behind — resync instead of trying to catch up
+            // with a burst of back-to-back frames.
+            self.next_deadline = now + budget;
+        }
+
+        self.adapt();
+    }
+
+    fn adapt(&mut self) {
+        if self.target_hz <= 0.0 {
+            return;
+        }
+
+        if self.late_streak >= Self::LATE_STREAK_TO_DROP {
+            let dropped = (self.target_hz * Self::DROP_FACTOR).max(MIN_TARGET_HZ);
+            if dropped < self.target_hz {
+                tracing::debug!(
+                    "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (missed {} frames in a row)",
+                    self.target_hz,
+                    dropped,
+                    self.late_streak
+                );
+                self.target_hz = dropped;
+            }
+            self.late_streak = 0;
+        } else if self.on_time_streak >= Self::ON_TIME_STREAK_TO_RAISE
+            && self.target_hz < self.ceiling_hz
+        {
+            let raised = (self.target_hz * Self::RAISE_FACTOR).min(self.ceiling_hz);
+            tracing::debug!(
+                "[VIEWPORT PACER] target {:.0} -> {:.0} Hz (sustained headroom)",
+                self.target_hz,
+                raised
+            );
+            self.target_hz = raised;
+            self.on_time_streak = 0;
+        }
+    }
+}
+
+#[cfg(test)]
+mod pacer_tests {
+    use super::{FramePacer, FALLBACK_REFRESH_HZ, MIN_TARGET_HZ};
+
+    /// Drive `adapt` as if `n` frames in a row missed their deadline.
+    fn run_late_frames(pacer: &mut FramePacer, n: u32) {
+        for _ in 0..n {
+            pacer.late_streak += 1;
+            pacer.on_time_streak = 0;
+            pacer.adapt();
+        }
+    }
+
+    /// Drive `adapt` as if `n` frames in a row met their deadline.
+    fn run_on_time_frames(pacer: &mut FramePacer, n: u32) {
+        for _ in 0..n {
+            pacer.on_time_streak += 1;
+            pacer.late_streak = 0;
+            pacer.adapt();
+        }
+    }
+
+    #[test]
+    fn starts_at_the_display_refresh_rate() {
+        assert_eq!(FramePacer::with_ceiling(144.0).target_hz, 144.0);
+        assert_eq!(FramePacer::with_ceiling(240.0).target_hz, 240.0);
+    }
+
+    #[test]
+    fn falls_back_when_the_platform_reports_no_refresh_rate() {
+        // `new(None)` with no override must land on the fallback, not on zero.
+        let pacer = FramePacer::with_ceiling(FALLBACK_REFRESH_HZ);
+        assert_eq!(pacer.target_hz, 60.0);
+    }
+
+    #[test]
+    fn holds_the_target_while_frames_are_on_time() {
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_on_time_frames(&mut pacer, 1000);
+        assert_eq!(pacer.target_hz, 144.0, "should never exceed the ceiling");
+    }
+
+    #[test]
+    fn a_short_burst_of_late_frames_does_not_drop_the_target() {
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP - 1);
+        assert_eq!(pacer.target_hz, 144.0);
+    }
+
+    #[test]
+    fn drops_the_target_after_sustained_late_frames() {
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP);
+        assert!(
+            pacer.target_hz < 144.0,
+            "expected a drop, got {}",
+            pacer.target_hz
+        );
+    }
+
+    #[test]
+    fn never_drops_below_the_floor() {
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        // Far more late frames than could ever be needed to bottom out.
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP * 500);
+        assert!(
+            pacer.target_hz >= MIN_TARGET_HZ,
+            "target {} fell below the floor {}",
+            pacer.target_hz,
+            MIN_TARGET_HZ
+        );
+    }
+
+    #[test]
+    fn recovers_toward_the_ceiling_but_never_past_it() {
+        let mut pacer = FramePacer::with_ceiling(144.0);
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP * 6);
+        let dropped = pacer.target_hz;
+        assert!(dropped < 144.0);
+
+        run_on_time_frames(&mut pacer, FramePacer::ON_TIME_STREAK_TO_RAISE * 100);
+        assert!(
+            pacer.target_hz > dropped,
+            "expected recovery from {}, got {}",
+            dropped,
+            pacer.target_hz
+        );
+        assert_eq!(
+            pacer.target_hz, 144.0,
+            "sustained headroom should return all the way to the display refresh"
+        );
+    }
+
+    #[test]
+    fn recovery_is_slower_than_the_drop() {
+        // Otherwise the target oscillates around a rate the renderer can't hold.
+        assert!(FramePacer::ON_TIME_STREAK_TO_RAISE > FramePacer::LATE_STREAK_TO_DROP);
+    }
+
+    #[test]
+    fn an_uncapped_pacer_stays_uncapped() {
+        // `PULSAR_VIEWPORT_FPS=0` hands pacing entirely to the consumer-side
+        // backpressure; adapt must not resurrect a target from zero.
+        let mut pacer = FramePacer::with_ceiling(0.0);
+        assert!(pacer.budget().is_none());
+        run_late_frames(&mut pacer, FramePacer::LATE_STREAK_TO_DROP * 4);
+        assert!(pacer.budget().is_none());
+        assert_eq!(pacer.target_hz, 0.0);
     }
 }
 
@@ -675,10 +958,18 @@ impl Render for HelioViewport {
 
         // Lazy surface creation (once) + start the background render thread.
         if self.surface.is_none() {
+            // Read the refresh rate here, on the UI thread, while we still have
+            // a `Window`: it's what the render thread starts its pacing at.
+            let refresh_hz = window
+                .display(cx)
+                .and_then(|display| display.refresh_rate_millihertz())
+                .map(|mhz| mhz as f64 / 1000.0)
+                .filter(|hz| *hz > 0.0);
+
             match window.create_wgpu_surface(1600, 900, format) {
                 Some(s) => {
                     tracing::info!("[HELIO-VIEWPORT] WgpuSurface created (format={:?})", format);
-                    self.start_render_thread(s.clone());
+                    self.start_render_thread(s.clone(), refresh_hz);
                     self.surface = Some(s);
                 }
                 None => {
