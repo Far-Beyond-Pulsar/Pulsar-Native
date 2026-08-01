@@ -260,6 +260,12 @@ impl ui::dock::Panel for GameViewport {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "Game".into_any_element()
     }
+
+    /// Never cached: `render` is what ticks and blits the game, and what asks
+    /// for the next animation frame. A reused frame would run none of it.
+    fn cacheable(&self, _cx: &App) -> bool {
+        false
+    }
 }
 
 impl Render for GameViewport {

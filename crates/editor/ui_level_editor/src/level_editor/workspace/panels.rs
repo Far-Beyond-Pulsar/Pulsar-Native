@@ -509,4 +509,22 @@ impl Panel for ViewportPanelWrapper {
     fn title(&self, _window: &Window, _cx: &App) -> AnyElement {
         "Viewport".into_any_element()
     }
+
+    /// Never cached.
+    ///
+    /// The viewport captures its element bounds in an `on_children_prepainted`
+    /// callback (`ui::viewport::ViewportPanel::render`) and the left-click and
+    /// mouse-move handlers normalise the cursor against that stash before
+    /// handing it to Helio. A cached view that reuses replays recorded index
+    /// ranges without ever running that callback, so the stash silently goes
+    /// stale and picking/dragging lands on the wrong world position — or on the
+    /// wrong frame's position, which is what the skipping looked like.
+    ///
+    /// This costs close to nothing: the frame pump marks this panel dirty on
+    /// essentially every frame anyway, so its cached view was already rebuilding
+    /// ~80 times per 85 draws. What we give up is the ~5 frames a second it
+    /// happened to reuse — the same 5 frames that dropped the input.
+    fn cacheable(&self, _cx: &App) -> bool {
+        false
+    }
 }
