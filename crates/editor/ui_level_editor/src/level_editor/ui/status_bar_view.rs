@@ -90,6 +90,9 @@ impl EventEmitter<PanelEvent> for StatusBarView {}
 
 impl Render for StatusBarView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::render_stats::count("status bar: render");
+        let _t = gpui::render_stats::scope("status bar: render");
+
         self.start_pump(window, cx);
 
         let state = self.state.read();

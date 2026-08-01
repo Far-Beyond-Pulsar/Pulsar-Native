@@ -69,6 +69,9 @@ ui_common::panel_boilerplate!(WorldSettingsPanel);
 
 impl Render for WorldSettingsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::render_stats::count("world settings panel: render");
+        let _t = gpui::render_stats::scope("world settings panel: render");
+
         let self_entity_id = cx.entity().entity_id();
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
@@ -121,6 +124,9 @@ ui_common::panel_boilerplate!(HierarchyPanelWrapper);
 
 impl Render for HierarchyPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::render_stats::count("hierarchy panel: render");
+        let _t = gpui::render_stats::scope("hierarchy panel: render");
+
         let self_entity_id = cx.entity().entity_id();
 
         let state = self.state.read();
@@ -481,6 +487,9 @@ ui_common::panel_boilerplate!(ViewportPanelWrapper);
 
 impl Render for ViewportPanelWrapper {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::render_stats::count("viewport panel: render");
+        let _t = gpui::render_stats::scope("viewport panel: render");
+
         let mut state = self.state.write();
         self.viewport_panel.render(
             &mut state,

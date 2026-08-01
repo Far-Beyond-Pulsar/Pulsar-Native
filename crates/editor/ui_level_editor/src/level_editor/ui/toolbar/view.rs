@@ -128,6 +128,9 @@ impl EventEmitter<PanelEvent> for ToolbarView {}
 
 impl Render for ToolbarView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        gpui::render_stats::count("toolbar: render");
+        let _t = gpui::render_stats::scope("toolbar: render");
+
         self.start_pump(window, cx);
 
         // Record what we are about to paint so the pump doesn't immediately
