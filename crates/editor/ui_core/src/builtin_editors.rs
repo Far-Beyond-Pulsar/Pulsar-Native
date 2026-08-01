@@ -691,7 +691,7 @@ pub fn register_all_builtin_editors(registry: &mut BuiltinEditorRegistry) {
     registry.register_provider(Arc::new(BlueprintEditorBuiltinProvider));
 
     // Script editor — disabled; handled by DLL plugin for testing
-    // registry.register_provider(Arc::new(ScriptEditorBuiltinProvider));
+    registry.register_provider(Arc::new(ScriptEditorBuiltinProvider));
 
     // Level editor (opens .level and .level.json files)
     registry.register_provider(Arc::new(LevelEditorBuiltinProvider));
