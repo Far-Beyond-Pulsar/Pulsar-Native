@@ -44,6 +44,9 @@ impl GpuRendererBuilder {
             helio_renderer: Some(HelioRenderer::new(scene_db)),
             frame_count: 0,
             start_time: Instant::now(),
+            fps_window_start: Instant::now(),
+            fps_window_frames: 0,
+            fps: 0.0,
         }
     }
 }
@@ -56,7 +59,20 @@ pub struct GpuRenderer {
     helio_renderer: Option<HelioRenderer>,
     frame_count: u64,
     start_time: Instant,
+    // Rolling-window frame rate. `frame_count / start_time.elapsed()` is a
+    // lifetime average: it converges to the mean over the whole process and
+    // barely moves in response to a change, which makes it useless for judging
+    // whether a pacing or caching change did anything. These three fields
+    // recompute the rate over a short window instead.
+    fps_window_start: Instant,
+    fps_window_frames: u64,
+    fps: f32,
 }
+
+/// Length of the rolling window used to compute [`GpuRenderer::get_fps`].
+/// Short enough to react within a fraction of a second, long enough that the
+/// number isn't visibly jittery.
+const FPS_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
 
 impl GpuRenderer {
     /// Render one frame directly into a `WgpuSurfaceHandle` back-buffer view.
@@ -75,13 +91,28 @@ impl GpuRenderer {
             None
         };
         self.frame_count += 1;
+
+        self.fps_window_frames += 1;
+        let window_elapsed = self.fps_window_start.elapsed();
+        if window_elapsed >= FPS_WINDOW {
+            self.fps = self.fps_window_frames as f32 / window_elapsed.as_secs_f32();
+            self.fps_window_start = Instant::now();
+            self.fps_window_frames = 0;
+        }
+
         result
     }
 
+    /// Frames per second submitted by the renderer, averaged over the last
+    /// [`FPS_WINDOW`].
+    ///
+    /// Note this counts *renderer* frames — one per `render_frame_to_surface`
+    /// call on the Helio render thread — not GPUI UI frames. The two are not
+    /// the same: the compositor promotes at most one renderer frame per UI
+    /// draw, and UI draws are skipped entirely when nothing is dirty.
     pub fn get_fps(&self) -> f32 {
-        let elapsed = self.start_time.elapsed().as_secs_f32();
-        if self.frame_count > 0 && elapsed > 0.0 {
-            self.frame_count as f32 / elapsed
+        if self.fps > 0.0 {
+            self.fps
         } else {
             self.get_helio_fps()
         }
