@@ -37,7 +37,7 @@ bytemuck = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 engine_subsystems = { workspace = true }
-pollster = "0.4"
+pollster = "=0.4.0"
 
 [lints]
 workspace = true
