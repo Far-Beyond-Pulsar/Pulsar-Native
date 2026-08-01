@@ -60,6 +60,9 @@ pub struct HelioViewport {
     /// A repaint has been requested but `render()` has not run yet. Keeps the
     /// pump from stacking up notifies for a viewport that isn't being rendered.
     awaiting_render: bool,
+    /// Published frames since this view last actually rendered. Drives the
+    /// periodic real notify that keeps surface bounds tracking its element.
+    frames_since_full_render: u32,
     /// Whether the `on_next_frame` pump has been started (once per view).
     pump_started: bool,
     last_spike_report: Instant,
@@ -87,6 +90,7 @@ impl HelioViewport {
             frames_published: Arc::new(AtomicU64::new(0)),
             last_published_frame: 0,
             awaiting_render: false,
+            frames_since_full_render: 0,
             pump_started: false,
             last_spike_report: Instant::now(),
             slow_frames_since_report: 0,
@@ -436,15 +440,32 @@ impl HelioViewport {
         crate::level_editor::ui::frame_pump::spawn_frame_pump(
             &cx.entity(),
             window,
-            |this, _window, cx| {
-                if this.awaiting_render {
+            |this, window, cx| {
+                let published = this.frames_published.load(Ordering::Acquire);
+                if published == this.last_published_frame {
                     return;
                 }
-                let published = this.frames_published.load(Ordering::Acquire);
-                if published != this.last_published_frame {
-                    this.last_published_frame = published;
+                this.last_published_frame = published;
+
+                // A published texture changes no element state, so the frame
+                // only needs compositing — `refresh_buffers` marks the window
+                // dirty without marking any view dirty, and every cached view
+                // replays instead of rebuilding.
+                //
+                // But a view that never prepaints never observes new bounds,
+                // and `WgpuSurface::prepaint` is what resizes the surface to
+                // match its element. Left purely on buffer refreshes the
+                // viewport would stay at its creation size forever. So a real
+                // notify is still issued periodically: often enough that a
+                // resize is picked up imperceptibly, rare enough that the
+                // ancestor-chain rebuild it triggers stops dominating the
+                // frame — roughly six per second rather than one per frame.
+                this.frames_since_full_render += 1;
+                if this.frames_since_full_render >= FULL_RENDER_INTERVAL || this.awaiting_render {
                     this.awaiting_render = true;
                     cx.notify();
+                } else {
+                    window.refresh_buffers();
                 }
             },
         );
@@ -528,6 +549,18 @@ fn wait_for_frame_consumed(
 
     true
 }
+
+/// Published frames between full re-renders of the viewport view.
+///
+/// Between these the pump uses `Window::refresh_buffers`, which composites the
+/// new texture without invalidating any view. This one exists solely so
+/// `WgpuSurface::prepaint` runs often enough to keep the surface sized to its
+/// element — a purely buffer-refreshed viewport never observes new bounds.
+///
+/// At ~85 FPS this is roughly six full renders per second; a resize is picked
+/// up within ~170ms, which reads as immediate, while the ancestor-chain rebuild
+/// each one triggers stops being a per-frame cost.
+const FULL_RENDER_INTERVAL: u32 = 15;
 
 /// Fallback target when the platform doesn't report a refresh rate.
 const FALLBACK_REFRESH_HZ: f64 = 60.0;
@@ -1016,8 +1049,11 @@ impl Render for HelioViewport {
             // nothing instead of rebuilding the whole editor chrome.
             self.start_frame_pump(window, cx);
             // This render paints whatever the compositor promotes, so the pump's
-            // outstanding request is satisfied and it may fire again.
+            // outstanding request is satisfied and it may fire again. Prepaint of
+            // the surface element below is also what re-observes bounds, so the
+            // periodic-full-render counter restarts here.
             self.awaiting_render = false;
+            self.frames_since_full_render = 0;
             self.last_published_frame = self.frames_published.load(Ordering::Acquire);
 
             wgpu_surface(surface)
