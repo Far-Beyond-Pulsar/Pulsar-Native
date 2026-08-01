@@ -1,6 +1,6 @@
 # Planetary voxel terrain goal and architecture
 
-Status: research-backed implementation plan, 2026-07-13
+Status: active implementation, updated 2026-08-01
 
 ## Goal
 
@@ -59,6 +59,12 @@ PlanetId
 PlanetPosition { lod0_cell: [i64; 3], subcell_m: [f64; 3] }
 PageKey { lod: u8, page_xyz: [i64; 3] }
 NodeState = Air | Solid(material) | Procedural(source) | Branch | Page(PageId)
+NodeSummary = {
+    min_density,
+    max_density,
+    geometric_error_lod0_cells,
+    through_mutation_sequence,
+}
 ```
 
 Do not use one 64-bit Morton key for the full address. About 27 binary levels are required to span an Earth diameter down to 10 cm, which exceeds 64 bits when three coordinate bits are interleaved at every level. Keep level and signed axes explicit on CPU and serialize them canonically.
@@ -71,6 +77,17 @@ absolute coordinates are never collapsed into one floating-point value before
 the active frame origin is subtracted.
 
 GPU page addresses are camera-relative 32-bit values plus a per-frame origin. WGSL has no concrete 64-bit integer type, and absolute planet coordinates must never reach shader arithmetic as one `f32`.
+
+Every materialized VSBT node carries a conservative signed-density interval,
+a surface-error bound in canonical LOD0-cell units, and the newest global
+mutation sequence already folded into that summary. Branch summaries are the
+deterministic union of their children. Compressed procedural descendants derive
+the same metadata analytically from the canonical generator without allocating
+nodes or materializing pages. Query-time edit/override replay advances stale
+summaries conservatively, so a fine union/subtraction can affect coarse planning
+before a dense page exists. Summary bytes are part of hierarchy and snapshot
+hashes; the current canonical snapshot version is `PTSNAP03`, with no legacy
+planet-format migration layer.
 
 ### Page layout
 
@@ -139,6 +156,9 @@ This avoids an engine-wide conversion of existing scene components, Helio camera
 - Pages transition through explicit states: `Absent -> Requested -> CPUReady -> GPUResident -> Meshed`, each carrying a generation number to reject stale jobs.
 - GPU data uses a few large suballocated buffers. Never allocate one wgpu buffer per terrain page.
 - Coarse pages use conservative filtering so thin solid features do not disappear or flip topology unpredictably.
+- Bounded traversal consumes authoritative VSBT summaries. Uniform air/solid
+  nodes terminate traversal, while the stored geometric-error bound—not a
+  renderer-owned terrain guess—drives projected-error refinement.
 
 Successive complete demand plans use a bounded two-set handoff. The currently
 committed visible/prefetch set remains resident while its replacement is
@@ -310,6 +330,17 @@ Current boundary: canonical real-radius addressing and bounded mixed-LOD
 streaming have passed on a flat tangent validation patch. The full spherical
 shell, visible curvature, orbital globe, and continuous travel around the
 planet have not passed yet and remain part of this milestone.
+
+Authoritative density/error summaries are implemented and tested in
+`pulsar_terrain`: analytic sphere intervals never reject sampled crossings,
+fine edits alter coarse summaries without page materialization, root deletion
+replaces the summary in constant work, and compaction/eviction/snapshot
+rehydration preserve summary identity. The release fixture currently reports
+5,592 orbit traversal nodes with 2,636 uniform-region prunes and approximately
+18.5 ms authoritative planning p95 on the development machine (16.9 ms for the
+direct generator baseline). This proves bounded correctness, not the final
+<= 0.5 ms main/render-thread gate; asynchronous scheduling and further planner
+optimization remain required before promotion.
 
 ### Milestone 5: destruction and persistence
 

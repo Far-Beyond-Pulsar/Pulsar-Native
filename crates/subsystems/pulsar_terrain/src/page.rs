@@ -1,5 +1,8 @@
 use crate::mutation::TerrainMutation;
-use crate::{CellWord, ContentHash, DeterministicGenerator, EditLog, EditOp, PageId, PageKey};
+use crate::{
+    CellWord, ContentHash, DeterministicGenerator, EditLog, EditOp, PageId, PageKey,
+    TerrainNodeSummary,
+};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -240,6 +243,32 @@ impl VoxelPage {
 
     pub fn cells(&self) -> impl ExactSizeIterator<Item = CellWord> + '_ {
         (0..CELL_COUNT).map(|index| self.cell_at_index(index))
+    }
+
+    pub fn node_summary(&self, lod: u8, through_sequence: u64) -> TerrainNodeSummary {
+        let mut cells = self.cells();
+        let first = cells
+            .next()
+            .expect("canonical terrain pages always contain cells");
+        let mut min_density = i32::from(first.density());
+        let mut max_density = min_density;
+        for cell in cells {
+            let density = i32::from(cell.density());
+            min_density = min_density.min(density);
+            max_density = max_density.max(density);
+        }
+        let geometric_error_lod0_cells = if min_density > 0 || max_density <= 0 {
+            0
+        } else {
+            1_u64.checked_shl(u32::from(lod)).unwrap_or(u64::MAX)
+        };
+        TerrainNodeSummary::new(
+            min_density,
+            max_density,
+            geometric_error_lod0_cells,
+            through_sequence,
+        )
+        .expect("page density extrema are ordered")
     }
 
     pub fn constant_cell(&self) -> Option<CellWord> {

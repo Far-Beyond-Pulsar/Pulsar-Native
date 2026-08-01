@@ -1,10 +1,11 @@
 use crate::edit::EditIndex;
 use crate::mutation::{TerrainMutation, TerrainMutationBase, TerrainOverrideIndex};
 use crate::{
-    CompactedPageRecord, ContentHash, DeterministicGenerator, EditError, EditLog, EditOp,
+    CompactedPageRecord, ContentHash, DeterministicGenerator, EditError, EditLog, EditMode, EditOp,
     HierarchyError, NodeState, PageCodecError, PageKey, PlanetId, SnapshotCodecError,
-    SparseBrickTree, TerrainOverrideError, TerrainOverrideLog, TerrainOverrideOp,
-    TerrainOverrideTarget, TerrainSnapshot, VoxelPage,
+    SparseBrickTree, TerrainNodeSummary, TerrainOverrideError, TerrainOverrideLog,
+    TerrainOverrideOp, TerrainOverrideTarget, TerrainRegionClassifier, TerrainSnapshot,
+    TerrainStreamingError, VoxelPage,
 };
 use std::collections::BTreeMap;
 use thiserror::Error;
@@ -174,8 +175,9 @@ impl PageBuildResult {
 
 impl<G: DeterministicGenerator> TerrainCore<G> {
     pub fn new(planet_id: PlanetId, root_lod: u8, generator: G) -> Result<Self, TerrainCoreError> {
-        let hierarchy =
-            SparseBrickTree::centered(root_lod, NodeState::Procedural(generator.hash()))?;
+        let state = NodeState::Procedural(generator.hash());
+        let summary = summarize_centered_root(root_lod, &generator, &state, 0);
+        let hierarchy = SparseBrickTree::centered_with_summary(root_lod, state, summary)?;
         Ok(Self {
             planet_id,
             generator,
@@ -216,6 +218,13 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             .edit_tail
             .latest_sequence()
             .max(snapshot.override_tail.latest_sequence());
+        let hierarchy_sequence = snapshot.hierarchy.max_summary_sequence();
+        if hierarchy_sequence > latest_sequence {
+            return Err(TerrainCoreError::HierarchySummaryBeyondMutationTail {
+                summary: hierarchy_sequence,
+                latest: latest_sequence,
+            });
+        }
         let mut compacted = BTreeMap::new();
         for record in snapshot.compacted_pages {
             let _ = snapshot.hierarchy.resolve(record.key)?;
@@ -247,6 +256,21 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
 
     pub fn hierarchy(&self) -> &SparseBrickTree {
         &self.hierarchy
+    }
+
+    /// Conservative canonical summary after every spatially relevant mutation
+    /// through the current global sequence. This query never materializes a
+    /// page and is suitable for bounded view-demand traversal.
+    pub fn node_summary(&self, key: PageKey) -> Result<TerrainNodeSummary, TerrainCoreError> {
+        let (_, mut summary) =
+            self.hierarchy
+                .resolve_with_summary(key, |target, inherited, state| {
+                    summarize_split_leaf(&self.generator, target, inherited, state)
+                })?;
+        for mutation in self.mutations_for_page(key, summary.through_sequence()) {
+            summary = apply_summary_mutation(&self.generator, key, summary, &mutation);
+        }
+        Ok(summary.with_through_sequence(self.latest_sequence))
     }
 
     pub fn planet_id(&self) -> PlanetId {
@@ -313,10 +337,29 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
         }
         self.validate_next_sequence(operation.sequence)?;
 
+        let sequence = operation.sequence;
+        let state = operation.state.clone();
         match operation.target {
-            TerrainOverrideTarget::Root => self.hierarchy.set_root(operation.state.clone())?,
+            TerrainOverrideTarget::Root => {
+                let summary = summarize_centered_root(
+                    self.hierarchy.root_lod(),
+                    &self.generator,
+                    &state,
+                    sequence,
+                );
+                self.hierarchy.set_root_with_summary(state, summary)?;
+            }
             TerrainOverrideTarget::Region(key) => {
-                self.hierarchy.set(key, operation.state.clone())?
+                let summary = summarize_state(&self.generator, key, &state, sequence);
+                let generator = &self.generator;
+                self.hierarchy.set_with_summary(
+                    key,
+                    state,
+                    summary,
+                    |child_key, inherited, child_state| {
+                        summarize_split_leaf(generator, child_key, inherited, child_state)
+                    },
+                )?;
             }
         }
         let operation_index = self.overrides.operations().len();
@@ -455,7 +498,16 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
                     NodeState::Air
                 }
             });
-        self.hierarchy.set(result.key, state)?;
+        let summary = result.page.node_summary(result.key.lod, latest_sequence);
+        let generator = &self.generator;
+        self.hierarchy.set_with_summary(
+            result.key,
+            state,
+            summary,
+            |child_key, inherited, child_state| {
+                summarize_split_leaf(generator, child_key, inherited, child_state)
+            },
+        )?;
         self.pages.insert(result.key, result.page);
         self.compacted.insert(result.key, record);
         self.work.pages_compacted = self.work.pages_compacted.saturating_add(1);
@@ -680,6 +732,131 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
     }
 }
 
+fn summarize_centered_root<G: DeterministicGenerator>(
+    root_lod: u8,
+    generator: &G,
+    state: &NodeState,
+    through_sequence: u64,
+) -> TerrainNodeSummary {
+    let Some(child_lod) = root_lod.checked_sub(1) else {
+        return TerrainNodeSummary::unknown(through_sequence);
+    };
+    let mut summaries = (0..8).map(|index| {
+        let page_xyz = [
+            (index & 1) as i64 - 1,
+            ((index >> 1) & 1) as i64 - 1,
+            ((index >> 2) & 1) as i64 - 1,
+        ];
+        summarize_state(
+            generator,
+            PageKey::new(child_lod, page_xyz),
+            state,
+            through_sequence,
+        )
+    });
+    let first = summaries
+        .next()
+        .expect("a centered hierarchy always has eight root children");
+    summaries.fold(first, TerrainNodeSummary::union)
+}
+
+fn summarize_state<G: DeterministicGenerator>(
+    generator: &G,
+    key: PageKey,
+    state: &NodeState,
+    through_sequence: u64,
+) -> TerrainNodeSummary {
+    match state {
+        NodeState::Air => TerrainNodeSummary::uniform_air(through_sequence),
+        NodeState::Solid(_) => TerrainNodeSummary::uniform_solid(through_sequence),
+        NodeState::Procedural(hash) if *hash == generator.hash() => generator
+            .summarize_region(key)
+            .with_through_sequence(through_sequence),
+        NodeState::Procedural(_) | NodeState::Page(_) | NodeState::Branch => {
+            TerrainNodeSummary::unknown(through_sequence)
+        }
+    }
+}
+
+fn summarize_split_leaf<G: DeterministicGenerator>(
+    generator: &G,
+    key: PageKey,
+    inherited: TerrainNodeSummary,
+    state: &NodeState,
+) -> TerrainNodeSummary {
+    match state {
+        NodeState::Page(_) => inherited,
+        _ => summarize_state(generator, key, state, inherited.through_sequence()),
+    }
+}
+
+fn apply_summary_mutation<G: DeterministicGenerator>(
+    generator: &G,
+    key: PageKey,
+    summary: TerrainNodeSummary,
+    mutation: &TerrainMutation,
+) -> TerrainNodeSummary {
+    match mutation {
+        TerrainMutation::Override(operation) => {
+            let replacement = summarize_state(generator, key, &operation.state, operation.sequence);
+            if operation.page_base(key).is_some() {
+                replacement
+            } else {
+                summary
+                    .union(replacement)
+                    .with_through_sequence(operation.sequence)
+            }
+        }
+        TerrainMutation::Edit(operation) => {
+            if operation.mode == EditMode::Paint {
+                return summary.with_through_sequence(operation.sequence);
+            }
+            let bounds = match operation.shape.signed_distance_bounds_in_page(key) {
+                Ok(Some(bounds)) => bounds,
+                Ok(None) => return summary.with_through_sequence(operation.sequence),
+                Err(()) => return TerrainNodeSummary::unknown(operation.sequence),
+            };
+            let (shape_min, shape_max) = bounds;
+            let (min_density, max_density) = match operation.mode {
+                EditMode::Union => (
+                    summary.min_density().min(shape_min),
+                    summary.max_density().min(shape_max),
+                ),
+                EditMode::Subtract => (
+                    summary.min_density().max(shape_max.saturating_neg()),
+                    summary.max_density().max(shape_min.saturating_neg()),
+                ),
+                EditMode::Replace => (
+                    summary.min_density().min(shape_min),
+                    summary.max_density().max(shape_max),
+                ),
+                EditMode::Paint => unreachable!("paint returned before density evaluation"),
+            };
+            let geometric_error = if min_density > 0 || max_density <= 0 {
+                0
+            } else {
+                summary
+                    .geometric_error_lod0_cells()
+                    .max(1_u64.checked_shl(u32::from(key.lod)).unwrap_or(u64::MAX))
+            };
+            TerrainNodeSummary::new(
+                min_density,
+                max_density,
+                geometric_error,
+                operation.sequence,
+            )
+            .expect("edit interval transforms preserve range ordering")
+        }
+    }
+}
+
+impl<G: DeterministicGenerator> TerrainRegionClassifier for TerrainCore<G> {
+    fn summarize_region(&self, key: PageKey) -> Result<TerrainNodeSummary, TerrainStreamingError> {
+        self.node_summary(key)
+            .map_err(|error| TerrainStreamingError::TerrainSummary(error.to_string()))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum TerrainCoreError {
     #[error(transparent)]
@@ -702,6 +879,8 @@ pub enum TerrainCoreError {
     GeneratorMismatch,
     #[error("compacted page sequence {compacted} exceeds the canonical mutation tail {latest}")]
     CompactedBeyondMutationTail { compacted: u64, latest: u64 },
+    #[error("hierarchy summary sequence {summary} exceeds the canonical mutation tail {latest}")]
+    HierarchySummaryBeyondMutationTail { summary: u64, latest: u64 },
     #[error("rehydrated page {0:?} does not match its authoritative content hash")]
     RehydratedPageMismatch(PageKey),
 }
@@ -1151,6 +1330,97 @@ mod tests {
     }
 
     #[test]
+    fn fine_descendant_edit_changes_coarse_summary_without_materializing_pages() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 3,
+        };
+        let mut core = TerrainCore::new(PlanetId([31; 16]), 12, generator).unwrap();
+        let coarse = PageKey::new(4, [2, 0, 0]);
+        let before = core.node_summary(coarse).unwrap();
+        assert!(before.is_uniform_air());
+        assert_eq!(before.through_sequence(), 0);
+
+        let min = coarse.lod0_cell_min().unwrap();
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: min.map(|axis| axis + 64),
+                radius_cells: 8,
+            },
+            mode: EditMode::Union,
+            material: 9,
+        })
+        .unwrap();
+
+        let after = core.node_summary(coarse).unwrap();
+        assert!(after.contains_surface());
+        assert!(after.min_density() <= -8);
+        assert!(after.max_density() > 0);
+        assert_eq!(after.through_sequence(), 1);
+        assert_eq!(core.resident_page_count(), 0);
+        assert_eq!(core.memory_counters().compacted_page_records, 0);
+    }
+
+    #[test]
+    fn summaries_survive_compaction_eviction_and_snapshot_rehydration() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 1_000,
+            material: 5,
+        };
+        let key = PageKey::new(0, [31, 0, 0]);
+        let mut core = TerrainCore::new(PlanetId([32; 16]), 12, generator).unwrap();
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: [1_000, 0, 0],
+                radius_cells: 3,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        })
+        .unwrap();
+        core.compact_page(key).unwrap();
+        let expected_summary = core.node_summary(key).unwrap();
+        let expected_hash = core.snapshot().content_hash().unwrap();
+
+        assert!(core.evict_resident_page(key));
+        assert_eq!(core.node_summary(key).unwrap(), expected_summary);
+        assert_eq!(core.snapshot().content_hash().unwrap(), expected_hash);
+
+        let snapshot = TerrainSnapshot::decode(&core.snapshot().encode().unwrap()).unwrap();
+        let mut restored = TerrainCore::from_snapshot(snapshot, generator).unwrap();
+        assert_eq!(restored.node_summary(key).unwrap(), expected_summary);
+        restored.compact_page(key).unwrap();
+        assert_eq!(restored.node_summary(key).unwrap(), expected_summary);
+        assert_eq!(restored.snapshot().content_hash().unwrap(), expected_hash);
+    }
+
+    #[test]
+    fn root_delete_replaces_the_authoritative_summary_in_constant_work() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 10_000,
+            material: 5,
+        };
+        let mut core = TerrainCore::new(PlanetId([33; 16]), 24, generator).unwrap();
+        core.compact_page(PageKey::new(0, [0; 3])).unwrap();
+        assert!(core.hierarchy().node_count() > 1);
+
+        core.set_root(NodeState::Air).unwrap();
+        assert_eq!(core.hierarchy().node_count(), 1);
+        assert!(core.hierarchy().root_summary().is_uniform_air());
+        assert_eq!(core.hierarchy().root_summary().through_sequence(), 1);
+        let summary = core.node_summary(PageKey::new(12, [0; 3])).unwrap();
+        assert!(summary.is_uniform_air());
+        assert_eq!(summary.through_sequence(), 1);
+    }
+
+    #[test]
     fn procedural_root_reset_discards_older_materialized_edits() {
         let generator = FixedSphereGenerator {
             center_cell: [0; 3],
@@ -1211,6 +1481,35 @@ mod tests {
             Some(crate::CellWord::AIR)
         );
         assert_eq!(restored.snapshot().content_hash().unwrap(), canonical_hash);
+    }
+
+    #[test]
+    fn snapshot_rejects_hierarchy_summary_from_the_future() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 5,
+        };
+        let snapshot = TerrainSnapshot {
+            planet_id: PlanetId([34; 16]),
+            generator_hash: generator.hash(),
+            hierarchy: SparseBrickTree::centered_with_summary(
+                12,
+                NodeState::Air,
+                TerrainNodeSummary::uniform_air(1),
+            )
+            .unwrap(),
+            edit_tail: EditLog::default(),
+            override_tail: TerrainOverrideLog::default(),
+            compacted_pages: Vec::new(),
+        };
+        assert!(matches!(
+            TerrainCore::from_snapshot(snapshot, generator),
+            Err(TerrainCoreError::HierarchySummaryBeyondMutationTail {
+                summary: 1,
+                latest: 0,
+            })
+        ));
     }
 
     #[test]

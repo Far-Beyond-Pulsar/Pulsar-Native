@@ -59,6 +59,6 @@ pub use streaming::{
 };
 pub use types::{
     CellWord, ContentHash, MaterialId, NodeState, PageId, PageKey, PlanetFrame, PlanetFramePayload,
-    PlanetId, PlanetIdParseError, PlanetPosition, PositionError, LOD0_CELL_SIZE_METERS,
-    MILLIMETER_INTERACTION_RADIUS_METERS, PAGE_EDGE_CELLS,
+    PlanetId, PlanetIdParseError, PlanetPosition, PositionError, TerrainNodeSummary,
+    LOD0_CELL_SIZE_METERS, MILLIMETER_INTERACTION_RADIUS_METERS, PAGE_EDGE_CELLS,
 };

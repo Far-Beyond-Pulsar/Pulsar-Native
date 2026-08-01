@@ -2,7 +2,7 @@ use crate::{ContentHash, EditLog, PageId, PageKey, PlanetId, SparseBrickTree, Te
 use std::collections::BTreeSet;
 use thiserror::Error;
 
-const SNAPSHOT_MAGIC: &[u8; 8] = b"PTSNAP02";
+const SNAPSHOT_MAGIC: &[u8; 8] = b"PTSNAP03";
 const SNAPSHOT_HEADER_BYTES: usize = 88;
 const PAGE_RECORD_BYTES: usize = 72;
 
@@ -303,10 +303,11 @@ mod tests {
 
     #[test]
     fn obsolete_snapshot_versions_are_rejected() {
-        let obsolete = b"PTSNAP01";
-        assert_eq!(
-            TerrainSnapshot::decode(obsolete),
-            Err(SnapshotCodecError::Codec)
-        );
+        for obsolete in [b"PTSNAP01".as_slice(), b"PTSNAP02".as_slice()] {
+            assert_eq!(
+                TerrainSnapshot::decode(obsolete),
+                Err(SnapshotCodecError::Codec)
+            );
+        }
     }
 }
