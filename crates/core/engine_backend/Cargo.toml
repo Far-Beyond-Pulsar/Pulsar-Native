@@ -68,7 +68,7 @@ serde_json = { workspace = true }
 reqwest = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls-no-provider"], optional = true }
 
 # Networking dependencies
-async-tungstenite = { version = "0.34", features = ["tokio-runtime"], optional = true }
+async-tungstenite = { version = "0.35", features = ["tokio-runtime"], optional = true }
 git2 = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 walkdir = { workspace = true, optional = true }
