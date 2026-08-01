@@ -23,6 +23,7 @@ impl ScenePropsProjector for FoliageComponent {
             "altitude_min",
             "altitude_max",
             "layer_extent",
+            "has_infinite_extent",
             "trunk_sway",
             "branch_flutter",
             "leaf_jitter",

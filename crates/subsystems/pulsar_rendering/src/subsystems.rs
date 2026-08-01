@@ -23,6 +23,7 @@ pub struct FoliageEntry {
     pub material_id: helio::MaterialId,
     pub material_hash: u64,
     pub descriptor_hash: u64,
+    pub bounds_hash: u64,
     pub wind_hash: u64,
 }
 

@@ -33,6 +33,10 @@ pub struct PlacementFoliageProps {
     /// the owner object's XZ position.
     #[property(min = 1.0, max = 10000.0, step = 1.0, category = "Placement")]
     pub layer_extent: f32,
+    /// When set, the layer bounds are not enforced: grass grows across the whole
+    /// foliage ring around the camera instead of stopping at the volume box.
+    #[property(category = "Placement")]
+    pub has_infinite_extent: bool,
 }
 
 impl Default for PlacementFoliageProps {
@@ -47,6 +51,7 @@ impl Default for PlacementFoliageProps {
             altitude_min: -10000.0,
             altitude_max: 10000.0,
             layer_extent: 120.0,
+            has_infinite_extent: false,
         }
     }
 }
@@ -80,6 +85,9 @@ impl PlacementFoliageProps {
         if let Some(v) = obj.get("layer_extent").and_then(|v| v.as_f64()) {
             self.layer_extent = v as f32;
         }
+        if let Some(v) = obj.get("has_infinite_extent").and_then(|v| v.as_bool()) {
+            self.has_infinite_extent = v;
+        }
     }
 
     pub(crate) fn apply_to_scene_props(&self, out: &mut HashMap<String, Value>) {
@@ -98,5 +106,9 @@ impl PlacementFoliageProps {
         out.insert("altitude_min".to_string(), Value::from(self.altitude_min));
         out.insert("altitude_max".to_string(), Value::from(self.altitude_max));
         out.insert("layer_extent".to_string(), Value::from(self.layer_extent));
+        out.insert(
+            "has_infinite_extent".to_string(),
+            Value::from(self.has_infinite_extent),
+        );
     }
 }

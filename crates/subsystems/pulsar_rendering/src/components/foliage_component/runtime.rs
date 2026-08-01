@@ -25,6 +25,43 @@ fn hash_props<T: Serialize>(value: &T) -> u64 {
     hasher.finish()
 }
 
+/// World-space AABB of the layer, centred on the owner's XZ.
+fn build_layer_bounds(component: &FoliageComponent, position: [f32; 3]) -> [glam::Vec3; 2] {
+    let half = component.placement.layer_extent;
+    [
+        glam::Vec3::new(
+            position[0] - half,
+            component.placement.altitude_min,
+            position[2] - half,
+        ),
+        glam::Vec3::new(
+            position[0] + half,
+            component.placement.altitude_max,
+            position[2] + half,
+        ),
+    ]
+}
+
+fn build_layer(
+    component: &FoliageComponent,
+    type_id: helio::FoliageTypeId,
+    position: [f32; 3],
+) -> FoliageLayer {
+    FoliageLayer {
+        types: vec![type_id],
+        bounds: build_layer_bounds(component, position),
+        seed: 0x5EED,
+        has_infinite_extent: component.placement.has_infinite_extent,
+    }
+}
+
+/// Fingerprint of the layer-relevant props only. Bounds edits are the one piece of
+/// placement the type update cannot express, so they get their own gate.
+fn bounds_hash(component: &FoliageComponent) -> u64 {
+    let p = &component.placement;
+    hash_props(&(p.layer_extent, p.altitude_min, p.altitude_max, p.has_infinite_extent))
+}
+
 fn build_material(component: &FoliageComponent) -> GpuMaterial {
     let rendering = &component.rendering;
     GpuMaterial {
@@ -146,6 +183,7 @@ impl ComponentRuntimeBehavior for FoliageComponent {
 
         let material_hash = hash_props(&component.rendering);
         let descriptor_hash = hash_props(&component);
+        let bounds_hash = bounds_hash(&component);
         let wind_hash = hash_props(&component.wind);
 
         match cached {
@@ -159,6 +197,17 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                     let scene = renderer.scene_mut();
 
                     let mut entry = entry;
+                    if entry.bounds_hash != bounds_hash {
+                        // The layer table has no in-place update API, so a bounds edit
+                        // re-registers the layer. Same type, same seed — only the AABB
+                        // and the infinite-extent flag change. The generation bump the
+                        // removal/insertion causes re-rolls the ring, which is exactly
+                        // what an edit to "where grass grows" must do.
+                        let _ = scene.remove_foliage_layer(entry.layer_id);
+                        entry.layer_id =
+                            scene.add_foliage_layer(build_layer(&component, entry.type_id, position));
+                        entry.bounds_hash = bounds_hash;
+                    }
                     if entry.descriptor_hash != descriptor_hash {
                         let material_id = if entry.material_hash != material_hash {
                             let new_material = scene.insert_material(build_material(&component));
@@ -199,9 +248,8 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                 }
             }
             None => {
-                let half = component.placement.layer_extent;
-                let [px, _, pz] = owner.position;
-                let position = glam::Vec3::from_array(owner.position);
+                let position = owner.position;
+                let position_v3 = glam::Vec3::from_array(position);
 
                 let (type_id, layer_id, interactor_id, material_id) = {
                     let renderer = get_subsystem!(context, Renderer);
@@ -210,24 +258,10 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                     let material_id = scene.insert_material(build_material(&component));
                     let type_id =
                         scene.add_foliage_type(build_type_descriptor(&component, material_id));
-                    let layer_id = scene.add_foliage_layer(FoliageLayer {
-                        types: vec![type_id],
-                        bounds: [
-                            glam::Vec3::new(
-                                px - half,
-                                component.placement.altitude_min,
-                                pz - half,
-                            ),
-                            glam::Vec3::new(
-                                px + half,
-                                component.placement.altitude_max,
-                                pz + half,
-                            ),
-                        ],
-                        seed: 0x5EED,
-                    });
+                    let layer_id =
+                        scene.add_foliage_layer(build_layer(&component, type_id, position));
                     let interactor_position = if component.interaction.interactor_enabled {
-                        position
+                        position_v3
                     } else {
                         glam::Vec3::from_array(INTERACTOR_PARKED)
                     };
@@ -249,6 +283,7 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                     material_id,
                     material_hash,
                     descriptor_hash,
+                    bounds_hash,
                     wind_hash,
                 };
                 let cache = get_subsystem!(context, FoliageCache);
