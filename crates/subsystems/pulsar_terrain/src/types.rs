@@ -419,6 +419,132 @@ pub enum NodeState {
     Page(PageId),
 }
 
+/// Conservative canonical metadata for one sparse-hierarchy region.
+///
+/// Density is expressed in signed LOD0-cell units: values at or below zero
+/// are solid and positive values are air. The interval must contain every
+/// canonical sample represented by the node. `geometric_error_lod0_cells`
+/// bounds the surface approximation error for renderer/physics refinement;
+/// uniform regions therefore carry zero error. `through_sequence` records the
+/// newest global terrain mutation already folded into the interval.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TerrainNodeSummary {
+    min_density: i32,
+    max_density: i32,
+    geometric_error_lod0_cells: u64,
+    through_sequence: u64,
+}
+
+impl TerrainNodeSummary {
+    pub const fn new(
+        min_density: i32,
+        max_density: i32,
+        geometric_error_lod0_cells: u64,
+        through_sequence: u64,
+    ) -> Option<Self> {
+        if min_density > max_density {
+            return None;
+        }
+        Some(Self {
+            min_density,
+            max_density,
+            geometric_error_lod0_cells,
+            through_sequence,
+        })
+    }
+
+    pub const fn unknown(through_sequence: u64) -> Self {
+        Self {
+            min_density: i32::MIN,
+            max_density: i32::MAX,
+            geometric_error_lod0_cells: u64::MAX,
+            through_sequence,
+        }
+    }
+
+    pub const fn uniform_air(through_sequence: u64) -> Self {
+        Self {
+            min_density: 1,
+            max_density: i32::MAX,
+            geometric_error_lod0_cells: 0,
+            through_sequence,
+        }
+    }
+
+    pub const fn uniform_solid(through_sequence: u64) -> Self {
+        Self {
+            min_density: i32::MIN,
+            max_density: 0,
+            geometric_error_lod0_cells: 0,
+            through_sequence,
+        }
+    }
+
+    pub const fn for_state(state: &NodeState, through_sequence: u64) -> Self {
+        match state {
+            NodeState::Air => Self::uniform_air(through_sequence),
+            NodeState::Solid(_) => Self::uniform_solid(through_sequence),
+            NodeState::Procedural(_) | NodeState::Page(_) | NodeState::Branch => {
+                Self::unknown(through_sequence)
+            }
+        }
+    }
+
+    pub const fn min_density(self) -> i32 {
+        self.min_density
+    }
+
+    pub const fn max_density(self) -> i32 {
+        self.max_density
+    }
+
+    pub const fn geometric_error_lod0_cells(self) -> u64 {
+        self.geometric_error_lod0_cells
+    }
+
+    pub const fn through_sequence(self) -> u64 {
+        self.through_sequence
+    }
+
+    pub const fn is_uniform_air(self) -> bool {
+        self.min_density > 0
+    }
+
+    pub const fn is_uniform_solid(self) -> bool {
+        self.max_density <= 0
+    }
+
+    pub const fn contains_surface(self) -> bool {
+        !self.is_uniform_air() && !self.is_uniform_solid()
+    }
+
+    pub const fn with_through_sequence(self, through_sequence: u64) -> Self {
+        Self {
+            through_sequence,
+            ..self
+        }
+    }
+
+    /// Union summaries conservatively. A branch is current only through the
+    /// oldest child sequence; later mutations are replayed at query time.
+    pub fn union(self, other: Self) -> Self {
+        Self {
+            min_density: self.min_density.min(other.min_density),
+            max_density: self.max_density.max(other.max_density),
+            geometric_error_lod0_cells: self
+                .geometric_error_lod0_cells
+                .max(other.geometric_error_lod0_cells),
+            through_sequence: self.through_sequence.min(other.through_sequence),
+        }
+    }
+}
+
+impl Default for TerrainNodeSummary {
+    fn default() -> Self {
+        Self::unknown(0)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CellWord(pub u32);

@@ -1,3 +1,4 @@
+use crate::generator::sphere_signed_distance_bounds;
 use crate::{CellWord, ContentHash, MaterialId, PageKey};
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -90,6 +91,38 @@ impl EditShape {
                 u128::try_from(last.saturating_sub(first).saturating_add(1)).unwrap_or(u128::MAX)
             })
             .fold(1_u128, u128::saturating_mul)
+    }
+
+    pub(crate) fn signed_distance_bounds_in_page(
+        self,
+        key: PageKey,
+    ) -> Result<Option<(i32, i32)>, ()> {
+        let page_min = key.lod0_cell_min().ok_or(())?;
+        let page_span = key.lod0_cell_span().ok_or(())?;
+        let page_max_exclusive = [
+            page_min[0].checked_add(page_span).ok_or(())?,
+            page_min[1].checked_add(page_span).ok_or(())?,
+            page_min[2].checked_add(page_span).ok_or(())?,
+        ];
+        let (shape_min, shape_max_exclusive) = self.bounds();
+        let intersection_min = std::array::from_fn(|axis| page_min[axis].max(shape_min[axis]));
+        let intersection_max_exclusive =
+            std::array::from_fn(|axis| page_max_exclusive[axis].min(shape_max_exclusive[axis]));
+        if (0..3).any(|axis| intersection_min[axis] >= intersection_max_exclusive[axis]) {
+            return Ok(None);
+        }
+        let intersection_max = intersection_max_exclusive.map(|axis| axis - 1);
+        match self {
+            Self::Sphere {
+                center_cell,
+                radius_cells,
+            } => Ok(Some(sphere_signed_distance_bounds(
+                center_cell,
+                u64::from(radius_cells),
+                intersection_min,
+                intersection_max,
+            ))),
+        }
     }
 
     /// Smallest canonical hierarchy region that contains the edit AABB.

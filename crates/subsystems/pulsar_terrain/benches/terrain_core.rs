@@ -159,6 +159,30 @@ fn main() {
     plan_times.sort_unstable();
     let plan_p95 = plan_times[18];
     let latest_plan = latest_plan.unwrap();
+    let planning_core = TerrainCore::new(
+        planet.planet_id,
+        planet.root_lod,
+        FixedSphereGenerator {
+            center_cell: planet.center_cell,
+            radius_cells: planet.radius_cells,
+            material: planet.material,
+        },
+    )
+    .unwrap();
+    let mut authoritative_plan_times = Vec::with_capacity(20);
+    let mut latest_authoritative_plan = None;
+    for _ in 0..20 {
+        let started = Instant::now();
+        let plan = planner
+            .plan_with_classifier(&planet, view, &planning_core)
+            .unwrap();
+        authoritative_plan_times.push(started.elapsed());
+        latest_authoritative_plan = Some(plan);
+    }
+    authoritative_plan_times.sort_unstable();
+    let authoritative_plan_p95 = authoritative_plan_times[18];
+    let latest_authoritative_plan = latest_authoritative_plan.unwrap();
+    assert_eq!(latest_authoritative_plan, latest_plan);
 
     let ground_planet = PlanetDefinition {
         max_resident_pages: 8_192,
@@ -193,7 +217,7 @@ fn main() {
     // A billion logical cells are represented by the root without allocation.
     let logical_dense_bytes = 1_000_000_000_u64 * 4;
     println!(
-        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_plan_p95_ms={:.3} orbit_plan_limits={:?} ground_plan_pages={} ground_plan_nodes={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
+        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_uniform_pruned={} orbit_plan_p95_ms={:.3} orbit_authoritative_p95_ms={:.3} orbit_plan_limits={:?} ground_plan_pages={} ground_plan_nodes={} ground_uniform_pruned={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
         sparse.node_count(),
         sparse_time.as_secs_f64() * 1_000.0,
         dense.len(),
@@ -212,10 +236,13 @@ fn main() {
         delete_time.as_secs_f64() * 1_000_000.0,
         latest_plan.demands().len(),
         latest_plan.counters().traversed_nodes,
+        latest_plan.counters().uniform_regions_pruned,
         plan_p95.as_secs_f64() * 1_000.0,
+        authoritative_plan_p95.as_secs_f64() * 1_000.0,
         latest_plan.limits(),
         latest_ground_plan.demands().len(),
         latest_ground_plan.counters().traversed_nodes,
+        latest_ground_plan.counters().uniform_regions_pruned,
         ground_p95.as_secs_f64() * 1_000.0,
         latest_ground_plan.limits(),
     );

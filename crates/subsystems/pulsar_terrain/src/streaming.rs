@@ -1,6 +1,6 @@
 use crate::{
-    FixedSphereGenerator, PageKey, PlanetDefinition, PlanetId, PlanetPosition, TerrainRequestClass,
-    LOD0_CELL_SIZE_METERS,
+    DeterministicGenerator, FixedSphereGenerator, PageKey, PlanetDefinition, PlanetId,
+    PlanetPosition, TerrainNodeSummary, TerrainRequestClass, LOD0_CELL_SIZE_METERS,
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
@@ -19,59 +19,23 @@ pub enum TerrainRegion {
 /// Returning `Surface` is always safe. Returning a uniform state promises that
 /// no surface sample exists inside the page and allows the traversal to stop.
 pub trait TerrainRegionClassifier {
-    fn classify_region(&self, key: PageKey) -> Result<TerrainRegion, TerrainStreamingError>;
+    fn summarize_region(&self, key: PageKey) -> Result<TerrainNodeSummary, TerrainStreamingError>;
+
+    fn classify_region(&self, key: PageKey) -> Result<TerrainRegion, TerrainStreamingError> {
+        let summary = self.summarize_region(key)?;
+        Ok(if summary.is_uniform_air() {
+            TerrainRegion::UniformAir
+        } else if summary.is_uniform_solid() {
+            TerrainRegion::UniformSolid
+        } else {
+            TerrainRegion::Surface
+        })
+    }
 }
 
 impl TerrainRegionClassifier for FixedSphereGenerator {
-    fn classify_region(&self, key: PageKey) -> Result<TerrainRegion, TerrainStreamingError> {
-        let min = key
-            .lod0_cell_min()
-            .ok_or(TerrainStreamingError::CoordinateOverflow)?;
-        let span = key
-            .lod0_cell_span()
-            .ok_or(TerrainStreamingError::CoordinateOverflow)?;
-        let max = [
-            min[0]
-                .checked_add(span - 1)
-                .ok_or(TerrainStreamingError::CoordinateOverflow)?,
-            min[1]
-                .checked_add(span - 1)
-                .ok_or(TerrainStreamingError::CoordinateOverflow)?,
-            min[2]
-                .checked_add(span - 1)
-                .ok_or(TerrainStreamingError::CoordinateOverflow)?,
-        ];
-
-        let mut minimum_distance_squared = 0_u128;
-        let mut maximum_distance_squared = 0_u128;
-        for axis in 0..3 {
-            let center = i128::from(self.center_cell[axis]);
-            let low = i128::from(min[axis]);
-            let high = i128::from(max[axis]);
-            let nearest = if center < low {
-                low - center
-            } else if center > high {
-                center - high
-            } else {
-                0
-            } as u128;
-            let farthest = (low - center)
-                .unsigned_abs()
-                .max((high - center).unsigned_abs());
-            minimum_distance_squared =
-                minimum_distance_squared.saturating_add(nearest.saturating_mul(nearest));
-            maximum_distance_squared =
-                maximum_distance_squared.saturating_add(farthest.saturating_mul(farthest));
-        }
-
-        let radius_squared = u128::from(self.radius_cells).pow(2);
-        if minimum_distance_squared > radius_squared {
-            Ok(TerrainRegion::UniformAir)
-        } else if maximum_distance_squared <= radius_squared {
-            Ok(TerrainRegion::UniformSolid)
-        } else {
-            Ok(TerrainRegion::Surface)
-        }
+    fn summarize_region(&self, key: PageKey) -> Result<TerrainNodeSummary, TerrainStreamingError> {
+        Ok(DeterministicGenerator::summarize_region(self, key))
     }
 }
 
@@ -248,6 +212,7 @@ pub enum TerrainStreamingLimit {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerrainStreamingCounters {
     pub traversed_nodes: usize,
+    pub uniform_regions_pruned: usize,
     pub refinements: usize,
     pub balance_refinements: usize,
     pub page_high_water: usize,
@@ -359,6 +324,8 @@ pub enum TerrainStreamingError {
     PlanetOutsideRoot,
     #[error("planetary page coordinate arithmetic overflowed")]
     CoordinateOverflow,
+    #[error("authoritative terrain summary failed: {0}")]
+    TerrainSummary(String),
     #[error("page budget {available} cannot represent {required} visible root regions")]
     RootPageBudget { required: usize, available: usize },
 }
@@ -583,9 +550,13 @@ impl<C: TerrainRegionClassifier> PlannerState<'_, C> {
             return Ok(Evaluation::TraversalBudget);
         }
         self.counters.traversed_nodes = self.counters.traversed_nodes.saturating_add(1);
-        let info = if self.classifier.classify_region(key)? == TerrainRegion::Surface {
-            self.geometry.relevance(key)?
+        let summary = self.classifier.summarize_region(key)?;
+        let info = if summary.contains_surface() {
+            self.geometry
+                .relevance(key, summary.geometric_error_lod0_cells())?
         } else {
+            self.counters.uniform_regions_pruned =
+                self.counters.uniform_regions_pruned.saturating_add(1);
             None
         };
         self.evaluations.insert(key, info);
@@ -700,7 +671,11 @@ impl ViewGeometry {
         })
     }
 
-    fn relevance(&self, key: PageKey) -> Result<Option<LeafInfo>, TerrainStreamingError> {
+    fn relevance(
+        &self,
+        key: PageKey,
+        geometric_error_lod0_cells: u64,
+    ) -> Result<Option<LeafInfo>, TerrainStreamingError> {
         let bounds = RelativeAabb::from_page(key, self.camera)?;
         let current_distance = bounds.distance_to_point([0.0; 3]);
         let predicted_distance = bounds.distance_to_point(self.motion_m);
@@ -723,11 +698,12 @@ impl ViewGeometry {
         } else {
             predicted_distance
         };
-        let cell_size_m = LOD0_CELL_SIZE_METERS * 2_f64.powi(i32::from(key.lod));
+        let geometric_error_m = geometric_error_lod0_cells as f64 * LOD0_CELL_SIZE_METERS;
         let error_distance = current_distance
             .min(predicted_distance)
-            .max(cell_size_m * 0.5);
-        let projected_error_px = self.focal_length_px * cell_size_m / error_distance;
+            .max(geometric_error_m * 0.5)
+            .max(f64::EPSILON);
+        let projected_error_px = self.focal_length_px * geometric_error_m / error_distance;
         let interaction_forced = current_distance <= self.interaction_radius_m
             || swept_distance <= self.interaction_radius_m;
         Ok(Some(LeafInfo {
@@ -1146,6 +1122,108 @@ mod tests {
             .demands()
             .iter()
             .any(|demand| demand.page_key().lod == 0));
+    }
+
+    #[test]
+    fn authoritative_core_summaries_match_the_generator_and_prune_unknown_volume() {
+        struct UnknownVolume;
+
+        impl TerrainRegionClassifier for UnknownVolume {
+            fn summarize_region(
+                &self,
+                key: PageKey,
+            ) -> Result<TerrainNodeSummary, TerrainStreamingError> {
+                Ok(TerrainNodeSummary::new(
+                    i32::MIN,
+                    i32::MAX,
+                    1_u64.checked_shl(u32::from(key.lod)).unwrap_or(u64::MAX),
+                    0,
+                )
+                .unwrap())
+            }
+        }
+
+        let definition = definition(1_000, 6, 4_096);
+        let generator = FixedSphereGenerator {
+            center_cell: definition.center_cell,
+            radius_cells: definition.radius_cells,
+            material: definition.material,
+        };
+        let core =
+            crate::TerrainCore::new(definition.planet_id, definition.root_lod, generator).unwrap();
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            target_projected_error_px: 2.0,
+            prediction_seconds: 0.5,
+            max_pages: 4_096,
+            max_traversal_nodes: 65_536,
+        })
+        .unwrap();
+        let view = view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
+        let direct = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let authoritative = planner
+            .plan_with_classifier(&definition, view, &core)
+            .unwrap();
+        let unknown = planner
+            .plan_with_classifier(&definition, view, &UnknownVolume)
+            .unwrap();
+
+        assert_eq!(authoritative, direct);
+        assert!(authoritative.counters().uniform_regions_pruned > 0);
+        assert!(
+            authoritative.counters().traversed_nodes < unknown.counters().traversed_nodes,
+            "summaries did not reduce traversal: authoritative={:?}, unknown={:?}",
+            authoritative.counters(),
+            unknown.counters()
+        );
+        assert!(authoritative.demands().len() < unknown.demands().len());
+    }
+
+    #[test]
+    fn authoritative_planning_sees_fine_edits_outside_the_procedural_surface() {
+        let definition = definition(100, 6, 4_096);
+        let generator = FixedSphereGenerator {
+            center_cell: definition.center_cell,
+            radius_cells: definition.radius_cells,
+            material: definition.material,
+        };
+        let mut core =
+            crate::TerrainCore::new(definition.planet_id, definition.root_lod, generator).unwrap();
+        core.append_edit(crate::EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: crate::EditShape::Sphere {
+                center_cell: [600, 0, 0],
+                radius_cells: 8,
+            },
+            mode: crate::EditMode::Union,
+            material: 11,
+        })
+        .unwrap();
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            max_pages: 4_096,
+            max_traversal_nodes: 65_536,
+            ..TerrainStreamingConfig::default()
+        })
+        .unwrap();
+        let view = view([620, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]);
+        let procedural = planner.plan_fixed_sphere(&definition, view).unwrap();
+        let authoritative = planner
+            .plan_with_classifier(&definition, view, &core)
+            .unwrap();
+        let edited_page = PageKey::address_lod0_cell(0, [600, 0, 0]).unwrap().0;
+
+        assert!(!procedural
+            .demands()
+            .iter()
+            .any(|demand| demand.page_key() == edited_page));
+        assert!(authoritative
+            .demands()
+            .iter()
+            .any(|demand| demand.page_key() == edited_page));
+        assert!(authoritative.is_face_balanced());
+        assert!(authoritative.demands().len() <= 4_096);
     }
 
     #[test]
