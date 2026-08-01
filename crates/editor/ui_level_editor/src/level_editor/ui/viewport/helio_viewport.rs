@@ -425,8 +425,8 @@ impl HelioViewport {
     /// `awaiting_render` throttles the pump to at most one outstanding repaint.
     /// Without it, a viewport sitting in an inactive tab — where `render()` is
     /// never reached but the render thread keeps publishing — would notify on
-    /// every single frame and put us right back where we started. The flag
-    /// clears in `render()`, so the pump resumes as soon as the tab is shown.
+    /// every single frame. The flag clears in `render()`, so the pump resumes as
+    /// soon as the tab is shown again.
     fn start_frame_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.pump_started {
             return;

@@ -324,14 +324,33 @@ ui_common::panel_boilerplate!(PropertiesPanelWrapper);
 
 impl Render for PropertiesPanelWrapper {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // If this count tracks the window's full-draw count under
+        // `WGPUI_RENDER_STATS=1`, the panel's cache is missing every frame.
+        gpui::render_stats::count("properties panel: render");
+        let _t = gpui::render_stats::scope("properties panel: render");
+
         let state = self.state.read();
         let collapsed_sections = self.collapsed_sections.clone();
         let selected_object_id = state.scene.selected_object();
         let scene_revision = state.scene.revision;
 
-        if scene_revision != self.last_scene_revision {
+        // A revision bump means the scene data changed — not that the user
+        // selected something else. These are deliberately kept apart:
+        //
+        // This used to null `current_object_id` on any revision change, which
+        // forced the `selection_changed` branch below to tear down and rebuild
+        // all three sections. `TransformSection` alone owns 9 `F32BoundField`s,
+        // each with its own `Entity<InputState>`, so a dozen-odd entities were
+        // being destroyed and recreated every bump — and `execute_command`
+        // bumps on every mutation, so dragging a gizmo did that at input rate.
+        // It also wiped the user's expanded/collapsed property categories,
+        // which live on `ObjectTypeFieldsSection`.
+        //
+        // Same object with new data only needs the existing editors to re-read
+        // their values, which is exactly what `refresh()` does.
+        let revision_changed = scene_revision != self.last_scene_revision;
+        if revision_changed {
             self.last_scene_revision = scene_revision;
-            self.current_object_id = None;
         }
 
         let selection_changed = selected_object_id != self.current_object_id
@@ -365,12 +384,26 @@ impl Render for PropertiesPanelWrapper {
                 self.current_object_id = None;
             }
         }
-        // NOTE: Removed the refresh() calls that were running every render frame.
-        // The bound fields automatically subscribe to InputEvents and sync changes.
-        // External changes (undo/redo, gizmo moves) should explicitly call refresh()
-        // when those events occur, not on every render.
-
         drop(state);
+
+        // The "explicitly call refresh() when those events occur" path that the
+        // bound fields were always documented to need. Runs only when the scene
+        // changed under an unchanged selection — undo/redo, a gizmo drag, an AI
+        // tool edit — and costs a value push per field instead of a rebuild.
+        if revision_changed && !selection_changed {
+            if let Some(section) = self.object_header_section.clone() {
+                section.update(cx, |section, cx| section.refresh(window, cx));
+            }
+            if let Some(section) = self.transform_section.clone() {
+                section.update(cx, |section, cx| section.refresh(window, cx));
+            }
+            // `render_property_row_runtime` pushes the current value into each
+            // cached editor as it renders, so this section only needs to be told
+            // to render again.
+            if let Some(section) = self.object_type_fields_section.clone() {
+                section.update(cx, |_, cx| cx.notify());
+            }
+        }
 
         v_flex()
             .size_full()
