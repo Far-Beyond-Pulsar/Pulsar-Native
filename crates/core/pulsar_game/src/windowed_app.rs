@@ -39,6 +39,8 @@ struct GameWindow {
     renderer: Renderer,
     /// Built-in free-look camera — active when no ECS camera has been set.
     freecam: FreeCam,
+    /// Time of last `render` — used to advance the per-frame wind clock.
+    last_frame: Instant,
 }
 
 impl GameWindow {
@@ -138,6 +140,7 @@ impl GameWindow {
             queue,
             renderer,
             freecam: FreeCam::default(),
+            last_frame: Instant::now(),
         }
     }
 
@@ -172,6 +175,14 @@ impl GameWindow {
     /// `WindowManager::set_camera`.  If `None`, the built-in freecam is used.
     fn render(&mut self, ecs_camera: Option<RenderCamera>) {
         let cam = ecs_camera.unwrap_or_else(|| self.freecam.to_render_camera());
+
+        // Advance the foliage wind clock once per frame. The wind model evaluates at
+        // `t` and `t - dt`, so a frozen clock yields a static lean with zero motion
+        // vectors — grass stays parked even when wind is enabled.
+        let now = Instant::now();
+        let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
+        self.last_frame = now;
+        self.renderer.scene_mut().advance_wind(dt);
 
         let size = self.window.inner_size();
         let aspect = size.width as f32 / size.height.max(1) as f32;

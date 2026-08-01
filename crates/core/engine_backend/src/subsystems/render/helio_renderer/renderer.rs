@@ -278,6 +278,11 @@ impl HelioRenderer {
             None => return None,
         };
 
+        // Advance the foliage wind clock once per rendered frame. The wind model
+        // evaluates at `t` and `t - dt`, so a frozen clock yields a static lean with
+        // zero motion vectors — grass stays parked even when wind is enabled.
+        inner.renderer.scene_mut().advance_wind(dt);
+
         if self.viewport_size != (width, height) {
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
