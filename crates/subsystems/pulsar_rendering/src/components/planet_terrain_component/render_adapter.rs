@@ -13,13 +13,14 @@ use helio_pass_planetary_voxel::{
     PlanetaryVoxelResidency,
 };
 use helio_planet_voxel_core::{
-    AddressError, ContractError, EvictOutcome, LOD0_CELL_SIZE_METERS, PAGE_EDGE_CELLS, PageEvict,
-    PageKey, PageUpload, PlanetFrameUniform, PlanetId, PlanetPageKey, SourceGeneration,
-    VisibilityOutcome, VisiblePage, VisiblePageSet,
+    AddressError, ContractError, EvictOutcome, EvictedPage, LOD0_CELL_SIZE_METERS, PAGE_EDGE_CELLS,
+    PageEvict, PageKey, PageUpload, PlanetFrameUniform, PlanetId, PlanetPageKey, SourceGeneration,
+    UploadOutcome, VisibilityOutcome, VisiblePage, VisiblePageSet,
 };
 use pulsar_terrain::{
     PlanetFramePayload, TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict,
-    TerrainRenderCommand, TerrainRenderDelta, TerrainVisiblePageSet,
+    TerrainRenderCommand, TerrainRenderCommandDisposition, TerrainRenderCommandFeedback,
+    TerrainRenderCommandId, TerrainRenderDelta, TerrainRenderFeedback, TerrainVisiblePageSet,
 };
 use thiserror::Error;
 
@@ -44,6 +45,7 @@ pub struct TerrainRenderApplyReport {
     pub uploads: Vec<GpuUploadOutcome>,
     pub evictions: Vec<EvictOutcome>,
     pub frame_retirements: Vec<PlanetFrameRetirement>,
+    pub feedback: TerrainRenderFeedback,
 }
 
 #[derive(Debug, Error)]
@@ -69,6 +71,8 @@ pub enum PlanetaryTerrainRenderError {
         "planet eviction retires generation {retired}, but a listed page belongs to newer generation {page}"
     )]
     PlanetEvictionGeneration { retired: u64, page: u64 },
+    #[error("renderer apply report does not match the submitted terrain delta")]
+    ApplyReportMismatch,
 }
 
 /// Owns Helio's bounded planetary residency while leaving canonical terrain,
@@ -112,7 +116,14 @@ impl PlanetTerrainComponentRenderAdapter {
         queue: &wgpu::Queue,
         delta: TerrainRenderDelta,
     ) -> Result<TerrainRenderApplyReport, PlanetaryTerrainRenderError> {
-        self.apply_batch(device, queue, translate_delta(delta)?)
+        let commands = delta
+            .commands
+            .iter()
+            .map(SubmittedTerrainCommand::from)
+            .collect::<Vec<_>>();
+        let mut report = self.apply_batch(device, queue, translate_delta(delta)?)?;
+        report.feedback = build_feedback(&commands, &report)?;
+        Ok(report)
     }
 
     pub fn apply_batch(
@@ -178,6 +189,50 @@ impl PlanetTerrainComponentRenderAdapter {
     }
 }
 
+/// Lightweight command identity retained while the payload is moved into
+/// Helio. Upload pages are large; feedback construction must never clone their
+/// dense cell buffers on the render path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SubmittedTerrainCommand {
+    Upload(TerrainRenderCommandId),
+    EvictPage(TerrainRenderCommandId),
+    EvictPlanet {
+        id: TerrainRenderCommandId,
+        planet_id: PlanetId,
+        page_count: usize,
+    },
+}
+
+impl From<&TerrainRenderCommand> for SubmittedTerrainCommand {
+    fn from(command: &TerrainRenderCommand) -> Self {
+        let id = command.id();
+        match command {
+            TerrainRenderCommand::Upload(_) => Self::Upload(id),
+            TerrainRenderCommand::EvictPage(_) => Self::EvictPage(id),
+            TerrainRenderCommand::EvictPlanet(eviction) => Self::EvictPlanet {
+                id,
+                planet_id: translate_planet_id(eviction.planet_id),
+                page_count: eviction.pages.len(),
+            },
+        }
+    }
+}
+
+impl SubmittedTerrainCommand {
+    const fn feedback(
+        self,
+        disposition: TerrainRenderCommandDisposition,
+    ) -> TerrainRenderCommandFeedback {
+        let command = match self {
+            Self::Upload(id) | Self::EvictPage(id) | Self::EvictPlanet { id, .. } => id,
+        };
+        TerrainRenderCommandFeedback {
+            command,
+            disposition,
+        }
+    }
+}
+
 pub fn translate_delta(
     delta: TerrainRenderDelta,
 ) -> Result<HelioTerrainRenderBatch, PlanetaryTerrainRenderError> {
@@ -198,6 +253,110 @@ pub fn translate_delta(
     }
     batch.retired_planets = retired_planets.into_iter().collect();
     Ok(batch)
+}
+
+fn build_feedback(
+    commands: &[SubmittedTerrainCommand],
+    report: &TerrainRenderApplyReport,
+) -> Result<TerrainRenderFeedback, PlanetaryTerrainRenderError> {
+    let mut upload_index = 0;
+    let mut eviction_index = 0;
+    let mut feedback = TerrainRenderFeedback::default();
+
+    for command in commands {
+        let disposition = match command {
+            SubmittedTerrainCommand::Upload(_) => {
+                let outcome = report
+                    .uploads
+                    .get(upload_index)
+                    .ok_or(PlanetaryTerrainRenderError::ApplyReportMismatch)?;
+                upload_index += 1;
+                if let GpuUploadOutcome::Residency(UploadOutcome::Inserted { evicted, .. }) =
+                    outcome
+                {
+                    feedback
+                        .cache_evictions
+                        .extend(evicted.iter().map(translate_cache_eviction));
+                }
+                match outcome {
+                    GpuUploadOutcome::Residency(
+                        UploadOutcome::Inserted { .. }
+                        | UploadOutcome::Replaced { .. }
+                        | UploadOutcome::Duplicate { .. },
+                    ) => TerrainRenderCommandDisposition::Applied,
+                    GpuUploadOutcome::Residency(UploadOutcome::Backpressure(_))
+                    | GpuUploadOutcome::PageTableBackpressure => {
+                        TerrainRenderCommandDisposition::Deferred
+                    }
+                    GpuUploadOutcome::Residency(
+                        UploadOutcome::Stale { .. } | UploadOutcome::GenerationConflict { .. },
+                    ) => TerrainRenderCommandDisposition::Rejected,
+                }
+            }
+            SubmittedTerrainCommand::EvictPage(_) => {
+                let outcome = report
+                    .evictions
+                    .get(eviction_index)
+                    .ok_or(PlanetaryTerrainRenderError::ApplyReportMismatch)?;
+                eviction_index += 1;
+                eviction_disposition(outcome)
+            }
+            SubmittedTerrainCommand::EvictPlanet {
+                planet_id,
+                page_count,
+                ..
+            } => {
+                let end = eviction_index
+                    .checked_add(*page_count)
+                    .ok_or(PlanetaryTerrainRenderError::ApplyReportMismatch)?;
+                let outcomes = report
+                    .evictions
+                    .get(eviction_index..end)
+                    .ok_or(PlanetaryTerrainRenderError::ApplyReportMismatch)?;
+                eviction_index = end;
+                let pages_applied = outcomes.iter().all(|outcome| {
+                    eviction_disposition(outcome) == TerrainRenderCommandDisposition::Applied
+                });
+                let frame_applied = report.frame_retirements.iter().any(|retirement| {
+                    matches!(
+                        retirement,
+                        PlanetFrameRetirement::Removed(planet)
+                            | PlanetFrameRetirement::AlreadyAbsent(planet)
+                            if planet == planet_id
+                    )
+                });
+                if pages_applied && frame_applied {
+                    TerrainRenderCommandDisposition::Applied
+                } else {
+                    TerrainRenderCommandDisposition::Deferred
+                }
+            }
+        };
+        feedback.commands.push(command.feedback(disposition));
+    }
+
+    if upload_index != report.uploads.len() || eviction_index != report.evictions.len() {
+        return Err(PlanetaryTerrainRenderError::ApplyReportMismatch);
+    }
+    Ok(feedback)
+}
+
+const fn eviction_disposition(outcome: &EvictOutcome) -> TerrainRenderCommandDisposition {
+    match outcome {
+        EvictOutcome::Recorded { .. } | EvictOutcome::Stale { .. } => {
+            TerrainRenderCommandDisposition::Applied
+        }
+        EvictOutcome::Backpressure(_) => TerrainRenderCommandDisposition::Deferred,
+    }
+}
+
+fn translate_cache_eviction(eviction: &EvictedPage) -> TerrainPageEvict {
+    TerrainPageEvict {
+        planet_id: pulsar_terrain::PlanetId(eviction.key.planet.0),
+        page_key: pulsar_terrain::PageKey::new(eviction.key.page.lod, eviction.key.page.page_xyz),
+        planet_generation: eviction.generation.planet,
+        page_generation: eviction.generation.page,
+    }
 }
 
 pub fn translate_visible_set(
@@ -381,6 +540,30 @@ mod tests {
     }
 
     #[test]
+    fn page_table_backpressure_is_reported_as_deferred_feedback() {
+        let command = TerrainRenderCommand::Upload(terrain_upload(
+            4,
+            9,
+            TerrainPageKey::new(1, [2, -3, 4]),
+            TerrainCellWord::AIR,
+        ));
+        let id = command.id();
+        let report = TerrainRenderApplyReport {
+            uploads: vec![GpuUploadOutcome::PageTableBackpressure],
+            ..TerrainRenderApplyReport::default()
+        };
+        let feedback = build_feedback(&[SubmittedTerrainCommand::from(&command)], &report).unwrap();
+        assert_eq!(
+            feedback.commands,
+            vec![TerrainRenderCommandFeedback {
+                command: id,
+                disposition: TerrainRenderCommandDisposition::Deferred,
+            }]
+        );
+        assert!(feedback.cache_evictions.is_empty());
+    }
+
+    #[test]
     fn visible_translation_preserves_all_transition_bits_and_rejects_invalid_lod() {
         let set = TerrainVisiblePageSet {
             planet_id: TerrainId([3; 16]),
@@ -508,14 +691,19 @@ mod tests {
                 ))],
                 counters: TerrainRenderDeltaCounters::default(),
             };
+            let first_id = first.commands[0].id();
+            let first_report = renderer.apply_delta(&device, &queue, first).unwrap();
             assert!(matches!(
-                renderer
-                    .apply_delta(&device, &queue, first)
-                    .unwrap()
-                    .uploads
-                    .as_slice(),
+                first_report.uploads.as_slice(),
                 [GpuUploadOutcome::Residency(UploadOutcome::Inserted { .. })]
             ));
+            assert_eq!(
+                first_report.feedback.commands,
+                vec![TerrainRenderCommandFeedback {
+                    command: first_id,
+                    disposition: TerrainRenderCommandDisposition::Applied,
+                }]
+            );
 
             let replacement_cell = TerrainCellWord::new(-777, 22, 4);
             let replacement = TerrainRenderDelta {
@@ -545,12 +733,21 @@ mod tests {
                 ))],
                 counters: TerrainRenderDeltaCounters::default(),
             };
+            let stale_id = stale.commands[0].id();
+            let stale_report = renderer.apply_delta(&device, &queue, stale).unwrap();
             assert!(matches!(
-                renderer.apply_delta(&device, &queue, stale).unwrap().uploads.as_slice(),
+                stale_report.uploads.as_slice(),
                 [GpuUploadOutcome::Residency(UploadOutcome::Stale {
                     newest_generation
                 })] if *newest_generation == SourceGeneration::new(2, 0)
             ));
+            assert_eq!(
+                stale_report.feedback.commands,
+                vec![TerrainRenderCommandFeedback {
+                    command: stale_id,
+                    disposition: TerrainRenderCommandDisposition::Rejected,
+                }]
+            );
             let resident = renderer
                 .residency()
                 .cache()
@@ -575,6 +772,7 @@ mod tests {
                 })],
                 counters: TerrainRenderDeltaCounters::default(),
             };
+            let retirement_id = retirement.commands[0].id();
             let retired = renderer.apply_delta(&device, &queue, retirement).unwrap();
             assert!(matches!(
                 retired.evictions.as_slice(),
@@ -583,6 +781,13 @@ mod tests {
             assert_eq!(
                 retired.frame_retirements,
                 vec![PlanetFrameRetirement::Removed(PlanetId([7; 16]))]
+            );
+            assert_eq!(
+                retired.feedback.commands,
+                vec![TerrainRenderCommandFeedback {
+                    command: retirement_id,
+                    disposition: TerrainRenderCommandDisposition::Applied,
+                }]
             );
 
             let after_retirement = TerrainRenderDelta {

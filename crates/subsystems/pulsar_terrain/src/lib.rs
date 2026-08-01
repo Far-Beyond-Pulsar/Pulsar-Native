@@ -12,8 +12,8 @@ mod hierarchy;
 mod mutation;
 mod page;
 mod planet;
+mod refinement;
 mod render;
-mod residency;
 mod runtime;
 mod snapshot;
 mod store;
@@ -35,15 +35,16 @@ pub use page::{
     PAGE_EDGE,
 };
 pub use planet::PlanetDefinition;
+pub use refinement::{
+    TerrainIncrementalResidencySession, TerrainRefinementConfig, TerrainRefinementCounters,
+    TerrainRefinementError, TerrainRefinementFrontier, TerrainRefinementReport,
+};
 pub use render::{
     TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict, TerrainRenderCommand,
+    TerrainRenderCommandDisposition, TerrainRenderCommandFeedback, TerrainRenderCommandId,
     TerrainRenderDelta, TerrainRenderDeltaConfig, TerrainRenderDeltaCounters,
-    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainTransitionFace,
-    TerrainVisiblePage, TerrainVisiblePageSet, TERRAIN_TRANSITION_FACE_MASK,
-};
-pub use residency::{
-    TerrainResidencyConfig, TerrainResidencyCounters, TerrainResidencyError,
-    TerrainResidencyReport, TerrainResidencySession,
+    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainRenderFeedback,
+    TerrainTransitionFace, TerrainVisiblePage, TerrainVisiblePageSet, TERRAIN_TRANSITION_FACE_MASK,
 };
 pub use runtime::{
     TerrainBackpressure, TerrainRequestClass, TerrainRequestOutcome, TerrainResidentPageGeneration,

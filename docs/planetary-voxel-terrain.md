@@ -160,16 +160,33 @@ This avoids an engine-wide conversion of existing scene components, Helio camera
   nodes terminate traversal, while the stored geometric-error bound—not a
   renderer-owned terrain guess—drives projected-error refinement.
 
-Successive complete demand plans use a bounded two-set handoff. The currently
-committed visible/prefetch set remains resident while its replacement is
-materialized. The handoff commits, and obsolete pages become evictable, only
-after every replacement page is CPU-ready. The union of both sets has its own
-explicit transition-page budget; a plan that cannot fit is rejected without
-mutating the committed set. A newer camera plan cancels uncommitted obsolete
-work, and page-generation retirement prevents a late result from republishing
-an evicted page. Dense CPU pages may then be dropped while their compacted
-content hash and hierarchy record remain authoritative; rehydration must
-reproduce that hash from the deterministic generator and ordered edit prefix.
+Streaming publishes a persistent, parent-preserving refinement frontier. A
+bounded coarse frontier is made visible first, then at most one local
+parent/children replacement is staged at a time. The parent remains committed
+until every required child is CPU-ready and uploaded; the swap is atomic, so a
+published set never contains an ancestor together with its descendants.
+Coarsening is symmetric: the coarse parent becomes ready before fine
+descendants retire. Every intermediate frontier stays complete,
+non-overlapping, and 2:1 face-balanced within explicit active and transition
+page budgets.
+
+Plan identity, ancestor lookup, LOD ranges, balance validation, and the coarse
+seed are precomputed with the authoritative plan rather than rediscovered on
+the frame path. A stationary plan is an O(1) no-op. Newer plans reuse useful
+staged work, cancel obsolete work, and generation retirement prevents a late
+result from republishing retired content. The superseded whole-plan two-set
+residency session is removed; there is one incremental publication contract.
+CPU residency alone never advances that contract. Pulsar retains each upload
+or eviction as pending until Helio returns generation-exact `Applied` feedback;
+`Deferred` cache/page-table backpressure is retried within the same bounded
+command and byte budgets. Renderer-local capacity evictions revoke publication
+immediately, so a coarse parent cannot retire before every replacement child is
+confirmed GPU-resident. A delayed whole-planet retirement is demoted to its old
+page evictions when the canonical planet generation has already advanced,
+preventing it from removing a recreated planet frame.
+Dense CPU pages may then be dropped while their compacted content hash and
+hierarchy record remain authoritative; rehydration must reproduce that hash
+from the deterministic generator and ordered edit prefix.
 
 The planet seen from orbit is coarse voxel geometry from the same field, not a heightmap proxy. Atmosphere and oceans may be separate render systems, but they do not replace terrain geometry.
 

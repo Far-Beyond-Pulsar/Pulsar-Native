@@ -4,6 +4,7 @@ use crate::{
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Conservative classification of one hierarchical terrain page.
@@ -222,23 +223,113 @@ pub struct TerrainStreamingCounters {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TerrainStreamingPlan {
     planet_id: PlanetId,
-    demands: Vec<PageDemand>,
+    demands: Arc<[PageDemand]>,
+    residency_identity: Arc<[(PageKey, TerrainRequestClass)]>,
+    ancestor_classes: Arc<[(PageKey, TerrainRequestClass)]>,
+    ancestor_level_ranges: Arc<[(u8, usize, usize)]>,
+    coarse_min_lod: u8,
+    face_balanced: bool,
+    non_overlapping: bool,
     limits: Vec<TerrainStreamingLimit>,
     counters: TerrainStreamingCounters,
 }
 
 impl TerrainStreamingPlan {
-    #[cfg(test)]
-    pub(crate) fn for_test(planet_id: PlanetId, demands: Vec<PageDemand>) -> Self {
+    fn from_parts(
+        planet_id: PlanetId,
+        root_lod: u8,
+        demands: Vec<PageDemand>,
+        limits: Vec<TerrainStreamingLimit>,
+        counters: TerrainStreamingCounters,
+    ) -> Self {
+        let leaves = demands
+            .iter()
+            .map(|demand| demand.page_key())
+            .collect::<BTreeSet<_>>();
+        let face_balanced = leaves.iter().all(|leaf| {
+            faces().into_iter().all(|(axis, direction)| {
+                covering_face_neighbor(*leaf, axis, direction, &leaves)
+                    .is_none_or(|neighbor| leaf.lod.abs_diff(neighbor.lod) <= 1)
+            })
+        });
+        let mut residency_identity = demands
+            .iter()
+            .map(|demand| (demand.page_key(), demand.request_class()))
+            .collect::<Vec<_>>();
+        residency_identity.sort_unstable_by_key(|(page_key, _)| *page_key);
+        let mut ancestor_classes = HashMap::new();
+        for (page_key, request_class) in &residency_identity {
+            let mut ancestor = Some(*page_key);
+            while let Some(page_key) = ancestor {
+                ancestor_classes
+                    .entry(page_key)
+                    .and_modify(|current| {
+                        if request_priority(*request_class) > request_priority(*current) {
+                            *current = *request_class;
+                        }
+                    })
+                    .or_insert(*request_class);
+                if page_key.lod >= root_lod {
+                    break;
+                }
+                ancestor = page_key.parent();
+            }
+        }
+        let non_overlapping = leaves.iter().all(|page_key| {
+            let mut ancestor = page_key.parent();
+            while let Some(parent) = ancestor {
+                if leaves.contains(&parent) {
+                    return false;
+                }
+                ancestor = parent.parent();
+            }
+            true
+        });
+        let mut ancestor_classes = ancestor_classes.into_iter().collect::<Vec<_>>();
+        ancestor_classes.sort_unstable_by_key(|(page_key, _)| *page_key);
+        let mut ancestor_level_ranges = Vec::new();
+        let mut start = 0;
+        while start < ancestor_classes.len() {
+            let lod = ancestor_classes[start].0.lod;
+            let mut end = start + 1;
+            while end < ancestor_classes.len() && ancestor_classes[end].0.lod == lod {
+                end += 1;
+            }
+            ancestor_level_ranges.push((lod, start, end));
+            start = end;
+        }
+        let coarse_min_lod = demands
+            .iter()
+            .map(|demand| demand.page_key().lod)
+            .max()
+            .unwrap_or(0);
         Self {
             planet_id,
-            counters: TerrainStreamingCounters {
-                page_high_water: demands.len(),
+            demands: demands.into(),
+            residency_identity: residency_identity.into(),
+            ancestor_classes: ancestor_classes.into(),
+            ancestor_level_ranges: ancestor_level_ranges.into(),
+            coarse_min_lod,
+            face_balanced,
+            non_overlapping,
+            limits,
+            counters,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(planet_id: PlanetId, demands: Vec<PageDemand>) -> Self {
+        let page_high_water = demands.len();
+        Self::from_parts(
+            planet_id,
+            62,
+            demands,
+            Vec::new(),
+            TerrainStreamingCounters {
+                page_high_water,
                 ..TerrainStreamingCounters::default()
             },
-            demands,
-            limits: Vec::new(),
-        }
+        )
     }
 
     pub const fn planet_id(&self) -> PlanetId {
@@ -257,6 +348,74 @@ impl TerrainStreamingPlan {
         self.counters
     }
 
+    pub(crate) fn has_same_residency(&self, other: &Self) -> bool {
+        self.planet_id == other.planet_id
+            && (Arc::ptr_eq(&self.residency_identity, &other.residency_identity)
+                || self.residency_identity == other.residency_identity)
+    }
+
+    pub(crate) fn residency_identity(&self) -> &[(PageKey, TerrainRequestClass)] {
+        &self.residency_identity
+    }
+
+    pub(crate) fn class_for_descendant_or_same(
+        &self,
+        page_key: PageKey,
+    ) -> Option<TerrainRequestClass> {
+        self.ancestor_classes
+            .binary_search_by_key(&page_key, |(ancestor, _)| *ancestor)
+            .ok()
+            .map(|index| self.ancestor_classes[index].1)
+    }
+
+    pub(crate) fn class_for_ancestor_or_same(
+        &self,
+        mut page_key: PageKey,
+    ) -> Option<TerrainRequestClass> {
+        loop {
+            if let Ok(index) = self
+                .residency_identity
+                .binary_search_by_key(&page_key, |(target, _)| *target)
+            {
+                return Some(self.residency_identity[index].1);
+            }
+            page_key = page_key.parent()?;
+        }
+    }
+
+    pub(crate) fn class_for_related(&self, page_key: PageKey) -> Option<TerrainRequestClass> {
+        match (
+            self.class_for_descendant_or_same(page_key),
+            self.class_for_ancestor_or_same(page_key),
+        ) {
+            (Some(left), Some(right)) => {
+                Some(if request_priority(left) >= request_priority(right) {
+                    left
+                } else {
+                    right
+                })
+            }
+            (Some(class), None) | (None, Some(class)) => Some(class),
+            (None, None) => None,
+        }
+    }
+
+    pub(crate) fn coarse_frontier(
+        &self,
+        maximum_pages: usize,
+    ) -> Option<&[(PageKey, TerrainRequestClass)]> {
+        self.ancestor_level_ranges
+            .iter()
+            .filter(|(lod, _, _)| *lod >= self.coarse_min_lod)
+            .find_map(|(_, start, end)| {
+                (end - start <= maximum_pages).then_some(&self.ancestor_classes[*start..*end])
+            })
+    }
+
+    pub(crate) const fn is_non_overlapping(&self) -> bool {
+        self.non_overlapping
+    }
+
     pub fn visible_count(&self) -> usize {
         self.demands
             .iter()
@@ -269,17 +428,7 @@ impl TerrainStreamingPlan {
     }
 
     pub fn is_face_balanced(&self) -> bool {
-        let leaves = self
-            .demands
-            .iter()
-            .map(|demand| demand.page_key())
-            .collect::<BTreeSet<_>>();
-        leaves.iter().all(|leaf| {
-            faces().into_iter().all(|(axis, direction)| {
-                covering_face_neighbor(*leaf, axis, direction, &leaves)
-                    .is_none_or(|neighbor| leaf.lod.abs_diff(neighbor.lod) <= 1)
-            })
-        })
+        self.face_balanced
     }
 
     /// Six-face transition masks for the complete deterministic leaf set.
@@ -502,15 +651,17 @@ impl TerrainStreamingPlanner {
                 .then_with(|| left.page_key.cmp(&right.page_key))
         });
 
-        let plan = TerrainStreamingPlan {
-            planet_id: definition.planet_id,
+        let plan = TerrainStreamingPlan::from_parts(
+            definition.planet_id,
+            definition.root_lod,
             demands,
-            limits: state.limits.into_iter().collect(),
-            counters: state.counters,
-        };
+            state.limits.into_iter().collect(),
+            state.counters,
+        );
         debug_assert!(plan.demands.len() <= page_budget);
         debug_assert!(plan.counters.traversed_nodes <= self.config.max_traversal_nodes);
         debug_assert!(plan.is_face_balanced());
+        debug_assert!(plan.is_non_overlapping());
         Ok(plan)
     }
 }

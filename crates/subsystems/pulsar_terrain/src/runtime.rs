@@ -994,6 +994,20 @@ impl TerrainRuntimeHandle {
         deadline_tick: u64,
     ) -> Result<TerrainRequestOutcome, TerrainRuntimeError> {
         let mut state = lock(&self.shared.state);
+        let outcome =
+            self.request_page_locked(&mut state, planet_id, page_key, class, deadline_tick);
+        state.refresh_resident_counters();
+        outcome
+    }
+
+    fn request_page_locked(
+        &self,
+        mut state: &mut RuntimeState,
+        planet_id: PlanetId,
+        page_key: PageKey,
+        class: TerrainRequestClass,
+        deadline_tick: u64,
+    ) -> Result<TerrainRequestOutcome, TerrainRuntimeError> {
         if !state.running {
             return Err(TerrainRuntimeError::NotRunning);
         }
@@ -1214,11 +1228,32 @@ impl TerrainRuntimeHandle {
             .counters
             .reserved_result_bytes
             .saturating_add(DENSE_PAGE_BYTES);
-        state.refresh_resident_counters();
         Ok(TerrainRequestOutcome::Queued {
             planet_generation,
             page_generation,
         })
+    }
+
+    pub(crate) fn request_pages_bounded(
+        &self,
+        planet_id: PlanetId,
+        requests: &[(PageKey, TerrainRequestClass, u64)],
+    ) -> (Vec<TerrainRequestOutcome>, Option<TerrainRuntimeError>) {
+        let mut state = lock(&self.shared.state);
+        let mut outcomes = Vec::with_capacity(requests.len());
+        let mut error = None;
+        for (page_key, class, deadline_tick) in requests {
+            match self.request_page_locked(&mut state, planet_id, *page_key, *class, *deadline_tick)
+            {
+                Ok(outcome) => outcomes.push(outcome),
+                Err(request_error) => {
+                    error = Some(request_error);
+                    break;
+                }
+            }
+        }
+        state.refresh_resident_counters();
+        (outcomes, error)
     }
 
     /// Retire one disposable resident page and all work targeting its current
@@ -1229,43 +1264,81 @@ impl TerrainRuntimeHandle {
         planet_id: PlanetId,
         page_key: PageKey,
     ) -> Result<bool, TerrainRuntimeError> {
+        Ok(self.evict_pages(planet_id, &[page_key])? != 0)
+    }
+
+    /// Retire a bounded page set under one runtime lock. Every affected page
+    /// still advances its own generation and emits its own immutable event;
+    /// batching only removes repeated lock and queue scans from frame-critical
+    /// refinement handoffs.
+    pub fn evict_pages(
+        &self,
+        planet_id: PlanetId,
+        page_keys: &[PageKey],
+    ) -> Result<usize, TerrainRuntimeError> {
         let mut state = lock(&self.shared.state);
         if !state.running {
             return Err(TerrainRuntimeError::NotRunning);
         }
-        let Some((planet_generation, page_generation, is_resident)) =
-            state.planets.get(&planet_id).map(|planet| {
-                (
-                    planet.generation,
-                    planet.page_generations.get(&page_key).copied().unwrap_or(1),
-                    planet.core.page(page_key).is_some(),
-                )
-            })
-        else {
+        let Some(planet) = state.planets.get(&planet_id) else {
             return Err(TerrainRuntimeError::PlanetMissing(planet_id));
         };
-        let has_active = state
+        let keys = page_keys.iter().copied().collect::<BTreeSet<_>>();
+        if keys.is_empty() {
+            return Ok(0);
+        }
+        let planet_generation = planet.generation;
+        let active_keys = state
             .active
             .keys()
-            .any(|identity| identity.planet_id == planet_id && identity.page_key == page_key);
-        if !is_resident && !has_active {
-            return Ok(false);
+            .filter_map(|identity| {
+                (identity.planet_id == planet_id && keys.contains(&identity.page_key))
+                    .then_some(identity.page_key)
+            })
+            .collect::<BTreeSet<_>>();
+        let affected = keys
+            .into_iter()
+            .filter_map(|page_key| {
+                let is_resident = planet.core.page(page_key).is_some();
+                (is_resident || active_keys.contains(&page_key)).then_some((
+                    page_key,
+                    planet.page_generations.get(&page_key).copied().unwrap_or(1),
+                ))
+            })
+            .collect::<Vec<_>>();
+        if affected.is_empty() {
+            return Ok(0);
         }
-        if state.events.len() >= self.shared.config.event_capacity {
+        if affected.len()
+            > self
+                .shared
+                .config
+                .event_capacity
+                .saturating_sub(state.events.len())
+        {
             record_backpressure(
                 &mut state,
                 &self.shared.config,
                 Some(planet_id),
-                Some(page_key),
+                affected.first().map(|(page_key, _)| *page_key),
                 TerrainBackpressure::EventQueue,
             );
             return Err(TerrainRuntimeError::EventBackpressure {
                 capacity: self.shared.config.event_capacity,
             });
         }
+        for (_, page_generation) in &affected {
+            page_generation
+                .checked_add(1)
+                .ok_or(TerrainRuntimeError::GenerationOverflow)?;
+        }
+        let affected_keys = affected
+            .iter()
+            .map(|(page_key, _)| *page_key)
+            .collect::<BTreeSet<_>>();
 
         let cancelled = self.shared.queue.cancel_where(|job| {
-            job.identity.planet_id == planet_id && job.identity.page_key == page_key
+            job.identity.planet_id == planet_id && affected_keys.contains(&job.identity.page_key)
         });
         for job in cancelled {
             state.cancel_active(job.identity);
@@ -1275,7 +1348,7 @@ impl TerrainRuntimeHandle {
             .iter()
             .filter_map(|(identity, active)| {
                 (identity.planet_id == planet_id
-                    && identity.page_key == page_key
+                    && affected_keys.contains(&identity.page_key)
                     && active.phase != RequestPhase::Completed)
                     .then_some(*identity)
             })
@@ -1284,30 +1357,36 @@ impl TerrainRuntimeHandle {
             state.cancel_active(identity);
         }
 
-        let next_page_generation = page_generation
-            .checked_add(1)
-            .ok_or(TerrainRuntimeError::GenerationOverflow)?;
-        let planet = state
-            .planets
-            .get_mut(&planet_id)
-            .expect("planet remains registered while state is locked");
-        planet
-            .page_generations
-            .insert(page_key, next_page_generation);
-        planet.core.evict_resident_page(page_key);
-        state.counters.evicted = state.counters.evicted.saturating_add(1);
-        let pushed = state.push_event(
-            TerrainRuntimeEvent::EvictPage {
-                planet_id,
-                page_key,
-                planet_generation,
-                retired_page_generation: page_generation,
-            },
-            self.shared.config.event_capacity,
-        );
-        debug_assert!(pushed, "event capacity was checked before page eviction");
+        {
+            let planet = state
+                .planets
+                .get_mut(&planet_id)
+                .expect("planet remains registered while state is locked");
+            for (page_key, page_generation) in &affected {
+                planet.page_generations.insert(
+                    *page_key,
+                    page_generation
+                        .checked_add(1)
+                        .expect("generation overflow was checked before batch eviction"),
+                );
+                planet.core.evict_resident_page(*page_key);
+            }
+        }
+        state.counters.evicted = state.counters.evicted.saturating_add(affected.len() as u64);
+        for (page_key, page_generation) in &affected {
+            let pushed = state.push_event(
+                TerrainRuntimeEvent::EvictPage {
+                    planet_id,
+                    page_key: *page_key,
+                    planet_generation,
+                    retired_page_generation: *page_generation,
+                },
+                self.shared.config.event_capacity,
+            );
+            debug_assert!(pushed, "event capacity was checked before batch eviction");
+        }
         state.refresh_resident_counters();
-        Ok(true)
+        Ok(affected.len())
     }
 
     pub fn pump(&self, max_completions: usize) -> usize {
@@ -1372,6 +1451,16 @@ impl TerrainRuntimeHandle {
         planet.core.page(page_key).cloned()
     }
 
+    /// Return the current canonical generation for a registered planet. This
+    /// lets render publication retire stale page generations without applying
+    /// an older whole-planet frame retirement to a recreated planet.
+    pub fn planet_generation(&self, planet_id: PlanetId) -> Option<u64> {
+        lock(&self.shared.state)
+            .planets
+            .get(&planet_id)
+            .map(|planet| planet.generation)
+    }
+
     /// Read the generation identity only when the page is currently resident.
     pub fn resident_page_generation(
         &self,
@@ -1397,6 +1486,38 @@ impl TerrainRuntimeHandle {
             .get(&planet_id)
             .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
         Ok(planet.core.resident_page_keys().collect())
+    }
+
+    /// Snapshot every resident page generation under one runtime lock. The
+    /// refinement/publication handshake uses this to avoid one lock per page.
+    pub fn resident_page_generations(
+        &self,
+        planet_id: PlanetId,
+    ) -> Result<BTreeMap<PageKey, TerrainResidentPageGeneration>, TerrainRuntimeError> {
+        let state = lock(&self.shared.state);
+        let planet = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        Ok(planet
+            .core
+            .resident_page_keys()
+            .filter_map(|page_key| {
+                planet
+                    .page_generations
+                    .get(&page_key)
+                    .copied()
+                    .map(|page_generation| {
+                        (
+                            page_key,
+                            TerrainResidentPageGeneration {
+                                planet_generation: planet.generation,
+                                page_generation,
+                            },
+                        )
+                    })
+            })
+            .collect())
     }
 
     fn publish_completion(&self, state: &mut RuntimeState, completion: WorkCompletion) {
