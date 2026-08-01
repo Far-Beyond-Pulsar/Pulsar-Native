@@ -3,6 +3,55 @@ use std::path::{Path, PathBuf};
 
 use helio::{MaterialId, MeshId, MeshUpload};
 
+/// Per-component-instance foliage handles, keyed by `scene_object_id:component_index`.
+///
+/// Foliage types/layers/interactors are *not* re-created every sync pass (unlike
+/// lights): `add_foliage_type` re-rolls GPU placement on every publication
+/// generation bump, so the editor sync pass would re-roll the whole field every
+/// frame. Instead the first sync registers the handles and later syncs update
+/// them in place, gated by the stored hashes.
+pub struct FoliageCache {
+    pub map: HashMap<String, FoliageEntry>,
+}
+
+/// Handles and change-detection fingerprints for one foliage component instance.
+#[derive(Clone, Copy)]
+pub struct FoliageEntry {
+    pub type_id: helio::FoliageTypeId,
+    pub layer_id: helio::FoliageLayerId,
+    pub interactor_id: helio::FoliageInteractorId,
+    pub material_id: helio::MaterialId,
+    pub material_hash: u64,
+    pub descriptor_hash: u64,
+    pub wind_hash: u64,
+}
+
+impl FoliageCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+}
+
+/// Tear down one foliage component instance from the scene, removing the type
+/// (which re-rolls its placement) before its material so the material is not
+/// tombstoned while referenced. Returns `false` when the key was not cached.
+pub fn remove_foliage_handles(
+    scene: &mut helio::Scene,
+    cache: &mut FoliageCache,
+    key: &str,
+) -> bool {
+    let Some(entry) = cache.map.remove(key) else {
+        return false;
+    };
+    let _ = scene.remove_foliage_type(entry.type_id);
+    let _ = scene.remove_foliage_layer(entry.layer_id);
+    let _ = scene.remove_foliage_interactor(entry.interactor_id);
+    let _ = scene.remove_material(entry.material_id);
+    true
+}
+
 /// Cache of GPU-uploaded mesh geometry, keyed by the resolved asset path.
 ///
 /// Registered as a subsystem by both the game loader and editor contexts.

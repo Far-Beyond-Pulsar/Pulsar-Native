@@ -17,7 +17,7 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
+use pulsar_rendering::subsystems::{FoliageCache, MeshCache, SceneObjectCache, remove_foliage_handles};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{
@@ -103,6 +103,10 @@ struct HelioInner {
     /// Tracks scene object instances keyed by tag for incremental
     /// update (avoid cascade-free on clear-all-insert-each-frame).
     object_cache: SceneObjectCache,
+    /// Persists foliage component handles (types/layers/interactors/materials)
+    /// so the editor's per-sync component pass updates them in place instead of
+    /// re-registering (which re-rolls GPU placement) every scene change.
+    foliage_cache: FoliageCache,
     /// Last SceneDb generation fully applied to Helio. Unchanged scenes do not
     /// need component deserialization, light recreation, or picker rebuilds.
     last_scene_revision: u64,
@@ -248,6 +252,7 @@ impl HelioRenderer {
                 scene_picker: ScenePicker::new(),
                 mesh_cache: MeshCache::new(),
                 object_cache: SceneObjectCache::new(),
+                foliage_cache: FoliageCache::new(),
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
             };
@@ -931,6 +936,7 @@ impl HelioRenderer {
             subsystems.register_ref::<Renderer>(&mut inner.renderer);
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
+            subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
@@ -962,6 +968,19 @@ impl HelioRenderer {
             if let Some((obj_id, _)) = inner.object_cache.remove(&scene_id) {
                 let _ = inner.renderer.scene_mut().remove_object(obj_id);
             }
+        }
+
+        // Remove stale foliage component instances (components didn't touch them
+        // this pass): the cached type/layer/interactor/material are all torn down.
+        let stale_foliage: Vec<String> = inner
+            .foliage_cache
+            .map
+            .keys()
+            .filter(|key| !live_keys.contains(*key))
+            .cloned()
+            .collect();
+        for key in stale_foliage {
+            remove_foliage_handles(inner.renderer.scene_mut(), &mut inner.foliage_cache, &key);
         }
 
         // Apply editor visibility: hidden objects remain in the Helio scene

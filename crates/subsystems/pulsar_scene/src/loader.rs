@@ -35,7 +35,7 @@ use pulsar_reflection::{
     ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
     apply_runtime_behavior_for_class,
 };
-use pulsar_rendering::subsystems::{MeshCache, SceneObjectCache};
+use pulsar_rendering::subsystems::{FoliageCache, MeshCache, SceneObjectCache};
 
 use crate::format::{SceneFile, SceneLoadError};
 
@@ -43,6 +43,7 @@ use crate::format::{SceneFile, SceneLoadError};
 // Re-exporting these types creates a live symbol reference that prevents the
 // linker from dropping pulsar_rendering's #[used] inventory statics.
 // (ComponentRuntimeContext dispatch only works if those statics are linked in.)
+pub use pulsar_rendering::FoliageComponent as _ForceLink_FoliageComponent;
 pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
 pub use pulsar_rendering::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
 pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
@@ -108,6 +109,7 @@ impl SceneLoader {
                 subsystems.register_ref::<Renderer>(renderer);
                 subsystems.register(MeshCache::new());
                 subsystems.register(SceneObjectCache::new());
+                subsystems.register(FoliageCache::new());
                 subsystems.register(LiveKeySet::new());
                 let mut ctx = SceneObjectContext {
                     obj_id: &obj.id,

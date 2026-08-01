@@ -87,7 +87,10 @@
       "Bash(git submodule *)",
       "Bash(find /c/Users/redst/.cargo/registry/src -maxdepth 1 -iname \"gpui-macros*\" 2>/dev/null)",
       "Bash(find /c/Users/redst/.cargo/registry/src -maxdepth 2 -iname \"*macro*\" 2>/dev/null | grep -i gpui *)",
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Bash(cargo build *)",
+      "Bash(cargo run *)",
+      "Bash(grep -n \"cascade\\\\|Cascade\\\\|CASCADE\" /tmp/rc.js | head -100)"
     ]
   }
 }

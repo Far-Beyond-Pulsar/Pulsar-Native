@@ -1,3 +1,4 @@
+mod foliage_component;
 mod light_component;
 mod lod_component;
 mod material_override;
@@ -5,6 +6,7 @@ mod planet_terrain_component;
 mod script_component;
 mod static_mesh_component;
 
+pub use foliage_component::*;
 pub use light_component::*;
 pub use lod_component::*;
 pub use material_override::*;
