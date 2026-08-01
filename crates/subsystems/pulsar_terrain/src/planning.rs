@@ -33,7 +33,7 @@ impl Default for TerrainPlanningConfig {
 }
 
 impl TerrainPlanningConfig {
-    fn validate(self) -> Result<Self, TerrainPlanningError> {
+    pub(crate) fn validate(self) -> Result<Self, TerrainPlanningError> {
         TerrainStreamingPlanner::new(self.streaming)
             .map_err(|error| TerrainPlanningError::InvalidConfig(error.to_string()))?;
         if !self.position_hysteresis_m.is_finite()
@@ -711,6 +711,69 @@ mod tests {
         assert!(counters.superseded_pending > 0);
         assert!(counters.pending <= 1);
         assert!(counters.completed <= 1);
+        subsystem.shutdown().unwrap();
+    }
+
+    #[test]
+    fn a_hot_planet_cannot_starve_an_older_pending_planet() {
+        let mut subsystem = start();
+        let runtime = subsystem.runtime_handle();
+        let planning = subsystem.planning_handle();
+        let hot = definition(4);
+        let waiting = definition(5);
+        runtime.upsert_planet(hot.clone()).unwrap();
+        runtime.upsert_planet(waiting.clone()).unwrap();
+        let config = TerrainPlanningConfig {
+            streaming: TerrainStreamingConfig {
+                max_pages: 128,
+                max_traversal_nodes: 4_096,
+                ..TerrainStreamingConfig::default()
+            },
+            position_hysteresis_m: 0.0,
+            direction_hysteresis_radians: 0.0,
+            velocity_hysteresis_mps: 0.0,
+        };
+        planning
+            .submit(
+                hot.planet_id,
+                view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]),
+                config,
+            )
+            .unwrap();
+        let waiting_ticket = planning
+            .submit(
+                waiting.planet_id,
+                view([0, 1_000, 0], [0.0, -0.999, 0.0447], [0.0; 3]),
+                config,
+            )
+            .unwrap();
+        for offset in 1..=100 {
+            planning
+                .submit(
+                    hot.planet_id,
+                    view([1_000 + offset, 0, 0], [-1.0, 0.0, 0.0], [100.0, 0.0, 0.0]),
+                    config,
+                )
+                .unwrap();
+        }
+
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(result) = planning
+                .drain_completed(4)
+                .into_iter()
+                .find(|result| result.ticket() == waiting_ticket)
+            {
+                assert!(result.plan().is_ok());
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "hot planet starved the older pending planet"
+            );
+            thread::yield_now();
+        }
+        assert!(planning.counters().pending <= 1);
         subsystem.shutdown().unwrap();
     }
 

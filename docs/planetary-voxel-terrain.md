@@ -186,6 +186,12 @@ or removal make old results unpublishable and automatically requeue the latest
 view against a fresh immutable snapshot. An in-flight plan may complete while a
 newer view is pending, preserving continuous coarse-to-fine progress instead of
 starving under high-speed movement.
+One terrain controller owns the complete live path from those results through
+the per-planet refinement sessions, bounded page requests, immutable upload and
+eviction deltas, generation-exact renderer feedback, and visible-set
+publication. Runtime event draining stays caller-owned so persistence,
+collision, replication, and diagnostics can observe the same events without a
+second terrain authority.
 CPU residency alone never advances that contract. Pulsar retains each upload
 or eviction as pending until Helio returns generation-exact `Applied` feedback;
 `Deferred` cache/page-table backpressure is retried within the same bounded

@@ -5,6 +5,7 @@
 //! snapshots. Rendering and physics consume derived data and never become the
 //! source of truth.
 
+mod controller;
 mod core;
 mod edit;
 mod generator;
@@ -21,6 +22,10 @@ mod store;
 mod streaming;
 mod types;
 
+pub use controller::{
+    TerrainControllerConfig, TerrainControllerError, TerrainControllerFrame,
+    TerrainPlanningFailure, TerrainStreamingController,
+};
 pub use core::{
     PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest, PageBuildResult, TerrainCore,
     TerrainCoreError, TerrainMemoryCounters, TerrainWorkCounters,
