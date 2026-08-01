@@ -52,7 +52,9 @@ Development happens in the open. Whether you're a systems engineer or a technica
 
 ## Instalaltion
 
-Download the appropriate binary for your machine from the `Releases` page
+- Download the appropriate binary for your machine from the `Releases` page.
+- Ensure you have the rust language installed [How to install](https://rust-lang.org/tools/install/)
+- Run the engine binary
 
 ## Source Build
 
