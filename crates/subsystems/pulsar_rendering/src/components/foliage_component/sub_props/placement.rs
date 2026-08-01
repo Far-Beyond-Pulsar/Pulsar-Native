@@ -48,8 +48,8 @@ impl Default for PlacementFoliageProps {
             width_max: 0.03,
             slope_min_degrees: 0.0,
             slope_max_degrees: 35.0,
-            altitude_min: -10000.0,
-            altitude_max: 10000.0,
+            altitude_min: -20.0,
+            altitude_max: 50.0,
             layer_extent: 120.0,
             has_infinite_extent: false,
         }
