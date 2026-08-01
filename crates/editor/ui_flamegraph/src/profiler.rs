@@ -38,6 +38,13 @@ impl InstrumentationCollector {
         }
         *running = true;
 
+        // Profiling is only live while the Flamegraph panel is actively
+        // recording — enabling it here (rather than for the whole process
+        // lifetime) is what keeps profile_scope! from leaking events into
+        // an unbounded channel when nobody is collecting them.
+        profiling::clear_events();
+        profiling::enable_profiling();
+
         tracing::trace!(
             "[PROFILER] Profiling enabled: {}",
             profiling::is_profiling_enabled()
@@ -77,10 +84,6 @@ impl InstrumentationCollector {
         let running_flag = Arc::clone(&self.running);
         let update_interval = self.update_interval_ms;
 
-        // NOTE: Don't enable/disable profiling here!
-        // Profiling is enabled globally at engine startup
-        // We just collect the events that are already being recorded
-
         thread::spawn(move || {
             collector_loop(trace_data, running_flag, update_interval);
         });
@@ -90,6 +93,11 @@ impl InstrumentationCollector {
     pub fn stop(&self) {
         *self.running.write() = false;
         *self.frame_time_running.write() = false;
+
+        // Turn instrumentation back off now that nothing is consuming it,
+        // so profile_scope! goes back to its (near) no-op fast path instead
+        // of continuing to feed the event channel.
+        profiling::disable_profiling();
     }
 
     /// Check if collector is running
@@ -142,8 +150,8 @@ fn collector_loop(
         }
     }
 
-    // NOTE: Don't disable profiling here!
-    // Profiling is managed by the engine, not the collector
+    // Profiling itself is disabled by InstrumentationCollector::stop(), which
+    // runs concurrently with this loop exiting.
     tracing::trace!("[PROFILER] Instrumentation collector stopped");
 }
 

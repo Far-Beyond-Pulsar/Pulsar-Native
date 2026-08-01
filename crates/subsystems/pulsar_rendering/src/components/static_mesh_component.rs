@@ -437,104 +437,43 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
             (mid, matid)
         };
 
-        let scene_id = owner.scene_object_id;
-
-        // Mark this component instance as live so stale-cleanup doesn't
-        // remove its scene object cache entry between frames.
-        get_subsystem!(context, LiveKeySet).insert(scene_id.to_string());
-
-        // Phase 2: update or insert scene object via object-instance cache.
-        // This avoids deleting+re-inserting unchanged objects every frame,
-        // which would cascade-free meshes/materials in the helio scene.
-        //
-        // Each get_subsystem! mutably borrows context, so we must strictly
-        // separate cache lookups from scene operations into distinct scopes.
-        // Three outcomes when consulting the object-instance cache.
-        enum SceneCacheAction {
-            UpdateTransform {
-                obj_id: helio::ObjectId,
-            },
-            Replace {
-                old_id: helio::ObjectId,
-                mesh_id: helio::MeshId,
-                mat_id: helio::MaterialId,
-                transform: Mat4,
-                bounds: [f32; 4],
-                tag: u64,
-                abs_path: String,
-            },
-        }
-
-        let mut action: Option<SceneCacheAction> = {
-            let oc = get_subsystem!(context, SceneObjectCache);
-            oc.get(scene_id).map(|(obj_id, cached_asset)| {
-                if cached_asset == abs_path {
-                    SceneCacheAction::UpdateTransform { obj_id }
-                } else {
-                    SceneCacheAction::Replace {
-                        old_id: obj_id,
-                        mesh_id,
-                        mat_id,
-                        transform,
-                        bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                        tag,
-                        abs_path: abs_path.clone(),
-                    }
-                }
-            })
-        };
-        if action.is_none() {
-            // New object — we need mesh_id/mat_id from Phase 1, which doesn't
-            // borrow context, so no conflict.  But the descriptor also needs
-            // transform/bounds etc., so clone them here.
-            let desc = ObjectDescriptor {
-                mesh: mesh_id,
-                material: mat_id,
-                transform,
-                bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
-                flags: 0,
-                groups: GroupMask::NONE,
-                movability: Some(Movability::Movable),
-                user_tag: tag,
-            };
-            let ob = get_subsystem!(context, Renderer)
-                .scene_mut()
-                .insert_actor(SceneActor::object(desc));
-            if let Some(id) = ob.as_object() {
-                let oc = get_subsystem!(context, SceneObjectCache);
-                oc.insert(scene_id.to_string(), id, abs_path.clone());
-            }
-        } else if let Some(SceneCacheAction::UpdateTransform { obj_id }) = action.take() {
-            let _ = get_subsystem!(context, Renderer)
-                .scene_mut()
-                .update_object_transform(obj_id, transform);
-        } else if let Some(SceneCacheAction::Replace {
-            old_id,
-            mesh_id,
-            mat_id,
+        // Phase 2: update or insert the scene object. Helio owns the scene,
+        // so we ask it — by the tag we stamped on insert — whether this
+        // object already exists, instead of mirroring its contents in an
+        // editor-side map. Unchanged objects are updated in place rather
+        // than removed and re-inserted, which would cascade-free their mesh
+        // and material.
+        let desc = ObjectDescriptor {
+            mesh: mesh_id,
+            material: mat_id,
             transform,
-            bounds,
-            tag,
-            abs_path,
-        }) = action.take()
-        {
-            let scene = get_subsystem!(context, Renderer).scene_mut();
-            let _ = scene.remove_object(old_id);
-            let ob = scene.insert_actor(SceneActor::object(ObjectDescriptor {
-                mesh: mesh_id,
-                material: mat_id,
-                transform,
-                bounds,
-                flags: 0,
-                groups: GroupMask::NONE,
-                movability: Some(Movability::Movable),
-                user_tag: tag,
-            }));
-            // update cache after scene operations (different scope)
-            if let Some(id) = ob.as_object() {
-                let oc = get_subsystem!(context, SceneObjectCache);
-                oc.remove(scene_id);
-                oc.insert(scene_id.to_string(), id, abs_path);
+            bounds: [pos.x, pos.y, pos.z, radius.max(0.1)],
+            flags: 0,
+            groups: GroupMask::NONE,
+            movability: Some(Movability::Movable),
+            user_tag: tag,
+        };
+
+        let scene = get_subsystem!(context, Renderer).scene_mut();
+        match scene.object_by_tag(tag) {
+            None => {
+                scene.insert_actor(SceneActor::object(desc));
+            }
+            Some(obj_id) => {
+                // Compare against the mesh Helio currently has rather than a
+                // remembered asset path: the mesh handle *is* the identity of
+                // the loaded asset, so a swap shows up here with nothing to
+                // keep in sync.
+                let same_mesh = scene
+                    .get_object_descriptor(obj_id)
+                    .map(|d| d.mesh == mesh_id)
+                    .unwrap_or(false);
+                if same_mesh {
+                    let _ = scene.update_object_transform(obj_id, transform);
+                } else {
+                    let _ = scene.remove_object(obj_id);
+                    scene.insert_actor(SceneActor::object(desc));
+                }
             }
         }
     }

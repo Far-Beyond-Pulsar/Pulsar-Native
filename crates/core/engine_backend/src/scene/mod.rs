@@ -590,7 +590,7 @@ impl SceneDb {
     pub fn set_position(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             if e.set_position(v) {
-                self.bump_render_revision();
+                self.publish(&e, ObjectDirtyFlags::TRANSFORM);
             }
             true
         } else {
@@ -601,7 +601,7 @@ impl SceneDb {
     pub fn set_rotation(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             if e.set_rotation(v) {
-                self.bump_render_revision();
+                self.publish(&e, ObjectDirtyFlags::TRANSFORM);
             }
             true
         } else {
@@ -612,7 +612,7 @@ impl SceneDb {
     pub fn set_scale(&self, id: &str, v: [f32; 3]) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             if e.set_scale(v) {
-                self.bump_render_revision();
+                self.publish(&e, ObjectDirtyFlags::TRANSFORM);
             }
             true
         } else {
@@ -623,7 +623,7 @@ impl SceneDb {
     pub fn set_visible(&self, id: &str, v: bool) -> bool {
         if let Some(e) = self.inner.objects.get(id) {
             if e.set_visible(v) {
-                self.bump_render_revision();
+                self.publish(&e, ObjectDirtyFlags::VISIBILITY);
             }
             true
         } else {
@@ -639,12 +639,25 @@ impl SceneDb {
             let scale_changed = e.set_scale(scale);
             let changed = position_changed || rotation_changed || scale_changed;
             if changed {
-                self.bump_render_revision();
+                self.publish(&e, ObjectDirtyFlags::TRANSFORM);
             }
             true
         } else {
             false
         }
+    }
+
+    /// Publish a mutation of `entry`: flag what changed for the delta sync and
+    /// bump the render generation so the renderer knows to look.
+    ///
+    /// Every mutator must route through here. The renderer syncs only the
+    /// objects flagged here, so a write that skips it is a write the renderer
+    /// will never see.
+    #[inline]
+    fn publish(&self, entry: &SceneEntry, flags: ObjectDirtyFlags) {
+        entry.mark_dirty(flags);
+        self.inner.dirty_gen.fetch_add(1, Ordering::Relaxed);
+        self.bump_render_revision();
     }
 
     // ── Cold data writes ──────────────────────────────────────────────────
@@ -669,6 +682,7 @@ impl SceneDb {
 
         if let Some(e) = self.inner.objects.get(id) {
             e.meta.write().name = name;
+            self.publish(&e, ObjectDirtyFlags::NAME);
         }
         self.update_subtree_path(id, &new_path);
         true
@@ -691,8 +705,10 @@ impl SceneDb {
             return false;
         };
         update(&mut entry.meta.write());
-        drop(entry);
-        self.bump_render_revision();
+        // This is the props/components channel — the one the editor's property
+        // panel writes through — so flag both. Component sync only runs for
+        // objects flagged here.
+        self.publish(&entry, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);
         true
     }
 
@@ -726,6 +742,12 @@ impl SceneDb {
         // Update the object's parent field.
         if let Some(e) = self.inner.objects.get(id) {
             e.meta.write().parent = new_parent.clone();
+            // Reparenting moves the object in world space too, so the
+            // renderer needs to re-evaluate its transform, not just hierarchy.
+            self.publish(
+                &e,
+                ObjectDirtyFlags::HIERARCHY | ObjectDirtyFlags::TRANSFORM,
+            );
         }
 
         // Recompute scene_path for the moved subtree.

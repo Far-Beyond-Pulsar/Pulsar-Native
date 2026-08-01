@@ -8,7 +8,7 @@ use std::time::Instant;
 
 use engine_fs::virtual_fs;
 use helio::{
-    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask, LightId,
+    Camera, DebugDrawState, EditorState, GizmoMode, GpuMaterial, GroupId, GroupMask,
     MaterialId, MeshId, MeshUpload, Movability, ObjectDescriptor, ObjectId, Renderer,
     RendererConfig, Scene, SceneActor, SceneActorId, ScenePicker, SkyActor,
 };
@@ -17,7 +17,7 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::subsystems::{FoliageCache, MeshCache, SceneObjectCache, remove_foliage_handles};
+use pulsar_rendering::subsystems::{FoliageCache, LightCache, MeshCache, SceneObjectCache, remove_foliage_handles};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{
@@ -107,6 +107,10 @@ struct HelioInner {
     /// so the editor's per-sync component pass updates them in place instead of
     /// re-registering (which re-rolls GPU placement) every scene change.
     foliage_cache: FoliageCache,
+    /// Tracks light actors keyed by scene-object ID so LightComponent can
+    /// update them in place instead of the scene wholesale-clearing and
+    /// re-inserting every light on every sync pass.
+    light_cache: LightCache,
     /// Last SceneDb generation fully applied to Helio. Unchanged scenes do not
     /// need component deserialization, light recreation, or picker rebuilds.
     last_scene_revision: u64,
@@ -253,6 +257,7 @@ impl HelioRenderer {
                 mesh_cache: MeshCache::new(),
                 object_cache: SceneObjectCache::new(),
                 foliage_cache: FoliageCache::new(),
+                light_cache: LightCache::new(),
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
             };
@@ -896,16 +901,11 @@ impl HelioRenderer {
             return;
         }
 
-        // Clear lights each frame (no cascade-free — lights don't ref count).
-        let light_ids: Vec<LightId> = inner
-            .renderer
-            .scene()
-            .iter_lights()
-            .map(|(id, _, _)| id)
-            .collect();
-        for id in light_ids {
-            let _ = inner.renderer.scene_mut().remove_light(id);
-        }
+        // Lights are managed incrementally through LightCache (like objects
+        // via SceneObjectCache below): LightComponent looks up its cached
+        // LightId and calls Scene::update_light in place instead of the
+        // scene being wholesale-cleared and every light re-inserted fresh
+        // every sync pass.
         // Objects are managed incrementally through SceneObjectCache:
         // components call get_subsystem!(context, SceneObjectCache) to look up
         // existing objects by tag, then either update transforms in-place or
@@ -942,6 +942,7 @@ impl HelioRenderer {
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
+            subsystems.register_ref::<LightCache>(&mut inner.light_cache);
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
@@ -988,6 +989,22 @@ impl HelioRenderer {
             remove_foliage_handles(inner.renderer.scene_mut(), &mut inner.foliage_cache, &key);
         }
 
+        // Remove stale lights (object deleted, or its LightComponent removed
+        // while the object stayed — LightComponent itself handles the
+        // disabled-but-still-attached case).
+        let stale_lights: Vec<String> = inner
+            .light_cache
+            .map
+            .keys()
+            .filter(|key| !live_keys.contains(*key))
+            .cloned()
+            .collect();
+        for key in stale_lights {
+            if let Some(light_id) = inner.light_cache.remove(&key) {
+                let _ = inner.renderer.scene_mut().remove_light(light_id);
+            }
+        }
+
         // Apply editor visibility: hidden objects remain in the Helio scene
         // (for gizmo rendering and selection picking) but are assigned to the
         // HIDDEN group so they don't render visually.
@@ -1014,12 +1031,25 @@ impl HelioRenderer {
             tracing::warn!("[SYNC_SCENE] picker rebuild took {:.2}ms", picker_ms);
         }
 
-        // Debug: after full sync, the delta should be empty (no new dirtiness).
-        // This validates that the delta path would produce the same state as the full sync.
-        debug_assert!(
-            scene_db.drain_dirty().is_empty(),
-            "[SYNC_SCENE] drain_dirty should be empty after full sync"
-        );
+        // Full sync just brought every object in `live_keys` fully up to
+        // date from its snapshot, so clear their dirty flags here — full
+        // sync never marked them dirty in the first place (that only
+        // happens via SceneDb::mark_dirty / a fresh SceneEntry), but it
+        // must still consume any that accumulated, or the delta-sync path
+        // would see them as still needing work it just did and redo it
+        // every frame until something happened to touch drain_dirty().
+        //
+        // Scoped to `live_keys` (this pass's snapshot) rather than a global
+        // `scene_db.drain_dirty()`: scene_db is a concurrently-mutated
+        // DashMap another thread can insert into at any time, including
+        // between the snapshot at the top of this function and this loop.
+        // A global drain would silently consume — and thereby lose — the
+        // dirty flags of an object this pass never actually synced to
+        // Helio, since it didn't exist yet when `get_all_snapshots()` ran.
+        // Only draining ids we know we just synced avoids that.
+        for id in live_keys.inner() {
+            let _ = scene_db.take_dirty_flags(id);
+        }
     }
 
     fn sync_scene_delta(

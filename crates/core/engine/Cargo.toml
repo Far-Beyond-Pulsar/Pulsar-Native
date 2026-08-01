@@ -52,6 +52,15 @@ window_manager.workspace = true
 pulsar_std = { workspace = true }
 tracing-appender = "0.2.4"
 
+# Optional heap profiler for tracking down memory leaks. Enable with
+# `--features dhat-heap`; replaces the normal tracking allocator so it can't
+# run alongside it. Dumps `dhat-heap.json` on clean process exit — view at
+# https://nnethercote.github.io/dh_view/dh_view.html
+dhat = { version = "0.3", optional = true }
+
+[features]
+dhat-heap = ["dep:dhat"]
+
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_System_Diagnostics_Debug"] }
 

@@ -19,7 +19,14 @@ impl ComponentRuntimeBehavior for LightComponent {
         context: &mut dyn ComponentRuntimeContext,
     ) {
         let light = Self::from_component_data(component_data);
+        let tag = scene_id_to_tag(owner.scene_object_id);
+
         if !light.general.enabled {
+            // Disabled — drop the light we previously inserted, if any.
+            let scene = get_subsystem!(context, Renderer).scene_mut();
+            if let Some(id) = scene.light_by_tag(tag) {
+                let _ = scene.remove_light(id);
+            }
             return;
         }
 
@@ -57,10 +64,16 @@ impl ComponentRuntimeBehavior for LightComponent {
             ..Default::default()
         };
 
-        let tag = scene_id_to_tag(owner.scene_object_id);
-        let renderer = get_subsystem!(context, Renderer);
-        renderer
-            .scene_mut()
-            .insert_actor(SceneActor::light_with_tag(gpu, tag));
+        // Helio owns the scene: ask it whether we already have a light for
+        // this object rather than tracking handles editor-side.
+        let scene = get_subsystem!(context, Renderer).scene_mut();
+        match scene.light_by_tag(tag) {
+            Some(id) => {
+                let _ = scene.update_light(id, gpu);
+            }
+            None => {
+                scene.insert_actor(SceneActor::light_with_tag(gpu, tag));
+            }
+        }
     }
 }

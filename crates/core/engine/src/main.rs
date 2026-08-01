@@ -37,8 +37,18 @@ use std::sync::atomic::Ordering;
 
 // --- Global Allocator Setup ---
 use gpui::AppContext;
+
+// Only one #[global_allocator] can be registered, so the dhat heap profiler
+// (feature = "dhat-heap") and the normal in-editor tracking allocator are
+// mutually exclusive.
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static GLOBAL_ALLOCATOR: dhat::Alloc = dhat::Alloc;
+
+#[cfg(not(feature = "dhat-heap"))]
 use ui_log_viewer::TrackingAllocator;
 
+#[cfg(not(feature = "dhat-heap"))]
 #[global_allocator]
 static GLOBAL_ALLOCATOR: TrackingAllocator = TrackingAllocator::new();
 
@@ -121,6 +131,12 @@ fn check_debugger_attached() {
 ///
 /// Uses dependency graph-based initialization for explicit ordering and validation.
 fn main() {
+    // Held for the entire function body so it dumps `dhat-heap.json` (via
+    // Drop) on clean process exit — e.g. quitting the editor normally after
+    // reproducing a leak. Only active with `--features dhat-heap`.
+    #[cfg(feature = "dhat-heap")]
+    let _dhat_profiler = dhat::Profiler::new_heap();
+
     // Anti-debugging check — runs before any other initialization.
     check_debugger_attached();
 
@@ -133,8 +149,13 @@ fn main() {
     // Name the main thread FIRST
     profiling::set_thread_name("Main Thread");
 
-    // Enable profiling globally
-    profiling::enable_profiling();
+    // Profiling is intentionally NOT enabled here. Instrumentation
+    // (profile_scope!) submits events into an unbounded channel the moment
+    // profiling is enabled, and nothing drains that channel unless the
+    // Flamegraph panel is actively recording — leaving it on for the whole
+    // process lifetime leaks memory at a steady rate for as long as the
+    // editor window is open. The Flamegraph panel's InstrumentationCollector
+    // enables/disables profiling itself, scoped to its recording session.
 
     // Parse arguments first (needed for init context)
     dotenv::dotenv();

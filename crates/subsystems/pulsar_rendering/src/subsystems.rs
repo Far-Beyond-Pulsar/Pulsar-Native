@@ -110,6 +110,39 @@ impl SceneObjectCache {
     }
 }
 
+/// Per-object light handle, keyed by scene-object ID.
+///
+/// Helio's lights have no ref-counting and (until recently) no
+/// insert-or-update entry point, so the editor sync pass used to remove
+/// *every* light in the scene each pass and let each LightComponent
+/// unconditionally re-insert. That forced a full scene resync to run
+/// whenever anything anywhere changed, just to keep lights from vanishing.
+/// Caching the LightId here lets LightComponent call `Scene::update_light`
+/// in place instead, the same way SceneObjectCache does for meshes.
+pub struct LightCache {
+    pub map: HashMap<String, helio::LightId>,
+}
+
+impl LightCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, scene_id: &str) -> Option<helio::LightId> {
+        self.map.get(scene_id).copied()
+    }
+
+    pub fn insert(&mut self, scene_id: String, id: helio::LightId) {
+        self.map.insert(scene_id, id);
+    }
+
+    pub fn remove(&mut self, scene_id: &str) -> Option<helio::LightId> {
+        self.map.remove(scene_id)
+    }
+}
+
 /// The engine's built-in assets — resolved at compile time so embedded
 /// primitives (SM_Cube, SM_Sphere, etc.) are always available.
 const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
