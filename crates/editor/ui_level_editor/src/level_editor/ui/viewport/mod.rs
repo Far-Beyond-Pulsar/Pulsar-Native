@@ -499,22 +499,54 @@ impl ViewportPanel {
                 (0.0, 0.0, 0.0, false)
             };
 
-        // Collect metric histories
-        let metrics = self.metrics.borrow();
-        let fps_data: Vec<FpsDataPoint> = metrics.fps_history.iter().cloned().collect();
-        let tps_data: Vec<TpsDataPoint> = metrics.tps_history.iter().cloned().collect();
-        let frame_time_data: Vec<FrameTimeDataPoint> =
-            metrics.frame_time_history.iter().cloned().collect();
-        let memory_data: Vec<MemoryDataPoint> = metrics.memory_history.iter().cloned().collect();
-        let draw_calls_data: Vec<DrawCallsDataPoint> =
-            metrics.draw_calls_history.iter().cloned().collect();
-        let vertices_data: Vec<VerticesDataPoint> =
-            metrics.vertices_history.iter().cloned().collect();
-        let input_latency_data: Vec<InputLatencyDataPoint> =
-            metrics.input_latency_history.iter().cloned().collect();
-        let ui_consistency_data: Vec<UiConsistencyDataPoint> =
-            metrics.ui_consistency_history.iter().cloned().collect();
-        drop(metrics);
+        // Collect metric histories. These eight Vecs feed only
+        // `render_performance_overlay`, which is itself gated on
+        // `show_performance_overlay` — cloning them when the overlay is closed
+        // is pure waste on a hot path, so skip it entirely.
+        let (
+            fps_data,
+            tps_data,
+            frame_time_data,
+            memory_data,
+            draw_calls_data,
+            vertices_data,
+            input_latency_data,
+            ui_consistency_data,
+        ) = if state.overlays.state.show_performance_overlay {
+            let metrics = self.metrics.borrow();
+            (
+                metrics.fps_history.iter().cloned().collect::<Vec<FpsDataPoint>>(),
+                metrics.tps_history.iter().cloned().collect::<Vec<TpsDataPoint>>(),
+                metrics
+                    .frame_time_history
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<FrameTimeDataPoint>>(),
+                metrics.memory_history.iter().cloned().collect::<Vec<MemoryDataPoint>>(),
+                metrics
+                    .draw_calls_history
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<DrawCallsDataPoint>>(),
+                metrics
+                    .vertices_history
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<VerticesDataPoint>>(),
+                metrics
+                    .input_latency_history
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<InputLatencyDataPoint>>(),
+                metrics
+                    .ui_consistency_history
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<UiConsistencyDataPoint>>(),
+            )
+        } else {
+            Default::default()
+        };
 
         // Clone for event handlers
         let _input_state_scroll = Arc::clone(&self.input_state);

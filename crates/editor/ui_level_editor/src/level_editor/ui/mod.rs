@@ -1,9 +1,11 @@
 mod actions;
 pub mod bindings;
 pub mod dialogs;
+pub(crate) mod frame_pump;
 pub(crate) mod hierarchy;
 mod panel;
 mod properties;
+mod status_bar_view;
 mod toolbar;
 mod viewport;
 mod world_settings;
@@ -15,6 +17,7 @@ pub use properties::{
     ComponentHierarchyPanel, MaterialSection, ObjectHeaderSection, ObjectTypeFieldsSection,
     PropertiesPanel, TransformSection,
 };
-pub use toolbar::ToolbarPanel;
+pub use status_bar_view::StatusBarView;
+pub use toolbar::{ToolbarPanel, ToolbarView};
 pub use viewport::ViewportPanel;
 pub use world_settings::{WorldSettings, WorldSettingsReplicated};

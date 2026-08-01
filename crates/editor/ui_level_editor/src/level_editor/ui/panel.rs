@@ -17,12 +17,11 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use ui::settings::EngineSettings;
 use ui::{notification::Notification, ContextModal as _};
-use ui_common::StatusBar;
 
 use crate::level_editor::state::PieStartRequest;
 
 use super::actions::*;
-use super::{toolbar, ToolbarPanel, ViewportPanel};
+use super::{toolbar, StatusBarView, ToolbarView, ViewportPanel};
 use crate::ai_sessions;
 use crate::level_editor::scene_database::{
     LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
@@ -39,8 +38,12 @@ pub struct LevelEditorPanel {
     // FPS graph type state (shared with viewport for Switch)
     fps_graph_is_line: Rc<RefCell<bool>>,
 
-    // UI Components
-    toolbar: ToolbarPanel,
+    // UI Components. Both are separate entities rendered with `AnyView::cached`
+    // so they survive the per-frame invalidation the viewport propagates up the
+    // ancestor chain; each owns a frame pump that notifies it only when the
+    // state it actually reads changes. See `toolbar::view` / `status_bar_view`.
+    toolbar: Entity<ToolbarView>,
+    status_bar: Entity<StatusBarView>,
 
     // Helio viewport rendered via WgpuSurfaceHandle
     viewport: Entity<HelioViewport>,
@@ -328,10 +331,14 @@ impl LevelEditorPanel {
             }
         });
 
+        let toolbar = cx.new(|_| ToolbarView::new(shared_state.clone(), gpu_engine.clone()));
+        let status_bar = cx.new(|_| StatusBarView::new(shared_state.clone()));
+
         Self {
             focus_handle: cx.focus_handle(),
             fps_graph_is_line: Rc::new(RefCell::new(true)),
-            toolbar: ToolbarPanel::new(),
+            toolbar,
+            status_bar,
             viewport,
             gpu_engine: gpu_engine.clone(),
             render_enabled,
@@ -541,46 +548,6 @@ impl LevelEditorPanel {
             .load(std::sync::atomic::Ordering::Relaxed);
         self.render_enabled
             .store(!current, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    fn render_status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let state = self.shared_state.read();
-        let objects_count = state.scene.scene_objects().len();
-        let selected_name = state
-            .scene
-            .selected_object()
-            .and_then(|id| state.scene.database.get_object(&id))
-            .map(|obj| obj.name.clone())
-            .unwrap_or_else(|| t!("LevelEditor.StatusBar.None").to_string());
-
-        let grid_status = if state.editor.show_grid {
-            t!("LevelEditor.StatusBar.GridOn").to_string()
-        } else {
-            t!("LevelEditor.StatusBar.GridOff").to_string()
-        };
-
-        let camera_mode_str = match state.editor.camera_mode {
-            CameraMode::Perspective => t!("LevelEditor.CameraMode.Perspective").to_string(),
-            CameraMode::Orthographic => t!("LevelEditor.CameraMode.Orthographic").to_string(),
-            CameraMode::Top => t!("LevelEditor.CameraMode.Top").to_string(),
-            CameraMode::Front => t!("LevelEditor.CameraMode.Front").to_string(),
-            CameraMode::Side => t!("LevelEditor.CameraMode.Side").to_string(),
-        };
-
-        let tool_name = match state.editor.current_tool {
-            TransformTool::Select => t!("LevelEditor.Tool.Select").to_string(),
-            TransformTool::Move => t!("LevelEditor.Tool.Move").to_string(),
-            TransformTool::Rotate => t!("LevelEditor.Tool.Rotate").to_string(),
-            TransformTool::Scale => t!("LevelEditor.Tool.Scale").to_string(),
-        };
-
-        StatusBar::new()
-            .add_left_item(t!("LevelEditor.StatusBar.Objects", count => objects_count).to_string())
-            .add_left_item(t!("LevelEditor.StatusBar.Selected", name => &selected_name).to_string())
-            .add_right_item(camera_mode_str)
-            .add_right_item(grid_status)
-            .add_right_item(t!("LevelEditor.StatusBar.Tool", name => &tool_name).to_string())
-            .render(cx)
     }
 
     fn tool_to_gizmo(
@@ -1423,13 +1390,10 @@ impl Render for LevelEditorPanel {
                 }
             }))
             .child(
-                // Toolbar at the top
-                self.toolbar.render(
-                    &*self.shared_state.read(),
-                    self.shared_state.clone(),
-                    self.gpu_engine.clone(),
-                    cx,
-                ),
+                // Toolbar at the top. Cached: this panel is marked dirty on
+                // every frame the viewport publishes, but the toolbar only
+                // needs to rebuild when its own state changes.
+                AnyView::from(self.toolbar.clone()).cached(ToolbarView::cache_style()),
             )
             .child(
                 // Workspace with draggable panels
@@ -1440,8 +1404,9 @@ impl Render for LevelEditorPanel {
                 },
             )
             .child(
-                // Status bar at the bottom
-                self.render_status_bar(cx),
+                // Status bar at the bottom. Cached for the same reason as the
+                // toolbar above.
+                AnyView::from(self.status_bar.clone()).cached(StatusBarView::cache_style()),
             )
     }
 }

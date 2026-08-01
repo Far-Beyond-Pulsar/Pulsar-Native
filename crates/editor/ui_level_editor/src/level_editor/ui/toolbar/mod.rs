@@ -20,8 +20,10 @@ mod mode_indicator;
 mod multiplayer_dropdown;
 mod playback_controls;
 mod time_scale_dropdown;
+mod view;
 
 pub use actions::*;
+pub use view::ToolbarView;
 use build_core::BuildCoreButton;
 use build_dropdowns::BuildDropdowns;
 use feature_toggles::FeatureToggles;

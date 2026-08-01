@@ -6,7 +6,7 @@
 //!   3. Return `wgpu_surface(handle)` in the element tree so GPUI composits it.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -30,9 +30,18 @@ use pulsar_reflection::REGISTRY;
 /// `render_frame_to_surface()` + `present_synced_silent()`.
 ///
 /// Presentation is deliberately split across the two threads:
-/// - the render thread only publishes finished frames into the triple buffer;
-/// - the UI thread keeps the GPUI draw cycle alive via `request_animation_frame()`,
-///   and the compositor promotes `ready` -> `display` only when a new frame exists.
+/// - the render thread only publishes finished frames into the triple buffer
+///   and bumps `frames_published`;
+/// - the UI thread runs a frame pump that watches that counter and repaints
+///   only when a new frame actually exists, so the compositor promotes
+///   `ready` -> `display` exactly once per rendered frame.
+///
+/// The pump is deliberately *not* `Window::request_animation_frame()` in
+/// `render()`. That notifies this view every single frame, and
+/// `Window::mark_view_dirty` propagates dirt to every ancestor — the viewport
+/// panel, the tab panel, the workspace and `LevelEditorPanel` itself — so the
+/// entire level editor chrome was being rebuilt at event-loop rate regardless
+/// of whether Helio had produced anything new.
 pub struct HelioViewport {
     pub gpu_engine: Arc<Mutex<GpuRenderer>>,
     shared_state: Arc<parking_lot::RwLock<LevelEditorState>>,
@@ -42,6 +51,17 @@ pub struct HelioViewport {
     tab_activated: Arc<AtomicBool>,
     render_thread_stop: Arc<AtomicBool>,
     render_thread_handle: Option<std::thread::JoinHandle<()>>,
+    /// Incremented by the render thread each time it publishes a frame into the
+    /// triple buffer. Read by the frame pump to decide whether a repaint is
+    /// warranted.
+    frames_published: Arc<AtomicU64>,
+    /// Value of `frames_published` at the last repaint this view requested.
+    last_published_frame: u64,
+    /// A repaint has been requested but `render()` has not run yet. Keeps the
+    /// pump from stacking up notifies for a viewport that isn't being rendered.
+    awaiting_render: bool,
+    /// Whether the `on_next_frame` pump has been started (once per view).
+    pump_started: bool,
     last_spike_report: Instant,
     slow_frames_since_report: u32,
     engine_lock_misses_since_report: u32,
@@ -64,6 +84,10 @@ impl HelioViewport {
             tab_activated: Arc::new(AtomicBool::new(true)),
             render_thread_stop: Arc::new(AtomicBool::new(false)),
             render_thread_handle: None,
+            frames_published: Arc::new(AtomicU64::new(0)),
+            last_published_frame: 0,
+            awaiting_render: false,
+            pump_started: false,
             last_spike_report: Instant::now(),
             slow_frames_since_report: 0,
             engine_lock_misses_since_report: 0,
@@ -268,22 +292,42 @@ impl HelioViewport {
         let engine = self.gpu_engine.clone();
         let stop = self.render_thread_stop.clone();
         let tab_activated = self.tab_activated.clone();
+        let frames_published = self.frames_published.clone();
 
         let handle = std::thread::Builder::new()
             .name("Helio Render".into())
             .spawn(move || {
                 profiling::set_thread_name("Helio Render");
-                let mut first_frame = true;
+
+                let frame_budget = viewport_frame_budget();
+                let mut next_deadline = Instant::now();
 
                 loop {
                     if stop.load(Ordering::Acquire) {
                         break;
                     }
 
-                    if !first_frame {
-                        std::thread::sleep(Duration::from_millis(16));
+                    // Pace to a deadline rather than sleeping a fixed amount.
+                    // The old `sleep(16ms)` ran *in addition to* the render, so
+                    // the real period was 16ms + render time — a scene taking
+                    // 6ms to draw capped out around 45 FPS with the GPU idle
+                    // most of the frame. Anchoring the next deadline to the
+                    // previous one keeps the average rate on target and lets a
+                    // frame that overshoots (Windows' timer granularity is
+                    // coarse) be absorbed by a shorter sleep on the next.
+                    if let Some(budget) = frame_budget {
+                        let now = Instant::now();
+                        if next_deadline > now {
+                            std::thread::sleep(next_deadline - now);
+                        }
+                        next_deadline += budget;
+                        // If we've fallen more than a full frame behind, resync
+                        // instead of trying to catch up with a burst.
+                        let now = Instant::now();
+                        if next_deadline < now {
+                            next_deadline = now + budget;
+                        }
                     }
-                    first_frame = false;
 
                     // Permission to submit on the shared device. Held across
                     // render + present so a window resize (which reconfigures the
@@ -331,13 +375,17 @@ impl HelioViewport {
 
                     if let Some(idx) = submission_index {
                         // Silent present: publish the frame for the compositor but do
-                        // NOT request a window redraw from this thread. The GPUI draw
-                        // cycle is kept alive by `request_animation_frame()` in
-                        // `render()`; driving repaints from here instead would fire a
-                        // winit `RedrawRequested` per frame, and each one that misses
-                        // the fast-blit path forces a full `window.refresh()` of the
-                        // entire editor UI.
+                        // NOT request a window redraw from this thread. Driving
+                        // repaints from here would fire a winit `RedrawRequested` per
+                        // frame, and each one that misses the fast-blit path forces a
+                        // full `window.refresh()` of the entire editor UI.
+                        //
+                        // Instead we bump `frames_published`; the UI-thread frame pump
+                        // sees the change and repaints just this view. Release ordering
+                        // pairs with the pump's acquire load so the swapped buffer is
+                        // visible before the counter is.
                         surface.present_synced_silent(idx);
+                        frames_published.fetch_add(1, Ordering::Release);
                     }
 
                     drop(submit_guard);
@@ -348,6 +396,43 @@ impl HelioViewport {
             Ok(h) => self.render_thread_handle = Some(h),
             Err(e) => tracing::error!("Failed to spawn Helio render thread: {:?}", e),
         }
+    }
+
+    /// Start the once-per-view `on_next_frame` pump that repaints this view when
+    /// the render thread has published a frame.
+    ///
+    /// Notifying only on a counter change is what keeps the rest of the editor
+    /// cached: `Window::mark_view_dirty` walks the ancestor path, so every
+    /// notify here also invalidates the viewport panel, the tab panel, the
+    /// workspace and `LevelEditorPanel`. At Helio's ~60 FPS that is one such
+    /// cascade per rendered frame instead of one per event-loop iteration.
+    ///
+    /// `awaiting_render` throttles the pump to at most one outstanding repaint.
+    /// Without it, a viewport sitting in an inactive tab — where `render()` is
+    /// never reached but the render thread keeps publishing — would notify on
+    /// every single frame and put us right back where we started. The flag
+    /// clears in `render()`, so the pump resumes as soon as the tab is shown.
+    fn start_frame_pump(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.pump_started {
+            return;
+        }
+        self.pump_started = true;
+
+        crate::level_editor::ui::frame_pump::spawn_frame_pump(
+            &cx.entity(),
+            window,
+            |this, _window, cx| {
+                if this.awaiting_render {
+                    return;
+                }
+                let published = this.frames_published.load(Ordering::Acquire);
+                if published != this.last_published_frame {
+                    this.last_published_frame = published;
+                    this.awaiting_render = true;
+                    cx.notify();
+                }
+            },
+        );
     }
 
     fn record_frame_diagnostics(
@@ -384,6 +469,32 @@ impl HelioViewport {
             self.engine_lock_misses_since_report = 0;
             self.max_frame_ms_since_report = 0.0;
         }
+    }
+}
+
+/// How long one Helio render-thread frame should take, or `None` to run
+/// uncapped.
+///
+/// Set `PULSAR_VIEWPORT_FPS` to change the target; `0` means uncapped.
+///
+/// Note that raising this alone will not raise the frame rate you *see*. The
+/// editor window's swapchain defaults to `wgpu::PresentMode::Fifo` (vsync), so
+/// the compositor promotes at most one Helio frame per display refresh and any
+/// extra frames are overwritten in the triple buffer's ready slot. To actually
+/// present above the refresh rate, also set `GPUI_PRESENT_MODE=mailbox` (or
+/// `GPUI_DISABLE_VSYNC=1` for `Immediate`) — see `WgpuRenderer::new`.
+fn viewport_frame_budget() -> Option<Duration> {
+    const DEFAULT_FPS: u32 = 60;
+
+    let fps = std::env::var("PULSAR_VIEWPORT_FPS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u32>().ok())
+        .unwrap_or(DEFAULT_FPS);
+
+    if fps == 0 {
+        None
+    } else {
+        Some(Duration::from_secs_f64(1.0 / fps as f64))
     }
 }
 
@@ -603,14 +714,22 @@ impl Render for HelioViewport {
         }
 
         // Build the viewport element
-        let viewport_element = if let Some(ref surface) = self.surface {
-            // Keep the GPUI draw cycle running so the compositor keeps promoting
-            // frames produced by the render thread, and so `WgpuSurface::prepaint`
-            // keeps observing the element's bounds (which is what resizes the
-            // surface when the viewport panel changes size).
-            window.request_animation_frame();
+        let viewport_element = if let Some(surface) = self.surface.clone() {
+            // Repaint this view whenever the render thread publishes a new frame,
+            // so the compositor promotes `ready` -> `display` and
+            // `WgpuSurface::prepaint` keeps observing the element's bounds (which
+            // is what resizes the surface when the viewport panel changes size).
+            //
+            // The pump runs on `Window::on_next_frame`, which fires every platform
+            // frame *without* marking anything dirty, so idle frames now cost
+            // nothing instead of rebuilding the whole editor chrome.
+            self.start_frame_pump(window, cx);
+            // This render paints whatever the compositor promotes, so the pump's
+            // outstanding request is satisfied and it may fire again.
+            self.awaiting_render = false;
+            self.last_published_frame = self.frames_published.load(Ordering::Acquire);
 
-            wgpu_surface(surface.clone())
+            wgpu_surface(surface)
                 .defer_resize_until_mouse_up(true)
                 .absolute()
                 .inset_0()
