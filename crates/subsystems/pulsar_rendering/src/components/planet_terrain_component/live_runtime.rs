@@ -432,13 +432,25 @@ mod tests {
     };
     use helio_default_graphs::build_default_graph_external_with_planetary_voxels;
     use helio_pass_planetary_voxel::{
-        PlanetaryVoxelGpuConfig, TransvoxelGpuExtractorConfig,
+        PlanetaryVoxelGpuConfig, PlanetaryVoxelRenderPass, TransvoxelGpuExtractorConfig,
         TransvoxelGpuTransitionExtractorConfig,
     };
     use std::{
         sync::Arc,
         time::{Duration, Instant},
     };
+
+    #[derive(Clone, Copy, Debug)]
+    enum RecoveryTestDevice {
+        FullHelio,
+        PlanetaryOnly,
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum RecoveryTestGraph {
+        FullHelio,
+        PlanetaryOnly,
+    }
 
     #[test]
     fn live_cpu_and_gpu_budgets_are_one_consistent_bounded_contract() {
@@ -489,10 +501,11 @@ mod tests {
                 eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: live planet cache recovery");
                 return;
             };
-            let (device, queue) = request_test_device(&adapter).await;
             let config = test_live_config();
-            let mut renderer =
-                test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
+            let (device, queue, mut renderer, device_profile, graph_profile) =
+                test_renderer_stack(&adapter, config.renderer)
+                    .await
+                    .expect("an available adapter must build the standalone planetary graph");
             let mut live = PlanetTerrainRuntime::new_with_config(config.clone()).unwrap();
             let source_key = "earth:0".to_owned();
             let component = PlanetTerrainComponent {
@@ -547,9 +560,17 @@ mod tests {
             drop(renderer);
             drop(queue);
             drop(device);
-            let (device, queue) = request_test_device(&adapter).await;
-            let mut rebuilt =
-                test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
+            let (device, queue) = request_test_device(&adapter, device_profile)
+                .await
+                .expect("a previously validated adapter must recreate its device");
+            let mut rebuilt = test_renderer(
+                Arc::clone(&device),
+                Arc::clone(&queue),
+                config.renderer,
+                graph_profile,
+            )
+            .await
+            .expect("a previously validated adapter must rebuild the same Helio graph");
             assert_eq!(live.diagnostics(&rebuilt).unwrap().gpu.resident_pages, 0);
 
             let recovery_deadline = Instant::now() + Duration::from_secs(5);
@@ -591,6 +612,29 @@ mod tests {
                 live.runtime.planet_generation(planet_id).unwrap(),
                 planet_generation_before
             );
+        });
+    }
+
+    #[test]
+    fn standalone_planetary_graph_builds_on_a_baseline_device() {
+        pollster::block_on(async {
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let Some(adapter) = request_test_adapter(&instance).await else {
+                eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: standalone planetary graph");
+                return;
+            };
+            let (device, queue) = request_test_device(&adapter, RecoveryTestDevice::PlanetaryOnly)
+                .await
+                .expect("an available adapter must create a standalone planetary device");
+            test_renderer(
+                device,
+                queue,
+                test_live_config().renderer,
+                RecoveryTestGraph::PlanetaryOnly,
+            )
+            .await
+            .expect("the standalone planetary graph must build on its baseline device");
         });
     }
 
@@ -647,29 +691,136 @@ mod tests {
         }
     }
 
-    fn test_renderer(
+    async fn test_renderer(
         device: Arc<wgpu::Device>,
         queue: Arc<wgpu::Queue>,
         planetary: PlanetaryVoxelRenderConfig,
-    ) -> helio::Renderer {
+        graph_profile: RecoveryTestGraph,
+    ) -> Result<helio::Renderer, String> {
         let config = RendererConfig::new(32, 32, wgpu::TextureFormat::Rgba8UnormSrgb);
-        RendererBuilder::new(config)
-            .with_external_device()
-            .with_graph(Box::new(
-                move |device, queue, scene, config, debug, camera, cull| {
-                    build_default_graph_external_with_planetary_voxels(
-                        device, queue, scene, config, debug, camera, cull, None, planetary,
-                    )
-                    .expect("bounded live planet graph must build")
-                },
-            ))
-            .build(
-                device,
-                queue,
-                config.width,
-                config.height,
-                config.surface_format,
-            )
+        let error_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let renderer = match graph_profile {
+            RecoveryTestGraph::FullHelio => RendererBuilder::new(config)
+                .with_external_device()
+                .with_graph(Box::new(
+                    move |device, queue, scene, config, debug, camera, cull| {
+                        build_default_graph_external_with_planetary_voxels(
+                            device, queue, scene, config, debug, camera, cull, None, planetary,
+                        )
+                        .expect("bounded live planet graph must build")
+                    },
+                ))
+                .build(
+                    device,
+                    queue,
+                    config.width,
+                    config.height,
+                    config.surface_format,
+                ),
+            RecoveryTestGraph::PlanetaryOnly => RendererBuilder::new(config)
+                .with_external_device()
+                .with_graph(Box::new(move |device, queue, _, config, _, _, _| {
+                    let mut graph = helio::RenderGraph::new(device, queue);
+                    graph.add_pass(Box::new(
+                        PlanetaryVoxelRenderPass::new(
+                            device,
+                            queue,
+                            config.surface_format,
+                            planetary,
+                        )
+                        .expect("validated standalone planetary graph must build"),
+                    ));
+                    graph
+                }))
+                .build(
+                    device,
+                    queue,
+                    config.width,
+                    config.height,
+                    config.surface_format,
+                ),
+        };
+        if let Some(error) = error_scope.pop().await {
+            return Err(error.to_string());
+        }
+        Ok(renderer)
+    }
+
+    async fn test_renderer_stack(
+        adapter: &wgpu::Adapter,
+        planetary: PlanetaryVoxelRenderConfig,
+    ) -> Result<
+        (
+            Arc<wgpu::Device>,
+            Arc<wgpu::Queue>,
+            helio::Renderer,
+            RecoveryTestDevice,
+            RecoveryTestGraph,
+        ),
+        String,
+    > {
+        match request_test_device(adapter, RecoveryTestDevice::FullHelio).await {
+            Ok((device, queue)) => {
+                match test_renderer(
+                    Arc::clone(&device),
+                    Arc::clone(&queue),
+                    planetary,
+                    RecoveryTestGraph::FullHelio,
+                )
+                .await
+                {
+                    Ok(renderer) => Ok((
+                        device,
+                        queue,
+                        renderer,
+                        RecoveryTestDevice::FullHelio,
+                        RecoveryTestGraph::FullHelio,
+                    )),
+                    Err(error) => {
+                        eprintln!(
+                            "GPU_VALIDATION_FULL_GRAPH_UNAVAILABLE: {error}; using standalone planetary graph"
+                        );
+                        let renderer = test_renderer(
+                            Arc::clone(&device),
+                            Arc::clone(&queue),
+                            planetary,
+                            RecoveryTestGraph::PlanetaryOnly,
+                        )
+                        .await?;
+                        Ok((
+                            device,
+                            queue,
+                            renderer,
+                            RecoveryTestDevice::FullHelio,
+                            RecoveryTestGraph::PlanetaryOnly,
+                        ))
+                    }
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "GPU_VALIDATION_FULL_DEVICE_UNAVAILABLE: {error}; using standalone planetary device"
+                );
+                let (device, queue) =
+                    request_test_device(adapter, RecoveryTestDevice::PlanetaryOnly)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                let renderer = test_renderer(
+                    Arc::clone(&device),
+                    Arc::clone(&queue),
+                    planetary,
+                    RecoveryTestGraph::PlanetaryOnly,
+                )
+                .await?;
+                Ok((
+                    device,
+                    queue,
+                    renderer,
+                    RecoveryTestDevice::PlanetaryOnly,
+                    RecoveryTestGraph::PlanetaryOnly,
+                ))
+            }
+        }
     }
 
     fn test_frame_input(frame_index: u64, graph_rebuilt: bool) -> PlanetTerrainFrameInput {
@@ -728,17 +879,32 @@ mod tests {
         None
     }
 
-    async fn request_test_device(adapter: &wgpu::Adapter) -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
+    async fn request_test_device(
+        adapter: &wgpu::Adapter,
+        profile: RecoveryTestDevice,
+    ) -> Result<(Arc<wgpu::Device>, Arc<wgpu::Queue>), wgpu::RequestDeviceError> {
+        let adapter_features = adapter.features();
+        let (required_features, experimental_features) = match profile {
+            RecoveryTestDevice::FullHelio => (
+                required_wgpu_features(adapter_features),
+                required_experimental_features(adapter_features),
+            ),
+            RecoveryTestDevice::PlanetaryOnly => (
+                adapter_features
+                    & (wgpu::Features::INDIRECT_FIRST_INSTANCE
+                        | wgpu::Features::MULTI_DRAW_INDIRECT_COUNT),
+                wgpu::ExperimentalFeatures::disabled(),
+            ),
+        };
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("Pulsar Live Planet Recovery Device"),
-                required_features: required_wgpu_features(adapter.features()),
+                required_features,
                 required_limits: required_wgpu_limits(adapter.limits()),
-                experimental_features: required_experimental_features(adapter.features()),
+                experimental_features,
                 ..Default::default()
             })
-            .await
-            .expect("Helio-compatible adapter must create a device");
-        (Arc::new(device), Arc::new(queue))
+            .await?;
+        Ok((Arc::new(device), Arc::new(queue)))
     }
 }
