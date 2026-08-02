@@ -1498,7 +1498,7 @@ impl TerrainRuntimeHandle {
         Some(TerrainPlanningCapture {
             definition: planet.definition.clone(),
             terrain_sequence: planet.core.latest_sequence(),
-            snapshot: planet.core.snapshot(),
+            snapshot: planet.core.planning_snapshot(),
         })
     }
 

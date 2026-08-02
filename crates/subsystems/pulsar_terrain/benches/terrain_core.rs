@@ -115,6 +115,18 @@ fn main() {
         delete_time < Duration::from_millis(10),
         "root delete exceeded the 10 ms acceptance gate: {delete_time:?}"
     );
+    let mut long_history_capture_times = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let started = Instant::now();
+        std::hint::black_box(delete_core.planning_snapshot());
+        long_history_capture_times.push(started.elapsed());
+    }
+    long_history_capture_times.sort_unstable();
+    let long_history_capture_p95 = long_history_capture_times[94];
+    assert!(
+        long_history_capture_p95 <= Duration::from_micros(500),
+        "10,000-edit planning capture exceeded the 0.5 ms acceptance gate: {long_history_capture_p95:?}"
+    );
 
     let edit_amplification = [1_u32, 10, 100, 1_000].map(|radius_cells| {
         EditShape::Sphere {
@@ -423,6 +435,10 @@ fn main() {
 
     // A billion logical cells are represented by the root without allocation.
     let logical_dense_bytes = 1_000_000_000_u64 * 4;
+    println!(
+        "terrain_long_history edits={DELETE_EDIT_PREFIX} capture_p95_us={:.3}",
+        long_history_capture_p95.as_secs_f64() * 1_000_000.0,
+    );
     println!(
         "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_uniform_pruned={} orbit_plan_p95_ms={:.3} orbit_authoritative_p95_ms={:.3} orbit_plan_limits={:?} async_stationary_submit_p95_us={:.3} async_active_submit_p95_us={:.3} async_active_submit_max_us={:.3} async_submitted={} async_coalesced={} async_superseded={} async_stale={} async_capture_max_us={:.3} async_plan_max_ms={:.3} stationary_refinement_p95_us={:.3} active_refinement_p95_us={:.3} superseded_refinement_p95_us={:.3} new_plan_refinement_p95_us={:.3} ground_plan_pages={} ground_plan_nodes={} ground_uniform_pruned={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
         sparse.node_count(),

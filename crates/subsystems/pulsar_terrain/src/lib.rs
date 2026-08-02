@@ -28,7 +28,7 @@ pub use controller::{
 };
 pub use core::{
     PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest, PageBuildResult, TerrainCore,
-    TerrainCoreError, TerrainMemoryCounters, TerrainWorkCounters,
+    TerrainCoreError, TerrainMemoryCounters, TerrainPlanningSnapshot, TerrainWorkCounters,
 };
 pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
 pub use generator::{DeterministicGenerator, FixedSphereGenerator};

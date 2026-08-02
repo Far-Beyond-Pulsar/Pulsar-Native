@@ -1,7 +1,7 @@
 use crate::{
-    FixedSphereGenerator, PlanetDefinition, PlanetId, PlanetView, TerrainCore, TerrainRuntimeError,
-    TerrainRuntimeHandle, TerrainSnapshot, TerrainStreamingConfig, TerrainStreamingError,
-    TerrainStreamingPlan, TerrainStreamingPlanner,
+    FixedSphereGenerator, PlanetDefinition, PlanetId, PlanetView, TerrainCore,
+    TerrainPlanningSnapshot, TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingConfig,
+    TerrainStreamingError, TerrainStreamingPlan, TerrainStreamingPlanner,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -504,7 +504,7 @@ fn planning_worker_loop(shared: Arc<PlanningShared>, runtime: TerrainRuntimeHand
             material: capture.definition.material,
         };
         let started = Instant::now();
-        let plan = TerrainCore::from_snapshot(capture.snapshot, generator)
+        let plan = TerrainCore::from_planning_snapshot(capture.snapshot, generator)
             .map_err(|error| TerrainStreamingError::TerrainSummary(error.to_string()))
             .and_then(|core| {
                 TerrainStreamingPlanner::new(job.config.streaming)?.plan_with_classifier(
@@ -553,7 +553,7 @@ pub(crate) struct TerrainPlanningIdentity {
 pub(crate) struct TerrainPlanningCapture {
     pub(crate) definition: PlanetDefinition,
     pub(crate) terrain_sequence: u64,
-    pub(crate) snapshot: TerrainSnapshot,
+    pub(crate) snapshot: TerrainPlanningSnapshot,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
