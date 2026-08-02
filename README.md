@@ -98,6 +98,13 @@ cargo build --release
 
 ## 🛰️ Related Ecosystems
 
+### **Helio Renderer**
+Pulsar's rendering is powered by **Helio**, a modular GPU-driven renderer designed for scalable real-time graphics.
+
+<a href="https://github.com/Far-Beyond-Pulsar/Helio">
+  <img src="https://github.com/user-attachments/assets/e36bfc3b-f5e8-437e-a50a-967ee254a0eb" alt="Helio Renderer" width="64" />
+</a>
+
 ### **Horizon Game Server**
 If you are interested in massive multiplayer scaling, check out **Horizon**, developed by many of the same contributors.
 

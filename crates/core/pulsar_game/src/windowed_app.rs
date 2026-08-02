@@ -20,7 +20,7 @@ use winit::{
 
 use helio::{
     required_experimental_features, required_wgpu_features, required_wgpu_limits, Camera,
-    DebugDrawState, Renderer, RendererConfig, Scene,
+    Renderer, RendererConfig,
 };
 
 use crate::freecam::FreeCam;
@@ -82,54 +82,21 @@ impl GameWindow {
 
         // Build the Helio renderer. `pulsar_game` owns its device (unlike the
         // editor's wgpui-hosted viewport, which shares GPUI's device via
-        // `Renderer::new_with_external_device`), so we use the plain `new`
-        // constructor and build the default render graph ourselves — mirrors
-        // `engine_backend::subsystems::render::helio_renderer`.
+        // `RendererBuilder::with_external_device`), so we use the plain `build`
+        // constructor with the owning-device default.
         let render_config =
             RendererConfig::new(surface_config.width, surface_config.height, surface_format);
-        let scene = Scene::new(device.clone(), queue.clone());
-        let debug_camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Pulsar Game Debug Camera Buffer"),
-            size: 64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let cull_stats_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Pulsar Game Cull Stats Buffer"),
-            size: 64,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
-        let graph = helio_default_graphs::build_default_graph_external(
-            &device,
-            &queue,
-            &scene,
-            render_config,
-            debug_state.clone(),
-            &debug_camera_buffer,
-            &cull_stats_buffer,
-            None,
-        );
-
-        let mut renderer = Renderer::new(
-            device.clone(),
-            queue.clone(),
-            surface_format,
-            surface_config.width,
-            surface_config.height,
-            render_config.render_scale,
-            render_config,
-            scene,
-            graph,
-            debug_state,
-            debug_camera_buffer,
-            cull_stats_buffer,
-        );
-        // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
-        // All illumination comes from lights in the scene file — same as editor.
-        renderer.set_ambient([0.0, 0.0, 0.0], 0.0);
-        renderer.set_editor_mode(desc.editor_mode);
+        let mut renderer = helio::RendererBuilder::new(render_config)
+            .with_editor_mode(desc.editor_mode)
+            // Kill the default helio ambient ([0.05, 0.05, 0.08] @ 1.0).
+            // All illumination comes from lights in the scene file — same as editor.
+            .with_ambient([0.0, 0.0, 0.0], 0.0)
+            .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
+                helio_default_graphs::build_default_graph_external(
+                    d, q, s, c, ds, cb, csb, None,
+                )
+            }))
+            .build(device.clone(), queue.clone(), surface_config.width, surface_config.height, surface_format);
 
         Self {
             handle,

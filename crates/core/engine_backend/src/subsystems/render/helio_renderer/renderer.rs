@@ -204,49 +204,19 @@ impl HelioRenderer {
             // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
-            let scene = Scene::new(device_arc.clone(), queue_arc.clone());
-            let debug_camera_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("debug_camera"),
-                size: 64,
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let cull_stats_buffer = device_arc.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("cull_stats"),
-                size: 64,
-                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            let debug_state = Arc::new(Mutex::new(DebugDrawState::default()));
             let config = RendererConfig::new(width, height, format);
-            let graph = helio_default_graphs::build_default_graph_external(
-                &device_arc,
-                &queue_arc,
-                &scene,
-                config,
-                debug_state.clone(),
-                &debug_camera_buffer,
-                &cull_stats_buffer,
-                None,
-            );
-            let mut r = Renderer::new_with_external_device(
-                device_arc.clone(),
-                queue_arc.clone(),
-                format,
-                width,
-                height,
-                config.render_scale,
-                config,
-                scene,
-                graph,
-                debug_state,
-                debug_camera_buffer,
-                cull_stats_buffer,
-            );
-            r.set_editor_mode(true);
-            r.set_clear_color([0.15, 0.18, 0.25, 1.0]);
-            // Keep ambient disabled so scene illumination comes only from explicit light actors.
-            r.set_ambient([0.0, 0.0, 0.0], 0.0);
+            let r = helio::RendererBuilder::new(config)
+                .with_external_device()
+                .with_editor_mode(true)
+                .with_clear_color([0.15, 0.18, 0.25, 1.0])
+                // Keep ambient disabled so scene illumination comes only from explicit light actors.
+                .with_ambient([0.0, 0.0, 0.0], 0.0)
+                .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
+                    helio_default_graphs::build_default_graph_external(
+                        d, q, s, c, ds, cb, csb, None,
+                    )
+                }))
+                .build(device_arc.clone(), queue_arc.clone(), width, height, format);
 
             let mut inner = HelioInner {
                 renderer: r,
