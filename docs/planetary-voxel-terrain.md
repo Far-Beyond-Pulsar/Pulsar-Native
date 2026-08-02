@@ -379,13 +379,15 @@ rehydration preserve summary identity. The release fixture currently reports
 now runs on a bounded coalescing worker: stationary and active frame-side
 submission measured 0.2 and 0.3 microseconds p95, with a 5 microsecond maximum
 in the active trace. A 10,000-edit canonical snapshot capture measured 24.4
-microseconds p95. The live headless Helio graph converges, discards its entire
-GPU cache, and restores the complete committed frontier without mutating
-canonical page generations or inserting an extra empty frame. Cross-layer
+microseconds p95. The live headless Helio graph converges, replaces its entire
+WGPU device, queue, graph, and GPU cache, and restores the complete committed
+frontier without mutating canonical page generations or inserting an extra
+empty frame. Cross-layer
 aggregate CPU/GPU limits are validated before startup and exposed through live
 diagnostics. This passes the current frame-thread, long-history capture, and
-graph-cache rebuild gates; actual device-loss and the remaining visual and
-end-to-end production gates are still required for promotion.
+replacement-device recovery gates; the platform device-lost trigger and the
+remaining visual and end-to-end production gates are still required for
+promotion.
 
 ### Milestone 5: destruction and persistence
 

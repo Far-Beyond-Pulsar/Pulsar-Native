@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn graph_cache_loss_recovers_canonical_pages_without_an_extra_empty_frame() {
+    fn replacement_device_recovers_canonical_pages_without_an_extra_empty_frame() {
         pollster::block_on(async {
             let instance =
                 wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -489,18 +489,7 @@ mod tests {
                 eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: live planet cache recovery");
                 return;
             };
-            let (device, queue) = adapter
-                .request_device(&wgpu::DeviceDescriptor {
-                    label: Some("Pulsar Live Planet Recovery Device"),
-                    required_features: required_wgpu_features(adapter.features()),
-                    required_limits: required_wgpu_limits(adapter.limits()),
-                    experimental_features: required_experimental_features(adapter.features()),
-                    ..Default::default()
-                })
-                .await
-                .expect("Helio-compatible adapter must create a device");
-            let device = Arc::new(device);
-            let queue = Arc::new(queue);
+            let (device, queue) = request_test_device(&adapter).await;
             let config = test_live_config();
             let mut renderer =
                 test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
@@ -556,6 +545,9 @@ mod tests {
                 .sum::<usize>();
             assert!(visible_pages_before > 0);
             drop(renderer);
+            drop(queue);
+            drop(device);
+            let (device, queue) = request_test_device(&adapter).await;
             let mut rebuilt =
                 test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
             assert_eq!(live.diagnostics(&rebuilt).unwrap().gpu.resident_pages, 0);
@@ -734,5 +726,19 @@ mod tests {
             }
         }
         None
+    }
+
+    async fn request_test_device(adapter: &wgpu::Adapter) -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("Pulsar Live Planet Recovery Device"),
+                required_features: required_wgpu_features(adapter.features()),
+                required_limits: required_wgpu_limits(adapter.limits()),
+                experimental_features: required_experimental_features(adapter.features()),
+                ..Default::default()
+            })
+            .await
+            .expect("Helio-compatible adapter must create a device");
+        (Arc::new(device), Arc::new(queue))
     }
 }
