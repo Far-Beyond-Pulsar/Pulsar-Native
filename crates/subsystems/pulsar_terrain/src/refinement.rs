@@ -1222,13 +1222,13 @@ mod tests {
             radius_cells: 1_000,
             material: 1,
             root_lod: 6,
-            max_resident_pages: 64,
+            max_resident_pages: 256,
         };
         let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
             interaction_radius_m: 8.0,
             target_projected_error_px: 2.0,
             prediction_seconds: 0.0,
-            max_pages: 64,
+            max_pages: 256,
             max_traversal_nodes: 4_096,
         })
         .unwrap();
@@ -1256,8 +1256,8 @@ mod tests {
         let mut frontier = TerrainRefinementFrontier::new(
             planet(),
             TerrainRefinementConfig {
-                max_active_pages: 64,
-                max_transition_pages: 72,
+                max_active_pages: 256,
+                max_transition_pages: 264,
                 initial_coarse_pages: 8,
                 max_commits_per_reconcile: 1,
                 ..TerrainRefinementConfig::default()

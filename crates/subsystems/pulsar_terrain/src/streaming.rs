@@ -161,7 +161,7 @@ impl Default for TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 2.0,
             prediction_seconds: 0.75,
-            max_pages: 8_192,
+            max_pages: 2_048,
             max_traversal_nodes: 262_144,
         }
     }
@@ -728,8 +728,10 @@ impl<C: TerrainRegionClassifier> PlannerState<'_, C> {
         self.counters.traversed_nodes = self.counters.traversed_nodes.saturating_add(1);
         let summary = self.classifier.summarize_region(key)?;
         let info = if summary.contains_surface() {
-            self.geometry
-                .relevance(key, summary.geometric_error_lod0_cells())?
+            Some(
+                self.geometry
+                    .demand(key, summary.geometric_error_lod0_cells())?,
+            )
         } else {
             self.counters.uniform_regions_pruned =
                 self.counters.uniform_regions_pruned.saturating_add(1);
@@ -847,11 +849,11 @@ impl ViewGeometry {
         })
     }
 
-    fn relevance(
+    fn demand(
         &self,
         key: PageKey,
         geometric_error_lod0_cells: u64,
-    ) -> Result<Option<LeafInfo>, TerrainStreamingError> {
+    ) -> Result<LeafInfo, TerrainStreamingError> {
         let bounds = RelativeAabb::from_page(key, self.camera)?;
         let current_distance = bounds.distance_to_point([0.0; 3]);
         let predicted_distance = bounds.distance_to_point(self.motion_m);
@@ -860,10 +862,6 @@ impl ViewGeometry {
             self.current.intersects(bounds) || current_distance <= self.interaction_radius_m;
         let predictive_relevant = self.motion_m != [0.0; 3]
             && (self.predicted.intersects(bounds) || swept_distance <= self.interaction_radius_m);
-        if !current_relevant && !predictive_relevant {
-            return Ok(None);
-        }
-
         let request_class = if current_relevant {
             TerrainRequestClass::Visible
         } else {
@@ -882,14 +880,15 @@ impl ViewGeometry {
         let projected_error_px = self.focal_length_px * geometric_error_m / error_distance;
         let interaction_forced = current_distance <= self.interaction_radius_m
             || swept_distance <= self.interaction_radius_m;
-        Ok(Some(LeafInfo {
+        Ok(LeafInfo {
             request_class,
             projected_error_px,
             distance_m,
             should_refine: key.lod > 0
+                && (current_relevant || predictive_relevant)
                 && (interaction_forced || projected_error_px > self.target_projected_error_px),
             interaction_forced,
-        }))
+        })
     }
 }
 
@@ -1456,6 +1455,86 @@ mod tests {
             .demands()
             .iter()
             .all(|demand| demand.page_key().lod > 0));
+    }
+
+    #[test]
+    fn ground_refinement_preserves_complete_coarse_planet_coverage() {
+        let definition = definition(1_000, 6, 4_096);
+        let classifier = FixedSphereGenerator {
+            center_cell: definition.center_cell,
+            radius_cells: definition.radius_cells,
+            material: definition.material,
+        };
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            max_pages: 4_096,
+            max_traversal_nodes: 65_536,
+            ..TerrainStreamingConfig::default()
+        })
+        .unwrap();
+        let plan = planner
+            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .unwrap();
+
+        let root_child_lod = definition.root_lod - 1;
+        let mut surface_roots = 0;
+        for z in -1..=0 {
+            for y in -1..=0 {
+                for x in -1..=0 {
+                    let root = PageKey::new(root_child_lod, [x, y, z]);
+                    if TerrainRegionClassifier::summarize_region(&classifier, root)
+                        .unwrap()
+                        .contains_surface()
+                    {
+                        surface_roots += 1;
+                        assert!(
+                            plan.class_for_descendant_or_same(root).is_some(),
+                            "surface root {root:?} lost global coverage"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(surface_roots > 0);
+        assert!(plan
+            .demands()
+            .iter()
+            .any(|demand| { demand.request_class() == TerrainRequestClass::Prefetch }));
+        assert!(plan.is_face_balanced());
+        assert!(plan.is_non_overlapping());
+    }
+
+    #[test]
+    fn astronomical_view_collapses_to_the_complete_root_shell() {
+        let radius = 63_710_000_u64;
+        let definition = definition(radius, 22, 2_048);
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 64.0,
+            target_projected_error_px: 2.0,
+            prediction_seconds: 1.0,
+            max_pages: 2_048,
+            max_traversal_nodes: 131_072,
+        })
+        .unwrap();
+        let camera = i64::try_from(radius).unwrap() + 1_500_000_000_000;
+        let plan = planner
+            .plan_fixed_sphere(
+                &definition,
+                view([camera, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]),
+            )
+            .unwrap();
+
+        assert_eq!(plan.demands().len(), 8);
+        assert!(plan
+            .demands()
+            .iter()
+            .all(|demand| demand.page_key().lod == definition.root_lod - 1));
+        assert!(plan
+            .demands()
+            .iter()
+            .all(|demand| { demand.request_class() == TerrainRequestClass::Prefetch }));
+        assert!(plan.is_face_balanced());
+        assert!(plan.is_non_overlapping());
     }
 
     #[test]

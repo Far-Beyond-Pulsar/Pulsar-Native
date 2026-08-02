@@ -13,8 +13,8 @@
 //! collision, replication, or tooling consumers.
 
 use crate::{
-    CellWord, PageKey, PlanetId, TerrainIncrementalResidencySession, TerrainRequestClass,
-    TerrainResidentPageGeneration, TerrainRuntimeEvent, TerrainRuntimeHandle, CELL_COUNT,
+    CellWord, PageKey, PlanetId, TerrainIncrementalResidencySession, TerrainResidentPageGeneration,
+    TerrainRuntimeEvent, TerrainRuntimeHandle, CELL_COUNT,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use thiserror::Error;
@@ -679,9 +679,10 @@ impl TerrainRenderDeltaPublisher {
         }
     }
 
-    /// Publish the currently committed parent-preserving frontier. Every
-    /// intermediate set is complete, non-overlapping, and 2:1 balanced; the
-    /// final target plan does not need to be resident yet.
+    /// Publish the complete currently committed parent-preserving frontier.
+    /// Request classes control streaming priority, not whether a coverage page
+    /// is rendered. Helio performs ordinary visibility culling after receiving
+    /// the complete, non-overlapping, 2:1-balanced surface frontier.
     pub fn visible_set(
         &self,
         runtime: &TerrainRuntimeHandle,
@@ -694,11 +695,7 @@ impl TerrainRenderDeltaPublisher {
         self.visible_set_for_pages(
             runtime,
             session.planet_id(),
-            committed
-                .into_iter()
-                .filter_map(|(page_key, request_class)| {
-                    (request_class == TerrainRequestClass::Visible).then_some(page_key)
-                }),
+            committed.into_iter().map(|(page_key, _)| page_key),
             &masks,
             frame_index,
         )
@@ -862,7 +859,7 @@ mod tests {
     use super::*;
     use crate::{
         EditMode, EditOp, EditShape, PageDemand, PlanetDefinition, TerrainRefinementConfig,
-        TerrainRuntimeConfig, TerrainStreamingPlan, TerrainSubsystem,
+        TerrainRequestClass, TerrainRuntimeConfig, TerrainStreamingPlan, TerrainSubsystem,
     };
     use engine_subsystems::{Subsystem, SubsystemContext};
     use std::time::{Duration, Instant};
@@ -1009,7 +1006,17 @@ mod tests {
             children
                 .iter()
                 .copied()
-                .map(|key| PageDemand::for_test(key, TerrainRequestClass::Visible))
+                .enumerate()
+                .map(|(index, key)| {
+                    PageDemand::for_test(
+                        key,
+                        if index == 0 {
+                            TerrainRequestClass::Prefetch
+                        } else {
+                            TerrainRequestClass::Visible
+                        },
+                    )
+                })
                 .collect(),
         );
         let mut session = TerrainIncrementalResidencySession::new(

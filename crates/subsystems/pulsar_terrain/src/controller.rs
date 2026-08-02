@@ -97,6 +97,21 @@ impl TerrainStreamingController {
         config.planning.validate()?;
         let _ = TerrainIncrementalResidencySession::new(PlanetId([0; 16]), config.refinement)?;
         let publisher = TerrainRenderDeltaPublisher::new(config.rendering)?;
+        if config.planning.streaming.max_pages > config.refinement.max_active_pages {
+            return Err(TerrainControllerError::InvalidConfig(
+                "planning page budget must fit the active refinement frontier",
+            ));
+        }
+        if config.refinement.max_active_pages > config.rendering.max_visible_pages {
+            return Err(TerrainControllerError::InvalidConfig(
+                "active refinement frontier must fit the published surface frontier",
+            ));
+        }
+        if config.refinement.max_transition_pages > config.rendering.max_tracked_pages {
+            return Err(TerrainControllerError::InvalidConfig(
+                "transition frontier must fit the renderer-tracked page budget",
+            ));
+        }
         Ok(Self {
             runtime,
             planning,
@@ -285,36 +300,72 @@ mod tests {
             max_resident_pages: 256,
         };
         runtime.upsert_planet(planet.clone()).unwrap();
-        let mut controller = TerrainStreamingController::new(
-            runtime.clone(),
-            subsystem.planning_handle(),
+        let controller_config = TerrainControllerConfig {
+            planning: TerrainPlanningConfig {
+                streaming: TerrainStreamingConfig {
+                    max_pages: 64,
+                    max_traversal_nodes: 4_096,
+                    ..TerrainStreamingConfig::default()
+                },
+                ..TerrainPlanningConfig::default()
+            },
+            refinement: TerrainRefinementConfig {
+                max_active_pages: 64,
+                max_transition_pages: 80,
+                initial_coarse_pages: 8,
+                max_requests_per_reconcile: 32,
+                max_commits_per_reconcile: 8,
+                ..TerrainRefinementConfig::default()
+            },
+            rendering: TerrainRenderDeltaConfig {
+                max_events_per_delta: 256,
+                max_commands_per_delta: 128,
+                max_upload_bytes_per_delta: 128 * crate::CELL_COUNT * 4,
+                max_tracked_pages: 256,
+                max_visible_pages: 64,
+            },
+            max_planets: 2,
+            max_planning_results_per_frame: 2,
+        };
+        for invalid in [
             TerrainControllerConfig {
                 planning: TerrainPlanningConfig {
                     streaming: TerrainStreamingConfig {
-                        max_pages: 64,
-                        max_traversal_nodes: 4_096,
-                        ..TerrainStreamingConfig::default()
+                        max_pages: 65,
+                        ..controller_config.planning.streaming
                     },
-                    ..TerrainPlanningConfig::default()
+                    ..controller_config.planning
                 },
-                refinement: TerrainRefinementConfig {
-                    max_active_pages: 64,
-                    max_transition_pages: 80,
-                    initial_coarse_pages: 8,
-                    max_requests_per_reconcile: 32,
-                    max_commits_per_reconcile: 8,
-                    ..TerrainRefinementConfig::default()
-                },
-                rendering: TerrainRenderDeltaConfig {
-                    max_events_per_delta: 256,
-                    max_commands_per_delta: 128,
-                    max_upload_bytes_per_delta: 128 * crate::CELL_COUNT * 4,
-                    max_tracked_pages: 256,
-                    max_visible_pages: 64,
-                },
-                max_planets: 2,
-                max_planning_results_per_frame: 2,
+                ..controller_config
             },
+            TerrainControllerConfig {
+                rendering: TerrainRenderDeltaConfig {
+                    max_visible_pages: 63,
+                    ..controller_config.rendering
+                },
+                ..controller_config
+            },
+            TerrainControllerConfig {
+                rendering: TerrainRenderDeltaConfig {
+                    max_tracked_pages: 79,
+                    ..controller_config.rendering
+                },
+                ..controller_config
+            },
+        ] {
+            assert!(matches!(
+                TerrainStreamingController::new(
+                    runtime.clone(),
+                    subsystem.planning_handle(),
+                    invalid,
+                ),
+                Err(TerrainControllerError::InvalidConfig(_))
+            ));
+        }
+        let mut controller = TerrainStreamingController::new(
+            runtime.clone(),
+            subsystem.planning_handle(),
+            controller_config,
         )
         .unwrap();
         let view = PlanetView::new(
