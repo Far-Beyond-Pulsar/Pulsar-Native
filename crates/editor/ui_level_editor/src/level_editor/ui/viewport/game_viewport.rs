@@ -261,12 +261,6 @@ impl ui::dock::Panel for GameViewport {
         "Game".into_any_element()
     }
 
-    /// Cacheable. `render` is called on cache hits to build the fresh element
-    /// tree for `on_frame`, so the game is ticked and blitted every frame
-    /// regardless of caching.
-    fn cacheable(&self, _cx: &App) -> bool {
-        true
-    }
 }
 
 impl Render for GameViewport {

@@ -1237,11 +1237,6 @@ impl Panel for LevelEditorPanel {
         }
     }
 
-    /// Cacheable. The viewport below uses `on_frame` for geometry stashing,
-    /// so it stays fresh on cache hits. Nested panels cache independently.
-    fn cacheable(&self, _cx: &App) -> bool {
-        true
-    }
 }
 
 ui_common::panel_boilerplate!(LevelEditorPanel);

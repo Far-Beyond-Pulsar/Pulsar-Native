@@ -510,10 +510,4 @@ impl Panel for ViewportPanelWrapper {
         "Viewport".into_any_element()
     }
 
-    /// Cacheable. Geometry stashing now lives in `on_frame` on the viewport
-    /// div, which runs every frame — cached or not — so the element bounds
-    /// used by mouse handlers stay fresh without forcing a full rebuild.
-    fn cacheable(&self, _cx: &App) -> bool {
-        true
-    }
 }

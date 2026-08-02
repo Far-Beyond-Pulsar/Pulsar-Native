@@ -118,13 +118,6 @@ impl PanelView for FileTypeDecoratedPanelView {
         self.inner.closable(cx)
     }
 
-    /// Must forward: this decorator wraps every plugin editor panel, so
-    /// swallowing the inner panel's opt-out would silently re-enable caching
-    /// for panels that cannot survive it (see `ui::dock::Panel::cacheable`).
-    fn cacheable(&self, cx: &gpui::App) -> bool {
-        self.inner.cacheable(cx)
-    }
-
     fn zoomable(&self, cx: &gpui::App) -> Option<ui::dock::PanelControl> {
         self.inner.zoomable(cx)
     }
