@@ -1,15 +1,15 @@
 use crate::git_hooks::GitHooksConfig;
 use gpui::{
-    AppContext as _, Context, Div, Entity, IntoElement, ParentElement as _, Render,
-    StatefulInteractiveElement as _, Styled as _, Subscription, Window, div,
-    prelude::FluentBuilder as _, px,
+    AppContext as _, Context, Div, Entity, IntoElement, ParentElement as _, Render, Styled as _,
+    Subscription, Window, div, prelude::FluentBuilder as _, px,
 };
 use ui::{
-    ActiveTheme as _, Disableable as _, IconName,
+    ActiveTheme as _, Disableable as _, IconName, StyledExt as _,
     alert::Alert,
     button::{Button, ButtonVariants as _},
     h_flex,
     input::{InputState, NumberInput, NumberInputEvent, TextInput},
+    scroll::ScrollbarAxis,
     switch::Switch,
     v_flex,
 };
@@ -141,7 +141,7 @@ impl Render for GitSettingsForm {
         v_flex()
             .w_full()
             .max_h(content_max_height)
-            .overflow_y_scroll()
+            .scrollable(ScrollbarAxis::Vertical)
             .pr_2()
             .gap_6()
             .child(
