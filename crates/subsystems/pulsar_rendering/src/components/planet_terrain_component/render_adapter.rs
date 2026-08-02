@@ -487,7 +487,7 @@ mod tests {
             let mut renderer = PlanetTerrainComponentRenderAdapter::new(
                 &device,
                 &queue,
-                PlanetaryVoxelGpuConfig::new(2, 8, 8, 1, 4, 2).unwrap(),
+                PlanetaryVoxelGpuConfig::new(2, 8, 8, 1, 4).unwrap(),
             )
             .unwrap();
             let planet = TerrainId([7; 16]);
