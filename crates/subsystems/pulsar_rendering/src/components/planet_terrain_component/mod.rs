@@ -6,8 +6,10 @@
 //! rendering components.
 
 mod component;
+mod live_runtime;
 mod render_adapter;
 mod runtime;
 
 pub use component::{ComponentError, PLANET_TERRAIN_CLASS_NAME, PlanetTerrainComponent};
+pub use live_runtime::*;
 pub use render_adapter::*;

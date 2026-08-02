@@ -1,9 +1,13 @@
 use engine_class_derive::register_runtime_behavior;
-use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
+use pulsar_reflection::{
+    ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
+};
 use pulsar_terrain::TerrainRuntimeHandle;
 use serde_json::Value;
 
-use super::{ComponentError, PLANET_TERRAIN_CLASS_NAME, PlanetTerrainComponent};
+use super::{
+    ComponentError, PLANET_TERRAIN_CLASS_NAME, PlanetTerrainComponent, PlanetTerrainComponentCache,
+};
 
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for PlanetTerrainComponent {
@@ -29,22 +33,45 @@ impl ComponentRuntimeBehavior for PlanetTerrainComponent {
         // Component discovery is shared by editor and game contexts. The
         // production terrain runtime is registered only by hosts that have
         // enabled planetary terrain, so its absence is not a component error.
-        let Some(runtime) = context.subsystems_mut().get_mut::<TerrainRuntimeHandle>() else {
+        let Some(runtime) = context
+            .subsystems_mut()
+            .get_mut::<TerrainRuntimeHandle>()
+            .cloned()
+        else {
             return;
         };
 
         let source_key = format!("{}:{component_index}", owner.scene_object_id);
         let result = if component.enabled {
             component.definition(&source_key).and_then(|definition| {
+                let planet_id = definition.planet_id;
                 runtime
-                    .upsert_component(source_key, definition)
-                    .map(|_| ())
-                    .map_err(ComponentError::Runtime)
+                    .upsert_component(source_key.clone(), definition)
+                    .map_err(ComponentError::Runtime)?;
+                if let Some(cache) = context
+                    .subsystems_mut()
+                    .get_mut::<PlanetTerrainComponentCache>()
+                {
+                    cache.record(source_key.clone(), planet_id);
+                }
+                if let Some(live_keys) = context.subsystems_mut().get_mut::<LiveKeySet>() {
+                    live_keys.insert(source_key.clone());
+                }
+                Ok(())
             })
         } else {
-            runtime
+            let result = runtime
                 .remove_component(&source_key)
-                .map_err(ComponentError::Runtime)
+                .map_err(ComponentError::Runtime);
+            if result.is_ok() {
+                if let Some(cache) = context
+                    .subsystems_mut()
+                    .get_mut::<PlanetTerrainComponentCache>()
+                {
+                    cache.remove(&source_key);
+                }
+            }
+            result
         };
         if let Err(error) = result {
             context.report_error(format!(
@@ -135,6 +162,8 @@ mod tests {
 
         let mut subsystems = Subsystems::new();
         subsystems.register(handle.clone());
+        subsystems.register(PlanetTerrainComponentCache::default());
+        subsystems.register(LiveKeySet::new());
         let mut context = TestRuntimeContext {
             project_root: PathBuf::from("."),
             subsystems,
@@ -152,6 +181,15 @@ mod tests {
         ));
         assert!(context.errors.is_empty());
         assert_eq!(handle.counters().planets, 1);
+        assert_eq!(
+            context
+                .subsystems
+                .get_mut::<PlanetTerrainComponentCache>()
+                .unwrap()
+                .active_planets()
+                .len(),
+            1
+        );
 
         let disabled = PlanetTerrainComponent {
             enabled: false,
@@ -166,6 +204,14 @@ mod tests {
         ));
         assert!(context.errors.is_empty());
         assert_eq!(handle.counters().planets, 0);
+        assert!(
+            context
+                .subsystems
+                .get_mut::<PlanetTerrainComponentCache>()
+                .unwrap()
+                .active_planets()
+                .is_empty()
+        );
 
         terrain.shutdown().unwrap();
     }
