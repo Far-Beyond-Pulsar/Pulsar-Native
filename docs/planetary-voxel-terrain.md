@@ -160,16 +160,49 @@ This avoids an engine-wide conversion of existing scene components, Helio camera
   nodes terminate traversal, while the stored geometric-error bound—not a
   renderer-owned terrain guess—drives projected-error refinement.
 
-Successive complete demand plans use a bounded two-set handoff. The currently
-committed visible/prefetch set remains resident while its replacement is
-materialized. The handoff commits, and obsolete pages become evictable, only
-after every replacement page is CPU-ready. The union of both sets has its own
-explicit transition-page budget; a plan that cannot fit is rejected without
-mutating the committed set. A newer camera plan cancels uncommitted obsolete
-work, and page-generation retirement prevents a late result from republishing
-an evicted page. Dense CPU pages may then be dropped while their compacted
-content hash and hierarchy record remain authoritative; rehydration must
-reproduce that hash from the deterministic generator and ordered edit prefix.
+Streaming publishes a persistent, parent-preserving refinement frontier. A
+bounded coarse frontier is made visible first, then at most one local
+parent/children replacement is staged at a time. The parent remains committed
+until every required child is CPU-ready and uploaded; the swap is atomic, so a
+published set never contains an ancestor together with its descendants.
+Coarsening is symmetric: the coarse parent becomes ready before fine
+descendants retire. Every intermediate frontier stays complete,
+non-overlapping, and 2:1 face-balanced within explicit active and transition
+page budgets.
+
+Plan identity, ancestor lookup, LOD ranges, balance validation, and the coarse
+seed are precomputed with the authoritative plan rather than rediscovered on
+the frame path. A stationary plan is an O(1) no-op. Newer plans reuse useful
+staged work, cancel obsolete work, and generation retirement prevents a late
+result from republishing retired content. The superseded whole-plan two-set
+residency session is removed; there is one incremental publication contract.
+Authoritative VSBT traversal runs on a dedicated terrain-planning worker. The
+frame path submits camera state into one coalescing slot per planet and drains a
+bounded number of immutable results; repeated or sub-hysteresis samples do not
+start new traversal. At most one newer pending view and one completed plan are
+retained per planet, so fast flight cannot grow a camera-history queue. Results
+carry planet generation plus canonical terrain sequence; edits, replacement,
+or removal make old results unpublishable and automatically requeue the latest
+view against a fresh immutable snapshot. An in-flight plan may complete while a
+newer view is pending, preserving continuous coarse-to-fine progress instead of
+starving under high-speed movement.
+One terrain controller owns the complete live path from those results through
+the per-planet refinement sessions, bounded page requests, immutable upload and
+eviction deltas, generation-exact renderer feedback, and visible-set
+publication. Runtime event draining stays caller-owned so persistence,
+collision, replication, and diagnostics can observe the same events without a
+second terrain authority.
+CPU residency alone never advances that contract. Pulsar retains each upload
+or eviction as pending until Helio returns generation-exact `Applied` feedback;
+`Deferred` cache/page-table backpressure is retried within the same bounded
+command and byte budgets. Renderer-local capacity evictions revoke publication
+immediately, so a coarse parent cannot retire before every replacement child is
+confirmed GPU-resident. A delayed whole-planet retirement is demoted to its old
+page evictions when the canonical planet generation has already advanced,
+preventing it from removing a recreated planet frame.
+Dense CPU pages may then be dropped while their compacted content hash and
+hierarchy record remain authoritative; rehydration must reproduce that hash
+from the deterministic generator and ordered edit prefix.
 
 The planet seen from orbit is coarse voxel geometry from the same field, not a heightmap proxy. Atmosphere and oceans may be separate render systems, but they do not replace terrain geometry.
 
@@ -326,10 +359,11 @@ Reference traces must include ground walking, supersonic surface flight, ground-
 - Add predictive scheduling, cancellation, and ground/orbit/teleport traces.
 - Gate: precision, no cracks, bounded residency, and frame-time targets pass.
 
-Current boundary: canonical real-radius addressing and bounded mixed-LOD
-streaming have passed on a flat tangent validation patch. The full spherical
-shell, visible curvature, orbital globe, and continuous travel around the
-planet have not passed yet and remain part of this milestone.
+Current boundary: canonical real-radius addressing, bounded mixed-LOD
+streaming, and a spherical validation shell exist, but the production
+Pulsar-owned planner/frontier is not yet the live Helio demo controller. Crack
+and cache-failure gates, continuous ground/orbit travel, real volumetric
+terrain, and visual validation remain part of this milestone.
 
 Authoritative density/error summaries are implemented and tested in
 `pulsar_terrain`: analytic sphere intervals never reject sampled crossings,
@@ -337,10 +371,13 @@ fine edits alter coarse summaries without page materialization, root deletion
 replaces the summary in constant work, and compaction/eviction/snapshot
 rehydration preserve summary identity. The release fixture currently reports
 5,592 orbit traversal nodes with 2,636 uniform-region prunes and approximately
-18.5 ms authoritative planning p95 on the development machine (16.9 ms for the
-direct generator baseline). This proves bounded correctness, not the final
-<= 0.5 ms main/render-thread gate; asynchronous scheduling and further planner
-optimization remain required before promotion.
+39.5 ms authoritative planning p95 on the development machine. That traversal
+now runs on a bounded coalescing worker: stationary and active frame-side
+submission measured 0.3 and 0.4 microseconds p95, with a 4 microsecond maximum
+in the active trace and a 2.2 microsecond maximum canonical snapshot capture.
+This passes the frame-thread submission gate, but it does not yet prove the
+live renderer integration, long-history capture spikes, or end-to-end terrain
+convergence gates required for promotion.
 
 ### Milestone 5: destruction and persistence
 

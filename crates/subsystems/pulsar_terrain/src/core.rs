@@ -28,6 +28,22 @@ pub struct TerrainCore<G> {
     work: TerrainWorkCounters,
 }
 
+/// Immutable canonical input for read-only terrain planning.
+///
+/// Unlike [`TerrainSnapshot`], this deliberately excludes resident and
+/// compacted page state plus the mutation logs' derived ID lookup maps. Those
+/// caches are irrelevant to hierarchy planning and are rebuilt off-thread by
+/// [`TerrainCore::from_planning_snapshot`]. Keeping them out of this payload
+/// bounds the time spent holding the runtime's canonical-state mutex.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainPlanningSnapshot {
+    planet_id: PlanetId,
+    generator_hash: ContentHash,
+    hierarchy: SparseBrickTree,
+    edits: Vec<EditOp>,
+    overrides: Vec<TerrainOverrideOp>,
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct TerrainWorkCounters {
     pub edits_appended: u64,
@@ -252,6 +268,35 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             compacted,
             work: TerrainWorkCounters::default(),
         })
+    }
+
+    /// Rebuild a read-only planning core from the minimal canonical payload.
+    /// Mutation ordering, stable IDs, hierarchy targets, and generator hashes
+    /// receive the same validation as a persistence snapshot, but all derived
+    /// lookup indexes are constructed on the caller's thread.
+    pub fn from_planning_snapshot(
+        snapshot: TerrainPlanningSnapshot,
+        generator: G,
+    ) -> Result<Self, TerrainCoreError> {
+        let mut edit_tail = EditLog::default();
+        for operation in snapshot.edits {
+            edit_tail.push(operation)?;
+        }
+        let mut override_tail = TerrainOverrideLog::default();
+        for operation in snapshot.overrides {
+            override_tail.push(operation)?;
+        }
+        Self::from_snapshot(
+            TerrainSnapshot {
+                planet_id: snapshot.planet_id,
+                generator_hash: snapshot.generator_hash,
+                hierarchy: snapshot.hierarchy,
+                edit_tail,
+                override_tail,
+                compacted_pages: Vec::new(),
+            },
+            generator,
+        )
     }
 
     pub fn hierarchy(&self) -> &SparseBrickTree {
@@ -599,6 +644,19 @@ impl<G: DeterministicGenerator> TerrainCore<G> {
             edit_tail: self.edits.clone(),
             override_tail: self.overrides.clone(),
             compacted_pages: self.compacted.values().copied().collect(),
+        }
+    }
+
+    /// Capture only the canonical state required by the streaming planner.
+    /// Persistence-only records and mutation lookup maps remain owned by the
+    /// live core and are never copied while the runtime mutex is held.
+    pub fn planning_snapshot(&self) -> TerrainPlanningSnapshot {
+        TerrainPlanningSnapshot {
+            planet_id: self.planet_id,
+            generator_hash: self.generator.hash(),
+            hierarchy: self.hierarchy.clone(),
+            edits: self.edits.operations().to_vec(),
+            overrides: self.overrides.operations().to_vec(),
         }
     }
 
@@ -1481,6 +1539,47 @@ mod tests {
             Some(crate::CellWord::AIR)
         );
         assert_eq!(restored.snapshot().content_hash().unwrap(), canonical_hash);
+    }
+
+    #[test]
+    fn planning_snapshot_rebuilds_authoritative_summaries_without_page_caches() {
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 1_000,
+            material: 4,
+        };
+        let mut core = TerrainCore::new(PlanetId([31; 16]), 12, generator).unwrap();
+        core.append_edit(EditOp {
+            sequence: 1,
+            stable_id: [1; 16],
+            shape: EditShape::Sphere {
+                center_cell: [32, -16, 8],
+                radius_cells: 20,
+            },
+            mode: EditMode::Subtract,
+            material: 0,
+        })
+        .unwrap();
+        core.set_region(PageKey::new(2, [-1, 0, 0]), NodeState::Solid(7))
+            .unwrap();
+        core.compact_page(PageKey::new(0, [0; 3])).unwrap();
+
+        let keys = [
+            PageKey::new(11, [0, 0, 0]),
+            PageKey::new(2, [-1, 0, 0]),
+            PageKey::new(0, [1, -1, 0]),
+        ];
+        let expected = keys.map(|key| core.node_summary(key).unwrap());
+        let planning = core.planning_snapshot();
+        let restored = TerrainCore::from_planning_snapshot(planning, generator).unwrap();
+
+        assert_eq!(restored.latest_sequence(), core.latest_sequence());
+        assert_eq!(
+            keys.map(|key| restored.node_summary(key).unwrap()),
+            expected
+        );
+        assert_eq!(restored.resident_page_count(), 0);
+        assert_eq!(restored.memory_counters().compacted_page_records, 0);
     }
 
     #[test]

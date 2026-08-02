@@ -4,6 +4,7 @@ use crate::{
 };
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap, HashSet};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Conservative classification of one hierarchical terrain page.
@@ -118,6 +119,31 @@ impl PlanetView {
     pub const fn velocity_mps(self) -> [f64; 3] {
         self.velocity_mps
     }
+
+    pub(crate) fn within_hysteresis(
+        self,
+        other: Self,
+        position_m: f64,
+        direction_radians: f64,
+        velocity_mps: f64,
+    ) -> bool {
+        if self.vertical_fov_radians != other.vertical_fov_radians
+            || self.viewport_px != other.viewport_px
+            || self.near_m != other.near_m
+            || self.far_m != other.far_m
+        {
+            return false;
+        }
+        let Ok(position_delta) = self.camera.relative_meters(other.camera) else {
+            return false;
+        };
+        let velocity_delta =
+            std::array::from_fn(|axis| self.velocity_mps[axis] - other.velocity_mps[axis]);
+        squared_length(position_delta) <= position_m * position_m
+            && squared_length(velocity_delta) <= velocity_mps * velocity_mps
+            && direction_angle(self.forward, other.forward) <= direction_radians
+            && direction_angle(self.up, other.up) <= direction_radians
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -135,7 +161,7 @@ impl Default for TerrainStreamingConfig {
             interaction_radius_m: 64.0,
             target_projected_error_px: 2.0,
             prediction_seconds: 0.75,
-            max_pages: 8_192,
+            max_pages: 2_048,
             max_traversal_nodes: 262_144,
         }
     }
@@ -222,23 +248,113 @@ pub struct TerrainStreamingCounters {
 #[derive(Clone, Debug, PartialEq)]
 pub struct TerrainStreamingPlan {
     planet_id: PlanetId,
-    demands: Vec<PageDemand>,
+    demands: Arc<[PageDemand]>,
+    residency_identity: Arc<[(PageKey, TerrainRequestClass)]>,
+    ancestor_classes: Arc<[(PageKey, TerrainRequestClass)]>,
+    ancestor_level_ranges: Arc<[(u8, usize, usize)]>,
+    coarse_min_lod: u8,
+    face_balanced: bool,
+    non_overlapping: bool,
     limits: Vec<TerrainStreamingLimit>,
     counters: TerrainStreamingCounters,
 }
 
 impl TerrainStreamingPlan {
-    #[cfg(test)]
-    pub(crate) fn for_test(planet_id: PlanetId, demands: Vec<PageDemand>) -> Self {
+    fn from_parts(
+        planet_id: PlanetId,
+        root_lod: u8,
+        demands: Vec<PageDemand>,
+        limits: Vec<TerrainStreamingLimit>,
+        counters: TerrainStreamingCounters,
+    ) -> Self {
+        let leaves = demands
+            .iter()
+            .map(|demand| demand.page_key())
+            .collect::<BTreeSet<_>>();
+        let face_balanced = leaves.iter().all(|leaf| {
+            faces().into_iter().all(|(axis, direction)| {
+                covering_face_neighbor(*leaf, axis, direction, &leaves)
+                    .is_none_or(|neighbor| leaf.lod.abs_diff(neighbor.lod) <= 1)
+            })
+        });
+        let mut residency_identity = demands
+            .iter()
+            .map(|demand| (demand.page_key(), demand.request_class()))
+            .collect::<Vec<_>>();
+        residency_identity.sort_unstable_by_key(|(page_key, _)| *page_key);
+        let mut ancestor_classes = HashMap::new();
+        for (page_key, request_class) in &residency_identity {
+            let mut ancestor = Some(*page_key);
+            while let Some(page_key) = ancestor {
+                ancestor_classes
+                    .entry(page_key)
+                    .and_modify(|current| {
+                        if request_priority(*request_class) > request_priority(*current) {
+                            *current = *request_class;
+                        }
+                    })
+                    .or_insert(*request_class);
+                if page_key.lod >= root_lod {
+                    break;
+                }
+                ancestor = page_key.parent();
+            }
+        }
+        let non_overlapping = leaves.iter().all(|page_key| {
+            let mut ancestor = page_key.parent();
+            while let Some(parent) = ancestor {
+                if leaves.contains(&parent) {
+                    return false;
+                }
+                ancestor = parent.parent();
+            }
+            true
+        });
+        let mut ancestor_classes = ancestor_classes.into_iter().collect::<Vec<_>>();
+        ancestor_classes.sort_unstable_by_key(|(page_key, _)| *page_key);
+        let mut ancestor_level_ranges = Vec::new();
+        let mut start = 0;
+        while start < ancestor_classes.len() {
+            let lod = ancestor_classes[start].0.lod;
+            let mut end = start + 1;
+            while end < ancestor_classes.len() && ancestor_classes[end].0.lod == lod {
+                end += 1;
+            }
+            ancestor_level_ranges.push((lod, start, end));
+            start = end;
+        }
+        let coarse_min_lod = demands
+            .iter()
+            .map(|demand| demand.page_key().lod)
+            .max()
+            .unwrap_or(0);
         Self {
             planet_id,
-            counters: TerrainStreamingCounters {
-                page_high_water: demands.len(),
+            demands: demands.into(),
+            residency_identity: residency_identity.into(),
+            ancestor_classes: ancestor_classes.into(),
+            ancestor_level_ranges: ancestor_level_ranges.into(),
+            coarse_min_lod,
+            face_balanced,
+            non_overlapping,
+            limits,
+            counters,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(planet_id: PlanetId, demands: Vec<PageDemand>) -> Self {
+        let page_high_water = demands.len();
+        Self::from_parts(
+            planet_id,
+            62,
+            demands,
+            Vec::new(),
+            TerrainStreamingCounters {
+                page_high_water,
                 ..TerrainStreamingCounters::default()
             },
-            demands,
-            limits: Vec::new(),
-        }
+        )
     }
 
     pub const fn planet_id(&self) -> PlanetId {
@@ -257,6 +373,74 @@ impl TerrainStreamingPlan {
         self.counters
     }
 
+    pub(crate) fn has_same_residency(&self, other: &Self) -> bool {
+        self.planet_id == other.planet_id
+            && (Arc::ptr_eq(&self.residency_identity, &other.residency_identity)
+                || self.residency_identity == other.residency_identity)
+    }
+
+    pub(crate) fn residency_identity(&self) -> &[(PageKey, TerrainRequestClass)] {
+        &self.residency_identity
+    }
+
+    pub(crate) fn class_for_descendant_or_same(
+        &self,
+        page_key: PageKey,
+    ) -> Option<TerrainRequestClass> {
+        self.ancestor_classes
+            .binary_search_by_key(&page_key, |(ancestor, _)| *ancestor)
+            .ok()
+            .map(|index| self.ancestor_classes[index].1)
+    }
+
+    pub(crate) fn class_for_ancestor_or_same(
+        &self,
+        mut page_key: PageKey,
+    ) -> Option<TerrainRequestClass> {
+        loop {
+            if let Ok(index) = self
+                .residency_identity
+                .binary_search_by_key(&page_key, |(target, _)| *target)
+            {
+                return Some(self.residency_identity[index].1);
+            }
+            page_key = page_key.parent()?;
+        }
+    }
+
+    pub(crate) fn class_for_related(&self, page_key: PageKey) -> Option<TerrainRequestClass> {
+        match (
+            self.class_for_descendant_or_same(page_key),
+            self.class_for_ancestor_or_same(page_key),
+        ) {
+            (Some(left), Some(right)) => {
+                Some(if request_priority(left) >= request_priority(right) {
+                    left
+                } else {
+                    right
+                })
+            }
+            (Some(class), None) | (None, Some(class)) => Some(class),
+            (None, None) => None,
+        }
+    }
+
+    pub(crate) fn coarse_frontier(
+        &self,
+        maximum_pages: usize,
+    ) -> Option<&[(PageKey, TerrainRequestClass)]> {
+        self.ancestor_level_ranges
+            .iter()
+            .filter(|(lod, _, _)| *lod >= self.coarse_min_lod)
+            .find_map(|(_, start, end)| {
+                (end - start <= maximum_pages).then_some(&self.ancestor_classes[*start..*end])
+            })
+    }
+
+    pub(crate) const fn is_non_overlapping(&self) -> bool {
+        self.non_overlapping
+    }
+
     pub fn visible_count(&self) -> usize {
         self.demands
             .iter()
@@ -269,17 +453,7 @@ impl TerrainStreamingPlan {
     }
 
     pub fn is_face_balanced(&self) -> bool {
-        let leaves = self
-            .demands
-            .iter()
-            .map(|demand| demand.page_key())
-            .collect::<BTreeSet<_>>();
-        leaves.iter().all(|leaf| {
-            faces().into_iter().all(|(axis, direction)| {
-                covering_face_neighbor(*leaf, axis, direction, &leaves)
-                    .is_none_or(|neighbor| leaf.lod.abs_diff(neighbor.lod) <= 1)
-            })
-        })
+        self.face_balanced
     }
 
     /// Six-face transition masks for the complete deterministic leaf set.
@@ -502,15 +676,17 @@ impl TerrainStreamingPlanner {
                 .then_with(|| left.page_key.cmp(&right.page_key))
         });
 
-        let plan = TerrainStreamingPlan {
-            planet_id: definition.planet_id,
+        let plan = TerrainStreamingPlan::from_parts(
+            definition.planet_id,
+            definition.root_lod,
             demands,
-            limits: state.limits.into_iter().collect(),
-            counters: state.counters,
-        };
+            state.limits.into_iter().collect(),
+            state.counters,
+        );
         debug_assert!(plan.demands.len() <= page_budget);
         debug_assert!(plan.counters.traversed_nodes <= self.config.max_traversal_nodes);
         debug_assert!(plan.is_face_balanced());
+        debug_assert!(plan.is_non_overlapping());
         Ok(plan)
     }
 }
@@ -552,8 +728,10 @@ impl<C: TerrainRegionClassifier> PlannerState<'_, C> {
         self.counters.traversed_nodes = self.counters.traversed_nodes.saturating_add(1);
         let summary = self.classifier.summarize_region(key)?;
         let info = if summary.contains_surface() {
-            self.geometry
-                .relevance(key, summary.geometric_error_lod0_cells())?
+            Some(
+                self.geometry
+                    .demand(key, summary.geometric_error_lod0_cells())?,
+            )
         } else {
             self.counters.uniform_regions_pruned =
                 self.counters.uniform_regions_pruned.saturating_add(1);
@@ -671,11 +849,11 @@ impl ViewGeometry {
         })
     }
 
-    fn relevance(
+    fn demand(
         &self,
         key: PageKey,
         geometric_error_lod0_cells: u64,
-    ) -> Result<Option<LeafInfo>, TerrainStreamingError> {
+    ) -> Result<LeafInfo, TerrainStreamingError> {
         let bounds = RelativeAabb::from_page(key, self.camera)?;
         let current_distance = bounds.distance_to_point([0.0; 3]);
         let predicted_distance = bounds.distance_to_point(self.motion_m);
@@ -684,10 +862,6 @@ impl ViewGeometry {
             self.current.intersects(bounds) || current_distance <= self.interaction_radius_m;
         let predictive_relevant = self.motion_m != [0.0; 3]
             && (self.predicted.intersects(bounds) || swept_distance <= self.interaction_radius_m);
-        if !current_relevant && !predictive_relevant {
-            return Ok(None);
-        }
-
         let request_class = if current_relevant {
             TerrainRequestClass::Visible
         } else {
@@ -706,14 +880,15 @@ impl ViewGeometry {
         let projected_error_px = self.focal_length_px * geometric_error_m / error_distance;
         let interaction_forced = current_distance <= self.interaction_radius_m
             || swept_distance <= self.interaction_radius_m;
-        Ok(Some(LeafInfo {
+        Ok(LeafInfo {
             request_class,
             projected_error_px,
             distance_m,
             should_refine: key.lod > 0
+                && (current_relevant || predictive_relevant)
                 && (interaction_forced || projected_error_px > self.target_projected_error_px),
             interaction_forced,
-        }))
+        })
     }
 }
 
@@ -1026,6 +1201,14 @@ fn dot(left: [f64; 3], right: [f64; 3]) -> f64 {
         .sum()
 }
 
+fn squared_length(vector: [f64; 3]) -> f64 {
+    dot(vector, vector)
+}
+
+fn direction_angle(left: [f64; 3], right: [f64; 3]) -> f64 {
+    dot(left, right).clamp(-1.0, 1.0).acos()
+}
+
 fn add(left: [f64; 3], right: [f64; 3]) -> [f64; 3] {
     std::array::from_fn(|axis| left[axis] + right[axis])
 }
@@ -1272,6 +1455,86 @@ mod tests {
             .demands()
             .iter()
             .all(|demand| demand.page_key().lod > 0));
+    }
+
+    #[test]
+    fn ground_refinement_preserves_complete_coarse_planet_coverage() {
+        let definition = definition(1_000, 6, 4_096);
+        let classifier = FixedSphereGenerator {
+            center_cell: definition.center_cell,
+            radius_cells: definition.radius_cells,
+            material: definition.material,
+        };
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 8.0,
+            max_pages: 4_096,
+            max_traversal_nodes: 65_536,
+            ..TerrainStreamingConfig::default()
+        })
+        .unwrap();
+        let plan = planner
+            .plan_fixed_sphere(&definition, view([1_000, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]))
+            .unwrap();
+
+        let root_child_lod = definition.root_lod - 1;
+        let mut surface_roots = 0;
+        for z in -1..=0 {
+            for y in -1..=0 {
+                for x in -1..=0 {
+                    let root = PageKey::new(root_child_lod, [x, y, z]);
+                    if TerrainRegionClassifier::summarize_region(&classifier, root)
+                        .unwrap()
+                        .contains_surface()
+                    {
+                        surface_roots += 1;
+                        assert!(
+                            plan.class_for_descendant_or_same(root).is_some(),
+                            "surface root {root:?} lost global coverage"
+                        );
+                    }
+                }
+            }
+        }
+        assert!(surface_roots > 0);
+        assert!(plan
+            .demands()
+            .iter()
+            .any(|demand| { demand.request_class() == TerrainRequestClass::Prefetch }));
+        assert!(plan.is_face_balanced());
+        assert!(plan.is_non_overlapping());
+    }
+
+    #[test]
+    fn astronomical_view_collapses_to_the_complete_root_shell() {
+        let radius = 63_710_000_u64;
+        let definition = definition(radius, 22, 2_048);
+        let planner = TerrainStreamingPlanner::new(TerrainStreamingConfig {
+            interaction_radius_m: 64.0,
+            target_projected_error_px: 2.0,
+            prediction_seconds: 1.0,
+            max_pages: 2_048,
+            max_traversal_nodes: 131_072,
+        })
+        .unwrap();
+        let camera = i64::try_from(radius).unwrap() + 1_500_000_000_000;
+        let plan = planner
+            .plan_fixed_sphere(
+                &definition,
+                view([camera, 0, 0], [-1.0, 0.0, 0.0], [0.0; 3]),
+            )
+            .unwrap();
+
+        assert_eq!(plan.demands().len(), 8);
+        assert!(plan
+            .demands()
+            .iter()
+            .all(|demand| demand.page_key().lod == definition.root_lod - 1));
+        assert!(plan
+            .demands()
+            .iter()
+            .all(|demand| { demand.request_class() == TerrainRequestClass::Prefetch }));
+        assert!(plan.is_face_balanced());
+        assert!(plan.is_non_overlapping());
     }
 
     #[test]

@@ -5,6 +5,7 @@
 //! snapshots. Rendering and physics consume derived data and never become the
 //! source of truth.
 
+mod controller;
 mod core;
 mod edit;
 mod generator;
@@ -12,17 +13,22 @@ mod hierarchy;
 mod mutation;
 mod page;
 mod planet;
+mod planning;
+mod refinement;
 mod render;
-mod residency;
 mod runtime;
 mod snapshot;
 mod store;
 mod streaming;
 mod types;
 
+pub use controller::{
+    TerrainControllerConfig, TerrainControllerError, TerrainControllerFrame,
+    TerrainPlanningFailure, TerrainStreamingController,
+};
 pub use core::{
     PageBuildCommitOutcome, PageBuildPreparation, PageBuildRequest, PageBuildResult, TerrainCore,
-    TerrainCoreError, TerrainMemoryCounters, TerrainWorkCounters,
+    TerrainCoreError, TerrainMemoryCounters, TerrainPlanningSnapshot, TerrainWorkCounters,
 };
 pub use edit::{EditError, EditLog, EditMode, EditOp, EditShape};
 pub use generator::{DeterministicGenerator, FixedSphereGenerator};
@@ -35,15 +41,20 @@ pub use page::{
     PAGE_EDGE,
 };
 pub use planet::PlanetDefinition;
+pub use planning::{
+    TerrainPlanningConfig, TerrainPlanningCounters, TerrainPlanningError, TerrainPlanningHandle,
+    TerrainPlanningResult, TerrainPlanningTicket,
+};
+pub use refinement::{
+    TerrainIncrementalResidencySession, TerrainRefinementConfig, TerrainRefinementCounters,
+    TerrainRefinementError, TerrainRefinementFrontier, TerrainRefinementReport,
+};
 pub use render::{
     TerrainPageEvict, TerrainPageUpload, TerrainPlanetEvict, TerrainRenderCommand,
+    TerrainRenderCommandDisposition, TerrainRenderCommandFeedback, TerrainRenderCommandId,
     TerrainRenderDelta, TerrainRenderDeltaConfig, TerrainRenderDeltaCounters,
-    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainTransitionFace,
-    TerrainVisiblePage, TerrainVisiblePageSet, TERRAIN_TRANSITION_FACE_MASK,
-};
-pub use residency::{
-    TerrainResidencyConfig, TerrainResidencyCounters, TerrainResidencyError,
-    TerrainResidencyReport, TerrainResidencySession,
+    TerrainRenderDeltaError, TerrainRenderDeltaPublisher, TerrainRenderFeedback,
+    TerrainTransitionFace, TerrainVisiblePage, TerrainVisiblePageSet, TERRAIN_TRANSITION_FACE_MASK,
 };
 pub use runtime::{
     TerrainBackpressure, TerrainRequestClass, TerrainRequestOutcome, TerrainResidentPageGeneration,

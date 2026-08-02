@@ -1,7 +1,10 @@
+use engine_subsystems::{Subsystem, SubsystemContext};
 use pulsar_terrain::{
     CellWord, ContentHash, EditMode, EditOp, EditShape, FixedSphereGenerator, NodeState, PageKey,
     PlanetDefinition, PlanetId, PlanetPosition, PlanetView, SparseBrickTree, TerrainCore,
-    TerrainStreamingConfig, TerrainStreamingPlanner,
+    TerrainIncrementalResidencySession, TerrainPlanningConfig, TerrainRefinementConfig,
+    TerrainRefinementFrontier, TerrainRenderDeltaConfig, TerrainRenderDeltaPublisher,
+    TerrainRuntimeConfig, TerrainStreamingConfig, TerrainStreamingPlanner, TerrainSubsystem,
 };
 use std::time::{Duration, Instant};
 
@@ -112,6 +115,18 @@ fn main() {
         delete_time < Duration::from_millis(10),
         "root delete exceeded the 10 ms acceptance gate: {delete_time:?}"
     );
+    let mut long_history_capture_times = Vec::with_capacity(100);
+    for _ in 0..100 {
+        let started = Instant::now();
+        std::hint::black_box(delete_core.planning_snapshot());
+        long_history_capture_times.push(started.elapsed());
+    }
+    long_history_capture_times.sort_unstable();
+    let long_history_capture_p95 = long_history_capture_times[94];
+    assert!(
+        long_history_capture_p95 <= Duration::from_micros(500),
+        "10,000-edit planning capture exceeded the 0.5 ms acceptance gate: {long_history_capture_p95:?}"
+    );
 
     let edit_amplification = [1_u32, 10, 100, 1_000].map(|radius_cells| {
         EditShape::Sphere {
@@ -184,6 +199,140 @@ fn main() {
     let latest_authoritative_plan = latest_authoritative_plan.unwrap();
     assert_eq!(latest_authoritative_plan, latest_plan);
 
+    let mut refinement =
+        TerrainRefinementFrontier::new(planet.planet_id, TerrainRefinementConfig::default())
+            .unwrap();
+    refinement.set_target(&latest_authoritative_plan).unwrap();
+    let mut stationary_reconcile_times = Vec::with_capacity(1_000);
+    for _ in 0..1_000 {
+        let started = Instant::now();
+        assert!(refinement
+            .set_target(&latest_authoritative_plan)
+            .unwrap()
+            .is_empty());
+        stationary_reconcile_times.push(started.elapsed());
+    }
+    stationary_reconcile_times.sort_unstable();
+    let stationary_reconcile_p95 = stationary_reconcile_times[949];
+    assert!(
+        stationary_reconcile_p95 <= Duration::from_micros(500),
+        "stationary refinement orchestration exceeded the 0.5 ms acceptance gate: {stationary_reconcile_p95:?}"
+    );
+    let mut terrain_subsystem = TerrainSubsystem::new(TerrainRuntimeConfig {
+        worker_count: 1,
+        ..TerrainRuntimeConfig::default()
+    })
+    .unwrap();
+    terrain_subsystem.init(&SubsystemContext::new()).unwrap();
+    let runtime = terrain_subsystem.runtime_handle();
+    runtime.upsert_planet(planet.clone()).unwrap();
+    let planning = terrain_subsystem.planning_handle();
+    let planning_config = TerrainPlanningConfig {
+        streaming: planner.config(),
+        ..TerrainPlanningConfig::default()
+    };
+    let first_planning_ticket = planning
+        .submit(planet.planet_id, view, planning_config)
+        .unwrap();
+    let planning_deadline = Instant::now() + Duration::from_secs(10);
+    let async_plan = loop {
+        if let Some(result) = planning
+            .drain_completed(1)
+            .into_iter()
+            .find(|result| result.ticket() == first_planning_ticket)
+        {
+            break result.into_plan().unwrap();
+        }
+        assert!(
+            Instant::now() < planning_deadline,
+            "asynchronous authoritative plan timed out"
+        );
+        std::thread::yield_now();
+    };
+    assert_eq!(async_plan, latest_authoritative_plan);
+    let mut stationary_planning_submit_times = Vec::with_capacity(1_000);
+    for _ in 0..1_000 {
+        let started = Instant::now();
+        assert_eq!(
+            planning
+                .submit(planet.planet_id, view, planning_config)
+                .unwrap(),
+            first_planning_ticket
+        );
+        let _ = planning.drain_completed(1);
+        stationary_planning_submit_times.push(started.elapsed());
+    }
+    stationary_planning_submit_times.sort_unstable();
+    let stationary_planning_submit_p95 = stationary_planning_submit_times[949];
+    assert!(
+        stationary_planning_submit_p95 <= Duration::from_micros(500),
+        "stationary asynchronous planning submission exceeded the 0.5 ms acceptance gate: {stationary_planning_submit_p95:?}"
+    );
+    let mut active_planning_submit_times = Vec::with_capacity(1_000);
+    for tick in 1..=1_000_i64 {
+        let moving_view = PlanetView::new(
+            PlanetPosition::from_lod0_cell([103_710_000 + tick * 10, 0, 0]),
+            [-1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            60_f64.to_radians(),
+            [2560, 1440],
+            0.1,
+            20_000_000.0,
+            [10.0, 0.0, 0.0],
+        )
+        .unwrap();
+        let started = Instant::now();
+        planning
+            .submit(planet.planet_id, moving_view, planning_config)
+            .unwrap();
+        let _ = planning.drain_completed(1);
+        active_planning_submit_times.push(started.elapsed());
+    }
+    active_planning_submit_times.sort_unstable();
+    let active_planning_submit_p95 = active_planning_submit_times[949];
+    let active_planning_submit_max = active_planning_submit_times[999];
+    assert!(
+        active_planning_submit_p95 <= Duration::from_micros(500),
+        "active asynchronous planning submission exceeded the 0.5 ms acceptance gate: {active_planning_submit_p95:?}"
+    );
+    assert!(
+        active_planning_submit_max <= Duration::from_millis(25),
+        "active asynchronous planning submission caused a frame spike: {active_planning_submit_max:?}"
+    );
+    let planning_counters = planning.counters();
+    assert!(planning_counters.pending <= 1);
+    assert!(planning_counters.completed <= 1);
+    let mut residency = TerrainIncrementalResidencySession::new(
+        planet.planet_id,
+        TerrainRefinementConfig::default(),
+    )
+    .unwrap();
+    let mut publisher =
+        TerrainRenderDeltaPublisher::new(TerrainRenderDeltaConfig::default()).unwrap();
+    residency
+        .reconcile(&runtime, &mut publisher, &latest_authoritative_plan, 0)
+        .unwrap();
+    let mut active_reconcile_times = Vec::with_capacity(1_000);
+    for tick in 1..=1_000 {
+        let plan = if tick & 1 == 0 {
+            &latest_authoritative_plan
+        } else {
+            &latest_plan
+        };
+        let started = Instant::now();
+        residency
+            .reconcile(&runtime, &mut publisher, plan, tick)
+            .unwrap();
+        active_reconcile_times.push(started.elapsed());
+    }
+    active_reconcile_times.sort_unstable();
+    let active_reconcile_p95 = active_reconcile_times[949];
+    assert!(
+        active_reconcile_p95 <= Duration::from_micros(500),
+        "active refinement orchestration exceeded the 0.5 ms acceptance gate: {active_reconcile_p95:?}"
+    );
+    terrain_subsystem.shutdown().unwrap();
+
     let ground_planet = PlanetDefinition {
         max_resident_pages: 8_192,
         ..planet.clone()
@@ -213,11 +362,85 @@ fn main() {
     ground_times.sort_unstable();
     let ground_p95 = ground_times[8];
     let latest_ground_plan = latest_ground_plan.unwrap();
+    let mut churn_subsystem = TerrainSubsystem::new(TerrainRuntimeConfig {
+        worker_count: 1,
+        ..TerrainRuntimeConfig::default()
+    })
+    .unwrap();
+    churn_subsystem.init(&SubsystemContext::new()).unwrap();
+    let churn_runtime = churn_subsystem.runtime_handle();
+    churn_runtime.upsert_planet(planet.clone()).unwrap();
+    let mut churn_residency = TerrainIncrementalResidencySession::new(
+        planet.planet_id,
+        TerrainRefinementConfig::default(),
+    )
+    .unwrap();
+    let mut churn_publisher =
+        TerrainRenderDeltaPublisher::new(TerrainRenderDeltaConfig::default()).unwrap();
+    churn_residency
+        .reconcile(
+            &churn_runtime,
+            &mut churn_publisher,
+            &latest_authoritative_plan,
+            0,
+        )
+        .unwrap();
+    let mut churn_reconcile_times = Vec::with_capacity(1_000);
+    for tick in 1..=1_000 {
+        let plan = if tick & 1 == 0 {
+            &latest_authoritative_plan
+        } else {
+            &latest_ground_plan
+        };
+        let started = Instant::now();
+        churn_residency
+            .reconcile(&churn_runtime, &mut churn_publisher, plan, tick)
+            .unwrap();
+        churn_reconcile_times.push(started.elapsed());
+    }
+    churn_reconcile_times.sort_unstable();
+    let churn_reconcile_p95 = churn_reconcile_times[949];
+    assert!(
+        churn_reconcile_p95 <= Duration::from_micros(500),
+        "superseded-plan refinement orchestration exceeded the 0.5 ms acceptance gate: {churn_reconcile_p95:?}, cancelled_stages={}",
+        churn_residency.counters().stages_cancelled,
+    );
+    churn_subsystem.shutdown().unwrap();
+    let mut switching_refinement = TerrainRefinementFrontier::new(
+        planet.planet_id,
+        TerrainRefinementConfig {
+            max_active_pages: 8_192,
+            max_transition_pages: 8_256,
+            ..TerrainRefinementConfig::default()
+        },
+    )
+    .unwrap();
+    let mut plan_switch_times = Vec::with_capacity(1_000);
+    for index in 0..1_000 {
+        let plan = if index & 1 == 0 {
+            &latest_authoritative_plan
+        } else {
+            &latest_ground_plan
+        };
+        let started = Instant::now();
+        switching_refinement.set_target(plan).unwrap();
+        plan_switch_times.push(started.elapsed());
+    }
+    plan_switch_times.sort_unstable();
+    let plan_switch_p95 = plan_switch_times[949];
+    assert!(
+        plan_switch_p95 <= Duration::from_micros(500),
+        "new-plan refinement orchestration exceeded the 0.5 ms acceptance gate: {plan_switch_p95:?}"
+    );
 
     // A billion logical cells are represented by the root without allocation.
     let logical_dense_bytes = 1_000_000_000_u64 * 4;
     println!(
-        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_uniform_pruned={} orbit_plan_p95_ms={:.3} orbit_authoritative_p95_ms={:.3} orbit_plan_limits={:?} ground_plan_pages={} ground_plan_nodes={} ground_uniform_pruned={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
+        "terrain_long_history edits={DELETE_EDIT_PREFIX} capture_p95_us={:.3}",
+        long_history_capture_p95.as_secs_f64() * 1_000_000.0,
+    );
+    println!(
+        "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_uniform_pruned={} orbit_plan_p95_ms={:.3} orbit_authoritative_p95_ms={:.3} orbit_plan_limits={:?} async_stationary_submit_p95_us={:.3} async_active_submit_p95_us={:.3} async_active_submit_max_us={:.3} async_submitted={} async_coalesced={} async_superseded={} async_stale={} async_capture_max_us={:.3} async_plan_max_ms={:.3} stationary_refinement_p95_us={:.3} active_refinement_p95_us={:.3} superseded_refinement_p95_us={:.3} new_plan_refinement_p95_us={:.3} ground_plan_pages={} ground_plan_nodes={} ground_uniform_pruned={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",
         sparse.node_count(),
         sparse_time.as_secs_f64() * 1_000.0,
         dense.len(),
@@ -240,6 +463,19 @@ fn main() {
         plan_p95.as_secs_f64() * 1_000.0,
         authoritative_plan_p95.as_secs_f64() * 1_000.0,
         latest_plan.limits(),
+        stationary_planning_submit_p95.as_secs_f64() * 1_000_000.0,
+        active_planning_submit_p95.as_secs_f64() * 1_000_000.0,
+        active_planning_submit_max.as_secs_f64() * 1_000_000.0,
+        planning_counters.submitted,
+        planning_counters.coalesced,
+        planning_counters.superseded_pending,
+        planning_counters.stale_results,
+        planning_counters.longest_capture_nanoseconds as f64 / 1_000.0,
+        planning_counters.longest_plan_nanoseconds as f64 / 1_000_000.0,
+        stationary_reconcile_p95.as_secs_f64() * 1_000_000.0,
+        active_reconcile_p95.as_secs_f64() * 1_000_000.0,
+        churn_reconcile_p95.as_secs_f64() * 1_000_000.0,
+        plan_switch_p95.as_secs_f64() * 1_000_000.0,
         latest_ground_plan.demands().len(),
         latest_ground_plan.counters().traversed_nodes,
         latest_ground_plan.counters().uniform_regions_pruned,

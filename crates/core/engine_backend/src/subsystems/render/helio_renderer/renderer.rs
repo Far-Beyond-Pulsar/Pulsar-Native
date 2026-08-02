@@ -17,7 +17,10 @@ use pulsar_reflection::{
     apply_runtime_behavior_for_class, scene_id_to_tag, ComponentRuntimeContext, LiveKeySet,
     RuntimeComponentOwner, Subsystems,
 };
-use pulsar_rendering::subsystems::{FoliageCache, LightCache, MeshCache, SceneObjectCache, remove_foliage_handles};
+use pulsar_rendering::{
+    subsystems::{remove_foliage_handles, FoliageCache, LightCache, MeshCache, SceneObjectCache},
+    PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
+};
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
 use crate::scene::{
@@ -89,6 +92,7 @@ pub struct HelioRenderer {
     spike_log_config: RenderSpikeLogConfig,
     last_spike_warning: Option<Instant>,
     last_reported_gpu_frame: Option<u64>,
+    last_planet_error: Option<String>,
 }
 
 struct HelioInner {
@@ -111,6 +115,14 @@ struct HelioInner {
     /// update them in place instead of the scene wholesale-clearing and
     /// re-inserting every light on every sync pass.
     light_cache: LightCache,
+    /// Owns Pulsar's canonical planet state and incrementally publishes it to
+    /// the planetary pass in this renderer's graph. Helio's GPU residency is
+    /// deliberately not duplicated here.
+    planet_terrain: Option<PlanetTerrainRuntime>,
+    /// Set when the graph-owned planetary cache was created or recreated. The
+    /// controller consumes it on the first frame after Helio's deferred resize
+    /// has completed and republishes canonical pages into the new cache.
+    planet_graph_rebuilt: bool,
     /// Last SceneDb generation fully applied to Helio. Unchanged scenes do not
     /// need component deserialization, light recreation, or picker rebuilds.
     last_scene_revision: u64,
@@ -144,6 +156,7 @@ impl HelioRenderer {
             spike_log_config: RenderSpikeLogConfig::default(),
             last_spike_warning: None,
             last_reported_gpu_frame: None,
+            last_planet_error: None,
         }
     }
 
@@ -228,6 +241,8 @@ impl HelioRenderer {
                 object_cache: SceneObjectCache::new(),
                 foliage_cache: FoliageCache::new(),
                 light_cache: LightCache::new(),
+                planet_terrain: None,
+                planet_graph_rebuilt: false,
                 last_scene_revision: 0,
                 known_ids: HashSet::new(),
             };
@@ -258,9 +273,15 @@ impl HelioRenderer {
         // zero motion vectors — grass stays parked even when wind is enabled.
         inner.renderer.scene_mut().advance_wind(dt);
 
-        if self.viewport_size != (width, height) {
+        let viewport_resized = self.viewport_size != (width, height);
+        if viewport_resized {
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
+            if inner.planet_terrain.as_ref().is_some_and(|runtime| {
+                runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
+            }) {
+                inner.planet_graph_rebuilt = true;
+            }
             self.viewport_size = (width, height);
         }
 
@@ -300,6 +321,58 @@ impl HelioRenderer {
                 0.1,
                 10_000.0,
             );
+
+            let should_advance_planet = !viewport_resized
+                && inner.planet_terrain.as_ref().is_some_and(|runtime| {
+                    runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
+                });
+            if should_advance_planet {
+                let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
+                let planet_terrain = inner
+                    .planet_terrain
+                    .as_mut()
+                    .expect("planet runtime was checked above");
+                let horizontal_forward = Vec3::new(sy, 0.0, -cy);
+                let right = Vec3::new(cy, 0.0, sy);
+                let velocity = right * self.cam_local_velocity.x
+                    + Vec3::Y * self.cam_local_velocity.y
+                    + horizontal_forward * self.cam_local_velocity.z;
+                let input = PlanetTerrainFrameInput {
+                    camera_m: self.cam_pos.as_dvec3().to_array(),
+                    forward: fwd.as_dvec3().to_array(),
+                    up: Vec3::Y.as_dvec3().to_array(),
+                    vertical_fov_radians: f64::from(std::f32::consts::FRAC_PI_4),
+                    viewport_px: [width.max(1), height.max(1)],
+                    near_m: 0.1,
+                    far_m: 10_000.0,
+                    velocity_mps: velocity.as_dvec3().to_array(),
+                    delta_time_s: dt,
+                    tick: self.frame_count,
+                    frame_index: self.frame_count,
+                    graph_rebuilt,
+                };
+                let planet_error = match planet_terrain.advance(
+                    &mut inner.renderer,
+                    inner.device.as_ref(),
+                    inner.queue.as_ref(),
+                    input,
+                ) {
+                    Ok(report) if report.planning_failures.is_empty() => None,
+                    Ok(report) => Some(report.planning_failures.join("; ")),
+                    Err(error) => Some(format!("Planet terrain streaming failed: {error}")),
+                };
+                if planet_error != self.last_planet_error {
+                    if let Some(message) = planet_error.as_ref() {
+                        tracing::error!("{message}");
+                        if let Ok(mut errors) = self.pending_errors.lock() {
+                            errors.push(message.clone());
+                        }
+                    } else if self.last_planet_error.is_some() {
+                        tracing::info!("Planet terrain streaming recovered");
+                    }
+                    self.last_planet_error = planet_error;
+                }
+            }
 
             // Mirror Helio editor demo exactly: clear debug geometry first, then draw gizmos.
             // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
@@ -893,6 +966,7 @@ impl HelioRenderer {
         let project_root = engine_state::get_project_path()
             .map(PathBuf::from)
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+        let mut planet_runtime_init_attempted = inner.planet_terrain.is_some();
 
         // Process all snapshots through the component system regardless of
         // visibility so objects exist in the Helio scene for gizmo rendering
@@ -907,12 +981,41 @@ impl HelioRenderer {
             };
 
             let component_instances = component_instances_from_snap(snap);
+            let needs_planet_runtime = component_instances.iter().any(|(_, class_name, data)| {
+                class_name == PLANET_TERRAIN_CLASS_NAME
+                    && data
+                        .get("enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(true)
+            });
+            if needs_planet_runtime
+                && inner.planet_terrain.is_none()
+                && !planet_runtime_init_attempted
+            {
+                planet_runtime_init_attempted = true;
+                match PlanetTerrainRuntime::new() {
+                    Ok(runtime) => inner.planet_terrain = Some(runtime),
+                    Err(error) => {
+                        let message =
+                            format!("Planet terrain runtime initialization failed: {error}");
+                        tracing::error!("{message}");
+                        if let Ok(mut errors) = error_queue.lock() {
+                            errors.push(message);
+                        }
+                    }
+                }
+            }
             let mut subsystems = Subsystems::new();
             subsystems.register_ref::<Renderer>(&mut inner.renderer);
             subsystems.register_ref::<MeshCache>(&mut inner.mesh_cache);
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
             subsystems.register_ref::<LightCache>(&mut inner.light_cache);
+            if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
+                let (runtime, cache) = planet_terrain.component_context_mut();
+                subsystems.register_ref(runtime);
+                subsystems.register_ref(cache);
+            }
             subsystems.register_ref::<LiveKeySet>(&mut live_keys);
             let mut ctx = HelioRuntimeContext {
                 renderer: &mut inner.renderer,
@@ -975,6 +1078,25 @@ impl HelioRenderer {
             }
         }
 
+        if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
+            if let Err(error) = planet_terrain.remove_stale_components(&live_keys) {
+                let message = format!("Failed to remove stale planet terrain components: {error}");
+                tracing::error!("{message}");
+                if let Ok(mut errors) = error_queue.lock() {
+                    errors.push(message);
+                }
+            }
+        }
+
+        Self::sync_planet_graph(inner, error_queue);
+        if inner
+            .planet_terrain
+            .as_ref()
+            .is_some_and(|runtime| !runtime.has_active_components())
+        {
+            inner.planet_terrain = None;
+        }
+
         // Apply editor visibility: hidden objects remain in the Helio scene
         // (for gizmo rendering and selection picking) but are assigned to the
         // HIDDEN group so they don't render visually.
@@ -1019,6 +1141,62 @@ impl HelioRenderer {
         // Only draining ids we know we just synced avoids that.
         for id in live_keys.inner() {
             let _ = scene_db.take_dirty_flags(id);
+        }
+    }
+
+    fn sync_planet_graph(inner: &mut HelioInner, error_queue: &Arc<Mutex<Vec<String>>>) {
+        let wants_planet_graph = inner
+            .planet_terrain
+            .as_ref()
+            .is_some_and(PlanetTerrainRuntime::has_active_components);
+        let has_planet_graph = inner
+            .planet_terrain
+            .as_ref()
+            .is_some_and(|runtime| runtime.renderer_ready(&inner.renderer));
+        if wants_planet_graph == has_planet_graph {
+            return;
+        }
+
+        let renderer_config = inner.renderer.renderer_config();
+        let debug_state = inner.renderer.debug_state();
+        let graph = if wants_planet_graph {
+            helio_default_graphs::build_default_graph_external_with_planetary_voxels(
+                &inner.device,
+                &inner.queue,
+                inner.renderer.scene(),
+                renderer_config,
+                debug_state,
+                inner.renderer.debug_camera_buf(),
+                inner.renderer.cull_stats_buf(),
+                None,
+                PlanetTerrainRuntime::renderer_config(),
+            )
+            .map_err(|error| error.to_string())
+        } else {
+            Ok(helio_default_graphs::build_default_graph_external(
+                &inner.device,
+                &inner.queue,
+                inner.renderer.scene(),
+                renderer_config,
+                debug_state,
+                inner.renderer.debug_camera_buf(),
+                inner.renderer.cull_stats_buf(),
+                None,
+            ))
+        };
+
+        match graph {
+            Ok(graph) => {
+                inner.renderer.set_graph(graph);
+                inner.planet_graph_rebuilt = wants_planet_graph;
+            }
+            Err(error) => {
+                let message = format!("Failed to configure planetary render graph: {error}");
+                tracing::error!("{message}");
+                if let Ok(mut errors) = error_queue.lock() {
+                    errors.push(message);
+                }
+            }
         }
     }
 
