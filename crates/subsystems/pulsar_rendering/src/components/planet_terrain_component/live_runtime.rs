@@ -21,9 +21,11 @@ const LIVE_ACTIVE_PAGES_PER_PLANET: usize = 96;
 const LIVE_TRANSITION_PAGES_PER_PLANET: usize = 96;
 const LIVE_GPU_VISIBLE_PAGES: usize = 384;
 
-/// Component identities retained between SceneDB revisions. The canonical
-/// terrain runtime remains the source of truth; this cache only lets the
-/// component sync remove sources that disappeared from the scene.
+/// Component identities retained between revisions of Pulsar's current legacy
+/// `engine_backend::scene::SceneDb` snapshot bridge. This is not the external
+/// production SceneDB integration. The canonical terrain runtime remains the
+/// source of truth; this cache only lets component sync remove sources that
+/// disappeared from the scene.
 #[derive(Debug, Default)]
 pub struct PlanetTerrainComponentCache {
     sources: BTreeMap<String, PlanetId>,
