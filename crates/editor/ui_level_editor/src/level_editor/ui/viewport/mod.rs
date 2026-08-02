@@ -582,42 +582,24 @@ impl ViewportPanel {
             })
             // TRANSPARENT - no background for direct Helio rendering
             .rounded(cx.theme().radius)
-            // CRITICAL: Capture element bounds and update Helio camera viewport
-            .on_children_prepainted(move |children_bounds: Vec<Bounds<Pixels>>, _window, _cx| {
-                if !children_bounds.is_empty() {
-                    let mut min_x = f32::MAX;
-                    let mut min_y = f32::MAX;
-                    let mut max_x = f32::MIN;
-                    let mut max_y = f32::MIN;
+            // CRITICAL: Capture element bounds and update Helio camera viewport.
+            // Runs every frame, cached or not — geometry stashing belongs here,
+            // not in on_children_prepainted (which is skipped on cache hits).
+            .on_frame(move |geom, _window, _cx| {
+                *element_bounds_for_prepaint.borrow_mut() = Some(geom.bounds);
 
-                    for bounds in &children_bounds {
-                        let bounds_min_x: f32 = bounds.origin.x.into();
-                        let bounds_min_y: f32 = bounds.origin.y.into();
-                        let bounds_width: f32 = bounds.size.width.into();
-                        let bounds_height: f32 = bounds.size.height.into();
-
-                        min_x = min_x.min(bounds_min_x);
-                        min_y = min_y.min(bounds_min_y);
-                        max_x = max_x.max(bounds_min_x + bounds_width);
-                        max_y = max_y.max(bounds_min_y + bounds_height);
-                    }
-
-                    let bounds = Bounds {
-                        origin: point(px(min_x), px(min_y)),
-                        size: size(px(max_x - min_x), px(max_y - min_y)),
-                    };
-
-                    *element_bounds_for_prepaint.borrow_mut() = Some(bounds);
-
-                    // Update Helio camera viewport to match GPUI viewport bounds
-                    if let Ok(engine) = gpu_engine_clone.try_lock() {
-                        if let Some(cam) = engine.camera_input() {
-                            if let Ok(mut camera_input) = cam.try_lock() {
-                                camera_input.viewport_x = min_x;
-                                camera_input.viewport_y = min_y;
-                                camera_input.viewport_width = max_x - min_x;
-                                camera_input.viewport_height = max_y - min_y;
-                            }
+                // Update Helio camera viewport to match GPUI viewport bounds
+                if let Ok(engine) = gpu_engine_clone.try_lock() {
+                    if let Some(cam) = engine.camera_input() {
+                        if let Ok(mut camera_input) = cam.try_lock() {
+                            let origin_x: f32 = geom.bounds.origin.x.into();
+                            let origin_y: f32 = geom.bounds.origin.y.into();
+                            let width: f32 = geom.bounds.size.width.into();
+                            let height: f32 = geom.bounds.size.height.into();
+                            camera_input.viewport_x = origin_x;
+                            camera_input.viewport_y = origin_y;
+                            camera_input.viewport_width = width;
+                            camera_input.viewport_height = height;
                         }
                     }
                 }

@@ -1237,23 +1237,10 @@ impl Panel for LevelEditorPanel {
         }
     }
 
-    /// Never cached, because the viewport below it must not be.
-    ///
-    /// `Panel::cacheable` propagates through the dock containers, but this panel
-    /// hosts its *own* nested `DockArea` (`self.workspace`), which that
-    /// propagation cannot see through. If the outer dock cached this view and
-    /// reused it, the entire level editor subtree — viewport included — would be
-    /// replayed without prepainting, re-freezing exactly the geometry
-    /// `ViewportPanelWrapper::cacheable` opts out to keep fresh. The 3D image
-    /// would keep moving (Helio presents on its own thread), so the only visible
-    /// symptom would be input landing on stale coordinates.
-    ///
-    /// The nested panels below still cache — the properties panel, the toolbar
-    /// and the status bar are where the win actually is — and this view was
-    /// already rebuilding on nearly every frame because the frame pump dirties
-    /// the viewport, which walks the ancestor path up to here.
+    /// Cacheable. The viewport below uses `on_frame` for geometry stashing,
+    /// so it stays fresh on cache hits. Nested panels cache independently.
     fn cacheable(&self, _cx: &App) -> bool {
-        false
+        true
     }
 }
 
