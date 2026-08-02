@@ -1,6 +1,6 @@
 # Planetary voxel terrain goal and architecture
 
-Status: active implementation, updated 2026-08-01
+Status: active implementation, updated 2026-08-02
 
 ## Goal
 
@@ -360,10 +360,14 @@ Reference traces must include ground walking, supersonic surface flight, ground-
 - Gate: precision, no cracks, bounded residency, and frame-time targets pass.
 
 Current boundary: canonical real-radius addressing, bounded mixed-LOD
-streaming, and a spherical validation shell exist, but the production
-Pulsar-owned planner/frontier is not yet the live Helio demo controller. Crack
-and cache-failure gates, continuous ground/orbit travel, real volumetric
-terrain, and visual validation remain part of this milestone.
+streaming, and a spherical validation shell exist. The Pulsar-owned async
+planner, parent-preserving frontier, render-delta publisher, and
+`PlanetTerrainComponent` runtime now drive Helio's graph-owned disposable
+cache. The scene input still comes through Pulsar's legacy
+`engine_backend::scene::SceneDb` snapshot bridge; this is not the external
+production `pulsar_scenedb` / SceneDB integration. Crack and actual device-loss
+gates, continuous ground/orbit travel, real volumetric terrain, and visual
+validation remain part of this milestone.
 
 Authoritative density/error summaries are implemented and tested in
 `pulsar_terrain`: analytic sphere intervals never reject sampled crossings,
@@ -371,13 +375,17 @@ fine edits alter coarse summaries without page materialization, root deletion
 replaces the summary in constant work, and compaction/eviction/snapshot
 rehydration preserve summary identity. The release fixture currently reports
 5,592 orbit traversal nodes with 2,636 uniform-region prunes and approximately
-39.5 ms authoritative planning p95 on the development machine. That traversal
+40.97 ms authoritative planning p95 on the development machine. That traversal
 now runs on a bounded coalescing worker: stationary and active frame-side
-submission measured 0.3 and 0.4 microseconds p95, with a 4 microsecond maximum
-in the active trace and a 2.2 microsecond maximum canonical snapshot capture.
-This passes the frame-thread submission gate, but it does not yet prove the
-live renderer integration, long-history capture spikes, or end-to-end terrain
-convergence gates required for promotion.
+submission measured 0.2 and 0.3 microseconds p95, with a 5 microsecond maximum
+in the active trace. A 10,000-edit canonical snapshot capture measured 24.4
+microseconds p95. The live headless Helio graph converges, discards its entire
+GPU cache, and restores the complete committed frontier without mutating
+canonical page generations or inserting an extra empty frame. Cross-layer
+aggregate CPU/GPU limits are validated before startup and exposed through live
+diagnostics. This passes the current frame-thread, long-history capture, and
+graph-cache rebuild gates; actual device-loss and the remaining visual and
+end-to-end production gates are still required for promotion.
 
 ### Milestone 5: destruction and persistence
 

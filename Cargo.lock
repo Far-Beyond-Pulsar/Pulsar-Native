@@ -9058,6 +9058,7 @@ dependencies = [
  "gpui-ce",
  "helio",
  "helio-asset-compat",
+ "helio-default-graphs",
  "helio-pass-planetary-voxel",
  "helio-planet-voxel-core",
  "plugin_editor_api",
