@@ -481,7 +481,7 @@ mod tests {
     }
 
     #[test]
-    fn replacement_device_recovers_canonical_pages_without_an_extra_empty_frame() {
+    fn destroyed_device_recovers_canonical_pages_without_an_extra_empty_frame() {
         pollster::block_on(async {
             let instance =
                 wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -544,6 +544,26 @@ mod tests {
                 .map(|set| set.pages.len())
                 .sum::<usize>();
             assert!(visible_pages_before > 0);
+
+            let (lost_sender, lost_receiver) = std::sync::mpsc::sync_channel(1);
+            device.set_device_lost_callback(move |reason, message| {
+                lost_sender
+                    .send((reason, message))
+                    .expect("device-loss receiver must remain alive");
+            });
+            device.destroy();
+            assert!(device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .expect("destroyed device must drain its queue")
+                .is_queue_empty());
+            let (lost_reason, lost_message) = lost_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .expect("destroying the device must deliver its loss callback");
+            assert!(
+                matches!(lost_reason, wgpu::DeviceLostReason::Destroyed),
+                "explicit device destruction reported {lost_reason:?}: {lost_message}"
+            );
+
             drop(renderer);
             drop(queue);
             drop(device);
