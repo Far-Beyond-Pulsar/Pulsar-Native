@@ -1,14 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError};
-use helio_pass_planetary_voxel::PlanetaryVoxelRenderConfig;
+use helio_pass_planetary_voxel::{GpuResidencyCounters, PlanetaryVoxelRenderConfig};
 use helio_planet_voxel_core::VisibilityOutcome;
 use pulsar_reflection::LiveKeySet;
 use pulsar_terrain::{
     CELL_COUNT, PlanetId, PlanetPosition, PlanetView, PositionError, TerrainControllerConfig,
-    TerrainControllerError, TerrainPlanningConfig, TerrainRefinementConfig,
-    TerrainRenderDeltaConfig, TerrainRuntimeConfig, TerrainRuntimeError, TerrainRuntimeHandle,
-    TerrainStreamingConfig, TerrainStreamingController, TerrainStreamingError, TerrainSubsystem,
+    TerrainControllerError, TerrainPlanningConfig, TerrainPlanningCounters,
+    TerrainRefinementConfig, TerrainRenderDeltaConfig, TerrainRuntimeConfig,
+    TerrainRuntimeCounters, TerrainRuntimeError, TerrainRuntimeHandle, TerrainStreamingConfig,
+    TerrainStreamingController, TerrainStreamingError, TerrainSubsystem,
 };
 use thiserror::Error;
 
@@ -87,6 +88,96 @@ pub struct PlanetTerrainAdvanceReport {
     pub visibility: VisibilityOutcome,
 }
 
+/// Cross-layer limits for the live canonical-runtime-to-disposable-GPU path.
+/// The aggregate contract is validated before any worker or GPU state is
+/// created, so no valid per-planet configuration can overcommit the shared
+/// renderer when all configured planets are active at once.
+#[derive(Clone, Debug)]
+pub struct PlanetTerrainLiveConfig {
+    pub runtime: TerrainRuntimeConfig,
+    pub controller: TerrainControllerConfig,
+    pub renderer: PlanetaryVoxelRenderConfig,
+}
+
+impl PlanetTerrainLiveConfig {
+    pub fn production() -> Self {
+        let renderer = PlanetaryVoxelRenderConfig::horizon_demo();
+        Self {
+            runtime: live_runtime_config(),
+            controller: live_controller_config(renderer),
+            renderer,
+        }
+    }
+
+    fn validate(&self) -> Result<(), PlanetTerrainLiveError> {
+        let aggregate_active = self
+            .controller
+            .max_planets
+            .checked_mul(self.controller.refinement.max_active_pages)
+            .ok_or_else(|| live_config_error("aggregate active-page budget overflows usize"))?;
+        let aggregate_transition = self
+            .controller
+            .max_planets
+            .checked_mul(self.controller.refinement.max_transition_pages)
+            .ok_or_else(|| live_config_error("aggregate transition-page budget overflows usize"))?;
+        let aggregate_dense_bytes = aggregate_transition
+            .checked_mul(CELL_COUNT)
+            .and_then(|cells| cells.checked_mul(core::mem::size_of::<u32>()))
+            .ok_or_else(|| live_config_error("aggregate dense-page budget overflows usize"))?;
+        let gpu_residents = usize::try_from(self.renderer.residency.max_resident_pages)
+            .map_err(|_| live_config_error("GPU resident-page budget does not fit usize"))?;
+        let gpu_surfaces = usize::try_from(self.renderer.max_surface_pages)
+            .map_err(|_| live_config_error("GPU surface-page budget does not fit usize"))?;
+
+        if self.controller.max_planets > self.runtime.max_planets {
+            return Err(live_config_error(
+                "controller planet capacity exceeds the canonical runtime",
+            ));
+        }
+        if aggregate_active > self.controller.rendering.max_visible_pages {
+            return Err(live_config_error(
+                "aggregate active frontier exceeds the renderer-visible page budget",
+            ));
+        }
+        if aggregate_transition > self.controller.rendering.max_tracked_pages {
+            return Err(live_config_error(
+                "aggregate transition frontier exceeds the renderer-tracked page budget",
+            ));
+        }
+        if aggregate_transition > self.runtime.max_resident_pages
+            || aggregate_dense_bytes > self.runtime.max_resident_dense_bytes
+        {
+            return Err(live_config_error(
+                "aggregate transition frontier exceeds canonical runtime residency",
+            ));
+        }
+        if self.controller.rendering.max_tracked_pages > gpu_residents {
+            return Err(live_config_error(
+                "renderer-tracked page budget exceeds Helio GPU residency",
+            ));
+        }
+        if self.controller.rendering.max_visible_pages > gpu_surfaces {
+            return Err(live_config_error(
+                "renderer-visible page budget exceeds Helio surface capacity",
+            ));
+        }
+        self.renderer
+            .allocation_plan()
+            .map_err(|error| live_config_error(error.to_string()))?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PlanetTerrainLiveDiagnostics {
+    pub component_sources: usize,
+    pub controller_planets: usize,
+    pub controller_published_pages: usize,
+    pub runtime: TerrainRuntimeCounters,
+    pub planning: TerrainPlanningCounters,
+    pub gpu: GpuResidencyCounters,
+}
+
 #[derive(Debug, Error)]
 pub enum PlanetTerrainLiveError {
     #[error(transparent)]
@@ -101,11 +192,14 @@ pub enum PlanetTerrainLiveError {
     Renderer(#[from] PlanetaryTerrainRenderError),
     #[error("planet terrain subsystem failed: {0}")]
     Subsystem(String),
+    #[error("invalid live planet terrain configuration: {0}")]
+    Configuration(String),
 }
 
 /// Live owner joining scene components, Pulsar's canonical terrain runtime,
 /// the incremental controller, and Helio's graph-owned disposable cache.
 pub struct PlanetTerrainRuntime {
+    config: PlanetTerrainLiveConfig,
     subsystem: TerrainSubsystem,
     runtime: TerrainRuntimeHandle,
     controller: TerrainStreamingController,
@@ -115,7 +209,14 @@ pub struct PlanetTerrainRuntime {
 
 impl PlanetTerrainRuntime {
     pub fn new() -> Result<Self, PlanetTerrainLiveError> {
-        let mut subsystem = TerrainSubsystem::new(live_runtime_config())?;
+        Self::new_with_config(PlanetTerrainLiveConfig::production())
+    }
+
+    pub fn new_with_config(
+        config: PlanetTerrainLiveConfig,
+    ) -> Result<Self, PlanetTerrainLiveError> {
+        config.validate()?;
+        let mut subsystem = TerrainSubsystem::new(config.runtime.clone())?;
         subsystem
             .init(&SubsystemContext::new())
             .map_err(|error| PlanetTerrainLiveError::Subsystem(error.to_string()))?;
@@ -123,9 +224,10 @@ impl PlanetTerrainRuntime {
         let controller = TerrainStreamingController::new(
             runtime.clone(),
             subsystem.planning_handle(),
-            live_controller_config(),
+            config.controller,
         )?;
         Ok(Self {
+            config,
             subsystem,
             runtime,
             controller,
@@ -135,7 +237,11 @@ impl PlanetTerrainRuntime {
     }
 
     pub fn renderer_config() -> PlanetaryVoxelRenderConfig {
-        PlanetaryVoxelRenderConfig::horizon_demo()
+        PlanetTerrainLiveConfig::production().renderer
+    }
+
+    pub const fn config(&self) -> &PlanetTerrainLiveConfig {
+        &self.config
     }
 
     pub fn component_context_mut(
@@ -149,7 +255,24 @@ impl PlanetTerrainRuntime {
     }
 
     pub fn renderer_ready(&self, renderer: &helio::Renderer) -> bool {
-        self.adapter.residency(renderer).is_ok()
+        self.adapter
+            .renderer_config(renderer)
+            .is_ok_and(|config| config == self.config.renderer)
+    }
+
+    pub fn diagnostics(
+        &self,
+        renderer: &helio::Renderer,
+    ) -> Result<PlanetTerrainLiveDiagnostics, PlanetTerrainLiveError> {
+        self.validate_renderer_contract(renderer)?;
+        Ok(PlanetTerrainLiveDiagnostics {
+            component_sources: self.component_cache.sources.len(),
+            controller_planets: self.controller.planet_count(),
+            controller_published_pages: self.controller.published_page_count(),
+            runtime: self.runtime.counters(),
+            planning: self.subsystem.planning_handle().counters(),
+            gpu: self.adapter.residency(renderer)?.counters(),
+        })
     }
 
     pub fn remove_stale_components(
@@ -166,6 +289,7 @@ impl PlanetTerrainRuntime {
         queue: &wgpu::Queue,
         input: PlanetTerrainFrameInput,
     ) -> Result<PlanetTerrainAdvanceReport, PlanetTerrainLiveError> {
+        self.validate_renderer_contract(renderer)?;
         let renderer_lost_published_cache = self.controller.published_page_count() > 0
             && self
                 .adapter
@@ -218,14 +342,12 @@ impl PlanetTerrainRuntime {
         let render = self
             .adapter
             .apply_delta(renderer, device, queue, frame.render_delta)?;
-        let visibility = self.adapter.apply_visible_sets(
-            renderer,
-            queue,
-            frame.frame_index,
-            frame.visible_sets,
-        )?;
         self.controller
             .acknowledge_render_feedback(&render.feedback)?;
+        let visible_sets = self.controller.visible_sets(frame.frame_index)?;
+        let visibility =
+            self.adapter
+                .apply_visible_sets(renderer, queue, frame.frame_index, visible_sets)?;
 
         Ok(PlanetTerrainAdvanceReport {
             plans_applied: frame.plans_applied,
@@ -233,6 +355,20 @@ impl PlanetTerrainRuntime {
             render,
             visibility,
         })
+    }
+
+    fn validate_renderer_contract(
+        &self,
+        renderer: &helio::Renderer,
+    ) -> Result<(), PlanetTerrainLiveError> {
+        let actual = self.adapter.renderer_config(renderer)?;
+        if actual != self.config.renderer {
+            return Err(live_config_error(format!(
+                "Helio planetary graph configuration {actual:?} does not match the live contract {:?}",
+                self.config.renderer
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -246,8 +382,7 @@ fn live_runtime_config() -> TerrainRuntimeConfig {
     }
 }
 
-fn live_controller_config() -> TerrainControllerConfig {
-    let renderer = PlanetTerrainRuntime::renderer_config();
+fn live_controller_config(renderer: PlanetaryVoxelRenderConfig) -> TerrainControllerConfig {
     TerrainControllerConfig {
         planning: TerrainPlanningConfig {
             streaming: TerrainStreamingConfig {
@@ -277,6 +412,10 @@ fn live_controller_config() -> TerrainControllerConfig {
     }
 }
 
+fn live_config_error(message: impl Into<String>) -> PlanetTerrainLiveError {
+    PlanetTerrainLiveError::Configuration(message.into())
+}
+
 impl From<SubsystemError> for PlanetTerrainLiveError {
     fn from(error: SubsystemError) -> Self {
         Self::Subsystem(error.to_string())
@@ -286,10 +425,24 @@ impl From<SubsystemError> for PlanetTerrainLiveError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::planet_terrain_component::PlanetTerrainComponent;
+    use helio::{
+        RendererBuilder, RendererConfig, required_experimental_features, required_wgpu_features,
+        required_wgpu_limits,
+    };
+    use helio_default_graphs::build_default_graph_external_with_planetary_voxels;
+    use helio_pass_planetary_voxel::{
+        PlanetaryVoxelGpuConfig, TransvoxelGpuExtractorConfig,
+        TransvoxelGpuTransitionExtractorConfig,
+    };
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
 
     #[test]
     fn live_cpu_and_gpu_budgets_are_one_consistent_bounded_contract() {
-        let controller = live_controller_config();
+        let controller = live_controller_config(PlanetTerrainRuntime::renderer_config());
         let renderer = PlanetTerrainRuntime::renderer_config();
         assert_eq!(
             controller.max_planets * controller.refinement.max_active_pages,
@@ -305,5 +458,307 @@ mod tests {
         );
         assert!(controller.rendering.max_visible_pages <= controller.rendering.max_tracked_pages);
         renderer.allocation_plan().unwrap();
+    }
+
+    #[test]
+    fn live_configuration_rejects_aggregate_multi_planet_overcommit() {
+        let mut config = PlanetTerrainLiveConfig::production();
+        config.controller.rendering.max_visible_pages -= 1;
+        assert!(matches!(
+            config.validate(),
+            Err(PlanetTerrainLiveError::Configuration(message))
+                if message.contains("aggregate active frontier")
+        ));
+
+        let mut config = PlanetTerrainLiveConfig::production();
+        config.runtime.max_resident_pages =
+            config.controller.max_planets * config.controller.refinement.max_transition_pages - 1;
+        assert!(matches!(
+            config.validate(),
+            Err(PlanetTerrainLiveError::Configuration(message))
+                if message.contains("canonical runtime residency")
+        ));
+    }
+
+    #[test]
+    fn destroyed_device_recovers_canonical_pages_without_an_extra_empty_frame() {
+        pollster::block_on(async {
+            let instance =
+                wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+            let Some(adapter) = request_test_adapter(&instance).await else {
+                eprintln!("GPU_VALIDATION_SKIPPED_NO_ADAPTER: live planet cache recovery");
+                return;
+            };
+            let (device, queue) = request_test_device(&adapter).await;
+            let config = test_live_config();
+            let mut renderer =
+                test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
+            let mut live = PlanetTerrainRuntime::new_with_config(config.clone()).unwrap();
+            let source_key = "earth:0".to_owned();
+            let component = PlanetTerrainComponent {
+                max_resident_pages: config.runtime.max_resident_pages as u64,
+                ..PlanetTerrainComponent::default()
+            };
+            let definition = component.definition(&source_key).unwrap();
+            let planet_id = definition.planet_id;
+            live.runtime
+                .upsert_component(source_key.clone(), definition)
+                .unwrap();
+            live.component_cache.record(source_key, planet_id);
+
+            let mut frame_index = 0;
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                let report = live
+                    .advance(
+                        &mut renderer,
+                        &device,
+                        &queue,
+                        test_frame_input(frame_index, false),
+                    )
+                    .unwrap();
+                assert!(report.planning_failures.is_empty());
+                let diagnostics = live.diagnostics(&renderer).unwrap();
+                assert_live_bounds(&diagnostics, &config);
+                if live.controller.is_converged(planet_id) == Some(true)
+                    && diagnostics.controller_published_pages > 0
+                    && diagnostics.gpu.resident_pages > 0
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "live planet path did not converge"
+                );
+                frame_index += 1;
+                std::thread::yield_now();
+            }
+
+            let canonical_before = live.runtime.resident_page_generations(planet_id).unwrap();
+            let planet_generation_before = live.runtime.planet_generation(planet_id).unwrap();
+            let visible_pages_before = live
+                .controller
+                .visible_sets(frame_index)
+                .unwrap()
+                .into_iter()
+                .map(|set| set.pages.len())
+                .sum::<usize>();
+            assert!(visible_pages_before > 0);
+
+            let (lost_sender, lost_receiver) = std::sync::mpsc::sync_channel(1);
+            device.set_device_lost_callback(move |reason, message| {
+                lost_sender
+                    .send((reason, message))
+                    .expect("device-loss receiver must remain alive");
+            });
+            device.destroy();
+            assert!(device
+                .poll(wgpu::PollType::wait_indefinitely())
+                .expect("destroyed device must drain its queue")
+                .is_queue_empty());
+            let (lost_reason, lost_message) = lost_receiver
+                .recv_timeout(Duration::from_secs(1))
+                .expect("destroying the device must deliver its loss callback");
+            assert!(
+                matches!(lost_reason, wgpu::DeviceLostReason::Destroyed),
+                "explicit device destruction reported {lost_reason:?}: {lost_message}"
+            );
+
+            drop(renderer);
+            drop(queue);
+            drop(device);
+            let (device, queue) = request_test_device(&adapter).await;
+            let mut rebuilt =
+                test_renderer(Arc::clone(&device), Arc::clone(&queue), config.renderer);
+            assert_eq!(live.diagnostics(&rebuilt).unwrap().gpu.resident_pages, 0);
+
+            let recovery_deadline = Instant::now() + Duration::from_secs(5);
+            loop {
+                frame_index += 1;
+                let report = live
+                    .advance(
+                        &mut rebuilt,
+                        &device,
+                        &queue,
+                        test_frame_input(frame_index, false),
+                    )
+                    .unwrap();
+                let diagnostics = live.diagnostics(&rebuilt).unwrap();
+                assert_live_bounds(&diagnostics, &config);
+                if matches!(
+                    report.visibility,
+                    VisibilityOutcome::Applied { resident, .. }
+                        if resident == visible_pages_before
+                ) {
+                    assert!(
+                        !report.render.uploads.is_empty(),
+                        "the completing recovery frame must contain the final uploads"
+                    );
+                    break;
+                }
+                assert!(
+                    Instant::now() < recovery_deadline,
+                    "live planet cache did not recover"
+                );
+            }
+
+            assert_eq!(
+                live.runtime.resident_page_generations(planet_id).unwrap(),
+                canonical_before,
+                "disposable GPU cache recovery must not mutate canonical pages"
+            );
+            assert_eq!(
+                live.runtime.planet_generation(planet_id).unwrap(),
+                planet_generation_before
+            );
+        });
+    }
+
+    fn test_live_config() -> PlanetTerrainLiveConfig {
+        let renderer = PlanetaryVoxelRenderConfig {
+            residency: PlanetaryVoxelGpuConfig::new(48, 128, 16, 16, 48).unwrap(),
+            max_surface_pages: 32,
+            max_pending_surfaces: 16,
+            regular: TransvoxelGpuExtractorConfig::new(1_024, 2_048).unwrap(),
+            transition: TransvoxelGpuTransitionExtractorConfig::new(512, 1_536).unwrap(),
+            max_surface_bytes: 32 * 1024 * 1024,
+        };
+        PlanetTerrainLiveConfig {
+            runtime: TerrainRuntimeConfig {
+                worker_count: 2,
+                max_planets: 1,
+                max_component_sources: 1,
+                request_capacity: 128,
+                critical_request_reserve: 16,
+                completion_capacity: 128,
+                event_capacity: 256,
+                max_resident_pages: 64,
+                max_resident_dense_bytes: 64 * CELL_COUNT * core::mem::size_of::<u32>(),
+                max_completions_per_frame: 64,
+            },
+            controller: TerrainControllerConfig {
+                planning: TerrainPlanningConfig {
+                    streaming: TerrainStreamingConfig {
+                        max_pages: 32,
+                        max_traversal_nodes: 4_096,
+                        ..TerrainStreamingConfig::default()
+                    },
+                    ..TerrainPlanningConfig::default()
+                },
+                refinement: TerrainRefinementConfig {
+                    max_active_pages: 32,
+                    max_transition_pages: 48,
+                    initial_coarse_pages: 8,
+                    max_requests_per_reconcile: 16,
+                    max_commits_per_reconcile: 8,
+                    ..TerrainRefinementConfig::default()
+                },
+                rendering: TerrainRenderDeltaConfig {
+                    max_events_per_delta: 256,
+                    max_commands_per_delta: 16,
+                    max_upload_bytes_per_delta: 16 * CELL_COUNT * core::mem::size_of::<u32>(),
+                    max_tracked_pages: 48,
+                    max_visible_pages: 32,
+                },
+                max_planets: 1,
+                max_planning_results_per_frame: 1,
+            },
+            renderer,
+        }
+    }
+
+    fn test_renderer(
+        device: Arc<wgpu::Device>,
+        queue: Arc<wgpu::Queue>,
+        planetary: PlanetaryVoxelRenderConfig,
+    ) -> helio::Renderer {
+        let config = RendererConfig::new(32, 32, wgpu::TextureFormat::Rgba8UnormSrgb);
+        RendererBuilder::new(config)
+            .with_external_device()
+            .with_graph(Box::new(
+                move |device, queue, scene, config, debug, camera, cull| {
+                    build_default_graph_external_with_planetary_voxels(
+                        device, queue, scene, config, debug, camera, cull, None, planetary,
+                    )
+                    .expect("bounded live planet graph must build")
+                },
+            ))
+            .build(
+                device,
+                queue,
+                config.width,
+                config.height,
+                config.surface_format,
+            )
+    }
+
+    fn test_frame_input(frame_index: u64, graph_rebuilt: bool) -> PlanetTerrainFrameInput {
+        PlanetTerrainFrameInput {
+            camera_m: [8_000_000.0, 0.0, 0.0],
+            forward: [-1.0, 0.0, 0.0],
+            up: [0.0, 1.0, 0.0],
+            vertical_fov_radians: 60_f64.to_radians(),
+            viewport_px: [1920, 1080],
+            near_m: 0.1,
+            far_m: 20_000_000.0,
+            velocity_mps: [0.0; 3],
+            delta_time_s: 1.0 / 60.0,
+            tick: frame_index,
+            frame_index,
+            graph_rebuilt,
+        }
+    }
+
+    fn assert_live_bounds(
+        diagnostics: &PlanetTerrainLiveDiagnostics,
+        config: &PlanetTerrainLiveConfig,
+    ) {
+        assert!(diagnostics.component_sources <= config.runtime.max_component_sources);
+        assert!(diagnostics.controller_planets <= config.controller.max_planets);
+        assert!(diagnostics.runtime.planets <= config.runtime.max_planets);
+        assert!(diagnostics.runtime.queued <= config.runtime.request_capacity);
+        assert!(diagnostics.runtime.completed <= config.runtime.completion_capacity);
+        assert!(diagnostics.runtime.events <= config.runtime.event_capacity);
+        assert!(diagnostics.runtime.resident_pages <= config.runtime.max_resident_pages);
+        assert!(
+            diagnostics.runtime.resident_dense_bytes <= config.runtime.max_resident_dense_bytes
+        );
+        assert!(diagnostics.planning.pending <= config.controller.max_planets);
+        assert!(diagnostics.planning.completed <= config.controller.max_planets);
+        assert!(diagnostics.gpu.resident_pages <= config.renderer.residency.max_resident_pages);
+        assert!(
+            diagnostics.controller_published_pages <= config.controller.rendering.max_tracked_pages
+        );
+    }
+
+    async fn request_test_adapter(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
+        for force_fallback_adapter in [false, true] {
+            if let Ok(adapter) = instance
+                .request_adapter(&wgpu::RequestAdapterOptions {
+                    power_preference: wgpu::PowerPreference::HighPerformance,
+                    compatible_surface: None,
+                    force_fallback_adapter,
+                    apply_limit_buckets: false,
+                })
+                .await
+            {
+                return Some(adapter);
+            }
+        }
+        None
+    }
+
+    async fn request_test_device(adapter: &wgpu::Adapter) -> (Arc<wgpu::Device>, Arc<wgpu::Queue>) {
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("Pulsar Live Planet Recovery Device"),
+                required_features: required_wgpu_features(adapter.features()),
+                required_limits: required_wgpu_limits(adapter.limits()),
+                experimental_features: required_experimental_features(adapter.features()),
+                ..Default::default()
+            })
+            .await
+            .expect("Helio-compatible adapter must create a device");
+        (Arc::new(device), Arc::new(queue))
     }
 }

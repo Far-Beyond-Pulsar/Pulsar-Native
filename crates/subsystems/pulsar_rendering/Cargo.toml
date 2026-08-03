@@ -37,6 +37,7 @@ engine_subsystems.workspace = true
 bytemuck = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+helio-default-graphs.workspace = true
 pollster = "=0.4.0"
 
 [lints]
