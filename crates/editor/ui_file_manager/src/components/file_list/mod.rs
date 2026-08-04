@@ -252,12 +252,18 @@ impl Render for FileManagerDrawer {
             .on_action(cx.listener(|this, _: &DuplicateItem, _w, cx| {
                 crate::handlers::handle_duplicate_item(this, cx)
             }))
-            .on_action(cx.listener(|this, _: &Copy, _w, cx| crate::handlers::handle_copy(this, cx)))
-            .on_action(cx.listener(|this, _: &Cut, _w, cx| crate::handlers::handle_cut(this, cx)))
+                .on_action(cx.listener(|this, _: &crate::utils::actions::Copy, _w, cx| {
+                    crate::handlers::handle_copy(this, cx)
+                }))
+                .on_action(cx.listener(|this, _: &crate::utils::actions::Cut, _w, cx| {
+                    crate::handlers::handle_cut(this, cx)
+                }))
             .on_action(
-                cx.listener(|this, _: &Paste, _w, cx| crate::handlers::handle_paste(this, cx)),
+                    cx.listener(|this, _: &crate::utils::actions::Paste, _w, cx| {
+                        crate::handlers::handle_paste(this, cx)
+                    }),
             )
-            .on_action(cx.listener(|this, _: &SelectAll, _w, cx| {
+                .on_action(cx.listener(|this, _: &crate::utils::actions::SelectAll, _w, cx| {
                 crate::handlers::handle_select_all(this, cx)
             }))
             .on_action(cx.listener(|this, a: &OpenInFileManager, _w, cx| {
