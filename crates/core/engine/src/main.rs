@@ -32,12 +32,9 @@
 //!
 //! Each task is profiled with `Engine::Init::{TaskName}` scope.
 
-use std::hash::DefaultHasher;
 use std::sync::atomic::Ordering;
 
 // --- Global Allocator Setup ---
-use gpui::AppContext;
-
 // Only one #[global_allocator] can be registered, so the dhat heap profiler
 // (feature = "dhat-heap") and the normal in-editor tracking allocator are
 // mutually exclusive.
@@ -158,7 +155,7 @@ fn main() {
     // enables/disables profiling itself, scoped to its recording session.
 
     // Parse arguments first (needed for init context)
-    dotenv::dotenv();
+    let _ = dotenv::dotenv();
     let parsed = args::parse_args();
 
     if parsed.force_oobe {
@@ -265,11 +262,11 @@ fn main() {
     // create and run GPUI application
     let gpui_app = gpui::Application::with_wgpu_options(gpui::WgpuOptions {
         additional_features: wgpu::Features::VERTEX_WRITABLE_STORAGE,
+        ..Default::default()
     })
     .with_assets(Assets);
 
     gpui_app.run(move |cx: &mut gpui::App| {
-        use ui_common::PulsarWindowExt as _;
         let t_gpui = std::time::Instant::now();
         tracing::info!("[GPUI startup] begin");
 
