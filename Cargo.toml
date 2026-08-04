@@ -74,7 +74,7 @@ ttf-parser = { opt-level = 3 }
 
 # ---------- GPUI (vendored) ----------
 gpui-ce      = { path = "crates/ui/wgpui", features = ["inspector", "flamegraph"] }
-ui           = { path = "crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph"] }
+ui           = { path = "crates/ui/wgpui-component/crates/ui", features = ["inspector", "flamegraph", "tree-sitter-languages"] }
 ui-macros    = { path = "crates/ui/wgpui-component/crates/ui-macros" }
 
 # ---------- Core Engine ----------
