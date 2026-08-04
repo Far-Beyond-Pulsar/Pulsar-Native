@@ -34,9 +34,6 @@
 [submodule "crates/third-party/pulsar-config"]
 	path = crates/third-party/pulsar-config
 	url = https://github.com/Far-Beyond-Pulsar/PulsarConfig.git
-[submodule "crates/graphics/wgpu"]
-	path = crates/graphics/wgpu
-	url = https://github.com/Far-Beyond-Pulsar/wgpu.git
 [submodule "crates/renderer/helio"]
 	path = crates/renderer/helio
 	url = https://github.com/Far-Beyond-Pulsar/Helio.git

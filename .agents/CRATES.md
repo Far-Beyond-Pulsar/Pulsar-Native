@@ -11,7 +11,7 @@ crates/
   subsystems/        Integration crates — physics, rendering, scene graph
   agent-providers/   AI provider backends — one crate per LLM provider
   ui/                Vendored GPUI repos (submodules with path deps)
-  graphics/          Vendored wgpu fork (submodule, still a git dep)
+  graphics/          Graphics-related docs and integration notes
   third-party/       Vendored smaller deps (pbgc, graphy, pulsar-config)
 ```
 
