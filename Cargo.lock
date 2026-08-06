@@ -945,7 +945,7 @@ dependencies = [
  "lazy_static",
  "lazycell",
  "log",
- "prettyplease 0.2.37",
+ "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
@@ -8505,16 +8505,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prettyplease"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
-dependencies = [
- "proc-macro2",
- "syn 3.0.3",
-]
-
-[[package]]
 name = "primeorder"
 version = "0.13.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8672,7 +8662,7 @@ dependencies = [
  "log",
  "multimap",
  "petgraph",
- "prettyplease 0.2.37",
+ "prettyplease",
  "prost",
  "prost-types",
  "regex",
@@ -8887,7 +8877,7 @@ dependencies = [
 name = "pulsar_docs"
 version = "0.1.0"
 dependencies = [
- "prettyplease 0.3.0",
+ "prettyplease",
  "quote",
  "rust-embed",
  "serde",
