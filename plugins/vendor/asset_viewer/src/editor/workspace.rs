@@ -97,7 +97,7 @@ impl Render for ViewportPanel {
                             .items_center()
                             .justify_center()
                             .text_color(gpui::rgb(0x888888))
-                            .child("Loading...")
+                            .child(t!("AssetViewer.Loading"))
                             .into_any_element()
                     };
 
