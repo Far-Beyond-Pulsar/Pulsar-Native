@@ -65,7 +65,7 @@ impl Render for AssetPropertiesPanel {
         let ed = editor_entity.read(cx);
         let file_name = ed.current_path.as_ref()
             .and_then(|p| p.file_name()).and_then(|n| n.to_str()).map(|s| s.to_string())
-            .unwrap_or_else(|| "Unknown".to_string());
+            .unwrap_or_else(|| t!("AssetViewer.Unknown").to_string());
         let is_3d = ed.is_3d;
         let dims = ed.image_data.as_ref()
             .map(|(w, h, _)| format!("{} x {}", w, h))
@@ -84,20 +84,20 @@ impl Render for AssetPropertiesPanel {
             .bg(cx.theme().sidebar)
             .p_3()
             .child(v_flex().gap_4()
-                .child(section(cx, "File", div().text_sm().child(file_name)))
-                .child(section(cx, "Info", div().text_sm().child(dims)))
-                .child(section(cx, "History", h_flex().gap_2()
-                    .child(ghost_btn("Undo").when(!has_undo, |b| b.disabled(true))
+                .child(section(cx, t!("AssetViewer.File"), div().text_sm().child(file_name)))
+                .child(section(cx, t!("AssetViewer.Info"), div().text_sm().child(dims)))
+                .child(section(cx, t!("AssetViewer.History"), h_flex().gap_2()
+                    .child(ghost_btn(t!("AssetViewer.Undo")).when(!has_undo, |b| b.disabled(true))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.undo()); }
                         }))
-                    .child(ghost_btn("Redo").when(!has_redo, |b| b.disabled(true))
+                    .child(ghost_btn(t!("AssetViewer.Redo")).when(!has_redo, |b| b.disabled(true))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.redo()); }
                         }))
-                    .child(primary_btn("Save")
+                    .child(primary_btn(t!("AssetViewer.Save"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| {
@@ -107,66 +107,66 @@ impl Render for AssetPropertiesPanel {
                             }
                         }))
                 ))
-                .child(section(cx, "Transform", h_flex().gap_2()
-                    .child(ghost_btn("Rot CW")
+                .child(section(cx, t!("AssetViewer.Transform"), h_flex().gap_2()
+                    .child(ghost_btn(t!("AssetViewer.RotCW"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.rotate_90()); }
                         }))
-                    .child(ghost_btn("Rot CCW")
+                    .child(ghost_btn(t!("AssetViewer.RotCCW"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.rotate_ccw()); }
                         }))
-                    .child(ghost_btn("Flip H")
+                    .child(ghost_btn(t!("AssetViewer.FlipH"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.flip_h()); }
                         }))
-                    .child(ghost_btn("Flip V")
+                    .child(ghost_btn(t!("AssetViewer.FlipV"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.flip_v()); }
                         }))
                 ))
-                .child(section(cx, "Adjust", v_flex().gap_2()
-                    .child(ghost_btn("Grayscale")
+                .child(section(cx, t!("AssetViewer.Adjust"), v_flex().gap_2()
+                    .child(ghost_btn(t!("AssetViewer.Grayscale"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.grayscale()); }
                         }))
-                    .child(ghost_btn("Invert Colors")
+                    .child(ghost_btn(t!("AssetViewer.InvertColors"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.invert()); }
                         }))
                     .child(h_flex().gap_2()
-                        .child(ghost_btn("Bright +")
+                        .child(ghost_btn(t!("AssetViewer.BrightnessUp"))
                             .on_mouse_down(MouseButton::Left, {
                                 let ew = ew.clone();
                                 move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_brightness(20)); }
                             }))
-                        .child(ghost_btn("Bright -")
+                        .child(ghost_btn(t!("AssetViewer.BrightnessDown"))
                             .on_mouse_down(MouseButton::Left, {
                                 let ew = ew.clone();
                                 move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_brightness(-20)); }
                             }))
                     )
                     .child(h_flex().gap_2()
-                        .child(ghost_btn("Contrast +")
+                        .child(ghost_btn(t!("AssetViewer.ContrastUp"))
                             .on_mouse_down(MouseButton::Left, {
                                 let ew = ew.clone();
                                 move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_contrast(1.3)); }
                             }))
-                        .child(ghost_btn("Contrast -")
+                        .child(ghost_btn(t!("AssetViewer.ContrastDown"))
                             .on_mouse_down(MouseButton::Left, {
                                 let ew = ew.clone();
                                 move |_ev, _window, cx| { ew.clone().update(cx, |e, _cx| e.adjust_contrast(0.7)); }
                             }))
                     )
                 ))
-                .child(section(cx, "View",
-                    ghost_btn("Reset Zoom")
+                .child(section(cx, t!("AssetViewer.View"),
+                    ghost_btn(t!("AssetViewer.ResetZoom"))
                         .on_mouse_down(MouseButton::Left, {
                             let ew = ew.clone();
                             move |_ev, window, cx| { ew.clone().update(cx, |e, cx| e.zoom_to_fit(window, cx)); }
@@ -205,34 +205,34 @@ fn render_3d_table(cx: &mut App, file_name: &str, ew: &Entity<AssetViewerPanel>)
         .bg(cx.theme().sidebar)
         .p_3()
         .child(v_flex().gap_4()
-            .child(section(cx, "File", v_flex().gap_1()
+            .child(section(cx, t!("AssetViewer.File"), v_flex().gap_1()
                 .child(div().text_sm().child(file_name.to_string()))
             ))
-            .child(section(cx, "Scene", v_flex().gap_1()
-                .child(stat_row(cx, "Meshes", &stats.mesh_count.to_string()))
-                .child(stat_row(cx, "Vertices", &stats.total_vertices.to_string()))
-                .child(stat_row(cx, "Triangles", &(stats.total_indices / 3).to_string()))
-                .child(stat_row(cx, "Materials", &stats.material_count.to_string()))
-                .when(!stats.generator.is_empty(), |el| el.child(stat_row(cx, "Generator", &stats.generator)))
+            .child(section(cx, t!("AssetViewer.Scene"), v_flex().gap_1()
+                .child(stat_row(cx, t!("AssetViewer.Meshes"), &stats.mesh_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Vertices"), &stats.total_vertices.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Triangles"), &(stats.total_indices / 3).to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Materials"), &stats.material_count.to_string()))
+                .when(!stats.generator.is_empty(), |el| el.child(stat_row(cx, t!("AssetViewer.Generator"), &stats.generator)))
             ))
-            .child(section(cx, "Resources", v_flex().gap_1()
-                .child(stat_row(cx, "Textures", &stats.texture_count.to_string()))
-                .child(stat_row(cx, "Images", &stats.image_count.to_string()))
-                .child(stat_row(cx, "Lights", &stats.light_count.to_string()))
-                .child(stat_row(cx, "Cameras", &stats.camera_count.to_string()))
+            .child(section(cx, t!("AssetViewer.Resources"), v_flex().gap_1()
+                .child(stat_row(cx, t!("AssetViewer.Textures"), &stats.texture_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Images"), &stats.image_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Lights"), &stats.light_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Cameras"), &stats.camera_count.to_string()))
             ))
-            .child(section(cx, "Animation", v_flex().gap_1()
-                .child(stat_row(cx, "Clips", &stats.animation_count.to_string()))
-                .child(stat_row(cx, "Skins", &stats.skin_count.to_string()))
-                .child(stat_row(cx, "Joints", &stats.total_joints.to_string()))
-                .child(stat_row(cx, "Morph targets", &stats.morph_target_count.to_string()))
+            .child(section(cx, t!("AssetViewer.Animation"), v_flex().gap_1()
+                .child(stat_row(cx, t!("AssetViewer.Clips"), &stats.animation_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Skins"), &stats.skin_count.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.Joints"), &stats.total_joints.to_string()))
+                .child(stat_row(cx, t!("AssetViewer.MorphTargets"), &stats.morph_target_count.to_string()))
             ))
             .when(!props.is_empty(), |el| el.child(
-                section(cx, "Meshes", v_flex().gap_1()
+                section(cx, t!("AssetViewer.Meshes"), v_flex().gap_1()
                     .child(h_flex().gap_1().py_1().text_xs().text_color(cx.theme().muted_foreground)
-                        .child(hdr("Name")).child(hdr("Verts")).child(hdr("Tris"))
-                        .child(hdr("N")).child(hdr("T")).child(hdr("UV")).child(hdr("C"))
-                        .child(hdr("Mat")))
+                        .child(hdr(t!("AssetViewer.ColName"))).child(hdr(t!("AssetViewer.ColVerts"))).child(hdr(t!("AssetViewer.ColTris")))
+                        .child(hdr(t!("AssetViewer.ColN"))).child(hdr(t!("AssetViewer.ColT"))).child(hdr(t!("AssetViewer.ColUV"))).child(hdr(t!("AssetViewer.ColC")))
+                        .child(hdr(t!("AssetViewer.ColMat"))))
                     .child(v_flex().children(props.iter().map(|mp| {
                         h_flex().gap_1().py_px().text_xs()
                             .child(cel(&mp.name))

@@ -6,6 +6,8 @@ use std::sync::Mutex;
 use std::{path::PathBuf, sync::Arc};
 use ui::dock::PanelView;
 
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod editor;
 pub use editor::panel::AssetViewerPanel;
 
@@ -31,9 +33,9 @@ impl EditorPlugin for AssetViewerPlugin {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
             id: PluginId::new("com.pulsar.asset-viewer"),
-            name: "FBX/PNG Asset Viewer".into(),
+            name: t!("AssetViewer.DisplayName").into(),
             version: "0.1.0".into(),
-            author: "Pulsar Team".into(),
+            author: t!("AssetViewer.Team").into(),
             description: "View FBX 3D models and PNG images".into(),
         }
     }
@@ -43,7 +45,7 @@ impl EditorPlugin for AssetViewerPlugin {
             FileTypeDefinition {
                 id: FileTypeId::new("fbx"),
                 extension: "fbx".to_string(),
-                display_name: "FBX Model".to_string(),
+                display_name: t!("AssetViewer.FBXModel").to_string(),
                 icon: ui::IconName::Cube,
                 color: gpui::rgb(0x00BCD4).into(),
                 structure: FileStructure::Standalone,
@@ -53,12 +55,12 @@ impl EditorPlugin for AssetViewerPlugin {
             FileTypeDefinition {
                 id: FileTypeId::new("png"),
                 extension: "png".to_string(),
-                display_name: "PNG Image".to_string(),
+                display_name: t!("AssetViewer.PNGImage").to_string(),
                 icon: ui::IconName::Image,
                 color: gpui::rgb(0xE91E63).into(),
                 structure: FileStructure::Standalone,
                 default_content: json!(""),
-                categories: vec!["Images".to_string()],
+                categories: vec![t!("AssetViewer.Images").to_string()],
             },
         ]
     }
