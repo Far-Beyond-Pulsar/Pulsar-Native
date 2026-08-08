@@ -143,6 +143,248 @@ impl LightCache {
     }
 }
 
+/// One side of a to-be-paired portal — this object's current pose and
+/// opening size, recorded by `PortalComponent::sync_component` every sync
+/// pass under the `portal_id` the level designer chose to link two
+/// components together. See [`PortalLinkCache`].
+#[derive(Clone, Copy, Debug)]
+pub struct PortalSide {
+    pub position: [f32; 3],
+    pub rotation: [f32; 3],
+    /// Half-width/half-height of the opening.
+    pub half_extent: [f32; 2],
+}
+
+fn side_pose(side: &PortalSide) -> helio::PortalPose {
+    let q = glam::Quat::from_euler(
+        glam::EulerRot::YXZ,
+        side.rotation[1].to_radians(),
+        side.rotation[0].to_radians(),
+        side.rotation[2].to_radians(),
+    );
+    helio::portal_pose_facing(
+        glam::Vec3::from_array(side.position),
+        q * glam::Vec3::NEG_Z,
+        q * glam::Vec3::Y,
+    )
+}
+
+/// Live-key namespaced by `portal_id` — two different `PortalComponent`s on
+/// two different objects always produce different keys even if (unusually)
+/// the same object hosted two portals under two different IDs.
+pub fn portal_link_key(portal_id: i32, scene_object_id: &str) -> String {
+    format!("portal:{portal_id}:{scene_object_id}")
+}
+
+/// What, if anything, needs to happen to the real `helio::Scene` portal for
+/// one `portal_id` after a side was recorded, dropped, or swept as stale.
+/// Deliberately just data — no scene/cache borrow attached — so it can be
+/// computed by [`PortalLinkCache`] alone and applied moments later via
+/// [`apply_portal_pair_action`]. See that function's doc for why the split.
+pub enum PortalPairAction {
+    /// Nothing changed (still zero or one side registered, or the pair was
+    /// already up to date).
+    None,
+    /// Both sides are now present and no helio portal exists yet.
+    Create {
+        portal_id: i32,
+        a: helio::PortalPose,
+        b: helio::PortalPose,
+        half_extent: glam::Vec2,
+    },
+    /// Both sides are still present and a helio portal already exists —
+    /// just refresh its pose/size in place.
+    Update {
+        id: helio::PortalId,
+        a: helio::PortalPose,
+        b: helio::PortalPose,
+        half_extent: glam::Vec2,
+    },
+    /// A side disappeared (disabled, deleted, or swept as stale) and a
+    /// helio portal existed for the pair — tear it down.
+    Remove { portal_id: i32, id: helio::PortalId },
+}
+
+/// Applies `action` to `scene` (create/update/remove the real portal) and
+/// reports back what [`PortalLinkCache::set_active`]/`clear_active` needs to
+/// be told as a result — `Some((portal_id, Some(id)))` for a newly created
+/// portal, `Some((portal_id, None))` for one just removed, `None` for an
+/// in-place update or no-op.
+///
+/// Split from `PortalLinkCache` itself (which never touches `helio::Scene`
+/// directly) because a `ComponentRuntimeContext` can only hand out one
+/// mutable subsystem borrow at a time (`Subsystems::get_mut` takes `&mut
+/// self`) — there is no way to hold `&mut Renderer` and `&mut
+/// PortalLinkCache` simultaneously through that interface. Computing the
+/// action from `PortalLinkCache` alone, then applying it here against a
+/// `Renderer`-borrowed scene, then (if needed) feeding the tiny result back
+/// into `PortalLinkCache` as a third, separate borrow, avoids ever needing
+/// two subsystems live at once. `PortalComponent::sync_component` and the
+/// editor's stale-portal sweep both go through this same function.
+pub fn apply_portal_pair_action(
+    scene: &mut helio::Scene,
+    action: PortalPairAction,
+) -> Option<(i32, Option<helio::PortalId>)> {
+    match action {
+        PortalPairAction::None => None,
+        PortalPairAction::Create {
+            portal_id,
+            a,
+            b,
+            half_extent,
+        } => scene
+            .add_portal(helio::PortalDescriptor { a, b, half_extent })
+            .ok()
+            .map(|id| (portal_id, Some(id))),
+        PortalPairAction::Update {
+            id,
+            a,
+            b,
+            half_extent,
+        } => {
+            let _ = scene.update_portal_pose(id, a, b);
+            let _ = scene.update_portal_half_extent(id, half_extent);
+            None
+        }
+        PortalPairAction::Remove { portal_id, id } => {
+            let _ = scene.remove_portal(id);
+            Some((portal_id, None))
+        }
+    }
+}
+
+/// Pairs up to two [`PortalComponent`](crate::PortalComponent) instances
+/// that share the same `portal_id` into one real `helio::Scene` portal.
+///
+/// Portals are inherently a *pair*, unlike every other component here (one
+/// scene object → one helio actor): a lone `PortalComponent` has nothing to
+/// connect to. `PortalComponent::sync_component` records this object's
+/// current side into `sides` under its `portal_id` on every sync — whichever
+/// side is synced *second* (order isn't guaranteed) finds the pair complete
+/// and creates the real portal; if the paired object just moved, the
+/// already-complete pair is updated in place instead. Losing a side (its
+/// component disabled, or its object deleted/swept as stale) tears the real
+/// portal back down, leaving the surviving side registered and waiting for
+/// a new partner.
+///
+/// Keyed by `(portal_id, scene_object_id)` so either side updating doesn't
+/// disturb the other, and so a *third* object claiming an already-paired ID
+/// is rejected (only two may ever share one ID) rather than silently
+/// replacing one side.
+#[derive(Default)]
+pub struct PortalLinkCache {
+    /// portal_id → (scene_object_id → that object's current side).
+    sides: HashMap<i32, HashMap<String, PortalSide>>,
+    /// portal_id → the live helio portal, once exactly two sides are present.
+    active: HashMap<i32, helio::PortalId>,
+}
+
+impl PortalLinkCache {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records `scene_object_id`'s current side for `portal_id` and returns
+    /// whatever action is now needed. Errs (without recording) if this would
+    /// be a *third* distinct object claiming `portal_id`.
+    pub fn record_side(
+        &mut self,
+        portal_id: i32,
+        scene_object_id: &str,
+        side: PortalSide,
+    ) -> Result<PortalPairAction, String> {
+        let entry = self.sides.entry(portal_id).or_default();
+        if entry.len() >= 2 && !entry.contains_key(scene_object_id) {
+            return Err(format!(
+                "portal_id {portal_id} already links two other objects — only two PortalComponents may share an ID"
+            ));
+        }
+        entry.insert(scene_object_id.to_string(), side);
+        Ok(self.resolve(portal_id))
+    }
+
+    /// Drops `scene_object_id`'s side for `portal_id` (component disabled,
+    /// or swept as stale) and returns whatever action is now needed.
+    pub fn record_absent(&mut self, portal_id: i32, scene_object_id: &str) -> PortalPairAction {
+        if let Some(entry) = self.sides.get_mut(&portal_id) {
+            entry.remove(scene_object_id);
+            if entry.is_empty() {
+                self.sides.remove(&portal_id);
+            }
+        }
+        self.resolve(portal_id)
+    }
+
+    /// Drops every side not present in `live_keys` this pass (its object was
+    /// deleted, or its `PortalComponent` otherwise stopped being synced) and
+    /// returns the resulting action for each affected `portal_id`.
+    pub fn remove_stale(&mut self, live_keys: &pulsar_reflection::LiveKeySet) -> Vec<PortalPairAction> {
+        let portal_ids: Vec<i32> = self.sides.keys().copied().collect();
+        let mut actions = Vec::new();
+        for portal_id in portal_ids {
+            let Some(entry) = self.sides.get_mut(&portal_id) else {
+                continue;
+            };
+            let stale: Vec<String> = entry
+                .keys()
+                .filter(|obj_id| !live_keys.contains(&portal_link_key(portal_id, obj_id)))
+                .cloned()
+                .collect();
+            if stale.is_empty() {
+                continue;
+            }
+            for obj_id in stale {
+                entry.remove(&obj_id);
+            }
+            if entry.is_empty() {
+                self.sides.remove(&portal_id);
+            }
+            actions.push(self.resolve(portal_id));
+        }
+        actions
+    }
+
+    /// Records the `PortalId` a `Create` action just produced.
+    pub fn set_active(&mut self, portal_id: i32, id: helio::PortalId) {
+        self.active.insert(portal_id, id);
+    }
+
+    /// Forgets the `PortalId` a `Remove` action just tore down.
+    pub fn clear_active(&mut self, portal_id: i32) {
+        self.active.remove(&portal_id);
+    }
+
+    /// Compares how many sides `portal_id` currently has against whether a
+    /// helio portal already exists for it, and decides what — if anything —
+    /// needs to change.
+    fn resolve(&mut self, portal_id: i32) -> PortalPairAction {
+        let pair = self.sides.get(&portal_id).and_then(|s| {
+            if s.len() != 2 {
+                return None;
+            }
+            let mut values = s.values().copied();
+            Some((values.next().unwrap(), values.next().unwrap()))
+        });
+        let existing = self.active.get(&portal_id).copied();
+        match (pair, existing) {
+            (Some((a_side, b_side)), Some(id)) => PortalPairAction::Update {
+                id,
+                a: side_pose(&a_side),
+                b: side_pose(&b_side),
+                half_extent: glam::Vec2::from(a_side.half_extent),
+            },
+            (Some((a_side, b_side)), None) => PortalPairAction::Create {
+                portal_id,
+                a: side_pose(&a_side),
+                b: side_pose(&b_side),
+                half_extent: glam::Vec2::from(a_side.half_extent),
+            },
+            (None, Some(id)) => PortalPairAction::Remove { portal_id, id },
+            (None, None) => PortalPairAction::None,
+        }
+    }
+}
+
 /// The engine's built-in assets — resolved at compile time so embedded
 /// primitives (SM_Cube, SM_Sphere, etc.) are always available.
 const ENGINE_ASSETS_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../assets");
