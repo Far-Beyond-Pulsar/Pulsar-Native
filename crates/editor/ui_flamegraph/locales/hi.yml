@@ -1,0 +1,54 @@
+# Flamegraph Profiler - hi
+
+# Window Title
+Flamegraph.Title: "फ्लेमग्राफ़ प्रोफाइलर"
+
+# Toolbar Buttons
+Flamegraph.Record: "रिकॉर्ड करें"
+Flamegraph.Stop: "रोकें"
+Flamegraph.Recording: "रिकॉर्डिंग चालू"
+Flamegraph.OpenSession: "सत्र खोलें"
+
+# Empty State
+Flamegraph.NoDataLoaded: "कोई प्रोफाइलिंग डेटा नहीं"
+Flamegraph.GetStarted: "शुरू करने के लिए नीचे कोई विकल्प चुनें"
+Flamegraph.StartRecording: "रिकॉर्डिंग शुरू करें"
+Flamegraph.StartRecordingDesc: "आपके चल रहे एप्लिकेशन से रीयल-टाइम प्रोफाइलिंग डेटा कैप्चर करें"
+Flamegraph.OpenPreviousSession: "पिछला सत्र खोलें"
+Flamegraph.OpenSessionDesc: "पहले से सहेजे गए प्रोफाइलिंग सत्र ब्राउज़ करें और लोड करें"
+Flamegraph.RecordingInProgress: "रिकॉर्डिंग जारी है"
+Flamegraph.WaitingForData: "प्रोफाइलिंग डेटा आने की प्रतीक्षा हो रही है..."
+Flamegraph.RecordingActive: "रिकॉर्डिंग सक्रिय"
+Flamegraph.DataWillAppear: "प्रोफाइलिंग इवेंट कैप्चर होने पर डेटा यहाँ दिखाई देगा"
+
+# Pro Tips
+Flamegraph.ProTips: "प्रो टिप्स"
+Flamegraph.Tip1: "क्षैतिज रूप से ज़ूम करने के लिए Ctrl+Scroll, ऊर्ध्वाधर पैनिंग के लिए Shift+Scroll उपयोग करें"
+Flamegraph.Tip2: "फ्लेमग्राफ़ पर स्वतंत्र रूप से पैन करने के लिए राइट-क्लिक करके खींचें"
+Flamegraph.Tip3: "विशिष्ट समय-अवधि पर जाने के लिए फ़्रेमरेट ग्राफ़ पर क्लिक करें"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "आँकड़े"
+Flamegraph.TotalSpans: "कुल स्पैन:"
+Flamegraph.Duration: "अवधि:"
+Flamegraph.Frames: "फ़्रेम:"
+Flamegraph.AvgFrame: "औसत फ़्रेम:"
+Flamegraph.MinFrame: "न्यूनतम फ़्रेम:"
+Flamegraph.MaxFrame: "अधिकतम फ़्रेम:"
+Flamegraph.Threads: "थ्रेड:"
+Flamegraph.MaxDepth: "अधिकतम गहराई:"
+
+# Hover Popup
+Flamegraph.Start: "प्रारंभ:"
+Flamegraph.End: "अंत:"
+Flamegraph.Thread: "थ्रेड:"
+Flamegraph.Depth: "गहराई:"
+Flamegraph.Unknown: "अज्ञात"
+
+# Units
+Flamegraph.Milliseconds: "%{value} ms"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "प्रोफाइलिंग डेटा एकत्र किया जा रहा है..."
+Flamegraph.SpansCollected: "एकत्र किए गए स्पैन:"
+Flamegraph.StopRecording: "रिकॉर्डिंग रोकें"

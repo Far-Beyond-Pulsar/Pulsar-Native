@@ -1,0 +1,29 @@
+# UI Problems Translations - hi
+
+# Drawer Title
+Problems.Title: "समस्याएँ"
+
+# Filter Labels
+Problems.Filter.All: "सभी समस्याएँ"
+Problems.Filter.Errors: "त्रुटियाँ"
+Problems.Filter.Warnings: "चेतावनियाँ"
+Problems.Filter.Information: "जानकारी"
+Problems.Filter.Hints: "संकेत"
+
+# Search & Actions
+Problems.Search.Placeholder: "समस्याएँ खोजें..."
+Problems.Action.ClearAll: "सभी समस्याएँ साफ़ करें"
+Problems.Action.GroupByFile: "फ़ाइल के अनुसार समूह करें"
+Problems.Action.ShowFlatList: "फ्लैट सूची दिखाएँ"
+
+# Empty State
+Problems.Empty.Title: "कोई समस्या नहीं मिली"
+Problems.Empty.NoMatch: "आपकी खोज से कोई समस्या मेल नहीं खाती। कोई अलग क्वेरी आज़माएँ।"
+Problems.Empty.AllGood: "आपका कोड बहुत अच्छा लग रहा है! ऐसे ही बने रहें।"
+
+# Diagnostics
+Problems.Loading: "त्वरित समाधान लोड हो रहे हैं..."
+Problems.SuggestedFixes: "सुझाए गए समाधान:"
+Problems.Related: "संबंधित:"
+Problems.Before: "पहले"
+Problems.After: "बाद में"

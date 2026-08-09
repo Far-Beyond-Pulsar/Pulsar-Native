@@ -1,0 +1,54 @@
+# Flamegraph Profiler - fr-CA
+
+# Window Title
+Flamegraph.Title: "Profileur Flamegraph"
+
+# Toolbar Buttons
+Flamegraph.Record: "Enregistrer"
+Flamegraph.Stop: "Arrêter"
+Flamegraph.Recording: "ENREGISTREMENT"
+Flamegraph.OpenSession: "Ouvrir une session"
+
+# Empty State
+Flamegraph.NoDataLoaded: "Aucune donnée de profilage"
+Flamegraph.GetStarted: "Choisissez une option ci-dessous pour commencer"
+Flamegraph.StartRecording: "Démarrer l'enregistrement"
+Flamegraph.StartRecordingDesc: "Capturez des données de profilage en temps réel à partir de votre application en cours d'exécution"
+Flamegraph.OpenPreviousSession: "Ouvrir la session précédente"
+Flamegraph.OpenSessionDesc: "Parcourez et chargez des sessions de profilage précédemment enregistrées"
+Flamegraph.RecordingInProgress: "Enregistrement en cours"
+Flamegraph.WaitingForData: "En attente de l'apparition des données de profilage..."
+Flamegraph.RecordingActive: "Enregistrement actif"
+Flamegraph.DataWillAppear: "Les données apparaîtront ici une fois les événements de profilage capturés"
+
+# Pro Tips
+Flamegraph.ProTips: "Conseils de pro"
+Flamegraph.Tip1: "Utilisez Ctrl+molette pour zoomer horizontalement, Maj+molette pour le défilement vertical"
+Flamegraph.Tip2: "Cliquez avec le bouton droit et faites glisser pour naviguer librement dans le flamegraph"
+Flamegraph.Tip3: "Cliquez sur le graphique du taux de trames pour accéder à des périodes précises"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "Statistiques"
+Flamegraph.TotalSpans: "Intervalles totaux :"
+Flamegraph.Duration: "Durée :"
+Flamegraph.Frames: "Trames :"
+Flamegraph.AvgFrame: "Trame moyenne :"
+Flamegraph.MinFrame: "Trame min :"
+Flamegraph.MaxFrame: "Trame max :"
+Flamegraph.Threads: "Fils d'exécution :"
+Flamegraph.MaxDepth: "Profondeur maximale :"
+
+# Hover Popup
+Flamegraph.Start: "Début :"
+Flamegraph.End: "Fin :"
+Flamegraph.Thread: "Fil d'exécution :"
+Flamegraph.Depth: "Profondeur :"
+Flamegraph.Unknown: "Inconnu"
+
+# Units
+Flamegraph.Milliseconds: "%{value} ms"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "Collecte des données de profilage..."
+Flamegraph.SpansCollected: "Intervalles collectés :"
+Flamegraph.StopRecording: "Arrêter l'enregistrement"

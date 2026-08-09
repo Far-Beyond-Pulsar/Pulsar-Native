@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - fr-CA
+
+# Mission Control Panel
+MissionControl.Title: "Centre de contrôle"
+MissionControl.System: "Système"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "Mémoire"
+MissionControl.Resources: "Ressources"
+MissionControl.Advanced: "Avancé"
+
+# Log Drawer
+LogDrawer.Filter: "Filtre"
+LogDrawer.Search: "Rechercher..."
+LogDrawer.All: "Tout"
+LogDrawer.Info: "Info"
+LogDrawer.Warning: "Avertissement"
+LogDrawer.Error: "Erreur"
+LogDrawer.Debug: "Débogage"
+LogDrawer.Trace: "Trace"
+LogDrawer.Clear: "Effacer"
+LogDrawer.Timestamp: "Horodatage"
+LogDrawer.Level: "Niveau"
+LogDrawer.Message: "Message"
+LogDrawer.Source: "Source"
+
+# Logs Panel
+LogsPanel.Title: "Journaux"
+LogsPanel.NoEntries: "Aucune entrée de journal"
+
+# System Info Panel
+SystemInfo.Title: "Informations système"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "Processus"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "Métriques GPU"
+GpuMetrics.Adapter: "Adaptateur"
+GpuMetrics.Driver: "Pilote"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "Température"
+GpuMetrics.Utilization: "Utilisation"
+
+# Resource Monitor
+ResourceMonitor.Title: "Moniteur de ressources"
+ResourceMonitor.CPUUsage: "Utilisation du CPU"
+ResourceMonitor.MemoryUsage: "Utilisation de la mémoire"
+ResourceMonitor.DiskIO: "Entrées/sorties disque"
+ResourceMonitor.Network: "Réseau"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "Répartition de la mémoire"
+MemoryBreakdown.Allocations: "Allocations"
+MemoryBreakdown.Fragmentation: "Fragmentation"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "Métriques avancées"
+AdvancedMetrics.FrameTime: "Temps de trame"
+AdvancedMetrics.DrawCalls: "Appels de dessin"
+AdvancedMetrics.TriangleCount: "Nombre de triangles"
+
+# Caller Sites
+CallerSites.Title: "Sites appelants"
+CallerSites.Function: "Fonction"
+CallerSites.Allocations: "Allocations"
+CallerSites.Bytes: "Octets"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "FPS min"
+Performance.MaxFPS: "FPS max"
+Performance.AvgFPS: "FPS moyen"

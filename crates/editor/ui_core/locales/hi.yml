@@ -1,0 +1,28 @@
+# UI Core Translations - hi
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "रोकें"
+StatusBar.Restart: "पुनः प्रारंभ करें"
+StatusBar.Start: "प्रारंभ करें"
+StatusBar.Multiplayer: "मल्टीप्लेयर सहयोग"
+StatusBar.PluginManager: "प्लगइन मैनेजर"
+StatusBar.Flamegraph: "फ्लेमग्राफ़ प्रोफाइलर"
+
+Notification.Title.Dev: "डेव"
+Notification.Title.BuildInfo: "बिल्ड जानकारी"
+Notification.Title.Build: "बिल्ड"
+Notification.Title.Run: "रन"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer तैयार"
+Notification.Title.AnalyzerError: "एनालाइज़र त्रुटि"
+Notification.Title.CodeIntelligenceReady: "कोड इंटेलिजेंस तैयार"
+Notification.Title.ProjectLoaded: "प्रोजेक्ट लोड हो गया"
+Notification.Message.UseSaveAsDefault: "लेवल एडिटर टूलबार में \"डिफ़ॉल्ट के रूप में सहेजें\" का उपयोग करें।"
+Notification.Message.Opening: "%{path} खोला जा रहा है"
+Notification.Message.AssetReloadNotImplemented: "एसेट रीलोड अभी लागू नहीं किया गया है।"
+Notification.Message.EngineInspectorNotImplemented: "इंजन स्टेट इंस्पेक्टर अभी लागू नहीं किया गया है।"
+Notification.Message.BuildingProject: "प्रोजेक्ट बिल्ड हो रहा है..."
+Notification.Message.RunningProject: "प्रोजेक्ट चल रहा है..."
+Notification.Message.CodeIntelligenceAvailable: "कोड इंटेलिजेंस अब उपलब्ध है"
+Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer इंडेक्सिंग पूर्ण"
+Notification.Message.WelcomeToProject: "%{project} में आपका स्वागत है"

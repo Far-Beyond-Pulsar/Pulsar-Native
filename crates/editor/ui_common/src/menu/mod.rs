@@ -1654,6 +1654,26 @@ impl Render for LocaleSelector {
                             current_locale == "lol",
                             Box::new(SelectLocale("lol".into())),
                         )
+                        .menu_with_check(
+                            "Français (French)",
+                            current_locale == "fr",
+                            Box::new(SelectLocale("fr".into())),
+                        )
+                        .menu_with_check(
+                            "Français (Canadian French)",
+                            current_locale == "fr-CA",
+                            Box::new(SelectLocale("fr-CA".into())),
+                        )
+                        .menu_with_check(
+                            "हिन्दी (Hindi)",
+                            current_locale == "hi",
+                            Box::new(SelectLocale("hi".into())),
+                        )
+                        .menu_with_check(
+                            "العربية (Arabic)",
+                            current_locale == "ar",
+                            Box::new(SelectLocale("ar".into())),
+                        )
                     })
                     .anchor(Corner::TopRight),
             )

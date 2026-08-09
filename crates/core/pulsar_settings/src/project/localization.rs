@@ -18,6 +18,7 @@ pub fn register(cfg: &'static ConfigManager) {
                 options: vec![
                     DropdownOption::new("English (en)", "en"),
                     DropdownOption::new("French (fr)", "fr"),
+                    DropdownOption::new("French – Canada (fr-CA)", "fr-CA"),
                     DropdownOption::new("German (de)", "de"),
                     DropdownOption::new("Spanish (es)", "es"),
                     DropdownOption::new("Portuguese – BR (pt-BR)", "pt-BR"),
@@ -30,6 +31,7 @@ pub fn register(cfg: &'static ConfigManager) {
                     DropdownOption::new("Polish (pl)", "pl"),
                     DropdownOption::new("Turkish (tr)", "tr"),
                     DropdownOption::new("Arabic (ar)", "ar"),
+                    DropdownOption::new("Hindi (hi)", "hi"),
                 ],
             }),
     )

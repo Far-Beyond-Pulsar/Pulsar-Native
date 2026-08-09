@@ -1,0 +1,374 @@
+# UI Translations - hi
+
+Calendar.week.0: रवि
+Calendar.week.1: सोम
+Calendar.week.2: मंगल
+Calendar.week.3: बुध
+Calendar.week.4: गुरु
+Calendar.week.5: शुक्र
+Calendar.week.6: शनि
+Calendar.month.January: जनवरी
+Calendar.month.February: फ़रवरी
+Calendar.month.March: मार्च
+Calendar.month.April: अप्रैल
+Calendar.month.May: मई
+Calendar.month.June: जून
+Calendar.month.July: जुलाई
+Calendar.month.August: अगस्त
+Calendar.month.September: सितंबर
+Calendar.month.October: अक्टूबर
+Calendar.month.November: नवंबर
+Calendar.month.December: दिसंबर
+DatePicker.placeholder: "तारीख़ चुनें"
+Dropdown.placeholder: "कृपया चुनें"
+Dock.Unnamed: बिना नाम
+Dock.Close: बंद करें
+Dock.Zoom In: ज़ूम इन
+Dock.Zoom Out: ज़ूम आउट
+Dock.Collapse: संक्षिप्त करें
+Dock.Expand: विस्तार करें
+Modal.ok: OK
+Modal.cancel: रद्द करें
+List.search_placeholder: खोजें...
+Input.Replace: बदलें
+Input.Replace All: सभी बदलें
+Input.Cut: काटें
+Input.Copy: कॉपी
+Input.Paste: पेस्ट
+Input.Select All: सभी चुनें
+Input.Go to Definition: परिभाषा पर जाएँ
+Input.Show Code Actions: कोड एक्शन दिखाएँ
+
+# Window Titles
+Window.Title.AboutPulsar: "पल्सर इंजन के बारे में"
+Window.Title.FileManager: "फ़ाइल मैनेजर"
+Window.Title.Problems: "समस्याएँ"
+Window.Title.TypeDebugger: "टाइप डिबगर"
+Window.Title.Settings: "सेटिंग्स"
+Window.Title.Documentation: "दस्तावेज़ीकरण"
+
+Menu.File: फ़ाइल
+Menu.Edit: संपादित करें
+Menu.View: दृश्य
+Menu.Help: सहायता
+Menu.File.New: नया
+Menu.File.NewFile: नई फ़ाइल
+Menu.File.NewWindow: नई विंडो
+Menu.File.NewProject: नया प्रोजेक्ट
+Menu.File.NewScene: नया सीन
+Menu.File.NewScript: नई स्क्रिप्ट
+Menu.File.NewShader: नया शेडर
+Menu.File.NewMaterial: नया मटीरियल
+Menu.File.NewPrefab: नया प्रीफ़ैब
+Menu.File.NewBlueprint: नया ब्लूप्रिंट
+Menu.File.NewComponent: नया कंपोनेंट
+Menu.File.NewSystem: नया सिस्टम
+Menu.File.Open: खोलें
+Menu.File.OpenFolder: फ़ोल्डर खोलें
+Menu.File.OpenRecent: हाल की खोलें
+Menu.File.RecentProjects: हाल के प्रोजेक्ट
+Menu.File.RecentFiles: हाल की फ़ाइलें
+Menu.File.ClearRecent: हाल की साफ़ करें
+Menu.File.Save: सहेजें
+Menu.File.SaveAs: इस रूप में सहेजें...
+Menu.File.SaveAll: सभी सहेजें
+Menu.File.SaveWorkspace: वर्कस्पेस सहेजें
+Menu.File.Import: आयात करें
+Menu.File.ImportAsset: एसेट आयात करें
+Menu.File.ImportModel: मॉडल आयात करें (FBX/GLTF)
+Menu.File.ImportTexture: टेक्सचर आयात करें
+Menu.File.ImportAudio: ऑडियो आयात करें
+Menu.File.BatchImport: बैच आयात
+Menu.File.ImportFromUnity: Unity से आयात करें
+Menu.File.ImportFromUnreal: Unreal से आयात करें
+Menu.File.ImportFromGodot: Godot से आयात करें
+Menu.File.Export: निर्यात करें
+Menu.File.ExportBuild: बिल्ड निर्यात करें
+Menu.File.ExportScene: सीन निर्यात करें
+Menu.File.ExportSelected: चयनित निर्यात करें
+Menu.File.ExportWindows: Windows के लिए निर्यात करें
+Menu.File.ExportLinux: Linux के लिए निर्यात करें
+Menu.File.ExportMacOS: macOS के लिए निर्यात करें
+Menu.File.ExportWeb: वेब के लिए निर्यात करें (WASM)
+Menu.File.ExportAndroid: Android के लिए निर्यात करें
+Menu.File.ExportIOS: iOS के लिए निर्यात करें
+Menu.File.RevertFile: फ़ाइल पूर्ववत करें
+Menu.File.CloseFile: फ़ाइल बंद करें
+Menu.File.CloseFolder: फ़ोल्डर बंद करें
+Menu.File.CloseAll: सभी बंद करें
+Menu.File.CloseOthers: अन्य बंद करें
+Menu.Edit.Undo: पूर्ववत करें
+Menu.Edit.Redo: फिर से करें
+Menu.Edit.Cut: काटें
+Menu.Edit.Copy: कॉपी
+Menu.Edit.Paste: पेस्ट
+Menu.Edit.Delete: हटाएँ
+Menu.Edit.Duplicate: डुप्लिकेट
+Menu.Edit.SelectAll: सभी चुनें
+Menu.Edit.Find: खोजें
+Menu.Edit.FindInFiles: फ़ाइलों में खोजें
+Menu.Edit.Replace: बदलें
+Menu.Edit.Preferences: प्राथमिकताएँ
+Menu.View.CommandPalette: कमांड पैलेट
+Menu.View.ToggleFullscreen: फ़ुलस्क्रीन टॉगल करें
+Menu.View.ZoomIn: ज़ूम इन
+Menu.View.ZoomOut: ज़ूम आउट
+Menu.View.ResetZoom: ज़ूम रीसेट करें
+Menu.View.Panels: पैनल
+Menu.View.TogglePanel: पैनल टॉगल करें
+Menu.View.Console: कंसोल
+Menu.View.Inspector: इंस्पेक्टर
+Menu.View.Profiler: प्रोफाइलर
+Menu.View.ToggleMinimap: मिनिमैप टॉगल करें
+Menu.View.ToggleLineNumbers: पंक्ति संख्या टॉगल करें
+Menu.View.ToggleBreadcrumbs: ब्रेडक्रम्ब टॉगल करें
+Menu.View.ToggleWhitespace: व्हाइटस्पेस टॉगल करें
+Menu.View.ZenMode: ज़ेन मोड
+Menu.Help.Documentation: दस्तावेज़ीकरण
+Menu.Help.GettingStarted: शुरुआत करना
+Menu.Help.Tutorials: ट्यूटोरियल
+Menu.Help.API: API संदर्भ
+Menu.Help.ReportBug: बग रिपोर्ट करें
+Menu.Help.RequestFeature: फ़ीचर अनुरोध करें
+Menu.Help.Community: समुदाय
+Menu.Help.About: पल्सर के बारे में
+Menu.Edit.SelectNone: कुछ भी न चुनें
+Menu.Edit.FindNext: अगला खोजें
+Menu.Edit.FindPrevious: पिछला खोजें
+Menu.Edit.ReplaceNext: अगला बदलें
+Menu.Edit.ReplaceAll: सभी बदलें
+Menu.Edit.ReplaceInFiles: फ़ाइलों में बदलें
+Menu.Edit.FindUsages: उपयोग खोजें
+Menu.Edit.FindImplementations: इम्प्लीमेंटेशन खोजें
+Menu.Edit.CodeActions: कोड एक्शन
+Menu.Edit.FormatDocument: दस्तावेज़ फ़ॉर्मेट करें
+Menu.Edit.FormatSelection: चयन फ़ॉर्मेट करें
+Menu.Edit.CommentLine: पंक्ति कमेंट करें
+Menu.Edit.UncommentLine: पंक्ति अनकमेंट करें
+Menu.Edit.ToggleComment: कमेंट टॉगल करें
+Menu.Edit.Fold: मोड़ें
+Menu.Edit.Unfold: खोलें
+Menu.Edit.FoldAll: सभी मोड़ें
+Menu.Edit.UnfoldAll: सभी खोलें
+Menu.Edit.SortLines: पंक्तियाँ क्रमबद्ध करें
+Menu.Edit.RemoveDuplicates: डुप्लिकेट हटाएँ
+Menu.Edit.TrimWhitespace: अंतिम व्हाइटस्पेस हटाएँ
+Menu.Selection: चयन
+Menu.Selection.SelectLine: पंक्ति चुनें
+Menu.Selection.SelectWord: शब्द चुनें
+Menu.Selection.SelectScope: स्कोप चुनें
+Menu.Selection.ExpandSelection: चयन विस्तारित करें
+Menu.Selection.ShrinkSelection: चयन संक्षिप्त करें
+Menu.Selection.AddCursorAbove: ऊपर कर्सर जोड़ें
+Menu.Selection.AddCursorBelow: नीचे कर्सर जोड़ें
+Menu.Selection.AddCursorLineEnds: पंक्ति के अंत में कर्सर जोड़ें
+Menu.Selection.SelectAllOccurrences: सभी प्रकटन चुनें
+Menu.Selection.SelectNextOccurrence: अगला प्रकटन चुनें
+Menu.Selection.SkipOccurrence: प्रकटन छोड़ें
+Menu.View.Explorer: एक्सप्लोरर
+Menu.View.Hierarchy: सीन पदानुक्रम
+Menu.View.AssetBrowser: एसेट ब्राउज़र
+Menu.View.Output: आउटपुट
+Menu.View.Problems: समस्याएँ
+Menu.View.Debug: डिबग
+Menu.View.MemoryAnalyzer: मेमोरी विश्लेषक
+Menu.View.Network: नेटवर्क
+Menu.View.Appearance: दिखावट
+Menu.View.Layout: लेआउट
+Menu.View.SplitHorizontal: क्षैतिज विभाजित करें
+Menu.View.SplitVertical: ऊर्ध्वाधर विभाजित करें
+Menu.View.SingleColumn: एकल कॉलम
+Menu.View.TwoColumns: दो कॉलम
+Menu.View.ThreeColumns: तीन कॉलम
+Menu.View.ResetLayout: लेआउट रीसेट करें
+Menu.View.SaveLayout: लेआउट सहेजें
+Menu.View.QuickOpen: त्वरित खोलें
+Menu.Go: जाएँ
+Menu.Go.GoToFile: फ़ाइल पर जाएँ
+Menu.Go.GoToSymbol: सिंबल पर जाएँ
+Menu.Go.GoToLine: पंक्ति पर जाएँ
+Menu.Go.GoToDefinition: परिभाषा पर जाएँ
+Menu.Go.GoToTypeDefinition: टाइप परिभाषा पर जाएँ
+Menu.Go.GoToImplementation: इम्प्लीमेंटेशन पर जाएँ
+Menu.Go.GoToReferences: संदर्भों पर जाएँ
+Menu.Go.GoBack: वापस जाएँ
+Menu.Go.GoForward: आगे जाएँ
+Menu.Go.GoToLastEdit: अंतिम संपादन पर जाएँ
+Menu.Go.NextProblem: अगली समस्या
+Menu.Go.PreviousProblem: पिछली समस्या
+Menu.Project: प्रोजेक्ट
+Menu.Project.ProjectSettings: प्रोजेक्ट सेटिंग्स
+Menu.Project.BuildSettings: बिल्ड सेटिंग्स
+Menu.Project.PackageSettings: पैकेज सेटिंग्स
+Menu.Project.Dependencies: डिपेंडेंसी
+Menu.Project.AddDependency: डिपेंडेंसी जोड़ें
+Menu.Project.UpdateDependencies: डिपेंडेंसी अपडेट करें
+Menu.Project.RemoveUnused: अप्रयुक्त हटाएँ
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: दस्तावेज़ीकरण उत्पन्न करें
+Menu.Project.RunCargoCheck: Cargo Check चलाएँ
+Menu.Project.RunClippy: Clippy चलाएँ
+Menu.Project.FormatProject: प्रोजेक्ट फ़ॉर्मेट करें
+Menu.Build: बिल्ड
+Menu.Build.BuildProject: प्रोजेक्ट बिल्ड करें
+Menu.Build.BuildAndRun: बिल्ड और रन
+Menu.Build.BuildRelease: रिलीज़ बिल्ड करें
+Menu.Build.Rebuild: सभी रीबिल्ड करें
+Menu.Build.Clean: क्लीन बिल्ड
+Menu.Build.BuildConfiguration: बिल्ड कॉन्फ़िगरेशन
+Menu.Build.BuildDebug: डिबग
+Menu.Build.BuildReleaseDebug: डिबग जानकारी के साथ रिलीज़
+Menu.Build.BuildProfile: प्रोफ़ाइल
+Menu.Build.CancelBuild: बिल्ड रद्द करें
+Menu.Build.ShowBuildOutput: बिल्ड आउटपुट दिखाएँ
+Menu.Run: रन
+Menu.Run.RunProject: प्रोजेक्ट रन करें
+Menu.Run.RunWithoutDebug: डिबगिंग के बिना रन करें
+Menu.Run.Stop: रोकें
+Menu.Run.Restart: पुनः प्रारंभ करें
+Menu.Run.DebugProject: प्रोजेक्ट डिबग करें
+Menu.Run.Debugging: डिबगिंग
+Menu.Run.StartDebug: डिबगिंग शुरू करें
+Menu.Run.StopDebug: डिबगिंग रोकें
+Menu.Run.RestartDebug: डिबगिंग पुनः प्रारंभ करें
+Menu.Run.StepOver: स्टेप ओवर
+Menu.Run.StepInto: स्टेप इन
+Menu.Run.StepOut: स्टेप आउट
+Menu.Run.Continue: जारी रखें
+Menu.Run.ToggleBreakpoint: ब्रेकपॉइंट टॉगल करें
+Menu.Run.DisableBreakpoints: सभी ब्रेकपॉइंट अक्षम करें
+Menu.Run.RemoveBreakpoints: सभी ब्रेकपॉइंट हटाएँ
+Menu.Run.Testing: टेस्टिंग
+Menu.Run.RunTests: सभी टेस्ट चलाएँ
+Menu.Run.RunFailedTests: विफल टेस्ट चलाएँ
+Menu.Run.RunFileTests: फ़ाइल में टेस्ट चलाएँ
+Menu.Run.DebugTest: टेस्ट डिबग करें
+Menu.Run.RunCoverage: कवरेज
+Menu.Run.Performance: प्रदर्शन
+Menu.Run.RunBenchmarks: बेंचमार्क चलाएँ
+Menu.Run.CompareBenchmarks: बेंचमार्क तुलना करें
+Menu.Run.ProfileBuild: बिल्ड प्रोफ़ाइल करें
+Menu.GameEngine: गेम इंजन
+Menu.GameEngine.Scene: सीन
+Menu.GameEngine.NewScene: नया सीन
+Menu.GameEngine.OpenScene: सीन खोलें
+Menu.GameEngine.SaveScene: सीन सहेजें
+Menu.GameEngine.SaveSceneAs: सीन को इस रूप में सहेजें
+Menu.GameEngine.PlayScene: सीन चलाएँ
+Menu.GameEngine.PauseScene: सीन रोकें
+Menu.GameEngine.StopScene: सीन बंद करें
+Menu.GameEngine.SceneSettings: सीन सेटिंग्स
+Menu.GameEngine.GameObject: GameObject
+Menu.GameEngine.CreateEmpty: खाली बनाएँ
+Menu.GameEngine.3DObjects: 3D ऑब्जेक्ट
+Menu.GameEngine.CreateCube: क्यूब
+Menu.GameEngine.CreateSphere: गोला
+Menu.GameEngine.CreateCapsule: कैप्सूल
+Menu.GameEngine.CreateCylinder: बेलन
+Menu.GameEngine.CreatePlane: प्लेन
+Menu.GameEngine.CreateTerrain: टेरेन
+Menu.GameEngine.2DObjects: 2D ऑब्जेक्ट
+Menu.GameEngine.CreateSprite: स्प्राइट
+Menu.GameEngine.CreateTilemap: टाइलमैप
+Menu.GameEngine.CreateParticles2D: पार्टिकल सिस्टम 2D
+Menu.GameEngine.Light: लाइट
+Menu.GameEngine.CreateDirectionalLight: दिशात्मक लाइट
+Menu.GameEngine.CreatePointLight: पॉइंट लाइट
+Menu.GameEngine.CreateSpotLight: स्पॉट लाइट
+Menu.GameEngine.CreateAreaLight: एरिया लाइट
+Menu.GameEngine.Audio: ऑडियो
+Menu.GameEngine.CreateAudioSource: ऑडियो स्रोत
+Menu.GameEngine.CreateAudioListener: ऑडियो श्रोता
+Menu.GameEngine.Effects: प्रभाव
+Menu.GameEngine.CreateParticleSystem: पार्टिकल सिस्टम
+Menu.GameEngine.CreateVFX: विज़ुअल इफ़ेक्ट
+Menu.GameEngine.CreatePostProcessing: पोस्ट प्रोसेसिंग
+Menu.GameEngine.Camera: कैमरा
+Menu.GameEngine.CreateCamera: कैमरा
+Menu.GameEngine.CreateOrthoCamera: ऑर्थोग्राफ़िक कैमरा
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: कैनवास
+Menu.GameEngine.CreatePanel: पैनल
+Menu.GameEngine.CreateButton: बटन
+Menu.GameEngine.CreateText: टेक्स्ट
+Menu.GameEngine.CreateImage: छवि
+Menu.GameEngine.CreateSlider: स्लाइडर
+Menu.GameEngine.CreateInputField: इनपुट फ़ील्ड
+Menu.GameEngine.Physics: फ़िज़िक्स
+Menu.GameEngine.AddRigidbody: रिजिडबॉडी जोड़ें
+Menu.GameEngine.AddCollider: कोलाइडर जोड़ें
+Menu.GameEngine.AddCharacterController: कैरेक्टर कंट्रोलर जोड़ें
+Menu.GameEngine.PhysicsSettings: फ़िज़िक्स सेटिंग्स
+Menu.GameEngine.CollisionMatrix: टक्कर मैट्रिक्स
+Menu.GameEngine.Rendering: रेंडरिंग
+Menu.GameEngine.RenderSettings: रेंडर सेटिंग्स
+Menu.GameEngine.LightingSettings: लाइटिंग सेटिंग्स
+Menu.GameEngine.QualitySettings: गुणवत्ता सेटिंग्स
+Menu.GameEngine.BakeLighting: लाइटिंग बेक करें
+Menu.GameEngine.ClearBakedData: बेक किया गया डेटा साफ़ करें
+Menu.GameEngine.FrameDebugger: फ़्रेम डिबगर
+Menu.GameEngine.EngineProfiler: प्रोफाइलर
+Menu.GameEngine.PackageManager: पैकेज मैनेजर
+Menu.GameEngine.AssetStore: एसेट स्टोर
+Menu.Assets: एसेट
+Menu.Assets.CreateAsset: एसेट बनाएँ
+Menu.Assets.ImportAsset: एसेट आयात करें
+Menu.Assets.Create: बनाएँ
+Menu.Assets.CreateMaterial: मटीरियल
+Menu.Assets.CreateShader: शेडर
+Menu.Assets.CreateTexture: टेक्सचर
+Menu.Assets.CreateAnimClip: एनिमेशन क्लिप
+Menu.Assets.CreateAnimController: एनिमेटर कंट्रोलर
+Menu.Assets.CreateAudioMixer: ऑडियो मिक्सर
+Menu.Assets.CreateRenderTexture: रेंडर टेक्सचर
+Menu.Assets.CreatePrefab: प्रीफ़ैब
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: रीफ़्रेश करें
+Menu.Assets.Reimport: फिर से आयात करें
+Menu.Assets.ReimportAll: सभी फिर से आयात करें
+Menu.Assets.FindReferences: संदर्भ खोजें
+Menu.Assets.FindMissingReferences: गायब संदर्भ खोजें
+Menu.Tools: टूल
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo कमांड
+Menu.Tools.GenerateRustAnalyzer: Rust-Analyzer उत्पन्न करें
+Menu.Tools.ExpandMacro: मैक्रो विस्तारित करें
+Menu.Tools.ShowSyntaxTree: सिंटैक्स ट्री दिखाएँ
+Menu.Tools.ShowHIR: HIR दिखाएँ
+Menu.Tools.InlineVariable: वेरिएबल इनलाइन करें
+Menu.Tools.ExtractFunction: फ़ंक्शन निकालें
+Menu.Tools.ExtractVariable: वेरिएबल निकालें
+Menu.Tools.Shaders: शेडर
+Menu.Tools.ShaderEditor: शेडर एडिटर
+Menu.Tools.CompileShader: शेडर कंपाइल करें
+Menu.Tools.ShaderVariants: शेडर वैरिएंट
+Menu.Tools.SPIRVDisassembly: SPIR-V डिसअसेंबली
+Menu.Tools.Animation: एनिमेशन
+Menu.Tools.AnimationWindow: एनिमेशन विंडो
+Menu.Tools.AnimatorWindow: एनिमेटर
+Menu.Tools.Timeline: टाइमलाइन
+Menu.Tools.MaterialEditor: मटीरियल एडिटर
+Menu.Tools.TerrainTools: टेरेन टूल
+Menu.Tools.ParticleEditor: पार्टिकल एडिटर
+Menu.Tools.AudioMixerWindow: ऑडियो मिक्सर
+Menu.Tools.VersionControl: वर्जन कंट्रोल
+Menu.Tools.TaskManager: टास्क मैनेजर
+Menu.Tools.Extensions: एक्सटेंशन
+Menu.Window: विंडो
+Menu.Window.Minimize: छोटा करें
+Menu.Window.Zoom: ज़ूम
+Menu.Window.BringAllToFront: सभी को सामने लाएँ
+Menu.Window.NewWindow: नई विंडो
+Menu.Window.CloseWindow: विंडो बंद करें
+Menu.Help.Shortcuts: कीबोर्ड शॉर्टकट
+Menu.Help.ViewLogs: लॉग देखें
+Menu.Help.CheckUpdates: अपडेट की जाँच करें
+Menu.Help.ReleaseNotes: रिलीज़ नोट
+Menu.App.AboutApp: पल्सर इंजन के बारे में
+Menu.App.CheckUpdates: अपडेट की जाँच करें
+Menu.App.Preferences: प्राथमिकताएँ
+Menu.App.Settings: सेटिंग्स
+Menu.App.Hide: पल्सर छिपाएँ
+Menu.App.HideOthers: अन्य छिपाएँ
+Menu.App.ShowAll: सभी दिखाएँ
+Menu.App.QuitApp: पल्सर बंद करें

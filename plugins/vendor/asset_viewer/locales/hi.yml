@@ -1,0 +1,60 @@
+# Asset Viewer translations - hi
+
+AssetViewer.Title: एसेट व्यूअर
+AssetViewer.DisplayName: FBX/PNG एसेट व्यूअर
+AssetViewer.FBXModel: FBX मॉडल
+AssetViewer.PNGImage: PNG छवि
+AssetViewer.Adjust: समायोजित करें
+AssetViewer.Grayscale: ग्रेस्केल
+AssetViewer.InvertColors: रंग उल्टा करें
+AssetViewer.BrightnessDown: चमक -
+AssetViewer.BrightnessUp: चमक +
+AssetViewer.ContrastDown: कंट्रास्ट -
+AssetViewer.ContrastUp: कंट्रास्ट +
+AssetViewer.FlipH: क्षैतिज पलटें
+AssetViewer.FlipV: ऊर्ध्वाधर पलटें
+AssetViewer.Generator: जनरेटर
+AssetViewer.MorphTargets: मॉर्फ़ लक्ष्य
+AssetViewer.Cameras: कैमरे
+AssetViewer.Clips: क्लिप
+AssetViewer.Animation: एनिमेशन
+AssetViewer.Joints: जोड़
+AssetViewer.Images: छवियाँ
+AssetViewer.Info: जानकारी
+AssetViewer.History: इतिहास
+AssetViewer.File: फ़ाइल
+AssetViewer.Initializing: आरंभ हो रहा है...
+AssetViewer.EditorClosed: एडिटर बंद है
+AssetViewer.EditorUnavailable: एडिटर उपलब्ध नहीं है
+AssetViewer.NoImageLoaded: कोई छवि लोड नहीं है
+AssetViewer.NoSavePath: कोई सेव पथ नहीं
+AssetViewer.FailedCreateImage: छवि बनाने में विफल
+AssetViewer.Team: पल्सर टीम
+
+AssetViewer.Undo: पूर्ववत करें
+AssetViewer.Redo: फिर से करें
+AssetViewer.Save: सहेजें
+AssetViewer.Transform: ट्रांसफ़ॉर्म
+AssetViewer.RotCW: घड़ी की दिशा में घुमाएँ
+AssetViewer.RotCCW: वामावर्त घुमाएँ
+AssetViewer.View: दृश्य
+AssetViewer.ResetZoom: ज़ूम रीसेट करें
+AssetViewer.Scene: सीन
+AssetViewer.Meshes: मेश
+AssetViewer.Vertices: वर्टेक्स
+AssetViewer.Triangles: त्रिभुज
+AssetViewer.Materials: मटीरियल
+AssetViewer.Resources: संसाधन
+AssetViewer.Textures: टेक्सचर
+AssetViewer.Lights: लाइट
+AssetViewer.Skins: स्किन
+AssetViewer.ColName: नाम
+AssetViewer.ColVerts: वर्टेक्स
+AssetViewer.ColTris: त्रिभुज
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: मटीरियल
+AssetViewer.Loading: लोड हो रहा है...
+AssetViewer.Unknown: अज्ञात

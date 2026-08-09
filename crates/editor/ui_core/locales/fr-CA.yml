@@ -1,0 +1,28 @@
+# UI Core Translations - fr-CA
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "Arrêter"
+StatusBar.Restart: "Redémarrer"
+StatusBar.Start: "Démarrer"
+StatusBar.Multiplayer: "Collaboration multijoueur"
+StatusBar.PluginManager: "Gestionnaire de plugins"
+StatusBar.Flamegraph: "Profileur Flamegraph"
+
+Notification.Title.Dev: "Développement"
+Notification.Title.BuildInfo: "Infos de génération"
+Notification.Title.Build: "Génération"
+Notification.Title.Run: "Exécuter"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer prêt"
+Notification.Title.AnalyzerError: "Erreur de l'analyseur"
+Notification.Title.CodeIntelligenceReady: "Intelligence de code prête"
+Notification.Title.ProjectLoaded: "Projet chargé"
+Notification.Message.UseSaveAsDefault: "Utilisez \"Enregistrer comme niveau par défaut\" dans la barre d'outils de l'éditeur de niveau."
+Notification.Message.Opening: "Ouverture de %{path}"
+Notification.Message.AssetReloadNotImplemented: "Le rechargement des ressources n'est pas encore implémenté."
+Notification.Message.EngineInspectorNotImplemented: "L'inspecteur d'état du moteur n'est pas encore implémenté."
+Notification.Message.BuildingProject: "Génération du projet..."
+Notification.Message.RunningProject: "Exécution du projet..."
+Notification.Message.CodeIntelligenceAvailable: "L'intelligence de code est maintenant disponible"
+Notification.Message.RustAnalyzerIndexingComplete: "Indexation de Rust Analyzer terminée"
+Notification.Message.WelcomeToProject: "Bienvenue dans %{project}"

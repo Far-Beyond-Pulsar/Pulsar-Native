@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - hi
+
+# Mission Control Panel
+MissionControl.Title: "मिशन कंट्रोल"
+MissionControl.System: "सिस्टम"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "मेमोरी"
+MissionControl.Resources: "संसाधन"
+MissionControl.Advanced: "उन्नत"
+
+# Log Drawer
+LogDrawer.Filter: "फ़िल्टर"
+LogDrawer.Search: "खोजें..."
+LogDrawer.All: "सभी"
+LogDrawer.Info: "जानकारी"
+LogDrawer.Warning: "चेतावनी"
+LogDrawer.Error: "त्रुटि"
+LogDrawer.Debug: "डिबग"
+LogDrawer.Trace: "ट्रेस"
+LogDrawer.Clear: "साफ़ करें"
+LogDrawer.Timestamp: "टाइमस्टैम्प"
+LogDrawer.Level: "स्तर"
+LogDrawer.Message: "संदेश"
+LogDrawer.Source: "स्रोत"
+
+# Logs Panel
+LogsPanel.Title: "लॉग"
+LogsPanel.NoEntries: "कोई लॉग प्रविष्टि नहीं"
+
+# System Info Panel
+SystemInfo.Title: "सिस्टम जानकारी"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "प्रोसेस"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "GPU मेट्रिक्स"
+GpuMetrics.Adapter: "एडेप्टर"
+GpuMetrics.Driver: "ड्राइवर"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "तापमान"
+GpuMetrics.Utilization: "उपयोग दर"
+
+# Resource Monitor
+ResourceMonitor.Title: "संसाधन मॉनिटर"
+ResourceMonitor.CPUUsage: "CPU उपयोग"
+ResourceMonitor.MemoryUsage: "मेमोरी उपयोग"
+ResourceMonitor.DiskIO: "डिस्क I/O"
+ResourceMonitor.Network: "नेटवर्क"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "मेमोरी विवरण"
+MemoryBreakdown.Allocations: "आवंटन"
+MemoryBreakdown.Fragmentation: "फ़्रैगमेंटेशन"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "उन्नत मेट्रिक्स"
+AdvancedMetrics.FrameTime: "फ़्रेम समय"
+AdvancedMetrics.DrawCalls: "ड्रॉ कॉल"
+AdvancedMetrics.TriangleCount: "त्रिभुज गणना"
+
+# Caller Sites
+CallerSites.Title: "कॉलर साइट"
+CallerSites.Function: "फ़ंक्शन"
+CallerSites.Allocations: "आवंटन"
+CallerSites.Bytes: "बाइट"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "न्यूनतम FPS"
+Performance.MaxFPS: "अधिकतम FPS"
+Performance.AvgFPS: "औसत FPS"

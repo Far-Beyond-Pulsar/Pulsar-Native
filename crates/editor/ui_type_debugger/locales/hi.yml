@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - hi
+
+# Drawer Title
+TypeDebugger.Title: "टाइप डेटाबेस"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "टाइप खोजें..."
+TypeDebugger.Action.ClearAll: "सभी टाइप साफ़ करें"
+TypeDebugger.Action.GroupByKind: "प्रकार के अनुसार समूह करें"
+TypeDebugger.Action.ShowFlatList: "फ्लैट सूची दिखाएँ"
+
+# Empty State
+TypeDebugger.Empty.Title: "कोई टाइप नहीं मिला"
+TypeDebugger.Empty.Message: "आपकी खोज मानदंड से कोई टाइप मेल नहीं खाता।"
