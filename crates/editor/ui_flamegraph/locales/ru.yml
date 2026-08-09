@@ -1,0 +1,28 @@
+# Flamegraph Profiler - ru
+
+# Window Title
+Flamegraph.Title: "Профилировщик Flamegraph"
+
+# Toolbar Buttons
+Flamegraph.Record: "Запись"
+Flamegraph.Stop: "Стоп"
+Flamegraph.Recording: "ЗАПИСЬ"
+Flamegraph.OpenSession: "Открыть сессию"
+
+# Empty State
+Flamegraph.NoDataLoaded: "Нет данных профилирования"
+Flamegraph.GetStarted: "Выберите опцию ниже для начала"
+Flamegraph.StartRecording: "Начать запись"
+Flamegraph.StartRecordingDesc: "Захват данных профилирования в реальном времени"
+Flamegraph.OpenPreviousSession: "Открыть предыдущую сессию"
+Flamegraph.OpenSessionDesc: "Просмотр и загрузка ранее сохранённых сессий"
+Flamegraph.RecordingInProgress: "Запись выполняется"
+Flamegraph.WaitingForData: "Ожидание данных профилирования..."
+Flamegraph.RecordingActive: "Запись активна"
+Flamegraph.DataWillAppear: "Данные появятся после захвата событий профилирования"
+
+# Pro Tips
+Flamegraph.ProTips: "Советы"
+Flamegraph.Tip1: "Используйте Ctrl+Колесо для масштабирования, Shift+Колесо для панорамирования"
+Flamegraph.Tip2: "Щёлкните правой кнопкой и перетащите для панорамирования"
+Flamegraph.Tip3: "Нажмите на график частоты кадров для перехода к временному отрезку"

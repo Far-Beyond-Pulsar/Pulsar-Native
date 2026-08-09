@@ -1,5 +1,7 @@
 //! Mission Control - Engine monitoring and logging interface
 
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod components;
 mod screen;
 mod utils;
