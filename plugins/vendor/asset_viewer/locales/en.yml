@@ -1,0 +1,60 @@
+# Asset Viewer translations - en
+
+AssetViewer.Title: Asset Viewer
+AssetViewer.DisplayName: FBX/PNG Asset Viewer
+AssetViewer.FBXModel: FBX Model
+AssetViewer.PNGImage: PNG Image
+AssetViewer.Adjust: Adjust
+AssetViewer.Grayscale: Grayscale
+AssetViewer.InvertColors: Invert Colors
+AssetViewer.BrightnessDown: Bright -
+AssetViewer.BrightnessUp: Bright +
+AssetViewer.ContrastDown: Contrast -
+AssetViewer.ContrastUp: Contrast +
+AssetViewer.FlipH: Flip H
+AssetViewer.FlipV: Flip V
+AssetViewer.Generator: Generator
+AssetViewer.MorphTargets: Morph targets
+AssetViewer.Cameras: Cameras
+AssetViewer.Clips: Clips
+AssetViewer.Animation: Animation
+AssetViewer.Joints: Joints
+AssetViewer.Images: Images
+AssetViewer.Info: Info
+AssetViewer.History: History
+AssetViewer.File: File
+AssetViewer.Initializing: Initializing...
+AssetViewer.EditorClosed: Editor closed
+AssetViewer.EditorUnavailable: Editor not available
+AssetViewer.NoImageLoaded: No image loaded
+AssetViewer.NoSavePath: No save path
+AssetViewer.FailedCreateImage: Failed to create image
+AssetViewer.Team: Pulsar Team
+
+AssetViewer.Undo: Undo
+AssetViewer.Redo: Redo
+AssetViewer.Save: Save
+AssetViewer.Transform: Transform
+AssetViewer.RotCW: Rot CW
+AssetViewer.RotCCW: Rot CCW
+AssetViewer.View: View
+AssetViewer.ResetZoom: Reset Zoom
+AssetViewer.Scene: Scene
+AssetViewer.Meshes: Meshes
+AssetViewer.Vertices: Vertices
+AssetViewer.Triangles: Triangles
+AssetViewer.Materials: Materials
+AssetViewer.Resources: Resources
+AssetViewer.Textures: Textures
+AssetViewer.Lights: Lights
+AssetViewer.Skins: Skins
+AssetViewer.ColName: Name
+AssetViewer.ColVerts: Verts
+AssetViewer.ColTris: Tris
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: Mat
+AssetViewer.Loading: Loading...
+AssetViewer.Unknown: Unknown

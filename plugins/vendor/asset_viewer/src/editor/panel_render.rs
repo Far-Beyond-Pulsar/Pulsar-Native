@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use gpui::prelude::*;
 use gpui::*;
 use ui::dock::{Panel, PanelEvent};
@@ -1142,7 +1143,7 @@ impl Panel for AssetViewerPanel {
                     .and_then(|p| p.file_name())
                     .and_then(|n| n.to_str())
             })
-            .unwrap_or("Asset Viewer")
+            .unwrap_or(t!("AssetViewer.Title").as_ref())
             .to_string();
         h_flex()
             .gap_2()
@@ -1411,7 +1412,7 @@ impl AssetViewerPanel {
                         .items_center()
                         .justify_center()
                         .text_color(gpui::rgb(0x888888))
-                        .child("Loading..."),
+                        .child(t!("AssetViewer.Loading").to_string()),
                 )
                 .into_any_element()
         }

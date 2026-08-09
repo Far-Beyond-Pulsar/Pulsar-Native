@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use gpui::*;
 use std::sync::Arc;
 use ui::dock::{DockChannel, DockItem, PanelEvent};
@@ -97,7 +98,7 @@ impl Render for ViewportPanel {
                             .items_center()
                             .justify_center()
                             .text_color(gpui::rgb(0x888888))
-                            .child("Loading...")
+                            .child(t!("AssetViewer.Loading").to_string())
                             .into_any_element()
                     };
 
