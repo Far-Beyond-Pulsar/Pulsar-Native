@@ -1,0 +1,374 @@
+# UI 翻訳 - ja
+
+Calendar.week.0: 日
+Calendar.week.1: 月
+Calendar.week.2: 火
+Calendar.week.3: 水
+Calendar.week.4: 木
+Calendar.week.5: 金
+Calendar.week.6: 土
+Calendar.month.January: 1月
+Calendar.month.February: 2月
+Calendar.month.March: 3月
+Calendar.month.April: 4月
+Calendar.month.May: 5月
+Calendar.month.June: 6月
+Calendar.month.July: 7月
+Calendar.month.August: 8月
+Calendar.month.September: 9月
+Calendar.month.October: 10月
+Calendar.month.November: 11月
+Calendar.month.December: 12月
+DatePicker.placeholder: "日付を選択"
+Dropdown.placeholder: "選択してください"
+Dock.Unnamed: 名前なし
+Dock.Close: 閉じる
+Dock.Zoom In: 拡大
+Dock.Zoom Out: 縮小
+Dock.Collapse: 折りたたむ
+Dock.Expand: 展開
+Modal.ok: OK
+Modal.cancel: キャンセル
+List.search_placeholder: 検索...
+Input.Replace: 置換
+Input.Replace All: すべて置換
+Input.Cut: 切り取り
+Input.Copy: コピー
+Input.Paste: 貼り付け
+Input.Select All: すべて選択
+Input.Go to Definition: 定義へ移動
+Input.Show Code Actions: コードアクションを表示
+
+# ウィンドウタイトル
+Window.Title.AboutPulsar: "Pulsar エンジンについて"
+Window.Title.FileManager: "ファイルマネージャー"
+Window.Title.Problems: "問題"
+Window.Title.TypeDebugger: "型デバッガ"
+Window.Title.Settings: "設定"
+Window.Title.Documentation: "ドキュメント"
+
+Menu.File: ファイル
+Menu.Edit: 編集
+Menu.View: 表示
+Menu.Help: ヘルプ
+Menu.File.New: 新規作成
+Menu.File.NewFile: 新規ファイル
+Menu.File.NewWindow: 新規ウィンドウ
+Menu.File.NewProject: 新規プロジェクト
+Menu.File.NewScene: 新規シーン
+Menu.File.NewScript: 新規スクリプト
+Menu.File.NewShader: 新規シェーダー
+Menu.File.NewMaterial: 新規マテリアル
+Menu.File.NewPrefab: 新規プレハブ
+Menu.File.NewBlueprint: 新規ブループリント
+Menu.File.NewComponent: 新規コンポーネント
+Menu.File.NewSystem: 新規システム
+Menu.File.Open: 開く
+Menu.File.OpenFolder: フォルダを開く
+Menu.File.OpenRecent: 最近使用したファイルを開く
+Menu.File.RecentProjects: 最近のプロジェクト
+Menu.File.RecentFiles: 最近のファイル
+Menu.File.ClearRecent: 最近の一覧をクリア
+Menu.File.Save: 保存
+Menu.File.SaveAs: 名前を付けて保存...
+Menu.File.SaveAll: すべて保存
+Menu.File.SaveWorkspace: ワークスペースを保存
+Menu.File.Import: インポート
+Menu.File.ImportAsset: アセットをインポート
+Menu.File.ImportModel: モデルをインポート (FBX/GLTF)
+Menu.File.ImportTexture: テクスチャをインポート
+Menu.File.ImportAudio: オーディオをインポート
+Menu.File.BatchImport: 一括インポート
+Menu.File.ImportFromUnity: Unity からインポート
+Menu.File.ImportFromUnreal: Unreal からインポート
+Menu.File.ImportFromGodot: Godot からインポート
+Menu.File.Export: エクスポート
+Menu.File.ExportBuild: ビルドをエクスポート
+Menu.File.ExportScene: シーンをエクスポート
+Menu.File.ExportSelected: 選択項目をエクスポート
+Menu.File.ExportWindows: Windows 用にエクスポート
+Menu.File.ExportLinux: Linux 用にエクスポート
+Menu.File.ExportMacOS: macOS 用にエクスポート
+Menu.File.ExportWeb: Web 用にエクスポート (WASM)
+Menu.File.ExportAndroid: Android 用にエクスポート
+Menu.File.ExportIOS: iOS 用にエクスポート
+Menu.File.RevertFile: ファイルを元に戻す
+Menu.File.CloseFile: ファイルを閉じる
+Menu.File.CloseFolder: フォルダを閉じる
+Menu.File.CloseAll: すべて閉じる
+Menu.File.CloseOthers: その他を閉じる
+Menu.Edit.Undo: 元に戻す
+Menu.Edit.Redo: やり直す
+Menu.Edit.Cut: 切り取り
+Menu.Edit.Copy: コピー
+Menu.Edit.Paste: 貼り付け
+Menu.Edit.Delete: 削除
+Menu.Edit.Duplicate: 複製
+Menu.Edit.SelectAll: すべて選択
+Menu.Edit.Find: 検索
+Menu.Edit.FindInFiles: ファイル内を検索
+Menu.Edit.Replace: 置換
+Menu.Edit.Preferences: 環境設定
+Menu.View.CommandPalette: コマンドパレット
+Menu.View.ToggleFullscreen: 全画面表示の切り替え
+Menu.View.ZoomIn: 拡大
+Menu.View.ZoomOut: 縮小
+Menu.View.ResetZoom: ズームをリセット
+Menu.View.Panels: パネル
+Menu.View.TogglePanel: パネルの切り替え
+Menu.View.Console: コンソール
+Menu.View.Inspector: インスペクタ
+Menu.View.Profiler: プロファイラ
+Menu.View.ToggleMinimap: ミニマップの切り替え
+Menu.View.ToggleLineNumbers: 行番号の切り替え
+Menu.View.ToggleBreadcrumbs: ブレッドクラムの切り替え
+Menu.View.ToggleWhitespace: 空白文字の切り替え
+Menu.View.ZenMode: 禅モード
+Menu.Help.Documentation: ドキュメント
+Menu.Help.GettingStarted: はじめに
+Menu.Help.Tutorials: チュートリアル
+Menu.Help.API: API リファレンス
+Menu.Help.ReportBug: バグを報告
+Menu.Help.RequestFeature: 機能をリクエスト
+Menu.Help.Community: コミュニティ
+Menu.Help.About: Pulsar について
+Menu.Edit.SelectNone: 選択を解除
+Menu.Edit.FindNext: 次を検索
+Menu.Edit.FindPrevious: 前を検索
+Menu.Edit.ReplaceNext: 次を置換
+Menu.Edit.ReplaceAll: すべて置換
+Menu.Edit.ReplaceInFiles: ファイル内を置換
+Menu.Edit.FindUsages: 使用箇所を検索
+Menu.Edit.FindImplementations: 実装箇所を検索
+Menu.Edit.CodeActions: コードアクション
+Menu.Edit.FormatDocument: ドキュメントをフォーマット
+Menu.Edit.FormatSelection: 選択範囲をフォーマット
+Menu.Edit.CommentLine: 行をコメントアウト
+Menu.Edit.UncommentLine: 行のコメントを解除
+Menu.Edit.ToggleComment: コメントの切り替え
+Menu.Edit.Fold: 折りたたみ
+Menu.Edit.Unfold: 展開
+Menu.Edit.FoldAll: すべて折りたたむ
+Menu.Edit.UnfoldAll: すべて展開
+Menu.Edit.SortLines: 行を並べ替え
+Menu.Edit.RemoveDuplicates: 重複を削除
+Menu.Edit.TrimWhitespace: 末尾の空白を削除
+Menu.Selection: 選択
+Menu.Selection.SelectLine: 行を選択
+Menu.Selection.SelectWord: 単語を選択
+Menu.Selection.SelectScope: スコープを選択
+Menu.Selection.ExpandSelection: 選択範囲を拡大
+Menu.Selection.ShrinkSelection: 選択範囲を縮小
+Menu.Selection.AddCursorAbove: 上にカーソルを追加
+Menu.Selection.AddCursorBelow: 下にカーソルを追加
+Menu.Selection.AddCursorLineEnds: 行末にカーソルを追加
+Menu.Selection.SelectAllOccurrences: 一致箇所をすべて選択
+Menu.Selection.SelectNextOccurrence: 次の一致箇所を選択
+Menu.Selection.SkipOccurrence: 一致箇所をスキップ
+Menu.View.Explorer: エクスプローラー
+Menu.View.Hierarchy: シーン階層
+Menu.View.AssetBrowser: アセットブラウザー
+Menu.View.Output: 出力
+Menu.View.Problems: 問題
+Menu.View.Debug: デバッグ
+Menu.View.MemoryAnalyzer: メモリアナライザー
+Menu.View.Network: ネットワーク
+Menu.View.Appearance: 外観
+Menu.View.Layout: レイアウト
+Menu.View.SplitHorizontal: 水平に分割
+Menu.View.SplitVertical: 垂直に分割
+Menu.View.SingleColumn: 1 列
+Menu.View.TwoColumns: 2 列
+Menu.View.ThreeColumns: 3 列
+Menu.View.ResetLayout: レイアウトをリセット
+Menu.View.SaveLayout: レイアウトを保存
+Menu.View.QuickOpen: クイックオープン
+Menu.Go: 移動
+Menu.Go.GoToFile: ファイルへ移動
+Menu.Go.GoToSymbol: シンボルへ移動
+Menu.Go.GoToLine: 行へ移動
+Menu.Go.GoToDefinition: 定義へ移動
+Menu.Go.GoToTypeDefinition: 型定義へ移動
+Menu.Go.GoToImplementation: 実装へ移動
+Menu.Go.GoToReferences: 参照へ移動
+Menu.Go.GoBack: 戻る
+Menu.Go.GoForward: 進む
+Menu.Go.GoToLastEdit: 最後の編集箇所へ移動
+Menu.Go.NextProblem: 次の問題
+Menu.Go.PreviousProblem: 前の問題
+Menu.Project: プロジェクト
+Menu.Project.ProjectSettings: プロジェクト設定
+Menu.Project.BuildSettings: ビルド設定
+Menu.Project.PackageSettings: パッケージ設定
+Menu.Project.Dependencies: 依存関係
+Menu.Project.AddDependency: 依存関係を追加
+Menu.Project.UpdateDependencies: 依存関係を更新
+Menu.Project.RemoveUnused: 未使用を削除
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: ドキュメントを生成
+Menu.Project.RunCargoCheck: Cargo Check を実行
+Menu.Project.RunClippy: Clippy を実行
+Menu.Project.FormatProject: プロジェクトをフォーマット
+Menu.Build: ビルド
+Menu.Build.BuildProject: プロジェクトをビルド
+Menu.Build.BuildAndRun: ビルドと実行
+Menu.Build.BuildRelease: リリースビルド
+Menu.Build.Rebuild: すべてリビルド
+Menu.Build.Clean: クリーンビルド
+Menu.Build.BuildConfiguration: ビルド構成
+Menu.Build.BuildDebug: デバッグ
+Menu.Build.BuildReleaseDebug: デバッグ情報付きリリース
+Menu.Build.BuildProfile: プロファイル
+Menu.Build.CancelBuild: ビルドをキャンセル
+Menu.Build.ShowBuildOutput: ビルド出力を表示
+Menu.Run: 実行
+Menu.Run.RunProject: プロジェクトを実行
+Menu.Run.RunWithoutDebug: デバッグなしで実行
+Menu.Run.Stop: 停止
+Menu.Run.Restart: 再起動
+Menu.Run.DebugProject: プロジェクトをデバッグ
+Menu.Run.Debugging: デバッグ中
+Menu.Run.StartDebug: デバッグを開始
+Menu.Run.StopDebug: デバッグを停止
+Menu.Run.RestartDebug: デバッグを再起動
+Menu.Run.StepOver: ステップオーバー
+Menu.Run.StepInto: ステップイン
+Menu.Run.StepOut: ステップアウト
+Menu.Run.Continue: 続行
+Menu.Run.ToggleBreakpoint: ブレークポイントの切り替え
+Menu.Run.DisableBreakpoints: すべてのブレークポイントを無効化
+Menu.Run.RemoveBreakpoints: すべてのブレークポイントを削除
+Menu.Run.Testing: テスト
+Menu.Run.RunTests: すべてのテストを実行
+Menu.Run.RunFailedTests: 失敗したテストを実行
+Menu.Run.RunFileTests: ファイル内のテストを実行
+Menu.Run.DebugTest: テストをデバッグ
+Menu.Run.RunCoverage: カバレッジ
+Menu.Run.Performance: パフォーマンス
+Menu.Run.RunBenchmarks: ベンチマークを実行
+Menu.Run.CompareBenchmarks: ベンチマークを比較
+Menu.Run.ProfileBuild: ビルドをプロファイル
+Menu.GameEngine: ゲームエンジン
+Menu.GameEngine.Scene: シーン
+Menu.GameEngine.NewScene: 新規シーン
+Menu.GameEngine.OpenScene: シーンを開く
+Menu.GameEngine.SaveScene: シーンを保存
+Menu.GameEngine.SaveSceneAs: シーンに名前を付けて保存
+Menu.GameEngine.PlayScene: シーンを再生
+Menu.GameEngine.PauseScene: シーンを一時停止
+Menu.GameEngine.StopScene: シーンを停止
+Menu.GameEngine.SceneSettings: シーン設定
+Menu.GameEngine.GameObject: ゲームオブジェクト
+Menu.GameEngine.CreateEmpty: 空のオブジェクトを作成
+Menu.GameEngine.3DObjects: 3D オブジェクト
+Menu.GameEngine.CreateCube: キューブ
+Menu.GameEngine.CreateSphere: 球
+Menu.GameEngine.CreateCapsule: カプセル
+Menu.GameEngine.CreateCylinder: 円柱
+Menu.GameEngine.CreatePlane: 平面
+Menu.GameEngine.CreateTerrain: 地形
+Menu.GameEngine.2DObjects: 2D オブジェクト
+Menu.GameEngine.CreateSprite: スプライト
+Menu.GameEngine.CreateTilemap: タイルマップ
+Menu.GameEngine.CreateParticles2D: 2D パーティクルシステム
+Menu.GameEngine.Light: ライト
+Menu.GameEngine.CreateDirectionalLight: 平行光源
+Menu.GameEngine.CreatePointLight: 点光源
+Menu.GameEngine.CreateSpotLight: スポットライト
+Menu.GameEngine.CreateAreaLight: エリアライト
+Menu.GameEngine.Audio: オーディオ
+Menu.GameEngine.CreateAudioSource: オーディオソース
+Menu.GameEngine.CreateAudioListener: オーディオリスナー
+Menu.GameEngine.Effects: エフェクト
+Menu.GameEngine.CreateParticleSystem: パーティクルシステム
+Menu.GameEngine.CreateVFX: ビジュアルエフェクト
+Menu.GameEngine.CreatePostProcessing: ポストプロセッシング
+Menu.GameEngine.Camera: カメラ
+Menu.GameEngine.CreateCamera: カメラ
+Menu.GameEngine.CreateOrthoCamera: 正投影カメラ
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: キャンバス
+Menu.GameEngine.CreatePanel: パネル
+Menu.GameEngine.CreateButton: ボタン
+Menu.GameEngine.CreateText: テキスト
+Menu.GameEngine.CreateImage: イメージ
+Menu.GameEngine.CreateSlider: スライダー
+Menu.GameEngine.CreateInputField: 入力フィールド
+Menu.GameEngine.Physics: 物理
+Menu.GameEngine.AddRigidbody: リジッドボディを追加
+Menu.GameEngine.AddCollider: コライダーを追加
+Menu.GameEngine.AddCharacterController: キャラクターコントローラーを追加
+Menu.GameEngine.PhysicsSettings: 物理設定
+Menu.GameEngine.CollisionMatrix: 衝突マトリックス
+Menu.GameEngine.Rendering: レンダリング
+Menu.GameEngine.RenderSettings: レンダリング設定
+Menu.GameEngine.LightingSettings: ライティング設定
+Menu.GameEngine.QualitySettings: 品質設定
+Menu.GameEngine.BakeLighting: ライティングをベイク
+Menu.GameEngine.ClearBakedData: ベイク済みデータをクリア
+Menu.GameEngine.FrameDebugger: フレームデバッガー
+Menu.GameEngine.EngineProfiler: プロファイラ
+Menu.GameEngine.PackageManager: パッケージマネージャー
+Menu.GameEngine.AssetStore: アセットストア
+Menu.Assets: アセット
+Menu.Assets.CreateAsset: アセットを作成
+Menu.Assets.ImportAsset: アセットをインポート
+Menu.Assets.Create: 作成
+Menu.Assets.CreateMaterial: マテリアル
+Menu.Assets.CreateShader: シェーダー
+Menu.Assets.CreateTexture: テクスチャ
+Menu.Assets.CreateAnimClip: アニメーションクリップ
+Menu.Assets.CreateAnimController: アニメーターコントローラー
+Menu.Assets.CreateAudioMixer: オーディオミキサー
+Menu.Assets.CreateRenderTexture: レンダーテクスチャ
+Menu.Assets.CreatePrefab: プレハブ
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: 更新
+Menu.Assets.Reimport: 再インポート
+Menu.Assets.ReimportAll: すべて再インポート
+Menu.Assets.FindReferences: 参照を検索
+Menu.Assets.FindMissingReferences: 不足している参照を検索
+Menu.Tools: ツール
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo コマンド
+Menu.Tools.GenerateRustAnalyzer: Rust-Analyzer を生成
+Menu.Tools.ExpandMacro: マクロを展開
+Menu.Tools.ShowSyntaxTree: 構文ツリーを表示
+Menu.Tools.ShowHIR: HIR を表示
+Menu.Tools.InlineVariable: 変数をインライン化
+Menu.Tools.ExtractFunction: 関数を抽出
+Menu.Tools.ExtractVariable: 変数を抽出
+Menu.Tools.Shaders: シェーダー
+Menu.Tools.ShaderEditor: シェーダーエディタ
+Menu.Tools.CompileShader: シェーダーをコンパイル
+Menu.Tools.ShaderVariants: シェーダーバリアント
+Menu.Tools.SPIRVDisassembly: SPIR-V 逆アセンブル
+Menu.Tools.Animation: アニメーション
+Menu.Tools.AnimationWindow: アニメーションウィンドウ
+Menu.Tools.AnimatorWindow: アニメーター
+Menu.Tools.Timeline: タイムライン
+Menu.Tools.MaterialEditor: マテリアルエディタ
+Menu.Tools.TerrainTools: 地形ツール
+Menu.Tools.ParticleEditor: パーティクルエディタ
+Menu.Tools.AudioMixerWindow: オーディオミキサー
+Menu.Tools.VersionControl: バージョン管理
+Menu.Tools.TaskManager: タスクマネージャー
+Menu.Tools.Extensions: 拡張機能
+Menu.Window: ウィンドウ
+Menu.Window.Minimize: 最小化
+Menu.Window.Zoom: ズーム
+Menu.Window.BringAllToFront: すべて前面に表示
+Menu.Window.NewWindow: 新規ウィンドウ
+Menu.Window.CloseWindow: ウィンドウを閉じる
+Menu.Help.Shortcuts: キーボードショートカット
+Menu.Help.ViewLogs: ログを表示
+Menu.Help.CheckUpdates: 更新を確認
+Menu.Help.ReleaseNotes: リリースノート
+Menu.App.AboutApp: Pulsar エンジンについて
+Menu.App.CheckUpdates: 更新を確認
+Menu.App.Preferences: 環境設定
+Menu.App.Settings: 設定
+Menu.App.Hide: Pulsar を隠す
+Menu.App.HideOthers: その他を隠す
+Menu.App.ShowAll: すべて表示
+Menu.App.QuitApp: Pulsar を終了

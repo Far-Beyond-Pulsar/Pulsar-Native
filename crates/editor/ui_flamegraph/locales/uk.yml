@@ -1,0 +1,54 @@
+# Flamegraph Profiler - uk
+
+# Window Title
+Flamegraph.Title: "Профілювальник Flamegraph"
+
+# Toolbar Buttons
+Flamegraph.Record: "Записати"
+Flamegraph.Stop: "Зупинити"
+Flamegraph.Recording: "ЗАПИС"
+Flamegraph.OpenSession: "Відкрити сесію"
+
+# Empty State
+Flamegraph.NoDataLoaded: "Немає даних профілювання"
+Flamegraph.GetStarted: "Виберіть опцію нижче, щоб розпочати"
+Flamegraph.StartRecording: "Почати запис"
+Flamegraph.StartRecordingDesc: "Захоплюйте дані профілювання в реальному часі з вашої запущеної програми"
+Flamegraph.OpenPreviousSession: "Відкрити попередню сесію"
+Flamegraph.OpenSessionDesc: "Перегляньте та завантажте раніше збережені сесії профілювання"
+Flamegraph.RecordingInProgress: "Запис триває"
+Flamegraph.WaitingForData: "Очікування даних профілювання..."
+Flamegraph.RecordingActive: "Запис активний"
+Flamegraph.DataWillAppear: "Дані з'являться тут після захоплення подій профілювання"
+
+# Pro Tips
+Flamegraph.ProTips: "Поради"
+Flamegraph.Tip1: "Використовуйте Ctrl+Прокрутка для горизонтального масштабування, Shift+Прокрутка для вертикального панорамування"
+Flamegraph.Tip2: "Клацніть правою кнопкою та перетягніть для вільного панорамування по flamegraph"
+Flamegraph.Tip3: "Клацніть на графіку частоти кадрів, щоб перейти до певних моментів часу"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "Статистика"
+Flamegraph.TotalSpans: "Всього інтервалів:"
+Flamegraph.Duration: "Тривалість:"
+Flamegraph.Frames: "Кадри:"
+Flamegraph.AvgFrame: "Середній кадр:"
+Flamegraph.MinFrame: "Мін. кадр:"
+Flamegraph.MaxFrame: "Макс. кадр:"
+Flamegraph.Threads: "Потоки:"
+Flamegraph.MaxDepth: "Макс. глибина:"
+
+# Hover Popup
+Flamegraph.Start: "Початок:"
+Flamegraph.End: "Кінець:"
+Flamegraph.Thread: "Потік:"
+Flamegraph.Depth: "Глибина:"
+Flamegraph.Unknown: "Невідомо"
+
+# Units
+Flamegraph.Milliseconds: "%{value} мс"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "Збір даних профілювання..."
+Flamegraph.SpansCollected: "Зібрано інтервалів:"
+Flamegraph.StopRecording: "Зупинити запис"

@@ -1,0 +1,14 @@
+# UI 型デバッガ翻訳 - ja
+
+# ドロワータイトル
+TypeDebugger.Title: "型データベース"
+
+# 検索と操作
+TypeDebugger.Search.Placeholder: "型を検索..."
+TypeDebugger.Action.ClearAll: "すべての型をクリア"
+TypeDebugger.Action.GroupByKind: "種類ごとにグループ化"
+TypeDebugger.Action.ShowFlatList: "フラットリストを表示"
+
+# 空の状態
+TypeDebugger.Empty.Title: "型が見つかりません"
+TypeDebugger.Empty.Message: "検索条件に一致する型はありません。"

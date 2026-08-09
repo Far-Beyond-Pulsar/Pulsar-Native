@@ -1,0 +1,28 @@
+# UI コア翻訳 - ja
+
+# ステータスバー
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "停止"
+StatusBar.Restart: "再起動"
+StatusBar.Start: "開始"
+StatusBar.Multiplayer: "マルチプレイヤーコラボレーション"
+StatusBar.PluginManager: "プラグインマネージャー"
+StatusBar.Flamegraph: "フレームグラフプロファイラ"
+
+Notification.Title.Dev: "開発"
+Notification.Title.BuildInfo: "ビルド情報"
+Notification.Title.Build: "ビルド"
+Notification.Title.Run: "実行"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer 準備完了"
+Notification.Title.AnalyzerError: "アナライザーエラー"
+Notification.Title.CodeIntelligenceReady: "コードインテリジェンス準備完了"
+Notification.Title.ProjectLoaded: "プロジェクトを読み込みました"
+Notification.Message.UseSaveAsDefault: "レベルエディタのツールバーで「デフォルトとして保存」を使用してください。"
+Notification.Message.Opening: "%{path} を開いています"
+Notification.Message.AssetReloadNotImplemented: "アセットの再読み込みはまだ実装されていません。"
+Notification.Message.EngineInspectorNotImplemented: "エンジン状態インスペクタはまだ実装されていません。"
+Notification.Message.BuildingProject: "プロジェクトをビルド中..."
+Notification.Message.RunningProject: "プロジェクトを実行中..."
+Notification.Message.CodeIntelligenceAvailable: "コードインテリジェンスを利用できるようになりました"
+Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer のインデックス作成が完了しました"
+Notification.Message.WelcomeToProject: "%{project} へようこそ"

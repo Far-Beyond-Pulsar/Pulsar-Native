@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - ko
+
+# Mission Control Panel
+MissionControl.Title: "미션 컨트롤"
+MissionControl.System: "시스템"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "메모리"
+MissionControl.Resources: "리소스"
+MissionControl.Advanced: "고급"
+
+# Log Drawer
+LogDrawer.Filter: "필터"
+LogDrawer.Search: "검색..."
+LogDrawer.All: "모두"
+LogDrawer.Info: "정보"
+LogDrawer.Warning: "경고"
+LogDrawer.Error: "오류"
+LogDrawer.Debug: "디버그"
+LogDrawer.Trace: "추적"
+LogDrawer.Clear: "지우기"
+LogDrawer.Timestamp: "타임스탬프"
+LogDrawer.Level: "수준"
+LogDrawer.Message: "메시지"
+LogDrawer.Source: "소스"
+
+# Logs Panel
+LogsPanel.Title: "로그"
+LogsPanel.NoEntries: "로그 항목 없음"
+
+# System Info Panel
+SystemInfo.Title: "시스템 정보"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "프로세스"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "GPU 메트릭"
+GpuMetrics.Adapter: "어댑터"
+GpuMetrics.Driver: "드라이버"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "온도"
+GpuMetrics.Utilization: "사용률"
+
+# Resource Monitor
+ResourceMonitor.Title: "리소스 모니터"
+ResourceMonitor.CPUUsage: "CPU 사용률"
+ResourceMonitor.MemoryUsage: "메모리 사용량"
+ResourceMonitor.DiskIO: "디스크 I/O"
+ResourceMonitor.Network: "네트워크"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "메모리 분석"
+MemoryBreakdown.Allocations: "할당"
+MemoryBreakdown.Fragmentation: "단편화"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "고급 메트릭"
+AdvancedMetrics.FrameTime: "프레임 시간"
+AdvancedMetrics.DrawCalls: "드로우 콜"
+AdvancedMetrics.TriangleCount: "삼각형 수"
+
+# Caller Sites
+CallerSites.Title: "호출 위치"
+CallerSites.Function: "함수"
+CallerSites.Allocations: "할당"
+CallerSites.Bytes: "바이트"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "최소 FPS"
+Performance.MaxFPS: "최대 FPS"
+Performance.AvgFPS: "평균 FPS"

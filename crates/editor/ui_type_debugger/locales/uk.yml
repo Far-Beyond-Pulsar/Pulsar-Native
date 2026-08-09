@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - uk
+
+# Drawer Title
+TypeDebugger.Title: "База даних типів"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "Пошук типів..."
+TypeDebugger.Action.ClearAll: "Очистити всі типи"
+TypeDebugger.Action.GroupByKind: "Групувати за видом"
+TypeDebugger.Action.ShowFlatList: "Показати плоский список"
+
+# Empty State
+TypeDebugger.Empty.Title: "Типів не знайдено"
+TypeDebugger.Empty.Message: "Жоден тип не відповідає вашому критерію пошуку."

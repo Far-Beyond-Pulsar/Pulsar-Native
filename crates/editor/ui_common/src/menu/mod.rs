@@ -1670,6 +1670,26 @@ impl Render for LocaleSelector {
                             Box::new(SelectLocale("ar".into())),
                         )
                         .menu_with_check(
+                            "日本語 (Japanese)",
+                            current_locale == "ja",
+                            Box::new(SelectLocale("ja".into())),
+                        )
+                        .menu_with_check(
+                            "Español (Spanish)",
+                            current_locale == "es",
+                            Box::new(SelectLocale("es".into())),
+                        )
+                        .menu_with_check(
+                            "한국어 (Korean)",
+                            current_locale == "ko",
+                            Box::new(SelectLocale("ko".into())),
+                        )
+                        .menu_with_check(
+                            "Українська (Ukrainian)",
+                            current_locale == "uk",
+                            Box::new(SelectLocale("uk".into())),
+                        )
+                        .menu_with_check(
                             "Lolcat",
                             current_locale == "lol",
                             Box::new(SelectLocale("lol".into())),

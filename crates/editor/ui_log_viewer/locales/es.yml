@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - es
+
+# Mission Control Panel
+MissionControl.Title: "Control de Misión"
+MissionControl.System: "Sistema"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "Memoria"
+MissionControl.Resources: "Recursos"
+MissionControl.Advanced: "Avanzado"
+
+# Log Drawer
+LogDrawer.Filter: "Filtro"
+LogDrawer.Search: "Buscar..."
+LogDrawer.All: "Todo"
+LogDrawer.Info: "Información"
+LogDrawer.Warning: "Advertencia"
+LogDrawer.Error: "Error"
+LogDrawer.Debug: "Depuración"
+LogDrawer.Trace: "Traza"
+LogDrawer.Clear: "Limpiar"
+LogDrawer.Timestamp: "Marca de Tiempo"
+LogDrawer.Level: "Nivel"
+LogDrawer.Message: "Mensaje"
+LogDrawer.Source: "Origen"
+
+# Logs Panel
+LogsPanel.Title: "Registros"
+LogsPanel.NoEntries: "Sin entradas de registro"
+
+# System Info Panel
+SystemInfo.Title: "Información del Sistema"
+SystemInfo.OS: "SO"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "Proceso"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "Métricas de GPU"
+GpuMetrics.Adapter: "Adaptador"
+GpuMetrics.Driver: "Controlador"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "Temperatura"
+GpuMetrics.Utilization: "Utilización"
+
+# Resource Monitor
+ResourceMonitor.Title: "Monitor de Recursos"
+ResourceMonitor.CPUUsage: "Uso de CPU"
+ResourceMonitor.MemoryUsage: "Uso de Memoria"
+ResourceMonitor.DiskIO: "E/S de Disco"
+ResourceMonitor.Network: "Red"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "Desglose de Memoria"
+MemoryBreakdown.Allocations: "Asignaciones"
+MemoryBreakdown.Fragmentation: "Fragmentación"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "Métricas Avanzadas"
+AdvancedMetrics.FrameTime: "Tiempo de Fotograma"
+AdvancedMetrics.DrawCalls: "Llamadas de Dibujo"
+AdvancedMetrics.TriangleCount: "Conteo de Triángulos"
+
+# Caller Sites
+CallerSites.Title: "Sitios de Llamada"
+CallerSites.Function: "Función"
+CallerSites.Allocations: "Asignaciones"
+CallerSites.Bytes: "Bytes"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "FPS Mín"
+Performance.MaxFPS: "FPS Máx"
+Performance.AvgFPS: "FPS Prom"

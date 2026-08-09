@@ -1,0 +1,29 @@
+# UI Problems Translations - uk
+
+# Drawer Title
+Problems.Title: "Проблеми"
+
+# Filter Labels
+Problems.Filter.All: "Всі проблеми"
+Problems.Filter.Errors: "Помилки"
+Problems.Filter.Warnings: "Попередження"
+Problems.Filter.Information: "Інформація"
+Problems.Filter.Hints: "Підказки"
+
+# Search & Actions
+Problems.Search.Placeholder: "Пошук проблем..."
+Problems.Action.ClearAll: "Очистити всі проблеми"
+Problems.Action.GroupByFile: "Групувати за файлом"
+Problems.Action.ShowFlatList: "Показати плоский список"
+
+# Empty State
+Problems.Empty.Title: "Проблем не виявлено"
+Problems.Empty.NoMatch: "Жодна проблема не відповідає вашому запиту. Спробуйте інший запит."
+Problems.Empty.AllGood: "Ваш код виглядає чудово! Так тримати."
+
+# Diagnostics
+Problems.Loading: "Завантаження швидких виправлень..."
+Problems.SuggestedFixes: "Запропоновані виправлення:"
+Problems.Related: "Пов'язане:"
+Problems.Before: "ДО"
+Problems.After: "ПІСЛЯ"

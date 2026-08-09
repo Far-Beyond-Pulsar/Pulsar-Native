@@ -1,0 +1,28 @@
+# UI Core Translations - uk
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "Зупинити"
+StatusBar.Restart: "Перезапустити"
+StatusBar.Start: "Запустити"
+StatusBar.Multiplayer: "Багатокористувацька співпраця"
+StatusBar.PluginManager: "Менеджер плагінів"
+StatusBar.Flamegraph: "Профілювальник Flamegraph"
+
+Notification.Title.Dev: "Розробка"
+Notification.Title.BuildInfo: "Інформація про збірку"
+Notification.Title.Build: "Збірка"
+Notification.Title.Run: "Запуск"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer готовий"
+Notification.Title.AnalyzerError: "Помилка аналізатора"
+Notification.Title.CodeIntelligenceReady: "Інтелект коду готовий"
+Notification.Title.ProjectLoaded: "Проект завантажено"
+Notification.Message.UseSaveAsDefault: "Використовуйте \"Зберегти як стандарт\" на панелі інструментів редактора рівнів."
+Notification.Message.Opening: "Відкриття %{path}"
+Notification.Message.AssetReloadNotImplemented: "Перезавантаження ресурсів ще не реалізовано."
+Notification.Message.EngineInspectorNotImplemented: "Інспектор стану двигуна ще не реалізовано."
+Notification.Message.BuildingProject: "Збірка проекту..."
+Notification.Message.RunningProject: "Запуск проекту..."
+Notification.Message.CodeIntelligenceAvailable: "Інтелект коду тепер доступний"
+Notification.Message.RustAnalyzerIndexingComplete: "Індексацію Rust Analyzer завершено"
+Notification.Message.WelcomeToProject: "Ласкаво просимо до %{project}"

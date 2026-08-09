@@ -1,0 +1,73 @@
+# UI ログビューア翻訳 - ja
+
+# ミッションコントロールパネル
+MissionControl.Title: "ミッションコントロール"
+MissionControl.System: "システム"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "メモリ"
+MissionControl.Resources: "リソース"
+MissionControl.Advanced: "詳細"
+
+# ログドロワー
+LogDrawer.Filter: "フィルター"
+LogDrawer.Search: "検索..."
+LogDrawer.All: "すべて"
+LogDrawer.Info: "情報"
+LogDrawer.Warning: "警告"
+LogDrawer.Error: "エラー"
+LogDrawer.Debug: "デバッグ"
+LogDrawer.Trace: "トレース"
+LogDrawer.Clear: "クリア"
+LogDrawer.Timestamp: "タイムスタンプ"
+LogDrawer.Level: "レベル"
+LogDrawer.Message: "メッセージ"
+LogDrawer.Source: "ソース"
+
+# ログパネル
+LogsPanel.Title: "ログ"
+LogsPanel.NoEntries: "ログエントリがありません"
+
+# システム情報パネル
+SystemInfo.Title: "システム情報"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "プロセス"
+
+# GPU メトリクスパネル
+GpuMetrics.Title: "GPU メトリクス"
+GpuMetrics.Adapter: "アダプター"
+GpuMetrics.Driver: "ドライバー"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "温度"
+GpuMetrics.Utilization: "使用率"
+
+# リソースモニター
+ResourceMonitor.Title: "リソースモニター"
+ResourceMonitor.CPUUsage: "CPU 使用率"
+ResourceMonitor.MemoryUsage: "メモリ使用率"
+ResourceMonitor.DiskIO: "ディスク I/O"
+ResourceMonitor.Network: "ネットワーク"
+
+# メモリ内訳
+MemoryBreakdown.Title: "メモリ内訳"
+MemoryBreakdown.Allocations: "割り当て"
+MemoryBreakdown.Fragmentation: "断片化"
+
+# 詳細メトリクス
+AdvancedMetrics.Title: "詳細メトリクス"
+AdvancedMetrics.FrameTime: "フレーム時間"
+AdvancedMetrics.DrawCalls: "ドローコール"
+AdvancedMetrics.TriangleCount: "三角形数"
+
+# 呼び出し元サイト
+CallerSites.Title: "呼び出し元サイト"
+CallerSites.Function: "関数"
+CallerSites.Allocations: "割り当て"
+CallerSites.Bytes: "バイト"
+
+# パフォーマンスメトリクス
+Performance.FPS: "FPS"
+Performance.MinFPS: "最小 FPS"
+Performance.MaxFPS: "最大 FPS"
+Performance.AvgFPS: "平均 FPS"

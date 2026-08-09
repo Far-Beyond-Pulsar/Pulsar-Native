@@ -1,0 +1,374 @@
+# UI Translations - uk
+
+Calendar.week.0: Нд
+Calendar.week.1: Пн
+Calendar.week.2: Вт
+Calendar.week.3: Ср
+Calendar.week.4: Чт
+Calendar.week.5: Пт
+Calendar.week.6: Сб
+Calendar.month.January: Січень
+Calendar.month.February: Лютий
+Calendar.month.March: Березень
+Calendar.month.April: Квітень
+Calendar.month.May: Травень
+Calendar.month.June: Червень
+Calendar.month.July: Липень
+Calendar.month.August: Серпень
+Calendar.month.September: Вересень
+Calendar.month.October: Жовтень
+Calendar.month.November: Листопад
+Calendar.month.December: Грудень
+DatePicker.placeholder: "Виберіть дату"
+Dropdown.placeholder: "Будь ласка, виберіть"
+Dock.Unnamed: Без назви
+Dock.Close: Закрити
+Dock.Zoom In: Збільшити
+Dock.Zoom Out: Зменшити
+Dock.Collapse: Згорнути
+Dock.Expand: Розгорнути
+Modal.ok: OK
+Modal.cancel: Скасувати
+List.search_placeholder: Пошук...
+Input.Replace: Замінити
+Input.Replace All: Замінити всі
+Input.Cut: Вирізати
+Input.Copy: Копіювати
+Input.Paste: Вставити
+Input.Select All: Вибрати все
+Input.Go to Definition: Перейти до визначення
+Input.Show Code Actions: Показати дії з кодом
+
+# Window Titles
+Window.Title.AboutPulsar: "Про Pulsar Engine"
+Window.Title.FileManager: "Файловий менеджер"
+Window.Title.Problems: "Проблеми"
+Window.Title.TypeDebugger: "Дебагер типів"
+Window.Title.Settings: "Налаштування"
+Window.Title.Documentation: "Документація"
+
+Menu.File: Файл
+Menu.Edit: Редагування
+Menu.View: Вигляд
+Menu.Help: Довідка
+Menu.File.New: Створити
+Menu.File.NewFile: Новий файл
+Menu.File.NewWindow: Нове вікно
+Menu.File.NewProject: Новий проект
+Menu.File.NewScene: Нова сцена
+Menu.File.NewScript: Новий скрипт
+Menu.File.NewShader: Новий шейдер
+Menu.File.NewMaterial: Новий матеріал
+Menu.File.NewPrefab: Новий префаб
+Menu.File.NewBlueprint: Новий блюпринт
+Menu.File.NewComponent: Новий компонент
+Menu.File.NewSystem: Нова система
+Menu.File.Open: Відкрити
+Menu.File.OpenFolder: Відкрити папку
+Menu.File.OpenRecent: Відкрити нещодавнє
+Menu.File.RecentProjects: Нещодавні проекти
+Menu.File.RecentFiles: Нещодавні файли
+Menu.File.ClearRecent: Очистити нещодавні
+Menu.File.Save: Зберегти
+Menu.File.SaveAs: Зберегти як...
+Menu.File.SaveAll: Зберегти все
+Menu.File.SaveWorkspace: Зберегти робочий простір
+Menu.File.Import: Імпортувати
+Menu.File.ImportAsset: Імпортувати ресурс
+Menu.File.ImportModel: Імпортувати модель (FBX/GLTF)
+Menu.File.ImportTexture: Імпортувати текстуру
+Menu.File.ImportAudio: Імпортувати аудіо
+Menu.File.BatchImport: Пакетний імпорт
+Menu.File.ImportFromUnity: Імпорт з Unity
+Menu.File.ImportFromUnreal: Імпорт з Unreal
+Menu.File.ImportFromGodot: Імпорт з Godot
+Menu.File.Export: Експортувати
+Menu.File.ExportBuild: Експорт збірки
+Menu.File.ExportScene: Експорт сцени
+Menu.File.ExportSelected: Експорт вибраного
+Menu.File.ExportWindows: Експорт для Windows
+Menu.File.ExportLinux: Експорт для Linux
+Menu.File.ExportMacOS: Експорт для macOS
+Menu.File.ExportWeb: Експорт для Web (WASM)
+Menu.File.ExportAndroid: Експорт для Android
+Menu.File.ExportIOS: Експорт для iOS
+Menu.File.RevertFile: Скасувати зміни файлу
+Menu.File.CloseFile: Закрити файл
+Menu.File.CloseFolder: Закрити папку
+Menu.File.CloseAll: Закрити все
+Menu.File.CloseOthers: Закрити інші
+Menu.Edit.Undo: Скасувати
+Menu.Edit.Redo: Повторити
+Menu.Edit.Cut: Вирізати
+Menu.Edit.Copy: Копіювати
+Menu.Edit.Paste: Вставити
+Menu.Edit.Delete: Видалити
+Menu.Edit.Duplicate: Дублювати
+Menu.Edit.SelectAll: Вибрати все
+Menu.Edit.Find: Знайти
+Menu.Edit.FindInFiles: Знайти у файлах
+Menu.Edit.Replace: Замінити
+Menu.Edit.Preferences: Налаштування
+Menu.View.CommandPalette: Палітра команд
+Menu.View.ToggleFullscreen: Повноекранний режим
+Menu.View.ZoomIn: Збільшити
+Menu.View.ZoomOut: Зменшити
+Menu.View.ResetZoom: Скинути масштаб
+Menu.View.Panels: Панелі
+Menu.View.TogglePanel: Перемкнути панель
+Menu.View.Console: Консоль
+Menu.View.Inspector: Інспектор
+Menu.View.Profiler: Профілювальник
+Menu.View.ToggleMinimap: Перемкнути мінімапу
+Menu.View.ToggleLineNumbers: Перемкнути номери рядків
+Menu.View.ToggleBreadcrumbs: Перемкнути навігаційні ланцюжки
+Menu.View.ToggleWhitespace: Перемкнути пробіли
+Menu.View.ZenMode: Режим Дзен
+Menu.Help.Documentation: Документація
+Menu.Help.GettingStarted: Початок роботи
+Menu.Help.Tutorials: Навчальні посібники
+Menu.Help.API: Довідка API
+Menu.Help.ReportBug: Повідомити про помилку
+Menu.Help.RequestFeature: Запропонувати функцію
+Menu.Help.Community: Спільнота
+Menu.Help.About: Про Pulsar
+Menu.Edit.SelectNone: Зняти виділення
+Menu.Edit.FindNext: Знайти далі
+Menu.Edit.FindPrevious: Знайти назад
+Menu.Edit.ReplaceNext: Замінити далі
+Menu.Edit.ReplaceAll: Замінити всі
+Menu.Edit.ReplaceInFiles: Замінити у файлах
+Menu.Edit.FindUsages: Знайти використання
+Menu.Edit.FindImplementations: Знайти реалізації
+Menu.Edit.CodeActions: Дії з кодом
+Menu.Edit.FormatDocument: Форматувати документ
+Menu.Edit.FormatSelection: Форматувати виділення
+Menu.Edit.CommentLine: Закоментувати рядок
+Menu.Edit.UncommentLine: Розкоментувати рядок
+Menu.Edit.ToggleComment: Перемкнути коментар
+Menu.Edit.Fold: Згорнути
+Menu.Edit.Unfold: Розгорнути
+Menu.Edit.FoldAll: Згорнути все
+Menu.Edit.UnfoldAll: Розгорнути все
+Menu.Edit.SortLines: Сортувати рядки
+Menu.Edit.RemoveDuplicates: Видалити дублікати
+Menu.Edit.TrimWhitespace: Видалити кінцеві пробіли
+Menu.Selection: Виділення
+Menu.Selection.SelectLine: Виділити рядок
+Menu.Selection.SelectWord: Виділити слово
+Menu.Selection.SelectScope: Виділити область
+Menu.Selection.ExpandSelection: Розширити виділення
+Menu.Selection.ShrinkSelection: Звузити виділення
+Menu.Selection.AddCursorAbove: Додати курсор вище
+Menu.Selection.AddCursorBelow: Додати курсор нижче
+Menu.Selection.AddCursorLineEnds: Додати курсор у кінці рядків
+Menu.Selection.SelectAllOccurrences: Вибрати всі входження
+Menu.Selection.SelectNextOccurrence: Вибрати наступне входження
+Menu.Selection.SkipOccurrence: Пропустити входження
+Menu.View.Explorer: Провідник
+Menu.View.Hierarchy: Ієрархія сцени
+Menu.View.AssetBrowser: Огляд ресурсів
+Menu.View.Output: Вихідні дані
+Menu.View.Problems: Проблеми
+Menu.View.Debug: Налагодження
+Menu.View.MemoryAnalyzer: Аналізатор пам'яті
+Menu.View.Network: Мережа
+Menu.View.Appearance: Зовнішній вигляд
+Menu.View.Layout: Розкладка
+Menu.View.SplitHorizontal: Розділити горизонтально
+Menu.View.SplitVertical: Розділити вертикально
+Menu.View.SingleColumn: Одна колонка
+Menu.View.TwoColumns: Дві колонки
+Menu.View.ThreeColumns: Три колонки
+Menu.View.ResetLayout: Скинути розкладку
+Menu.View.SaveLayout: Зберегти розкладку
+Menu.View.QuickOpen: Швидке відкриття
+Menu.Go: Перейти
+Menu.Go.GoToFile: Перейти до файлу
+Menu.Go.GoToSymbol: Перейти до символу
+Menu.Go.GoToLine: Перейти до рядка
+Menu.Go.GoToDefinition: Перейти до визначення
+Menu.Go.GoToTypeDefinition: Перейти до визначення типу
+Menu.Go.GoToImplementation: Перейти до реалізації
+Menu.Go.GoToReferences: Перейти до посилань
+Menu.Go.GoBack: Назад
+Menu.Go.GoForward: Вперед
+Menu.Go.GoToLastEdit: Перейти до останнього редагування
+Menu.Go.NextProblem: Наступна проблема
+Menu.Go.PreviousProblem: Попередня проблема
+Menu.Project: Проект
+Menu.Project.ProjectSettings: Налаштування проекту
+Menu.Project.BuildSettings: Налаштування збірки
+Menu.Project.PackageSettings: Налаштування пакету
+Menu.Project.Dependencies: Залежності
+Menu.Project.AddDependency: Додати залежність
+Menu.Project.UpdateDependencies: Оновити залежності
+Menu.Project.RemoveUnused: Видалити невикористовувані
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: Згенерувати документацію
+Menu.Project.RunCargoCheck: Запустити Cargo Check
+Menu.Project.RunClippy: Запустити Clippy
+Menu.Project.FormatProject: Форматувати проект
+Menu.Build: Збірка
+Menu.Build.BuildProject: Зібрати проект
+Menu.Build.BuildAndRun: Зібрати та запустити
+Menu.Build.BuildRelease: Зібрати Release
+Menu.Build.Rebuild: Перезібрати все
+Menu.Build.Clean: Очистити збірку
+Menu.Build.BuildConfiguration: Конфігурація збірки
+Menu.Build.BuildDebug: Налагодження
+Menu.Build.BuildReleaseDebug: Release з інформацією для налагодження
+Menu.Build.BuildProfile: Профіль
+Menu.Build.CancelBuild: Скасувати збірку
+Menu.Build.ShowBuildOutput: Показати вихідні дані збірки
+Menu.Run: Запуск
+Menu.Run.RunProject: Запустити проект
+Menu.Run.RunWithoutDebug: Запустити без налагодження
+Menu.Run.Stop: Зупинити
+Menu.Run.Restart: Перезапустити
+Menu.Run.DebugProject: Налагодити проект
+Menu.Run.Debugging: Налагодження
+Menu.Run.StartDebug: Почати налагодження
+Menu.Run.StopDebug: Зупинити налагодження
+Menu.Run.RestartDebug: Перезапустити налагодження
+Menu.Run.StepOver: Крок через
+Menu.Run.StepInto: Увійти
+Menu.Run.StepOut: Вийти
+Menu.Run.Continue: Продовжити
+Menu.Run.ToggleBreakpoint: Перемкнути точку зупину
+Menu.Run.DisableBreakpoints: Вимкнути всі точки зупину
+Menu.Run.RemoveBreakpoints: Видалити всі точки зупину
+Menu.Run.Testing: Тестування
+Menu.Run.RunTests: Запустити всі тести
+Menu.Run.RunFailedTests: Запустити невдалі тести
+Menu.Run.RunFileTests: Запустити тести у файлі
+Menu.Run.DebugTest: Налагодити тест
+Menu.Run.RunCoverage: Покриття
+Menu.Run.Performance: Продуктивність
+Menu.Run.RunBenchmarks: Запустити бенчмарки
+Menu.Run.CompareBenchmarks: Порівняти бенчмарки
+Menu.Run.ProfileBuild: Профіль збірки
+Menu.GameEngine: Ігровий двигун
+Menu.GameEngine.Scene: Сцена
+Menu.GameEngine.NewScene: Нова сцена
+Menu.GameEngine.OpenScene: Відкрити сцену
+Menu.GameEngine.SaveScene: Зберегти сцену
+Menu.GameEngine.SaveSceneAs: Зберегти сцену як
+Menu.GameEngine.PlayScene: Відтворити сцену
+Menu.GameEngine.PauseScene: Призупинити сцену
+Menu.GameEngine.StopScene: Зупинити сцену
+Menu.GameEngine.SceneSettings: Налаштування сцени
+Menu.GameEngine.GameObject: GameObject
+Menu.GameEngine.CreateEmpty: Створити порожній
+Menu.GameEngine.3DObjects: 3D об'єкти
+Menu.GameEngine.CreateCube: Куб
+Menu.GameEngine.CreateSphere: Сфера
+Menu.GameEngine.CreateCapsule: Капсула
+Menu.GameEngine.CreateCylinder: Циліндр
+Menu.GameEngine.CreatePlane: Площина
+Menu.GameEngine.CreateTerrain: Терен
+Menu.GameEngine.2DObjects: 2D об'єкти
+Menu.GameEngine.CreateSprite: Спрайт
+Menu.GameEngine.CreateTilemap: Тайлмап
+Menu.GameEngine.CreateParticles2D: Система частинок 2D
+Menu.GameEngine.Light: Світло
+Menu.GameEngine.CreateDirectionalLight: Спрямоване світло
+Menu.GameEngine.CreatePointLight: Точкове світло
+Menu.GameEngine.CreateSpotLight: Прожектор
+Menu.GameEngine.CreateAreaLight: Площинне світло
+Menu.GameEngine.Audio: Аудіо
+Menu.GameEngine.CreateAudioSource: Джерело звуку
+Menu.GameEngine.CreateAudioListener: Слухач звуку
+Menu.GameEngine.Effects: Ефекти
+Menu.GameEngine.CreateParticleSystem: Система частинок
+Menu.GameEngine.CreateVFX: Візуальний ефект
+Menu.GameEngine.CreatePostProcessing: Постобробка
+Menu.GameEngine.Camera: Камера
+Menu.GameEngine.CreateCamera: Камера
+Menu.GameEngine.CreateOrthoCamera: Ортографічна камера
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: Полотно
+Menu.GameEngine.CreatePanel: Панель
+Menu.GameEngine.CreateButton: Кнопка
+Menu.GameEngine.CreateText: Текст
+Menu.GameEngine.CreateImage: Зображення
+Menu.GameEngine.CreateSlider: Повзунок
+Menu.GameEngine.CreateInputField: Поле введення
+Menu.GameEngine.Physics: Фізика
+Menu.GameEngine.AddRigidbody: Додати Rigidbody
+Menu.GameEngine.AddCollider: Додати Collider
+Menu.GameEngine.AddCharacterController: Додати контролер персонажа
+Menu.GameEngine.PhysicsSettings: Налаштування фізики
+Menu.GameEngine.CollisionMatrix: Матриця зіткнень
+Menu.GameEngine.Rendering: Рендеринг
+Menu.GameEngine.RenderSettings: Налаштування рендерингу
+Menu.GameEngine.LightingSettings: Налаштування освітлення
+Menu.GameEngine.QualitySettings: Налаштування якості
+Menu.GameEngine.BakeLighting: Запекти освітлення
+Menu.GameEngine.ClearBakedData: Очистити запечені дані
+Menu.GameEngine.FrameDebugger: Дебагер кадрів
+Menu.GameEngine.EngineProfiler: Профілювальник
+Menu.GameEngine.PackageManager: Менеджер пакетів
+Menu.GameEngine.AssetStore: Магазин ресурсів
+Menu.Assets: Ресурси
+Menu.Assets.CreateAsset: Створити ресурс
+Menu.Assets.ImportAsset: Імпортувати ресурс
+Menu.Assets.Create: Створити
+Menu.Assets.CreateMaterial: Матеріал
+Menu.Assets.CreateShader: Шейдер
+Menu.Assets.CreateTexture: Текстура
+Menu.Assets.CreateAnimClip: Анімаційний кліп
+Menu.Assets.CreateAnimController: Контролер анімації
+Menu.Assets.CreateAudioMixer: Аудіомікшер
+Menu.Assets.CreateRenderTexture: Текстура рендерингу
+Menu.Assets.CreatePrefab: Префаб
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: Оновити
+Menu.Assets.Reimport: Переімпортувати
+Menu.Assets.ReimportAll: Переімпортувати все
+Menu.Assets.FindReferences: Знайти посилання
+Menu.Assets.FindMissingReferences: Знайти відсутні посилання
+Menu.Tools: Інструменти
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Команди Cargo
+Menu.Tools.GenerateRustAnalyzer: Згенерувати Rust-Analyzer
+Menu.Tools.ExpandMacro: Розгорнути макрос
+Menu.Tools.ShowSyntaxTree: Показати синтаксичне дерево
+Menu.Tools.ShowHIR: Показати HIR
+Menu.Tools.InlineVariable: Вбудувати змінну
+Menu.Tools.ExtractFunction: Виділити функцію
+Menu.Tools.ExtractVariable: Виділити змінну
+Menu.Tools.Shaders: Шейдери
+Menu.Tools.ShaderEditor: Редактор шейдерів
+Menu.Tools.CompileShader: Скомпілювати шейдер
+Menu.Tools.ShaderVariants: Варіанти шейдерів
+Menu.Tools.SPIRVDisassembly: Дизасемблювання SPIR-V
+Menu.Tools.Animation: Анімація
+Menu.Tools.AnimationWindow: Вікно анімації
+Menu.Tools.AnimatorWindow: Animator
+Menu.Tools.Timeline: Часова шкала
+Menu.Tools.MaterialEditor: Редактор матеріалів
+Menu.Tools.TerrainTools: Інструменти терену
+Menu.Tools.ParticleEditor: Редактор частинок
+Menu.Tools.AudioMixerWindow: Аудіомікшер
+Menu.Tools.VersionControl: Контроль версій
+Menu.Tools.TaskManager: Менеджер завдань
+Menu.Tools.Extensions: Розширення
+Menu.Window: Вікно
+Menu.Window.Minimize: Згорнути
+Menu.Window.Zoom: Масштабувати
+Menu.Window.BringAllToFront: Показати всі попереду
+Menu.Window.NewWindow: Нове вікно
+Menu.Window.CloseWindow: Закрити вікно
+Menu.Help.Shortcuts: Клавіатурні скорочення
+Menu.Help.ViewLogs: Переглянути журнали
+Menu.Help.CheckUpdates: Перевірити оновлення
+Menu.Help.ReleaseNotes: Примітки до випуску
+Menu.App.AboutApp: Про Pulsar Engine
+Menu.App.CheckUpdates: Перевірити оновлення
+Menu.App.Preferences: Налаштування
+Menu.App.Settings: Налаштування
+Menu.App.Hide: Приховати Pulsar
+Menu.App.HideOthers: Приховати інші
+Menu.App.ShowAll: Показати всі
+Menu.App.QuitApp: Вийти з Pulsar

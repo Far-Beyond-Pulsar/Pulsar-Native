@@ -1,0 +1,29 @@
+# UI 問題翻訳 - ja
+
+# ドロワータイトル
+Problems.Title: "問題"
+
+# フィルターラベル
+Problems.Filter.All: "すべての問題"
+Problems.Filter.Errors: "エラー"
+Problems.Filter.Warnings: "警告"
+Problems.Filter.Information: "情報"
+Problems.Filter.Hints: "ヒント"
+
+# 検索と操作
+Problems.Search.Placeholder: "問題を検索..."
+Problems.Action.ClearAll: "すべての問題をクリア"
+Problems.Action.GroupByFile: "ファイルごとにグループ化"
+Problems.Action.ShowFlatList: "フラットリストを表示"
+
+# 空の状態
+Problems.Empty.Title: "問題は検出されませんでした"
+Problems.Empty.NoMatch: "検索に一致する問題はありません。別のキーワードをお試しください。"
+Problems.Empty.AllGood: "コードは素晴らしい状態です。この調子で頑張ってください。"
+
+# 診断
+Problems.Loading: "クイックフィックスを読み込み中..."
+Problems.SuggestedFixes: "推奨される修正:"
+Problems.Related: "関連:"
+Problems.Before: "修正前"
+Problems.After: "修正後"

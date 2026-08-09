@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - uk
+
+# Mission Control Panel
+MissionControl.Title: "Центр управління"
+MissionControl.System: "Система"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "Пам'ять"
+MissionControl.Resources: "Ресурси"
+MissionControl.Advanced: "Розширені"
+
+# Log Drawer
+LogDrawer.Filter: "Фільтр"
+LogDrawer.Search: "Пошук..."
+LogDrawer.All: "Все"
+LogDrawer.Info: "Інформація"
+LogDrawer.Warning: "Попередження"
+LogDrawer.Error: "Помилка"
+LogDrawer.Debug: "Налагодження"
+LogDrawer.Trace: "Трасування"
+LogDrawer.Clear: "Очистити"
+LogDrawer.Timestamp: "Час"
+LogDrawer.Level: "Рівень"
+LogDrawer.Message: "Повідомлення"
+LogDrawer.Source: "Джерело"
+
+# Logs Panel
+LogsPanel.Title: "Журнали"
+LogsPanel.NoEntries: "Немає записів журналу"
+
+# System Info Panel
+SystemInfo.Title: "Інформація про систему"
+SystemInfo.OS: "ОС"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "Процес"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "Метрики GPU"
+GpuMetrics.Adapter: "Адаптер"
+GpuMetrics.Driver: "Драйвер"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "Температура"
+GpuMetrics.Utilization: "Використання"
+
+# Resource Monitor
+ResourceMonitor.Title: "Монітор ресурсів"
+ResourceMonitor.CPUUsage: "Використання CPU"
+ResourceMonitor.MemoryUsage: "Використання пам'яті"
+ResourceMonitor.DiskIO: "Введення/Виведення диска"
+ResourceMonitor.Network: "Мережа"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "Розподіл пам'яті"
+MemoryBreakdown.Allocations: "Виділення"
+MemoryBreakdown.Fragmentation: "Фрагментація"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "Розширені метрики"
+AdvancedMetrics.FrameTime: "Час кадру"
+AdvancedMetrics.DrawCalls: "Виклики малювання"
+AdvancedMetrics.TriangleCount: "Кількість трикутників"
+
+# Caller Sites
+CallerSites.Title: "Місця викликів"
+CallerSites.Function: "Функція"
+CallerSites.Allocations: "Виділення"
+CallerSites.Bytes: "Байти"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "Мін. FPS"
+Performance.MaxFPS: "Макс. FPS"
+Performance.AvgFPS: "Сер. FPS"

@@ -1,0 +1,54 @@
+# Flamegraph Profiler - es
+
+# Window Title
+Flamegraph.Title: "Profiler de Flamegraph"
+
+# Toolbar Buttons
+Flamegraph.Record: "Grabar"
+Flamegraph.Stop: "Detener"
+Flamegraph.Recording: "GRABANDO"
+Flamegraph.OpenSession: "Abrir Sesión"
+
+# Empty State
+Flamegraph.NoDataLoaded: "Sin Datos de Perfil"
+Flamegraph.GetStarted: "Elija una opción a continuación para comenzar"
+Flamegraph.StartRecording: "Iniciar Grabación"
+Flamegraph.StartRecordingDesc: "Capture datos de perfil en tiempo real de su aplicación en ejecución"
+Flamegraph.OpenPreviousSession: "Abrir Sesión Anterior"
+Flamegraph.OpenSessionDesc: "Explore y cargue sesiones de perfil guardadas anteriormente"
+Flamegraph.RecordingInProgress: "Grabación en Progreso"
+Flamegraph.WaitingForData: "Esperando datos de perfil..."
+Flamegraph.RecordingActive: "Grabación Activa"
+Flamegraph.DataWillAppear: "Los datos aparecerán aquí una vez que se capturen eventos de perfil"
+
+# Pro Tips
+Flamegraph.ProTips: "Consejos Profesionales"
+Flamegraph.Tip1: "Use Ctrl+Desplazamiento para hacer zoom horizontal, Shift+Desplazamiento para desplazamiento vertical"
+Flamegraph.Tip2: "Haga clic derecho y arrastre para desplazarse libremente por el flamegraph"
+Flamegraph.Tip3: "Haga clic en el gráfico de velocidad de fotogramas para saltar a momentos específicos"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "Estadísticas"
+Flamegraph.TotalSpans: "Intervalos Totales:"
+Flamegraph.Duration: "Duración:"
+Flamegraph.Frames: "Fotogramas:"
+Flamegraph.AvgFrame: "Fotograma Promedio:"
+Flamegraph.MinFrame: "Fotograma Mínimo:"
+Flamegraph.MaxFrame: "Fotograma Máximo:"
+Flamegraph.Threads: "Hilos:"
+Flamegraph.MaxDepth: "Profundidad Máxima:"
+
+# Hover Popup
+Flamegraph.Start: "Inicio:"
+Flamegraph.End: "Fin:"
+Flamegraph.Thread: "Hilo:"
+Flamegraph.Depth: "Profundidad:"
+Flamegraph.Unknown: "Desconocido"
+
+# Units
+Flamegraph.Milliseconds: "%{value} ms"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "Recopilando Datos de Perfil..."
+Flamegraph.SpansCollected: "Intervalos Recopilados:"
+Flamegraph.StopRecording: "Detener Grabación"

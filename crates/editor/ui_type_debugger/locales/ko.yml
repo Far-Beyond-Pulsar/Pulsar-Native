@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - ko
+
+# Drawer Title
+TypeDebugger.Title: "타입 데이터베이스"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "타입 검색..."
+TypeDebugger.Action.ClearAll: "모든 타입 지우기"
+TypeDebugger.Action.GroupByKind: "종류별로 그룹화"
+TypeDebugger.Action.ShowFlatList: "평면 목록 표시"
+
+# Empty State
+TypeDebugger.Empty.Title: "타입을 찾을 수 없음"
+TypeDebugger.Empty.Message: "검색 조건에 일치하는 타입이 없습니다."

@@ -32,6 +32,7 @@ pub fn register(cfg: &'static ConfigManager) {
                     DropdownOption::new("Turkish (tr)", "tr"),
                     DropdownOption::new("Arabic (ar)", "ar"),
                     DropdownOption::new("Hindi (hi)", "hi"),
+                    DropdownOption::new("Ukrainian (uk)", "uk"),
                 ],
             }),
     )

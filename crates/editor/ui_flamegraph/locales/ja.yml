@@ -1,0 +1,54 @@
+# フレームグラフプロファイラ翻訳 - ja
+
+# ウィンドウタイトル
+Flamegraph.Title: "フレームグラフプロファイラ"
+
+# ツールバーボタン
+Flamegraph.Record: "記録"
+Flamegraph.Stop: "停止"
+Flamegraph.Recording: "記録中"
+Flamegraph.OpenSession: "セッションを開く"
+
+# 空の状態
+Flamegraph.NoDataLoaded: "プロファイリングデータがありません"
+Flamegraph.GetStarted: "開始するには以下のオプションを選択してください"
+Flamegraph.StartRecording: "記録を開始"
+Flamegraph.StartRecordingDesc: "実行中のアプリケーションからリアルタイムのプロファイリングデータを取得します"
+Flamegraph.OpenPreviousSession: "前回のセッションを開く"
+Flamegraph.OpenSessionDesc: "以前に保存したプロファイリングセッションを参照して読み込みます"
+Flamegraph.RecordingInProgress: "記録中"
+Flamegraph.WaitingForData: "プロファイリングデータの到着を待機中..."
+Flamegraph.RecordingActive: "記録を実行中"
+Flamegraph.DataWillAppear: "プロファイリングイベントが取得されると、ここにデータが表示されます"
+
+# プロのヒント
+Flamegraph.ProTips: "プロのヒント"
+Flamegraph.Tip1: "Ctrl+スクロールで水平ズーム、Shift+スクロールで垂直方向のパン"
+Flamegraph.Tip2: "右クリックしながらドラッグすると、フレームグラフを自由に移動できます"
+Flamegraph.Tip3: "フレームレートグラフをクリックすると、特定の時間帯にジャンプします"
+
+# 統計サイドバー
+Flamegraph.Statistics: "統計"
+Flamegraph.TotalSpans: "スパン合計:"
+Flamegraph.Duration: "所要時間:"
+Flamegraph.Frames: "フレーム数:"
+Flamegraph.AvgFrame: "平均フレーム:"
+Flamegraph.MinFrame: "最小フレーム:"
+Flamegraph.MaxFrame: "最大フレーム:"
+Flamegraph.Threads: "スレッド:"
+Flamegraph.MaxDepth: "最大深度:"
+
+# ホバーポップアップ
+Flamegraph.Start: "開始:"
+Flamegraph.End: "終了:"
+Flamegraph.Thread: "スレッド:"
+Flamegraph.Depth: "深度:"
+Flamegraph.Unknown: "不明"
+
+# 単位
+Flamegraph.Milliseconds: "%{value} ms"
+
+# プロファイリングオーバーレイ
+Flamegraph.CollectingData: "プロファイリングデータを収集中..."
+Flamegraph.SpansCollected: "収集したスパン:"
+Flamegraph.StopRecording: "記録を停止"

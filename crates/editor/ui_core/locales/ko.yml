@@ -1,0 +1,28 @@
+﻿# UI Core Translations - ko
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "중지"
+StatusBar.Restart: "다시 시작"
+StatusBar.Start: "시작"
+StatusBar.Multiplayer: "멀티플레이어 협업"
+StatusBar.PluginManager: "플러그인 관리자"
+StatusBar.Flamegraph: "플레임그래프 프로파일러"
+
+Notification.Title.Dev: "개발"
+Notification.Title.BuildInfo: "빌드 정보"
+Notification.Title.Build: "빌드"
+Notification.Title.Run: "실행"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer 준비 완료"
+Notification.Title.AnalyzerError: "분석기 오류"
+Notification.Title.CodeIntelligenceReady: "코드 인텔리전스 준비 완료"
+Notification.Title.ProjectLoaded: "프로젝트 로드됨"
+Notification.Message.UseSaveAsDefault: "레벨 편집기 도구 모음에서 \"기본값으로 저장\"을 사용하세요."
+Notification.Message.Opening: "%{path} 여는 중"
+Notification.Message.AssetReloadNotImplemented: "에셋 다시 로드가 아직 구현되지 않았습니다."
+Notification.Message.EngineInspectorNotImplemented: "엔진 상태 검사기가 아직 구현되지 않았습니다."
+Notification.Message.BuildingProject: "프로젝트 빌드 중..."
+Notification.Message.RunningProject: "프로젝트 실행 중..."
+Notification.Message.CodeIntelligenceAvailable: "코드 인텔리전스를 사용할 수 있습니다"
+Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer 인덱싱 완료"
+Notification.Message.WelcomeToProject: "%{project}에 오신 것을 환영합니다"

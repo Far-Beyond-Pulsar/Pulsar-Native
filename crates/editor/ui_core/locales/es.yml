@@ -1,0 +1,28 @@
+# UI Core Translations - es
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "Detener"
+StatusBar.Restart: "Reiniciar"
+StatusBar.Start: "Iniciar"
+StatusBar.Multiplayer: "Colaboración Multijugador"
+StatusBar.PluginManager: "Administrador de Plugins"
+StatusBar.Flamegraph: "Profiler de Flamegraph"
+
+Notification.Title.Dev: "Desarrollo"
+Notification.Title.BuildInfo: "Información de Compilación"
+Notification.Title.Build: "Compilación"
+Notification.Title.Run: "Ejecutar"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer Listo"
+Notification.Title.AnalyzerError: "Error del Analizador"
+Notification.Title.CodeIntelligenceReady: "Inteligencia de Código Lista"
+Notification.Title.ProjectLoaded: "Proyecto Cargado"
+Notification.Message.UseSaveAsDefault: "Use \"Guardar como Predeterminado\" en la barra de herramientas del editor de niveles."
+Notification.Message.Opening: "Abriendo %{path}"
+Notification.Message.AssetReloadNotImplemented: "La recarga de activos aún no está implementada."
+Notification.Message.EngineInspectorNotImplemented: "El inspector de estado del motor aún no está implementado."
+Notification.Message.BuildingProject: "Compilando proyecto..."
+Notification.Message.RunningProject: "Ejecutando proyecto..."
+Notification.Message.CodeIntelligenceAvailable: "La inteligencia de código ya está disponible"
+Notification.Message.RustAnalyzerIndexingComplete: "Indexación de Rust Analyzer completada"
+Notification.Message.WelcomeToProject: "Bienvenido a %{project}"

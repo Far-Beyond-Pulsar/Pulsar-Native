@@ -1,0 +1,374 @@
+# UI Translations - ko
+
+Calendar.week.0: 일
+Calendar.week.1: 월
+Calendar.week.2: 화
+Calendar.week.3: 수
+Calendar.week.4: 목
+Calendar.week.5: 금
+Calendar.week.6: 토
+Calendar.month.January: 1월
+Calendar.month.February: 2월
+Calendar.month.March: 3월
+Calendar.month.April: 4월
+Calendar.month.May: 5월
+Calendar.month.June: 6월
+Calendar.month.July: 7월
+Calendar.month.August: 8월
+Calendar.month.September: 9월
+Calendar.month.October: 10월
+Calendar.month.November: 11월
+Calendar.month.December: 12월
+DatePicker.placeholder: "날짜 선택"
+Dropdown.placeholder: "선택해 주세요"
+Dock.Unnamed: 이름 없음
+Dock.Close: 닫기
+Dock.Zoom In: 확대
+Dock.Zoom Out: 축소
+Dock.Collapse: 접기
+Dock.Expand: 펼치기
+Modal.ok: OK
+Modal.cancel: 취소
+List.search_placeholder: 검색...
+Input.Replace: 바꾸기
+Input.Replace All: 모두 바꾸기
+Input.Cut: 잘라내기
+Input.Copy: 복사
+Input.Paste: 붙여넣기
+Input.Select All: 모두 선택
+Input.Go to Definition: 정의로 이동
+Input.Show Code Actions: 코드 작업 표시
+
+# Window Titles
+Window.Title.AboutPulsar: "Pulsar 엔진 정보"
+Window.Title.FileManager: "파일 관리자"
+Window.Title.Problems: "문제"
+Window.Title.TypeDebugger: "타입 디버거"
+Window.Title.Settings: "설정"
+Window.Title.Documentation: "문서"
+
+Menu.File: 파일
+Menu.Edit: 편집
+Menu.View: 보기
+Menu.Help: 도움말
+Menu.File.New: 새로 만들기
+Menu.File.NewFile: 새 파일
+Menu.File.NewWindow: 새 창
+Menu.File.NewProject: 새 프로젝트
+Menu.File.NewScene: 새 씬
+Menu.File.NewScript: 새 스크립트
+Menu.File.NewShader: 새 셰이더
+Menu.File.NewMaterial: 새 재질
+Menu.File.NewPrefab: 새 프리팹
+Menu.File.NewBlueprint: 새 블루프린트
+Menu.File.NewComponent: 새 컴포넌트
+Menu.File.NewSystem: 새 시스템
+Menu.File.Open: 열기
+Menu.File.OpenFolder: 폴더 열기
+Menu.File.OpenRecent: 최근 항목 열기
+Menu.File.RecentProjects: 최근 프로젝트
+Menu.File.RecentFiles: 최근 파일
+Menu.File.ClearRecent: 최근 항목 지우기
+Menu.File.Save: 저장
+Menu.File.SaveAs: 다른 이름으로 저장...
+Menu.File.SaveAll: 모두 저장
+Menu.File.SaveWorkspace: 작업 공간 저장
+Menu.File.Import: 가져오기
+Menu.File.ImportAsset: 에셋 가져오기
+Menu.File.ImportModel: 모델 가져오기 (FBX/GLTF)
+Menu.File.ImportTexture: 텍스처 가져오기
+Menu.File.ImportAudio: 오디오 가져오기
+Menu.File.BatchImport: 일괄 가져오기
+Menu.File.ImportFromUnity: Unity에서 가져오기
+Menu.File.ImportFromUnreal: Unreal에서 가져오기
+Menu.File.ImportFromGodot: Godot에서 가져오기
+Menu.File.Export: 내보내기
+Menu.File.ExportBuild: 빌드 내보내기
+Menu.File.ExportScene: 씬 내보내기
+Menu.File.ExportSelected: 선택 항목 내보내기
+Menu.File.ExportWindows: Windows용 내보내기
+Menu.File.ExportLinux: Linux용 내보내기
+Menu.File.ExportMacOS: macOS용 내보내기
+Menu.File.ExportWeb: 웹용 내보내기 (WASM)
+Menu.File.ExportAndroid: Android용 내보내기
+Menu.File.ExportIOS: iOS용 내보내기
+Menu.File.RevertFile: 파일 되돌리기
+Menu.File.CloseFile: 파일 닫기
+Menu.File.CloseFolder: 폴더 닫기
+Menu.File.CloseAll: 모두 닫기
+Menu.File.CloseOthers: 다른 파일 닫기
+Menu.Edit.Undo: 실행 취소
+Menu.Edit.Redo: 다시 실행
+Menu.Edit.Cut: 잘라내기
+Menu.Edit.Copy: 복사
+Menu.Edit.Paste: 붙여넣기
+Menu.Edit.Delete: 삭제
+Menu.Edit.Duplicate: 복제
+Menu.Edit.SelectAll: 모두 선택
+Menu.Edit.Find: 찾기
+Menu.Edit.FindInFiles: 파일에서 찾기
+Menu.Edit.Replace: 바꾸기
+Menu.Edit.Preferences: 기본 설정
+Menu.View.CommandPalette: 명령 팔레트
+Menu.View.ToggleFullscreen: 전체 화면 전환
+Menu.View.ZoomIn: 확대
+Menu.View.ZoomOut: 축소
+Menu.View.ResetZoom: 확대/축소 초기화
+Menu.View.Panels: 패널
+Menu.View.TogglePanel: 패널 전환
+Menu.View.Console: 콘솔
+Menu.View.Inspector: 인스펙터
+Menu.View.Profiler: 프로파일러
+Menu.View.ToggleMinimap: 미니맵 전환
+Menu.View.ToggleLineNumbers: 줄 번호 전환
+Menu.View.ToggleBreadcrumbs: 이동 경로 전환
+Menu.View.ToggleWhitespace: 공백 표시 전환
+Menu.View.ZenMode: 집중 모드
+Menu.Help.Documentation: 문서
+Menu.Help.GettingStarted: 시작하기
+Menu.Help.Tutorials: 튜토리얼
+Menu.Help.API: API 참조
+Menu.Help.ReportBug: 버그 신고
+Menu.Help.RequestFeature: 기능 요청
+Menu.Help.Community: 커뮤니티
+Menu.Help.About: Pulsar 정보
+Menu.Edit.SelectNone: 선택 해제
+Menu.Edit.FindNext: 다음 찾기
+Menu.Edit.FindPrevious: 이전 찾기
+Menu.Edit.ReplaceNext: 다음 바꾸기
+Menu.Edit.ReplaceAll: 모두 바꾸기
+Menu.Edit.ReplaceInFiles: 파일에서 바꾸기
+Menu.Edit.FindUsages: 사용처 찾기
+Menu.Edit.FindImplementations: 구현 찾기
+Menu.Edit.CodeActions: 코드 작업
+Menu.Edit.FormatDocument: 문서 서식
+Menu.Edit.FormatSelection: 선택 영역 서식
+Menu.Edit.CommentLine: 줄 주석 처리
+Menu.Edit.UncommentLine: 줄 주석 해제
+Menu.Edit.ToggleComment: 주석 전환
+Menu.Edit.Fold: 접기
+Menu.Edit.Unfold: 펼치기
+Menu.Edit.FoldAll: 모두 접기
+Menu.Edit.UnfoldAll: 모두 펼치기
+Menu.Edit.SortLines: 줄 정렬
+Menu.Edit.RemoveDuplicates: 중복 제거
+Menu.Edit.TrimWhitespace: 끝 공백 제거
+Menu.Selection: 선택
+Menu.Selection.SelectLine: 줄 선택
+Menu.Selection.SelectWord: 단어 선택
+Menu.Selection.SelectScope: 범위 선택
+Menu.Selection.ExpandSelection: 선택 확장
+Menu.Selection.ShrinkSelection: 선택 축소
+Menu.Selection.AddCursorAbove: 위에 커서 추가
+Menu.Selection.AddCursorBelow: 아래에 커서 추가
+Menu.Selection.AddCursorLineEnds: 줄 끝에 커서 추가
+Menu.Selection.SelectAllOccurrences: 모든 항목 선택
+Menu.Selection.SelectNextOccurrence: 다음 항목 선택
+Menu.Selection.SkipOccurrence: 항목 건너뛰기
+Menu.View.Explorer: 탐색기
+Menu.View.Hierarchy: 씬 계층 구조
+Menu.View.AssetBrowser: 에셋 브라우저
+Menu.View.Output: 출력
+Menu.View.Problems: 문제
+Menu.View.Debug: 디버그
+Menu.View.MemoryAnalyzer: 메모리 분석기
+Menu.View.Network: 네트워크
+Menu.View.Appearance: 모양
+Menu.View.Layout: 레이아웃
+Menu.View.SplitHorizontal: 가로 분할
+Menu.View.SplitVertical: 세로 분할
+Menu.View.SingleColumn: 단일 열
+Menu.View.TwoColumns: 두 열
+Menu.View.ThreeColumns: 세 열
+Menu.View.ResetLayout: 레이아웃 초기화
+Menu.View.SaveLayout: 레이아웃 저장
+Menu.View.QuickOpen: 빠른 열기
+Menu.Go: 이동
+Menu.Go.GoToFile: 파일로 이동
+Menu.Go.GoToSymbol: 기호로 이동
+Menu.Go.GoToLine: 줄로 이동
+Menu.Go.GoToDefinition: 정의로 이동
+Menu.Go.GoToTypeDefinition: 유형 정의로 이동
+Menu.Go.GoToImplementation: 구현으로 이동
+Menu.Go.GoToReferences: 참조로 이동
+Menu.Go.GoBack: 뒤로 이동
+Menu.Go.GoForward: 앞으로 이동
+Menu.Go.GoToLastEdit: 마지막 편집 위치로 이동
+Menu.Go.NextProblem: 다음 문제
+Menu.Go.PreviousProblem: 이전 문제
+Menu.Project: 프로젝트
+Menu.Project.ProjectSettings: 프로젝트 설정
+Menu.Project.BuildSettings: 빌드 설정
+Menu.Project.PackageSettings: 패키지 설정
+Menu.Project.Dependencies: 종속성
+Menu.Project.AddDependency: 종속성 추가
+Menu.Project.UpdateDependencies: 종속성 업데이트
+Menu.Project.RemoveUnused: 사용하지 않는 항목 제거
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: 문서 생성
+Menu.Project.RunCargoCheck: Cargo Check 실행
+Menu.Project.RunClippy: Clippy 실행
+Menu.Project.FormatProject: 프로젝트 서식
+Menu.Build: 빌드
+Menu.Build.BuildProject: 프로젝트 빌드
+Menu.Build.BuildAndRun: 빌드 및 실행
+Menu.Build.BuildRelease: 릴리스 빌드
+Menu.Build.Rebuild: 모두 다시 빌드
+Menu.Build.Clean: 정리 빌드
+Menu.Build.BuildConfiguration: 빌드 구성
+Menu.Build.BuildDebug: 디버그
+Menu.Build.BuildReleaseDebug: 디버그 정보 포함 릴리스
+Menu.Build.BuildProfile: 프로필
+Menu.Build.CancelBuild: 빌드 취소
+Menu.Build.ShowBuildOutput: 빌드 출력 표시
+Menu.Run: 실행
+Menu.Run.RunProject: 프로젝트 실행
+Menu.Run.RunWithoutDebug: 디버깅하지 않고 실행
+Menu.Run.Stop: 중지
+Menu.Run.Restart: 다시 시작
+Menu.Run.DebugProject: 프로젝트 디버그
+Menu.Run.Debugging: 디버깅
+Menu.Run.StartDebug: 디버깅 시작
+Menu.Run.StopDebug: 디버깅 중지
+Menu.Run.RestartDebug: 디버깅 다시 시작
+Menu.Run.StepOver: 프로시저 단위 실행
+Menu.Run.StepInto: 한 단계씩 실행
+Menu.Run.StepOut: 프로시저 나가기
+Menu.Run.Continue: 계속
+Menu.Run.ToggleBreakpoint: 중단점 전환
+Menu.Run.DisableBreakpoints: 모든 중단점 사용 안 함
+Menu.Run.RemoveBreakpoints: 모든 중단점 제거
+Menu.Run.Testing: 테스트
+Menu.Run.RunTests: 모든 테스트 실행
+Menu.Run.RunFailedTests: 실패한 테스트 실행
+Menu.Run.RunFileTests: 파일의 테스트 실행
+Menu.Run.DebugTest: 테스트 디버그
+Menu.Run.RunCoverage: 코드 검사
+Menu.Run.Performance: 성능
+Menu.Run.RunBenchmarks: 벤치마크 실행
+Menu.Run.CompareBenchmarks: 벤치마크 비교
+Menu.Run.ProfileBuild: 프로필 빌드
+Menu.GameEngine: 게임 엔진
+Menu.GameEngine.Scene: 씬
+Menu.GameEngine.NewScene: 새 씬
+Menu.GameEngine.OpenScene: 씬 열기
+Menu.GameEngine.SaveScene: 씬 저장
+Menu.GameEngine.SaveSceneAs: 씬 다른 이름으로 저장
+Menu.GameEngine.PlayScene: 씬 재생
+Menu.GameEngine.PauseScene: 씬 일시정지
+Menu.GameEngine.StopScene: 씬 중지
+Menu.GameEngine.SceneSettings: 씬 설정
+Menu.GameEngine.GameObject: 게임 오브젝트
+Menu.GameEngine.CreateEmpty: 빈 오브젝트 만들기
+Menu.GameEngine.3DObjects: 3D 오브젝트
+Menu.GameEngine.CreateCube: 큐브
+Menu.GameEngine.CreateSphere: 구체
+Menu.GameEngine.CreateCapsule: 캡슐
+Menu.GameEngine.CreateCylinder: 원기둥
+Menu.GameEngine.CreatePlane: 평면
+Menu.GameEngine.CreateTerrain: 지형
+Menu.GameEngine.2DObjects: 2D 오브젝트
+Menu.GameEngine.CreateSprite: 스프라이트
+Menu.GameEngine.CreateTilemap: 타일맵
+Menu.GameEngine.CreateParticles2D: 파티클 시스템 2D
+Menu.GameEngine.Light: 조명
+Menu.GameEngine.CreateDirectionalLight: 방향성 조명
+Menu.GameEngine.CreatePointLight: 점 조명
+Menu.GameEngine.CreateSpotLight: 스포트라이트
+Menu.GameEngine.CreateAreaLight: 영역 조명
+Menu.GameEngine.Audio: 오디오
+Menu.GameEngine.CreateAudioSource: 오디오 소스
+Menu.GameEngine.CreateAudioListener: 오디오 리스너
+Menu.GameEngine.Effects: 효과
+Menu.GameEngine.CreateParticleSystem: 파티클 시스템
+Menu.GameEngine.CreateVFX: 비주얼 이펙트
+Menu.GameEngine.CreatePostProcessing: 후처리
+Menu.GameEngine.Camera: 카메라
+Menu.GameEngine.CreateCamera: 카메라
+Menu.GameEngine.CreateOrthoCamera: 직교 카메라
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: 캔버스
+Menu.GameEngine.CreatePanel: 패널
+Menu.GameEngine.CreateButton: 버튼
+Menu.GameEngine.CreateText: 텍스트
+Menu.GameEngine.CreateImage: 이미지
+Menu.GameEngine.CreateSlider: 슬라이더
+Menu.GameEngine.CreateInputField: 입력 필드
+Menu.GameEngine.Physics: 물리
+Menu.GameEngine.AddRigidbody: 리지드바디 추가
+Menu.GameEngine.AddCollider: 콜라이더 추가
+Menu.GameEngine.AddCharacterController: 캐릭터 컨트롤러 추가
+Menu.GameEngine.PhysicsSettings: 물리 설정
+Menu.GameEngine.CollisionMatrix: 충돌 매트릭스
+Menu.GameEngine.Rendering: 렌더링
+Menu.GameEngine.RenderSettings: 렌더 설정
+Menu.GameEngine.LightingSettings: 조명 설정
+Menu.GameEngine.QualitySettings: 품질 설정
+Menu.GameEngine.BakeLighting: 조명 베이크
+Menu.GameEngine.ClearBakedData: 베이크된 데이터 지우기
+Menu.GameEngine.FrameDebugger: 프레임 디버거
+Menu.GameEngine.EngineProfiler: 프로파일러
+Menu.GameEngine.PackageManager: 패키지 관리자
+Menu.GameEngine.AssetStore: 에셋 스토어
+Menu.Assets: 에셋
+Menu.Assets.CreateAsset: 에셋 만들기
+Menu.Assets.ImportAsset: 에셋 가져오기
+Menu.Assets.Create: 만들기
+Menu.Assets.CreateMaterial: 재질
+Menu.Assets.CreateShader: 셰이더
+Menu.Assets.CreateTexture: 텍스처
+Menu.Assets.CreateAnimClip: 애니메이션 클립
+Menu.Assets.CreateAnimController: 애니메이터 컨트롤러
+Menu.Assets.CreateAudioMixer: 오디오 믹서
+Menu.Assets.CreateRenderTexture: 렌더 텍스처
+Menu.Assets.CreatePrefab: 프리팹
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: 새로 고침
+Menu.Assets.Reimport: 다시 가져오기
+Menu.Assets.ReimportAll: 모두 다시 가져오기
+Menu.Assets.FindReferences: 참조 찾기
+Menu.Assets.FindMissingReferences: 누락된 참조 찾기
+Menu.Tools: 도구
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo 명령
+Menu.Tools.GenerateRustAnalyzer: Rust-Analyzer 생성
+Menu.Tools.ExpandMacro: 매크로 확장
+Menu.Tools.ShowSyntaxTree: 구문 트리 표시
+Menu.Tools.ShowHIR: HIR 표시
+Menu.Tools.InlineVariable: 변수 인라인
+Menu.Tools.ExtractFunction: 함수 추출
+Menu.Tools.ExtractVariable: 변수 추출
+Menu.Tools.Shaders: 셰이더
+Menu.Tools.ShaderEditor: 셰이더 편집기
+Menu.Tools.CompileShader: 셰이더 컴파일
+Menu.Tools.ShaderVariants: 셰이더 변형
+Menu.Tools.SPIRVDisassembly: SPIR-V 디스어셈블리
+Menu.Tools.Animation: 애니메이션
+Menu.Tools.AnimationWindow: 애니메이션 창
+Menu.Tools.AnimatorWindow: 애니메이터
+Menu.Tools.Timeline: 타임라인
+Menu.Tools.MaterialEditor: 재질 편집기
+Menu.Tools.TerrainTools: 지형 도구
+Menu.Tools.ParticleEditor: 파티클 편집기
+Menu.Tools.AudioMixerWindow: 오디오 믹서
+Menu.Tools.VersionControl: 버전 관리
+Menu.Tools.TaskManager: 작업 관리자
+Menu.Tools.Extensions: 확장
+Menu.Window: 창
+Menu.Window.Minimize: 최소화
+Menu.Window.Zoom: 확대
+Menu.Window.BringAllToFront: 모두 앞으로 가져오기
+Menu.Window.NewWindow: 새 창
+Menu.Window.CloseWindow: 창 닫기
+Menu.Help.Shortcuts: 키보드 단축키
+Menu.Help.ViewLogs: 로그 보기
+Menu.Help.CheckUpdates: 업데이트 확인
+Menu.Help.ReleaseNotes: 릴리스 노트
+Menu.App.AboutApp: Pulsar 엔진 정보
+Menu.App.CheckUpdates: 업데이트 확인
+Menu.App.Preferences: 기본 설정
+Menu.App.Settings: 설정
+Menu.App.Hide: Pulsar 숨기기
+Menu.App.HideOthers: 다른 창 숨기기
+Menu.App.ShowAll: 모두 표시
+Menu.App.QuitApp: Pulsar 종료

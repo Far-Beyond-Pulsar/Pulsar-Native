@@ -1,0 +1,60 @@
+# Asset Viewer 翻訳 - ja
+
+AssetViewer.Title: アセットビューア
+AssetViewer.DisplayName: FBX/PNG アセットビューア
+AssetViewer.FBXModel: FBX モデル
+AssetViewer.PNGImage: PNG 画像
+AssetViewer.Adjust: 調整
+AssetViewer.Grayscale: グレースケール
+AssetViewer.InvertColors: 色の反転
+AssetViewer.BrightnessDown: 明るさ -
+AssetViewer.BrightnessUp: 明るさ +
+AssetViewer.ContrastDown: コントラスト -
+AssetViewer.ContrastUp: コントラスト +
+AssetViewer.FlipH: 水平反転
+AssetViewer.FlipV: 垂直反転
+AssetViewer.Generator: ジェネレーター
+AssetViewer.MorphTargets: モーフターゲット
+AssetViewer.Cameras: カメラ
+AssetViewer.Clips: クリップ
+AssetViewer.Animation: アニメーション
+AssetViewer.Joints: ジョイント
+AssetViewer.Images: 画像
+AssetViewer.Info: 情報
+AssetViewer.History: 履歴
+AssetViewer.File: ファイル
+AssetViewer.Initializing: 初期化中...
+AssetViewer.EditorClosed: エディタが閉じられました
+AssetViewer.EditorUnavailable: エディタを利用できません
+AssetViewer.NoImageLoaded: 画像が読み込まれていません
+AssetViewer.NoSavePath: 保存先がありません
+AssetViewer.FailedCreateImage: 画像の作成に失敗しました
+AssetViewer.Team: Pulsar チーム
+
+AssetViewer.Undo: 元に戻す
+AssetViewer.Redo: やり直す
+AssetViewer.Save: 保存
+AssetViewer.Transform: トランスフォーム
+AssetViewer.RotCW: 時計回りに回転
+AssetViewer.RotCCW: 反時計回りに回転
+AssetViewer.View: 表示
+AssetViewer.ResetZoom: ズームをリセット
+AssetViewer.Scene: シーン
+AssetViewer.Meshes: メッシュ
+AssetViewer.Vertices: 頂点
+AssetViewer.Triangles: 三角形
+AssetViewer.Materials: マテリアル
+AssetViewer.Resources: リソース
+AssetViewer.Textures: テクスチャ
+AssetViewer.Lights: ライト
+AssetViewer.Skins: スキン
+AssetViewer.ColName: 名前
+AssetViewer.ColVerts: 頂点数
+AssetViewer.ColTris: 三角形数
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: マテリアル
+AssetViewer.Loading: 読み込み中...
+AssetViewer.Unknown: 不明

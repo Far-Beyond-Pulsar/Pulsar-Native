@@ -1,0 +1,60 @@
+# Asset Viewer translations - ko
+
+AssetViewer.Title: 에셋 뷰어
+AssetViewer.DisplayName: FBX/PNG 에셋 뷰어
+AssetViewer.FBXModel: FBX 모델
+AssetViewer.PNGImage: PNG 이미지
+AssetViewer.Adjust: 조정
+AssetViewer.Grayscale: 흑백
+AssetViewer.InvertColors: 색상 반전
+AssetViewer.BrightnessDown: 밝기 -
+AssetViewer.BrightnessUp: 밝기 +
+AssetViewer.ContrastDown: 대비 -
+AssetViewer.ContrastUp: 대비 +
+AssetViewer.FlipH: 가로 뒤집기
+AssetViewer.FlipV: 세로 뒤집기
+AssetViewer.Generator: 생성기
+AssetViewer.MorphTargets: 모프 타깃
+AssetViewer.Cameras: 카메라
+AssetViewer.Clips: 클립
+AssetViewer.Animation: 애니메이션
+AssetViewer.Joints: 관절
+AssetViewer.Images: 이미지
+AssetViewer.Info: 정보
+AssetViewer.History: 기록
+AssetViewer.File: 파일
+AssetViewer.Initializing: 초기화 중...
+AssetViewer.EditorClosed: 편집기가 닫힘
+AssetViewer.EditorUnavailable: 편집기 사용 불가
+AssetViewer.NoImageLoaded: 로드된 이미지 없음
+AssetViewer.NoSavePath: 저장 경로 없음
+AssetViewer.FailedCreateImage: 이미지를 만들지 못했습니다
+AssetViewer.Team: Pulsar 팀
+
+AssetViewer.Undo: 실행 취소
+AssetViewer.Redo: 다시 실행
+AssetViewer.Save: 저장
+AssetViewer.Transform: 변형
+AssetViewer.RotCW: 시계 방향 회전
+AssetViewer.RotCCW: 반시계 방향 회전
+AssetViewer.View: 보기
+AssetViewer.ResetZoom: 확대/축소 초기화
+AssetViewer.Scene: 씬
+AssetViewer.Meshes: 메시
+AssetViewer.Vertices: 정점
+AssetViewer.Triangles: 삼각형
+AssetViewer.Materials: 재질
+AssetViewer.Resources: 리소스
+AssetViewer.Textures: 텍스처
+AssetViewer.Lights: 조명
+AssetViewer.Skins: 스킨
+AssetViewer.ColName: 이름
+AssetViewer.ColVerts: 정점
+AssetViewer.ColTris: 삼각형
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: 재질
+AssetViewer.Loading: 불러오는 중...
+AssetViewer.Unknown: 알 수 없음

@@ -1,0 +1,29 @@
+# UI Problems Translations - ko
+
+# Drawer Title
+Problems.Title: "문제"
+
+# Filter Labels
+Problems.Filter.All: "모든 문제"
+Problems.Filter.Errors: "오류"
+Problems.Filter.Warnings: "경고"
+Problems.Filter.Information: "정보"
+Problems.Filter.Hints: "힌트"
+
+# Search & Actions
+Problems.Search.Placeholder: "문제 검색..."
+Problems.Action.ClearAll: "모든 문제 지우기"
+Problems.Action.GroupByFile: "파일별로 그룹화"
+Problems.Action.ShowFlatList: "평면 목록 표시"
+
+# Empty State
+Problems.Empty.Title: "문제를 찾을 수 없음"
+Problems.Empty.NoMatch: "검색 조건에 일치하는 문제가 없습니다. 다른 검색어를 사용해 보세요."
+Problems.Empty.AllGood: "코드가 아주 깔끔합니다. 좋은 작업을 계속하세요!"
+
+# Diagnostics
+Problems.Loading: "빠른 수정 로드 중..."
+Problems.SuggestedFixes: "제안된 수정:"
+Problems.Related: "관련:"
+Problems.Before: "이전"
+Problems.After: "이후"
