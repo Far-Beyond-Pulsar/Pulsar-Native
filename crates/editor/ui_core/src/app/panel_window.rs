@@ -39,7 +39,6 @@ impl Render for PanelWindow {
             .child(
                 // Titlebar with window controls
                 TitleBar::new()
-                    .h(ui::title_bar::TITLE_BAR_HEIGHT)
                     .on_close_window(move |_, window, cx| {
                         tracing::trace!(
                             "[POPOUT] Close button clicked, restoring panel to main window"
