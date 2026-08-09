@@ -597,11 +597,14 @@ impl FramePacer {
     /// Frames in a row that must overrun before dropping the target.
     const LATE_STREAK_TO_DROP: u32 = 8;
     /// Frames in a row that must meet their deadline before raising it again.
-    const ON_TIME_STREAK_TO_RAISE: u32 = 120;
-    /// Multiplier applied on each drop / recovery step. Recovery is deliberately
-    /// gentler than the drop so the rate doesn't oscillate.
+    /// Reduced from 120 → 30 so recovery is aggressive: after a drop the rate
+    /// climbs back toward the ceiling in ≈0.5 s of stability rather than ≈2 s.
+    const ON_TIME_STREAK_TO_RAISE: u32 = 30;
+    /// Multiplier applied on each drop / recovery step.
     const DROP_FACTOR: f64 = 0.8;
-    const RAISE_FACTOR: f64 = 1.1;
+    /// Recovery multiplier increased from 1.1 → 1.25 so each step reclaims
+    /// more headroom, reaching the ceiling in fewer steps.
+    const RAISE_FACTOR: f64 = 1.25;
 
     fn new(refresh_hz: Option<f64>) -> Self {
         // `PULSAR_VIEWPORT_FPS` overrides the ceiling; `0` disables pacing and

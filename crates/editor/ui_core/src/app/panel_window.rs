@@ -37,7 +37,9 @@ impl Render for PanelWindow {
             .size_full()
             .bg(theme.background)
             .child(
+                // Titlebar with window controls
                 TitleBar::new()
+                    .h(ui::title_bar::TITLE_BAR_HEIGHT)
                     .on_close_window(move |_, window, cx| {
                         tracing::trace!(
                             "[POPOUT] Close button clicked, restoring panel to main window"
@@ -57,6 +59,12 @@ impl Render for PanelWindow {
                     })
                     .child(self.panel.title(window, cx)),
             )
-            .child(div().flex_1().overflow_hidden().child(self.panel.view()))
+            .child(
+                div()
+                    .flex_1()
+                    .overflow_hidden()
+                    .mt_0()
+                    .child(self.panel.view()),
+            )
     }
 }

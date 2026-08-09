@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - en
+
+# Mission Control Panel
+MissionControl.Title: "Mission Control"
+MissionControl.System: "System"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "Memory"
+MissionControl.Resources: "Resources"
+MissionControl.Advanced: "Advanced"
+
+# Log Drawer
+LogDrawer.Filter: "Filter"
+LogDrawer.Search: "Search..."
+LogDrawer.All: "All"
+LogDrawer.Info: "Info"
+LogDrawer.Warning: "Warning"
+LogDrawer.Error: "Error"
+LogDrawer.Debug: "Debug"
+LogDrawer.Trace: "Trace"
+LogDrawer.Clear: "Clear"
+LogDrawer.Timestamp: "Timestamp"
+LogDrawer.Level: "Level"
+LogDrawer.Message: "Message"
+LogDrawer.Source: "Source"
+
+# Logs Panel
+LogsPanel.Title: "Logs"
+LogsPanel.NoEntries: "No log entries"
+
+# System Info Panel
+SystemInfo.Title: "System Information"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "Process"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "GPU Metrics"
+GpuMetrics.Adapter: "Adapter"
+GpuMetrics.Driver: "Driver"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "Temperature"
+GpuMetrics.Utilization: "Utilization"
+
+# Resource Monitor
+ResourceMonitor.Title: "Resource Monitor"
+ResourceMonitor.CPUUsage: "CPU Usage"
+ResourceMonitor.MemoryUsage: "Memory Usage"
+ResourceMonitor.DiskIO: "Disk I/O"
+ResourceMonitor.Network: "Network"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "Memory Breakdown"
+MemoryBreakdown.Allocations: "Allocations"
+MemoryBreakdown.Fragmentation: "Fragmentation"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "Advanced Metrics"
+AdvancedMetrics.FrameTime: "Frame Time"
+AdvancedMetrics.DrawCalls: "Draw Calls"
+AdvancedMetrics.TriangleCount: "Triangle Count"
+
+# Caller Sites
+CallerSites.Title: "Caller Sites"
+CallerSites.Function: "Function"
+CallerSites.Allocations: "Allocations"
+CallerSites.Bytes: "Bytes"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "Min FPS"
+Performance.MaxFPS: "Max FPS"
+Performance.AvgFPS: "Avg FPS"
