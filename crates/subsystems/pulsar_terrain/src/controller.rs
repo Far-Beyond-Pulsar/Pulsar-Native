@@ -244,6 +244,43 @@ impl TerrainStreamingController {
         Ok(())
     }
 
+    /// Build the visibility publication that is valid for the controller's
+    /// current generation-exact renderer acknowledgements.
+    ///
+    /// Live renderer integrations call this again after applying a frame's
+    /// upload delta and acknowledging its feedback. That lets a freshly
+    /// rebuilt disposable cache regain its complete coarse frontier in the
+    /// same rendered frame instead of publishing one avoidable empty frame.
+    pub fn visible_sets(
+        &self,
+        frame_index: u64,
+    ) -> Result<Vec<TerrainVisiblePageSet>, TerrainControllerError> {
+        let mut visible_sets = Vec::with_capacity(self.planets.len());
+        for state in self.planets.values() {
+            if state.residency.committed_pages().next().is_none() {
+                continue;
+            }
+            let resident = self
+                .runtime
+                .resident_page_generations(state.residency.planet_id())?;
+            let published = self
+                .publisher
+                .published_resident_pages(state.residency.planet_id(), &resident);
+            if state
+                .residency
+                .committed_pages()
+                .all(|page| published.contains(&page))
+            {
+                visible_sets.push(self.publisher.visible_set(
+                    &self.runtime,
+                    &state.residency,
+                    frame_index,
+                )?);
+            }
+        }
+        Ok(visible_sets)
+    }
+
     /// Advance bounded orchestration for one frame. Runtime event draining
     /// stays explicit so persistence, collision, replication, and tooling can
     /// observe the same event stream.
@@ -297,9 +334,10 @@ impl TerrainStreamingController {
 
         frame.render_delta = self.publisher.translate_events(&self.runtime, events)?;
         for state in self.planets.values() {
-            if state.residency.committed_pages().len() == 0 {
-                continue;
-            }
+            // Canonical page completions can reach the publisher before the
+            // first refinement frontier is committed. Helio still needs the
+            // planet-relative frame to validate and place those uploads;
+            // visibility remains independently gated on complete commitment.
             frame.planet_frames.push(
                 PlanetFrame::new(
                     state.residency.planet_id(),
@@ -308,24 +346,8 @@ impl TerrainStreamingController {
                 )
                 .renderer_payload(),
             );
-            let resident = self
-                .runtime
-                .resident_page_generations(state.residency.planet_id())?;
-            let published = self
-                .publisher
-                .published_resident_pages(state.residency.planet_id(), &resident);
-            if state
-                .residency
-                .committed_pages()
-                .all(|page| published.contains(&page))
-            {
-                frame.visible_sets.push(self.publisher.visible_set(
-                    &self.runtime,
-                    &state.residency,
-                    frame_index,
-                )?);
-            }
         }
+        frame.visible_sets = self.visible_sets(frame_index)?;
         Ok(frame)
     }
 
@@ -531,6 +553,9 @@ mod tests {
             })
             .unwrap();
         assert!(controller.published_page_count() > 0);
+        let restored_same_frame = controller.visible_sets(frame_index).unwrap();
+        assert_eq!(restored_same_frame.len(), 1);
+        assert!(!restored_same_frame[0].pages.is_empty());
         frame_index += 1;
         let restored = controller
             .process_frame(&[], frame_index, frame_index)

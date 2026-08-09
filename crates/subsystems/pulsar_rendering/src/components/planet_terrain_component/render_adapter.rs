@@ -91,6 +91,17 @@ impl PlanetTerrainComponentRenderAdapter {
         Self
     }
 
+    pub fn renderer_config(
+        &self,
+        renderer: &helio::Renderer,
+    ) -> Result<helio_pass_planetary_voxel::PlanetaryVoxelRenderConfig, PlanetaryTerrainRenderError>
+    {
+        renderer
+            .find_pass::<PlanetaryVoxelRenderPass>()
+            .map(PlanetaryVoxelRenderPass::config)
+            .ok_or(PlanetaryTerrainRenderError::MissingPlanetaryPass)
+    }
+
     pub fn residency<'a>(
         &self,
         renderer: &'a helio::Renderer,
