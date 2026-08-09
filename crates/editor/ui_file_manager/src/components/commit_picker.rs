@@ -81,10 +81,6 @@ impl Render for CommitPicker {
         v_flex()
             .w(px(360.))
             .bg(bg)
-            .rounded_xl()
-            .shadow_xl()
-            .border_1()
-            .border_color(border)
             .overflow_hidden()
             .track_focus(&self.focus_handle)
             .child(

@@ -139,10 +139,6 @@ impl Render for ThemePicker {
         v_flex()
             .w(px(300.))
             .bg(bg)
-            .rounded_xl()
-            .shadow_xl()
-            .border_1()
-            .border_color(border)
             .overflow_hidden()
             .track_focus(&self.focus_handle)
             // ── Search header ────────────────────────────────────────────────

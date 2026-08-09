@@ -384,10 +384,6 @@ impl Render for DevPopover {
             .max_h(px(640.))
             .overflow_y_scroll()
             .bg(bg)
-            .rounded_xl()
-            .shadow_xl()
-            .border_1()
-            .border_color(border)
             .overflow_hidden()
             .track_focus(&self.focus_handle)
             // ── Header ───────────────────────────────────────────────────────
