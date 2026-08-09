@@ -1640,6 +1640,11 @@ impl Render for LocaleSelector {
                             Box::new(SelectLocale("it".into())),
                         )
                         .menu_with_check(
+                            "Deutsch (German)",
+                            current_locale == "de",
+                            Box::new(SelectLocale("de".into())),
+                        )
+                        .menu_with_check(
                             "Português (Portuguese)",
                             current_locale == "pt-BR",
                             Box::new(SelectLocale("pt-BR".into())),
