@@ -1,7 +1,9 @@
 use std::path::Path;
+use std::path::PathBuf;
 
 use crate::components::FileManagerDrawer;
 use crate::utils::cloud_join;
+use crate::utils::git_integration::DeletedFileEntry;
 use crate::utils::types::*;
 use plugin_editor_api::FileStructure;
 
@@ -73,6 +75,33 @@ impl FileManagerDrawer {
             }
         });
         items.sort_by_key(|i| !i.is_folder);
+
+        // Append ghost (deleted) file items when deleted-files mode is active
+        if self.show_deleted_files {
+            let project = self.project_path.clone();
+            for entry in &self.deleted_files {
+                let full_path = project
+                    .as_ref()
+                    .map(|p| p.join(&entry.path))
+                    .unwrap_or_else(|| entry.path.clone());
+                let name = full_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                items.push(FileItem {
+                    path: entry.path.clone(),
+                    name,
+                    file_type_def: None,
+                    is_folder: false,
+                    size: 0,
+                    modified: None,
+                    is_ghost: true,
+                    restore_commit: Some(entry.commit_hash.clone()),
+                });
+            }
+        }
+
         items
     }
 
@@ -142,6 +171,8 @@ impl FileManagerDrawer {
                             modified: e
                                 .modified
                                 .map(|s| std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)),
+                            is_ghost: false,
+                            restore_commit: None,
                         })
                     })
                     .collect(),

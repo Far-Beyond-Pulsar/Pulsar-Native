@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use ui::{Icon, Sizable as _};
 
 use crate::utils::actions::*;
+use crate::utils::types::FileItem;
 
 /// Build a context menu for folders
 pub fn folder_context_menu(
@@ -408,5 +409,35 @@ pub fn item_context_menu(
             );
 
         menu
+    }
+}
+
+/// Build a context menu for ghost (deleted) file items from git history
+pub fn deleted_item_context_menu(
+    item: &FileItem,
+) -> impl Fn(
+    ui::popup_menu::PopupMenu,
+    &mut Window,
+    &mut Context<ui::popup_menu::PopupMenu>,
+) -> ui::popup_menu::PopupMenu
+       + 'static {
+    let path = item.path.clone();
+    let commit = item.restore_commit.clone().unwrap_or_default();
+
+    move |menu, _window, _cx| {
+        menu.menu_with_icon(
+            t!("FileManager.RestoreFile").to_string(),
+            ui::Icon::new(ui::IconName::Undo),
+            Box::new(RestoreFile {
+                item_path: path.to_string_lossy().to_string(),
+                commit: commit.clone(),
+            }),
+        )
+        .separator()
+        .menu_with_icon(
+            t!("FileManager.Copy").to_string(),
+            ui::Icon::new(ui::IconName::Copy),
+            Box::new(Copy),
+        )
     }
 }

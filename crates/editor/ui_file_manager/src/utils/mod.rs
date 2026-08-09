@@ -1,5 +1,6 @@
 pub mod actions;
 mod drag_drop;
+pub mod git_integration;
 pub mod fs_metadata;
 pub mod helpers;
 pub mod operations;

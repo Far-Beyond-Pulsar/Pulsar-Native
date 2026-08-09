@@ -9,6 +9,7 @@ use ui::{
     button::{Button, ButtonGroup, ButtonVariants as _},
     input::{InputState, TextInput},
     menu::context_menu::ContextMenuExt,
+    popup_menu::PopupMenuExt as _,
     resizable::{h_resizable, resizable_panel, ResizableState},
     scroll::{Scrollbar, ScrollbarState},
     ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _, StyledExt,
@@ -23,6 +24,7 @@ use crate::utils::{
     tree::FolderNode,
     types::*,
 };
+use crate::components::commit_picker::{CommitPicker, CommitSelected};
 use crate::components::sidebar;
 
 pub struct FileManagerDrawer {
@@ -65,6 +67,11 @@ pub struct FileManagerDrawer {
     pub(crate) thumbnails:
         std::collections::HashMap<std::path::PathBuf, Option<std::sync::Arc<gpui::RenderImage>>>,
     pub(crate) thumbnail_cache_root: std::path::PathBuf,
+    pub(crate) show_deleted_files: bool,
+    pub(crate) selected_deleted_commit: Option<String>,
+    pub(crate) deleted_files: Vec<crate::utils::git_integration::DeletedFileEntry>,
+    pub(crate) recent_commits: Vec<crate::utils::git_integration::CommitInfo>,
+    pub(crate) commit_picker: gpui::Entity<crate::components::commit_picker::CommitPicker>,
 }
 
 impl FileManagerDrawer {
@@ -102,6 +109,19 @@ impl FileManagerDrawer {
                     drawer.file_filter_query = drawer.file_filter_state.read(cx).text().to_string();
                     cx.notify();
                 }
+            },
+        )
+        .detach();
+
+        let commit_picker = cx.new(|cx| CommitPicker::new(Vec::new(), window, cx));
+        cx.subscribe(
+            &commit_picker,
+            |drawer, _picker, event: &CommitSelected, cx| {
+                crate::handlers::handle_select_deleted_commit(
+                    drawer,
+                    &crate::utils::actions::SelectDeletedCommit { commit: event.0.clone() },
+                    cx,
+                );
             },
         )
         .detach();
@@ -154,6 +174,11 @@ impl FileManagerDrawer {
                 .unwrap_or_else(|| {
                     std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
                 }),
+            show_deleted_files: false,
+            selected_deleted_commit: None,
+            deleted_files: Vec::new(),
+            recent_commits: Vec::new(),
+            commit_picker,
         };
 
         this.fs_event_listener = Some(cx.spawn(async move |drawer, cx| {
@@ -292,6 +317,15 @@ impl Render for FileManagerDrawer {
             }))
             .on_action(cx.listener(|this, a: &SetColorOverride, _w, cx| {
                 crate::handlers::handle_set_color_override(this, a, cx)
+            }))
+            .on_action(cx.listener(|this, _: &ToggleDeletedFiles, _w, cx| {
+                crate::handlers::handle_toggle_deleted_files(this, cx)
+            }))
+            .on_action(cx.listener(|this, a: &SelectDeletedCommit, _w, cx| {
+                crate::handlers::handle_select_deleted_commit(this, a, cx)
+            }))
+            .on_action(cx.listener(|this, a: &RestoreFile, _w, cx| {
+                crate::handlers::handle_restore_file(this, a, _w, cx)
             }))
             .child(render_content(self, window, cx))
     }
@@ -551,11 +585,13 @@ pub fn render_grid_item(
     let icl = item.clone();
     let idc = item.clone();
     let irc = item.clone();
+    let irc_path = item.path.clone();
     let ip = item.path.clone();
     let ihp = item.path.clone();
     let hc = d.clipboard.is_some();
     let cls = item.is_class();
     let fld = item.is_folder;
+    let ghost = item.is_ghost;
     if !fld {
         d.ensure_thumbnail(&item.path, cx);
     }
@@ -658,6 +694,7 @@ pub fn render_grid_item(
         .h(px(110.0))
         .rounded_lg()
         .border_1()
+        .when(ghost, |e| e.opacity(0.45))
         .when(sel, |e| {
             e.border_color(cx.theme().accent)
                 .bg(cx.theme().secondary)
@@ -739,9 +776,9 @@ pub fn render_grid_item(
                 .on_mouse_down(
                     gpui::MouseButton::Right,
                     cx.listener(move |d, _: &MouseDownEvent, _w: &mut Window, cx| {
-                        if !d.selected_items.contains(&irc.path) {
+                        if !d.selected_items.contains(&irc_path) {
                             d.selected_items.clear();
-                            d.selected_items.insert(irc.path.clone());
+                            d.selected_items.insert(irc_path.clone());
                             cx.notify();
                         }
                         cx.stop_propagation();
@@ -755,9 +792,15 @@ pub fn render_grid_item(
                     }),
                 )
                 .context_menu(move |m, w, cx| {
-                    crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(
-                        m, w, cx,
-                    )
+                    if ghost {
+                        crate::components::context_menus::deleted_item_context_menu(&irc)(
+                            m, w, cx,
+                        )
+                    } else {
+                        crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(
+                            m, w, cx,
+                        )
+                    }
                 }),
         )
 }
@@ -822,11 +865,13 @@ pub fn render_list_item(
     let icl = item.clone();
     let idc = item.clone();
     let irc = item.clone();
+    let irc_path = item.path.clone();
     let ip = item.path.clone();
     let ihp = item.path.clone();
     let hc = d.clipboard.is_some();
     let cls = item.is_class();
     let fld = item.is_folder;
+    let ghost = item.is_ghost;
     let paths = if sel {
         d.selected_items.iter().cloned().collect()
     } else {
@@ -992,9 +1037,9 @@ pub fn render_list_item(
     .on_mouse_down(
         gpui::MouseButton::Right,
         cx.listener(move |d, _: &MouseDownEvent, _w: &mut Window, cx| {
-            if !d.selected_items.contains(&irc.path) {
+            if !d.selected_items.contains(&irc_path) {
                 d.selected_items.clear();
-                d.selected_items.insert(irc.path.clone());
+                d.selected_items.insert(irc_path.clone());
                 cx.notify();
             }
             cx.stop_propagation();
@@ -1008,7 +1053,13 @@ pub fn render_list_item(
         }),
     )
     .context_menu(move |m, w, cx| {
-        crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(m, w, cx)
+        if ghost {
+            crate::components::context_menus::deleted_item_context_menu(&irc)(
+                m, w, cx,
+            )
+        } else {
+            crate::components::context_menus::item_context_menu(ip.clone(), hc, cls)(m, w, cx)
+        }
     })
 }
 
@@ -1019,6 +1070,9 @@ pub fn render_combined_toolbar(
     cx: &mut Context<FileManagerDrawer>,
 ) -> impl IntoElement {
     let vm = d.view_mode;
+    let current_commit = d.selected_deleted_commit
+        .clone()
+        .unwrap_or_else(|| "HEAD".to_string());
     h_flex()
         .w_full()
         .h(px(56.))
@@ -1163,7 +1217,39 @@ pub fn render_combined_toolbar(
                         })),
                 ),
         )
-}
+        .when_some(d.project_path.as_ref(), |el, _| {
+            el.child(ui::divider::Divider::vertical().h(px(24.)))
+                .child(
+                    Button::new("toggle-deleted")
+                        .icon(IconName::GitPullRequest)
+                        .ghost()
+                        .selected(d.show_deleted_files)
+                        .tooltip("Browse deleted files from git history")
+                        .on_click(cx.listener(|d, _e, _w, cx| {
+                            crate::handlers::handle_toggle_deleted_files(d, cx)
+                        })),
+                )
+                .when(d.show_deleted_files, |el| {
+                    el.child(
+                        ui::popover::Popover::<
+                            crate::components::commit_picker::CommitPicker,
+                        >::new("commit-picker")
+                        .anchor(Corner::TopRight)
+                        .trigger(
+                            Button::new("commit-picker-btn")
+                                .small()
+                                .ghost()
+                                .label(current_commit.clone())
+                                .tooltip("Select a commit to browse deleted files"),
+                        )
+                        .content({
+                            let picker = d.commit_picker.clone();
+                            move |_, _| picker.clone()
+                        }),
+                    )
+                })
+        })
+    }
 
 pub fn render_clickable_breadcrumb(
     d: &mut FileManagerDrawer,

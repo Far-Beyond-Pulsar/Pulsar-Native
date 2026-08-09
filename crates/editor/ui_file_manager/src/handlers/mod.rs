@@ -3,6 +3,7 @@ use gpui::*;
 use std::path::PathBuf;
 
 use crate::components::FileManagerDrawer;
+use crate::utils::git_integration;
 use crate::utils::{actions::*, tree::FolderNode, types::*};
 
 pub fn handle_folder_select(
@@ -521,6 +522,95 @@ pub fn handle_set_color_override(
             tracing::error!("set_color: {}", e);
         } else {
             cx.notify();
+        }
+    }
+}
+
+pub fn handle_toggle_deleted_files(
+    d: &mut FileManagerDrawer,
+    cx: &mut Context<FileManagerDrawer>,
+) {
+    d.show_deleted_files = !d.show_deleted_files;
+    if d.show_deleted_files {
+        if let Some(ref proj) = d.project_path {
+            let commits = git_integration::recent_commits(proj, 30);
+            d.recent_commits = commits.clone();
+            // Update the commit picker's list
+            d.commit_picker.update(cx, |picker, _cx| {
+                picker.set_commits(commits);
+            });
+            let commit = d
+                .selected_deleted_commit
+                .clone()
+                .unwrap_or_else(|| "HEAD".to_string());
+            d.deleted_files = git_integration::deleted_files_in_commit(proj, &commit);
+        }
+    }
+    cx.notify();
+}
+
+pub fn handle_select_deleted_commit(
+    d: &mut FileManagerDrawer,
+    action: &SelectDeletedCommit,
+    cx: &mut Context<FileManagerDrawer>,
+) {
+    d.selected_deleted_commit = Some(action.commit.clone());
+    if let Some(ref proj) = d.project_path {
+        d.deleted_files = git_integration::deleted_files_in_commit(proj, &action.commit);
+    }
+    cx.notify();
+}
+
+pub fn handle_restore_file(
+    d: &mut FileManagerDrawer,
+    action: &RestoreFile,
+    _window: &mut Window,
+    cx: &mut Context<FileManagerDrawer>,
+) {
+    let proj = match d.project_path.clone() {
+        Some(p) => p,
+        None => return,
+    };
+
+    let restore_path = PathBuf::from(&action.item_path);
+    let commit = if action.commit.is_empty() {
+        d.selected_deleted_commit
+            .clone()
+            .unwrap_or_else(|| "HEAD".to_string())
+    } else {
+        action.commit.clone()
+    };
+
+    // Read file content from git history
+    match git_integration::read_file_from_commit(&proj, &commit, &restore_path) {
+        Ok(content) => {
+            let full_path = proj.join(&restore_path);
+            // Ensure parent directory exists
+            if let Some(parent) = full_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            // Write the file
+            match std::fs::write(&full_path, &content) {
+                Ok(_) => {
+                    tracing::info!("Restored {} from commit {}", restore_path.display(), commit);
+                    // Remove from deleted list
+                    d.deleted_files.retain(|e| e.path != restore_path);
+                    d.mark_directory_cache_dirty();
+                    d.folder_tree = FolderNode::from_path(&proj);
+                    cx.notify();
+                }
+                Err(e) => {
+                    tracing::error!("Failed to restore file {}: {}", restore_path.display(), e);
+                }
+            }
+        }
+        Err(e) => {
+            tracing::error!(
+                "Failed to read {} from commit {}: {}",
+                restore_path.display(),
+                commit,
+                e
+            );
         }
     }
 }

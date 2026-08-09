@@ -169,6 +169,26 @@ pub struct SetColorOverride {
     pub color: Option<ColorData>,
 }
 
+#[derive(Action, Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager, no_json)]
+pub struct ToggleDeletedFiles;
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct SelectDeletedCommit {
+    #[serde(default)]
+    pub commit: String,
+}
+
+#[derive(Action, Clone, Debug, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[action(namespace = file_manager)]
+pub struct RestoreFile {
+    #[serde(default)]
+    pub item_path: String,
+    #[serde(default)]
+    pub commit: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 pub struct ColorData {
     pub r: u8,

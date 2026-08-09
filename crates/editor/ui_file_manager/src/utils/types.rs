@@ -75,6 +75,8 @@ pub struct FileItem {
     pub is_folder: bool,
     pub size: u64,
     pub modified: Option<std::time::SystemTime>,
+    pub is_ghost: bool,
+    pub restore_commit: Option<String>,
 }
 
 impl FileItem {
@@ -141,6 +143,8 @@ impl FileItem {
             is_folder,
             size,
             modified,
+            is_ghost: false,
+            restore_commit: None,
         })
     }
 
