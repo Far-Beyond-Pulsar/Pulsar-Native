@@ -1,0 +1,73 @@
+# UI Protokollanzeige Übersetzungen - de
+
+# Missionskontrollzentrum
+MissionControl.Title: "Missionskontrolle"
+MissionControl.System: "System"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "Arbeitsspeicher"
+MissionControl.Resources: "Ressourcen"
+MissionControl.Advanced: "Erweitert"
+
+# Protokollanzeige
+LogDrawer.Filter: "Filter"
+LogDrawer.Search: "Suchen..."
+LogDrawer.All: "Alle"
+LogDrawer.Info: "Info"
+LogDrawer.Warning: "Warnung"
+LogDrawer.Error: "Fehler"
+LogDrawer.Debug: "Debug"
+LogDrawer.Trace: "Ablaufverfolgung"
+LogDrawer.Clear: "Löschen"
+LogDrawer.Timestamp: "Zeitstempel"
+LogDrawer.Level: "Ebene"
+LogDrawer.Message: "Nachricht"
+LogDrawer.Source: "Quelle"
+
+# Protokollbereich
+LogsPanel.Title: "Protokolle"
+LogsPanel.NoEntries: "Keine Protokolleinträge"
+
+# Systeminfo-Bereich
+SystemInfo.Title: "Systeminformationen"
+SystemInfo.OS: "Betriebssystem"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "Prozess"
+
+# GPU-Metriken-Bereich
+GpuMetrics.Title: "GPU-Metriken"
+GpuMetrics.Adapter: "Adapter"
+GpuMetrics.Driver: "Treiber"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "Temperatur"
+GpuMetrics.Utilization: "Auslastung"
+
+# Ressourcenmonitor
+ResourceMonitor.Title: "Ressourcenmonitor"
+ResourceMonitor.CPUUsage: "CPU-Auslastung"
+ResourceMonitor.MemoryUsage: "Speicherauslastung"
+ResourceMonitor.DiskIO: "Festplatten-I/O"
+ResourceMonitor.Network: "Netzwerk"
+
+# Speicheraufschlüsselung
+MemoryBreakdown.Title: "Speicheraufschlüsselung"
+MemoryBreakdown.Allocations: "Speicherzuweisungen"
+MemoryBreakdown.Fragmentation: "Fragmentierung"
+
+# Erweiterte Metriken
+AdvancedMetrics.Title: "Erweiterte Metriken"
+AdvancedMetrics.FrameTime: "Bildzeit"
+AdvancedMetrics.DrawCalls: "Draw-Calls"
+AdvancedMetrics.TriangleCount: "Dreiecksanzahl"
+
+# Aufruferstellen
+CallerSites.Title: "Aufruferstellen"
+CallerSites.Function: "Funktion"
+CallerSites.Allocations: "Zuweisungen"
+CallerSites.Bytes: "Bytes"
+
+# Leistungsmetriken
+Performance.FPS: "FPS"
+Performance.MinFPS: "Min. FPS"
+Performance.MaxFPS: "Max. FPS"
+Performance.AvgFPS: "Durchschn. FPS"

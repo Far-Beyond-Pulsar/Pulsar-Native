@@ -1,0 +1,374 @@
+# UI Übersetzungen - de
+
+Calendar.week.0: So
+Calendar.week.1: Mo
+Calendar.week.2: Di
+Calendar.week.3: Mi
+Calendar.week.4: Do
+Calendar.week.5: Fr
+Calendar.week.6: Sa
+Calendar.month.January: Januar
+Calendar.month.February: Februar
+Calendar.month.March: März
+Calendar.month.April: April
+Calendar.month.May: Mai
+Calendar.month.June: Juni
+Calendar.month.July: Juli
+Calendar.month.August: August
+Calendar.month.September: September
+Calendar.month.October: Oktober
+Calendar.month.November: November
+Calendar.month.December: Dezember
+DatePicker.placeholder: "Datum auswählen"
+Dropdown.placeholder: "Bitte auswählen"
+Dock.Unnamed: Unbenannt
+Dock.Close: Schließen
+Dock.Zoom In: Vergrößern
+Dock.Zoom Out: Verkleinern
+Dock.Collapse: Einklappen
+Dock.Expand: Ausklappen
+Modal.ok: OK
+Modal.cancel: Abbrechen
+List.search_placeholder: Suchen...
+Input.Replace: Ersetzen
+Input.Replace All: Alle ersetzen
+Input.Cut: Ausschneiden
+Input.Copy: Kopieren
+Input.Paste: Einfügen
+Input.Select All: Alles auswählen
+Input.Go to Definition: Zur Definition springen
+Input.Show Code Actions: Code-Aktionen anzeigen
+
+# Fenstertitel
+Window.Title.AboutPulsar: "Über Pulsar Engine"
+Window.Title.FileManager: "Dateimanager"
+Window.Title.Problems: "Probleme"
+Window.Title.TypeDebugger: "Typ-Debugger"
+Window.Title.Settings: "Einstellungen"
+Window.Title.Documentation: "Dokumentation"
+
+Menu.File: Datei
+Menu.Edit: Bearbeiten
+Menu.View: Ansicht
+Menu.Help: Hilfe
+Menu.File.New: Neu
+Menu.File.NewFile: Neue Datei
+Menu.File.NewWindow: Neues Fenster
+Menu.File.NewProject: Neues Projekt
+Menu.File.NewScene: Neue Szene
+Menu.File.NewScript: Neues Skript
+Menu.File.NewShader: Neuer Shader
+Menu.File.NewMaterial: Neues Material
+Menu.File.NewPrefab: Neues Prefab
+Menu.File.NewBlueprint: Neues Blueprint
+Menu.File.NewComponent: Neue Komponente
+Menu.File.NewSystem: Neues System
+Menu.File.Open: Öffnen
+Menu.File.OpenFolder: Ordner öffnen
+Menu.File.OpenRecent: Zuletzt geöffnet
+Menu.File.RecentProjects: Zuletzt verwendete Projekte
+Menu.File.RecentFiles: Zuletzt verwendete Dateien
+Menu.File.ClearRecent: Verlauf löschen
+Menu.File.Save: Speichern
+Menu.File.SaveAs: Speichern unter...
+Menu.File.SaveAll: Alle speichern
+Menu.File.SaveWorkspace: Arbeitsbereich speichern
+Menu.File.Import: Importieren
+Menu.File.ImportAsset: Asset importieren
+Menu.File.ImportModel: Modell importieren (FBX/GLTF)
+Menu.File.ImportTexture: Textur importieren
+Menu.File.ImportAudio: Audio importieren
+Menu.File.BatchImport: Stapelimport
+Menu.File.ImportFromUnity: Aus Unity importieren
+Menu.File.ImportFromUnreal: Aus Unreal importieren
+Menu.File.ImportFromGodot: Aus Godot importieren
+Menu.File.Export: Exportieren
+Menu.File.ExportBuild: Build exportieren
+Menu.File.ExportScene: Szene exportieren
+Menu.File.ExportSelected: Auswahl exportieren
+Menu.File.ExportWindows: Für Windows exportieren
+Menu.File.ExportLinux: Für Linux exportieren
+Menu.File.ExportMacOS: Für macOS exportieren
+Menu.File.ExportWeb: Für Web exportieren (WASM)
+Menu.File.ExportAndroid: Für Android exportieren
+Menu.File.ExportIOS: Für iOS exportieren
+Menu.File.RevertFile: Datei zurücksetzen
+Menu.File.CloseFile: Datei schließen
+Menu.File.CloseFolder: Ordner schließen
+Menu.File.CloseAll: Alle schließen
+Menu.File.CloseOthers: Andere schließen
+Menu.Edit.Undo: Rückgängig
+Menu.Edit.Redo: Wiederholen
+Menu.Edit.Cut: Ausschneiden
+Menu.Edit.Copy: Kopieren
+Menu.Edit.Paste: Einfügen
+Menu.Edit.Delete: Löschen
+Menu.Edit.Duplicate: Duplizieren
+Menu.Edit.SelectAll: Alles auswählen
+Menu.Edit.Find: Suchen
+Menu.Edit.FindInFiles: In Dateien suchen
+Menu.Edit.Replace: Ersetzen
+Menu.Edit.Preferences: Einstellungen
+Menu.View.CommandPalette: Befehlspalette
+Menu.View.ToggleFullscreen: Vollbild umschalten
+Menu.View.ZoomIn: Vergrößern
+Menu.View.ZoomOut: Verkleinern
+Menu.View.ResetZoom: Zoom zurücksetzen
+Menu.View.Panels: Bereiche
+Menu.View.TogglePanel: Bereich umschalten
+Menu.View.Console: Konsole
+Menu.View.Inspector: Inspektor
+Menu.View.Profiler: Profiler
+Menu.View.ToggleMinimap: Minimap umschalten
+Menu.View.ToggleLineNumbers: Zeilennummern umschalten
+Menu.View.ToggleBreadcrumbs: Breadcrumbs umschalten
+Menu.View.ToggleWhitespace: Leerzeichen umschalten
+Menu.View.ZenMode: Zen-Modus
+Menu.Help.Documentation: Dokumentation
+Menu.Help.GettingStarted: Erste Schritte
+Menu.Help.Tutorials: Tutorials
+Menu.Help.API: API-Referenz
+Menu.Help.ReportBug: Fehler melden
+Menu.Help.RequestFeature: Funktion vorschlagen
+Menu.Help.Community: Community
+Menu.Help.About: Über Pulsar
+Menu.Edit.SelectNone: Auswahl aufheben
+Menu.Edit.FindNext: Nächstes suchen
+Menu.Edit.FindPrevious: Vorheriges suchen
+Menu.Edit.ReplaceNext: Nächstes ersetzen
+Menu.Edit.ReplaceAll: Alle ersetzen
+Menu.Edit.ReplaceInFiles: In Dateien ersetzen
+Menu.Edit.FindUsages: Verwendungen suchen
+Menu.Edit.FindImplementations: Implementierungen suchen
+Menu.Edit.CodeActions: Code-Aktionen
+Menu.Edit.FormatDocument: Dokument formatieren
+Menu.Edit.FormatSelection: Auswahl formatieren
+Menu.Edit.CommentLine: Zeile auskommentieren
+Menu.Edit.UncommentLine: Auskommentierung aufheben
+Menu.Edit.ToggleComment: Kommentar umschalten
+Menu.Edit.Fold: Falten
+Menu.Edit.Unfold: Entfalten
+Menu.Edit.FoldAll: Alle falten
+Menu.Edit.UnfoldAll: Alle entfalten
+Menu.Edit.SortLines: Zeilen sortieren
+Menu.Edit.RemoveDuplicates: Duplikate entfernen
+Menu.Edit.TrimWhitespace: Nachgestellte Leerzeichen entfernen
+Menu.Selection: Auswahl
+Menu.Selection.SelectLine: Zeile auswählen
+Menu.Selection.SelectWord: Wort auswählen
+Menu.Selection.SelectScope: Bereich auswählen
+Menu.Selection.ExpandSelection: Auswahl erweitern
+Menu.Selection.ShrinkSelection: Auswahl verkleinern
+Menu.Selection.AddCursorAbove: Cursor oberhalb hinzufügen
+Menu.Selection.AddCursorBelow: Cursor unterhalb hinzufügen
+Menu.Selection.AddCursorLineEnds: Cursor am Zeilenende hinzufügen
+Menu.Selection.SelectAllOccurrences: Alle Vorkommen auswählen
+Menu.Selection.SelectNextOccurrence: Nächstes Vorkommen auswählen
+Menu.Selection.SkipOccurrence: Vorkommen überspringen
+Menu.View.Explorer: Explorer
+Menu.View.Hierarchy: Szenenhierarchie
+Menu.View.AssetBrowser: Asset-Browser
+Menu.View.Output: Ausgabe
+Menu.View.Problems: Probleme
+Menu.View.Debug: Debuggen
+Menu.View.MemoryAnalyzer: Arbeitsspeicher-Analyse
+Menu.View.Network: Netzwerk
+Menu.View.Appearance: Darstellung
+Menu.View.Layout: Layout
+Menu.View.SplitHorizontal: Horizontal teilen
+Menu.View.SplitVertical: Vertikal teilen
+Menu.View.SingleColumn: Einspaltig
+Menu.View.TwoColumns: Zweispaltig
+Menu.View.ThreeColumns: Dreispaltig
+Menu.View.ResetLayout: Layout zurücksetzen
+Menu.View.SaveLayout: Layout speichern
+Menu.View.QuickOpen: Schnell öffnen
+Menu.Go: Gehe zu
+Menu.Go.GoToFile: Zur Datei springen
+Menu.Go.GoToSymbol: Zum Symbol springen
+Menu.Go.GoToLine: Zur Zeile springen
+Menu.Go.GoToDefinition: Zur Definition springen
+Menu.Go.GoToTypeDefinition: Zur Typdefinition springen
+Menu.Go.GoToImplementation: Zur Implementierung springen
+Menu.Go.GoToReferences: Zu Referenzen springen
+Menu.Go.GoBack: Zurück
+Menu.Go.GoForward: Vorwärts
+Menu.Go.GoToLastEdit: Zur letzten Bearbeitung springen
+Menu.Go.NextProblem: Nächstes Problem
+Menu.Go.PreviousProblem: Vorheriges Problem
+Menu.Project: Projekt
+Menu.Project.ProjectSettings: Projekteinstellungen
+Menu.Project.BuildSettings: Build-Einstellungen
+Menu.Project.PackageSettings: Paketeinstellungen
+Menu.Project.Dependencies: Abhängigkeiten
+Menu.Project.AddDependency: Abhängigkeit hinzufügen
+Menu.Project.UpdateDependencies: Abhängigkeiten aktualisieren
+Menu.Project.RemoveUnused: Nicht verwendete entfernen
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: Dokumentation generieren
+Menu.Project.RunCargoCheck: Cargo Check ausführen
+Menu.Project.RunClippy: Clippy ausführen
+Menu.Project.FormatProject: Projekt formatieren
+Menu.Build: Build
+Menu.Build.BuildProject: Projekt erstellen
+Menu.Build.BuildAndRun: Erstellen und ausführen
+Menu.Build.BuildRelease: Release erstellen
+Menu.Build.Rebuild: Neu erstellen
+Menu.Build.Clean: Build bereinigen
+Menu.Build.BuildConfiguration: Build-Konfiguration
+Menu.Build.BuildDebug: Debug
+Menu.Build.BuildReleaseDebug: Release mit Debug-Info
+Menu.Build.BuildProfile: Profil
+Menu.Build.CancelBuild: Build abbrechen
+Menu.Build.ShowBuildOutput: Build-Ausgabe anzeigen
+Menu.Run: Ausführen
+Menu.Run.RunProject: Projekt ausführen
+Menu.Run.RunWithoutDebug: Ohne Debuggen ausführen
+Menu.Run.Stop: Stopp
+Menu.Run.Restart: Neustarten
+Menu.Run.DebugProject: Projekt debuggen
+Menu.Run.Debugging: Debuggen
+Menu.Run.StartDebug: Debuggen starten
+Menu.Run.StopDebug: Debuggen beenden
+Menu.Run.RestartDebug: Debuggen neu starten
+Menu.Run.StepOver: Überspringen
+Menu.Run.StepInto: Einspringen
+Menu.Run.StepOut: Ausspringen
+Menu.Run.Continue: Fortsetzen
+Menu.Run.ToggleBreakpoint: Haltepunkt umschalten
+Menu.Run.DisableBreakpoints: Alle Haltepunkte deaktivieren
+Menu.Run.RemoveBreakpoints: Alle Haltepunkte entfernen
+Menu.Run.Testing: Tests
+Menu.Run.RunTests: Alle Tests ausführen
+Menu.Run.RunFailedTests: Fehlgeschlagene Tests ausführen
+Menu.Run.RunFileTests: Tests in Datei ausführen
+Menu.Run.DebugTest: Test debuggen
+Menu.Run.RunCoverage: Codeabdeckung
+Menu.Run.Performance: Leistung
+Menu.Run.RunBenchmarks: Benchmarks ausführen
+Menu.Run.CompareBenchmarks: Benchmarks vergleichen
+Menu.Run.ProfileBuild: Build profilieren
+Menu.GameEngine: Spiel-Engine
+Menu.GameEngine.Scene: Szene
+Menu.GameEngine.NewScene: Neue Szene
+Menu.GameEngine.OpenScene: Szene öffnen
+Menu.GameEngine.SaveScene: Szene speichern
+Menu.GameEngine.SaveSceneAs: Szene speichern unter
+Menu.GameEngine.PlayScene: Szene abspielen
+Menu.GameEngine.PauseScene: Szene pausieren
+Menu.GameEngine.StopScene: Szene beenden
+Menu.GameEngine.SceneSettings: Szeneneinstellungen
+Menu.GameEngine.GameObject: Spielobjekt
+Menu.GameEngine.CreateEmpty: Leer erstellen
+Menu.GameEngine.3DObjects: 3D-Objekte
+Menu.GameEngine.CreateCube: Würfel
+Menu.GameEngine.CreateSphere: Kugel
+Menu.GameEngine.CreateCapsule: Kapsel
+Menu.GameEngine.CreateCylinder: Zylinder
+Menu.GameEngine.CreatePlane: Ebene
+Menu.GameEngine.CreateTerrain: Gelände
+Menu.GameEngine.2DObjects: 2D-Objekte
+Menu.GameEngine.CreateSprite: Sprite
+Menu.GameEngine.CreateTilemap: Kachelkarte
+Menu.GameEngine.CreateParticles2D: Partikelsystem 2D
+Menu.GameEngine.Light: Licht
+Menu.GameEngine.CreateDirectionalLight: Direktionales Licht
+Menu.GameEngine.CreatePointLight: Punktlicht
+Menu.GameEngine.CreateSpotLight: Scheinwerferlicht
+Menu.GameEngine.CreateAreaLight: Flächenlicht
+Menu.GameEngine.Audio: Audio
+Menu.GameEngine.CreateAudioSource: Audioquelle
+Menu.GameEngine.CreateAudioListener: Audio-Empfänger
+Menu.GameEngine.Effects: Effekte
+Menu.GameEngine.CreateParticleSystem: Partikelsystem
+Menu.GameEngine.CreateVFX: Visueller Effekt
+Menu.GameEngine.CreatePostProcessing: Nachbearbeitung
+Menu.GameEngine.Camera: Kamera
+Menu.GameEngine.CreateCamera: Kamera
+Menu.GameEngine.CreateOrthoCamera: Orthografische Kamera
+Menu.GameEngine.UI: UI
+Menu.GameEngine.CreateCanvas: Zeichenfläche
+Menu.GameEngine.CreatePanel: Bereich
+Menu.GameEngine.CreateButton: Schaltfläche
+Menu.GameEngine.CreateText: Text
+Menu.GameEngine.CreateImage: Bild
+Menu.GameEngine.CreateSlider: Schieberegler
+Menu.GameEngine.CreateInputField: Eingabefeld
+Menu.GameEngine.Physics: Physik
+Menu.GameEngine.AddRigidbody: Starrkörper hinzufügen
+Menu.GameEngine.AddCollider: Kollider hinzufügen
+Menu.GameEngine.AddCharacterController: Charakter-Controller hinzufügen
+Menu.GameEngine.PhysicsSettings: Physikeinstellungen
+Menu.GameEngine.CollisionMatrix: Kollisionsmatrix
+Menu.GameEngine.Rendering: Grafik
+Menu.GameEngine.RenderSettings: Grafikeinstellungen
+Menu.GameEngine.LightingSettings: Beleuchtungseinstellungen
+Menu.GameEngine.QualitySettings: Qualitätseinstellungen
+Menu.GameEngine.BakeLighting: Beleuchtung berechnen
+Menu.GameEngine.ClearBakedData: Berechnete Daten löschen
+Menu.GameEngine.FrameDebugger: Frame-Debugger
+Menu.GameEngine.EngineProfiler: Profiler
+Menu.GameEngine.PackageManager: Paketverwaltung
+Menu.GameEngine.AssetStore: Asset-Store
+Menu.Assets: Assets
+Menu.Assets.CreateAsset: Asset erstellen
+Menu.Assets.ImportAsset: Asset importieren
+Menu.Assets.Create: Erstellen
+Menu.Assets.CreateMaterial: Material
+Menu.Assets.CreateShader: Shader
+Menu.Assets.CreateTexture: Textur
+Menu.Assets.CreateAnimClip: Animationsclip
+Menu.Assets.CreateAnimController: Animator-Controller
+Menu.Assets.CreateAudioMixer: Audio-Mixer
+Menu.Assets.CreateRenderTexture: Render-Textur
+Menu.Assets.CreatePrefab: Prefab
+Menu.Assets.CreateScriptableObject: ScriptableObject
+Menu.Assets.Refresh: Aktualisieren
+Menu.Assets.Reimport: Erneut importieren
+Menu.Assets.ReimportAll: Alle erneut importieren
+Menu.Assets.FindReferences: Referenzen suchen
+Menu.Assets.FindMissingReferences: Fehlende Referenzen suchen
+Menu.Tools: Extras
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: Cargo-Befehle
+Menu.Tools.GenerateRustAnalyzer: Rust-Analyzer generieren
+Menu.Tools.ExpandMacro: Makro erweitern
+Menu.Tools.ShowSyntaxTree: Syntaxbaum anzeigen
+Menu.Tools.ShowHIR: HIR anzeigen
+Menu.Tools.InlineVariable: Variable inline setzen
+Menu.Tools.ExtractFunction: Funktion extrahieren
+Menu.Tools.ExtractVariable: Variable extrahieren
+Menu.Tools.Shaders: Shader
+Menu.Tools.ShaderEditor: Shader-Editor
+Menu.Tools.CompileShader: Shader kompilieren
+Menu.Tools.ShaderVariants: Shader-Varianten
+Menu.Tools.SPIRVDisassembly: SPIR-V Disassemblierung
+Menu.Tools.Animation: Animation
+Menu.Tools.AnimationWindow: Animationsfenster
+Menu.Tools.AnimatorWindow: Animator
+Menu.Tools.Timeline: Zeitachse
+Menu.Tools.MaterialEditor: Material-Editor
+Menu.Tools.TerrainTools: Geländewerkzeuge
+Menu.Tools.ParticleEditor: Partikel-Editor
+Menu.Tools.AudioMixerWindow: Audio-Mixer
+Menu.Tools.VersionControl: Versionskontrolle
+Menu.Tools.TaskManager: Aufgabenverwaltung
+Menu.Tools.Extensions: Erweiterungen
+Menu.Window: Fenster
+Menu.Window.Minimize: Minimieren
+Menu.Window.Zoom: Zoom
+Menu.Window.BringAllToFront: Alle in den Vordergrund
+Menu.Window.NewWindow: Neues Fenster
+Menu.Window.CloseWindow: Fenster schließen
+Menu.Help.Shortcuts: Tastenkombinationen
+Menu.Help.ViewLogs: Protokolle anzeigen
+Menu.Help.CheckUpdates: Nach Updates suchen
+Menu.Help.ReleaseNotes: Versionshinweise
+Menu.App.AboutApp: Über Pulsar Engine
+Menu.App.CheckUpdates: Nach Updates suchen
+Menu.App.Preferences: Einstellungen
+Menu.App.Settings: Einstellungen
+Menu.App.Hide: Pulsar ausblenden
+Menu.App.HideOthers: Andere ausblenden
+Menu.App.ShowAll: Alle einblenden
+Menu.App.QuitApp: Pulsar beenden

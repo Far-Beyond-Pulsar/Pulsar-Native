@@ -1,0 +1,28 @@
+# UI Core Übersetzungen - de
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "Stopp"
+StatusBar.Restart: "Neustarten"
+StatusBar.Start: "Start"
+StatusBar.Multiplayer: "Multiplayer-Zusammenarbeit"
+StatusBar.PluginManager: "Plugin-Verwaltung"
+StatusBar.Flamegraph: "Flamegraph-Profiler"
+
+Notification.Title.Dev: "Dev"
+Notification.Title.BuildInfo: "Build-Info"
+Notification.Title.Build: "Build"
+Notification.Title.Run: "Ausführen"
+Notification.Title.RustAnalyzerReady: "Rust Analyzer bereit"
+Notification.Title.AnalyzerError: "Analysefehler"
+Notification.Title.CodeIntelligenceReady: "Code-Intelligenz bereit"
+Notification.Title.ProjectLoaded: "Projekt geladen"
+Notification.Message.UseSaveAsDefault: "Verwenden Sie »Als Standard speichern« in der Symbolleiste des Level-Editors."
+Notification.Message.Opening: "%{path} wird geöffnet"
+Notification.Message.AssetReloadNotImplemented: "Asset-Neuladen noch nicht implementiert."
+Notification.Message.EngineInspectorNotImplemented: "Engine-Inspektor noch nicht implementiert."
+Notification.Message.BuildingProject: "Projekt wird erstellt..."
+Notification.Message.RunningProject: "Projekt wird ausgeführt..."
+Notification.Message.CodeIntelligenceAvailable: "Code-Intelligenz ist jetzt verfügbar"
+Notification.Message.RustAnalyzerIndexingComplete: "Rust Analyzer-Indizierung abgeschlossen"
+Notification.Message.WelcomeToProject: "Willkommen bei %{project}"
