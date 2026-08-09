@@ -15,7 +15,7 @@ use ui::{
     menu::AppMenuBar,
     popup_menu::PopupMenuExt as _,
     scroll::ScrollbarShow,
-    set_locale, v_flex, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _,
+    v_flex, ActiveTheme as _, ContextModal as _, IconName, PixelsExt, Sizable as _,
     Theme, ThemeMode, TitleBar,
 };
 
@@ -1262,7 +1262,7 @@ pub enum AppTitleBarEvent {
 
 pub struct AppTitleBar {
     app_menu_bar: Entity<AppMenuBar>,
-    locale_selector: Entity<LocaleSelector>,
+    locale_picker: Entity<crate::locale_picker::LocalePicker>,
     font_size_selector: Entity<FontSizeSelector>,
     theme_switcher: Entity<ThemeSwitcher>,
     theme_picker: Entity<crate::theme_dropdown::ThemePicker>,
@@ -1288,20 +1288,13 @@ impl AppTitleBar {
         init_app_menus(title_str.clone(), cx);
 
         let app_menu_bar = AppMenuBar::new(window, cx);
-        let locale_selector = cx.new(|cx| LocaleSelector::new(window, cx));
+        let locale_picker = cx.new(|cx| crate::locale_picker::LocalePicker::new(window, cx));
         let font_size_selector = cx.new(|cx| FontSizeSelector::new(window, cx));
         let theme_switcher = cx.new(|cx| ThemeSwitcher::new(cx));
         let theme_picker = cx.new(|cx| crate::theme_dropdown::ThemePicker::new(window, cx));
         let profile_dropdown = cx.new(crate::profile_dropdown::ProfileDropdown::new);
 
-        // Subscribe to locale changes
         let subscriptions = vec![
-            cx.subscribe(
-                &locale_selector,
-                move |_this: &mut Self, _, _event: &SelectLocale, cx| {
-                    cx.notify();
-                },
-            ),
             cx.subscribe(
                 &profile_dropdown,
                 |this, _, event: &crate::profile_dropdown::ProfileDropdownEvent, cx| {
@@ -1393,7 +1386,7 @@ impl AppTitleBar {
 
         Self {
             app_menu_bar,
-            locale_selector,
+            locale_picker,
             font_size_selector,
             theme_switcher,
             theme_picker,
@@ -1536,7 +1529,23 @@ impl Render for AppTitleBar {
                             .tooltip("Toggle light / dark mode")
                             .on_click(cx.listener(Self::change_color_mode)),
                     )
-                    .child(self.locale_selector.clone())
+                    .child(
+                        ui::popover::Popover::<crate::locale_picker::LocalePicker>::new(
+                            "locale-picker",
+                        )
+                        .anchor(Corner::TopRight)
+                        .trigger(
+                            Button::new("locale-picker-btn")
+                                .icon(IconName::Globe)
+                                .small()
+                                .ghost()
+                                .tooltip("Change language"),
+                        )
+                        .content({
+                            let picker = self.locale_picker.clone();
+                            move |_, _| picker.clone()
+                        }),
+                    )
                     .child(self.font_size_selector.clone())
                     .child(
                         Button::new("github")
@@ -1561,141 +1570,6 @@ impl Render for AppTitleBar {
                         ),
                     )
                     .child(self.profile_dropdown.clone()),
-            )
-    }
-}
-
-struct LocaleSelector {
-    focus_handle: FocusHandle,
-}
-
-impl gpui::EventEmitter<SelectLocale> for LocaleSelector {}
-
-impl LocaleSelector {
-    pub fn new(_: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self {
-            focus_handle: cx.focus_handle(),
-        }
-    }
-
-    fn on_select_locale(
-        &mut self,
-        locale: &SelectLocale,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        // Set locale globally - this affects ALL crates using rust_i18n
-        set_locale(&locale.0);
-
-        // Also set in ui_level_editor if it has its own translations
-        // (Level editor may have its own separate translation context)
-
-        // Emit event so AppTitleBar can rebuild menus
-        cx.emit(locale.clone());
-
-        window.refresh();
-    }
-}
-
-impl Render for LocaleSelector {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let focus_handle = self.focus_handle.clone();
-        let current_locale = locale().to_string();
-
-        div()
-            .id("locale-selector")
-            .track_focus(&focus_handle)
-            .on_action(cx.listener(Self::on_select_locale))
-            .child(
-                Button::new("btn")
-                    .small()
-                    .ghost()
-                    .icon(IconName::Globe)
-                    .tooltip("Change language")
-                    .popup_menu(move |menu, _, _| {
-                        // Add all available locales
-                        menu.menu_with_check(
-                            "English",
-                            current_locale == "en",
-                            Box::new(SelectLocale("en".into())),
-                        )
-                        .menu_with_check(
-                            "简体中文 (Simplified Chinese)",
-                            current_locale == "zh-CN",
-                            Box::new(SelectLocale("zh-CN".into())),
-                        )
-                        .menu_with_check(
-                            "繁體中文 (Traditional Chinese)",
-                            current_locale == "zh-HK",
-                            Box::new(SelectLocale("zh-HK".into())),
-                        )
-                        .menu_with_check(
-                            "Русский (Russian)",
-                            current_locale == "ru",
-                            Box::new(SelectLocale("ru".into())),
-                        )
-                        .menu_with_check(
-                            "Italiano (Italian)",
-                            current_locale == "it",
-                            Box::new(SelectLocale("it".into())),
-                        )
-                        .menu_with_check(
-                            "Deutsch (German)",
-                            current_locale == "de",
-                            Box::new(SelectLocale("de".into())),
-                        )
-                        .menu_with_check(
-                            "Português (Portuguese)",
-                            current_locale == "pt-BR",
-                            Box::new(SelectLocale("pt-BR".into())),
-                        )
-                        .menu_with_check(
-                            "Français (French)",
-                            current_locale == "fr",
-                            Box::new(SelectLocale("fr".into())),
-                        )
-                        .menu_with_check(
-                            "Français (Canadian French)",
-                            current_locale == "fr-CA",
-                            Box::new(SelectLocale("fr-CA".into())),
-                        )
-                        .menu_with_check(
-                            "हिन्दी (Hindi)",
-                            current_locale == "hi",
-                            Box::new(SelectLocale("hi".into())),
-                        )
-                        .menu_with_check(
-                            "العربية (Arabic)",
-                            current_locale == "ar",
-                            Box::new(SelectLocale("ar".into())),
-                        )
-                        .menu_with_check(
-                            "日本語 (Japanese)",
-                            current_locale == "ja",
-                            Box::new(SelectLocale("ja".into())),
-                        )
-                        .menu_with_check(
-                            "Español (Spanish)",
-                            current_locale == "es",
-                            Box::new(SelectLocale("es".into())),
-                        )
-                        .menu_with_check(
-                            "한국어 (Korean)",
-                            current_locale == "ko",
-                            Box::new(SelectLocale("ko".into())),
-                        )
-                        .menu_with_check(
-                            "Українська (Ukrainian)",
-                            current_locale == "uk",
-                            Box::new(SelectLocale("uk".into())),
-                        )
-                        .menu_with_check(
-                            "Lolcat",
-                            current_locale == "lol",
-                            Box::new(SelectLocale("lol".into())),
-                        )
-                    })
-                    .anchor(Corner::TopRight),
             )
     }
 }

@@ -36,6 +36,7 @@ pub mod property_editor_registry;
 pub mod reflected_properties_panel;
 pub mod shared;
 pub mod shared_state;
+pub mod locale_picker;
 pub mod theme_dropdown;
 
 pub use asset_picker::{AssetPickedEvent, AssetQuery, MeshAssetPicker};
@@ -55,6 +56,7 @@ pub use reflected_properties_panel::{
     render_property_row_runtime, PropertyStateManager, ReflectedPropertiesPanelConfig,
 };
 pub use shared::{PropertyField, StatusBar, Toolbar, ToolbarButton, ViewportControls};
+pub use locale_picker::LocalePicker;
 pub use theme_dropdown::ThemePicker;
 
 // Re-export diagnostics from ui crate
