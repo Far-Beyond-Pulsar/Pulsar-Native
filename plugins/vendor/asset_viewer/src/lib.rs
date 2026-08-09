@@ -1,3 +1,4 @@
+use rust_i18n::t;
 use gpui::*;
 use plugin_editor_api::*;
 use serde_json::json;
@@ -33,9 +34,9 @@ impl EditorPlugin for AssetViewerPlugin {
     fn metadata(&self) -> PluginMetadata {
         PluginMetadata {
             id: PluginId::new("com.pulsar.asset-viewer"),
-            name: t!("AssetViewer.DisplayName").into(),
+            name: t!("AssetViewer.DisplayName").to_string().into(),
             version: "0.1.0".into(),
-            author: t!("AssetViewer.Team").into(),
+            author: t!("AssetViewer.Team").to_string().into(),
             description: "View FBX 3D models and PNG images".into(),
         }
     }

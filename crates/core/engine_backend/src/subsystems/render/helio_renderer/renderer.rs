@@ -18,7 +18,10 @@ use pulsar_reflection::{
     RuntimeComponentOwner, Subsystems,
 };
 use pulsar_rendering::{
-    subsystems::{remove_foliage_handles, FoliageCache, LightCache, MeshCache, SceneObjectCache},
+    subsystems::{
+        apply_portal_pair_action, remove_foliage_handles, FoliageCache, LightCache, MeshCache,
+        PortalLinkCache, SceneObjectCache,
+    },
     PlanetTerrainFrameInput, PlanetTerrainRuntime, PLANET_TERRAIN_CLASS_NAME,
 };
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
@@ -115,6 +118,11 @@ struct HelioInner {
     /// update them in place instead of the scene wholesale-clearing and
     /// re-inserting every light on every sync pass.
     light_cache: LightCache,
+    /// Pairs up `PortalComponent` instances that share a `portal_id` into
+    /// real `helio::Scene` portals — see that type's doc for why portals
+    /// need their own cache (unlike every other single-object cache here,
+    /// a portal doesn't exist until *two* components agree on an ID).
+    portal_link_cache: PortalLinkCache,
     /// Owns Pulsar's canonical planet state and incrementally publishes it to
     /// the planetary pass in this renderer's graph. Helio's GPU residency is
     /// deliberately not duplicated here.
@@ -241,6 +249,7 @@ impl HelioRenderer {
                 object_cache: SceneObjectCache::new(),
                 foliage_cache: FoliageCache::new(),
                 light_cache: LightCache::new(),
+                portal_link_cache: PortalLinkCache::new(),
                 planet_terrain: None,
                 planet_graph_rebuilt: false,
                 last_scene_revision: 0,
@@ -1011,6 +1020,7 @@ impl HelioRenderer {
             subsystems.register_ref::<SceneObjectCache>(&mut inner.object_cache);
             subsystems.register_ref::<FoliageCache>(&mut inner.foliage_cache);
             subsystems.register_ref::<LightCache>(&mut inner.light_cache);
+            subsystems.register_ref::<PortalLinkCache>(&mut inner.portal_link_cache);
             if let Some(planet_terrain) = inner.planet_terrain.as_mut() {
                 let (runtime, cache) = planet_terrain.component_context_mut();
                 subsystems.register_ref(runtime);
@@ -1075,6 +1085,21 @@ impl HelioRenderer {
         for key in stale_lights {
             if let Some(light_id) = inner.light_cache.remove(&key) {
                 let _ = inner.renderer.scene_mut().remove_light(light_id);
+            }
+        }
+
+        // Drop stale portal sides (their object deleted, or their
+        // PortalComponent removed/disabled while the object stayed —
+        // PortalComponent itself handles the disabled-but-still-attached
+        // case). A side disappearing tears down the real portal if the pair
+        // was complete; the surviving side (if any) just waits for a new
+        // partner.
+        for action in inner.portal_link_cache.remove_stale(&live_keys) {
+            if let Some((portal_id, id)) = apply_portal_pair_action(inner.renderer.scene_mut(), action) {
+                match id {
+                    Some(id) => inner.portal_link_cache.set_active(portal_id, id),
+                    None => inner.portal_link_cache.clear_active(portal_id),
+                }
             }
         }
 

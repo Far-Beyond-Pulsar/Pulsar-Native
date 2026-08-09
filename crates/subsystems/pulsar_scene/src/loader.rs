@@ -35,7 +35,7 @@ use pulsar_reflection::{
     ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner, Subsystems,
     apply_runtime_behavior_for_class,
 };
-use pulsar_rendering::subsystems::{FoliageCache, MeshCache, SceneObjectCache};
+use pulsar_rendering::subsystems::{FoliageCache, MeshCache, PortalLinkCache, SceneObjectCache};
 
 use crate::format::{SceneFile, SceneLoadError};
 
@@ -46,6 +46,7 @@ use crate::format::{SceneFile, SceneLoadError};
 pub use pulsar_rendering::FoliageComponent as _ForceLink_FoliageComponent;
 pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
 pub use pulsar_rendering::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
+pub use pulsar_rendering::PortalComponent as _ForceLink_PortalComponent;
 pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
 pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
 
@@ -88,6 +89,15 @@ impl SceneLoader {
     ) {
         tracing::info!(total = objects.len(), "Loading scene objects");
 
+        // Unlike the other per-object caches below (freshly created every
+        // iteration — this loader is one-shot, so nothing needs cross-object
+        // memory for meshes/foliage/etc.), `PortalLinkCache` is declared
+        // *outside* the loop and only `register_ref`'d each iteration: a
+        // portal doesn't exist until two different objects' components both
+        // sync, in whichever order they happen to appear in `objects`, so
+        // the cache has to actually persist across the whole load.
+        let mut portal_link_cache = PortalLinkCache::new();
+
         for obj in objects {
             if !obj.visible {
                 continue;
@@ -110,6 +120,7 @@ impl SceneLoader {
                 subsystems.register(MeshCache::new());
                 subsystems.register(SceneObjectCache::new());
                 subsystems.register(FoliageCache::new());
+                subsystems.register_ref::<PortalLinkCache>(&mut portal_link_cache);
                 subsystems.register(LiveKeySet::new());
                 let mut ctx = SceneObjectContext {
                     obj_id: &obj.id,
