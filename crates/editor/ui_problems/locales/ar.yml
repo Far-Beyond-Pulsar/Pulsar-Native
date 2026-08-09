@@ -1,0 +1,29 @@
+# UI Problems Translations - ar
+
+# Drawer Title
+Problems.Title: "المشكلات"
+
+# Filter Labels
+Problems.Filter.All: "كل المشكلات"
+Problems.Filter.Errors: "الأخطاء"
+Problems.Filter.Warnings: "التحذيرات"
+Problems.Filter.Information: "معلومات"
+Problems.Filter.Hints: "تلميحات"
+
+# Search & Actions
+Problems.Search.Placeholder: "ابحث عن المشكلات..."
+Problems.Action.ClearAll: "مسح كل المشكلات"
+Problems.Action.GroupByFile: "تجميع حسب الملف"
+Problems.Action.ShowFlatList: "إظهار قائمة مسطحة"
+
+# Empty State
+Problems.Empty.Title: "لم يتم اكتشاف أي مشكلات"
+Problems.Empty.NoMatch: "لا توجد مشكلات تطابق بحثك. جرّب استعلامًا مختلفًا."
+Problems.Empty.AllGood: "الكود الخاص بك يبدو رائعًا! واصل العمل الجيد."
+
+# Diagnostics
+Problems.Loading: "جارٍ تحميل الإصلاحات السريعة..."
+Problems.SuggestedFixes: "الإصلاحات المقترحة:"
+Problems.Related: "ذو صلة:"
+Problems.Before: "قبل"
+Problems.After: "بعد"

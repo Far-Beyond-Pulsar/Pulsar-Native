@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - fr
+
+# Drawer Title
+TypeDebugger.Title: "Base de données des types"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "Rechercher des types..."
+TypeDebugger.Action.ClearAll: "Effacer tous les types"
+TypeDebugger.Action.GroupByKind: "Grouper par catégorie"
+TypeDebugger.Action.ShowFlatList: "Afficher la liste plate"
+
+# Empty State
+TypeDebugger.Empty.Title: "Aucun type trouvé"
+TypeDebugger.Empty.Message: "Aucun type ne correspond à vos critères de recherche."

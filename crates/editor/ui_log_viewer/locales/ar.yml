@@ -1,0 +1,73 @@
+# UI Log Viewer Translations - ar
+
+# Mission Control Panel
+MissionControl.Title: "مركز التحكم"
+MissionControl.System: "النظام"
+MissionControl.GPU: "GPU"
+MissionControl.Memory: "الذاكرة"
+MissionControl.Resources: "الموارد"
+MissionControl.Advanced: "متقدم"
+
+# Log Drawer
+LogDrawer.Filter: "تصفية"
+LogDrawer.Search: "بحث..."
+LogDrawer.All: "الكل"
+LogDrawer.Info: "معلومات"
+LogDrawer.Warning: "تحذير"
+LogDrawer.Error: "خطأ"
+LogDrawer.Debug: "تصحيح"
+LogDrawer.Trace: "تتبع"
+LogDrawer.Clear: "مسح"
+LogDrawer.Timestamp: "الطابع الزمني"
+LogDrawer.Level: "المستوى"
+LogDrawer.Message: "الرسالة"
+LogDrawer.Source: "المصدر"
+
+# Logs Panel
+LogsPanel.Title: "السجلات"
+LogsPanel.NoEntries: "لا توجد إدخالات في السجل"
+
+# System Info Panel
+SystemInfo.Title: "معلومات النظام"
+SystemInfo.OS: "OS"
+SystemInfo.CPU: "CPU"
+SystemInfo.RAM: "RAM"
+SystemInfo.Process: "العملية"
+
+# GPU Metrics Panel
+GpuMetrics.Title: "مقاييس GPU"
+GpuMetrics.Adapter: "المهايئ"
+GpuMetrics.Driver: "برنامج التشغيل"
+GpuMetrics.VRAM: "VRAM"
+GpuMetrics.Temperature: "درجة الحرارة"
+GpuMetrics.Utilization: "الاستخدام"
+
+# Resource Monitor
+ResourceMonitor.Title: "مراقب الموارد"
+ResourceMonitor.CPUUsage: "استخدام CPU"
+ResourceMonitor.MemoryUsage: "استخدام الذاكرة"
+ResourceMonitor.DiskIO: "إدخال/إخراج القرص"
+ResourceMonitor.Network: "الشبكة"
+
+# Memory Breakdown
+MemoryBreakdown.Title: "تفصيل الذاكرة"
+MemoryBreakdown.Allocations: "العمليات المخصصة"
+MemoryBreakdown.Fragmentation: "التجزئة"
+
+# Advanced Metrics
+AdvancedMetrics.Title: "مقاييس متقدمة"
+AdvancedMetrics.FrameTime: "زمن الإطار"
+AdvancedMetrics.DrawCalls: "استدعاءات الرسم"
+AdvancedMetrics.TriangleCount: "عدد المثلثات"
+
+# Caller Sites
+CallerSites.Title: "مواقع الاستدعاء"
+CallerSites.Function: "الدالة"
+CallerSites.Allocations: "العمليات المخصصة"
+CallerSites.Bytes: "البايتات"
+
+# Performance Metrics
+Performance.FPS: "FPS"
+Performance.MinFPS: "أدنى FPS"
+Performance.MaxFPS: "أقصى FPS"
+Performance.AvgFPS: "متوسط FPS"

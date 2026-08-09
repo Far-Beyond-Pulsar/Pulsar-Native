@@ -1,0 +1,28 @@
+# UI Core Translations - ar
+
+# Status Bar
+StatusBar.RustAnalyzer: "rust-analyzer"
+StatusBar.Stop: "إيقاف"
+StatusBar.Restart: "إعادة تشغيل"
+StatusBar.Start: "بدء"
+StatusBar.Multiplayer: "تعاون متعدد اللاعبين"
+StatusBar.PluginManager: "مدير الإضافات"
+StatusBar.Flamegraph: "مُحلّل مخطط اللهب"
+
+Notification.Title.Dev: "تطوير"
+Notification.Title.BuildInfo: "معلومات البناء"
+Notification.Title.Build: "بناء"
+Notification.Title.Run: "تشغيل"
+Notification.Title.RustAnalyzerReady: "محلل Rust جاهز"
+Notification.Title.AnalyzerError: "خطأ في المحلل"
+Notification.Title.CodeIntelligenceReady: "ذكاء الكود جاهز"
+Notification.Title.ProjectLoaded: "تم تحميل المشروع"
+Notification.Message.UseSaveAsDefault: "استخدم \"الحفظ كافتراضي\" في شريط أدوات محرر المستويات."
+Notification.Message.Opening: "جارٍ فتح %{path}"
+Notification.Message.AssetReloadNotImplemented: "إعادة تحميل الأصول غير مدعومة بعد."
+Notification.Message.EngineInspectorNotImplemented: "مفتش حالة المحرك غير مدعوم بعد."
+Notification.Message.BuildingProject: "جارٍ بناء المشروع..."
+Notification.Message.RunningProject: "جارٍ تشغيل المشروع..."
+Notification.Message.CodeIntelligenceAvailable: "ذكاء الكود متاح الآن"
+Notification.Message.RustAnalyzerIndexingComplete: "اكتملت فهرسة Rust Analyzer"
+Notification.Message.WelcomeToProject: "مرحبًا بك في %{project}"

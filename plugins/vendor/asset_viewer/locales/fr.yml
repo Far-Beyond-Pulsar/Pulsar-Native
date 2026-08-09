@@ -1,0 +1,60 @@
+# Asset Viewer translations - fr
+
+AssetViewer.Title: Visionneuse d'assets
+AssetViewer.DisplayName: Visionneuse d'assets FBX/PNG
+AssetViewer.FBXModel: Modèle FBX
+AssetViewer.PNGImage: Image PNG
+AssetViewer.Adjust: Ajuster
+AssetViewer.Grayscale: Niveaux de gris
+AssetViewer.InvertColors: Inverser les couleurs
+AssetViewer.BrightnessDown: Luminosité -
+AssetViewer.BrightnessUp: Luminosité +
+AssetViewer.ContrastDown: Contraste -
+AssetViewer.ContrastUp: Contraste +
+AssetViewer.FlipH: Retourner H
+AssetViewer.FlipV: Retourner V
+AssetViewer.Generator: Générateur
+AssetViewer.MorphTargets: Cibles de morphing
+AssetViewer.Cameras: Caméras
+AssetViewer.Clips: Clips
+AssetViewer.Animation: Animation
+AssetViewer.Joints: Articulations
+AssetViewer.Images: Images
+AssetViewer.Info: Infos
+AssetViewer.History: Historique
+AssetViewer.File: Fichier
+AssetViewer.Initializing: Initialisation...
+AssetViewer.EditorClosed: Éditeur fermé
+AssetViewer.EditorUnavailable: Éditeur indisponible
+AssetViewer.NoImageLoaded: Aucune image chargée
+AssetViewer.NoSavePath: Aucun chemin d'enregistrement
+AssetViewer.FailedCreateImage: Échec de la création de l'image
+AssetViewer.Team: Équipe Pulsar
+
+AssetViewer.Undo: Annuler
+AssetViewer.Redo: Rétablir
+AssetViewer.Save: Enregistrer
+AssetViewer.Transform: Transformation
+AssetViewer.RotCW: Rotation horaire
+AssetViewer.RotCCW: Rotation antihoraire
+AssetViewer.View: Vue
+AssetViewer.ResetZoom: Réinitialiser le zoom
+AssetViewer.Scene: Scène
+AssetViewer.Meshes: Maillages
+AssetViewer.Vertices: Sommets
+AssetViewer.Triangles: Triangles
+AssetViewer.Materials: Matériaux
+AssetViewer.Resources: Ressources
+AssetViewer.Textures: Textures
+AssetViewer.Lights: Lumières
+AssetViewer.Skins: Peaux
+AssetViewer.ColName: Nom
+AssetViewer.ColVerts: Sommets
+AssetViewer.ColTris: Tris
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: Mat
+AssetViewer.Loading: Chargement...
+AssetViewer.Unknown: Inconnu

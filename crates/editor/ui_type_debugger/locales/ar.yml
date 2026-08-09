@@ -1,0 +1,14 @@
+# UI Type Debugger Translations - ar
+
+# Drawer Title
+TypeDebugger.Title: "قاعدة بيانات الأنواع"
+
+# Search & Actions
+TypeDebugger.Search.Placeholder: "ابحث عن الأنواع..."
+TypeDebugger.Action.ClearAll: "مسح كل الأنواع"
+TypeDebugger.Action.GroupByKind: "تجميع حسب النوع"
+TypeDebugger.Action.ShowFlatList: "إظهار قائمة مسطحة"
+
+# Empty State
+TypeDebugger.Empty.Title: "لم يتم العثور على أي نوع"
+TypeDebugger.Empty.Message: "لا توجد أنواع تطابق معايير البحث الخاصة بك."

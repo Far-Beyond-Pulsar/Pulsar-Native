@@ -1,0 +1,54 @@
+# Flamegraph Profiler - ar
+
+# Window Title
+Flamegraph.Title: "مُحلّل مخطط اللهب"
+
+# Toolbar Buttons
+Flamegraph.Record: "تسجيل"
+Flamegraph.Stop: "إيقاف"
+Flamegraph.Recording: "جارٍ التسجيل"
+Flamegraph.OpenSession: "فتح جلسة"
+
+# Empty State
+Flamegraph.NoDataLoaded: "لا توجد بيانات تحليل"
+Flamegraph.GetStarted: "اختر أحد الخيارات أدناه للبدء"
+Flamegraph.StartRecording: "بدء التسجيل"
+Flamegraph.StartRecordingDesc: "التقط بيانات تحليل لحظية من تطبيقك قيد التشغيل"
+Flamegraph.OpenPreviousSession: "فتح جلسة سابقة"
+Flamegraph.OpenSessionDesc: "تصفح وتحميل جلسات التحليل المحفوظة سابقًا"
+Flamegraph.RecordingInProgress: "التسجيل قيد التقدم"
+Flamegraph.WaitingForData: "في انتظار ظهور بيانات التحليل..."
+Flamegraph.RecordingActive: "التسجيل نشط"
+Flamegraph.DataWillAppear: "ستظهر البيانات هنا بمجرد التقاط أحداث التحليل"
+
+# Pro Tips
+Flamegraph.ProTips: "نصائح احترافية"
+Flamegraph.Tip1: "استخدم Ctrl + التمرير للتكبير أفقيًا، وShift + التمرير للتحريك عموديًا"
+Flamegraph.Tip2: "انقر بزر الماوس الأيمن واسحب للتحرك داخل مخطط اللهب بحرية"
+Flamegraph.Tip3: "انقر على مخطط معدل الإطارات للانتقال إلى فترات زمنية محددة"
+
+# Statistics Sidebar
+Flamegraph.Statistics: "الإحصائيات"
+Flamegraph.TotalSpans: "إجمالي الامتدادات:"
+Flamegraph.Duration: "المدة:"
+Flamegraph.Frames: "الإطارات:"
+Flamegraph.AvgFrame: "متوسط الإطار:"
+Flamegraph.MinFrame: "أدنى إطار:"
+Flamegraph.MaxFrame: "أقصى إطار:"
+Flamegraph.Threads: "الخيوط:"
+Flamegraph.MaxDepth: "أقصى عمق:"
+
+# Hover Popup
+Flamegraph.Start: "البداية:"
+Flamegraph.End: "النهاية:"
+Flamegraph.Thread: "الخيط:"
+Flamegraph.Depth: "العمق:"
+Flamegraph.Unknown: "غير معروف"
+
+# Units
+Flamegraph.Milliseconds: "%{value} مللي ثانية"
+
+# Profiling Overlay
+Flamegraph.CollectingData: "جارٍ جمع بيانات التحليل..."
+Flamegraph.SpansCollected: "الامتدادات المجمعة:"
+Flamegraph.StopRecording: "إيقاف التسجيل"

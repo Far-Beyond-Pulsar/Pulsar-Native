@@ -1,0 +1,60 @@
+# Asset Viewer translations - ar
+
+AssetViewer.Title: عارض الأصول
+AssetViewer.DisplayName: عارض أصول FBX/PNG
+AssetViewer.FBXModel: نموذج FBX
+AssetViewer.PNGImage: صورة PNG
+AssetViewer.Adjust: ضبط
+AssetViewer.Grayscale: تدرج رمادي
+AssetViewer.InvertColors: عكس الألوان
+AssetViewer.BrightnessDown: سطوع -
+AssetViewer.BrightnessUp: سطوع +
+AssetViewer.ContrastDown: تباين -
+AssetViewer.ContrastUp: تباين +
+AssetViewer.FlipH: قلب أفقي
+AssetViewer.FlipV: قلب عمودي
+AssetViewer.Generator: مولّد
+AssetViewer.MorphTargets: أهداف التشكيل
+AssetViewer.Cameras: الكاميرات
+AssetViewer.Clips: المقاطع
+AssetViewer.Animation: الرسوم المتحركة
+AssetViewer.Joints: المفاصل
+AssetViewer.Images: الصور
+AssetViewer.Info: معلومات
+AssetViewer.History: السجل
+AssetViewer.File: ملف
+AssetViewer.Initializing: جارٍ التهيئة...
+AssetViewer.EditorClosed: تم إغلاق المحرر
+AssetViewer.EditorUnavailable: المحرر غير متاح
+AssetViewer.NoImageLoaded: لا توجد صورة محمّلة
+AssetViewer.NoSavePath: لا يوجد مسار للحفظ
+AssetViewer.FailedCreateImage: تعذّر إنشاء الصورة
+AssetViewer.Team: فريق Pulsar
+
+AssetViewer.Undo: تراجع
+AssetViewer.Redo: إعادة
+AssetViewer.Save: حفظ
+AssetViewer.Transform: تحويل
+AssetViewer.RotCW: تدوير باتجاه عقارب الساعة
+AssetViewer.RotCCW: تدوير عكس عقارب الساعة
+AssetViewer.View: عرض
+AssetViewer.ResetZoom: إعادة تعيين التكبير
+AssetViewer.Scene: المشهد
+AssetViewer.Meshes: الشبكات
+AssetViewer.Vertices: الرؤوس
+AssetViewer.Triangles: المثلثات
+AssetViewer.Materials: الخامات
+AssetViewer.Resources: الموارد
+AssetViewer.Textures: الأنسجة
+AssetViewer.Lights: الإضاءات
+AssetViewer.Skins: الهياكل
+AssetViewer.ColName: الاسم
+AssetViewer.ColVerts: الرؤوس
+AssetViewer.ColTris: المثلثات
+AssetViewer.ColN: N
+AssetViewer.ColT: T
+AssetViewer.ColUV: UV
+AssetViewer.ColC: C
+AssetViewer.ColMat: خامة
+AssetViewer.Loading: جارٍ التحميل...
+AssetViewer.Unknown: غير معروف

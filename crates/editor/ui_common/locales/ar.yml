@@ -1,0 +1,374 @@
+# UI Translations - ar
+
+Calendar.week.0: أحد
+Calendar.week.1: اثنين
+Calendar.week.2: ثلاثاء
+Calendar.week.3: أربعاء
+Calendar.week.4: خميس
+Calendar.week.5: جمعة
+Calendar.week.6: سبت
+Calendar.month.January: يناير
+Calendar.month.February: فبراير
+Calendar.month.March: مارس
+Calendar.month.April: أبريل
+Calendar.month.May: مايو
+Calendar.month.June: يونيو
+Calendar.month.July: يوليو
+Calendar.month.August: أغسطس
+Calendar.month.September: سبتمبر
+Calendar.month.October: أكتوبر
+Calendar.month.November: نوفمبر
+Calendar.month.December: ديسمبر
+DatePicker.placeholder: "حدد التاريخ"
+Dropdown.placeholder: "يرجى التحديد"
+Dock.Unnamed: بدون اسم
+Dock.Close: إغلاق
+Dock.Zoom In: تكبير
+Dock.Zoom Out: تصغير
+Dock.Collapse: طي
+Dock.Expand: توسيع
+Modal.ok: OK
+Modal.cancel: إلغاء
+List.search_placeholder: بحث...
+Input.Replace: استبدال
+Input.Replace All: استبدال الكل
+Input.Cut: قص
+Input.Copy: نسخ
+Input.Paste: لصق
+Input.Select All: تحديد الكل
+Input.Go to Definition: الانتقال إلى التعريف
+Input.Show Code Actions: إظهار إجراءات الكود
+
+# Window Titles
+Window.Title.AboutPulsar: "حول محرك Pulsar"
+Window.Title.FileManager: "مدير الملفات"
+Window.Title.Problems: "المشكلات"
+Window.Title.TypeDebugger: "مصحح أخطاء الأنواع"
+Window.Title.Settings: "الإعدادات"
+Window.Title.Documentation: "التوثيق"
+
+Menu.File: ملف
+Menu.Edit: تحرير
+Menu.View: عرض
+Menu.Help: تعليمات
+Menu.File.New: جديد
+Menu.File.NewFile: ملف جديد
+Menu.File.NewWindow: نافذة جديدة
+Menu.File.NewProject: مشروع جديد
+Menu.File.NewScene: مشهد جديد
+Menu.File.NewScript: سكربت جديد
+Menu.File.NewShader: شادر جديد
+Menu.File.NewMaterial: خامة جديدة
+Menu.File.NewPrefab: بريفاب جديد
+Menu.File.NewBlueprint: مخطط جديد
+Menu.File.NewComponent: مكوّن جديد
+Menu.File.NewSystem: نظام جديد
+Menu.File.Open: فتح
+Menu.File.OpenFolder: فتح مجلد
+Menu.File.OpenRecent: فتح الأخير
+Menu.File.RecentProjects: المشاريع الأخيرة
+Menu.File.RecentFiles: الملفات الأخيرة
+Menu.File.ClearRecent: مسح الأخيرة
+Menu.File.Save: حفظ
+Menu.File.SaveAs: حفظ باسم...
+Menu.File.SaveAll: حفظ الكل
+Menu.File.SaveWorkspace: حفظ مساحة العمل
+Menu.File.Import: استيراد
+Menu.File.ImportAsset: استيراد أصل
+Menu.File.ImportModel: استيراد نموذج (FBX/GLTF)
+Menu.File.ImportTexture: استيراد نسيج
+Menu.File.ImportAudio: استيراد صوت
+Menu.File.BatchImport: استيراد دفعة
+Menu.File.ImportFromUnity: استيراد من Unity
+Menu.File.ImportFromUnreal: استيراد من Unreal
+Menu.File.ImportFromGodot: استيراد من Godot
+Menu.File.Export: تصدير
+Menu.File.ExportBuild: تصدير البناء
+Menu.File.ExportScene: تصدير المشهد
+Menu.File.ExportSelected: تصدير المحدد
+Menu.File.ExportWindows: تصدير لنظام Windows
+Menu.File.ExportLinux: تصدير لنظام Linux
+Menu.File.ExportMacOS: تصدير لنظام macOS
+Menu.File.ExportWeb: تصدير للويب (WASM)
+Menu.File.ExportAndroid: تصدير لنظام Android
+Menu.File.ExportIOS: تصدير لنظام iOS
+Menu.File.RevertFile: استعادة الملف
+Menu.File.CloseFile: إغلاق الملف
+Menu.File.CloseFolder: إغلاق المجلد
+Menu.File.CloseAll: إغلاق الكل
+Menu.File.CloseOthers: إغلاق الآخرين
+Menu.Edit.Undo: تراجع
+Menu.Edit.Redo: إعادة
+Menu.Edit.Cut: قص
+Menu.Edit.Copy: نسخ
+Menu.Edit.Paste: لصق
+Menu.Edit.Delete: حذف
+Menu.Edit.Duplicate: تكرار
+Menu.Edit.SelectAll: تحديد الكل
+Menu.Edit.Find: بحث
+Menu.Edit.FindInFiles: بحث في الملفات
+Menu.Edit.Replace: استبدال
+Menu.Edit.Preferences: التفضيلات
+Menu.View.CommandPalette: لوحة الأوامر
+Menu.View.ToggleFullscreen: تبديل ملء الشاشة
+Menu.View.ZoomIn: تكبير
+Menu.View.ZoomOut: تصغير
+Menu.View.ResetZoom: إعادة تعيين التكبير
+Menu.View.Panels: اللوحات
+Menu.View.TogglePanel: تبديل اللوحة
+Menu.View.Console: وحدة التحكم
+Menu.View.Inspector: المفتش
+Menu.View.Profiler: المحلل
+Menu.View.ToggleMinimap: تبديل الخريطة المصغرة
+Menu.View.ToggleLineNumbers: تبديل أرقام الأسطر
+Menu.View.ToggleBreadcrumbs: تبديل مسار التنقل
+Menu.View.ToggleWhitespace: تبديل المسافات البيضاء
+Menu.View.ZenMode: وضع الزن
+Menu.Help.Documentation: التوثيق
+Menu.Help.GettingStarted: البدء
+Menu.Help.Tutorials: الدروس التعليمية
+Menu.Help.API: مرجع API
+Menu.Help.ReportBug: الإبلاغ عن خطأ
+Menu.Help.RequestFeature: طلب ميزة
+Menu.Help.Community: المجتمع
+Menu.Help.About: حول Pulsar
+Menu.Edit.SelectNone: إلغاء التحديد
+Menu.Edit.FindNext: البحث التالي
+Menu.Edit.FindPrevious: البحث السابق
+Menu.Edit.ReplaceNext: الاستبدال التالي
+Menu.Edit.ReplaceAll: استبدال الكل
+Menu.Edit.ReplaceInFiles: استبدال في الملفات
+Menu.Edit.FindUsages: البحث عن الاستخدامات
+Menu.Edit.FindImplementations: البحث عن التطبيقات
+Menu.Edit.CodeActions: إجراءات الكود
+Menu.Edit.FormatDocument: تنسيق المستند
+Menu.Edit.FormatSelection: تنسيق التحديد
+Menu.Edit.CommentLine: تعليق السطر
+Menu.Edit.UncommentLine: إزالة تعليق السطر
+Menu.Edit.ToggleComment: تبديل التعليق
+Menu.Edit.Fold: طي
+Menu.Edit.Unfold: فتح الطي
+Menu.Edit.FoldAll: طي الكل
+Menu.Edit.UnfoldAll: فتح طي الكل
+Menu.Edit.SortLines: فرز الأسطر
+Menu.Edit.RemoveDuplicates: إزالة التكرارات
+Menu.Edit.TrimWhitespace: إزالة المسافات الزائدة
+Menu.Selection: التحديد
+Menu.Selection.SelectLine: تحديد السطر
+Menu.Selection.SelectWord: تحديد الكلمة
+Menu.Selection.SelectScope: تحديد النطاق
+Menu.Selection.ExpandSelection: توسيع التحديد
+Menu.Selection.ShrinkSelection: تقليص التحديد
+Menu.Selection.AddCursorAbove: إضافة مؤشر فوق
+Menu.Selection.AddCursorBelow: إضافة مؤشر أسفل
+Menu.Selection.AddCursorLineEnds: إضافة مؤشر في نهايات الأسطر
+Menu.Selection.SelectAllOccurrences: تحديد كل التكرارات
+Menu.Selection.SelectNextOccurrence: تحديد التكرار التالي
+Menu.Selection.SkipOccurrence: تخطي التكرار
+Menu.View.Explorer: المستكشف
+Menu.View.Hierarchy: التسلسل الهرمي للمشهد
+Menu.View.AssetBrowser: متصفح الأصول
+Menu.View.Output: الإخراج
+Menu.View.Problems: المشكلات
+Menu.View.Debug: تصحيح الأخطاء
+Menu.View.MemoryAnalyzer: محلل الذاكرة
+Menu.View.Network: الشبكة
+Menu.View.Appearance: المظهر
+Menu.View.Layout: التخطيط
+Menu.View.SplitHorizontal: تقسيم أفقي
+Menu.View.SplitVertical: تقسيم عمودي
+Menu.View.SingleColumn: عمود واحد
+Menu.View.TwoColumns: عمودان
+Menu.View.ThreeColumns: ثلاثة أعمدة
+Menu.View.ResetLayout: إعادة تعيين التخطيط
+Menu.View.SaveLayout: حفظ التخطيط
+Menu.View.QuickOpen: فتح سريع
+Menu.Go: انتقال
+Menu.Go.GoToFile: الانتقال إلى الملف
+Menu.Go.GoToSymbol: الانتقال إلى الرمز
+Menu.Go.GoToLine: الانتقال إلى السطر
+Menu.Go.GoToDefinition: الانتقال إلى التعريف
+Menu.Go.GoToTypeDefinition: الانتقال إلى تعريف النوع
+Menu.Go.GoToImplementation: الانتقال إلى التطبيق
+Menu.Go.GoToReferences: الانتقال إلى المراجع
+Menu.Go.GoBack: رجوع
+Menu.Go.GoForward: تقدم
+Menu.Go.GoToLastEdit: الانتقال إلى آخر تعديل
+Menu.Go.NextProblem: المشكلة التالية
+Menu.Go.PreviousProblem: المشكلة السابقة
+Menu.Project: مشروع
+Menu.Project.ProjectSettings: إعدادات المشروع
+Menu.Project.BuildSettings: إعدادات البناء
+Menu.Project.PackageSettings: إعدادات الحزمة
+Menu.Project.Dependencies: التبعيات
+Menu.Project.AddDependency: إضافة تبعية
+Menu.Project.UpdateDependencies: تحديث التبعيات
+Menu.Project.RemoveUnused: إزالة غير المستخدم
+Menu.Project.OpenCargoToml: Cargo.toml
+Menu.Project.GenerateDocs: إنشاء التوثيق
+Menu.Project.RunCargoCheck: تشغيل فحص Cargo
+Menu.Project.RunClippy: تشغيل Clippy
+Menu.Project.FormatProject: تنسيق المشروع
+Menu.Build: بناء
+Menu.Build.BuildProject: بناء المشروع
+Menu.Build.BuildAndRun: بناء وتشغيل
+Menu.Build.BuildRelease: بناء الإصدار النهائي
+Menu.Build.Rebuild: إعادة البناء الكل
+Menu.Build.Clean: بناء نظيف
+Menu.Build.BuildConfiguration: إعداد البناء
+Menu.Build.BuildDebug: تصحيح
+Menu.Build.BuildReleaseDebug: إصدار نهائي مع معلومات التصحيح
+Menu.Build.BuildProfile: تحليل الأداء
+Menu.Build.CancelBuild: إلغاء البناء
+Menu.Build.ShowBuildOutput: إظهار مخرجات البناء
+Menu.Run: تشغيل
+Menu.Run.RunProject: تشغيل المشروع
+Menu.Run.RunWithoutDebug: تشغيل بدون تصحيح
+Menu.Run.Stop: إيقاف
+Menu.Run.Restart: إعادة تشغيل
+Menu.Run.DebugProject: تصحيح المشروع
+Menu.Run.Debugging: قيد التصحيح
+Menu.Run.StartDebug: بدء التصحيح
+Menu.Run.StopDebug: إيقاف التصحيح
+Menu.Run.RestartDebug: إعادة تشغيل التصحيح
+Menu.Run.StepOver: تنفيذ الخطوة التالية
+Menu.Run.StepInto: دخول إلى
+Menu.Run.StepOut: خروج من
+Menu.Run.Continue: متابعة
+Menu.Run.ToggleBreakpoint: تبديل نقطة التوقف
+Menu.Run.DisableBreakpoints: تعطيل كل نقاط التوقف
+Menu.Run.RemoveBreakpoints: إزالة كل نقاط التوقف
+Menu.Run.Testing: اختبار
+Menu.Run.RunTests: تشغيل كل الاختبارات
+Menu.Run.RunFailedTests: تشغيل الاختبارات الفاشلة
+Menu.Run.RunFileTests: تشغيل الاختبارات في الملف
+Menu.Run.DebugTest: تصحيح الاختبار
+Menu.Run.RunCoverage: التغطية
+Menu.Run.Performance: الأداء
+Menu.Run.RunBenchmarks: تشغيل المقاييس
+Menu.Run.CompareBenchmarks: مقارنة المقاييس
+Menu.Run.ProfileBuild: تحليل أداء البناء
+Menu.GameEngine: محرك اللعبة
+Menu.GameEngine.Scene: المشهد
+Menu.GameEngine.NewScene: مشهد جديد
+Menu.GameEngine.OpenScene: فتح مشهد
+Menu.GameEngine.SaveScene: حفظ المشهد
+Menu.GameEngine.SaveSceneAs: حفظ المشهد باسم
+Menu.GameEngine.PlayScene: تشغيل المشهد
+Menu.GameEngine.PauseScene: إيقاف المشهد مؤقتًا
+Menu.GameEngine.StopScene: إيقاف المشهد
+Menu.GameEngine.SceneSettings: إعدادات المشهد
+Menu.GameEngine.GameObject: كائن اللعبة
+Menu.GameEngine.CreateEmpty: إنشاء فارغ
+Menu.GameEngine.3DObjects: كائنات ثلاثية الأبعاد
+Menu.GameEngine.CreateCube: مكعب
+Menu.GameEngine.CreateSphere: كرة
+Menu.GameEngine.CreateCapsule: كبسولة
+Menu.GameEngine.CreateCylinder: أسطوانة
+Menu.GameEngine.CreatePlane: مستوى
+Menu.GameEngine.CreateTerrain: تضاريس
+Menu.GameEngine.2DObjects: كائنات ثنائية الأبعاد
+Menu.GameEngine.CreateSprite: سبرايت
+Menu.GameEngine.CreateTilemap: خريطة البلاطات
+Menu.GameEngine.CreateParticles2D: نظام جسيمات ثنائي الأبعاد
+Menu.GameEngine.Light: إضاءة
+Menu.GameEngine.CreateDirectionalLight: إضاءة اتجاهية
+Menu.GameEngine.CreatePointLight: إضاءة نقطية
+Menu.GameEngine.CreateSpotLight: إضاءة موضعية
+Menu.GameEngine.CreateAreaLight: إضاءة منطقة
+Menu.GameEngine.Audio: صوت
+Menu.GameEngine.CreateAudioSource: مصدر الصوت
+Menu.GameEngine.CreateAudioListener: مستمع الصوت
+Menu.GameEngine.Effects: المؤثرات
+Menu.GameEngine.CreateParticleSystem: نظام الجسيمات
+Menu.GameEngine.CreateVFX: المؤثر البصري
+Menu.GameEngine.CreatePostProcessing: المعالجة اللاحقة
+Menu.GameEngine.Camera: كاميرا
+Menu.GameEngine.CreateCamera: كاميرا
+Menu.GameEngine.CreateOrthoCamera: كاميرا متعامدة
+Menu.GameEngine.UI: واجهة المستخدم
+Menu.GameEngine.CreateCanvas: لوحة الرسم
+Menu.GameEngine.CreatePanel: لوحة
+Menu.GameEngine.CreateButton: زر
+Menu.GameEngine.CreateText: نص
+Menu.GameEngine.CreateImage: صورة
+Menu.GameEngine.CreateSlider: شريط تمرير
+Menu.GameEngine.CreateInputField: حقل إدخال
+Menu.GameEngine.Physics: فيزياء
+Menu.GameEngine.AddRigidbody: إضافة جسم صلب
+Menu.GameEngine.AddCollider: إضافة مصادم
+Menu.GameEngine.AddCharacterController: إضافة وحدة تحكم الشخصية
+Menu.GameEngine.PhysicsSettings: إعدادات الفيزياء
+Menu.GameEngine.CollisionMatrix: مصفوفة التصادم
+Menu.GameEngine.Rendering: العرض
+Menu.GameEngine.RenderSettings: إعدادات العرض
+Menu.GameEngine.LightingSettings: إعدادات الإضاءة
+Menu.GameEngine.QualitySettings: إعدادات الجودة
+Menu.GameEngine.BakeLighting: خبز الإضاءة
+Menu.GameEngine.ClearBakedData: مسح البيانات المخبوزة
+Menu.GameEngine.FrameDebugger: مصحح أخطاء الإطار
+Menu.GameEngine.EngineProfiler: المحلل
+Menu.GameEngine.PackageManager: مدير الحزم
+Menu.GameEngine.AssetStore: متجر الأصول
+Menu.Assets: الأصول
+Menu.Assets.CreateAsset: إنشاء أصل
+Menu.Assets.ImportAsset: استيراد أصل
+Menu.Assets.Create: إنشاء
+Menu.Assets.CreateMaterial: خامة
+Menu.Assets.CreateShader: شادر
+Menu.Assets.CreateTexture: نسيج
+Menu.Assets.CreateAnimClip: مقطع رسوم متحركة
+Menu.Assets.CreateAnimController: وحدة تحكم التحريك
+Menu.Assets.CreateAudioMixer: خلاط الصوت
+Menu.Assets.CreateRenderTexture: نسيج العرض
+Menu.Assets.CreatePrefab: بريفاب
+Menu.Assets.CreateScriptableObject: كائن نصي
+Menu.Assets.Refresh: تحديث
+Menu.Assets.Reimport: إعادة استيراد
+Menu.Assets.ReimportAll: إعادة استيراد الكل
+Menu.Assets.FindReferences: البحث عن المراجع
+Menu.Assets.FindMissingReferences: البحث عن المراجع المفقودة
+Menu.Tools: أدوات
+Menu.Tools.Rust: Rust
+Menu.Tools.CargoCommands: أوامر Cargo
+Menu.Tools.GenerateRustAnalyzer: إنشاء Rust-Analyzer
+Menu.Tools.ExpandMacro: توسيع الماكرو
+Menu.Tools.ShowSyntaxTree: إظهار شجرة البنية
+Menu.Tools.ShowHIR: إظهار HIR
+Menu.Tools.InlineVariable: تضمين المتغير
+Menu.Tools.ExtractFunction: استخراج دالة
+Menu.Tools.ExtractVariable: استخراج متغير
+Menu.Tools.Shaders: الشادرات
+Menu.Tools.ShaderEditor: محرر الشادر
+Menu.Tools.CompileShader: ترجمة الشادر
+Menu.Tools.ShaderVariants: متغيرات الشادر
+Menu.Tools.SPIRVDisassembly: تفكيك SPIR-V
+Menu.Tools.Animation: الرسوم المتحركة
+Menu.Tools.AnimationWindow: نافذة الرسوم المتحركة
+Menu.Tools.AnimatorWindow: المحرك
+Menu.Tools.Timeline: الخط الزمني
+Menu.Tools.MaterialEditor: محرر الخامات
+Menu.Tools.TerrainTools: أدوات التضاريس
+Menu.Tools.ParticleEditor: محرر الجسيمات
+Menu.Tools.AudioMixerWindow: خلاط الصوت
+Menu.Tools.VersionControl: التحكم بالإصدارات
+Menu.Tools.TaskManager: إدارة المهام
+Menu.Tools.Extensions: الإضافات
+Menu.Window: نافذة
+Menu.Window.Minimize: تصغير
+Menu.Window.Zoom: تكبير
+Menu.Window.BringAllToFront: جلب الكل إلى المقدمة
+Menu.Window.NewWindow: نافذة جديدة
+Menu.Window.CloseWindow: إغلاق النافذة
+Menu.Help.Shortcuts: اختصارات لوحة المفاتيح
+Menu.Help.ViewLogs: عرض السجلات
+Menu.Help.CheckUpdates: التحقق من التحديثات
+Menu.Help.ReleaseNotes: ملاحظات الإصدار
+Menu.App.AboutApp: حول محرك Pulsar
+Menu.App.CheckUpdates: التحقق من التحديثات
+Menu.App.Preferences: التفضيلات
+Menu.App.Settings: الإعدادات
+Menu.App.Hide: إخفاء Pulsar
+Menu.App.HideOthers: إخفاء الآخرين
+Menu.App.ShowAll: إظهار الكل
+Menu.App.QuitApp: الخروج من Pulsar
