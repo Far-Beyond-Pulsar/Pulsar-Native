@@ -1,0 +1,28 @@
+# Flamegraph Profiler Übersetzungen - de
+
+# Fenstertitel
+Flamegraph.Title: "Flamegraph-Profiler"
+
+# Symbolleistenschaltflächen
+Flamegraph.Record: "Aufzeichnung"
+Flamegraph.Stop: "Stopp"
+Flamegraph.Recording: "AUFZEICHNUNG"
+Flamegraph.OpenSession: "Sitzung öffnen"
+
+# Leerzustand
+Flamegraph.NoDataLoaded: "Keine Profiling-Daten"
+Flamegraph.GetStarted: "Wählen Sie eine Option unten, um zu beginnen"
+Flamegraph.StartRecording: "Aufzeichnung starten"
+Flamegraph.StartRecordingDesc: "Echtzeit-Profiling-Daten Ihrer laufenden Anwendung erfassen"
+Flamegraph.OpenPreviousSession: "Vorherige Sitzung öffnen"
+Flamegraph.OpenSessionDesc: "Gespeicherte Profiling-Sitzungen durchsuchen und laden"
+Flamegraph.RecordingInProgress: "Aufzeichnung läuft"
+Flamegraph.WaitingForData: "Warten auf Profiling-Daten..."
+Flamegraph.RecordingActive: "Aufzeichnung aktiv"
+Flamegraph.DataWillAppear: "Daten erscheinen hier, sobald Profiling-Ereignisse erfasst werden"
+
+# Profi-Tipps
+Flamegraph.ProTips: "Profi-Tipps"
+Flamegraph.Tip1: "Strg+Mausrad zum horizontalen Zoomen, Umschalt+Mausrad zum vertikalen Verschieben"
+Flamegraph.Tip2: "Rechtsklick und ziehen zum freien Verschieben im Flamegraph"
+Flamegraph.Tip3: "Klicken Sie auf das Framerate-Diagramm, um zu bestimmten Zeiträumen zu springen"

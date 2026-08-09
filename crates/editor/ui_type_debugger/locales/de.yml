@@ -1,0 +1,14 @@
+# UI Typ-Debugger Übersetzungen - de
+
+# Bereichstitel
+TypeDebugger.Title: "Typdatenbank"
+
+# Suche und Aktionen
+TypeDebugger.Search.Placeholder: "Typen durchsuchen..."
+TypeDebugger.Action.ClearAll: "Alle Typen löschen"
+TypeDebugger.Action.GroupByKind: "Nach Art gruppieren"
+TypeDebugger.Action.ShowFlatList: "Flache Liste anzeigen"
+
+# Leerzustand
+TypeDebugger.Empty.Title: "Keine Typen gefunden"
+TypeDebugger.Empty.Message: "Es entsprechen keine Typen Ihren Suchkriterien."

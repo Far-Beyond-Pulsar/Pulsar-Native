@@ -1,0 +1,29 @@
+# UI Problemübersetzungen - de
+
+# Bereichstitel
+Problems.Title: "Probleme"
+
+# Filterbezeichnungen
+Problems.Filter.All: "Alle Probleme"
+Problems.Filter.Errors: "Fehler"
+Problems.Filter.Warnings: "Warnungen"
+Problems.Filter.Information: "Informationen"
+Problems.Filter.Hints: "Hinweise"
+
+# Suche und Aktionen
+Problems.Search.Placeholder: "Probleme durchsuchen..."
+Problems.Action.ClearAll: "Alle Probleme löschen"
+Problems.Action.GroupByFile: "Nach Datei gruppieren"
+Problems.Action.ShowFlatList: "Flache Liste anzeigen"
+
+# Leerzustand
+Problems.Empty.Title: "Keine Probleme erkannt"
+Problems.Empty.NoMatch: "Keine Probleme entsprechen Ihrer Suche. Versuchen Sie eine andere Abfrage."
+Problems.Empty.AllGood: "Ihr Code sieht großartig aus! Weiter so."
+
+# Diagnose
+Problems.Loading: "Schnellkorrekturen werden geladen..."
+Problems.SuggestedFixes: "Vorgeschlagene Korrekturen:"
+Problems.Related: "Verwandt:"
+Problems.Before: "VORHER"
+Problems.After: "NACHHER"
