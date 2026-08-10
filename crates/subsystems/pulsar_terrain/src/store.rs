@@ -30,7 +30,11 @@ impl TerrainStore {
     }
 
     pub fn save(&self, snapshot: &[u8]) -> Result<SnapshotRecord, TerrainStoreError> {
-        let generation = self.latest_generation()?.unwrap_or(0).saturating_add(1);
+        let generation = self
+            .latest_generation()?
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or(TerrainStoreError::GenerationExhausted)?;
         let hash = self.store_object(snapshot)?;
         virtual_fs::create_dir_all(&self.roots_dir()).map_err(TerrainStoreError::Io)?;
 
@@ -73,38 +77,10 @@ impl TerrainStore {
         if !virtual_fs::exists(&self.roots_dir()).map_err(TerrainStoreError::Io)? {
             return Ok(None);
         }
-        let mut candidates = virtual_fs::list_dir(&self.roots_dir())
-            .map_err(TerrainStoreError::Io)?
-            .into_iter()
-            .filter(|entry| !entry.is_dir && entry.name.ends_with(".root"))
-            .filter_map(|entry| {
-                parse_generation(&entry.name).map(|generation| (generation, entry.name))
-            })
-            .collect::<Vec<_>>();
-        candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
-
-        for (filename_generation, filename) in candidates {
-            let manifest = match virtual_fs::read_file(&self.roots_dir().join(filename)) {
-                Ok(bytes) => bytes,
-                Err(_) => continue,
-            };
-            let Ok((generation, hash)) = decode_manifest(&manifest) else {
-                continue;
-            };
-            if generation != filename_generation {
-                continue;
+        for (generation, filename) in self.root_candidates()? {
+            if let Some(record) = self.load_candidate(generation, &filename) {
+                return Ok(Some(record));
             }
-            let Ok(bytes) = virtual_fs::read_file(&self.objects_dir().join(hash.to_hex())) else {
-                continue;
-            };
-            if ContentHash::of(&bytes) != hash {
-                continue;
-            }
-            return Ok(Some(SnapshotRecord {
-                generation,
-                hash,
-                bytes,
-            }));
         }
         Ok(None)
     }
@@ -150,14 +126,18 @@ impl TerrainStore {
                 parse_generation(&entry.name).map(|generation| (generation, entry.name))
             })
             .collect::<Vec<_>>();
-        candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
+        candidates.sort_unstable_by(|left, right| {
+            right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1))
+        });
         Ok(candidates)
     }
 
     fn load_candidate(&self, filename_generation: u64, filename: &str) -> Option<SnapshotRecord> {
         let manifest = virtual_fs::read_file(&self.roots_dir().join(filename)).ok()?;
         let (generation, hash) = decode_manifest(&manifest).ok()?;
-        if generation != filename_generation {
+        if generation != filename_generation
+            || filename != format!("{generation:020}-{}.root", hash.to_hex())
+        {
             return None;
         }
         let bytes = virtual_fs::read_file(&self.objects_dir().join(hash.to_hex())).ok()?;
@@ -234,6 +214,8 @@ pub enum TerrainStoreError {
     Snapshot(#[from] SnapshotCodecError),
     #[error("terrain store contains roots but no valid canonical snapshot")]
     NoValidSnapshot,
+    #[error("terrain root generation space is exhausted")]
+    GenerationExhausted,
 }
 
 #[cfg(test)]
@@ -349,6 +331,148 @@ mod tests {
         assert!(matches!(
             store.load_latest_snapshot(),
             Err(TerrainStoreError::NoValidSnapshot)
+        ));
+    }
+
+    #[test]
+    fn canonical_root_filename_must_match_its_manifest() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        let first = store.save(b"first canonical snapshot").unwrap();
+        let second_hash = store.store_object(b"second canonical snapshot").unwrap();
+        let wrong_filename = store.roots_dir().join(format!(
+            "{:020}-{}.root",
+            2,
+            ContentHash::default().to_hex()
+        ));
+        virtual_fs::write_file(&wrong_filename, &encode_manifest(2, second_hash)).unwrap();
+
+        assert_eq!(store.load_latest().unwrap(), Some(first));
+        let third = store.save(b"third canonical snapshot").unwrap();
+        assert_eq!(third.generation, 3);
+        assert_eq!(store.load_latest().unwrap(), Some(third));
+    }
+
+    #[test]
+    fn typed_recovery_skips_mixed_corrupt_roots_and_pending_files() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 7,
+        };
+        let expected = TerrainCore::new(PlanetId([9; 16]), 12, generator)
+            .unwrap()
+            .snapshot();
+        let first = store.save_snapshot(&expected).unwrap();
+
+        let missing_hash = ContentHash::of(b"missing object");
+        virtual_fs::write_file(
+            &store
+                .roots_dir()
+                .join(format!("{:020}-{}.root", 2, missing_hash.to_hex())),
+            &encode_manifest(2, missing_hash),
+        )
+        .unwrap();
+
+        let corrupt_hash = ContentHash::of(b"expected object bytes");
+        virtual_fs::write_file(
+            &store.objects_dir().join(corrupt_hash.to_hex()),
+            b"different corrupt bytes",
+        )
+        .unwrap();
+        virtual_fs::write_file(
+            &store
+                .roots_dir()
+                .join(format!("{:020}-{}.root", 3, corrupt_hash.to_hex())),
+            &encode_manifest(3, corrupt_hash),
+        )
+        .unwrap();
+
+        virtual_fs::write_file(
+            &store.roots_dir().join(format!(
+                "{:020}-{}.root",
+                4,
+                ContentHash::default().to_hex()
+            )),
+            b"invalid manifest",
+        )
+        .unwrap();
+        virtual_fs::write_file(&store.pending_root_path(5), &encode_manifest(5, first.hash))
+            .unwrap();
+
+        let non_snapshot = b"hash-valid but not a canonical terrain snapshot";
+        let non_snapshot_hash = store.store_object(non_snapshot).unwrap();
+        virtual_fs::write_file(
+            &store
+                .roots_dir()
+                .join(format!("{:020}-{}.root", 6, non_snapshot_hash.to_hex())),
+            &encode_manifest(6, non_snapshot_hash),
+        )
+        .unwrap();
+
+        assert_eq!(store.load_latest().unwrap().unwrap().generation, 6);
+        let (recovered, snapshot) = store.load_latest_snapshot().unwrap().unwrap();
+        assert_eq!(recovered, first);
+        assert_eq!(snapshot, expected);
+
+        let next = store.save_snapshot(&expected).unwrap();
+        assert_eq!(next.generation, 7);
+    }
+
+    #[test]
+    fn equal_generation_roots_have_a_deterministic_filename_tie_break() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        let generation = 1;
+        let candidates = [b"candidate a".as_slice(), b"candidate b".as_slice()]
+            .into_iter()
+            .map(|bytes| {
+                let hash = store.store_object(bytes).unwrap();
+                let filename = format!("{generation:020}-{}.root", hash.to_hex());
+                virtual_fs::create_dir_all(&store.roots_dir()).unwrap();
+                virtual_fs::write_file(
+                    &store.roots_dir().join(&filename),
+                    &encode_manifest(generation, hash),
+                )
+                .unwrap();
+                (filename, hash)
+            })
+            .collect::<Vec<_>>();
+        let expected = candidates
+            .iter()
+            .max_by_key(|(filename, _)| filename)
+            .map(|(_, hash)| *hash)
+            .unwrap();
+
+        for _ in 0..8 {
+            assert_eq!(store.load_latest().unwrap().unwrap().hash, expected);
+        }
+    }
+
+    #[test]
+    fn generation_exhaustion_fails_instead_of_reusing_the_latest_root() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        virtual_fs::create_dir_all(&store.roots_dir()).unwrap();
+        virtual_fs::write_file(
+            &store.roots_dir().join(format!(
+                "{}-{}.root",
+                u64::MAX,
+                ContentHash::default().to_hex()
+            )),
+            b"corrupt published root",
+        )
+        .unwrap();
+
+        assert!(matches!(
+            store.save(b"must not reuse u64::MAX"),
+            Err(TerrainStoreError::GenerationExhausted)
         ));
     }
 }
