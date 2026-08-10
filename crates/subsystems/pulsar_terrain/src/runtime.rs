@@ -1,10 +1,14 @@
+use crate::persistence::{
+    TerrainPersistenceCapture, TerrainPersistenceConfig, TerrainPersistenceHandle,
+    TerrainPersistenceIdentity, TerrainPersistenceRestoreCommit, TerrainPersistenceService,
+};
 use crate::planning::{
     TerrainPlanningCapture, TerrainPlanningHandle, TerrainPlanningIdentity, TerrainPlanningService,
 };
 use crate::{
-    CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
+    CELL_COUNT, CompactedPageRecord, EditOp, FixedSphereGenerator, PageBuildCommitOutcome,
     PageBuildPreparation, PageBuildRequest, PageBuildResult, PageKey, PlanetDefinition, PlanetId,
-    TerrainCore, TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget, CELL_COUNT,
+    TerrainCore, TerrainCoreError, TerrainOverrideOp, TerrainOverrideTarget,
 };
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use engine_subsystems::{Subsystem, SubsystemContext, SubsystemError, SubsystemId};
@@ -262,6 +266,10 @@ pub enum TerrainRuntimeError {
     ResidentByteBudget { capacity: usize },
     #[error("terrain generation counter overflowed")]
     GenerationOverflow,
+    #[error("terrain persistence setup failed: {0}")]
+    Persistence(String),
+    #[error("restore for planet {planet_id:?} became stale before atomic commit")]
+    StalePersistenceRestore { planet_id: PlanetId },
     #[error("terrain override region {0:?} cannot be represented in canonical cell bounds")]
     InvalidOverrideRegion(PageKey),
     #[error(transparent)]
@@ -1464,6 +1472,122 @@ impl TerrainRuntimeHandle {
             .map(|planet| planet.generation)
     }
 
+    pub(crate) fn persistence_identity(
+        &self,
+        planet_id: PlanetId,
+    ) -> Result<TerrainPersistenceIdentity, TerrainRuntimeError> {
+        let state = lock(&self.shared.state);
+        if !state.running {
+            return Err(TerrainRuntimeError::NotRunning);
+        }
+        let planet = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        Ok(TerrainPersistenceIdentity {
+            definition: planet.definition.clone(),
+            planet_generation: planet.generation,
+            terrain_sequence: planet.core.latest_sequence(),
+        })
+    }
+
+    pub(crate) fn persistence_capture(
+        &self,
+        planet_id: PlanetId,
+    ) -> Result<TerrainPersistenceCapture, TerrainRuntimeError> {
+        let state = lock(&self.shared.state);
+        if !state.running {
+            return Err(TerrainRuntimeError::NotRunning);
+        }
+        let planet = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        Ok(TerrainPersistenceCapture {
+            definition: planet.definition.clone(),
+            planet_generation: planet.generation,
+            terrain_sequence: planet.core.latest_sequence(),
+            snapshot: planet.core.snapshot(),
+        })
+    }
+
+    pub(crate) fn commit_persistence_restore(
+        &self,
+        definition: PlanetDefinition,
+        expected_planet_generation: u64,
+        expected_terrain_sequence: u64,
+        restored: &mut Option<TerrainCore<FixedSphereGenerator>>,
+    ) -> Result<TerrainPersistenceRestoreCommit, TerrainRuntimeError> {
+        let planet_id = definition.planet_id;
+        let mut state = lock(&self.shared.state);
+        if !state.running {
+            return Err(TerrainRuntimeError::NotRunning);
+        }
+        let restored_ref = restored
+            .as_ref()
+            .ok_or(TerrainRuntimeError::StalePersistenceRestore { planet_id })?;
+        let current = state
+            .planets
+            .get(&planet_id)
+            .ok_or(TerrainRuntimeError::PlanetMissing(planet_id))?;
+        if current.definition != definition
+            || current.generation != expected_planet_generation
+            || current.core.latest_sequence() != expected_terrain_sequence
+            || restored_ref.planet_id() != planet_id
+            || restored_ref.hierarchy().root_lod() != definition.root_lod
+        {
+            return Err(TerrainRuntimeError::StalePersistenceRestore { planet_id });
+        }
+        if state.events.len() >= self.shared.config.event_capacity {
+            return Err(TerrainRuntimeError::EventBackpressure {
+                capacity: self.shared.config.event_capacity,
+            });
+        }
+
+        let planet_generation = state.allocate_planet_generation()?;
+        let cancelled = self
+            .shared
+            .queue
+            .cancel_where(|job| job.identity.planet_id == planet_id);
+        for job in cancelled {
+            state.cancel_active(job.identity);
+        }
+        let remaining = state
+            .active
+            .keys()
+            .filter(|identity| identity.planet_id == planet_id)
+            .copied()
+            .collect::<Vec<_>>();
+        for identity in remaining {
+            state.cancel_active(identity);
+        }
+
+        let mut restored = restored
+            .take()
+            .expect("validated restore core remains available for atomic commit");
+        restored.evict_all_resident_pages();
+        let planet = state
+            .planets
+            .get_mut(&planet_id)
+            .expect("validated restore planet remains registered while locked");
+        planet.generation = planet_generation;
+        planet.core = restored;
+        planet.page_generations.clear();
+        let pushed = state.push_event(
+            TerrainRuntimeEvent::EvictPlanet {
+                planet_id,
+                retired_generation: expected_planet_generation,
+            },
+            self.shared.config.event_capacity,
+        );
+        debug_assert!(pushed, "restore reserved one renderer retirement event");
+        state.refresh_resident_counters();
+        Ok(TerrainPersistenceRestoreCommit {
+            retired_planet_generation: expected_planet_generation,
+            planet_generation,
+        })
+    }
+
     pub(crate) fn planning_identity(
         &self,
         planet_id: PlanetId,
@@ -1672,19 +1796,31 @@ impl TerrainRuntimeHandle {
 pub struct TerrainSubsystem {
     handle: TerrainRuntimeHandle,
     planning: TerrainPlanningService,
+    persistence: TerrainPersistenceService,
     workers: Vec<JoinHandle<()>>,
 }
 
 impl TerrainSubsystem {
     pub fn new(config: TerrainRuntimeConfig) -> Result<Self, TerrainRuntimeError> {
+        Self::new_with_persistence(config, TerrainPersistenceConfig::default())
+    }
+
+    pub fn new_with_persistence(
+        config: TerrainRuntimeConfig,
+        persistence_config: TerrainPersistenceConfig,
+    ) -> Result<Self, TerrainRuntimeError> {
         config.validate()?;
         let shared = Arc::new(RuntimeShared::new(config));
         let handle = TerrainRuntimeHandle { shared };
         let planning =
             TerrainPlanningService::new(handle.clone(), handle.shared.config.max_planets);
+        let persistence =
+            TerrainPersistenceService::new(handle.clone(), planning.handle(), persistence_config)
+                .map_err(|error| TerrainRuntimeError::Persistence(error.to_string()))?;
         Ok(Self {
             handle,
             planning,
+            persistence,
             workers: Vec::new(),
         })
     }
@@ -1695,6 +1831,10 @@ impl TerrainSubsystem {
 
     pub fn planning_handle(&self) -> TerrainPlanningHandle {
         self.planning.handle()
+    }
+
+    pub fn persistence_handle(&self) -> TerrainPersistenceHandle {
+        self.persistence.handle()
     }
 
     fn initialize(&mut self) -> Result<(), TerrainRuntimeError> {
@@ -1711,6 +1851,11 @@ impl TerrainSubsystem {
             return Err(TerrainRuntimeError::InvalidConfig(
                 "failed to spawn terrain planning worker",
             ));
+        }
+        if let Err(error) = self.persistence.initialize() {
+            self.planning.shutdown();
+            lock(&self.handle.shared.state).running = false;
+            return Err(TerrainRuntimeError::Persistence(error.to_string()));
         }
         for worker_index in 0..self.handle.shared.config.worker_count {
             let shared = self.handle.shared.clone();
@@ -1732,6 +1877,7 @@ impl TerrainSubsystem {
 
     fn shutdown_internal(&mut self) {
         self.planning.shutdown();
+        self.persistence.shutdown();
         {
             let mut state = lock(&self.handle.shared.state);
             if !state.running {
@@ -1782,6 +1928,9 @@ impl Subsystem for TerrainSubsystem {
     }
 
     fn on_frame(&mut self, _delta_time: f32) {
+        self.persistence
+            .handle()
+            .pump(self.persistence.handle().config().max_completions_per_frame);
         self.handle
             .pump(self.handle.shared.config.max_completions_per_frame);
     }

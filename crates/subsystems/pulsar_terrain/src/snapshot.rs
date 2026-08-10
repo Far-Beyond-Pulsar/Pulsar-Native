@@ -24,6 +24,42 @@ pub struct TerrainSnapshot {
 }
 
 impl TerrainSnapshot {
+    /// Conservative encoded-size reservation that performs no allocation and
+    /// does not serialize the snapshot. Persistence uses this before placing a
+    /// cloned canonical state on its bounded worker queue.
+    pub fn encoded_len_upper_bound(&self) -> Option<usize> {
+        const HIERARCHY_HEADER_BYTES: usize = 40;
+        const MAX_HIERARCHY_NODE_BYTES: usize = 53;
+        const EDIT_LOG_HEADER_BYTES: usize = 12;
+        const EDIT_RECORD_BYTES: usize = 56;
+        const OVERRIDE_LOG_HEADER_BYTES: usize = 12;
+        const OVERRIDE_RECORD_BYTES: usize = 88;
+
+        let hierarchy = self
+            .hierarchy
+            .node_count()
+            .checked_mul(MAX_HIERARCHY_NODE_BYTES)?
+            .checked_add(HIERARCHY_HEADER_BYTES)?;
+        let edits = self
+            .edit_tail
+            .operations()
+            .len()
+            .checked_mul(EDIT_RECORD_BYTES)?
+            .checked_add(EDIT_LOG_HEADER_BYTES)?;
+        let overrides = self
+            .override_tail
+            .operations()
+            .len()
+            .checked_mul(OVERRIDE_RECORD_BYTES)?
+            .checked_add(OVERRIDE_LOG_HEADER_BYTES)?;
+        let pages = self.compacted_pages.len().checked_mul(PAGE_RECORD_BYTES)?;
+        SNAPSHOT_HEADER_BYTES
+            .checked_add(hierarchy)?
+            .checked_add(edits)?
+            .checked_add(overrides)?
+            .checked_add(pages)
+    }
+
     pub fn encode(&self) -> Result<Vec<u8>, SnapshotCodecError> {
         let mut compacted_pages = self.compacted_pages.clone();
         compacted_pages.sort_unstable_by_key(|record| record.key);
@@ -309,5 +345,28 @@ mod tests {
                 Err(SnapshotCodecError::Codec)
             );
         }
+    }
+
+    #[test]
+    fn encoded_length_reservation_bounds_the_canonical_payload() {
+        let generator_hash = ContentHash::of(b"generator");
+        let mut hierarchy =
+            SparseBrickTree::centered(16, NodeState::Procedural(generator_hash)).unwrap();
+        hierarchy
+            .set(PageKey::new(0, [-2, 7, 1]), NodeState::Solid(3))
+            .unwrap();
+        let snapshot = TerrainSnapshot {
+            planet_id: PlanetId([4; 16]),
+            generator_hash,
+            hierarchy,
+            edit_tail: EditLog::default(),
+            override_tail: TerrainOverrideLog::default(),
+            compacted_pages: vec![CompactedPageRecord {
+                key: PageKey::new(0, [-2, 7, 1]),
+                page_id: ContentHash::of(b"page"),
+                compacted_through_sequence: 0,
+            }],
+        };
+        assert!(snapshot.encode().unwrap().len() <= snapshot.encoded_len_upper_bound().unwrap());
     }
 }

@@ -431,6 +431,38 @@ impl TerrainPlanningHandle {
     pub fn counters(&self) -> TerrainPlanningCounters {
         lock(&self.shared.state).counters
     }
+
+    pub(crate) fn retire_planet_generation(&self, planet_id: PlanetId, retired_generation: u64) {
+        let mut state = lock(&self.shared.state);
+        let pending_removed = state
+            .pending
+            .get(&planet_id)
+            .is_some_and(|job| job.ticket.planet_generation == retired_generation)
+            .then(|| state.pending.remove(&planet_id))
+            .flatten()
+            .is_some();
+        let completed_removed = state
+            .completed
+            .get(&planet_id)
+            .is_some_and(|result| result.ticket.planet_generation == retired_generation)
+            .then(|| state.completed.remove(&planet_id))
+            .flatten()
+            .is_some();
+        let latest_removed = state
+            .latest
+            .get(&planet_id)
+            .is_some_and(|job| job.ticket.planet_generation == retired_generation)
+            .then(|| state.latest.remove(&planet_id))
+            .flatten()
+            .is_some();
+        let cancelled = usize::from(pending_removed)
+            .saturating_add(usize::from(completed_removed))
+            .saturating_add(usize::from(
+                latest_removed && !pending_removed && !completed_removed,
+            ));
+        state.counters.cancelled = state.counters.cancelled.saturating_add(cancelled as u64);
+        state.refresh_counts();
+    }
 }
 
 pub(crate) struct TerrainPlanningService {

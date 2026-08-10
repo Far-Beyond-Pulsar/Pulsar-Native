@@ -12,6 +12,7 @@ mod generator;
 mod hierarchy;
 mod mutation;
 mod page;
+mod persistence;
 mod planet;
 mod planning;
 mod refinement;
@@ -39,6 +40,11 @@ pub use mutation::{
 pub use page::{
     PageCodecError, VoxelPage, CELL_COUNT, MICROBRICKS_PER_AXIS, MICROBRICK_COUNT, MICROBRICK_EDGE,
     PAGE_EDGE,
+};
+pub use persistence::{
+    TerrainPersistenceConfig, TerrainPersistenceCounters, TerrainPersistenceError,
+    TerrainPersistenceEvent, TerrainPersistenceFailureKind, TerrainPersistenceHandle,
+    TerrainPersistenceRequestKind, TerrainPersistenceRequestOutcome, TerrainPersistenceTicket,
 };
 pub use planet::PlanetDefinition;
 pub use planning::{
