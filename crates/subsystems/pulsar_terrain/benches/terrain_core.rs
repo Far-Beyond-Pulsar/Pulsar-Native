@@ -1,12 +1,30 @@
+use engine_fs::virtual_fs;
 use engine_subsystems::{Subsystem, SubsystemContext};
 use pulsar_terrain::{
     CellWord, ContentHash, EditMode, EditOp, EditShape, FixedSphereGenerator, NodeState, PageKey,
     PlanetDefinition, PlanetId, PlanetPosition, PlanetView, SparseBrickTree, TerrainCore,
-    TerrainIncrementalResidencySession, TerrainPlanningConfig, TerrainRefinementConfig,
-    TerrainRefinementFrontier, TerrainRenderDeltaConfig, TerrainRenderDeltaPublisher,
-    TerrainRuntimeConfig, TerrainStreamingConfig, TerrainStreamingPlanner, TerrainSubsystem,
+    TerrainIncrementalResidencySession, TerrainPersistenceEvent, TerrainPersistenceHandle,
+    TerrainPlanningConfig, TerrainRefinementConfig, TerrainRefinementFrontier,
+    TerrainRenderDeltaConfig, TerrainRenderDeltaPublisher, TerrainRuntimeConfig, TerrainStore,
+    TerrainStreamingConfig, TerrainStreamingPlanner, TerrainSubsystem,
 };
 use std::time::{Duration, Instant};
+
+fn wait_for_persistence_event(handle: &TerrainPersistenceHandle) -> TerrainPersistenceEvent {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        handle.pump(64);
+        if let Some(event) = handle.drain_events(1).into_iter().next() {
+            return event;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "asynchronous terrain persistence timed out: {:?}",
+            handle.counters()
+        );
+        std::thread::yield_now();
+    }
+}
 
 fn main() {
     const TOUCHES: i64 = 10_000;
@@ -331,6 +349,77 @@ fn main() {
         active_reconcile_p95 <= Duration::from_micros(500),
         "active refinement orchestration exceeded the 0.5 ms acceptance gate: {active_reconcile_p95:?}"
     );
+
+    const PERSISTENCE_EDIT_HISTORY: u64 = 10_000;
+    let persistence_planet = PlanetDefinition {
+        planet_id: PlanetId([12; 16]),
+        root_lod: 24,
+        ..planet.clone()
+    };
+    runtime.upsert_planet(persistence_planet.clone()).unwrap();
+    for sequence in 1..=PERSISTENCE_EDIT_HISTORY {
+        let mut stable_id = [0_u8; 16];
+        stable_id[..8].copy_from_slice(&sequence.to_le_bytes());
+        stable_id[8..].copy_from_slice(b"persist!");
+        runtime
+            .append_edit(
+                persistence_planet.planet_id,
+                EditOp {
+                    sequence,
+                    stable_id,
+                    shape: EditShape::Sphere {
+                        center_cell: [sequence as i64 * 3 - 15_000, 0, 0],
+                        radius_cells: 1,
+                    },
+                    mode: EditMode::Subtract,
+                    material: 0,
+                },
+            )
+            .unwrap();
+    }
+    virtual_fs::reset_to_local();
+    let persistence_directory = tempfile::tempdir().unwrap();
+    let persistence_store = TerrainStore::new(persistence_directory.path().join("terrain"));
+    let persistence = terrain_subsystem.persistence_handle();
+    let mut save_submit_times = Vec::with_capacity(20);
+    let mut saved_hash = None;
+    let persistence_started = Instant::now();
+    for _ in 0..20 {
+        let submit_started = Instant::now();
+        persistence
+            .request_save(persistence_planet.planet_id, persistence_store.clone())
+            .unwrap();
+        save_submit_times.push(submit_started.elapsed());
+        match wait_for_persistence_event(&persistence) {
+            TerrainPersistenceEvent::Saved { snapshot_hash, .. } => {
+                assert!(saved_hash.is_none_or(|previous| previous == snapshot_hash));
+                saved_hash = Some(snapshot_hash);
+            }
+            event => panic!("unexpected persistence benchmark event: {event:?}"),
+        }
+    }
+    let persistence_save_elapsed = persistence_started.elapsed();
+    save_submit_times.sort_unstable();
+    let save_submit_p95 = save_submit_times[18];
+    assert!(
+        save_submit_p95 <= Duration::from_millis(10),
+        "10,000-edit persistence capture exceeded the 10 ms frame gate: {save_submit_p95:?}"
+    );
+    runtime
+        .set_root(persistence_planet.planet_id, NodeState::Air)
+        .unwrap();
+    runtime.drain_events(64);
+    let restore_started = Instant::now();
+    persistence
+        .request_restore(persistence_planet.planet_id, persistence_store)
+        .unwrap();
+    match wait_for_persistence_event(&persistence) {
+        TerrainPersistenceEvent::Restored { snapshot_hash, .. } => {
+            assert_eq!(Some(snapshot_hash), saved_hash)
+        }
+        event => panic!("unexpected persistence benchmark event: {event:?}"),
+    }
+    let persistence_restore_elapsed = restore_started.elapsed();
     terrain_subsystem.shutdown().unwrap();
 
     let ground_planet = PlanetDefinition {
@@ -438,6 +527,12 @@ fn main() {
     println!(
         "terrain_long_history edits={DELETE_EDIT_PREFIX} capture_p95_us={:.3}",
         long_history_capture_p95.as_secs_f64() * 1_000_000.0,
+    );
+    println!(
+        "terrain_persistence edits={PERSISTENCE_EDIT_HISTORY} save_capture_p95_ms={:.3} save_e2e_average_ms={:.3} restore_e2e_ms={:.3}",
+        save_submit_p95.as_secs_f64() * 1_000.0,
+        persistence_save_elapsed.as_secs_f64() * 1_000.0 / 20.0,
+        persistence_restore_elapsed.as_secs_f64() * 1_000.0,
     );
     println!(
         "terrain_core sparse_touches={TOUCHES} nodes={} sparse_ms={:.3} dense_sample_cells={} dense_sample_bytes={} dense_fill_ms={:.3} billion_dense_equivalent_bytes={logical_dense_bytes} edited_page_bytes={} resident_dense_bytes={} generated_cells={} edit_attachment_regions={} edit_attachment_refs={} edit_candidates_replayed={} edit_compact_ms={:.3} coarse_lod=12 coarse_generated_cells={} coarse_edit_candidates={} coarse_compact_ms={:.3} edit_radius_cells=[1,10,100,1000] edit_aabb_pages={edit_amplification:?} root_delete_prefix_ops={DELETE_EDIT_PREFIX} root_delete_us={:.3} orbit_plan_pages={} orbit_plan_nodes={} orbit_uniform_pruned={} orbit_plan_p95_ms={:.3} orbit_authoritative_p95_ms={:.3} orbit_plan_limits={:?} async_stationary_submit_p95_us={:.3} async_active_submit_p95_us={:.3} async_active_submit_max_us={:.3} async_submitted={} async_coalesced={} async_superseded={} async_stale={} async_capture_max_us={:.3} async_plan_max_ms={:.3} stationary_refinement_p95_us={:.3} active_refinement_p95_us={:.3} superseded_refinement_p95_us={:.3} new_plan_refinement_p95_us={:.3} ground_plan_pages={} ground_plan_nodes={} ground_uniform_pruned={} ground_plan_p95_ms={:.3} ground_plan_limits={:?}",

@@ -1,6 +1,6 @@
 use crate::{ContentHash, PageCodecError, PageId, SnapshotCodecError, TerrainSnapshot, VoxelPage};
 use engine_fs::virtual_fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 const MANIFEST_MAGIC: &[u8; 8] = b"PTRNRT01";
@@ -23,6 +23,10 @@ pub struct TerrainStore {
 impl TerrainStore {
     pub fn new(root: impl Into<PathBuf>) -> Self {
         Self { root: root.into() }
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
     }
 
     pub fn save(&self, snapshot: &[u8]) -> Result<SnapshotRecord, TerrainStoreError> {
@@ -108,16 +112,63 @@ impl TerrainStore {
     pub fn load_latest_snapshot(
         &self,
     ) -> Result<Option<(SnapshotRecord, TerrainSnapshot)>, TerrainStoreError> {
-        self.load_latest()?
-            .map(|record| {
-                let snapshot = TerrainSnapshot::decode(&record.bytes)?;
-                Ok((record, snapshot))
-            })
-            .transpose()
+        if !virtual_fs::exists(&self.roots_dir()).map_err(TerrainStoreError::Io)? {
+            return Ok(None);
+        }
+        let candidates = self.root_candidates()?;
+        if candidates.is_empty() {
+            return Ok(None);
+        }
+        for (filename_generation, filename) in candidates {
+            let Some(record) = self.load_candidate(filename_generation, &filename) else {
+                continue;
+            };
+            let Ok(snapshot) = TerrainSnapshot::decode(&record.bytes) else {
+                continue;
+            };
+            return Ok(Some((record, snapshot)));
+        }
+        Err(TerrainStoreError::NoValidSnapshot)
     }
 
     fn latest_generation(&self) -> Result<Option<u64>, TerrainStoreError> {
-        Ok(self.load_latest()?.map(|record| record.generation))
+        if !virtual_fs::exists(&self.roots_dir()).map_err(TerrainStoreError::Io)? {
+            return Ok(None);
+        }
+        Ok(self
+            .root_candidates()?
+            .first()
+            .map(|(generation, _)| *generation))
+    }
+
+    fn root_candidates(&self) -> Result<Vec<(u64, String)>, TerrainStoreError> {
+        let mut candidates = virtual_fs::list_dir(&self.roots_dir())
+            .map_err(TerrainStoreError::Io)?
+            .into_iter()
+            .filter(|entry| !entry.is_dir && entry.name.ends_with(".root"))
+            .filter_map(|entry| {
+                parse_generation(&entry.name).map(|generation| (generation, entry.name))
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_unstable_by_key(|candidate| std::cmp::Reverse(candidate.0));
+        Ok(candidates)
+    }
+
+    fn load_candidate(&self, filename_generation: u64, filename: &str) -> Option<SnapshotRecord> {
+        let manifest = virtual_fs::read_file(&self.roots_dir().join(filename)).ok()?;
+        let (generation, hash) = decode_manifest(&manifest).ok()?;
+        if generation != filename_generation {
+            return None;
+        }
+        let bytes = virtual_fs::read_file(&self.objects_dir().join(hash.to_hex())).ok()?;
+        if ContentHash::of(&bytes) != hash {
+            return None;
+        }
+        Some(SnapshotRecord {
+            generation,
+            hash,
+            bytes,
+        })
     }
 
     fn store_object(&self, bytes: &[u8]) -> Result<ContentHash, TerrainStoreError> {
@@ -181,6 +232,8 @@ pub enum TerrainStoreError {
     Page(#[source] PageCodecError),
     #[error("stored terrain snapshot is invalid: {0}")]
     Snapshot(#[from] SnapshotCodecError),
+    #[error("terrain store contains roots but no valid canonical snapshot")]
+    NoValidSnapshot,
 }
 
 #[cfg(test)]
@@ -211,7 +264,7 @@ mod tests {
         assert_eq!(store.load_latest().unwrap().unwrap(), first);
 
         let second = store.save(b"second canonical snapshot").unwrap();
-        assert_eq!(second.generation, 2);
+        assert_eq!(second.generation, 3);
         assert_eq!(store.load_latest().unwrap().unwrap(), second);
     }
 
@@ -259,5 +312,43 @@ mod tests {
             restored.page(key).unwrap().constant_cell(),
             Some(crate::CellWord::AIR)
         );
+    }
+
+    #[test]
+    fn typed_load_skips_a_newer_hash_valid_non_snapshot_root() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        let generator = FixedSphereGenerator {
+            center_cell: [0; 3],
+            radius_cells: 100,
+            material: 7,
+        };
+        let core = TerrainCore::new(PlanetId([8; 16]), 12, generator).unwrap();
+        let expected = core.snapshot();
+        let first = store.save_snapshot(&expected).unwrap();
+        let invalid = store
+            .save(b"hash-valid but not a terrain snapshot")
+            .unwrap();
+        assert_eq!(invalid.generation, first.generation + 1);
+
+        let (loaded, snapshot) = store.load_latest_snapshot().unwrap().unwrap();
+        assert_eq!(loaded.generation, first.generation);
+        assert_eq!(snapshot, expected);
+    }
+
+    #[test]
+    fn typed_load_reports_roots_without_any_valid_canonical_snapshot() {
+        virtual_fs::reset_to_local();
+        let temporary = tempfile::tempdir().unwrap();
+        let store = TerrainStore::new(temporary.path().join("terrain"));
+        store
+            .save(b"hash-valid but not a terrain snapshot")
+            .unwrap();
+
+        assert!(matches!(
+            store.load_latest_snapshot(),
+            Err(TerrainStoreError::NoValidSnapshot)
+        ));
     }
 }
