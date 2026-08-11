@@ -31,6 +31,9 @@ use crate::scene::{
 };
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
+/// Camera velocity squared below this threshold is considered stopped.
+const CAMERA_IDLE_EPSILON: f32 = 0.001;
+
 // ── Legacy types (unused but referenced by UI code) ──────────────────────────
 
 #[derive(Debug, Clone)]
@@ -96,6 +99,20 @@ pub struct HelioRenderer {
     last_spike_warning: Option<Instant>,
     last_reported_gpu_frame: Option<u64>,
     last_planet_error: Option<String>,
+
+    // ── Idle tracking ──
+    /// Set when raw keyboard/mouse input was non-zero this frame, cleared
+    /// once the camera decelerates to a stop.  Prevents the renderer from
+    /// going idle the instant the user releases a key while velocity is
+    /// still smoothing toward zero.
+    had_camera_input: bool,
+    /// Tracks whether the editor selection or gizmo mode changed since
+    /// the last rendered frame.  When false the gizmo geometry is not
+    /// rebuilt.
+    gizmo_dirty: bool,
+    /// Frame counter used to throttle GPU profiler reads to once every
+    /// N frames so a fast idle loop doesn't hammer the timing API.
+    profiler_frame_counter: u32,
 }
 
 struct HelioInner {
@@ -165,6 +182,9 @@ impl HelioRenderer {
             last_spike_warning: None,
             last_reported_gpu_frame: None,
             last_planet_error: None,
+            had_camera_input: false,
+            gizmo_dirty: true,
+            profiler_frame_counter: 0,
         }
     }
 
@@ -217,12 +237,12 @@ impl HelioRenderer {
         let dt = now.duration_since(self.last_frame).as_secs_f32().min(0.1);
         self.last_frame = now;
         self.frame_count += 1;
+        self.profiler_frame_counter += 1;
 
-        // Lazy init
+        // ── Lazy init (first frame only) ────────────────────────────────────────
         if self.inner.is_none() {
             tracing::info!("Initializing Helio renderer...");
 
-            // Clone device/queue from GPUI's WgpuSurface
             let device_arc = Arc::new(_device.clone());
             let queue_arc = Arc::new(_queue.clone());
             let config = RendererConfig::new(width, height, format);
@@ -230,7 +250,6 @@ impl HelioRenderer {
                 .with_external_device()
                 .with_editor_mode(true)
                 .with_clear_color([0.15, 0.18, 0.25, 1.0])
-                // Keep ambient disabled so scene illumination comes only from explicit light actors.
                 .with_ambient([0.0, 0.0, 0.0], 0.0)
                 .with_graph(Box::new(|d, q, s, c, ds, cb, csb| {
                     helio_default_graphs::build_default_graph_external(
@@ -265,6 +284,29 @@ impl HelioRenderer {
                 self.cam_yaw,
                 self.cam_pitch
             );
+            // First frame must render (lazy init includes nothing visible)
+        }
+
+        // ── Detect input activity BEFORE consuming ──────────────────────────────
+        let (had_input, needs_resize) = {
+            let Ok(input) = self.camera_input.lock() else {
+                return None;
+            };
+            (
+                input.forward != 0.0
+                    || input.right != 0.0
+                    || input.up != 0.0
+                    || input.mouse_delta_x != 0.0
+                    || input.mouse_delta_y != 0.0
+                    || input.pan_delta_x != 0.0
+                    || input.pan_delta_y != 0.0
+                    || input.zoom_delta != 0.0,
+                input.needs_resize,
+            )
+        };
+
+        if had_input {
+            self.had_camera_input = true;
         }
 
         {
@@ -277,12 +319,39 @@ impl HelioRenderer {
             None => return None,
         };
 
-        // Advance the foliage wind clock once per rendered frame. The wind model
-        // evaluates at `t` and `t - dt`, so a frozen clock yields a static lean with
-        // zero motion vectors — grass stays parked even when wind is enabled.
+        // ── Idle detection ───────────────────────────────────────────────────────
+        // If the camera is fully stopped, no scene changes are pending, and no
+        // editor state changed, we can skip the GPU render entirely.  The render
+        // thread keeps pacing itself but returns `None`, which causes the
+        // background loop to skip present/publish — the compositor holds the last
+        // frame on screen.
+        let viewport_resized = needs_resize || self.viewport_size != (width, height);
+        let scene_revision = self.scene_db.render_revision();
+        let has_pending_scene = scene_revision != inner.last_scene_revision;
+        let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
+            || self
+                .pending_gizmo_mode
+                .lock()
+                .is_ok_and(|g| g.is_some());
+        let camera_stopped =
+            self.cam_local_velocity.length_squared() <= CAMERA_IDLE_EPSILON && !self.had_camera_input;
+        let is_idle = camera_stopped
+            && !has_pending_scene
+            && !has_pending_editor
+            && !self.gizmo_dirty
+            && !viewport_resized
+            && !self.reset_taa_next_frame
+            && !inner.editor_state.is_dragging();
+
+        // Clear the sticky input flag when camera actually stopped.
+        if camera_stopped {
+            self.had_camera_input = false;
+        }
+
+        // Advance wind every frame (frozen clock yields static lean — correct).
         inner.renderer.scene_mut().advance_wind(dt);
 
-        let viewport_resized = self.viewport_size != (width, height);
+        // ── Resize ──────────────────────────────────────────────────────────────
         if viewport_resized {
             profiling::profile_scope!("helio_resize");
             inner.renderer.set_render_size(width, height);
@@ -294,26 +363,46 @@ impl HelioRenderer {
             self.viewport_size = (width, height);
         }
 
-        // Drain pending editor commands written by the UI thread.
+        // ── Pending editor commands ─────────────────────────────────────────────
         if self.pending_deselect.swap(false, Ordering::AcqRel) {
             inner.editor_state.deselect();
+            self.gizmo_dirty = true;
         }
         if let Ok(mut pending) = self.pending_gizmo_mode.lock() {
             if let Some(mode) = pending.take() {
                 inner.editor_state.set_gizmo_mode(mode);
+                self.gizmo_dirty = true;
             }
         }
 
+        // ── Early out when idle ─────────────────────────────────────────────────
+        // No GPU work, no gizmo rebuild, no planet terrain tick, no profiler reads.
+        if is_idle {
+            if let Ok(mut m) = self.metrics.lock() {
+                m.fps = if dt > 0.0 { 1.0 / dt } else { 0.0 };
+                m.frame_time_ms = dt * 1000.0;
+                m.frames_rendered = self.frame_count;
+            }
+            return None;
+        }
+
+        // ── Scene sync (delta when possible, full only on first frame) ──────────
         let mut sync_ms = 0.0;
-        let scene_revision = self.scene_db.render_revision();
-        if scene_revision != inner.last_scene_revision && !inner.editor_state.is_dragging() {
+        if has_pending_scene && !inner.editor_state.is_dragging() {
             profiling::profile_scope!("helio_scene_sync");
             let t_sync = Instant::now();
-            Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
+            // Use delta sync for incremental updates; full sync only on first
+            // frame when last_scene_revision is 0 and known_ids is empty.
+            if inner.last_scene_revision == 0 && inner.known_ids.is_empty() {
+                Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
+            } else {
+                Self::sync_scene_delta(&self.scene_db, inner);
+            }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
         }
 
+        // ── Camera / planet / gizmo / render ────────────────────────────────────
         let t_prepare = Instant::now();
         let camera = {
             profiling::profile_scope!("helio_frame_prepare");
@@ -331,10 +420,12 @@ impl HelioRenderer {
                 10_000.0,
             );
 
+            // Planet terrain advance (only when camera is actually moving).
             let should_advance_planet = !viewport_resized
                 && inner.planet_terrain.as_ref().is_some_and(|runtime| {
                     runtime.has_active_components() && runtime.renderer_ready(&inner.renderer)
-                });
+                })
+                && (!camera_stopped || viewport_resized);
             if should_advance_planet {
                 let graph_rebuilt = std::mem::take(&mut inner.planet_graph_rebuilt);
                 let planet_terrain = inner
@@ -383,9 +474,12 @@ impl HelioRenderer {
                 }
             }
 
-            // Mirror Helio editor demo exactly: clear debug geometry first, then draw gizmos.
-            // Without debug_clear(), each frame's gizmo lines accumulate, making it look like
-            // multiple objects are selected and leaving drag trails behind moved objects.
+            // Gizmo drawing must run every active frame — the camera may have
+            // moved, and debug_clear() wipes the previous frame's geometry, so
+            // the gizmo would disappear entirely on frame 2 without this call.
+            // The `gizmo_dirty` flag is used to *wake* the renderer from idle
+            // when only selection/mode changes (no camera motion or scene edit),
+            // but once active we always draw.
             inner.renderer.debug_clear();
             inner.renderer.set_gizmo_camera(&camera, height as f32);
             inner.editor_state.draw_gizmos(&mut inner.renderer);
@@ -394,8 +488,6 @@ impl HelioRenderer {
 
         if self.reset_taa_next_frame {
             self.reset_taa_next_frame = false;
-            // TSR history is reset by recreating the graph via GraphRebuilder
-            // (handled externally on camera cuts).
         }
 
         let prepare_ms = t_prepare.elapsed().as_secs_f64() * 1000.0;
@@ -410,8 +502,12 @@ impl HelioRenderer {
         let render_ms = t_render.elapsed().as_secs_f64() * 1000.0;
         let frame_ms = frame_start.elapsed().as_secs_f32() * 1_000.0;
 
-        self.gpu_profiler
-            .update_from_snapshot(inner.renderer.timing_snapshot());
+        // ── GPU profiler (throttled to every 30 frames) ─────────────────────────
+        if self.profiler_frame_counter >= 30 {
+            self.profiler_frame_counter = 0;
+            self.gpu_profiler
+                .update_from_snapshot(inner.renderer.timing_snapshot());
+        }
 
         let gpu_frame = self.gpu_profiler.gpu_frame_count;
         let new_gpu_result = gpu_frame.is_some() && gpu_frame != self.last_reported_gpu_frame;
@@ -590,6 +686,7 @@ impl HelioRenderer {
 
     /// Set the gizmo mode (Translate, Rotate, Scale).
     pub fn set_gizmo_mode(&mut self, mode: GizmoMode) {
+        self.gizmo_dirty = true;
         if let Some(inner) = &mut self.inner {
             inner.editor_state.set_gizmo_mode(mode);
             tracing::info!("[HELIO] Gizmo mode set to: {:?}", mode);
@@ -630,6 +727,7 @@ impl HelioRenderer {
     /// Select an object or light by its SceneDb ID.
     pub fn select_by_scene_db_id(&mut self, scene_db_id: &str) -> bool {
         use helio::SceneActorId;
+        self.gizmo_dirty = true;
         let Some(inner) = &mut self.inner else {
             return false;
         };
@@ -658,6 +756,7 @@ impl HelioRenderer {
 
     /// Deselect the currently selected object.
     pub fn deselect(&mut self) {
+        self.gizmo_dirty = true;
         if let Some(inner) = &mut self.inner {
             inner.editor_state.deselect();
             tracing::info!("[HELIO] Deselected");
@@ -674,6 +773,9 @@ impl HelioRenderer {
     /// Returns true if the object was found and selected.
     pub fn select_object_atomic(&mut self, scene_db_id: Option<String>) -> bool {
         use helio::SceneActorId;
+
+        // Mark gizmo dirty so the next rendered frame rebuilds gizmo geometry.
+        self.gizmo_dirty = true;
 
         // First update SceneDb (single source of truth for object list)
         self.scene_db.select_object(scene_db_id.clone());
@@ -736,6 +838,7 @@ impl HelioRenderer {
     /// Handle left-click for object selection or gizmo dragging.
     /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
     pub fn handle_left_click(&mut self, norm_x: f32, norm_y: f32) {
+        self.gizmo_dirty = true;
         use helio::SceneActorId;
         let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
 
@@ -788,6 +891,7 @@ impl HelioRenderer {
     /// Handle mouse movement for gizmo hover highlighting and dragging.
     /// `norm_x`/`norm_y` must be in [0.0, 1.0] relative to the viewport area.
     pub fn handle_mouse_move(&mut self, norm_x: f32, norm_y: f32) {
+        self.gizmo_dirty = true;
         let (ray_o, ray_d) = self.build_pick_ray(norm_x, norm_y);
         let Some(inner) = &mut self.inner else { return };
 
@@ -807,6 +911,7 @@ impl HelioRenderer {
     /// If a gizmo drag was active, reads the final transform back from the Helio
     /// scene and writes it to the SceneDb so properties panels stay in sync.
     pub fn handle_left_release(&mut self) {
+        self.gizmo_dirty = true;
         let Some(inner) = &mut self.inner else { return };
 
         // Capture the selected actor before ending the drag so we can read its final state.
