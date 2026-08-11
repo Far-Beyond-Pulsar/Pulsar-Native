@@ -8,6 +8,7 @@ use ui::{
 
 use super::panel::AgentChatPanel;
 use super::types::*;
+use super::chat_storage;
 
 impl AgentChatPanel {
     pub(crate) fn render_header(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -52,25 +53,77 @@ impl AgentChatPanel {
         .content(move |_window, _cx| model_list.clone());
 
         let chat_history_list = self.chat_history_list.clone();
+        let current_title = Self::inferred_chat_title(&self.messages);
+        let chat_label = if current_title.len() > 40 {
+            format!("{}...", &current_title[..37])
+        } else if current_title.is_empty() {
+            "Chat History".to_string()
+        } else {
+            current_title
+        };
         let chat_history_popover =
             Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
                 .anchor(Corner::BottomLeft)
                 .trigger(
                     Button::new("agent-chat-history-trigger")
-                        .xsmall()
+                        .small()
                         .ghost()
                         .justify_start()
-                        .tooltip("Switch chat")
-                        .icon(IconName::ChatBubble)
+                        .tooltip("Browse and switch between conversations")
+                        .label(chat_label)
                         .dropdown_caret(true),
                 )
                 .content(move |_window, _cx| chat_history_list.clone());
 
         v_flex()
             .w_full()
-            .gap(px(4.0))
+            .gap(px(3.0))
+            .px_3()
+            .py(px(6.0))
             .child(
-                // Top row: provider/model selection + chat actions
+                // ── Row 1: Chat management (primary, labeled, prominent) ──
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .gap_2()
+                    .child(chat_history_popover)
+                    .child(
+                        Button::new("agent-chat-new-chat")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Plus)
+                            .label("New Chat")
+                            .tooltip("Start a fresh conversation")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.start_new_chat(cx);
+                            })),
+                    )
+                    .flex_1()
+                    .child(
+                        Button::new("agent-chat-import")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Upload)
+                            .label("Import")
+                            .tooltip("Load a conversation from a JSON file")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.import_chat(cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("agent-chat-export")
+                            .small()
+                            .ghost()
+                            .icon(IconName::Download)
+                            .label("Export")
+                            .tooltip("Save this conversation as JSON")
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.export_current_chat();
+                            })),
+                    ),
+            )
+            .child(
+                // ── Row 2: Provider / Model (compact, technical) ──
                 h_flex()
                     .w_full()
                     .items_center()
@@ -98,47 +151,16 @@ impl AgentChatPanel {
                             .icon(IconName::Plus)
                             .xsmall()
                             .ghost()
-                            .tooltip("Add custom provider")
+                            .tooltip("Add a custom provider endpoint")
                             .on_click(cx.listener(|this, _, window, cx| {
                                 this.start_add_provider_prompt(window, cx);
                             })),
-                    )
-                    .flex_1()
-                    // --- Chat management group ---
-                    .child(chat_history_popover)
-                    .child(
-                        Button::new("agent-chat-new-chat")
-                            .label("New")
-                            .icon(IconName::Plus)
-                            .xsmall()
-                            .ghost()
-                            .tooltip("Start a new chat")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.start_new_chat(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("agent-chat-import")
-                            .icon(IconName::Upload)
-                            .xsmall()
-                            .ghost()
-                            .tooltip("Import chat from JSON")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.import_chat(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("agent-chat-export")
-                            .icon(IconName::Download)
-                            .xsmall()
-                            .ghost()
-                            .tooltip("Export this chat to JSON")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.export_current_chat();
-                            })),
                     ),
             )
-            .child(self.render_context_meter(cx))
+            .child(
+                // ── Row 3: Context meter ──
+                self.render_context_meter(cx),
+            )
     }
 
     fn render_context_meter(&self, cx: &mut Context<Self>) -> impl IntoElement {
