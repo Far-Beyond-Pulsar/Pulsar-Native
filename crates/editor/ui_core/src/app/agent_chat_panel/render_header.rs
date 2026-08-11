@@ -78,7 +78,7 @@ impl AgentChatPanel {
         };
         let chat_history_popover =
             Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
-                .anchor(Corner::BottomRight)
+                .anchor(Corner::TopRight)
                 .trigger(
                     Button::new("agent-chat-history-trigger")
                         .small()
@@ -102,14 +102,10 @@ impl AgentChatPanel {
             .ghost()
             .icon(IconName::Ellipsis)
             .tooltip("More actions")
-            .popup_menu_with_anchor(Corner::BottomRight, {
+            .popup_menu_with_anchor(Corner::TopRight, {
                 let p = panel.clone();
                 move |menu, window, cx| {
                     let menu = menu
-                        .menu_handler_with_icon("New Chat", IconName::Plus, {
-                            let p = p.clone();
-                            move |_, cx| { p.update(cx, |this, cx| this.start_new_chat(cx)); }
-                        })
                         .menu_handler_with_icon("Import Chat", IconName::Upload, {
                             let p = p.clone();
                             move |_, cx| { p.update(cx, |this, cx| this.import_chat(cx)); }
@@ -167,19 +163,34 @@ impl AgentChatPanel {
 
         v_flex()
             .w_full()
-            .gap(px(4.0))
+            .gap(px(2.0))
             .px_3()
-            .py(px(6.0))
-            // ── Row 1: Provider/Model on left, Chat History on right ──
+            .py(px(4.0))
+            // ── Row 1: Provider/Model left · Chat History + New right ──
             .child(
                 h_flex()
                     .w_full()
                     .items_center()
                     .child(provider_model_row)
-                    .flex_1()
-                    .child(chat_history_popover),
+                    .child(div().flex_1())
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_1()
+                            .child(chat_history_popover)
+                            .child(
+                                Button::new("agent-chat-new-chat")
+                                    .xsmall()
+                                    .ghost()
+                                    .icon(IconName::Plus)
+                                    .tooltip("Start a new conversation")
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.start_new_chat(cx);
+                                    })),
+                            ),
+                    ),
             )
-            // ── Row 2: Context meter on left, three-dots menu on right ──
+            // ── Row 2: Context meter · three-dots menu ──
             .child(
                 h_flex()
                     .w_full()
