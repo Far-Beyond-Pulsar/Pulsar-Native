@@ -4,6 +4,7 @@ use ui::{
     dropdown::{SearchableList, SearchableListEvent},
     h_flex, v_flex, ActiveTheme as _, Disableable, Icon, IconName, Sizable, Size, StyledExt,
     popover::Popover,
+    menu::popup_menu::PopupMenuExt,
 };
 
 use super::panel::AgentChatPanel;
@@ -22,6 +23,7 @@ impl AgentChatPanel {
         let provider_list = self.provider_list.clone();
         let model_list = self.model_list.clone();
 
+        // ── Left: Provider / Model ──
         let provider_popover = Popover::<SearchableList<ProviderDefinition>>::new(
             "agent-chat-provider-popover",
         )
@@ -52,6 +54,19 @@ impl AgentChatPanel {
         )
         .content(move |_window, _cx| model_list.clone());
 
+        let provider_model_row = h_flex()
+            .items_center()
+            .gap_1()
+            .child(provider_popover)
+            .child(
+                div()
+                    .text_color(cx.theme().border)
+                    .text_sm()
+                    .child("/"),
+            )
+            .child(model_popover);
+
+        // ── Right: Chat History dropdown ──
         let chat_history_list = self.chat_history_list.clone();
         let current_title = Self::inferred_chat_title(&self.messages);
         let chat_label = if current_title.len() > 40 {
@@ -63,7 +78,7 @@ impl AgentChatPanel {
         };
         let chat_history_popover =
             Popover::<SearchableList<ChatHistoryEntry>>::new("agent-chat-history-popover")
-                .anchor(Corner::BottomLeft)
+                .anchor(Corner::BottomRight)
                 .trigger(
                     Button::new("agent-chat-history-trigger")
                         .small()
@@ -75,91 +90,104 @@ impl AgentChatPanel {
                 )
                 .content(move |_window, _cx| chat_history_list.clone());
 
+        // ── Three-dots menu ──
+        let panel = cx.entity().clone();
+        let has_subagents = self.pending_subagent_events.len() > 0 || self.is_processing_subagent_event;
+        let queued_count = self.pending_subagent_events.len();
+        let is_processing = self.is_processing_subagent_event;
+        let is_in_flight = self.is_request_in_flight;
+
+        let more_menu = Button::new("agent-chat-more-trigger")
+            .small()
+            .ghost()
+            .icon(IconName::Ellipsis)
+            .tooltip("More actions")
+            .popup_menu_with_anchor(Corner::BottomRight, {
+                let p = panel.clone();
+                move |menu, window, cx| {
+                    let menu = menu
+                        .menu_handler_with_icon("New Chat", IconName::Plus, {
+                            let p = p.clone();
+                            move |_, cx| { p.update(cx, |this, cx| this.start_new_chat(cx)); }
+                        })
+                        .menu_handler_with_icon("Import Chat", IconName::Upload, {
+                            let p = p.clone();
+                            move |_, cx| { p.update(cx, |this, cx| this.import_chat(cx)); }
+                        })
+                        .menu_handler_with_icon("Export Chat", IconName::Download, {
+                            let p = p.clone();
+                            move |_, cx| { p.update(cx, |this, _| this.export_current_chat()); }
+                        })
+                        .separator()
+                        .menu_handler_with_icon("Refresh Models", IconName::Refresh, {
+                            let p = p.clone();
+                            move |_, cx| { p.update(cx, |this, cx| this.refresh_models_for_active_provider(cx)); }
+                        })
+                        .menu_handler_with_icon("Add Provider", IconName::Plus, {
+                            let p = p.clone();
+                            move |window, cx| { p.update(cx, |this, cx| this.start_add_provider_prompt(window, cx)); }
+                        });
+
+                    if has_subagents {
+                        menu
+                            .separator()
+                            .menu_handler_with_icon_and_disabled(
+                                format!("Process Next ({})", queued_count),
+                                IconName::Play,
+                                is_in_flight || is_processing,
+                                {
+                                    let p = p.clone();
+                                    move |_, cx| { p.update(cx, |this, cx| this.process_next_subagent_completion_now(cx)); }
+                                },
+                            )
+                            .menu_handler_with_icon("Auto Queue", IconName::Play, {
+                                let p = p.clone();
+                                move |_, cx| {
+                                    p.update(cx, |this, cx| {
+                                        this.subagent_completion_mode = super::panel::SubagentCompletionMode::Auto;
+                                        this.maybe_start_next_subagent_processing(cx);
+                                        cx.notify();
+                                    });
+                                }
+                            })
+                            .menu_handler_with_icon("Manual Queue", IconName::Pause, {
+                                let p = p.clone();
+                                move |_, cx| {
+                                    p.update(cx, |this, cx| {
+                                        this.subagent_completion_mode = super::panel::SubagentCompletionMode::Manual;
+                                        cx.notify();
+                                    });
+                                }
+                            })
+                    } else {
+                        menu
+                    }
+                }
+            });
+
         v_flex()
             .w_full()
-            .gap(px(3.0))
+            .gap(px(4.0))
             .px_3()
             .py(px(6.0))
+            // ── Row 1: Provider/Model on left, Chat History on right ──
             .child(
-                // ── Row 1: Chat management (primary, labeled, prominent) ──
+                h_flex()
+                    .w_full()
+                    .items_center()
+                    .child(provider_model_row)
+                    .flex_1()
+                    .child(chat_history_popover),
+            )
+            // ── Row 2: Context meter on left, three-dots menu on right ──
+            .child(
                 h_flex()
                     .w_full()
                     .items_center()
                     .gap_2()
-                    .child(chat_history_popover)
-                    .child(
-                        Button::new("agent-chat-new-chat")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Plus)
-                            .label("New Chat")
-                            .tooltip("Start a fresh conversation")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.start_new_chat(cx);
-                            })),
-                    )
+                    .child(self.render_context_meter(cx))
                     .flex_1()
-                    .child(
-                        Button::new("agent-chat-import")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Upload)
-                            .label("Import")
-                            .tooltip("Load a conversation from a JSON file")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.import_chat(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("agent-chat-export")
-                            .small()
-                            .ghost()
-                            .icon(IconName::Download)
-                            .label("Export")
-                            .tooltip("Save this conversation as JSON")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.export_current_chat();
-                            })),
-                    ),
-            )
-            .child(
-                // ── Row 2: Provider / Model (compact, technical) ──
-                h_flex()
-                    .w_full()
-                    .items_center()
-                    .gap_1()
-                    .child(provider_popover)
-                    .child(
-                        div()
-                            .text_color(cx.theme().border)
-                            .text_sm()
-                            .child("/"),
-                    )
-                    .child(model_popover)
-                    .child(
-                        Button::new("agent-chat-refresh-models")
-                            .icon(IconName::Refresh)
-                            .xsmall()
-                            .ghost()
-                            .tooltip("Refresh model list from provider")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.refresh_models_for_active_provider(cx);
-                            })),
-                    )
-                    .child(
-                        Button::new("agent-chat-add-provider")
-                            .icon(IconName::Plus)
-                            .xsmall()
-                            .ghost()
-                            .tooltip("Add a custom provider endpoint")
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.start_add_provider_prompt(window, cx);
-                            })),
-                    ),
-            )
-            .child(
-                // ── Row 3: Context meter ──
-                self.render_context_meter(cx),
+                    .child(more_menu),
             )
     }
 

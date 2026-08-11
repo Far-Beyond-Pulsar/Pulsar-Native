@@ -1462,7 +1462,7 @@ impl Render for AgentChatPanel {
                                     })),
                             ),
                     )
-                    // Subagent line: thin status, only when active
+                    // Subagent indicator: passive dot + count, only when active
                     .when(queued_subagent_count > 0 || self.is_processing_subagent_event, |el| {
                         el.child(
                             h_flex()
@@ -1489,42 +1489,6 @@ impl Render for AgentChatPanel {
                                             queued_subagent_count,
                                             if queued_subagent_count == 1 { "" } else { "s" },
                                         )),
-                                )
-                                .child(
-                                    Button::new("agent-chat-subagent-process-next")
-                                        .xsmall()
-                                        .ghost()
-                                        .label("Process")
-                                        .disabled(
-                                            self.is_request_in_flight
-                                                || self.is_processing_subagent_event,
-                                        )
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.process_next_subagent_completion_now(cx);
-                                        })),
-                                )
-                                .child(
-                                    Button::new("agent-chat-subagent-mode")
-                                        .xsmall()
-                                        .ghost()
-                                        .label(if self.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                            "Auto"
-                                        } else {
-                                            "Manual"
-                                        })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.subagent_completion_mode = if this.subagent_completion_mode
-                                                == SubagentCompletionMode::Auto
-                                            {
-                                                SubagentCompletionMode::Manual
-                                            } else {
-                                                SubagentCompletionMode::Auto
-                                            };
-                                            if this.subagent_completion_mode == SubagentCompletionMode::Auto {
-                                                this.maybe_start_next_subagent_processing(cx);
-                                            }
-                                            cx.notify();
-                                        })),
                                 ),
                         )
                     }),
