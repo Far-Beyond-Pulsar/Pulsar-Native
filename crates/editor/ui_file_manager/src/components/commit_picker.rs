@@ -1,8 +1,7 @@
 use gpui::{
     div, prelude::FluentBuilder as _, px, App, AppContext as _, Context, DismissEvent, Entity,
-    FocusHandle, Focusable, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
-    Styled as _, Window,
+    FocusHandle, Focusable, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _,
+    Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled as _, Window,
 };
 use ui::scroll::{Scrollbar, ScrollbarState};
 use ui::{
@@ -25,11 +24,7 @@ pub struct CommitPicker {
 }
 
 impl CommitPicker {
-    pub fn new(
-        commits: Vec<CommitInfo>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(commits: Vec<CommitInfo>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search commits…"));
         Self {
             focus_handle: cx.focus_handle(),
@@ -166,12 +161,7 @@ impl Render for CommitPicker {
                                                             .child(subject),
                                                     ),
                                             )
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(muted)
-                                                    .child(date),
-                                            ),
+                                            .child(div().text_xs().text_color(muted).child(date)),
                                     )
                             })),
                     )
@@ -182,10 +172,7 @@ impl Render for CommitPicker {
                             .left_0()
                             .right_0()
                             .bottom_0()
-                            .child(Scrollbar::vertical(
-                                &self.scroll_state,
-                                &self.scroll_handle,
-                            )),
+                            .child(Scrollbar::vertical(&self.scroll_state, &self.scroll_handle)),
                     ),
             )
     }
