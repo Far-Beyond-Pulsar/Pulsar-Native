@@ -566,9 +566,6 @@ impl HelioRenderer {
 
     fn apply_camera_input(&mut self, dt: f32) {
         const LOOK: f32 = 0.0025;
-        // Unreal-style movement feel: ease in/out instead of instant velocity changes.
-        const ACCEL_RATE: f32 = 10.0;
-        const DECEL_RATE: f32 = 14.0;
 
         let input = match self.camera_input.lock() {
             Ok(mut lock) => {
@@ -596,20 +593,13 @@ impl HelioRenderer {
         let target_velocity =
             Vec3::new(input.right * speed, input.up * speed, input.forward * speed);
 
-        // Smooth each local axis independently for responsive but cinematic acceleration.
-        let smooth_axis = |current: f32, target: f32| {
-            let rate = if target.abs() > current.abs() {
-                ACCEL_RATE
-            } else {
-                DECEL_RATE
-            };
-            let alpha = 1.0 - (-rate * dt).exp();
-            current + (target - current) * alpha
-        };
-
-        self.cam_local_velocity.x = smooth_axis(self.cam_local_velocity.x, target_velocity.x);
-        self.cam_local_velocity.y = smooth_axis(self.cam_local_velocity.y, target_velocity.y);
-        self.cam_local_velocity.z = smooth_axis(self.cam_local_velocity.z, target_velocity.z);
+        // Keyboard velocity applies instantly — matching the crisp, zero-latency
+        // behavior of mouse look. The previous exponential ease-in/out
+        // (ACCEL_RATE 10 / DECEL_RATE 14) took ~230ms to reach 90% of target
+        // speed, which is what made WASD feel "mushy" next to the mouse.
+        // Camera position stays continuous (velocity * dt integration), so an
+        // instant velocity step produces no visible jump.
+        self.cam_local_velocity = target_velocity;
 
         self.cam_pos += right * self.cam_local_velocity.x * dt;
         self.cam_pos += Vec3::Y * self.cam_local_velocity.y * dt;

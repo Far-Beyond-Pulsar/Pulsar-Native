@@ -212,16 +212,20 @@ impl ViewportPanel {
             let mut was_capturing = false;
 
             loop {
-                std::thread::sleep(std::time::Duration::from_millis(8)); // ~120Hz
-                profiling::profile_scope!("input_poll");
-                let input_start = std::time::Instant::now();
-
                 let capture =
                     ViewportCursorCapture::load(&mouse_right_captured, &mouse_middle_captured);
                 let is_rotating = capture == ViewportCursorCapture::Rotate;
                 let is_panning = capture == ViewportCursorCapture::Pan;
+                let capturing = is_rotating || is_panning;
 
-                if !is_rotating && !is_panning {
+                // While capturing, poll at ~500Hz so keypresses and cursor deltas
+                // reach the camera within ~2ms instead of up to 8ms; idle, drop to
+                // ~120Hz so we don't burn CPU.
+                std::thread::sleep(std::time::Duration::from_millis(if capturing { 2 } else { 8 }));
+                profiling::profile_scope!("input_poll");
+                let input_start = std::time::Instant::now();
+
+                if !capturing {
                     // Not active - clear state
                     _last_mouse_pos = None;
                     input_state.set_forward(0);
@@ -285,6 +289,19 @@ impl ViewportPanel {
                     input_state.set_right(right);
                     input_state.set_up(up);
                     input_state.set_boost(boost);
+
+                    // Write WASD/boost directly into CameraInput. Mouse deltas already
+                    // bypass the UI thread; keyboard must too, otherwise key state only
+                    // reaches the camera when GPUI happens to repaint (`send_input_to_gpu`),
+                    // which lags by a full UI frame — the "mushy / gets behind" feel.
+                    if let Some(cam) = &camera_input {
+                        if let Ok(mut input) = cam.lock() {
+                            input.forward = forward as f32;
+                            input.right = right as f32;
+                            input.up = up as f32;
+                            input.boost = boost;
+                        }
+                    }
                 }
 
                 // Poll mouse and calculate delta
@@ -444,8 +461,10 @@ impl ViewportPanel {
     }
 
     /// Send input state to GPU.
-    /// NOTE: Mouse/pan deltas are now sent DIRECTLY from input thread for zero latency!
-    /// This only handles WASD keys and zoom which don't need instant response.
+    /// NOTE: Keyboard (forward/right/up/boost) and mouse/pan deltas are sent
+    /// DIRECTLY from the input thread for zero latency — this function only
+    /// pushes frame-rate-independent settings (move speed) and UI-driven
+    /// deltas (scroll zoom) onto CameraInput.
     fn send_input_to_gpu(
         &self,
         gpu_engine: &Arc<Mutex<engine_backend::services::gpu_renderer::GpuRenderer>>,
@@ -454,11 +473,11 @@ impl ViewportPanel {
         if let Ok(engine) = gpu_engine.try_lock() {
             if let Some(cam) = engine.camera_input() {
                 if let Ok(mut input) = cam.try_lock() {
-                    // Update WASD keys and settings (these don't need instant response)
-                    input.forward = self.input_state.get_forward() as f32;
-                    input.right = self.input_state.get_right() as f32;
-                    input.up = self.input_state.get_up() as f32;
-                    input.boost = self.input_state.get_boost();
+                    // NOTE: forward/right/up/boost are written DIRECTLY by the input
+                    // thread (spawn_input_thread_once) — writing them here would make
+                    // key state lag by a full GPUI frame, or go stale entirely if GPUI
+                    // isn't repainting. Only frame-rate-independent settings and
+                    // scroll-driven deltas go through the UI thread.
                     input.move_speed = self.input_state.get_move_speed();
 
                     // Zoom is also handled here since scroll events go through GPUI
