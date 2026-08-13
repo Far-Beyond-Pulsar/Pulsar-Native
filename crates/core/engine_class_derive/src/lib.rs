@@ -377,6 +377,17 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     // macro -- they were already valid syntax here (the old codegen parsed
     // them by hand too), so no field-level change is needed to opt in.
     //
+    // GOTCHA for whoever writes the first real `#[engine_class(scene_store,
+    // ...)]` struct with a `#[gpu(...)]` field (Phase C+): SceneStore's
+    // generated GPU-column methods are wrapped in `#[cfg(feature = "gpu")]`.
+    // That `cfg`, once spliced into the crate where the struct is actually
+    // DEFINED by macro expansion, checks THAT crate's own Cargo features --
+    // not `pulsar_scenedb`'s. So the crate defining the struct (e.g.
+    // `pulsar_rendering`) needs its own feature named exactly "gpu", same
+    // as `engine_class_derive`'s own `[features] gpu` (Cargo.toml) exists
+    // solely to make this crate's own `tests/scene_store_delegation.rs`
+    // compile -- `helio-scenedb/Cargo.toml` documents the identical gotcha.
+    //
     // `pulsar_scenedb::Pod` requires `Copy` (a GPU-mirrored/CellStorage-row
     // value is memcpy'd, never dropped in place) -- `scene_store` implies
     // `Copy` for the same reason `default`/`clone`/etc. each imply their

@@ -6,6 +6,21 @@ edition = "2024"
 [lib]
 proc-macro = true
 
+[features]
+# `#[derive(SceneStore)]`'s generated GPU-column code (spliced in by
+# `#[engine_class(scene_store, ...)]`, see src/lib.rs) is wrapped in
+# `#[cfg(feature = "gpu")]` by `pulsar_scenedb_derive`. That `cfg`, once
+# spliced into the compilation unit where the struct is actually DEFINED,
+# checks THAT crate's own Cargo features -- not `pulsar_scenedb`'s -- so any
+# crate defining an `#[engine_class(scene_store, ...)]` struct with a
+# `#[gpu(...)]` field needs its OWN feature of this exact name, same
+# gotcha helio-scenedb documents for the same reason. This crate's own
+# test binary (tests/scene_store_delegation.rs) is one such consumer, hence
+# this feature; a real future consumer (e.g. `pulsar_rendering`, once it
+# defines a real `scene_store` component) will need the same feature
+# declared on ITSELF, not here.
+gpu = []
+
 [dependencies]
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
@@ -26,21 +41,18 @@ pulsar_reflection = { workspace = true }
 # and this workspace's `pulsar_scenedb` rev (root Cargo.toml) bumps past it,
 # switch this back to `{ workspace = true }`.
 #
-# `gpu` feature deliberately NOT enabled here: this workspace's
-# `[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]` (root
-# Cargo.toml) pins an older rev than `pulsar_scenedb`'s own Cargo.toml
-# requires for its `gpu`-gated `subsystem`/`scene_db` modules
-# (`DynMethodArgs`/`DYN_METHOD_REGISTRY`/etc., added post-pin) -- a
-# pre-existing cross-repo version-skew this Phase A slice surfaced but does
-# not fix (see the Phase A verification test's module doc for what that
-# leaves unproven). helio-scenedb avoids this because Helio is its own
-# separate Cargo workspace, outside this patch's reach entirely.
-pulsar_scenedb = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb" }
-# pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB" }
+# `gpu` feature now safe to enable (this workspace's Pulsar-Reflection patch
+# rev was bumped to 4cc82f5, which includes the dyn-method-registry APIs
+# `pulsar_scenedb`'s own `gpu`-gated modules need -- see the patch's own
+# comment in the root Cargo.toml for the version-skew history this closes).
+pulsar_scenedb = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb", features = ["gpu"] }
+# pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", features = ["gpu"] }
 # `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
 # every real consumer of this macro already has `tracing` in scope for that
 # reason; the test below is no exception.
 tracing = { workspace = true }
+wgpu = { workspace = true }
+pollster = "1.0"
 
 [lints]
 workspace = true
