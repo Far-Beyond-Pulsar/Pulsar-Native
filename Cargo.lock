@@ -3034,7 +3034,7 @@ dependencies = [
  "pollster 1.0.1",
  "proc-macro2",
  "pulsar_reflection",
- "pulsar_scenedb 0.1.0",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?branch=engine-class-scenestore-export)",
  "quote",
  "syn 2.0.119",
  "tracing",
@@ -9144,6 +9144,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?branch=engine-class-scenestore-export#b6b72f25ef05494d5da32e300dc510cd63dd3bf3"
 dependencies = [
  "ahash 0.8.12",
  "profiling 0.1.0",
@@ -9169,6 +9170,7 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb_derive"
 version = "0.1.0"
+source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?branch=engine-class-scenestore-export#b6b72f25ef05494d5da32e300dc510cd63dd3bf3"
 dependencies = [
  "proc-macro2",
  "quote",
