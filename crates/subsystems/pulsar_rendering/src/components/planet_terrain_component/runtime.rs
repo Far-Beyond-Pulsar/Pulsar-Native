@@ -3,7 +3,6 @@ use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
 };
 use pulsar_terrain::TerrainRuntimeHandle;
-use serde_json::Value;
 
 use super::{
     ComponentError, PLANET_TERRAIN_CLASS_NAME, PlanetTerrainComponent, PlanetTerrainComponentCache,
@@ -16,20 +15,9 @@ impl ComponentRuntimeBehavior for PlanetTerrainComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let component = match serde_json::from_value::<Self>(component_data.clone()) {
-            Ok(component) => component,
-            Err(error) => {
-                context.report_error(format!(
-                    "{PLANET_TERRAIN_CLASS_NAME} on '{}' is invalid: {error}",
-                    owner.scene_object_id
-                ));
-                return;
-            }
-        };
-
         // Component discovery is shared by editor and game contexts. The
         // production terrain runtime is registered only by hosts that have
         // enabled planetary terrain, so its absence is not a component error.
@@ -88,6 +76,7 @@ mod tests {
     use engine_subsystems::{Subsystem, SubsystemContext};
     use pulsar_reflection::{Subsystems, apply_runtime_behavior_for_class};
     use pulsar_terrain::{TerrainRuntimeConfig, TerrainSubsystem};
+    use serde_json::Value;
     use std::{
         collections::HashMap,
         path::{Path, PathBuf},

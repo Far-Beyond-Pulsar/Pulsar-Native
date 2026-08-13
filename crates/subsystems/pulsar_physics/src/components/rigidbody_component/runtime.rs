@@ -1,6 +1,5 @@
 use engine_class_derive::register_runtime_behavior;
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
-use serde_json::Value;
 
 use super::RigidbodyComponent;
 
@@ -11,11 +10,12 @@ impl ComponentRuntimeBehavior for RigidbodyComponent {
     fn sync_component(
         _owner: &RuntimeComponentOwner,
         _component_index: usize,
-        component_data: &Value,
+        _component: &Self,
         _context: &mut dyn ComponentRuntimeContext,
     ) {
-        let _rigidbody = RigidbodyComponent::from_component_data(component_data);
         // Runtime behavior: sync rigidbody properties to the physics engine
-        // This is a placeholder for actual physics engine integration
+        // This is a placeholder for actual physics engine integration -- was
+        // already a no-op (deserialized-then-discarded) before this typed
+        // signature; `_component` is `&Self` now, nothing left to convert.
     }
 }

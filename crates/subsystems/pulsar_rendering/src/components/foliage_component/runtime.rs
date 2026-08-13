@@ -7,7 +7,6 @@ use pulsar_reflection::{
     RuntimeComponentOwner,
 };
 use serde::Serialize;
-use serde_json::Value;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -159,10 +158,9 @@ impl ComponentRuntimeBehavior for FoliageComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let component = Self::from_component_data(component_data);
         let key = format!("{}:{component_index}", owner.scene_object_id);
 
         // Mark live so the editor's post-sync stale pass keeps our handles.
@@ -182,8 +180,8 @@ impl ComponentRuntimeBehavior for FoliageComponent {
         }
 
         let material_hash = hash_props(&component.rendering);
-        let descriptor_hash = hash_props(&component);
-        let bounds_hash = bounds_hash(&component);
+        let descriptor_hash = hash_props(component);
+        let bounds_hash = bounds_hash(component);
         let wind_hash = hash_props(&component.wind);
 
         match cached {
@@ -205,12 +203,12 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                         // what an edit to "where grass grows" must do.
                         let _ = scene.remove_foliage_layer(entry.layer_id);
                         entry.layer_id =
-                            scene.add_foliage_layer(build_layer(&component, entry.type_id, position));
+                            scene.add_foliage_layer(build_layer(component, entry.type_id, position));
                         entry.bounds_hash = bounds_hash;
                     }
                     if entry.descriptor_hash != descriptor_hash {
                         let material_id = if entry.material_hash != material_hash {
-                            let new_material = scene.insert_material(build_material(&component));
+                            let new_material = scene.insert_material(build_material(component));
                             let _ = scene.remove_material(entry.material_id);
                             new_material
                         } else {
@@ -218,10 +216,10 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                         };
                         let _ = scene.update_foliage_type(
                             entry.type_id,
-                            build_type_descriptor(&component, material_id),
+                            build_type_descriptor(component, material_id),
                         );
                         if component.wind.wind_enabled && entry.wind_hash != wind_hash {
-                            apply_wind(scene, &component);
+                            apply_wind(scene, component);
                         }
                         entry.material_id = material_id;
                         entry.material_hash = material_hash;
@@ -255,11 +253,11 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                     let renderer = get_subsystem!(context, Renderer);
                     let scene = renderer.scene_mut();
 
-                    let material_id = scene.insert_material(build_material(&component));
+                    let material_id = scene.insert_material(build_material(component));
                     let type_id =
-                        scene.add_foliage_type(build_type_descriptor(&component, material_id));
+                        scene.add_foliage_type(build_type_descriptor(component, material_id));
                     let layer_id =
-                        scene.add_foliage_layer(build_layer(&component, type_id, position));
+                        scene.add_foliage_layer(build_layer(component, type_id, position));
                     let interactor_position = if component.interaction.interactor_enabled {
                         position_v3
                     } else {
@@ -271,7 +269,7 @@ impl ComponentRuntimeBehavior for FoliageComponent {
                         velocity: glam::Vec3::ZERO,
                     });
                     if component.wind.wind_enabled {
-                        apply_wind(scene, &component);
+                        apply_wind(scene, component);
                     }
                     (type_id, layer_id, interactor_id, material_id)
                 };

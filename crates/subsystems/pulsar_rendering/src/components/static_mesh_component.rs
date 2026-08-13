@@ -339,16 +339,10 @@ impl ComponentRuntimeBehavior for StaticMeshComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         _component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let mesh_asset = component_data
-            .as_object()
-            .and_then(|obj| obj.get("mesh_asset"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
+        let mesh_asset = component.mesh_asset.as_str().trim().to_string();
 
         if mesh_asset.is_empty() {
             if !already_reported(owner.scene_object_id, "") {

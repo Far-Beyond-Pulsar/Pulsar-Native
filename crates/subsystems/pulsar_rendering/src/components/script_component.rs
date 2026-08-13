@@ -253,16 +253,10 @@ impl ComponentRuntimeBehavior for ScriptComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let script_path = component_data
-            .as_object()
-            .and_then(|obj| obj.get("script_asset"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
+        let script_path = component.script_asset.as_str().trim().to_string();
 
         if script_path.is_empty() {
             context.report_error(format!(
