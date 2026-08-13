@@ -92,7 +92,7 @@ pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
-pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
+pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_scene                       = { path = "crates/subsystems/pulsar_scene" }
@@ -205,7 +205,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
@@ -302,8 +302,8 @@ pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 # Point at the same unified source as the Pulsar-Reflection patch below so every
 # `pulsar_reflection` reference (whichever repo/rev it came from) collapses to a
 # single copy. Uses the double-slash URL alias (see that patch for why).
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }
@@ -346,17 +346,22 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # PR #3 merged, additive-only per that PR) -- a strict descendant of both
 # 9b887f1 and b9dd888, so this collapsed cleanly again either direction.
 #
-# NOW (TEMPORARY): d32ba8d, the tip of Pulsar-Reflection's unmerged
-# `typed-sync-component` branch -- Phase B2 of the SceneDB/Helio/reflection
-# unification plan (`.claude/plans/eager-plotting-lecun.md`), which types
-# `ComponentRuntimeBehavior::sync_component(component: &Self, ...)` instead
-# of `&serde_json::Value`. This is a breaking trait-signature change (unlike
-# Phase A's purely-additive `scene_store`), so bumping this pin and migrating
-# every real `#[register_runtime_behavior]` impl's signature
-# (`pulsar_rendering`/`pulsar_physics`, ~8 components) happened together, in
-# lockstep, in the same change -- see that plan's B2 section for why they
-# can't land separately. Durable fix: once `typed-sync-component` merges to
-# Pulsar-Reflection's `main`, repoint this rev there.
+# NOW: 4b48937 (Pulsar-Reflection#4, `typed-sync-component`, merged to
+# `main`) -- Phase B2 of the SceneDB/Helio/reflection unification plan
+# (`.claude/plans/eager-plotting-lecun.md`; tracked at Pulsar-Native#561),
+# which types `ComponentRuntimeBehavior::sync_component(component: &Self,
+# ...)` instead of `&serde_json::Value`. This was a breaking trait-signature
+# change (unlike Phase A's purely-additive `scene_store`), so bumping this
+# pin and migrating every real `#[register_runtime_behavior]` impl's
+# signature (`pulsar_rendering`/`pulsar_physics`, ~8 components) had to
+# happen together, in lockstep, in one change (Pulsar-Native#551) -- see
+# that plan's B2 section for why they couldn't land separately. Was
+# temporarily pinned to the pre-merge branch tip (d32ba8d, then ece8e75) for
+# the same reason SceneDB's own local-path pins exist elsewhere in this
+# file -- now that Pulsar-Reflection#4 has merged, this points at the real
+# `main` commit instead. Remaining cleanup (dropping this `[patch]` block
+# entirely) is tracked at Pulsar-Native#560, gated on SceneDB's own
+# `pulsar_reflection` pin catching up too (SceneDB#45).
 #
 # The patch target URL and the replacement URL must be *different* source strings
 # or cargo rejects "points to the same source". The extra slash in
@@ -365,5 +370,5 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # Durable fix: bump SceneDB's pulsar_reflection pin to match and cascade the rev,
 # then delete these patches.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "ece8e759c33ee7cc42127372117de8bec1636463" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
