@@ -3033,9 +3033,10 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0",
  "quote",
  "syn 2.0.119",
+ "tracing",
 ]
 
 [[package]]
@@ -8998,7 +8999,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_scene",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "pulsar_settings",
  "pulsar_std_bundle",
  "serde",
@@ -9053,7 +9054,7 @@ version = "0.1.0"
 dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "serde",
  "serde_json",
  "tracing",
@@ -9111,7 +9112,7 @@ dependencies = [
  "pollster 0.4.0",
  "pulsar_events",
  "pulsar_reflection",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "pulsar_terrain",
  "serde",
  "serde_json",
@@ -9141,6 +9142,18 @@ dependencies = [
 [[package]]
 name = "pulsar_scenedb"
 version = "0.1.0"
+dependencies = [
+ "ahash 0.8.12",
+ "profiling 0.1.0",
+ "pulsar_reflection",
+ "pulsar_scenedb_derive",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "pulsar_scenedb"
+version = "0.1.0"
 source = "git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0#43921b0d432e99654161e1de65799fb65fa629f0"
 dependencies = [
  "ahash 0.8.12",
@@ -9148,6 +9161,15 @@ dependencies = [
  "pulsar_reflection",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_scenedb_derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -13520,7 +13542,7 @@ dependencies = [
  "pulsar_pie_abi",
  "pulsar_reflection",
  "pulsar_rendering",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "raw-window-handle",
  "rfd",
  "rust-i18n",

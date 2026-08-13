@@ -11,7 +11,36 @@ syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 pulsar_reflection = { workspace = true }
-pulsar_scenedb = { workspace = true }
+# NOT a real Rust-level dependency of this crate -- `::pulsar_scenedb::...`
+# only ever appears as a path *inside* `quote!{}`-generated token streams
+# (same as `::serde::Serialize` a few lines up), resolved later in whatever
+# crate compiles the derive's output. Kept out of [dependencies] on purpose;
+# see tests/scene_store_delegation.rs's [dev-dependencies] for where a real
+# one lives, to actually compile and run that generated code.
+
+[dev-dependencies]
+# TEMPORARY path pin, not `workspace = true`: needs the
+# pulsar_scenedb::SceneStore re-export (D:/GitHub/SceneDB, unmerged as of
+# this writing) that scene_store delegation targets -- the git rev this
+# workspace pins predates it. Durable fix: once that commit is pushed/merged
+# and this workspace's `pulsar_scenedb` rev (root Cargo.toml) bumps past it,
+# switch this back to `{ workspace = true }`.
+#
+# `gpu` feature deliberately NOT enabled here: this workspace's
+# `[patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]` (root
+# Cargo.toml) pins an older rev than `pulsar_scenedb`'s own Cargo.toml
+# requires for its `gpu`-gated `subsystem`/`scene_db` modules
+# (`DynMethodArgs`/`DYN_METHOD_REGISTRY`/etc., added post-pin) -- a
+# pre-existing cross-repo version-skew this Phase A slice surfaced but does
+# not fix (see the Phase A verification test's module doc for what that
+# leaves unproven). helio-scenedb avoids this because Helio is its own
+# separate Cargo workspace, outside this patch's reach entirely.
+pulsar_scenedb = { path = "D:/GitHub/SceneDB/crates/pulsar_scenedb" }
+# pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB" }
+# `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
+# every real consumer of this macro already has `tracing` in scope for that
+# reason; the test below is no exception.
+tracing = { workspace = true }
 
 [lints]
 workspace = true
