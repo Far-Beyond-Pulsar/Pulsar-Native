@@ -26,9 +26,8 @@ use pulsar_rendering::{
 };
 use pulsar_scene::{build_transform_parts, component_instances_from_props};
 
-use crate::scene::{
-    ObjectDirtyFlags, ObjectType, ObjectUpdate, SceneDbDelta, SceneObjectSnapshot,
-};
+use crate::scene::{ObjectUpdate, SceneDbDelta, WorldSceneStore};
+use parking_lot::RwLock;
 use super::core::{CameraInput, GpuProfilerData, RenderMetrics, RenderSpikeLogConfig};
 
 /// Camera velocity squared below this threshold is considered stopped.
@@ -48,11 +47,6 @@ pub struct EditorCameraState {
     pub pitch: f32,
 }
 
-/// Delegates to the shared implementation in `pulsar_scene`.
-fn build_transform(snap: &SceneObjectSnapshot) -> Mat4 {
-    build_transform_parts(snap.position, snap.rotation, snap.scale)
-}
-
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // ── HelioRenderer ─────────────────────────────────────────────────────────────
@@ -61,7 +55,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 pub struct HelioRenderer {
     // ── Scene & Input ──
     pub camera_input: Arc<Mutex<CameraInput>>,
-    pub scene_db: Arc<crate::scene::SceneDb>,
+    pub scene_store: Arc<RwLock<WorldSceneStore>>,
 
     // ── Legacy (unused) ──
     pub command_sender: mpsc::Sender<RendererCommand>,
@@ -157,11 +151,11 @@ struct HelioInner {
 }
 
 impl HelioRenderer {
-    pub fn new(scene_db: Arc<crate::scene::SceneDb>) -> Self {
+    pub fn new(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
         let (command_sender, command_receiver) = mpsc::channel();
         Self {
             camera_input: Arc::new(Mutex::new(CameraInput::new())),
-            scene_db,
+            scene_store,
             command_sender,
             command_receiver,
             pending_gizmo_mode: Arc::new(Mutex::new(None)),
@@ -326,7 +320,7 @@ impl HelioRenderer {
         // background loop to skip present/publish — the compositor holds the last
         // frame on screen.
         let viewport_resized = needs_resize || self.viewport_size != (width, height);
-        let scene_revision = self.scene_db.render_revision();
+        let scene_revision = self.scene_store.read().render_revision();
         let has_pending_scene = scene_revision != inner.last_scene_revision;
         let has_pending_editor = self.pending_deselect.load(Ordering::Acquire)
             || self
@@ -394,9 +388,9 @@ impl HelioRenderer {
             // Use delta sync for incremental updates; full sync only on first
             // frame when last_scene_revision is 0 and known_ids is empty.
             if inner.last_scene_revision == 0 && inner.known_ids.is_empty() {
-                Self::sync_scene(&self.scene_db, inner, &self.pending_errors);
+                Self::sync_scene(&self.scene_store, inner, &self.pending_errors);
             } else {
-                Self::sync_scene_delta(&self.scene_db, inner);
+                Self::sync_scene_delta(&self.scene_store, inner);
             }
             sync_ms = t_sync.elapsed().as_secs_f64() * 1000.0;
             inner.last_scene_revision = scene_revision;
@@ -650,20 +644,20 @@ impl HelioRenderer {
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// Get the active gizmo state from SceneDb (gizmo_type, highlighted_axis, etc.).
+    /// Get the active gizmo state from the scene store (gizmo_type, highlighted_axis, etc.).
     pub fn get_scene_gizmo_type(&self) -> crate::scene::GizmoType {
-        self.scene_db.get_gizmo_state().gizmo_type
+        self.scene_store.read().get_gizmo_state().gizmo_type
     }
 
-    /// Set the active gizmo type on SceneDb.
+    /// Set the active gizmo type on the scene store.
     pub fn set_scene_gizmo_type(&self, t: crate::scene::GizmoType) {
-        self.scene_db.set_gizmo_type(t);
+        self.scene_store.write().set_gizmo_type(t);
     }
 
-    /// Return the SceneDb-level selected object ID (set by `select_object_atomic`
-    /// on viewport click or by the hierarchy panel).
+    /// Return the scene-store-level selected object ID (set by
+    /// `select_object_atomic` on viewport click or by the hierarchy panel).
     pub fn get_scene_db_selected_id(&self) -> Option<String> {
-        self.scene_db.get_selected_id()
+        self.scene_store.read().get_selected_id()
     }
 
     // ── Unified per-object scene mutations ────────────────────────────────────
@@ -707,11 +701,12 @@ impl HelioRenderer {
                 .map(|(_, _, t)| t)?,
             _ => return None,
         };
-        self.scene_db
+        self.scene_store
+            .read()
             .get_all_snapshots()
             .into_iter()
-            .find(|snap| scene_id_to_tag(&snap.id) == tag)
-            .map(|snap| snap.id)
+            .find(|snap| scene_id_to_tag(&snap.stable_id) == tag)
+            .map(|snap| snap.stable_id)
     }
 
     /// Select an object or light by its SceneDb ID.
@@ -768,7 +763,7 @@ impl HelioRenderer {
         self.gizmo_dirty = true;
 
         // First update SceneDb (single source of truth for object list)
-        self.scene_db.select_object(scene_db_id.clone());
+        self.scene_store.write().select_object(scene_db_id.clone());
 
         // Then update Helio EditorState (for gizmo rendering)
         let Some(inner) = &mut self.inner else {
@@ -853,11 +848,12 @@ impl HelioRenderer {
                         SceneActorId::Object(_) | SceneActorId::Light(_) => {
                             // Resolve SceneDb ID by scanning for matching user_tag.
                             let scene_db_id = self
-                                .scene_db
+                                .scene_store
+                                .read()
                                 .get_all_snapshots()
                                 .into_iter()
-                                .find(|snap| scene_id_to_tag(&snap.id) == hit.user_tag)
-                                .map(|snap| snap.id);
+                                .find(|snap| scene_id_to_tag(&snap.stable_id) == hit.user_tag)
+                                .map(|snap| snap.stable_id);
                             Some(scene_db_id)
                         }
                         _ => {
@@ -929,13 +925,14 @@ impl HelioRenderer {
                             .map(|(_, _, _, t)| t)
                             .unwrap_or(0);
                         if let Some(scene_id) = self
-                            .scene_db
+                            .scene_store
+                            .read()
                             .get_all_snapshots()
                             .into_iter()
-                            .find(|snap| scene_id_to_tag(&snap.id) == tag)
-                            .map(|snap| snap.id)
+                            .find(|snap| scene_id_to_tag(&snap.stable_id) == tag)
+                            .map(|snap| snap.stable_id)
                         {
-                            self.scene_db.apply_transform(
+                            self.scene_store.write().apply_transform(
                                 &scene_id,
                                 [pos_v.x, pos_v.y, pos_v.z],
                                 [pitch.to_degrees(), yaw.to_degrees(), roll.to_degrees()],
@@ -959,13 +956,14 @@ impl HelioRenderer {
                             .map(|(_, _, t)| t)
                             .unwrap_or(0);
                         if let Some(scene_id) = self
-                            .scene_db
+                            .scene_store
+                            .read()
                             .get_all_snapshots()
                             .into_iter()
-                            .find(|snap| scene_id_to_tag(&snap.id) == tag)
-                            .map(|snap| snap.id)
+                            .find(|snap| scene_id_to_tag(&snap.stable_id) == tag)
+                            .map(|snap| snap.stable_id)
                         {
-                            self.scene_db.apply_transform(
+                            self.scene_store.write().apply_transform(
                                 &scene_id,
                                 pos,
                                 [0.0, 0.0, 0.0],
@@ -1008,15 +1006,18 @@ impl HelioRenderer {
     }
 
     fn sync_scene(
-        scene_db: &crate::scene::SceneDb,
+        scene_store: &Arc<RwLock<WorldSceneStore>>,
         inner: &mut HelioInner,
         error_queue: &Arc<Mutex<Vec<String>>>,
     ) {
         // component_instances_from_snap now delegates to pulsar_scene's shared impl.
         fn component_instances_from_snap(
-            snap: &SceneObjectSnapshot,
+            snap: &crate::scene::ObjectSnapshot,
         ) -> Vec<(usize, String, serde_json::Value)> {
-            component_instances_from_props(&snap.props, snap.component_instances.as_ref())
+            component_instances_from_props(
+                &snap.render_props.props,
+                snap.render_props.component_instances.as_ref(),
+            )
         }
 
         struct HelioRuntimeContext<'a> {
@@ -1060,8 +1061,13 @@ impl HelioRenderer {
         // the component system didn't touch this frame).
 
         // ── Component sync pass ───────────────────────────────────────────────
+        // Single write-lock held for the whole pass -- see this module's top
+        // doc / SceneDatabase's B1 migration note for why: WorldSceneStore
+        // has no lock-free per-entry design, so a snapshot pull followed by a
+        // dirty-flag drain needs one held guard, not two racing acquisitions.
+        let mut store = scene_store.write();
         let t_snap = std::time::Instant::now();
-        let snapshots = scene_db.get_all_snapshots();
+        let snapshots = store.get_all_snapshots();
         let snap_ms = t_snap.elapsed().as_secs_f64() * 1000.0;
         if snap_ms > 2.0 {
             tracing::warn!("[SYNC_SCENE] get_all_snapshots took {:.2}ms", snap_ms);
@@ -1077,11 +1083,11 @@ impl HelioRenderer {
         // and selection picking.
         for snap in &snapshots {
             let owner = RuntimeComponentOwner {
-                scene_object_id: snap.id.as_str(),
-                position: snap.position,
-                rotation: snap.rotation,
-                scale: snap.scale,
-                props: &snap.props,
+                scene_object_id: snap.stable_id.as_str(),
+                position: snap.transform.position,
+                rotation: snap.transform.rotation,
+                scale: snap.transform.scale,
+                props: &snap.render_props.props,
             };
 
             let component_instances = component_instances_from_snap(snap);
@@ -1221,8 +1227,8 @@ impl HelioRenderer {
         // (for gizmo rendering and selection picking) but are assigned to the
         // HIDDEN group so they don't render visually.
         for snap in &snapshots {
-            if let Some((obj_id, _)) = inner.object_cache.get(&snap.id) {
-                let groups = if snap.visible {
+            if let Some((obj_id, _)) = inner.object_cache.get(&snap.stable_id) {
+                let groups = if snap.visibility.visible {
                     GroupMask::NONE
                 } else {
                     GroupMask::from(GroupId::new(8))
@@ -1246,21 +1252,25 @@ impl HelioRenderer {
         // Full sync just brought every object in `live_keys` fully up to
         // date from its snapshot, so clear their dirty flags here — full
         // sync never marked them dirty in the first place (that only
-        // happens via SceneDb::mark_dirty / a fresh SceneEntry), but it
+        // happens via WorldSceneStore::mark_dirty / a fresh spawn), but it
         // must still consume any that accumulated, or the delta-sync path
         // would see them as still needing work it just did and redo it
         // every frame until something happened to touch drain_dirty().
         //
         // Scoped to `live_keys` (this pass's snapshot) rather than a global
-        // `scene_db.drain_dirty()`: scene_db is a concurrently-mutated
-        // DashMap another thread can insert into at any time, including
-        // between the snapshot at the top of this function and this loop.
-        // A global drain would silently consume — and thereby lose — the
-        // dirty flags of an object this pass never actually synced to
-        // Helio, since it didn't exist yet when `get_all_snapshots()` ran.
-        // Only draining ids we know we just synced avoids that.
+        // `store.drain_dirty()`, matching the pre-B1 behavior: this whole
+        // function now holds `store`'s write lock for its entire duration
+        // (see the guard taken above), so the original race this comment
+        // used to describe -- another thread inserting into a
+        // concurrently-mutated `DashMap` between the snapshot pull and this
+        // loop -- can no longer happen; the lock rules it out. Kept scoped
+        // to `live_keys` anyway rather than switching to a global drain,
+        // since that's a distinct, unrelated behavior change (it would also
+        // clear dirty flags for objects this pass never actually synced to
+        // Helio, which isn't what "full sync completed" should mean) and
+        // not something this migration set out to change.
         for id in live_keys.inner() {
-            let _ = scene_db.take_dirty_flags(id);
+            let _ = store.take_dirty_flags(id);
         }
     }
 
@@ -1321,25 +1331,28 @@ impl HelioRenderer {
     }
 
     fn sync_scene_delta(
-        scene_db: &crate::scene::SceneDb,
+        scene_store: &Arc<RwLock<WorldSceneStore>>,
         inner: &mut HelioInner,
     ) -> SceneDbDelta {
-        let revision = scene_db.dirty_gen();
-        let dirty = scene_db.drain_dirty();
-        let removed = scene_db.take_removed_ids();
+        let mut store = scene_store.write();
+        let revision = store.dirty_gen();
+        let dirty = store.drain_dirty();
+        let removed = store.take_removed_ids();
 
         let mut added = Vec::new();
         let mut updated = Vec::new();
 
         for (id, flags) in dirty {
             if inner.known_ids.contains(&id) {
-                if let Some(snap) = scene_db.get_object(&id) {
+                if let Some(snap) = store.get_object(&id) {
                     updated.push(ObjectUpdate {
                         id,
                         transform: Some(build_transform_parts(
-                            snap.position, snap.rotation, snap.scale,
+                            snap.transform.position,
+                            snap.transform.rotation,
+                            snap.transform.scale,
                         )),
-                        visible: Some(snap.visible),
+                        visible: Some(snap.visibility.visible),
                         name: None,
                     });
                 }

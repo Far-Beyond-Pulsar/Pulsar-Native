@@ -22,8 +22,9 @@
 //! # Thread Safety
 //!
 //! The entire state tree is wrapped in `Arc<parking_lot::RwLock<LevelEditorState>>`.
-//! Readers take `.read()`, writers take `.write()`. The `SceneDb` inside
-//! `SceneDomain` provides lock-free concurrent reads for the renderer.
+//! Readers take `.read()`, writers take `.write()`. The `WorldSceneStore`
+//! inside `SceneDomain` is itself behind a second, inner `RwLock` shared
+//! directly with the renderer (see `SceneDatabase`'s B1 migration note).
 
 pub mod build;
 pub mod editor;
@@ -42,7 +43,8 @@ pub use scene::SceneDomain;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::level_editor::scene_database::SceneDb;
+use engine_backend::scene::WorldSceneStore;
+use parking_lot::RwLock;
 
 // ── LevelEditorState ─────────────────────────────────────────────────────────
 
@@ -90,11 +92,11 @@ impl LevelEditorState {
         Self::default()
     }
 
-    /// Create a `LevelEditorState` that shares the given `SceneDb` Arc with the renderer.
+    /// Create a `LevelEditorState` that shares the given scene store `Arc` with the renderer.
     /// The database starts empty; `ensure_default_level_file` populates it from disk.
-    pub fn new_with_scene_db(scene_db: Arc<SceneDb>) -> Self {
+    pub fn new_with_scene_db(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
         Self {
-            scene: SceneDomain::with_scene_db(scene_db),
+            scene: SceneDomain::with_scene_db(scene_store),
             ..Self::default()
         }
     }
