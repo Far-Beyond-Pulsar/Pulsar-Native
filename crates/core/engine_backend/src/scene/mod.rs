@@ -39,7 +39,7 @@ pub use metadata::{
 };
 pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
 pub use world_store::{
-    Name, ObjectSnapshot, Parent, StableId, Transform, Visibility, WorldSceneStore,
+    Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
     WorldSceneStoreError,
 };
 

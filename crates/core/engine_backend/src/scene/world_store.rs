@@ -53,11 +53,20 @@
 //!   double-buffered snapshot published once per frame) is a real, separate
 //!   design question for whoever wires this into the actual renderer sync
 //!   path, not silently dropped or assumed away here.
-//! - **Component instances** (the `ComponentInstance`/JSON-per-component
-//!   data `ComponentDb` stores today). Phase B4/B5 (Pulsar-Native#555/#556)
-//!   cover migrating real `#[engine_class]` component data onto this store
-//!   via `world_mut().insert(entity, SomeRealComponent { .. })` directly --
-//!   deliberately not re-invented as a separate concept here.
+//! - **Typed component storage.** [`RenderProps`] carries the *renderer-facing
+//!   JSON projection* (`SceneEntry.meta.props`/`component_instances`'s exact
+//!   equivalent) -- required now, not deferred, because
+//!   `HelioRenderer::sync_scene` reads exactly this shape
+//!   (`RuntimeComponentOwner.props: &HashMap<String, Value>`) to dispatch
+//!   `ComponentRuntimeBehavior::sync_component` *today*, before Phase B4/B5
+//!   land. What's still deferred to B4/B5 (Pulsar-Native#555/#556) is
+//!   replacing this JSON channel with real typed `#[engine_class]` component
+//!   values inserted directly via `world_mut().insert(entity,
+//!   SomeRealComponent { .. })` -- a later, per-component migration, not a
+//!   B1 concern. Earlier revisions of this doc understated this: "component
+//!   instances not modeled" was true only for the *typed* B4/B5 sense, not
+//!   for the JSON wire format B1 still has to carry to keep the renderer
+//!   working through the transition.
 //! - **Wiring into `SceneDatabase`.** This module is usable standalone
 //!   (proven by its own tests below) but nothing in `ui_level_editor` reads
 //!   from it yet.
@@ -123,6 +132,19 @@ impl Default for Visibility {
     fn default() -> Self {
         Self { visible: true, locked: false }
     }
+}
+
+/// Renderer-facing JSON projection of an object's component data -- mirrors
+/// `SceneEntry.meta.props`/`component_instances` exactly. See this module's
+/// top doc ("What this module deliberately does NOT do yet") for why this
+/// stays JSON for now rather than typed: `HelioRenderer::sync_scene` reads
+/// `props` today (via `RuntimeComponentOwner`) to dispatch every real
+/// component's `sync_component`, so this channel has to keep working
+/// through the B1 -> B4/B5 transition, not just at the end of it.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct RenderProps {
+    pub props: HashMap<String, serde_json::Value>,
+    pub component_instances: Option<serde_json::Value>,
 }
 
 // ── WorldSceneStore ─────────────────────────────────────────────────────────
@@ -253,6 +275,7 @@ impl WorldSceneStore {
         // right after spawning, same two-step shape `SceneDatabase::add_object`
         // already uses for other fields today.
         self.world.insert(entity, ObjectType::Empty);
+        self.world.insert(entity, RenderProps::default());
 
         if let Some(parent_entity) = parent {
             self.world.insert(entity, Parent(parent_entity));
@@ -437,6 +460,28 @@ impl WorldSceneStore {
         true
     }
 
+    // ── Render props (JSON projection channel) ──────────────────────────
+
+    /// Mirrors `SceneDb::update_render_data`'s closure shape -- callers
+    /// (`SceneDatabase`'s eventual rewrite) mutate `props`/
+    /// `component_instances` in place rather than reading-modifying-writing
+    /// a clone. No-op if `id` doesn't resolve.
+    pub fn update_render_props(&mut self, id: &str, f: impl FnOnce(&mut RenderProps)) -> bool {
+        let Some(entity) = self.entity_for(id) else { return false };
+        match self.world.get_mut::<RenderProps>(entity) {
+            Some(props) => f(props),
+            None => return false,
+        }
+        self.publish(entity, ObjectDirtyFlags::PROPS | ObjectDirtyFlags::COMPONENTS);
+        true
+    }
+
+    /// Mirrors reading `SceneEntry.meta.props`/`component_instances`.
+    pub fn render_props(&self, id: &str) -> Option<RenderProps> {
+        let entity = self.entity_for(id)?;
+        self.world.get::<RenderProps>(entity).cloned()
+    }
+
     // ── Selection ────────────────────────────────────────────────────────
 
     /// Select an object by stable id (`None` deselects). Mirrors
@@ -548,6 +593,7 @@ impl WorldSceneStore {
             transform: self.transform(entity).unwrap_or_default(),
             visibility: self.visibility(entity).unwrap_or_default(),
             object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
+            render_props: self.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
         })
     }
 
@@ -618,6 +664,8 @@ impl WorldSceneStore {
             store.set_transform(entity, snap.transform);
             store.set_visibility(entity, snap.visibility);
             store.set_object_type(entity, snap.object_type);
+            let render_props = snap.render_props.clone();
+            store.update_render_props(&snap.stable_id, |p| *p = render_props);
         }
         Ok(store)
     }
@@ -641,6 +689,7 @@ impl WorldSceneStore {
                 transform: self.transform(entity).unwrap_or_default(),
                 visibility: self.visibility(entity).unwrap_or_default(),
                 object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
+                render_props: self.world.get::<RenderProps>(entity).cloned().unwrap_or_default(),
             });
             self.collect_snapshots_dfs(Some(entity), out);
         }
@@ -676,6 +725,8 @@ pub struct ObjectSnapshot {
     pub transform: Transform,
     pub visibility: Visibility,
     pub object_type: ObjectType,
+    /// See [`RenderProps`] -- the renderer-facing JSON projection channel.
+    pub render_props: RenderProps,
 }
 
 #[cfg(test)]
@@ -845,6 +896,7 @@ mod tests {
             transform: Transform::default(),
             visibility: Visibility::default(),
             object_type: ObjectType::Empty,
+            render_props: RenderProps::default(),
         }
     }
 
@@ -953,6 +1005,34 @@ mod tests {
             reloaded.object_type(reloaded.entity_for("light").unwrap()),
             Some(ObjectType::Light(crate::scene::LightType::Point))
         );
+    }
+
+    // ── Render props ─────────────────────────────────────────────────────
+
+    #[test]
+    fn render_props_default_to_empty_and_are_settable_in_place() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("obj".into()), "Object", None).unwrap();
+        assert_eq!(store.render_props("obj"), Some(RenderProps::default()));
+
+        let ok = store.update_render_props("obj", |props| {
+            props.props.insert("intensity".to_string(), serde_json::json!(2.5));
+            props.component_instances = Some(serde_json::json!([{"class_name": "LightComponent"}]));
+        });
+        assert!(ok);
+
+        let props = store.render_props("obj").unwrap();
+        assert_eq!(props.props.get("intensity"), Some(&serde_json::json!(2.5)));
+        assert!(props.component_instances.is_some());
+    }
+
+    #[test]
+    fn update_render_props_on_an_unknown_id_is_a_no_op() {
+        let mut store = WorldSceneStore::new();
+        assert!(!store.update_render_props("nope", |props| {
+            props.props.insert("x".to_string(), serde_json::json!(1));
+        }));
+        assert_eq!(store.render_props("nope"), None);
     }
 
     // ── Selection ────────────────────────────────────────────────────────
