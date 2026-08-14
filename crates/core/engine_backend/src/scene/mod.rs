@@ -24,6 +24,11 @@ pub mod hierarchy;
 pub mod metadata;
 pub mod metadata_db;
 
+// World/Entity-backed scene store (Phase B1, Pulsar-Native#553) -- new,
+// additive infrastructure that will eventually replace everything else in
+// this module. See `world_store`'s own doc for the full picture.
+pub mod world_store;
+
 // Re-export new system types for convenience
 pub use component_db::ComponentDb;
 pub use hierarchy::HierarchyManager;
@@ -33,6 +38,7 @@ pub use metadata::{
     SceneObjectMetadata,
 };
 pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
+pub use world_store::{Name, Parent, StableId, Transform, Visibility, WorldSceneStore, WorldSceneStoreError};
 
 use bitflags::bitflags;
 use dashmap::DashMap;
