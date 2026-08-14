@@ -341,6 +341,8 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     let has_default_derive = has_derive(&item_struct.attrs, "Default");
     let has_clone_derive = has_derive(&item_struct.attrs, "Clone");
     let has_debug_derive = has_derive(&item_struct.attrs, "Debug");
+    let has_scene_store_derive = has_derive(&item_struct.attrs, "SceneStore");
+    let has_copy_derive = has_derive(&item_struct.attrs, "Copy");
     let has_engine_class_category_attr = item_struct
         .attrs
         .iter()
@@ -364,6 +366,40 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     }
     if add_debug && !has_debug_derive {
         derive_additions.push(quote!(::core::fmt::Debug));
+    }
+    // Delegates to `pulsar_scenedb_derive`'s own derive (re-exported as
+    // `pulsar_scenedb::SceneStore`) instead of hand-rolling equivalent
+    // Pod/HasTypeToken/SceneColumnSet/GpuColumnSet codegen here -- see this
+    // block's doc below for why. Requires the consuming crate to depend on
+    // `pulsar_scenedb` (with the `gpu` feature on, for the GPU-column half);
+    // `#[gpu(...)]` per-field attributes on the struct are consumed by
+    // SceneStore's own attribute parsing (`attributes(gpu)`), not by this
+    // macro -- they were already valid syntax here (the old codegen parsed
+    // them by hand too), so no field-level change is needed to opt in.
+    //
+    // GOTCHA for whoever writes the first real `#[engine_class(scene_store,
+    // ...)]` struct with a `#[gpu(...)]` field (Phase C+): SceneStore's
+    // generated GPU-column methods are wrapped in `#[cfg(feature = "gpu")]`.
+    // That `cfg`, once spliced into the crate where the struct is actually
+    // DEFINED by macro expansion, checks THAT crate's own Cargo features --
+    // not `pulsar_scenedb`'s. So the crate defining the struct (e.g.
+    // `pulsar_rendering`) needs its own feature named exactly "gpu", same
+    // as `engine_class_derive`'s own `[features] gpu` (Cargo.toml) exists
+    // solely to make this crate's own `tests/scene_store_delegation.rs`
+    // compile -- `helio-scenedb/Cargo.toml` documents the identical gotcha.
+    //
+    // `pulsar_scenedb::Pod` requires `Copy` (a GPU-mirrored/CellStorage-row
+    // value is memcpy'd, never dropped in place) -- `scene_store` implies
+    // `Copy` for the same reason `default`/`clone`/etc. each imply their
+    // own derive, so a component author doesn't have to separately remember
+    // it every time.
+    if add_scene_store {
+        if !has_scene_store_derive {
+            derive_additions.push(quote!(::pulsar_scenedb::SceneStore));
+        }
+        if !has_copy_derive {
+            derive_additions.push(quote!(::core::marker::Copy));
+        }
     }
 
     let derive_attr = if derive_additions.is_empty() {
@@ -419,158 +455,18 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    // ── SceneStore impl generation (auto-derived for every engine_class) ──
-
-    // Collect field info for Pod + SceneColumnSet + GpuColumnSet generation.
-    struct NamedField {
-        ident: syn::Ident,
-        ty: syn::Type,
-        is_gpu: bool,
-    }
-
-    let named_fields: Vec<NamedField> = match &item_struct.fields {
-        Fields::Named(named) => named
-            .named
-            .iter()
-            .map(|f| {
-                let ident = f.ident.clone().unwrap();
-                let ty = f.ty.clone();
-                let is_gpu = f.attrs.iter().any(|a| a.path().is_ident("gpu"));
-                NamedField { ident, ty, is_gpu }
-            })
-            .collect(),
-        _ => Vec::new(),
-    };
-
-    let scenedb_impls = if !add_scene_store || named_fields.is_empty() {
-        quote! {}
-    } else {
-        // ── Pod ──
-        let pod_bounds: Vec<_> = named_fields
-            .iter()
-            .map(|f| { let ty = &f.ty; quote! { #ty: ::pulsar_scenedb::page::Pod } })
-            .collect();
-        let pod_impl = if pod_bounds.is_empty() {
-            quote! { unsafe impl ::pulsar_scenedb::page::Pod for #name {} }
-        } else {
-            quote! { unsafe impl ::pulsar_scenedb::page::Pod for #name where #(#pod_bounds),* {} }
-        };
-
-        // ── HasTypeToken ──
-        let has_type_token = quote! {
-            impl ::pulsar_scenedb::token::HasTypeToken for #name {
-                fn type_token() -> ::pulsar_scenedb::token::TypeToken {
-                    ::pulsar_scenedb::token::TypeToken::of::<Self>()
-                }
-            }
-        };
-
-        // ── SceneColumnSet ──
-        let cell_entries: Vec<_> = named_fields
-            .iter()
-            .map(|f| { let ty = &f.ty; quote! { .with(::pulsar_scenedb::token::TypeToken::of::<#ty>()) } })
-            .collect();
-        let name_str = name.to_string();
-        let scene_column_set = quote! {
-            impl ::pulsar_scenedb::cell_type::SceneColumnSet for #name {
-                fn cell_type() -> ::pulsar_scenedb::cell_type::RegisteredCellType {
-                    ::pulsar_scenedb::cell_type::CellType::new(#name_str)
-                        #(#cell_entries)*
-                        .build()
-                        .expect("SceneColumnSet cell_type: CellType::build failed")
-                }
-            }
-        };
-
-        // ── GpuColumnSet (gated behind the `gpu` feature) ──
-        let gpu_fields: Vec<&NamedField> = named_fields.iter().filter(|f| f.is_gpu).collect();
-        let gpu_column_set = if gpu_fields.is_empty() {
-            quote! {
-                #[cfg(feature = "gpu")]
-                impl ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name {
-                    fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
-                        Vec::new()
-                    }
-                    fn write_gpu(
-                        _store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
-                        _id: ::pulsar_scenedb::gpu::scene_store::CellId,
-                        _cell: &mut ::pulsar_scenedb::cell::CellStorage,
-                        _handle: ::pulsar_scenedb::handle::Handle,
-                        _data: &Self,
-                        _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
-                    ) {}
-                }
-            }
-        } else {
-            let descs: Vec<_> = gpu_fields
-                .iter()
-                .map(|f| {
-                    let field_ident = &f.ident;
-                    let field_name = field_ident.to_string();
-                    let field_ty = &f.ty;
-                    quote! {
-                        ::pulsar_scenedb::gpu::scene_store::GpuColumnDesc {
-                            field_token: ::pulsar_scenedb::token::TypeToken::of::<#field_ty>(),
-                            field_offset: ::std::mem::offset_of!(#name, #field_ident),
-                            mode: ::pulsar_scenedb::gpu::scene_store::MirrorMode::DirtyTracked,
-                            buffer_name: #field_name,
-                        }
-                    }
-                })
-                .collect();
-            let arms: Vec<_> = gpu_fields
-                .iter()
-                .map(|f| {
-                    let field_ident = &f.ident;
-                    let field_name = field_ident.to_string();
-                    let field_ty = &f.ty;
-                    quote! {
-                        #field_name => {
-                            let row = cell.row_of(handle).unwrap_or_else(|| {
-                                panic!("write_gpu: handle {:?} not found in cell", handle);
-                            }) as usize;
-                            if let Some(col) = cell.column_for_mut::<#field_ty>() {
-                                col[row] = data.#field_ident;
-                            }
-                            let comp_id = ::pulsar_scenedb::component::component_id::<#field_ty>();
-                            store.mark_column_dirty(id, comp_id, row as u32);
-                        }
-                    }
-                })
-                .collect();
-            quote! {
-                #[cfg(feature = "gpu")]
-                impl ::pulsar_scenedb::gpu::scene_store::GpuColumnSet for #name {
-                    fn gpu_columns() -> Vec<::pulsar_scenedb::gpu::scene_store::GpuColumnDesc> {
-                        vec![ #(#descs),* ]
-                    }
-                    fn write_gpu(
-                        store: &::pulsar_scenedb::gpu::scene_store::SceneGpuStore,
-                        id: ::pulsar_scenedb::gpu::scene_store::CellId,
-                        cell: &mut ::pulsar_scenedb::cell::CellStorage,
-                        handle: ::pulsar_scenedb::handle::Handle,
-                        data: &Self,
-                        _phase: &impl ::pulsar_scenedb::gpu::phase::SimulateWitness,
-                    ) {
-                        let descs = Self::gpu_columns();
-                        for desc in &descs {
-                            match desc.buffer_name {
-                                #(#arms)*
-                                _ => {}
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        quote! {
-            #pod_impl
-            #has_type_token
-            #scene_column_set
-            #gpu_column_set
-        }
-    };
+    // SceneDB storage (Pod/HasTypeToken/SceneColumnSet/GpuColumnSet) is no
+    // longer hand-generated here -- `add_scene_store` instead adds
+    // `::pulsar_scenedb::SceneStore` to `derive_additions` above, which
+    // `#derive_attr` below splices onto `#item_struct` alongside
+    // EngineClass/Serialize/etc. This targets `pulsar_scenedb`'s current
+    // `World`/`Entity`/`#[gpu(buffer = "...")]` storage model (the one
+    // `World::insert`/`get_mut` and the GPU world-mirror actually use)
+    // instead of the older `CellStorage`/`Handle`-mirrored model the
+    // previous hand-rolled codegen targeted -- confirmed unexercised
+    // anywhere in this workspace before this rewrite (nothing called
+    // `write_gpu`/`.gpu_columns()`/`SceneColumnSet::cell_type()` outside
+    // this file), so retargeting it is purely additive, not a break.
 
     quote! {
         #derive_attr
@@ -578,7 +474,6 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
         #no_register_attr
         #item_struct
         #sub_props_marker_impl
-        #scenedb_impls
         #runtime_registration
         #scene_props_registration
     }

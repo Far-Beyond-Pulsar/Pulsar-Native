@@ -6,12 +6,68 @@ edition = "2024"
 [lib]
 proc-macro = true
 
+[features]
+# `#[derive(SceneStore)]`'s generated GPU-column code (spliced in by
+# `#[engine_class(scene_store, ...)]`, see src/lib.rs) is wrapped in
+# `#[cfg(feature = "gpu")]` by `pulsar_scenedb_derive`. That `cfg`, once
+# spliced into the compilation unit where the struct is actually DEFINED,
+# checks THAT crate's own Cargo features -- not `pulsar_scenedb`'s -- so any
+# crate defining an `#[engine_class(scene_store, ...)]` struct with a
+# `#[gpu(...)]` field needs its OWN feature of this exact name, same
+# gotcha helio-scenedb documents for the same reason. This crate's own
+# test binary (tests/scene_store_delegation.rs) is one such consumer, hence
+# this feature; a real future consumer (e.g. `pulsar_rendering`, once it
+# defines a real `scene_store` component) will need the same feature
+# declared on ITSELF, not here.
+#
+# On by default: CI's `cargo check --workspace --all-targets` (ci.yml) never
+# passes per-crate `--features`, so `scene_store_delegation.rs`'s
+# unconditional `register_gpu_columns`/`gpu_columns` calls fail to compile
+# under a plain check unless this feature is enabled some other way (caught
+# by actually running the exact CI command locally, not just `cargo test
+# --features gpu`). Same reasoning and same fix helio-scenedb's own
+# `default = ["gpu"]` already documents for this identical gotcha -- safe
+# here too, since this feature only gates code inside this crate's own test
+# binary and has no effect on downstream consumers' builds.
+default = ["gpu"]
+gpu = []
+
 [dependencies]
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 pulsar_reflection = { workspace = true }
-pulsar_scenedb = { workspace = true }
+# NOT a real Rust-level dependency of this crate -- `::pulsar_scenedb::...`
+# only ever appears as a path *inside* `quote!{}`-generated token streams
+# (same as `::serde::Serialize` a few lines up), resolved later in whatever
+# crate compiles the derive's output. Kept out of [dependencies] on purpose;
+# see tests/scene_store_delegation.rs's [dev-dependencies] for where a real
+# one lives, to actually compile and run that generated code.
+
+[dev-dependencies]
+# TEMPORARY branch pin, not `workspace = true` or a local path: needs the
+# pulsar_scenedb::SceneStore re-export (SceneDB#44, unmerged as of this
+# writing) that scene_store delegation targets -- the git rev this
+# workspace pins predates it. A local path (`D:/GitHub/SceneDB/...`) only
+# resolves on this machine and breaks CI on every runner (confirmed:
+# "failed to read .../D:/GitHub/SceneDB/.../Cargo.toml" on all three CI
+# platforms) -- pointing at the actual pushed branch is CI-safe the same
+# way the root Cargo.toml's Pulsar-Reflection patch already documents for
+# an identical situation. Durable fix: once SceneDB#44 merges and this
+# workspace's `pulsar_scenedb` rev (root Cargo.toml) bumps past it, switch
+# this back to `{ workspace = true }`.
+#
+# `gpu` feature now safe to enable (this workspace's Pulsar-Reflection patch
+# rev was bumped to 4cc82f5, which includes the dyn-method-registry APIs
+# `pulsar_scenedb`'s own `gpu`-gated modules need -- see the patch's own
+# comment in the root Cargo.toml for the version-skew history this closes).
+pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", branch = "engine-class-scenestore-export", features = ["gpu"] }
+# `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
+# every real consumer of this macro already has `tracing` in scope for that
+# reason; the test below is no exception.
+tracing = { workspace = true }
+wgpu = { workspace = true }
+pollster = "1.0"
 
 [lints]
 workspace = true
