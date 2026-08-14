@@ -47,9 +47,11 @@ pub use pulsar_rendering::FoliageComponent as _ForceLink_FoliageComponent;
 pub use pulsar_rendering::LightComponent as _ForceLink_LightComponent;
 pub use pulsar_rendering::PlanetTerrainComponent as _ForceLink_PlanetTerrainComponent;
 pub use pulsar_rendering::PortalComponent as _ForceLink_PortalComponent;
+pub use pulsar_rendering::PostProcessVolumeComponent as _ForceLink_PostProcessVolumeComponent;
 pub use pulsar_rendering::ReflectionCaptureComponent as _ForceLink_ReflectionCaptureComponent;
 pub use pulsar_rendering::ScriptComponent as _ForceLink_ScriptComponent;
 pub use pulsar_rendering::StaticMeshComponent as _ForceLink_StaticMeshComponent;
+pub use pulsar_rendering::WaterVolumeComponent as _ForceLink_WaterVolumeComponent;
 
 // ── SceneLoader ───────────────────────────────────────────────────────────────
 

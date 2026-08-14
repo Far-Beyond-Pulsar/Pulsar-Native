@@ -174,6 +174,60 @@ impl ReflectionCaptureCache {
     }
 }
 
+/// Same shape as [`ReflectionCaptureCache`], for water volumes (Phase D,
+/// Pulsar-Native#558). `helio::Scene` has no `water_volume_by_tag` lookup
+/// either.
+pub struct WaterVolumeCache {
+    pub map: HashMap<String, helio::WaterVolumeId>,
+}
+
+impl WaterVolumeCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, scene_id: &str) -> Option<helio::WaterVolumeId> {
+        self.map.get(scene_id).copied()
+    }
+
+    pub fn insert(&mut self, scene_id: String, id: helio::WaterVolumeId) {
+        self.map.insert(scene_id, id);
+    }
+
+    pub fn remove(&mut self, scene_id: &str) -> Option<helio::WaterVolumeId> {
+        self.map.remove(scene_id)
+    }
+}
+
+/// Same shape as [`WaterVolumeCache`], for post-process volumes (Phase D,
+/// Pulsar-Native#558). `helio::Scene` has no `post_process_volume_by_tag`
+/// lookup either.
+pub struct PostProcessVolumeCache {
+    pub map: HashMap<String, helio::PostProcessVolumeId>,
+}
+
+impl PostProcessVolumeCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, scene_id: &str) -> Option<helio::PostProcessVolumeId> {
+        self.map.get(scene_id).copied()
+    }
+
+    pub fn insert(&mut self, scene_id: String, id: helio::PostProcessVolumeId) {
+        self.map.insert(scene_id, id);
+    }
+
+    pub fn remove(&mut self, scene_id: &str) -> Option<helio::PostProcessVolumeId> {
+        self.map.remove(scene_id)
+    }
+}
+
 /// One side of a to-be-paired portal — this object's current pose and
 /// opening size, recorded by `PortalComponent::sync_component` every sync
 /// pass under the `portal_id` the level designer chose to link two
