@@ -153,6 +153,12 @@ helio-asset-compat         = { git = "https://github.com/Far-Beyond-Pulsar/Helio
 helio-default-graphs       = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
 helio-planet-voxel-core    = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
 helio-pass-planetary-voxel = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
+# `helio`'s own crate root doesn't re-export ReflectionCaptureShape/Mobility
+# (or other libhelio-only types Phase D's new components need) -- rather
+# than editing the Helio submodule itself (already in a dirty, unrelated
+# state locally; a cross-repo change for a one-line re-export isn't worth
+# the coordination), depend on libhelio directly at the same pinned rev.
+libhelio                   = { git = "https://github.com/Far-Beyond-Pulsar/Helio", rev = "70f63a5aa6176485ad9396fac39975bd8835e712" }
 glam                  = { version = "0.33", features = ["bytemuck"] }
 
 # ---------- Third-party (vendored) ----------

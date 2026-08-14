@@ -143,6 +143,37 @@ impl LightCache {
     }
 }
 
+/// Same shape as [`LightCache`], for reflection captures (Phase D,
+/// Pulsar-Native#558). Unlike objects/lights, `helio::Scene` has no
+/// `reflection_capture_by_tag` lookup at all -- there's no tag-based
+/// mechanism to ask Helio "do I already have one of these for this scene
+/// object", so every `ReflectionCaptureComponent` sync pass needs this
+/// editor-side cache to know whether to `insert_reflection_capture` or
+/// `update_reflection_capture`.
+pub struct ReflectionCaptureCache {
+    pub map: HashMap<String, helio::ReflectionCaptureId>,
+}
+
+impl ReflectionCaptureCache {
+    pub fn new() -> Self {
+        Self {
+            map: HashMap::new(),
+        }
+    }
+
+    pub fn get(&self, scene_id: &str) -> Option<helio::ReflectionCaptureId> {
+        self.map.get(scene_id).copied()
+    }
+
+    pub fn insert(&mut self, scene_id: String, id: helio::ReflectionCaptureId) {
+        self.map.insert(scene_id, id);
+    }
+
+    pub fn remove(&mut self, scene_id: &str) -> Option<helio::ReflectionCaptureId> {
+        self.map.remove(scene_id)
+    }
+}
+
 /// One side of a to-be-paired portal — this object's current pose and
 /// opening size, recorded by `PortalComponent::sync_component` every sync
 /// pass under the `portal_id` the level designer chose to link two
