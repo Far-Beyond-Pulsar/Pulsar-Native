@@ -133,6 +133,8 @@ pub enum WorldSceneStoreError {
     DuplicateId(String),
     #[error("reparenting '{0}' under '{1}' would create a cycle")]
     WouldCreateCycle(String, String),
+    #[error("object '{1}' references parent '{0}', which hasn't been loaded yet")]
+    UnknownParent(String, String),
 }
 
 /// `World`/`Entity`-backed live scene store. See this module's top doc for
@@ -365,12 +367,91 @@ impl WorldSceneStore {
             n += 1;
         }
     }
+
+    // ── Load / save bridge (Pulsar-Native#553 decision #2) ──────────────
+
+    /// Build a fresh store from a flat list of snapshots. `snapshots` MUST be
+    /// in parent-before-child order (matching `SceneDb::collect_dfs`'s
+    /// existing contract, and what [`Self::to_snapshots`] itself produces) --
+    /// a child referencing a parent not yet spawned is a real error, not
+    /// silently dropped or reordered.
+    ///
+    /// This is the same bridge B6 (Pulsar-Native#557) needs to unify
+    /// `pulsar_scene::format::SceneFile` and the editor's `LevelFile` onto
+    /// one `World <-> JSON` path -- built here, generically over
+    /// [`ObjectSnapshot`] rather than either concrete file format, so both
+    /// can convert into/out of `ObjectSnapshot` and share this rather than
+    /// duplicating it.
+    pub fn load_from_snapshots(
+        snapshots: &[ObjectSnapshot],
+    ) -> Result<Self, WorldSceneStoreError> {
+        let mut store = Self::new();
+        for snap in snapshots {
+            let parent = match &snap.parent {
+                Some(parent_id) => Some(store.entity_for(parent_id).ok_or_else(|| {
+                    WorldSceneStoreError::UnknownParent(parent_id.clone(), snap.stable_id.clone())
+                })?),
+                None => None,
+            };
+            let entity = store.spawn(Some(snap.stable_id.clone()), snap.name.clone(), parent)?;
+            store.set_transform(entity, snap.transform);
+            store.set_visibility(entity, snap.visibility);
+        }
+        Ok(store)
+    }
+
+    /// Serialize back out to the same flat shape, depth-first with parents
+    /// before children -- so a round trip through [`Self::load_from_snapshots`]
+    /// always succeeds on its own output.
+    pub fn to_snapshots(&self) -> Vec<ObjectSnapshot> {
+        let mut out = Vec::new();
+        self.collect_snapshots_dfs(None, &mut out);
+        out
+    }
+
+    fn collect_snapshots_dfs(&self, parent: Option<Entity>, out: &mut Vec<ObjectSnapshot>) {
+        let parent_stable_id = parent.and_then(|p| self.stable_id_of(p)).map(str::to_string);
+        for &entity in self.children_of(parent) {
+            out.push(ObjectSnapshot {
+                stable_id: self.stable_id_of(entity).unwrap_or_default().to_string(),
+                name: self.name(entity).unwrap_or_default().to_string(),
+                parent: parent_stable_id.clone(),
+                transform: self.transform(entity).unwrap_or_default(),
+                visibility: self.visibility(entity).unwrap_or_default(),
+            });
+            self.collect_snapshots_dfs(Some(entity), out);
+        }
+    }
 }
 
 impl Default for WorldSceneStore {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A flat, ordered (parent-before-child) snapshot of one object -- the
+/// interchange shape [`WorldSceneStore::load_from_snapshots`]/
+/// [`WorldSceneStore::to_snapshots`] use to bridge `World` and any
+/// serializable format (JSON today, whatever tomorrow). Deliberately close
+/// in shape to the pre-B1 `SceneObjectSnapshot` (`scene::SceneObjectSnapshot`)
+/// so callers migrating off that type have a direct field-by-field mapping,
+/// not a redesign to learn too. `scene_path` isn't modeled here -- it's a
+/// value *derived* from the parent chain (see `SceneDb::update_subtree_path`),
+/// recomputable from `parent` at the point something actually needs it,
+/// not independent data worth carrying through this bridge.
+///
+/// `props`/`component_instances` (real component data) are also NOT modeled
+/// here -- that's Phase B4/B5's job (Pulsar-Native#555/#556), which inserts
+/// real typed components into `World` directly rather than reinventing a
+/// JSON side-channel on top of this bridge.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectSnapshot {
+    pub stable_id: String,
+    pub name: String,
+    pub parent: Option<String>,
+    pub transform: Transform,
+    pub visibility: Visibility,
 }
 
 #[cfg(test)]
@@ -528,5 +609,96 @@ mod tests {
         // `leaf` never moved directly -- still under `mid`, wherever `mid` is.
         assert_eq!(store.parent_of(leaf), Some(mid));
         assert_eq!(store.children_of(Some(mid)), &[leaf]);
+    }
+
+    // ── Load / save bridge ──────────────────────────────────────────────
+
+    fn snap(stable_id: &str, parent: Option<&str>) -> ObjectSnapshot {
+        ObjectSnapshot {
+            stable_id: stable_id.to_string(),
+            name: stable_id.to_string(),
+            parent: parent.map(str::to_string),
+            transform: Transform::default(),
+            visibility: Visibility::default(),
+        }
+    }
+
+    #[test]
+    fn load_from_snapshots_reconstructs_the_hierarchy() {
+        let snapshots = vec![
+            snap("root", None),
+            snap("child_a", Some("root")),
+            snap("child_b", Some("root")),
+            snap("grandchild", Some("child_a")),
+        ];
+
+        let store = WorldSceneStore::load_from_snapshots(&snapshots).unwrap();
+
+        let root = store.entity_for("root").unwrap();
+        let child_a = store.entity_for("child_a").unwrap();
+        let child_b = store.entity_for("child_b").unwrap();
+        let grandchild = store.entity_for("grandchild").unwrap();
+
+        assert_eq!(store.children_of(None), &[root]);
+        assert_eq!(store.children_of(Some(root)), &[child_a, child_b]);
+        assert_eq!(store.children_of(Some(child_a)), &[grandchild]);
+        assert_eq!(store.parent_of(grandchild), Some(child_a));
+    }
+
+    #[test]
+    fn load_from_snapshots_rejects_a_forward_reference() {
+        // "child" lists "root" as its parent, but "root" hasn't been loaded
+        // yet -- must error, not silently treat it as root-level or panic.
+        let snapshots = vec![snap("child", Some("root")), snap("root", None)];
+
+        // `.err().unwrap()` rather than `.unwrap_err()` -- the latter needs
+        // `WorldSceneStore: Debug` (the `Ok` type) too, which it doesn't
+        // implement (it holds a `World`, which doesn't either).
+        let err = WorldSceneStore::load_from_snapshots(&snapshots).err().unwrap();
+        assert_eq!(err, WorldSceneStoreError::UnknownParent("root".into(), "child".into()));
+    }
+
+    #[test]
+    fn to_snapshots_round_trips_through_load_from_snapshots() {
+        // True DFS pre-order (root, child_a, *child_a's own subtree*, then
+        // child_b) -- what `to_snapshots` actually produces (visits a
+        // child's whole subtree before its next sibling). `load_from_
+        // snapshots` itself only requires "parent before child" (any such
+        // ordering works, proven by `load_from_snapshots_reconstructs_the_
+        // hierarchy`'s different ordering above) -- this test specifically
+        // checks the round trip is exact, which requires matching
+        // `to_snapshots`'s own canonical order up front.
+        let original = vec![
+            snap("root", None),
+            snap("child_a", Some("root")),
+            snap("grandchild", Some("child_a")),
+            snap("child_b", Some("root")),
+        ];
+
+        let store = WorldSceneStore::load_from_snapshots(&original).unwrap();
+        let round_tripped = store.to_snapshots();
+
+        assert_eq!(round_tripped, original);
+
+        // And the round-tripped output must itself load cleanly -- proves
+        // `to_snapshots` really does emit parent-before-child order, not
+        // just "the same set in some order".
+        let reloaded = WorldSceneStore::load_from_snapshots(&round_tripped).unwrap();
+        assert_eq!(reloaded.to_snapshots(), round_tripped);
+    }
+
+    #[test]
+    fn to_snapshots_preserves_transform_and_visibility_edits() {
+        let mut store = WorldSceneStore::load_from_snapshots(&[snap("obj", None)]).unwrap();
+        let entity = store.entity_for("obj").unwrap();
+        let t = Transform { position: [4.0, 5.0, 6.0], rotation: [0.0; 3], scale: [2.0; 3] };
+        let v = Visibility { visible: false, locked: true };
+        store.set_transform(entity, t);
+        store.set_visibility(entity, v);
+
+        let snaps = store.to_snapshots();
+        assert_eq!(snaps.len(), 1);
+        assert_eq!(snaps[0].transform, t);
+        assert_eq!(snaps[0].visibility, v);
     }
 }
