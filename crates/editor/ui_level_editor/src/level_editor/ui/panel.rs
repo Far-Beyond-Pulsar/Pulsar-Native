@@ -786,6 +786,39 @@ impl LevelEditorPanel {
         cx.notify();
     }
 
+    /// Undo the last mutating scene command (Pulsar-Native#554). Restoring
+    /// replaces `WorldSceneStore` wholesale, so the renderer's delta-sync
+    /// can't diff against it correctly -- `force_full_resync` is required
+    /// here, not optional; see its doc for why.
+    fn on_undo(&mut self, _: &super::actions::Undo, _: &mut Window, cx: &mut Context<Self>) {
+        let mut state = self.shared_state.write();
+        if state.scene.undo() {
+            state.scene.bump_revision(true);
+            drop(state);
+            if let Ok(mut engine) = self.gpu_engine.lock() {
+                engine.force_full_resync();
+            }
+            self.sync_gizmo_to_helio();
+        }
+        self.notify_sub_panels(cx);
+        cx.notify();
+    }
+
+    /// Redo the last undone scene command. See [`Self::on_undo`]'s doc.
+    fn on_redo(&mut self, _: &super::actions::Redo, _: &mut Window, cx: &mut Context<Self>) {
+        let mut state = self.shared_state.write();
+        if state.scene.redo() {
+            state.scene.bump_revision(true);
+            drop(state);
+            if let Ok(mut engine) = self.gpu_engine.lock() {
+                engine.force_full_resync();
+            }
+            self.sync_gizmo_to_helio();
+        }
+        self.notify_sub_panels(cx);
+        cx.notify();
+    }
+
     fn on_select_object(&mut self, action: &SelectObject, _: &mut Window, cx: &mut Context<Self>) {
         self.shared_state
             .write()
@@ -1303,6 +1336,8 @@ impl Render for LevelEditorPanel {
             .on_action(cx.listener(Self::on_add_object_of_type))
             .on_action(cx.listener(Self::on_delete_object))
             .on_action(cx.listener(Self::on_duplicate_object))
+            .on_action(cx.listener(Self::on_undo))
+            .on_action(cx.listener(Self::on_redo))
             .on_action(cx.listener(Self::on_select_object))
             .on_action(cx.listener(Self::on_toggle_object_expanded))
             .on_action(cx.listener(Self::on_focus_selected))

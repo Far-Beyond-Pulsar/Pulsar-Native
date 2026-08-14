@@ -660,6 +660,30 @@ impl HelioRenderer {
         self.scene_store.read().get_selected_id()
     }
 
+    /// Force the next `sync_scene`/`sync_scene_delta` call to take the full
+    /// (non-delta) path, exactly as if this were the first frame.
+    ///
+    /// Needed after anything that replaces `WorldSceneStore` wholesale rather
+    /// than mutating it in place -- undo/redo (Pulsar-Native#554) being the
+    /// motivating case. `sync_scene_delta` diffs against `known_ids` and the
+    /// dirty/removed sets *of the store instance it's looking at right now*;
+    /// it has no way to notice that an entity present a moment ago in a
+    /// now-discarded store instance no longer exists. A full `sync_scene`
+    /// pass sidesteps that entirely -- it recomputes `live_keys` from
+    /// scratch and tears down anything in Helio's caches that isn't in it,
+    /// which is correct regardless of *how* an object disappeared.
+    ///
+    /// No-op if the renderer hasn't produced its first frame yet (`inner` is
+    /// `None`) -- that frame is already guaranteed to run a full sync by
+    /// construction (`last_scene_revision`/`known_ids` start at their
+    /// "first frame" values), so there's nothing to reset.
+    pub fn force_full_resync(&mut self) {
+        if let Some(inner) = &mut self.inner {
+            inner.last_scene_revision = 0;
+            inner.known_ids.clear();
+        }
+    }
+
     // ── Unified per-object scene mutations ────────────────────────────────────
     // These are called directly by SceneDatabase so every write path (user
     // actions, AI tools, content-drawer drops) hits Helio immediately instead

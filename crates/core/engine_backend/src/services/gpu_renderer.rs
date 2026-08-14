@@ -288,6 +288,18 @@ impl GpuRenderer {
         }
     }
 
+    /// Force the next scene sync to be a full (non-delta) pass. Callers must
+    /// call this after replacing `WorldSceneStore`'s contents wholesale
+    /// rather than through its normal mutators -- undo/redo
+    /// (Pulsar-Native#554) being the motivating case. See
+    /// `HelioRenderer::force_full_resync`'s doc for why this can't be
+    /// skipped.
+    pub fn force_full_resync(&mut self) {
+        if let Some(r) = &mut self.helio_renderer {
+            r.force_full_resync();
+        }
+    }
+
     /// Send a fire-and-forget command to the renderer thread (e.g. ToggleFeature).
     pub fn send_renderer_command(
         &self,

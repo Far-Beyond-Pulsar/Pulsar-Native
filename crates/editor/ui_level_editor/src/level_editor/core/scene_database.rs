@@ -867,6 +867,75 @@ impl SceneDatabase {
             Self::collect_descendant_ids(store, child, out);
         }
     }
+
+    // ── Undo/redo (Pulsar-Native#554) ────────────────────────────────────
+    //
+    // Deliberately NOT built on `pulsar_scenedb::replication::Snapshot`
+    // (`capture_full`/`restore_to_world`): that machinery is shaped for
+    // network replication -- every component needs a registered
+    // `ReplicationRegistry` schema with per-field encode/decode `FieldOps`,
+    // which is real setup cost and a poor fit for `RenderProps`' free-form
+    // JSON (`HashMap<String, serde_json::Value>`, `Option<Value>`) -- not
+    // impossible, but a whole schema-registration subsystem to stand up for
+    // something `WorldSceneStore`'s own bridge already does. `to_snapshots`/
+    // `load_from_snapshots` already capture and round-trip everything a
+    // scene needs (proven by `world_store.rs`'s own tests), so undo/redo
+    // reuses that directly instead.
+
+    /// Capture a full, restorable snapshot of the current scene --
+    /// `WorldSceneStore`'s object/transform/hierarchy/render-props state
+    /// plus every object's reflection component data from `metadata_db`
+    /// (the two are captured together so a restore can't reintroduce one
+    /// half stale relative to the other). Treat the result as opaque; pass
+    /// it back to [`Self::restore_history_snapshot`] only.
+    pub fn capture_history_snapshot(&self) -> SceneHistorySnapshot {
+        let objects = self.store.read().to_snapshots();
+        let components = objects
+            .iter()
+            .map(|obj| (obj.stable_id.clone(), self.metadata_db.get_components(&obj.stable_id)))
+            .filter(|(_, components)| !components.is_empty())
+            .collect();
+        SceneHistorySnapshot { objects, components }
+    }
+
+    /// Restore a previously captured snapshot, replacing the current scene
+    /// entirely (`WorldSceneStore` is swapped for a fresh one built from the
+    /// snapshot; `metadata_db` is cleared and repopulated). Entity identity
+    /// is NOT preserved across a restore -- nothing outside `WorldSceneStore`
+    /// holds a raw `Entity` across calls (every `SceneDatabase` method
+    /// resolves `entity_for` fresh), so this is safe. Selection is cleared
+    /// (the fresh store has no `selected` entity) -- not preserving it is a
+    /// deliberate v1 simplification, not an oversight.
+    ///
+    /// Returns `Err` (leaving the live scene untouched) only if `snapshot`
+    /// itself is malformed -- a forward parent reference, which shouldn't
+    /// happen for a snapshot this type itself produced, but is surfaced
+    /// rather than silently no-op'd or panicking, since restoring a
+    /// generation-old snapshot after intervening schema changes is exactly
+    /// the kind of thing that's cheap to guard here and expensive to debug
+    /// if it silently corrupted the scene instead.
+    pub fn restore_history_snapshot(&self, snapshot: &SceneHistorySnapshot) -> Result<(), String> {
+        let new_store =
+            WorldSceneStore::load_from_snapshots(&snapshot.objects).map_err(|e| e.to_string())?;
+        *self.store.write() = new_store;
+        self.metadata_db.clear();
+        for (object_id, components) in &snapshot.components {
+            for component in components {
+                self.metadata_db
+                    .add_component_instance(object_id, component.clone());
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Opaque capture produced by [`SceneDatabase::capture_history_snapshot`],
+/// consumed by [`SceneDatabase::restore_history_snapshot`]. See that pair's
+/// docs for what it carries and why.
+#[derive(Clone, Debug)]
+pub struct SceneHistorySnapshot {
+    objects: Vec<engine_backend::scene::ObjectSnapshot>,
+    components: HashMap<ObjectId, Vec<ComponentInstance>>,
 }
 
 impl Default for SceneDatabase {
@@ -952,4 +1021,89 @@ fn find_script_path(props: &HashMap<String, Value>, component_instances: Option<
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string()
+}
+
+#[cfg(test)]
+mod history_snapshot_tests {
+    use super::*;
+
+    fn object(name: &str, object_type: ObjectType) -> SceneObjectData {
+        SceneObjectData {
+            id: String::new(),
+            name: name.to_string(),
+            object_type,
+            transform: Transform::default(),
+            visible: true,
+            locked: false,
+            parent: None,
+            children: vec![],
+            scene_path: String::new(),
+            props: Default::default(),
+            component_instances: None,
+        }
+    }
+
+    #[test]
+    fn capture_and_restore_round_trips_an_empty_scene() {
+        let db = SceneDatabase::new();
+        let snapshot = db.capture_history_snapshot();
+        db.add_folder("Should be undone", None);
+        assert_eq!(db.get_all_objects().len(), 1);
+
+        db.restore_history_snapshot(&snapshot).unwrap();
+
+        assert!(db.get_all_objects().is_empty());
+    }
+
+    #[test]
+    fn restore_brings_back_a_removed_object_with_its_transform() {
+        let db = SceneDatabase::new();
+        let mut obj = object("Cube", ObjectType::Mesh(MeshType::Cube));
+        obj.transform.position = [1.0, 2.0, 3.0];
+        let id = db.add_object(obj, None);
+
+        let snapshot = db.capture_history_snapshot();
+        db.remove_object(&id);
+        assert!(db.get_object(&id).is_none());
+
+        db.restore_history_snapshot(&snapshot).unwrap();
+
+        let restored = db.get_object(&id).expect("object restored");
+        assert_eq!(restored.name, "Cube");
+        assert_eq!(restored.transform.position, [1.0, 2.0, 3.0]);
+    }
+
+    #[test]
+    fn restore_brings_back_reflection_components() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light", ObjectType::Light(LightType::Point)), None);
+        db.add_component(&id, "LightComponent".to_string(), serde_json::json!({"intensity": 5.0}));
+        assert_eq!(db.get_components(&id).len(), 1);
+
+        let snapshot = db.capture_history_snapshot();
+        db.remove_component(&id, 0);
+        assert!(db.get_components(&id).is_empty());
+
+        db.restore_history_snapshot(&snapshot).unwrap();
+
+        let components = db.get_components(&id);
+        assert_eq!(components.len(), 1);
+        assert_eq!(components[0].class_name, "LightComponent");
+    }
+
+    #[test]
+    fn restore_preserves_hierarchy() {
+        let db = SceneDatabase::new();
+        let parent_id = db.add_object(object("Parent", ObjectType::Empty), None);
+        let child_id = db.add_object(object("Child", ObjectType::Empty), Some(parent_id.clone()));
+
+        let snapshot = db.capture_history_snapshot();
+        db.clear();
+        assert!(db.get_all_objects().is_empty());
+
+        db.restore_history_snapshot(&snapshot).unwrap();
+
+        let child = db.get_object(&child_id).expect("child restored");
+        assert_eq!(child.parent.as_deref(), Some(parent_id.as_str()));
+    }
 }
