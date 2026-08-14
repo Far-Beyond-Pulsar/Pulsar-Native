@@ -1271,4 +1271,50 @@ mod world_component_hydration_tests {
         let entity = store.entity_for(&id).unwrap();
         assert!(store.world().get::<StaticMeshComponent>(entity).is_none());
     }
+
+    /// Phase B5 (Pulsar-Native#556) spot check: the migration mechanism
+    /// itself is already fully proven generically (`pulsar_world_registry`'s
+    /// own tests) and end-to-end on `StaticMeshComponent` above -- this
+    /// isn't re-proving the mechanism per component (that would just be
+    /// duplicating the same five tests seven more times), it's checking for
+    /// component-specific surprises. `LightComponent` has many fields with
+    /// nested enum sub-props (`IntensityUnits`, `ShadowCacheMode`, ...) --
+    /// worth confirming `Default`-derived JSON round-trips through
+    /// hydration cleanly, not just a single-field component like
+    /// `StaticMeshComponent`.
+    #[test]
+    fn light_component_hydrates_via_its_default_json() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(pulsar_rendering::LightComponent::default()).unwrap();
+
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store.world().get::<pulsar_rendering::LightComponent>(entity).is_some());
+    }
+
+    /// `PortalComponent` is the trickiest of B5's list -- its
+    /// `sync_component` pairs two components sharing a `portal_id` via
+    /// `PortalLinkCache`, tracked independently of storage. Worth confirming
+    /// two portal-typed objects both hydrate correctly (the pairing logic
+    /// itself is unaffected by storage, but this proves *that* claim rather
+    /// than just asserting it).
+    #[test]
+    fn portal_component_hydrates_on_both_sides_of_a_pair() {
+        let db = SceneDatabase::new();
+        let a = db.add_object(object("PortalA"), None);
+        let b = db.add_object(object("PortalB"), None);
+        let default_json = serde_json::to_value(pulsar_rendering::PortalComponent::default()).unwrap();
+
+        db.add_component(&a, "PortalComponent".to_string(), default_json.clone());
+        db.add_component(&b, "PortalComponent".to_string(), default_json);
+
+        let store = db.store.read();
+        let entity_a = store.entity_for(&a).unwrap();
+        let entity_b = store.entity_for(&b).unwrap();
+        assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_a).is_some());
+        assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_b).is_some());
+    }
 }

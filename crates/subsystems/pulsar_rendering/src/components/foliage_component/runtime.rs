@@ -1,4 +1,4 @@
-use engine_class_derive::register_runtime_behavior;
+use engine_class_derive::{register_runtime_behavior, register_world_component};
 use helio::{
     FoliageInteractor, FoliageLayer, FoliageTypeDescriptor, GpuMaterial, MaterialId, Renderer,
 };
@@ -151,6 +151,8 @@ fn remove_foliage_with_context(
     cache.map.remove(key);
 }
 
+// Phase B5 (Pulsar-Native#556).
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for FoliageComponent {
     const CLASS_NAME: &'static str = "FoliageComponent";

@@ -1,4 +1,4 @@
-use engine_class_derive::register_runtime_behavior;
+use engine_class_derive::{register_runtime_behavior, register_world_component};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
 };
@@ -8,6 +8,8 @@ use super::{
     ComponentError, PLANET_TERRAIN_CLASS_NAME, PlanetTerrainComponent, PlanetTerrainComponentCache,
 };
 
+// Phase B5 (Pulsar-Native#556).
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for PlanetTerrainComponent {
     const CLASS_NAME: &'static str = PLANET_TERRAIN_CLASS_NAME;

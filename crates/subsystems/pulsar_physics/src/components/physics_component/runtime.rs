@@ -1,8 +1,13 @@
-use engine_class_derive::register_runtime_behavior;
+use engine_class_derive::{register_runtime_behavior, register_world_component};
 use pulsar_reflection::{ComponentRuntimeBehavior, ComponentRuntimeContext, RuntimeComponentOwner};
 
 use super::PhysicsComponent;
 
+// Phase B5 (Pulsar-Native#556). sync_component is a no-op stub today (real
+// physics-engine integration hasn't landed) -- migrating it onto World
+// storage now is a free win: nothing real to port, and it's ready for when
+// that integration does land.
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for PhysicsComponent {
     const CLASS_NAME: &'static str = "PhysicsComponent";

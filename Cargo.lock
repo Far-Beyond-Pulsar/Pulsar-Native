@@ -9061,6 +9061,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
  "tracing",
