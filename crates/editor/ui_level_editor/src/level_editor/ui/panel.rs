@@ -27,7 +27,7 @@ use crate::level_editor::scene_database::{
     LevelEditorCameraState, LightType, MeshType, ObjectType, SceneObjectData, Transform,
 };
 use crate::level_editor::{request_thumbnail_capture, CameraMode, LevelEditorState, TransformTool};
-use engine_backend::scene::SceneDb;
+use engine_backend::scene::WorldSceneStore;
 use engine_backend::subsystems::render::EditorCameraState;
 use plugin_manager;
 
@@ -240,12 +240,13 @@ impl LevelEditorPanel {
         let physics_query = engine_backend::EngineBackend::global()
             .and_then(|backend| backend.read().get_physics_query_service());
 
-        // Create the shared scene database FIRST so both the renderer and the UI
-        // panels hold the same Arc. All reads/writes go to the same atomic storage.
-        let scene_db = Arc::new(SceneDb::new());
+        // Create the shared scene store FIRST so both the renderer and the UI
+        // panels hold the same Arc<RwLock<..>>. All reads/writes go through it.
+        let scene_store = Arc::new(parking_lot::RwLock::new(WorldSceneStore::new()));
 
-        // Create GPU render engine sharing the scene_db Arc and physics query service
-        let mut renderer_builder = GpuRendererBuilder::new(1600, 900).scene_db(scene_db.clone());
+        // Create GPU render engine sharing the scene store Arc and physics query service
+        let mut renderer_builder =
+            GpuRendererBuilder::new(1600, 900).scene_db(scene_store.clone());
         if let Some(pq) = physics_query {
             renderer_builder = renderer_builder.physics(pq);
         }
@@ -267,12 +268,13 @@ impl LevelEditorPanel {
             }
         }
 
-        // Build the level editor state with the default scene populated into the shared SceneDb.
-        // The renderer and all panels now read/write the same Arc<SceneDb>.
-        let mut state = LevelEditorState::new_with_scene_db(scene_db);
+        // Build the level editor state with the default scene populated into the shared store.
+        // The renderer and all panels now read/write the same Arc<RwLock<WorldSceneStore>>.
+        let mut state = LevelEditorState::new_with_scene_db(scene_store);
 
-        // Attach the GPU renderer to SceneDatabase so every add/remove/update
-        // immediately writes to BOTH SceneDb AND Helio (unified write path).
+        // SceneDatabase and HelioRenderer share the same store `Arc`, so every
+        // add/remove/update SceneDatabase makes is visible to the renderer's
+        // next sync pass without a separate write-through call.
 
         let shared_state = Arc::new(parking_lot::RwLock::new(state));
 

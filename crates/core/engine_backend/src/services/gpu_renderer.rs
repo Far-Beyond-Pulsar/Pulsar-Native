@@ -4,16 +4,17 @@
 //! wgpu resources on the first `render_frame_to_surface` call, once the
 //! WgpuSurface is available.
 
-use crate::scene::SceneDb;
+use crate::scene::WorldSceneStore;
 use crate::subsystems::render::{
     EditorCameraState, HelioRenderer, RenderMetrics, RenderSpikeLogConfig,
 };
-use std::sync::{Arc, Mutex};
+use parking_lot::RwLock;
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Builder for `GpuRenderer`.
 pub struct GpuRendererBuilder {
-    scene_db: Option<Arc<SceneDb>>,
+    scene_store: Option<Arc<RwLock<WorldSceneStore>>>,
     #[cfg(feature = "physics")]
     _physics_query: Option<Arc<crate::services::PhysicsQueryService>>,
 }
@@ -21,14 +22,14 @@ pub struct GpuRendererBuilder {
 impl GpuRendererBuilder {
     pub fn new(_width: u32, _height: u32) -> Self {
         Self {
-            scene_db: None,
+            scene_store: None,
             #[cfg(feature = "physics")]
             _physics_query: None,
         }
     }
 
-    pub fn scene_db(mut self, db: Arc<SceneDb>) -> Self {
-        self.scene_db = Some(db);
+    pub fn scene_db(mut self, store: Arc<RwLock<WorldSceneStore>>) -> Self {
+        self.scene_store = Some(store);
         self
     }
 
@@ -39,9 +40,11 @@ impl GpuRendererBuilder {
     }
 
     pub fn build(self) -> GpuRenderer {
-        let scene_db = self.scene_db.unwrap_or_else(|| Arc::new(SceneDb::new()));
+        let scene_store = self
+            .scene_store
+            .unwrap_or_else(|| Arc::new(RwLock::new(WorldSceneStore::new())));
         GpuRenderer {
-            helio_renderer: Some(HelioRenderer::new(scene_db)),
+            helio_renderer: Some(HelioRenderer::new(scene_store)),
             frame_count: 0,
             start_time: Instant::now(),
             fps_window_start: Instant::now(),

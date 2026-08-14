@@ -1,7 +1,7 @@
 //! Scene Domain — the actual level data (objects, hierarchy, play-mode snapshots)
 //!
 //! This is the only domain that directly wraps [`SceneDatabase`] and is therefore
-//! the bridge to the concurrency-safe `SceneDb` shared with the renderer.
+//! the bridge to the `RwLock<WorldSceneStore>` shared with the renderer.
 //!
 //! The `revision` counter is bumped on every mutation so that observer tasks
 //! (running on the GPUI main thread) can detect changes made by background
@@ -10,8 +10,10 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::level_editor::scene_database::{ObjectId, SceneDb, SceneObjectData};
+use crate::level_editor::scene_database::{ObjectId, SceneObjectData};
 use crate::level_editor::SceneDatabase;
+use engine_backend::scene::WorldSceneStore;
+use parking_lot::RwLock;
 
 // ── Editor mode ────────────────────────────────────────────────────────────
 
@@ -29,7 +31,7 @@ pub enum EditorMode {
 /// Scene-level state — the authoritative source for all scene object data.
 ///
 /// Fields:
-/// - `database` — the `SceneDatabase` (wraps `Arc<SceneDb>` + `SceneMetadataDb`).
+/// - `database` — the `SceneDatabase` (wraps `Arc<RwLock<WorldSceneStore>>` + `SceneMetadataDb`).
 /// - `editor_mode` — `Edit` or `Play`.
 /// - `current_scene` — path to the currently open `.level` file on disk.
 /// - `has_unsaved_changes` — set by every mutation, cleared on save.
@@ -67,10 +69,10 @@ impl Default for SceneDomain {
 }
 
 impl SceneDomain {
-    /// Create using a caller-supplied `SceneDb` Arc that is shared with the renderer.
-    pub fn with_scene_db(scene_db: Arc<SceneDb>) -> Self {
+    /// Create using a caller-supplied scene store `Arc` that is shared with the renderer.
+    pub fn with_scene_db(scene_store: Arc<RwLock<WorldSceneStore>>) -> Self {
         Self {
-            database: SceneDatabase::with_shared_db(scene_db),
+            database: SceneDatabase::with_shared_store(scene_store),
             ..Self::default()
         }
     }

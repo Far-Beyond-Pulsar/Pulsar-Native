@@ -1,13 +1,36 @@
 //! Production Scene Database
 //!
-//! Primary scene storage backed by the concurrency-safe `SceneDb` (atomic
-//! transforms, lock-free renderer reads) with an additional `SceneMetadataDb`
-//! layer for the reflection-based component system.
+//! Primary scene storage backed by `WorldSceneStore` (`pulsar_scenedb::World`
+//! wrapped in one `parking_lot::RwLock`, shared with the renderer) with an
+//! additional `SceneMetadataDb` layer for the reflection-based component
+//! system.
+//!
+//! ## B1 migration note
+//!
+//! This used to wrap `SceneDb` (lock-free atomic transforms, `DashMap`
+//! object storage). That's gone -- `WorldSceneStore` has no lock-free
+//! per-entry design (`pulsar_scenedb::World` mutation needs `&mut self`
+//! throughout), so the concurrency model is now one `RwLock` shared between
+//! this type and `HelioRenderer`, which reads it every frame
+//! (`sync_scene`/`sync_scene_delta`) and also writes to it directly from the
+//! render thread (gizmo-drag transform on release, click-to-select). See
+//! `WorldSceneStore`'s own module doc (`engine_backend::scene::world_store`)
+//! for the full rationale and what's still deliberately deferred (typed
+//! per-component storage -- Pulsar-Native#555/#556).
+//!
+//! `SceneObjectData`'s shape and every public method signature on
+//! `SceneDatabase` are unchanged from the `SceneDb`-backed version -- this
+//! is an internal storage swap, not an API redesign, so the ~250 call sites
+//! across the editor and AI tools don't need to change.
 
-use engine_backend::scene::SceneObjectSnapshot;
+use engine_backend::scene::{
+    Transform as WorldTransform, Visibility as WorldVisibility, WorldSceneStoreError,
+};
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use engine_fs::virtual_fs;
+use parking_lot::RwLock;
 use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
+use pulsar_scenedb::Entity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -16,15 +39,15 @@ use std::sync::Arc;
 
 // ── Public re-exports for UI layer compatibility ───────────────────────────
 
-pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType, SceneDb};
+pub use engine_backend::scene::{LightType, MeshType, ObjectId, ObjectType, WorldSceneStore};
 
 // ── Transform ─────────────────────────────────────────────────────────────
 
 /// Editor transform: position, Euler rotation (degrees), and scale.
 ///
-/// Stored inline in `SceneObjectData` for easy UI access.  The underlying
-/// `SceneDb` stores the same values as lock-free atomics so the renderer can
-/// read them without acquiring any mutex.
+/// Stored inline in `SceneObjectData` for easy UI access. The underlying
+/// `WorldSceneStore` stores the same values behind one `RwLock` shared with
+/// the renderer.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Transform {
     pub position: [f32; 3],
@@ -48,8 +71,8 @@ impl Default for Transform {
 ///
 /// This is a cheap-to-clone value that is produced by `SceneDatabase::get_object` /
 /// `get_all_objects` and consumed by `SceneDatabase::add_object` /
-/// `update_object`.  Transform data is stored both here (for easy editing) and
-/// in the underlying `SceneDb` (for atomic renderer reads); calling
+/// `update_object`. Transform data is stored both here (for easy editing) and
+/// in the underlying `WorldSceneStore` (shared with the renderer); calling
 /// `update_object` keeps them in sync.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SceneObjectData {
@@ -61,13 +84,13 @@ pub struct SceneObjectData {
     pub locked: bool,
     /// Parent object ID (`None` = root level).
     pub parent: Option<ObjectId>,
-    /// Direct children (populated by `SceneDb` on read, ignored on write).
+    /// Direct children (populated by `SceneDatabase` on read, ignored on write).
     pub children: Vec<ObjectId>,
     pub scene_path: String,
     /// Type-specific properties that round-trip through the level file.
     /// Lights: `"color_r"`, `"color_g"`, `"color_b"`, `"intensity"`, `"range"`.
     ///
-    /// ⚠ This field does **not** contain `__component_instances`.  Component
+    /// ⚠ This field does **not** contain `__component_instances`. Component
     /// data flows exclusively through `SceneDatabase::add_component` / etc.
     #[serde(default)]
     pub props: std::collections::HashMap<String, serde_json::Value>,
@@ -76,66 +99,20 @@ pub struct SceneObjectData {
     pub component_instances: Option<serde_json::Value>,
 }
 
-impl SceneObjectData {
-    fn from_snapshot(mut snap: SceneObjectSnapshot) -> Self {
-        // Strip legacy __component_instances from props — it now lives in
-        // the dedicated component_instances field.  Setting it via props
-        // has no effect on the rendering subsystem.
-        let legacy = snap.props.remove("__component_instances");
-        Self {
-            id: snap.id,
-            name: snap.name,
-            object_type: snap.object_type,
-            transform: Transform {
-                position: snap.position,
-                rotation: snap.rotation,
-                scale: snap.scale,
-            },
-            visible: snap.visible,
-            locked: snap.locked,
-            parent: snap.parent,
-            children: snap.children,
-            scene_path: snap.scene_path,
-            props: snap.props,
-            component_instances: snap.component_instances.or(legacy),
-        }
-    }
-
-    fn into_snapshot(mut self) -> SceneObjectSnapshot {
-        // Never write __component_instances into props — it goes in the
-        // dedicated field so the renderer cannot be bypassed.
-        self.props.remove("__component_instances");
-        SceneObjectSnapshot {
-            id: self.id,
-            name: self.name,
-            object_type: self.object_type,
-            position: self.transform.position,
-            rotation: self.transform.rotation,
-            scale: self.transform.scale,
-            visible: self.visible,
-            locked: self.locked,
-            parent: self.parent,
-            children: self.children,
-            scene_path: self.scene_path,
-            props: self.props,
-            component_instances: self.component_instances,
-        }
-    }
-}
-
 // ── Production Scene Database ──────────────────────────────────────────────
 
 /// Production-ready scene database — the single source of truth for all scene state.
 ///
-/// Wraps `SceneDb` (the concurrency-safe object store shared with the renderer)
-/// and `SceneMetadataDb` for the reflection-based component system.
+/// Wraps `WorldSceneStore` (the `RwLock`-guarded object store shared with the
+/// renderer) and `SceneMetadataDb` for the reflection-based component system.
 ///
 /// Helio is reconciled exclusively by `sync_scene()` on every render frame.
 /// All UI panels and AI tools interact through `SceneDatabase` only.
 #[derive(Clone)]
 pub struct SceneDatabase {
-    /// Primary store: lock-free atomic transforms + hierarchy.
-    scene_db: Arc<SceneDb>,
+    /// Primary store: transforms + hierarchy, behind one `RwLock` shared
+    /// with the renderer.
+    store: Arc<RwLock<WorldSceneStore>>,
     /// Reflection-based component store.
     metadata_db: Arc<SceneMetadataDb>,
 }
@@ -143,28 +120,29 @@ pub struct SceneDatabase {
 impl SceneDatabase {
     pub fn new() -> Self {
         Self {
-            scene_db: Arc::new(SceneDb::new()),
+            store: Arc::new(RwLock::new(WorldSceneStore::new())),
             metadata_db: Arc::new(SceneMetadataDb::new()),
         }
     }
 
-    /// Create using a caller-supplied `SceneDb` Arc that is shared with the renderer.
-    pub fn with_shared_db(scene_db: Arc<SceneDb>) -> Self {
+    /// Create using a caller-supplied store `Arc` that is shared with the renderer.
+    pub fn with_shared_store(store: Arc<RwLock<WorldSceneStore>>) -> Self {
         Self {
-            scene_db,
+            store,
             metadata_db: Arc::new(SceneMetadataDb::new()),
         }
     }
 
     // ── Object CRUD ───────────────────────────────────────────────────────
     //
-    // SceneDb is the single source of truth. sync_scene() in the renderer
-    // reconciles Helio state every frame — no immediate write-through needed.
+    // WorldSceneStore is the single source of truth. sync_scene() in the
+    // renderer reconciles Helio state every frame — no immediate
+    // write-through needed.
 
     /// Add an object. Returns the assigned `ObjectId`.
     ///
     /// Blueprint objects always receive a `ScriptComponent` in `metadata_db`
-    /// pointing at their blueprint directory.  `sync_registered_component_props_to_scene_db`
+    /// pointing at their blueprint directory. `sync_registered_component_props_to_scene_db`
     /// rebuilds `__component_instances` from `metadata_db`, so the component
     /// must live there — setting it only in `props` would be immediately overwritten.
     pub fn add_object(&self, obj: SceneObjectData, parent: Option<ObjectId>) -> ObjectId {
@@ -177,7 +155,51 @@ impl SceneDatabase {
             None
         };
 
-        let object_id = self.scene_db.add_object(obj.into_snapshot(), parent);
+        let object_id = {
+            let mut store = self.store.write();
+            let parent_entity = parent.as_deref().and_then(|p| store.entity_for(p));
+            let requested_id = if obj.id.is_empty() {
+                None
+            } else {
+                Some(obj.id.clone())
+            };
+            let entity = match store.spawn(requested_id, obj.name.clone(), parent_entity) {
+                Ok(entity) => entity,
+                Err(WorldSceneStoreError::DuplicateId(dup)) => {
+                    tracing::warn!(
+                        "SceneDatabase::add_object: id '{dup}' already exists, auto-assigning a new one"
+                    );
+                    store
+                        .spawn(None, obj.name.clone(), parent_entity)
+                        .expect("auto-assigned stable id cannot collide")
+                }
+                Err(err) => {
+                    tracing::warn!("SceneDatabase::add_object: {err}, auto-assigning a new id");
+                    store
+                        .spawn(None, obj.name.clone(), parent_entity)
+                        .expect("auto-assigned stable id cannot collide")
+                }
+            };
+            store.set_transform(
+                entity,
+                WorldTransform {
+                    position: obj.transform.position,
+                    rotation: obj.transform.rotation,
+                    scale: obj.transform.scale,
+                },
+            );
+            store.set_visibility(
+                entity,
+                WorldVisibility { visible: obj.visible, locked: obj.locked },
+            );
+            store.set_object_type(entity, obj.object_type);
+            let id = store.stable_id_of(entity).unwrap_or_default().to_string();
+            store.update_render_props(&id, |render_props| {
+                render_props.props = obj.props;
+                render_props.component_instances = obj.component_instances;
+            });
+            id
+        };
 
         if let Some(script_path) = blueprint_script_path {
             let already_has = self
@@ -201,35 +223,41 @@ impl SceneDatabase {
 
     /// Remove an object and all of its descendants. Returns `true` if found.
     pub fn remove_object(&self, id: &ObjectId) -> bool {
-        let mut ids_to_clear = vec![id.clone()];
-        Self::collect_descendant_ids(&self.scene_db, id, &mut ids_to_clear);
-
-        let removed = self.scene_db.remove_object(id);
-        if removed {
-            for object_id in ids_to_clear {
-                self.metadata_db.clear_components(&object_id);
-            }
+        let ids_to_clear = {
+            let mut store = self.store.write();
+            let Some(entity) = store.entity_for(id) else { return false };
+            let mut ids_to_clear = vec![id.clone()];
+            Self::collect_descendant_ids(&store, entity, &mut ids_to_clear);
+            store.despawn(entity);
+            ids_to_clear
+        };
+        for object_id in ids_to_clear {
+            self.metadata_db.clear_components(&object_id);
         }
-        removed
+        true
     }
 
     /// Write updated transform, name, visibility, and component data back to an existing object.
     pub fn update_object(&self, obj: SceneObjectData) -> bool {
         let id = obj.id.clone();
-        if self.scene_db.get_entry(&id).is_none() {
-            return false;
+        {
+            let mut store = self.store.write();
+            let Some(entity) = store.entity_for(&id) else { return false };
+            store.set_transform(
+                entity,
+                WorldTransform {
+                    position: obj.transform.position,
+                    rotation: obj.transform.rotation,
+                    scale: obj.transform.scale,
+                },
+            );
+            store.set_name(entity, obj.name);
+            store.set_visibility(
+                entity,
+                WorldVisibility { visible: obj.visible, locked: obj.locked },
+            );
+            store.update_render_props(&id, |render_props| render_props.props = obj.props);
         }
-        self.scene_db.apply_transform(
-            &id,
-            obj.transform.position,
-            obj.transform.rotation,
-            obj.transform.scale,
-        );
-        self.scene_db.set_name(&id, obj.name);
-        self.scene_db.set_visible(&id, obj.visible);
-        self.scene_db.set_locked(&id, obj.locked);
-        self.scene_db
-            .update_render_data(&id, |meta| meta.props = obj.props);
         self.sync_registered_component_props_to_scene_db(&id);
         true
     }
@@ -280,14 +308,16 @@ impl SceneDatabase {
 
     /// Clear the entire scene.
     pub fn clear(&self) {
-        let root_ids: Vec<ObjectId> = self
-            .scene_db
-            .get_root_snapshots()
-            .into_iter()
-            .map(|s| s.id)
-            .collect();
+        let root_ids: Vec<ObjectId> = {
+            let store = self.store.read();
+            store
+                .children_of(None)
+                .iter()
+                .filter_map(|&e| store.stable_id_of(e).map(str::to_string))
+                .collect()
+        };
         for id in root_ids {
-            self.scene_db.remove_object(&id);
+            self.remove_object(&id);
         }
         tracing::info!("Scene cleared – ready for new level");
     }
@@ -296,73 +326,102 @@ impl SceneDatabase {
 
     /// All objects in depth-first order.
     pub fn get_all_objects(&self) -> Vec<SceneObjectData> {
-        self.scene_db
-            .get_all_snapshots()
-            .into_iter()
-            .map(|mut snap| {
-                let object_id = snap.id.clone();
-                Self::merge_component_props(&object_id, &mut snap, &self.metadata_db);
-                SceneObjectData::from_snapshot(snap)
-            })
-            .collect()
+        let store = self.store.read();
+        let mut out = Vec::new();
+        Self::collect_dfs(&store, None, &mut out);
+        drop(store);
+        for obj in &mut out {
+            Self::merge_component_props(&obj.id, &mut obj.props, &self.metadata_db);
+        }
+        out
     }
 
     /// Root-level objects (no parent).
     pub fn get_root_objects(&self) -> Vec<SceneObjectData> {
-        self.scene_db
-            .get_root_snapshots()
-            .into_iter()
-            .map(SceneObjectData::from_snapshot)
+        let store = self.store.read();
+        store
+            .children_of(None)
+            .iter()
+            .map(|&e| Self::entity_to_scene_object_data(&store, e))
             .collect()
     }
 
     /// Single object by ID, `None` if not found.
     pub fn get_object(&self, id: &ObjectId) -> Option<SceneObjectData> {
-        self.scene_db.get_object(id).map(|mut snap| {
-            let object_id = snap.id.clone();
-            Self::merge_component_props(&object_id, &mut snap, &self.metadata_db);
-            SceneObjectData::from_snapshot(snap)
-        })
+        let mut data = {
+            let store = self.store.read();
+            let entity = store.entity_for(id)?;
+            Self::entity_to_scene_object_data(&store, entity)
+        };
+        Self::merge_component_props(id, &mut data.props, &self.metadata_db);
+        Some(data)
     }
 
     /// Direct children of `id`.
     pub fn get_children(&self, id: &ObjectId) -> Vec<ObjectId> {
-        self.scene_db.get_children(Some(id.as_str()))
+        let store = self.store.read();
+        let Some(entity) = store.entity_for(id) else { return Vec::new() };
+        store
+            .children_of(Some(entity))
+            .iter()
+            .filter_map(|&e| store.stable_id_of(e).map(str::to_string))
+            .collect()
     }
 
     // ── Selection ─────────────────────────────────────────────────────────
 
     pub fn select_object(&self, id: Option<ObjectId>) {
-        self.scene_db.select_object(id);
+        self.store.write().select_object(id);
     }
 
     pub fn get_selected_object_id(&self) -> Option<ObjectId> {
-        self.scene_db.get_selected_id()
+        self.store.read().get_selected_id()
     }
 
     pub fn get_selected_object(&self) -> Option<SceneObjectData> {
-        self.scene_db
-            .get_selected()
-            .map(SceneObjectData::from_snapshot)
+        let store = self.store.read();
+        let entity = store.get_selected_entity()?;
+        Some(Self::entity_to_scene_object_data(&store, entity))
     }
 
     // ── Properties ────────────────────────────────────────────────────────
 
     pub fn set_name(&self, id: &ObjectId, name: String) -> bool {
-        self.scene_db.set_name(id, name)
+        let mut store = self.store.write();
+        match store.entity_for(id) {
+            Some(entity) => store.set_name(entity, name),
+            None => false,
+        }
     }
 
     pub fn set_visible(&self, id: &ObjectId, visible: bool) -> bool {
-        self.scene_db.set_visible(id, visible)
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(id) else { return false };
+        let mut visibility = store.visibility(entity).unwrap_or_default();
+        visibility.visible = visible;
+        store.set_visibility(entity, visibility)
     }
 
     pub fn set_locked(&self, id: &ObjectId, locked: bool) -> bool {
-        self.scene_db.set_locked(id, locked)
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(id) else { return false };
+        let mut visibility = store.visibility(entity).unwrap_or_default();
+        visibility.locked = locked;
+        store.set_visibility(entity, visibility)
     }
 
     /// Re-parent an object (cycle-safe).
     pub fn reparent_object(&self, id: &ObjectId, new_parent: Option<ObjectId>) -> bool {
-        self.scene_db.reparent_object(id, new_parent)
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(id) else { return false };
+        let new_parent_entity = match new_parent {
+            Some(ref parent_id) => match store.entity_for(parent_id) {
+                Some(e) => Some(e),
+                None => return false,
+            },
+            None => None,
+        };
+        store.reparent(entity, new_parent_entity).is_ok()
     }
 
     /// Alias for `reparent_object` kept for backward compatibility.
@@ -382,15 +441,15 @@ impl SceneDatabase {
 
     /// Move an object one step earlier among its siblings.
     ///
-    /// Full reorder support requires a `SceneDb` API extension; this is a
-    /// best-effort stub that is safe to call today.
+    /// Full reorder support requires a `WorldSceneStore` API extension; this
+    /// is a best-effort stub that is safe to call today.
     pub fn move_object_up(&self, _id: &str) {
-        // TODO: implement when SceneDb exposes sibling reordering
+        // TODO: implement when WorldSceneStore exposes sibling reordering
     }
 
     /// Move an object one step later among its siblings.
     pub fn move_object_down(&self, _id: &str) {
-        // TODO: implement when SceneDb exposes sibling reordering
+        // TODO: implement when WorldSceneStore exposes sibling reordering
     }
 
     // ── Duplication ────────────────────────────────────────────────────────
@@ -688,24 +747,85 @@ impl SceneDatabase {
         Ok(level_file.editor.and_then(|editor| editor.camera))
     }
 
+    // ── Internal conversion helpers ──────────────────────────────────────
+
+    /// Build a `SceneObjectData` for `entity` directly off `WorldSceneStore` --
+    /// transform/name/visibility/object_type/render_props plus the derived
+    /// `parent`/`children`/`scene_path` fields. Does NOT merge live
+    /// `metadata_db` component props on top (see [`Self::merge_component_props`]
+    /// -- callers that need that call it separately afterward, matching the
+    /// pre-B1 code's exact read paths: `get_object`/`get_all_objects` merge,
+    /// `get_root_objects`/`get_selected_object` deliberately don't).
+    fn entity_to_scene_object_data(store: &WorldSceneStore, entity: Entity) -> SceneObjectData {
+        let stable_id = store.stable_id_of(entity).unwrap_or_default().to_string();
+        let transform = store.transform(entity).unwrap_or_default();
+        let visibility = store.visibility(entity).unwrap_or_default();
+        let render_props = store.render_props(&stable_id).unwrap_or_default();
+        let parent = store
+            .parent_of(entity)
+            .and_then(|p| store.stable_id_of(p))
+            .map(str::to_string);
+        let children = store
+            .children_of(Some(entity))
+            .iter()
+            .filter_map(|&child| store.stable_id_of(child).map(str::to_string))
+            .collect();
+
+        SceneObjectData {
+            id: stable_id,
+            name: store.name(entity).unwrap_or_default().to_string(),
+            object_type: store.object_type(entity).unwrap_or(ObjectType::Empty),
+            transform: Transform {
+                position: transform.position,
+                rotation: transform.rotation,
+                scale: transform.scale,
+            },
+            visible: visibility.visible,
+            locked: visibility.locked,
+            parent,
+            children,
+            scene_path: Self::compute_scene_path(store, entity),
+            props: render_props.props,
+            component_instances: render_props.component_instances,
+        }
+    }
+
+    /// Name-joined path from the root to `entity`, matching the pre-B1
+    /// `SceneDb::update_subtree_path` format exactly (`"Parent/Child"`,
+    /// recomputed on every read rather than cached -- see
+    /// `WorldSceneStore::ObjectSnapshot`'s doc for why it isn't stored data).
+    fn compute_scene_path(store: &WorldSceneStore, entity: Entity) -> String {
+        let mut parts = vec![store.name(entity).unwrap_or_default().to_string()];
+        let mut current = store.parent_of(entity);
+        while let Some(parent) = current {
+            parts.push(store.name(parent).unwrap_or_default().to_string());
+            current = store.parent_of(parent);
+        }
+        parts.reverse();
+        parts.join("/")
+    }
+
+    fn collect_dfs(store: &WorldSceneStore, parent: Option<Entity>, out: &mut Vec<SceneObjectData>) {
+        for &entity in store.children_of(parent) {
+            out.push(Self::entity_to_scene_object_data(store, entity));
+            Self::collect_dfs(store, Some(entity), out);
+        }
+    }
+
     fn merge_component_props(
         object_id: &str,
-        snap: &mut SceneObjectSnapshot,
+        props: &mut HashMap<String, Value>,
         metadata_db: &SceneMetadataDb,
     ) {
         let components = metadata_db.get_components(&object_id.to_string());
         for component in components.into_iter().filter(|component| component.enabled) {
-            if apply_scene_props_for_class(
-                &component.class_name,
-                &mut snap.props,
-                Some(&component.data),
-            ) {
+            if apply_scene_props_for_class(&component.class_name, props, Some(&component.data)) {
                 continue;
             }
 
             if let Value::Object(map) = component.data {
                 for (k, v) in map {
-                    snap.props.insert(k, v);
+                    props.insert(k, v);
                 }
             }
         }
@@ -713,14 +833,14 @@ impl SceneDatabase {
 
     fn sync_registered_component_props_to_scene_db(&self, object_id: &str) {
         let components = self.metadata_db.get_components(&object_id.to_string());
-
-        self.scene_db.update_render_data(object_id, |meta| {
+        let mut store = self.store.write();
+        store.update_render_props(object_id, |render_props| {
             for class_name in registered_scene_props_classes() {
                 let data = components
                     .iter()
                     .find(|c| c.class_name == class_name && c.enabled)
                     .map(|c| &c.data);
-                apply_scene_props_for_class(class_name, &mut meta.props, data);
+                apply_scene_props_for_class(class_name, &mut render_props.props, data);
             }
 
             let instances: Vec<serde_json::Value> = components
@@ -735,14 +855,16 @@ impl SceneDatabase {
                     })
                 })
                 .collect();
-            meta.component_instances = Some(Value::Array(instances));
+            render_props.component_instances = Some(Value::Array(instances));
         });
     }
 
-    fn collect_descendant_ids(scene_db: &SceneDb, id: &str, out: &mut Vec<ObjectId>) {
-        for child_id in scene_db.get_children(Some(id)) {
-            out.push(child_id.clone());
-            Self::collect_descendant_ids(scene_db, &child_id, out);
+    fn collect_descendant_ids(store: &WorldSceneStore, entity: Entity, out: &mut Vec<ObjectId>) {
+        for &child in store.children_of(Some(entity)) {
+            if let Some(id) = store.stable_id_of(child) {
+                out.push(id.to_string());
+            }
+            Self::collect_descendant_ids(store, child, out);
         }
     }
 }
@@ -794,7 +916,7 @@ pub struct LevelEditorCameraState {
 ///
 /// Checks `component_instances[ScriptComponent].data.script_asset` first
 /// (modern path), falls back to the legacy `props["__component_instances"]`
-/// array, and finally the flat `props["script_asset"]`.  Returns an empty
+/// array, and finally the flat `props["script_asset"]`. Returns an empty
 /// string if none are present (the user will fill it in via the properties panel).
 fn find_script_path(props: &HashMap<String, Value>, component_instances: Option<&Value>) -> String {
     // Helper: find ScriptComponent data in a component-instances array.

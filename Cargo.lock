@@ -3007,6 +3007,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scene",
+ "pulsar_scenedb",
  "rapier3d",
  "reqwest 0.13.4",
  "ropey",
