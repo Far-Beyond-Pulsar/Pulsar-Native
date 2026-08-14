@@ -4,7 +4,6 @@ use pulsar_reflection::{
     get_subsystem, scene_id_to_tag, ComponentRuntimeBehavior, ComponentRuntimeContext,
     RuntimeComponentOwner,
 };
-use serde_json::Value;
 
 use super::{LightComponent, LightType};
 
@@ -15,10 +14,10 @@ impl ComponentRuntimeBehavior for LightComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         _component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let light = Self::from_component_data(component_data);
+        let light = component;
         let tag = scene_id_to_tag(owner.scene_object_id);
 
         if !light.general.enabled {

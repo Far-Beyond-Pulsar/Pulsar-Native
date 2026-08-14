@@ -36,13 +36,13 @@ gpu = []
 syn = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
-pulsar_reflection = { workspace = true }
-# NOT a real Rust-level dependency of this crate -- `::pulsar_scenedb::...`
-# only ever appears as a path *inside* `quote!{}`-generated token streams
-# (same as `::serde::Serialize` a few lines up), resolved later in whatever
-# crate compiles the derive's output. Kept out of [dependencies] on purpose;
-# see tests/scene_store_delegation.rs's [dev-dependencies] for where a real
-# one lives, to actually compile and run that generated code.
+# NOT a real Rust-level dependency of this crate -- every `pulsar_reflection::`/
+# `pulsar_scenedb::` reference in src/lib.rs is inside a `quote!{}`-generated
+# token stream (confirmed by grep: zero plain `use`/direct-code references),
+# same as `::serde::Serialize` a few lines below. Both are resolved later, in
+# whatever crate compiles the derive's output. Kept out of [dependencies] on
+# purpose; see [dev-dependencies] below for where real ones live, to actually
+# compile and run that generated code against this crate's own tests.
 
 [dev-dependencies]
 # TEMPORARY branch pin, not `workspace = true` or a local path: needs the
@@ -62,12 +62,15 @@ pulsar_reflection = { workspace = true }
 # `pulsar_scenedb`'s own `gpu`-gated modules need -- see the patch's own
 # comment in the root Cargo.toml for the version-skew history this closes).
 pulsar_scenedb = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", branch = "engine-class-scenestore-export", features = ["gpu"] }
+pulsar_reflection = { workspace = true }
 # `#[engine_class]`'s generated methods call `tracing::warn!` unqualified --
 # every real consumer of this macro already has `tracing` in scope for that
 # reason; the test below is no exception.
 tracing = { workspace = true }
 wgpu = { workspace = true }
 pollster = "1.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

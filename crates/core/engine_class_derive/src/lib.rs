@@ -429,12 +429,41 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let name = &item_struct.ident;
+    // Same deserialize-shim reasoning as `register_runtime_behavior`'s own
+    // codegen below (see its comment): `sync_component` is typed `&Self`,
+    // but `RuntimeBehaviorRegistration.sync` must be a concrete, non-generic
+    // `fn` pointer for `inventory::submit!` and still deals in
+    // `&serde_json::Value` (most callers only have JSON at dispatch time),
+    // so a small per-type shim bridges the two.
     let runtime_registration = if register_runtime {
+        let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
         quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #shim_fn_name(
+                owner: &pulsar_reflection::RuntimeComponentOwner,
+                component_index: usize,
+                component_data: &::serde_json::Value,
+                context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+            ) {
+                let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        context.report_error(format!(
+                            "{} on '{}' is invalid: {error}",
+                            <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                            owner.scene_object_id,
+                        ));
+                        return;
+                    }
+                };
+                <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
+            }
+
             pulsar_reflection::inventory::submit! {
                 pulsar_reflection::RuntimeBehaviorRegistration {
                     class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                    sync: <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+                    sync: #shim_fn_name,
                 }
             }
         }
@@ -484,12 +513,35 @@ pub fn engine_class(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn derive_register_runtime_behavior(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = &input.ident;
+    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", name);
 
     let generated = quote! {
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #shim_fn_name(
+            owner: &pulsar_reflection::RuntimeComponentOwner,
+            component_index: usize,
+            component_data: &::serde_json::Value,
+            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+        ) {
+            let parsed: #name = match ::serde_json::from_value(component_data.clone()) {
+                Ok(value) => value,
+                Err(error) => {
+                    context.report_error(format!(
+                        "{} on '{}' is invalid: {error}",
+                        <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                        owner.scene_object_id,
+                    ));
+                    return;
+                }
+            };
+            <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
+        }
+
         pulsar_reflection::inventory::submit! {
             pulsar_reflection::RuntimeBehaviorRegistration {
                 class_name: <#name as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: <#name as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+                sync: #shim_fn_name,
             }
         }
     };
@@ -547,13 +599,57 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
     }
 
     let self_ty = &impl_block.self_ty;
+    let Some(self_ty_ident) = (match &**self_ty {
+        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    }) else {
+        return syn::Error::new_spanned(
+            self_ty,
+            "#[register_runtime_behavior] requires a simple named type (no generics, no qualified paths)",
+        )
+        .to_compile_error()
+        .into();
+    };
+    let shim_fn_name = quote::format_ident!("__pulsar_reflection_sync_shim_{}", self_ty_ident);
+
+    // `RuntimeBehaviorRegistration.sync` is a plain `fn` pointer (`inventory::
+    // submit!` needs a concrete static, not a generic) and still deals in
+    // `&serde_json::Value` (most callers -- e.g. a scene-file loader -- only
+    // have JSON on hand at dispatch time), while `sync_component` itself is
+    // typed `&Self` (see `ComponentRuntimeBehavior`'s doc in pulsar_reflection
+    // for why). This shim is the one deserialize call that bridges the two,
+    // generated here so component authors never hand-write JSON parsing. A
+    // parse failure is reported via `ComponentRuntimeContext::report_error`,
+    // not a panic.
     let output = quote! {
         #impl_block
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #shim_fn_name(
+            owner: &pulsar_reflection::RuntimeComponentOwner,
+            component_index: usize,
+            component_data: &::serde_json::Value,
+            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+        ) {
+            let parsed: #self_ty = match ::serde_json::from_value(component_data.clone()) {
+                Ok(value) => value,
+                Err(error) => {
+                    context.report_error(format!(
+                        "{} on '{}' is invalid: {error}",
+                        <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                        owner.scene_object_id,
+                    ));
+                    return;
+                }
+            };
+            <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(owner, component_index, &parsed, context);
+        }
 
         pulsar_reflection::inventory::submit! {
             pulsar_reflection::RuntimeBehaviorRegistration {
                 class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
-                sync: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component,
+                sync: #shim_fn_name,
             }
         }
     };

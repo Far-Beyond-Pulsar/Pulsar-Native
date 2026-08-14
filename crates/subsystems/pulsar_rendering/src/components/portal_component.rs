@@ -22,7 +22,6 @@ use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
     get_subsystem,
 };
-use serde_json::Value;
 
 use crate::subsystems::{PortalLinkCache, PortalSide, apply_portal_pair_action, portal_link_key};
 
@@ -73,20 +72,9 @@ impl ComponentRuntimeBehavior for PortalComponent {
     fn sync_component(
         owner: &RuntimeComponentOwner,
         _component_index: usize,
-        component_data: &Value,
+        component: &Self,
         context: &mut dyn ComponentRuntimeContext,
     ) {
-        let component = match serde_json::from_value::<Self>(component_data.clone()) {
-            Ok(c) => c,
-            Err(error) => {
-                context.report_error(format!(
-                    "{PORTAL_CLASS_NAME} on '{}' is invalid: {error}",
-                    owner.scene_object_id
-                ));
-                return;
-            }
-        };
-
         // Phase 1 — pure bookkeeping against `PortalLinkCache`: record (or
         // drop) this object's side and get back whatever action, if any, is
         // now needed to bring the real helio portal in sync. No `Renderer`
