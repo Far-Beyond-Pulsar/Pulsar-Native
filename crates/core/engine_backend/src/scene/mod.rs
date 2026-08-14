@@ -37,7 +37,7 @@ pub use metadata::{
     LightType as MetadataLightType, MeshType as MetadataMeshType, ObjectType as MetadataObjectType,
     SceneObjectMetadata,
 };
-pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
+pub use metadata_db::SceneMetadataDb;
 pub use world_store::{
     Name, ObjectSnapshot, Parent, RenderProps, StableId, Transform, Visibility, WorldSceneStore,
     WorldSceneStoreError,

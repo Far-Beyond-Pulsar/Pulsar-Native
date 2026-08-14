@@ -32,7 +32,7 @@ pub use pulsar_reflection::*;
 // Re-export scene types used by UI crates
 pub use scene::{
     ComponentInstance, EditorObjectId, HelioActorHandle, MetadataObjectType, SceneMetadataDb,
-    SceneObjectMetadata, SceneSnapshot,
+    SceneObjectMetadata,
 };
 
 /// Global instance handle, set once during engine init.
