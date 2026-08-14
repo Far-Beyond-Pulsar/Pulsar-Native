@@ -38,7 +38,10 @@ pub use metadata::{
     SceneObjectMetadata,
 };
 pub use metadata_db::{SceneMetadataDb, SceneSnapshot};
-pub use world_store::{Name, Parent, StableId, Transform, Visibility, WorldSceneStore, WorldSceneStoreError};
+pub use world_store::{
+    Name, ObjectSnapshot, Parent, StableId, Transform, Visibility, WorldSceneStore,
+    WorldSceneStoreError,
+};
 
 use bitflags::bitflags;
 use dashmap::DashMap;

@@ -62,7 +62,7 @@
 //!   (proven by its own tests below) but nothing in `ui_level_editor` reads
 //!   from it yet.
 
-use crate::scene::{GizmoAxis, GizmoState, GizmoType, ObjectDirtyFlags};
+use crate::scene::{GizmoAxis, GizmoState, GizmoType, ObjectDirtyFlags, ObjectType};
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashMap;
 
@@ -248,6 +248,11 @@ impl WorldSceneStore {
         self.world.insert(entity, Name(name.into()));
         self.world.insert(entity, Transform::default());
         self.world.insert(entity, Visibility::default());
+        // Defaults to `Empty` (mirroring `SceneEntry`'s own default) --
+        // callers that need a real classification call `set_object_type`
+        // right after spawning, same two-step shape `SceneDatabase::add_object`
+        // already uses for other fields today.
+        self.world.insert(entity, ObjectType::Empty);
 
         if let Some(parent_entity) = parent {
             self.world.insert(entity, Parent(parent_entity));
@@ -413,6 +418,25 @@ impl WorldSceneStore {
         true
     }
 
+    /// Object classification (Mesh/Light/Folder/...). Defaults to `Empty` at
+    /// spawn (mirrors `SceneEntry`'s own default) -- see [`Self::spawn`].
+    pub fn object_type(&self, entity: Entity) -> Option<ObjectType> {
+        self.world.get::<ObjectType>(entity).copied()
+    }
+
+    /// Set an object's classification. Unlike transform/name/visibility this
+    /// isn't expected to change often post-spawn (an object's Mesh-vs-Light
+    /// identity is normally fixed for its lifetime), but nothing enforces
+    /// that -- it's a plain settable component like the others.
+    pub fn set_object_type(&mut self, entity: Entity, object_type: ObjectType) -> bool {
+        match self.world.get_mut::<ObjectType>(entity) {
+            Some(t) => *t = object_type,
+            None => return false,
+        };
+        self.publish(entity, ObjectDirtyFlags::PROPS);
+        true
+    }
+
     // ── Selection ────────────────────────────────────────────────────────
 
     /// Select an object by stable id (`None` deselects). Mirrors
@@ -523,6 +547,7 @@ impl WorldSceneStore {
             parent,
             transform: self.transform(entity).unwrap_or_default(),
             visibility: self.visibility(entity).unwrap_or_default(),
+            object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
         })
     }
 
@@ -592,6 +617,7 @@ impl WorldSceneStore {
             let entity = store.spawn(Some(snap.stable_id.clone()), snap.name.clone(), parent)?;
             store.set_transform(entity, snap.transform);
             store.set_visibility(entity, snap.visibility);
+            store.set_object_type(entity, snap.object_type);
         }
         Ok(store)
     }
@@ -614,6 +640,7 @@ impl WorldSceneStore {
                 parent: parent_stable_id.clone(),
                 transform: self.transform(entity).unwrap_or_default(),
                 visibility: self.visibility(entity).unwrap_or_default(),
+                object_type: self.object_type(entity).unwrap_or(ObjectType::Empty),
             });
             self.collect_snapshots_dfs(Some(entity), out);
         }
@@ -648,6 +675,7 @@ pub struct ObjectSnapshot {
     pub parent: Option<String>,
     pub transform: Transform,
     pub visibility: Visibility,
+    pub object_type: ObjectType,
 }
 
 #[cfg(test)]
@@ -816,6 +844,7 @@ mod tests {
             parent: parent.map(str::to_string),
             transform: Transform::default(),
             visibility: Visibility::default(),
+            object_type: ObjectType::Empty,
         }
     }
 
@@ -896,6 +925,34 @@ mod tests {
         assert_eq!(snaps.len(), 1);
         assert_eq!(snaps[0].transform, t);
         assert_eq!(snaps[0].visibility, v);
+    }
+
+    // ── Object type ──────────────────────────────────────────────────────
+
+    #[test]
+    fn object_type_defaults_to_empty_and_is_settable() {
+        let mut store = WorldSceneStore::new();
+        let e = store.spawn(Some("obj".into()), "Object", None).unwrap();
+        assert_eq!(store.object_type(e), Some(ObjectType::Empty));
+
+        assert!(store.set_object_type(e, ObjectType::Mesh(crate::scene::MeshType::Cube)));
+        assert_eq!(store.object_type(e), Some(ObjectType::Mesh(crate::scene::MeshType::Cube)));
+    }
+
+    #[test]
+    fn object_type_round_trips_through_snapshots() {
+        let mut store = WorldSceneStore::new();
+        let e = store.spawn(Some("light".into()), "Light", None).unwrap();
+        store.set_object_type(e, ObjectType::Light(crate::scene::LightType::Point));
+
+        let snap = store.get_object("light").unwrap();
+        assert_eq!(snap.object_type, ObjectType::Light(crate::scene::LightType::Point));
+
+        let reloaded = WorldSceneStore::load_from_snapshots(&store.to_snapshots()).unwrap();
+        assert_eq!(
+            reloaded.object_type(reloaded.entity_for("light").unwrap()),
+            Some(ObjectType::Light(crate::scene::LightType::Point))
+        );
     }
 
     // ── Selection ────────────────────────────────────────────────────────
