@@ -83,6 +83,12 @@ pub enum MeshType {
 }
 
 bitflags! {
+    // `Debug`/`PartialEq`/`Eq` weren't previously derived -- added so
+    // `WorldSceneStore`'s tests (`scene::world_store`) can assert on flag
+    // values directly instead of poking at `.bits()`. Safe, additive:
+    // bitflags-generated types are plain integer wrappers, so these derives
+    // can't change existing behavior anywhere else.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct ObjectDirtyFlags: u8 {
         const TRANSFORM = 1;
         const PROPS = 2;

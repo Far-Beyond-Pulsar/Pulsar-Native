@@ -62,6 +62,7 @@
 //!   (proven by its own tests below) but nothing in `ui_level_editor` reads
 //!   from it yet.
 
+use crate::scene::{GizmoAxis, GizmoState, GizmoType, ObjectDirtyFlags};
 use pulsar_scenedb::{Entity, World};
 use std::collections::HashMap;
 
@@ -150,11 +151,57 @@ pub struct WorldSceneStore {
     /// Children reverse-index, auxiliary bookkeeping alongside `Parent`
     /// components (see this module's top doc). Key `None` = root-level.
     children: HashMap<Option<Entity>, Vec<Entity>>,
+    /// Currently selected entity, if any. Mirrors `SceneDbInner::selected`.
+    selected: Option<Entity>,
+    /// Gizmo state for the level editor. Mirrors `SceneDbInner::gizmo_state`
+    /// -- reuses `crate::scene`'s existing `GizmoState`/`GizmoType`/
+    /// `GizmoAxis` types rather than redefining them, since this store lives
+    /// in the same crate and nothing about those types is `SceneDb`-specific.
+    gizmo_state: GizmoState,
+    /// Per-entity accumulated dirty flags since the last
+    /// [`Self::take_dirty_flags`]/[`Self::drain_dirty`] for that entity.
+    /// Entity-keyed internally (the real identity); the public API mirrors
+    /// `SceneDb`'s stable-id-string-keyed shape (see this module's "What
+    /// this deliberately does NOT do yet" doc re: lock-free reads -- this
+    /// whole store is meant to live behind one `RwLock` shared with the
+    /// renderer, not per-field atomics, so a plain `HashMap` here is
+    /// consistent with that design rather than a regression from it).
+    dirty: HashMap<Entity, ObjectDirtyFlags>,
+    /// Monotonic counter, bumped once per [`Self::publish`] call (i.e. once
+    /// per mutation that should cause a render-thread resync). Mirrors
+    /// `SceneDb::dirty_gen()`.
+    dirty_gen: u64,
+    /// Stable ids of entities despawned since the last
+    /// [`Self::take_removed_ids`]. Mirrors `SceneDb::take_removed_ids()`.
+    removed_since_drain: Vec<String>,
+    /// Monotonic counter, bumped on every mutation. Mirrors
+    /// `SceneDb::render_revision()` -- the renderer's "has anything changed
+    /// since I last synced" check.
+    render_revision: u64,
 }
 
 impl WorldSceneStore {
     pub fn new() -> Self {
-        Self { world: World::new(), by_stable_id: HashMap::new(), children: HashMap::new() }
+        Self {
+            world: World::new(),
+            by_stable_id: HashMap::new(),
+            children: HashMap::new(),
+            selected: None,
+            gizmo_state: GizmoState::default(),
+            dirty: HashMap::new(),
+            dirty_gen: 0,
+            removed_since_drain: Vec::new(),
+            render_revision: 0,
+        }
+    }
+
+    /// Record that `entity` changed in a way the renderer cares about, and
+    /// bump both revision counters. Mirrors `SceneDb::publish` -- called from
+    /// every mutator below, not something callers invoke directly.
+    fn publish(&mut self, entity: Entity, flags: ObjectDirtyFlags) {
+        self.dirty.entry(entity).or_insert_with(ObjectDirtyFlags::empty).insert(flags);
+        self.dirty_gen = self.dirty_gen.saturating_add(1);
+        self.render_revision = self.render_revision.saturating_add(1);
     }
 
     /// Direct access to the underlying `World`, for callers that need to
@@ -208,6 +255,7 @@ impl WorldSceneStore {
 
         self.by_stable_id.insert(stable_id, entity);
         self.children.entry(parent).or_default().push(entity);
+        self.publish(entity, ObjectDirtyFlags::all());
 
         Ok(entity)
     }
@@ -232,7 +280,14 @@ impl WorldSceneStore {
         if let Some(id) = self.world.get::<StableId>(entity) {
             let id = id.0.clone();
             self.by_stable_id.remove(&id);
+            self.removed_since_drain.push(id);
         }
+        self.dirty.remove(&entity);
+        if self.selected == Some(entity) {
+            self.selected = None;
+        }
+        self.dirty_gen = self.dirty_gen.saturating_add(1);
+        self.render_revision = self.render_revision.saturating_add(1);
 
         self.world.despawn(entity);
     }
@@ -303,6 +358,7 @@ impl WorldSceneStore {
             }
         }
         self.children.entry(new_parent).or_default().push(entity);
+        self.publish(entity, ObjectDirtyFlags::HIERARCHY | ObjectDirtyFlags::TRANSFORM);
 
         Ok(())
     }
@@ -319,8 +375,10 @@ impl WorldSceneStore {
                 *t = transform;
                 true
             }
-            None => false,
-        }
+            None => return false,
+        };
+        self.publish(entity, ObjectDirtyFlags::TRANSFORM);
+        true
     }
 
     pub fn name(&self, entity: Entity) -> Option<&str> {
@@ -333,8 +391,10 @@ impl WorldSceneStore {
                 n.0 = name.into();
                 true
             }
-            None => false,
-        }
+            None => return false,
+        };
+        self.publish(entity, ObjectDirtyFlags::NAME);
+        true
     }
 
     pub fn visibility(&self, entity: Entity) -> Option<Visibility> {
@@ -347,6 +407,142 @@ impl WorldSceneStore {
                 *v = visibility;
                 true
             }
+            None => return false,
+        };
+        self.publish(entity, ObjectDirtyFlags::VISIBILITY);
+        true
+    }
+
+    // ── Selection ────────────────────────────────────────────────────────
+
+    /// Select an object by stable id (`None` deselects). Mirrors
+    /// `SceneDb::select_object`. Unknown ids are treated as a deselect --
+    /// same permissive contract as `SceneDb` (selecting a since-removed id
+    /// is a normal race between the UI and render threads, not an error).
+    pub fn select_object(&mut self, stable_id: Option<String>) {
+        self.selected = stable_id.and_then(|id| self.entity_for(&id));
+    }
+
+    /// Mirrors `SceneDb::get_selected_id`.
+    pub fn get_selected_id(&self) -> Option<String> {
+        self.selected.and_then(|e| self.stable_id_of(e)).map(str::to_string)
+    }
+
+    pub fn get_selected_entity(&self) -> Option<Entity> {
+        self.selected
+    }
+
+    // ── Gizmo state ──────────────────────────────────────────────────────
+
+    /// Mirrors `SceneDb::get_gizmo_state`.
+    pub fn get_gizmo_state(&self) -> GizmoState {
+        self.gizmo_state.clone()
+    }
+
+    /// Mirrors `SceneDb::set_gizmo_type`.
+    pub fn set_gizmo_type(&mut self, gizmo_type: GizmoType) {
+        self.gizmo_state.gizmo_type = gizmo_type;
+    }
+
+    /// Mirrors `SceneDb::set_gizmo_highlighted_axis`.
+    pub fn set_gizmo_highlighted_axis(&mut self, axis: Option<GizmoAxis>) {
+        self.gizmo_state.highlighted_axis = axis;
+    }
+
+    // ── Dirty / revision tracking ────────────────────────────────────────
+    //
+    // String-id-keyed, mirroring `SceneDb`'s exact shape -- these exist
+    // because the renderer's sync loop (`HelioRenderer::sync_scene`/
+    // `sync_scene_delta`) only ever holds stable-id strings, never `Entity`
+    // values, across a frame boundary (it re-resolves ids from snapshots
+    // every pass today). See this module's top doc for why this is a plain
+    // `HashMap` behind one lock rather than `SceneDb`'s per-entry atomics.
+
+    /// Mirrors `SceneDb::render_revision`.
+    pub fn render_revision(&self) -> u64 {
+        self.render_revision
+    }
+
+    /// Mirrors `SceneDb::dirty_gen`.
+    pub fn dirty_gen(&self) -> u64 {
+        self.dirty_gen
+    }
+
+    /// Mirrors `SceneDb::mark_dirty`. No-op if `id` doesn't resolve.
+    pub fn mark_dirty(&mut self, id: &str, flags: ObjectDirtyFlags) {
+        if let Some(entity) = self.entity_for(id) {
+            self.publish(entity, flags);
+        }
+    }
+
+    /// Mirrors `SceneDb::take_dirty_flags` -- returns and clears the flags
+    /// accumulated for one object since the last call.
+    pub fn take_dirty_flags(&mut self, id: &str) -> ObjectDirtyFlags {
+        match self.entity_for(id) {
+            Some(entity) => self.dirty.remove(&entity).unwrap_or_else(ObjectDirtyFlags::empty),
+            None => ObjectDirtyFlags::empty(),
+        }
+    }
+
+    /// Mirrors `SceneDb::drain_dirty` -- returns and clears every object's
+    /// accumulated dirty flags since the last call.
+    pub fn drain_dirty(&mut self) -> Vec<(String, ObjectDirtyFlags)> {
+        std::mem::take(&mut self.dirty)
+            .into_iter()
+            .filter_map(|(entity, flags)| {
+                self.stable_id_of(entity).map(|id| (id.to_string(), flags))
+            })
+            .collect()
+    }
+
+    /// Mirrors `SceneDb::take_removed_ids` -- stable ids despawned since the
+    /// last call.
+    pub fn take_removed_ids(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.removed_since_drain)
+    }
+
+    // ── String-id convenience wrappers ───────────────────────────────────
+    //
+    // `SceneDatabase`'s public API and the renderer's sync loop both operate
+    // on stable-id strings, not raw `Entity` values -- these exist so that
+    // rewiring, e.g. `HelioRenderer::handle_left_release`'s
+    // `scene_db.apply_transform(&scene_id, pos, rot, scale)` call, is a
+    // type/name swap rather than a control-flow rewrite. Callers that
+    // already have an `Entity` in hand (most of `WorldSceneStore`'s own
+    // internals, and anything iterating `to_snapshots()`) should keep using
+    // the `Entity`-keyed primitives above instead -- these wrappers pay an
+    // extra `HashMap` lookup each call.
+
+    /// Mirrors `SceneDb::get_object`.
+    pub fn get_object(&self, id: &str) -> Option<ObjectSnapshot> {
+        let entity = self.entity_for(id)?;
+        let parent = self.parent_of(entity).and_then(|p| self.stable_id_of(p)).map(str::to_string);
+        Some(ObjectSnapshot {
+            stable_id: id.to_string(),
+            name: self.name(entity).unwrap_or_default().to_string(),
+            parent,
+            transform: self.transform(entity).unwrap_or_default(),
+            visibility: self.visibility(entity).unwrap_or_default(),
+        })
+    }
+
+    /// Mirrors `SceneDb::get_all_snapshots`. Same as [`Self::to_snapshots`]
+    /// under a name that matches the call sites being migrated.
+    pub fn get_all_snapshots(&self) -> Vec<ObjectSnapshot> {
+        self.to_snapshots()
+    }
+
+    /// Mirrors `SceneDb::apply_transform`. No-op (returns `false`) if `id`
+    /// doesn't resolve to a live entity.
+    pub fn apply_transform(
+        &mut self,
+        id: &str,
+        position: [f32; 3],
+        rotation: [f32; 3],
+        scale: [f32; 3],
+    ) -> bool {
+        match self.entity_for(id) {
+            Some(entity) => self.set_transform(entity, Transform { position, rotation, scale }),
             None => false,
         }
     }
@@ -700,5 +896,168 @@ mod tests {
         assert_eq!(snaps.len(), 1);
         assert_eq!(snaps[0].transform, t);
         assert_eq!(snaps[0].visibility, v);
+    }
+
+    // ── Selection ────────────────────────────────────────────────────────
+
+    #[test]
+    fn select_object_by_stable_id_round_trips() {
+        let mut store = WorldSceneStore::new();
+        let e = store.spawn(Some("obj".into()), "Object", None).unwrap();
+
+        store.select_object(Some("obj".into()));
+        assert_eq!(store.get_selected_id(), Some("obj".to_string()));
+        assert_eq!(store.get_selected_entity(), Some(e));
+
+        store.select_object(None);
+        assert_eq!(store.get_selected_id(), None);
+        assert_eq!(store.get_selected_entity(), None);
+    }
+
+    #[test]
+    fn selecting_an_unknown_id_deselects() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("obj".into()), "Object", None).unwrap();
+        store.select_object(Some("obj".into()));
+
+        store.select_object(Some("does_not_exist".into()));
+
+        assert_eq!(store.get_selected_id(), None);
+    }
+
+    #[test]
+    fn despawning_the_selected_entity_clears_selection() {
+        let mut store = WorldSceneStore::new();
+        let e = store.spawn(Some("obj".into()), "Object", None).unwrap();
+        store.select_object(Some("obj".into()));
+
+        store.despawn(e);
+
+        assert_eq!(store.get_selected_id(), None);
+        assert_eq!(store.get_selected_entity(), None);
+    }
+
+    // ── Gizmo state ──────────────────────────────────────────────────────
+
+    #[test]
+    fn gizmo_state_defaults_and_round_trips() {
+        let mut store = WorldSceneStore::new();
+        assert_eq!(store.get_gizmo_state().gizmo_type, GizmoType::None);
+        assert_eq!(store.get_gizmo_state().highlighted_axis, None);
+
+        store.set_gizmo_type(GizmoType::Rotate);
+        store.set_gizmo_highlighted_axis(Some(GizmoAxis::Y));
+
+        let state = store.get_gizmo_state();
+        assert_eq!(state.gizmo_type, GizmoType::Rotate);
+        assert_eq!(state.highlighted_axis, Some(GizmoAxis::Y));
+    }
+
+    // ── Dirty / revision tracking ────────────────────────────────────────
+
+    #[test]
+    fn spawn_marks_the_new_entity_fully_dirty() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("obj".into()), "Object", None).unwrap();
+
+        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::all());
+        // Draining clears it -- a second take is empty.
+        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::empty());
+    }
+
+    #[test]
+    fn apply_transform_marks_transform_dirty_and_bumps_revision() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("obj".into()), "Object", None).unwrap();
+        store.take_dirty_flags("obj"); // clear the spawn-time dirty flags
+        let revision_before = store.render_revision();
+
+        let ok = store.apply_transform("obj", [1.0, 2.0, 3.0], [0.0; 3], [1.0; 3]);
+
+        assert!(ok);
+        assert_eq!(store.take_dirty_flags("obj"), ObjectDirtyFlags::TRANSFORM);
+        assert!(store.render_revision() > revision_before);
+        assert_eq!(
+            store.get_object("obj").unwrap().transform,
+            Transform { position: [1.0, 2.0, 3.0], rotation: [0.0; 3], scale: [1.0; 3] }
+        );
+    }
+
+    #[test]
+    fn apply_transform_on_an_unknown_id_is_a_no_op() {
+        let mut store = WorldSceneStore::new();
+        assert!(!store.apply_transform("nope", [1.0; 3], [0.0; 3], [1.0; 3]));
+    }
+
+    #[test]
+    fn drain_dirty_returns_every_object_and_clears_all_of_them() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("a".into()), "A", None).unwrap();
+        store.spawn(Some("b".into()), "B", None).unwrap();
+
+        let drained = store.drain_dirty();
+        let ids: std::collections::HashSet<_> = drained.iter().map(|(id, _)| id.clone()).collect();
+        assert_eq!(ids, ["a".to_string(), "b".to_string()].into_iter().collect());
+
+        assert!(store.drain_dirty().is_empty());
+        assert_eq!(store.take_dirty_flags("a"), ObjectDirtyFlags::empty());
+    }
+
+    #[test]
+    fn take_removed_ids_reports_despawned_entities_once() {
+        let mut store = WorldSceneStore::new();
+        let e = store.spawn(Some("gone".into()), "Gone", None).unwrap();
+        store.despawn(e);
+
+        assert_eq!(store.take_removed_ids(), vec!["gone".to_string()]);
+        assert!(store.take_removed_ids().is_empty());
+    }
+
+    #[test]
+    fn despawn_reports_every_removed_descendant() {
+        let mut store = WorldSceneStore::new();
+        let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
+        store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
+
+        store.despawn(parent);
+
+        let removed = store.take_removed_ids();
+        let removed: std::collections::HashSet<_> = removed.into_iter().collect();
+        assert_eq!(removed, ["parent".to_string(), "child".to_string()].into_iter().collect());
+    }
+
+    #[test]
+    fn mark_dirty_on_an_unknown_id_is_a_no_op() {
+        let mut store = WorldSceneStore::new();
+        let revision_before = store.render_revision();
+        store.mark_dirty("nope", ObjectDirtyFlags::TRANSFORM);
+        assert_eq!(store.render_revision(), revision_before);
+    }
+
+    // ── String-id convenience wrappers ───────────────────────────────────
+
+    #[test]
+    fn get_object_resolves_parent_as_a_stable_id() {
+        let mut store = WorldSceneStore::new();
+        let parent = store.spawn(Some("parent".into()), "Parent", None).unwrap();
+        store.spawn(Some("child".into()), "Child", Some(parent)).unwrap();
+
+        let child = store.get_object("child").unwrap();
+        assert_eq!(child.parent, Some("parent".to_string()));
+        assert_eq!(child.name, "Child");
+    }
+
+    #[test]
+    fn get_object_on_an_unknown_id_is_none() {
+        let store = WorldSceneStore::new();
+        assert_eq!(store.get_object("nope"), None);
+    }
+
+    #[test]
+    fn get_all_snapshots_matches_to_snapshots() {
+        let mut store = WorldSceneStore::new();
+        store.spawn(Some("a".into()), "A", None).unwrap();
+        store.spawn(Some("b".into()), "B", None).unwrap();
+        assert_eq!(store.get_all_snapshots(), store.to_snapshots());
     }
 }
