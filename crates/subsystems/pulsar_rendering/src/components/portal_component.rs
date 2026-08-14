@@ -17,7 +17,7 @@
 //! `RuntimeComponentOwner`), so animating, dragging, or otherwise moving the
 //! parent object moves its side of the portal automatically.
 
-use engine_class_derive::{engine_class, register_runtime_behavior};
+use engine_class_derive::{engine_class, register_runtime_behavior, register_world_component};
 use pulsar_reflection::{
     ComponentRuntimeBehavior, ComponentRuntimeContext, LiveKeySet, RuntimeComponentOwner,
     get_subsystem,
@@ -65,6 +65,11 @@ impl Default for PortalComponent {
     }
 }
 
+// Phase B5 (Pulsar-Native#556). Pairing logic (PortalLinkCache) lives
+// inside sync_component's own body, unaffected by whether the component
+// value came from JSON or a hydrated World value -- no special handling
+// needed here for that.
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for PortalComponent {
     const CLASS_NAME: &'static str = PORTAL_CLASS_NAME;

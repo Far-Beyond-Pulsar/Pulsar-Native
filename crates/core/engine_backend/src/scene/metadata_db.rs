@@ -437,51 +437,6 @@ impl Default for SceneMetadataDb {
     }
 }
 
-/// Serializable scene snapshot for save/load
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SceneSnapshot {
-    /// All objects in depth-first order
-    pub objects: Vec<SceneObjectMetadata>,
-
-    /// Component data per object
-    pub components: Vec<(EditorObjectId, Vec<super::metadata::ComponentInstance>)>,
-}
-
-impl SceneMetadataDb {
-    /// Create a snapshot for serialization
-    pub fn create_snapshot(&self) -> SceneSnapshot {
-        let objects = self.get_all_objects_dfs();
-
-        let components: Vec<_> = objects
-            .iter()
-            .map(|obj| (obj.editor_id.clone(), self.get_components(&obj.editor_id)))
-            .filter(|(_, comps)| !comps.is_empty())
-            .collect();
-
-        SceneSnapshot {
-            objects,
-            components,
-        }
-    }
-
-    /// Load from a snapshot
-    pub fn load_snapshot(&self, snapshot: SceneSnapshot) {
-        self.clear();
-
-        // Load objects (they're already in depth-first order, so parents before children)
-        for metadata in snapshot.objects {
-            self.add_object(metadata.clone(), metadata.parent.clone());
-        }
-
-        // Load components
-        for (object_id, components) in snapshot.components {
-            for component in components {
-                self.add_component_instance(&object_id, component);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

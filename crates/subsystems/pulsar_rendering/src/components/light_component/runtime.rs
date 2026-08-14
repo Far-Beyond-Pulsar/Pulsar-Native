@@ -1,4 +1,4 @@
-use engine_class_derive::register_runtime_behavior;
+use engine_class_derive::{register_runtime_behavior, register_world_component};
 use helio::{GpuLight, LightType as HelioLightType, Renderer, SceneActor};
 use pulsar_reflection::{
     get_subsystem, scene_id_to_tag, ComponentRuntimeBehavior, ComponentRuntimeContext,
@@ -7,6 +7,8 @@ use pulsar_reflection::{
 
 use super::{LightComponent, LightType};
 
+// Phase B5 (Pulsar-Native#556).
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for LightComponent {
     const CLASS_NAME: &'static str = "LightComponent";

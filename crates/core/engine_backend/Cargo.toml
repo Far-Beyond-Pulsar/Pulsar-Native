@@ -36,6 +36,7 @@ engine_state.workspace = true
 # scene store is moving onto this instead of the hand-rolled SceneDb/
 # SceneMetadataDb/ComponentDb in `src/scene/`. See `src/scene/world_store.rs`.
 pulsar_scenedb.workspace = true
+pulsar_world_registry.workspace = true
 
 # Shared scene loading — canonical implementation used by both engine and game
 pulsar_scene.workspace = true

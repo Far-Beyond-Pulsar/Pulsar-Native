@@ -18,6 +18,7 @@ plugin_editor_api.workspace = true
 anyhow.workspace = true
 tool_registry = { workspace = true }
 pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
 
 # Engine
 engine_state.workspace = true

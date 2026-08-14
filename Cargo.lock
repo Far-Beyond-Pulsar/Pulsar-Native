@@ -3007,7 +3007,8 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scene",
- "pulsar_scenedb",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_world_registry",
  "rapier3d",
  "reqwest 0.13.4",
  "ropey",
@@ -9060,6 +9061,7 @@ dependencies = [
  "engine_class_derive",
  "pulsar_reflection",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
  "tracing",
@@ -9119,6 +9121,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
  "pulsar_terrain",
+ "pulsar_world_registry",
  "serde",
  "serde_json",
  "thiserror 2.0.19",
@@ -9230,6 +9233,17 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.19",
  "tracing",
+]
+
+[[package]]
+name = "pulsar_world_registry"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+ "pulsar_reflection",
+ "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -13551,6 +13565,7 @@ dependencies = [
  "pulsar_reflection",
  "pulsar_rendering",
  "pulsar_scenedb 0.1.0 (git+https://github.com/Far-Beyond-Pulsar/SceneDB?rev=43921b0d432e99654161e1de65799fb65fa629f0)",
+ "pulsar_world_registry",
  "raw-window-handle",
  "rfd",
  "rust-i18n",
