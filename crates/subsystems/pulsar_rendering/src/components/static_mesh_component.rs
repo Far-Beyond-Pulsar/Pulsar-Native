@@ -1,6 +1,8 @@
 //! Static mesh component for mesh asset assignment.
 
-use engine_class_derive::{engine_class, register_runtime_behavior, register_scene_props_applier};
+use engine_class_derive::{
+    engine_class, register_runtime_behavior, register_scene_props_applier, register_world_component,
+};
 use glam::{EulerRot, Mat4, Quat, Vec3};
 use helio::{GpuMaterial, GroupMask, Movability, ObjectDescriptor, Renderer, SceneActor};
 use pulsar_reflection::{
@@ -332,6 +334,12 @@ impl ScenePropsProjector for StaticMeshComponent {
     }
 }
 
+// Phase B4 (Pulsar-Native#555): the first component migrated onto
+// pulsar_world_registry's World bridge -- proves the pattern before B5
+// rolls it out to the rest. `#[register_world_component]` must be written
+// above `#[register_runtime_behavior]` (see that macro's own doc for why:
+// only the bottom attribute in the stack re-emits the impl block).
+#[register_world_component]
 #[register_runtime_behavior]
 impl ComponentRuntimeBehavior for StaticMeshComponent {
     const CLASS_NAME: &'static str = "StaticMeshComponent";

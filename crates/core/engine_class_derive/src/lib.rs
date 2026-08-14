@@ -657,6 +657,155 @@ pub fn register_runtime_behavior(attr: TokenStream, item: TokenStream) -> TokenS
     output.into()
 }
 
+/// Opt a component into `pulsar_world_registry`'s `World` bridge
+/// (Pulsar-Native#555/#556, Phase B4/B5): its typed value can be hydrated
+/// from JSON once per edit and inserted into `pulsar_scenedb::World`, then
+/// `HelioRenderer::sync_scene` dispatches `ComponentRuntimeBehavior::
+/// sync_component` directly off that typed value -- no per-frame
+/// `serde_json::from_value` for this component's class.
+///
+/// Applied *in addition to* `#[register_runtime_behavior]` (same `impl
+/// ComponentRuntimeBehavior for Type` block, stack both attributes) -- this
+/// is deliberately a separate, opt-in macro so migrating a component onto
+/// `World`-backed storage doesn't touch the already-shipped
+/// `RuntimeBehaviorRegistration`/JSON dispatch path at all. Components that
+/// haven't been migrated yet keep working exactly as before, through that
+/// unchanged path.
+///
+/// Same validation as `#[register_runtime_behavior]` -- see that macro's
+/// implementation for why each check exists; kept as a near-identical
+/// sibling rather than factored together, since the two attributes are
+/// meant to be readable and removable independently as B5 rolls out one
+/// component at a time.
+#[proc_macro_attribute]
+pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    if !attr.is_empty() {
+        return syn::Error::new_spanned(
+            proc_macro2::TokenStream::from(attr),
+            "#[register_world_component] does not accept arguments",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let impl_block = parse_macro_input!(item as ItemImpl);
+
+    if !impl_block.generics.params.is_empty() {
+        return syn::Error::new_spanned(
+            &impl_block.generics,
+            "#[register_world_component] does not support generic impl blocks",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let Some((_, trait_path, _)) = &impl_block.trait_ else {
+        return syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "#[register_world_component] must be used on `impl ComponentRuntimeBehavior for Type`",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let Some(trait_ident) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new_spanned(
+            trait_path,
+            "invalid trait path for #[register_world_component]",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    if trait_ident != "ComponentRuntimeBehavior" {
+        return syn::Error::new_spanned(
+            trait_path,
+            "#[register_world_component] must target `ComponentRuntimeBehavior` impl",
+        )
+        .to_compile_error()
+        .into();
+    }
+
+    let self_ty = &impl_block.self_ty;
+    let Some(self_ty_ident) = (match &**self_ty {
+        syn::Type::Path(type_path) => type_path.path.segments.last().map(|s| &s.ident),
+        _ => None,
+    }) else {
+        return syn::Error::new_spanned(
+            self_ty,
+            "#[register_world_component] requires a simple named type (no generics, no qualified paths)",
+        )
+        .to_compile_error()
+        .into();
+    };
+    let hydrate_fn_name = quote::format_ident!("__pulsar_world_hydrate_{}", self_ty_ident);
+    let remove_fn_name = quote::format_ident!("__pulsar_world_remove_{}", self_ty_ident);
+    let dispatch_fn_name = quote::format_ident!("__pulsar_world_dispatch_{}", self_ty_ident);
+
+    // Note this macro does NOT emit `#impl_block` -- unlike
+    // `#[register_runtime_behavior]`, it's meant to be stacked alongside
+    // that macro on the same impl block, and only one of the two attributes
+    // on an item should re-emit the original block (attribute macros
+    // compose top-to-bottom; whichever runs first passes its output to the
+    // next, so re-emitting from both would duplicate the impl). Convention
+    // here: `#[register_runtime_behavior]` keeps ownership of emitting the
+    // block; `#[register_world_component]` is written *above* it and must
+    // only add new items.
+    let output = quote! {
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #hydrate_fn_name(
+            world: &mut pulsar_scenedb::World,
+            entity: pulsar_scenedb::Entity,
+            data: &::serde_json::Value,
+        ) -> ::std::result::Result<(), ::std::string::String> {
+            let parsed: #self_ty = ::serde_json::from_value(data.clone())
+                .map_err(|error| error.to_string())?;
+            world.insert(entity, parsed);
+            Ok(())
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #remove_fn_name(world: &mut pulsar_scenedb::World, entity: pulsar_scenedb::Entity) {
+            let _ = world.remove::<#self_ty>(entity);
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #dispatch_fn_name(
+            world: &pulsar_scenedb::World,
+            entity: pulsar_scenedb::Entity,
+            owner: &pulsar_reflection::RuntimeComponentOwner,
+            component_index: usize,
+            context: &mut dyn pulsar_reflection::ComponentRuntimeContext,
+        ) -> bool {
+            match world.get::<#self_ty>(entity) {
+                Some(component) => {
+                    <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::sync_component(
+                        owner, component_index, component, context,
+                    );
+                    true
+                }
+                None => false,
+            }
+        }
+
+        pulsar_world_registry::inventory::submit! {
+            pulsar_world_registry::WorldComponentRegistration {
+                class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
+                hydrate: #hydrate_fn_name,
+                remove: #remove_fn_name,
+                dispatch: #dispatch_fn_name,
+            }
+        }
+
+        #impl_block
+    };
+
+    output.into()
+}
+
 #[proc_macro_attribute]
 pub fn register_scene_props_applier(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {

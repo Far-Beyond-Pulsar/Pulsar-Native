@@ -857,6 +857,45 @@ impl SceneDatabase {
                 .collect();
             render_props.component_instances = Some(Value::Array(instances));
         });
+
+        // Phase B4/B5 (Pulsar-Native#555/#556): hydrate or remove each
+        // World-backed component's typed value to match this object's
+        // current enabled component list, so HelioRenderer::sync_scene can
+        // dispatch ComponentRuntimeBehavior::sync_component directly off
+        // World -- no per-frame JSON deserialize for migrated classes. Runs
+        // over every *registered* class (not just ones this object
+        // currently has) so a component that was just removed or disabled
+        // gets its stale typed World value dropped, not merely skipped on
+        // the next hydration.
+        if let Some(entity) = store.entity_for(object_id) {
+            for class_name in pulsar_world_registry::registered_world_component_classes() {
+                let enabled_data = components
+                    .iter()
+                    .find(|c| c.class_name == class_name && c.enabled)
+                    .map(|c| &c.data);
+                match enabled_data {
+                    Some(data) => {
+                        if let Err(error) = pulsar_world_registry::hydrate_world_component_for_class(
+                            class_name,
+                            store.world_mut(),
+                            entity,
+                            data,
+                        ) {
+                            tracing::warn!(
+                                "World hydration failed for {class_name} on '{object_id}': {error}"
+                            );
+                        }
+                    }
+                    None => {
+                        pulsar_world_registry::remove_world_component_for_class(
+                            class_name,
+                            store.world_mut(),
+                            entity,
+                        );
+                    }
+                }
+            }
+        }
     }
 
     fn collect_descendant_ids(store: &WorldSceneStore, entity: Entity, out: &mut Vec<ObjectId>) {
@@ -1105,5 +1144,131 @@ mod history_snapshot_tests {
 
         let child = db.get_object(&child_id).expect("child restored");
         assert_eq!(child.parent.as_deref(), Some(parent_id.as_str()));
+    }
+}
+
+/// Phase B4 (Pulsar-Native#555): proves `StaticMeshComponent` -- the first
+/// component migrated onto `pulsar_world_registry`'s `World` bridge --
+/// actually gets hydrated/removed through the real `SceneDatabase` wiring,
+/// not just the synthetic fixture `pulsar_world_registry`'s own unit tests
+/// use. Reaches into `db.store` directly (a private field) -- valid since
+/// this module is a descendant of `scene_database`, not external code
+/// working through the public API only.
+#[cfg(test)]
+mod world_component_hydration_tests {
+    use super::*;
+    use pulsar_rendering::StaticMeshComponent;
+
+    fn object(name: &str) -> SceneObjectData {
+        SceneObjectData {
+            id: String::new(),
+            name: name.to_string(),
+            object_type: ObjectType::Mesh(MeshType::Custom),
+            transform: Transform::default(),
+            visible: true,
+            locked: false,
+            parent: None,
+            children: vec![],
+            scene_path: String::new(),
+            props: Default::default(),
+            component_instances: None,
+        }
+    }
+
+    #[test]
+    fn add_component_hydrates_the_typed_world_value() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        let hydrated = store.world().get::<StaticMeshComponent>(entity).unwrap();
+        assert_eq!(hydrated.mesh_asset.as_str(), "meshes/primitives/SM_Cube.fbx");
+    }
+
+    #[test]
+    fn update_component_property_re_hydrates_the_typed_value() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+
+        db.update_component_property(
+            &id,
+            "StaticMeshComponent",
+            "mesh_asset",
+            serde_json::json!("meshes/primitives/SM_Sphere.fbx"),
+        );
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        let hydrated = store.world().get::<StaticMeshComponent>(entity).unwrap();
+        assert_eq!(hydrated.mesh_asset.as_str(), "meshes/primitives/SM_Sphere.fbx");
+    }
+
+    #[test]
+    fn remove_component_drops_the_typed_world_value() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+        {
+            let store = db.store.read();
+            let entity = store.entity_for(&id).unwrap();
+            assert!(store.world().get::<StaticMeshComponent>(entity).is_some());
+        }
+
+        db.remove_component(&id, 0);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store.world().get::<StaticMeshComponent>(entity).is_none());
+    }
+
+    #[test]
+    fn disabling_a_component_drops_the_typed_world_value() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": "meshes/primitives/SM_Cube.fbx"}),
+        );
+
+        db.set_component_enabled(&id, 0, false);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store.world().get::<StaticMeshComponent>(entity).is_none());
+    }
+
+    #[test]
+    fn malformed_component_json_does_not_hydrate_but_does_not_panic() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Cube"), None);
+
+        // `mesh_asset` should be a string; this is a type mismatch, not a
+        // missing field, so it should fail hydration cleanly.
+        db.add_component(
+            &id,
+            "StaticMeshComponent".to_string(),
+            serde_json::json!({"mesh_asset": 12345}),
+        );
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store.world().get::<StaticMeshComponent>(entity).is_none());
     }
 }

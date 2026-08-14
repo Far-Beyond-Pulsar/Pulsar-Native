@@ -1159,7 +1159,28 @@ impl HelioRenderer {
                 project_root: &project_root,
             };
 
+            // Phase B4/B5 (Pulsar-Native#555/#556): a class registered with
+            // `#[register_world_component]` dispatches directly off the
+            // typed value `SceneDatabase` already hydrated into `World` --
+            // no `serde_json::from_value` on this hot path. Falls back to
+            // the JSON dispatch below for anything not yet migrated (most of
+            // B5's list, at time of writing), or in the unexpected case
+            // hydration didn't happen for some reason -- fails safe rather
+            // than silently dropping the object's rendering.
+            let entity = store.entity_for(snap.stable_id.as_str());
             for (component_index, class_name, data) in component_instances {
+                if let Some(entity) = entity {
+                    if pulsar_world_registry::dispatch_world_component_for_class(
+                        class_name.as_str(),
+                        store.world(),
+                        entity,
+                        &owner,
+                        component_index,
+                        &mut ctx,
+                    ) {
+                        continue;
+                    }
+                }
                 let _ = apply_runtime_behavior_for_class(
                     class_name.as_str(),
                     &owner,

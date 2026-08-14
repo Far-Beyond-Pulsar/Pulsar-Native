@@ -16,6 +16,7 @@ engine_class_derive = { workspace = true }
 pulsar_reflection = { workspace = true, features = ["prims-gpui"] }
 pulsar_events = { workspace = true }
 pulsar_scenedb = { workspace = true }
+pulsar_world_registry = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = { workspace = true }
