@@ -1317,4 +1317,60 @@ mod world_component_hydration_tests {
         assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_a).is_some());
         assert!(store.world().get::<pulsar_rendering::PortalComponent>(entity_b).is_some());
     }
+
+    /// Phase D (Pulsar-Native#558): `ReflectionCaptureComponent` is the
+    /// first newly-authored (not migrated) component to go through this
+    /// mechanism -- same spot-check shape as B5's, confirming the
+    /// already-proven mechanism holds for brand-new components too, not
+    /// just migrated ones.
+    #[test]
+    fn reflection_capture_component_hydrates_via_its_default_json() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Probe"), None);
+        let default_json =
+            serde_json::to_value(pulsar_rendering::ReflectionCaptureComponent::default()).unwrap();
+
+        db.add_component(&id, "ReflectionCaptureComponent".to_string(), default_json);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store
+            .world()
+            .get::<pulsar_rendering::ReflectionCaptureComponent>(entity)
+            .is_some());
+    }
+
+    #[test]
+    fn water_volume_component_hydrates_via_its_default_json() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Lake"), None);
+        let default_json =
+            serde_json::to_value(pulsar_rendering::WaterVolumeComponent::default()).unwrap();
+
+        db.add_component(&id, "WaterVolumeComponent".to_string(), default_json);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store
+            .world()
+            .get::<pulsar_rendering::WaterVolumeComponent>(entity)
+            .is_some());
+    }
+
+    #[test]
+    fn post_process_volume_component_hydrates_via_its_default_json() {
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("GlobalPostFx"), None);
+        let default_json =
+            serde_json::to_value(pulsar_rendering::PostProcessVolumeComponent::default()).unwrap();
+
+        db.add_component(&id, "PostProcessVolumeComponent".to_string(), default_json);
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        assert!(store
+            .world()
+            .get::<pulsar_rendering::PostProcessVolumeComponent>(entity)
+            .is_some());
+    }
 }

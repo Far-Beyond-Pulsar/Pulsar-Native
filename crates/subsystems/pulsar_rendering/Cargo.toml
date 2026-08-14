@@ -22,6 +22,7 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 glam = { workspace = true, features = ["serde"] }
 helio.workspace = true
+libhelio.workspace = true
 helio-asset-compat = { workspace = true }
 helio-planet-voxel-core = { workspace = true }
 helio-pass-planetary-voxel = { workspace = true }
