@@ -56,7 +56,7 @@
 // same pattern `pulsar_reflection` already uses for `RuntimeBehaviorRegistration`.
 pub use inventory;
 
-use pulsar_reflection::{ComponentRuntimeContext, RuntimeComponentOwner};
+use pulsar_reflection::{ComponentRuntimeContext, EngineClass, RuntimeComponentOwner};
 use pulsar_scenedb::{Entity, World};
 use serde_json::Value;
 
@@ -86,6 +86,15 @@ pub struct WorldComponentRegistration {
         usize,
         &mut dyn ComponentRuntimeContext,
     ) -> bool,
+    /// Borrow the typed value already in `World` as `&dyn EngineClass` --
+    /// the properties panel's *read* path. No JSON, no throwaway `Default`
+    /// instance: this is the one real, live value.
+    pub get_as_engine_class: fn(&World, Entity) -> Option<&dyn EngineClass>,
+    /// Borrow the typed value already in `World` as `&mut dyn EngineClass`
+    /// -- the properties panel's *write* path. Apply a `PropertyMetadata`
+    /// setter closure straight to this reference to mutate the one real
+    /// value in place; there is no second copy to keep in sync afterward.
+    pub get_as_engine_class_mut: fn(&mut World, Entity) -> Option<&mut dyn EngineClass>,
 }
 
 inventory::collect!(WorldComponentRegistration);
@@ -143,6 +152,33 @@ pub fn dispatch_world_component_for_class(
     }
 }
 
+/// Borrow `class_name`'s typed value already in `World` as `&dyn EngineClass`
+/// for reading -- the properties panel's read path (Pulsar-Native#561).
+/// `None` if `class_name` isn't registered here, or `entity` doesn't have
+/// this component in `World` yet; callers should fall back to whatever
+/// non-live source they have (JSON, a `Default` instance) in that case.
+pub fn get_world_component_as_engine_class<'w>(
+    class_name: &str,
+    world: &'w World,
+    entity: Entity,
+) -> Option<&'w dyn EngineClass> {
+    (find(class_name)?.get_as_engine_class)(world, entity)
+}
+
+/// Borrow `class_name`'s typed value already in `World` as
+/// `&mut dyn EngineClass` for direct in-place editing -- the properties
+/// panel's write path. Apply a property's setter closure straight to this
+/// reference: it mutates the one real `World`-resident component, so there
+/// is nothing to write back afterward. `None` under the same conditions as
+/// [`get_world_component_as_engine_class`].
+pub fn get_world_component_as_engine_class_mut<'w>(
+    class_name: &str,
+    world: &'w mut World,
+    entity: Entity,
+) -> Option<&'w mut dyn EngineClass> {
+    (find(class_name)?.get_as_engine_class_mut)(world, entity)
+}
+
 /// Every currently-registered `World`-backed class name. `SceneDatabase`
 /// uses this to know which classes to check for removal when an object's
 /// component list changes -- a class present in `World` from a previous
@@ -160,9 +196,42 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
 
-    #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+    #[derive(Clone, Debug, PartialEq, Default, serde::Deserialize)]
     struct TestComponent {
         value: i32,
+    }
+
+    // Minimal hand-written `EngineClass` impl -- in real components this
+    // comes from `#[derive(EngineClass)]`, but this test struct exists only
+    // to exercise `WorldComponentRegistration`'s plumbing, not the
+    // reflection macro.
+    impl EngineClass for TestComponent {
+        fn class_name() -> &'static str {
+            "TestComponent"
+        }
+        fn get_properties(&self) -> Vec<pulsar_reflection::PropertyMetadata> {
+            Vec::new()
+        }
+        fn create_default() -> Box<dyn EngineClass> {
+            Box::new(Self::default())
+        }
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn clone_boxed(&self) -> Box<dyn EngineClass> {
+            Box::new(self.clone())
+        }
+    }
+
+    fn test_get(world: &World, entity: Entity) -> Option<&dyn EngineClass> {
+        world.get::<TestComponent>(entity).map(|c| c as &dyn EngineClass)
+    }
+
+    fn test_get_mut(world: &mut World, entity: Entity) -> Option<&mut dyn EngineClass> {
+        world.get_mut::<TestComponent>(entity).map(|c| c as &mut dyn EngineClass)
     }
 
     fn test_hydrate(world: &mut World, entity: Entity, data: &Value) -> Result<(), String> {
@@ -191,6 +260,8 @@ mod tests {
             hydrate: test_hydrate,
             remove: test_remove,
             dispatch: test_dispatch,
+            get_as_engine_class: test_get,
+            get_as_engine_class_mut: test_get_mut,
         }
     }
 
@@ -252,6 +323,41 @@ mod tests {
 
         assert!(remove_world_component_for_class("TestComponent", &mut world, entity));
         assert!(world.get::<TestComponent>(entity).is_none());
+    }
+
+    #[test]
+    fn live_get_mut_edits_the_one_real_world_value_directly() {
+        let mut world = World::new();
+        let entity = world.spawn();
+
+        // Not hydrated yet -- no live value to edit.
+        assert!(get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
+            .is_none());
+        assert!(get_world_component_as_engine_class("TestComponent", &world, entity).is_none());
+
+        hydrate_world_component_for_class(
+            "TestComponent", &mut world, entity, &serde_json::json!({"value": 1}),
+        )
+        .unwrap();
+
+        // Mutate through the `&mut dyn EngineClass` path -- this must be the
+        // same storage `world.get::<TestComponent>` sees afterward, not a
+        // copy: no serialize/deserialize anywhere in this path.
+        {
+            let instance =
+                get_world_component_as_engine_class_mut("TestComponent", &mut world, entity)
+                    .expect("hydrated component should be live-accessible");
+            let concrete = instance.as_any_mut().downcast_mut::<TestComponent>().unwrap();
+            concrete.value = 99;
+        }
+
+        assert_eq!(world.get::<TestComponent>(entity), Some(&TestComponent { value: 99 }));
+        let read_back = get_world_component_as_engine_class("TestComponent", &world, entity)
+            .expect("component should still be live-accessible for reading");
+        assert_eq!(
+            read_back.as_any().downcast_ref::<TestComponent>(),
+            Some(&TestComponent { value: 99 })
+        );
     }
 
     #[test]

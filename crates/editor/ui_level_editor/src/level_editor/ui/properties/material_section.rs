@@ -2,6 +2,26 @@
 //!
 //! This component provides editable fields for material properties including
 //! color (RGBA), metallic, and roughness values.
+//!
+//! Class-name bug fixed (was looking up `"MaterialOverride"`, but the
+//! registered class -- and what `ComponentInstance.class_name` actually
+//! holds, per `REGISTRY.get_class_names()`/`stringify!(#name)` -- is
+//! `"MaterialOverrideComponent"`; the mismatch meant this whole section was
+//! silently non-functional: `get_material_data` never found the real
+//! component, and every write went to a slot nothing ever read back).
+//!
+//! TODO(Pulsar-Native#561): `MaterialOverrideComponent` has no
+//! `ComponentRuntimeBehavior`/`#[register_world_component]` today, so it has
+//! no live `World` value to edit directly -- the flat-JSON calls below
+//! (`SceneDatabase::update_component_property`/`get_components`) are
+//! genuinely the only representation that exists for it right now, not a
+//! remaining bug in this file. Once it's migrated onto `World`-backed
+//! storage like every other real component, this section should switch to
+//! `SceneDatabase::read_live_component_property`/`update_live_component_property`
+//! and this whole hand-rolled `get_material_data`/`get_color_channel`/
+//! `set_color_channel` JSON-poking layer should go away -- it's a stopgap
+//! for the small, shrinking set of not-yet-migrated components, not a
+//! second permanent way to edit components alongside the live `World` path.
 
 use gpui::{prelude::*, *};
 use serde_json::Value;
@@ -31,7 +51,7 @@ impl MaterialSection {
         scene_db
             .get_components(&object_id.to_string())
             .into_iter()
-            .find(|c| c.class_name == "MaterialOverride")
+            .find(|c| c.class_name == "MaterialOverrideComponent")
             .map(|c| c.data)
     }
 
@@ -62,7 +82,7 @@ impl MaterialSection {
         }
         scene_db.update_component_property(
             &object_id.to_string(),
-            "MaterialOverride",
+            "MaterialOverrideComponent",
             "color",
             serde_json::json!([color[0], color[1], color[2], color[3]]),
         );
@@ -79,7 +99,7 @@ impl MaterialSection {
     fn set_scalar(scene_db: &SceneDatabase, object_id: &str, key: &str, value: f32) -> bool {
         scene_db.update_component_property(
             &object_id.to_string(),
-            "MaterialOverride",
+            "MaterialOverrideComponent",
             key,
             Value::from(value),
         );

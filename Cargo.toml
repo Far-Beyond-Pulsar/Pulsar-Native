@@ -92,7 +92,12 @@ pulsar_game                        = { path = "crates/core/pulsar_game" }
 pulsar_core                        = { path = "crates/core/pulsar_core" }
 pulsar_pie_abi                     = { path = "crates/core/pulsar_pie_abi" }
 pulsar_scenedb                     = { git = "https://github.com/Far-Beyond-Pulsar/SceneDB", rev = "43921b0d432e99654161e1de65799fb65fa629f0" }
-pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+# TEMPORARY: pinned to unmerged branch `engineclass-json-roundtrip`
+# (Far-Beyond-Pulsar/Pulsar-Reflection#5, EngineClass::to_json +
+# REGISTRY.create_instance_from_json). Move back to main once merged --
+# tracked on Far-Beyond-Pulsar/Pulsar-Native#560, same pattern as the other
+# temporary pins there.
+pulsar_reflection                  = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 pulsar_events                      = { path = "crates/core/pulsar_events" }
 engine_class_derive                = { path = "crates/core/engine_class_derive" }
 pulsar_world_registry              = { path = "crates/core/pulsar_world_registry" }
@@ -212,7 +217,7 @@ git2 = "0.21"
 walkdir = "2.4"
 rfd = "0.17"
 thiserror = "2.0"
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 dashmap = "6.1.0"
 inventory = "0.3"
 flume = "0.12"
@@ -309,8 +314,8 @@ pulsar_bp_executor = { path = "crates/core/pulsar_bp_executor" }
 # Point at the same unified source as the Pulsar-Reflection patch below so every
 # `pulsar_reflection` reference (whichever repo/rev it came from) collapses to a
 # single copy. Uses the double-slash URL alias (see that patch for why).
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
 
 [patch."https://github.com/Far-Beyond-Pulsar/PBGC"]
 pbgc = { path = "crates/third-party/pbgc" }
@@ -377,5 +382,5 @@ wgsl_std = { path = "crates/third-party/psgc/crates/wgsl_std" }
 # Durable fix: bump SceneDB's pulsar_reflection pin to match and cascade the rev,
 # then delete these patches.
 [patch."https://github.com/Far-Beyond-Pulsar/Pulsar-Reflection"]
-pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
-pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "4b489372bfb81607631c4ec8c7d7289efe709f40" }
+pulsar_reflection = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }
+pulsar_reflection_derive = { git = "https://github.com/Far-Beyond-Pulsar//Pulsar-Reflection", rev = "b0d9b957b00e695d005df4ab18becf82b377b740" }

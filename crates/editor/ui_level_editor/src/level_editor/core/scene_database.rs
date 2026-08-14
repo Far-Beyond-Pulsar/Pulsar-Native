@@ -29,10 +29,11 @@ use engine_backend::scene::{
 use engine_backend::{ComponentInstance, EditorObjectId, SceneMetadataDb};
 use engine_fs::virtual_fs;
 use parking_lot::RwLock;
-use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes};
+use pulsar_reflection::{apply_scene_props_for_class, registered_scene_props_classes, EngineClass};
 use pulsar_scenedb::Entity;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::any::Any;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -285,6 +286,26 @@ impl SceneDatabase {
     }
 
     /// Update a single property inside a reflection-based component by class name and property name.
+    ///
+    /// Legacy flat-JSON path -- kept only for classes that were never
+    /// migrated to `pulsar_world_registry` (no `ComponentRuntimeBehavior`,
+    /// e.g. `LODComponent`/`MaterialOverrideComponent`), where JSON in
+    /// `metadata_db` genuinely is the only representation that exists.
+    /// **Do not call this for anything that supports
+    /// [`Self::update_live_component_property`]** -- it writes `new_value`
+    /// at the top level of the component's JSON, which is wrong for any
+    /// `#[sub_props]`-nested field (silently dropped, or worse, overwrites a
+    /// nested sub-struct with a bare scalar/array if the names happen to
+    /// collide). See Pulsar-Native#561.
+    ///
+    /// TODO(Pulsar-Native#561): delete this method (and the flat-JSON
+    /// fallback branches in `property_renderer.rs`/`material_section.rs`
+    /// that call it) once every component -- including the props-only ones
+    /// with no `ComponentRuntimeBehavior` today -- is `World`-registered.
+    /// This is a shrinking legacy path for a handful of not-yet-migrated
+    /// classes, not a permanent second way to edit components; the end
+    /// state is that `SceneDatabase`/`World` is the only live component
+    /// storage, full stop.
     pub fn update_component_property(
         &self,
         object_id: &ObjectId,
@@ -304,6 +325,99 @@ impl SceneDatabase {
             }
             self.update_component(object_id, idx, data);
         }
+    }
+
+    /// Edit a single property on the **live `World`-resident component**
+    /// directly, correctly handling `#[sub_props]` nesting -- no JSON
+    /// involved anywhere in this path (Pulsar-Native#561).
+    ///
+    /// `class_name`/`prop_name` come from [`pulsar_reflection::PropertyMetadata`]
+    /// (the same reflection metadata the properties panel already reads to
+    /// render the row). The setter closure used to apply `new_value` is
+    /// looked up fresh from a throwaway `REGISTRY.create_instance` -- that
+    /// instance's own field values are discarded immediately; only its
+    /// *type-bound* getter/setter closures are used, applied straight to
+    /// the one real component already in `World`.
+    ///
+    /// `Err(new_value)` -- handing the value straight back, since the
+    /// setter never ran -- if `class_name` isn't `World`-registered,
+    /// `object_id` has no live entity, or the entity doesn't have this
+    /// component hydrated yet. Callers should fall back to
+    /// [`Self::update_component_property`] in that case (this happens only
+    /// for the handful of props-only classes with no `ComponentRuntimeBehavior`
+    /// at all; every real, migrated component always has a live value once
+    /// its object is loaded).
+    pub fn update_live_component_property(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        prop_name: &str,
+        new_value: Box<dyn Any + Send>,
+    ) -> Result<(), Box<dyn Any + Send>> {
+        let Some(setter) = pulsar_reflection::REGISTRY
+            .create_instance(class_name)
+            .and_then(|instance| {
+                instance
+                    .get_properties()
+                    .into_iter()
+                    .find(|p| p.name == prop_name)
+                    .map(|p| p.setter)
+            })
+        else {
+            tracing::warn!(
+                "[LIVE_PROPERTY_EDIT] no reflected property '{prop_name}' on '{class_name}'"
+            );
+            return Err(new_value);
+        };
+
+        let mut store = self.store.write();
+        let Some(entity) = store.entity_for(object_id) else {
+            return Err(new_value);
+        };
+        let Some(instance) = pulsar_world_registry::get_world_component_as_engine_class_mut(
+            class_name,
+            store.world_mut(),
+            entity,
+        ) else {
+            return Err(new_value);
+        };
+        (setter)(instance, new_value);
+        Ok(())
+    }
+
+    /// Read a single property straight off the **live `World`-resident
+    /// component**, correctly handling `#[sub_props]` nesting -- no JSON
+    /// involved (Pulsar-Native#561's read-side counterpart to
+    /// [`Self::update_live_component_property`]).
+    ///
+    /// `None` under the same conditions as `update_live_component_property`
+    /// (not `World`-registered, no live entity, or not hydrated yet);
+    /// callers should fall back to the flat-JSON path or a `Default`
+    /// instance in that case.
+    pub fn read_live_component_property(
+        &self,
+        object_id: &ObjectId,
+        class_name: &str,
+        prop_name: &str,
+    ) -> Option<Box<dyn Any>> {
+        let getter = pulsar_reflection::REGISTRY
+            .create_instance(class_name)
+            .and_then(|instance| {
+                instance
+                    .get_properties()
+                    .into_iter()
+                    .find(|p| p.name == prop_name)
+                    .map(|p| p.getter)
+            })?;
+
+        let store = self.store.read();
+        let entity = store.entity_for(object_id)?;
+        let instance = pulsar_world_registry::get_world_component_as_engine_class(
+            class_name,
+            store.world(),
+            entity,
+        )?;
+        Some((getter)(instance))
     }
 
     /// Clear the entire scene.
@@ -571,8 +685,45 @@ impl SceneDatabase {
         self.sync_registered_component_props_to_scene_db(object_id);
     }
 
+    /// Every component instance attached to `object_id`, with `data`
+    /// resolved *live* off `World` for any class that has a live value
+    /// there (Pulsar-Native#561) -- `metadata_db`'s stored JSON is no
+    /// longer trusted for those classes' current field values, only for
+    /// which components are attached, their order, and their `enabled`
+    /// flag. This is the one choke point both the properties panel
+    /// (`attached`) and save-to-disk (`save_to_file_with_editor_camera`)
+    /// go through, so fixing it here is enough to make `World` the actual
+    /// source of truth for both, without either one needing its own sync
+    /// step: `update_live_component_property` writes straight to `World`
+    /// and stops there (no metadata_db write-back at all), and this method
+    /// is what makes that edit visible everywhere else that reads
+    /// component data, including what eventually gets serialized to disk.
     pub fn get_components(&self, object_id: &EditorObjectId) -> Vec<ComponentInstance> {
-        self.metadata_db.get_components(object_id)
+        let mut components = self.metadata_db.get_components(object_id);
+        if components.is_empty() {
+            return components;
+        }
+        let store = self.store.read();
+        let Some(entity) = store.entity_for(object_id) else {
+            return components;
+        };
+        for component in &mut components {
+            if let Some(live) = pulsar_world_registry::get_world_component_as_engine_class(
+                component.class_name.as_str(),
+                store.world(),
+                entity,
+            ) {
+                match live.to_json() {
+                    Ok(json) => component.data = json,
+                    Err(error) => tracing::warn!(
+                        "[GET_COMPONENTS] '{}' on '{object_id}' has a live World value but \
+                         failed to serialize it, keeping the last-known-good stored copy: {error}",
+                        component.class_name
+                    ),
+                }
+            }
+        }
+        components
     }
 
     /// Check if a component is a descendant of another component
@@ -1293,6 +1444,124 @@ mod world_component_hydration_tests {
         let store = db.store.read();
         let entity = store.entity_for(&id).unwrap();
         assert!(store.world().get::<pulsar_rendering::LightComponent>(entity).is_some());
+    }
+
+    /// Pulsar-Native#561 regression test: editing a `#[sub_props]`-nested
+    /// leaf field (e.g. `LightComponent.intensity.intensity`) through
+    /// `update_live_component_property` must land in the correct nested
+    /// location and must not disturb any sibling field or sub-group -- the
+    /// exact failure mode of the bug this fixes was a flat top-level JSON
+    /// write either landing on a JSON key the struct doesn't have (silently
+    /// dropped) or, worse, overwriting a whole nested sub-struct with a bare
+    /// scalar when the leaf name happened to collide with its parent
+    /// sub-props field's own name (`color`/`color`).
+    #[test]
+    fn update_live_component_property_edits_only_the_targeted_nested_leaf() {
+        use pulsar_rendering::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        // `intensity` is a leaf field inside `IntensityLightProps`, itself
+        // reached through `LightComponent.intensity: IntensityLightProps` --
+        // a flat top-level JSON write would land on a key `LightComponent`
+        // doesn't have at all (silently ignored by serde on next load), not
+        // `data.intensity.intensity`.
+        let applied = db.update_live_component_property(
+            &id,
+            "LightComponent",
+            "intensity",
+            Box::new(500.0_f32) as Box<dyn Any + Send>,
+        );
+        assert!(applied.is_ok(), "live edit should apply directly, no JSON fallback needed");
+
+        // `color` is a leaf field inside `ColorLightProps`, whose *parent*
+        // sub-props field on `LightComponent` is also named `color` -- the
+        // exact name collision that made the old flat write corrupt the
+        // whole nested object instead of just failing quietly.
+        let applied = db.update_live_component_property(
+            &id,
+            "LightComponent",
+            "color",
+            Box::new([0.25_f32, 0.5, 0.75, 1.0]) as Box<dyn Any + Send>,
+        );
+        assert!(applied.is_ok());
+
+        let store = db.store.read();
+        let entity = store.entity_for(&id).unwrap();
+        let hydrated = store.world().get::<LightComponent>(entity).unwrap();
+
+        assert_eq!(hydrated.intensity.intensity, 500.0);
+        assert_eq!(hydrated.color.color, [0.25, 0.5, 0.75, 1.0]);
+
+        // Every sibling field on both touched sub-groups, and every
+        // untouched sub-group, must still match `Default` exactly -- proving
+        // the edit was scoped to just the one targeted leaf, not a
+        // sub-struct-clobbering overwrite.
+        let expected = LightComponent::default();
+        assert_eq!(hydrated.intensity.intensity_units, expected.intensity.intensity_units);
+        assert_eq!(hydrated.intensity.exposure_compensation, expected.intensity.exposure_compensation);
+        assert_eq!(hydrated.color.use_temperature, expected.color.use_temperature);
+        assert_eq!(hydrated.color.temperature_kelvin, expected.color.temperature_kelvin);
+        // `GeneralLightProps`/`AttenuationLightProps`/`ShadowLightProps`
+        // don't derive `PartialEq` -- compare via their own `Serialize`
+        // impl instead (both already derive it for the JSON boundary).
+        assert_eq!(
+            serde_json::to_value(&hydrated.general).unwrap(),
+            serde_json::to_value(&expected.general).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&hydrated.attenuation).unwrap(),
+            serde_json::to_value(&expected.attenuation).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&hydrated.shadows).unwrap(),
+            serde_json::to_value(&expected.shadows).unwrap()
+        );
+    }
+
+    /// Pulsar-Native#561 regression test: `update_live_component_property`
+    /// writes straight to `World` and nowhere else -- `get_components`
+    /// (what both the properties panel's card list and
+    /// `save_to_file_with_editor_camera` read) must still see the edit, by
+    /// resolving `data` fresh off the live `World` value rather than
+    /// trusting `metadata_db`'s now-stale stored copy. Without this, a live
+    /// edit would render correctly in the properties panel (which reads
+    /// each field individually via `read_live_component_property`) but be
+    /// silently lost on save -- exactly the kind of two-competing-copies
+    /// bug this whole fix exists to eliminate.
+    #[test]
+    fn live_edit_is_visible_through_get_components_not_just_the_live_read_path() {
+        use pulsar_rendering::LightComponent;
+        use std::any::Any;
+
+        let db = SceneDatabase::new();
+        let id = db.add_object(object("Light"), None);
+        let default_json = serde_json::to_value(LightComponent::default()).unwrap();
+        db.add_component(&id, "LightComponent".to_string(), default_json);
+
+        db.update_live_component_property(
+            &id,
+            "LightComponent",
+            "intensity",
+            Box::new(750.0_f32) as Box<dyn Any + Send>,
+        )
+        .expect("LightComponent is World-registered, edit should apply live");
+
+        let components = db.get_components(&id);
+        let light = components
+            .iter()
+            .find(|c| c.class_name == "LightComponent")
+            .expect("LightComponent should still be attached");
+        assert_eq!(
+            light.data.get("intensity").and_then(|v| v.get("intensity")),
+            Some(&serde_json::json!(750.0)),
+            "get_components (and therefore save-to-disk) must reflect the live edit, \
+             not metadata_db's stale stored JSON"
+        );
     }
 
     /// `PortalComponent` is the trickiest of B5's list -- its

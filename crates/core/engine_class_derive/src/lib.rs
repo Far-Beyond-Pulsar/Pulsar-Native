@@ -205,6 +205,49 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
         .iter()
         .any(|a| a.path().is_ident("engine_class_no_register"));
 
+    // Whole-instance JSON round trip (Pulsar-Native#561's properties-panel
+    // fix): `to_json`/`from_json` only make sense for classes that actually
+    // derive `Serialize`/`Deserialize` -- both are siblings in the same
+    // combined `#[derive(...)]` list `#[engine_class(..., serialize,
+    // deserialize, ...)]` builds, so `has_derive` sees them here exactly
+    // like `engine_class`'s own attribute-macro pass does.
+    let has_serialize = has_derive(&input.attrs, "Serialize");
+    let has_deserialize = has_derive(&input.attrs, "Deserialize");
+
+    let to_json_impl = if has_serialize {
+        quote! {
+            fn to_json(&self) -> Result<::serde_json::Value, String> {
+                ::serde_json::to_value(self).map_err(|error| error.to_string())
+            }
+        }
+    } else {
+        // No override -- inherit `EngineClass::to_json`'s default `Err`.
+        quote! {}
+    };
+
+    let from_json_shim = if has_deserialize {
+        let shim_fn_name = quote::format_ident!("__pulsar_reflection_from_json_shim_{}", name);
+        quote! {
+            #[doc(hidden)]
+            #[allow(non_snake_case)]
+            fn #shim_fn_name(
+                data: &::serde_json::Value,
+            ) -> Result<Box<dyn pulsar_reflection::EngineClass>, String> {
+                let parsed: #name = ::serde_json::from_value(data.clone())
+                    .map_err(|error| error.to_string())?;
+                Ok(Box::new(parsed) as Box<dyn pulsar_reflection::EngineClass>)
+            }
+        }
+    } else {
+        quote! {}
+    };
+    let from_json_registration_value = if has_deserialize {
+        let shim_fn_name = quote::format_ident!("__pulsar_reflection_from_json_shim_{}", name);
+        quote! { Some(#shim_fn_name) }
+    } else {
+        quote! { None }
+    };
+
     // Generate the trait implementation
     let generated = quote! {
         impl #impl_generics pulsar_reflection::EngineClass for #name #ty_generics #where_clause {
@@ -251,8 +294,11 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
             fn clone_boxed(&self) -> Box<dyn pulsar_reflection::EngineClass> {
                 Box::new(self.clone())
             }
+
+            #to_json_impl
         }
 
+        #from_json_shim
     };
 
     let registration = if skip_registration {
@@ -265,6 +311,7 @@ pub fn derive_engine_class(input: TokenStream) -> TokenStream {
                     name: stringify!(#name),
                     category: #category_token,
                     constructor: || Box::new(#name::default()),
+                    from_json: #from_json_registration_value,
                 }
             }
 
@@ -741,6 +788,9 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
     let hydrate_fn_name = quote::format_ident!("__pulsar_world_hydrate_{}", self_ty_ident);
     let remove_fn_name = quote::format_ident!("__pulsar_world_remove_{}", self_ty_ident);
     let dispatch_fn_name = quote::format_ident!("__pulsar_world_dispatch_{}", self_ty_ident);
+    let get_fn_name = quote::format_ident!("__pulsar_world_get_engine_class_{}", self_ty_ident);
+    let get_mut_fn_name =
+        quote::format_ident!("__pulsar_world_get_engine_class_mut_{}", self_ty_ident);
 
     // Note this macro does NOT emit `#impl_block` -- unlike
     // `#[register_runtime_behavior]`, it's meant to be stacked alongside
@@ -791,12 +841,43 @@ pub fn register_world_component(attr: TokenStream, item: TokenStream) -> TokenSt
             }
         }
 
+        // Direct live access to the real `World`-resident value as `&(mut)
+        // dyn EngineClass` -- this is the properties panel's edit path
+        // (Pulsar-Native#561): `get_properties()`'s getter/setter closures
+        // already walk `#[sub_props]` nesting correctly, so applying them
+        // straight to this reference mutates the one real component in
+        // place. No JSON, no throwaway instance, no second copy of the
+        // state to keep in sync.
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #get_fn_name(
+            world: &pulsar_scenedb::World,
+            entity: pulsar_scenedb::Entity,
+        ) -> Option<&dyn pulsar_reflection::EngineClass> {
+            world
+                .get::<#self_ty>(entity)
+                .map(|component| component as &dyn pulsar_reflection::EngineClass)
+        }
+
+        #[doc(hidden)]
+        #[allow(non_snake_case)]
+        fn #get_mut_fn_name(
+            world: &mut pulsar_scenedb::World,
+            entity: pulsar_scenedb::Entity,
+        ) -> Option<&mut dyn pulsar_reflection::EngineClass> {
+            world
+                .get_mut::<#self_ty>(entity)
+                .map(|component| component as &mut dyn pulsar_reflection::EngineClass)
+        }
+
         pulsar_world_registry::inventory::submit! {
             pulsar_world_registry::WorldComponentRegistration {
                 class_name: <#self_ty as pulsar_reflection::ComponentRuntimeBehavior>::CLASS_NAME,
                 hydrate: #hydrate_fn_name,
                 remove: #remove_fn_name,
                 dispatch: #dispatch_fn_name,
+                get_as_engine_class: #get_fn_name,
+                get_as_engine_class_mut: #get_mut_fn_name,
             }
         }
 

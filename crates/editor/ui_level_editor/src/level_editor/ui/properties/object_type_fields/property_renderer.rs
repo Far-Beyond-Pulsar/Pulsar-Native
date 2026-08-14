@@ -6,6 +6,15 @@
 //!   3. Delegates row rendering to [`ui_common::render_property_row_runtime`],
 //!      which picks the editor registered for each property's type.
 //!   4. Groups rows into collapsible category sections via [`category_section`].
+//!
+//! TODO(Pulsar-Native#575, SceneDB#47): the read side (`current_any` below)
+//! calls `SceneDatabase::read_live_component_property` -- a fresh
+//! `World` lookup per property, unconditionally, every time this section
+//! renders. Correct, but polling: `World` has no way to signal "this
+//! component actually changed" yet, so there's nothing better to do today.
+//! Once SceneDB gains an entity/component listener/subscription system
+//! (Far-Beyond-Pulsar/SceneDB#47), this should subscribe per attached
+//! component instead and only re-pull on a real signal, caching in between.
 
 use engine_backend::scene::ComponentInstance;
 use gpui::{prelude::*, *};
@@ -60,17 +69,27 @@ impl ObjectTypeFieldsSection {
                 let object_id_for_props = self.object_id.clone();
 
                 for prop in &properties {
-                    // Read straight from this component instance. Re-querying the
-                    // scene database here would deep-clone every component's JSON
-                    // once per property, per frame — and would also resolve to the
-                    // first component of the class rather than this one.
-                    let current_json = component.data.get(prop.name);
-                    let current_any: Box<dyn Any> = current_json
-                        .filter(|json| !json.is_null())
-                        .and_then(|json| {
-                            RUNTIME_TYPE_REGISTRY
-                                .deserialize_json_for_type(prop.type_info, json.clone())
-                                .ok()
+                    // Read straight off the live `World`-resident component
+                    // when one exists (Pulsar-Native#561) -- correctly
+                    // handles `#[sub_props]` nesting, and it's the one real
+                    // value, not a copy. Falls back to the flat-JSON channel
+                    // only for the shrinking set of classes with no
+                    // `ComponentRuntimeBehavior` (see
+                    // `SceneDatabase::update_component_property`'s doc), then
+                    // to this throwaway instance's own default value.
+                    let current_any: Box<dyn Any> = self
+                        .scene_db
+                        .read_live_component_property(&self.object_id, class_name, prop.name)
+                        .or_else(|| {
+                            component
+                                .data
+                                .get(prop.name)
+                                .filter(|json| !json.is_null())
+                                .and_then(|json| {
+                                    RUNTIME_TYPE_REGISTRY
+                                        .deserialize_json_for_type(prop.type_info, json.clone())
+                                        .ok()
+                                })
                         })
                         .unwrap_or_else(|| (prop.getter)(instance.as_ref()));
 
@@ -84,6 +103,18 @@ impl ObjectTypeFieldsSection {
                             move |new_val: Box<dyn Any + Send>,
                                   _window: &mut Window,
                                   _cx: &mut App| {
+                                // Live `World` mutation first, no JSON
+                                // involved (Pulsar-Native#561) -- true for
+                                // every real, migrated component. Only the
+                                // handful of props-only classes with no
+                                // `ComponentRuntimeBehavior` fall through to
+                                // the legacy flat-JSON path below.
+                                let new_val =
+                                    match db.update_live_component_property(&oid, &cls, &pn, new_val)
+                                    {
+                                        Ok(()) => return,
+                                        Err(new_val) => new_val,
+                                    };
                                 if let Ok(json) =
                                     RUNTIME_TYPE_REGISTRY.serialize_json_for_any(new_val.as_ref())
                                 {
