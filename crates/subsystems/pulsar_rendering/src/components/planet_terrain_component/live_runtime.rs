@@ -308,11 +308,20 @@ impl From<SubsystemError> for PlanetTerrainLiveError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::components::planet_terrain_component::PlanetTerrainComponent;
 
     #[test]
     fn live_cpu_and_gpu_budgets_are_one_consistent_bounded_contract() {
         let controller = live_controller_config();
         let renderer = PlanetTerrainRuntime::renderer_config();
+        let default_planet = PlanetTerrainComponent::default()
+            .definition("default-production-planet")
+            .unwrap();
+        assert_eq!(
+            default_planet.max_resident_pages,
+            LIVE_HANDOFF_PAGES_PER_PLANET
+        );
+        assert!(default_planet.max_resident_pages <= live_runtime_config().max_resident_pages);
         assert_eq!(
             controller.max_planets * controller.refinement.max_active_pages,
             controller.rendering.max_visible_pages

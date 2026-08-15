@@ -3,6 +3,7 @@ use pulsar_terrain::{PlanetDefinition, PlanetId, PlanetIdParseError, TerrainRunt
 use thiserror::Error;
 
 pub const PLANET_TERRAIN_CLASS_NAME: &str = "PlanetTerrainComponent";
+pub const DEFAULT_PLANET_RESIDENT_PAGES: u64 = 1_024;
 
 /// Scene-owned planetary terrain definition. Canonical data and worker state
 /// remain in the `pulsar_terrain` runtime supplied to the component context.
@@ -42,7 +43,7 @@ impl Default for PlanetTerrainComponent {
             radius_cells: 63_710_000,
             material: 1,
             root_lod: 22,
-            max_resident_pages: 8_192,
+            max_resident_pages: DEFAULT_PLANET_RESIDENT_PAGES,
         }
     }
 }
